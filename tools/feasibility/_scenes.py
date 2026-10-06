@@ -70,7 +70,6 @@ def rewrite_on_disk(path: Path, name: str, value: float) -> None:
     text = path.read_text(encoding="utf-8")
     attr = VALUES[name][1]
     lines = [
-        line.rsplit("=", 1)[0] + f"= {value:g}" if f"double {attr} =" in line else line
-        for line in text.splitlines()
+        line.rsplit("=", 1)[0] + f"= {value:g}" if f"double {attr} =" in line else line for line in text.splitlines()
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

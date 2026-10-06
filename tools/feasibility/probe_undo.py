@@ -6,9 +6,12 @@ mode (windowed undo is out of scope).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from _common import Probe
+
+if TYPE_CHECKING:
+    from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
 
 def run() -> dict[str, Any]:
@@ -38,7 +41,9 @@ def _reset(global_undo: bool) -> None:
     import bpy
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.context.preferences.edit.use_global_undo = global_undo
+    prefs = bpy.context.preferences
+    assert prefs is not None
+    prefs.edit.use_global_undo = global_undo
 
 
 def _names() -> set[str]:
@@ -57,7 +62,7 @@ def _plain_push(global_undo: bool) -> dict[str, Any]:
     bpy.ops.ed.undo_push(message="sync 1")
     bpy.data.objects.new("Sync2", None)
     bpy.ops.ed.undo_push(message="sync 2")
-    if not bpy.ops.ed.undo.poll():
+    if not bpy.ops.ed.undo.poll():  # ty: ignore[missing-argument] - stubs declare poll(self)
         return {"undo_available": False}
     first = sorted(bpy.ops.ed.undo())
     after_undo = _names()
@@ -86,7 +91,7 @@ def _operator_push(global_undo: bool, undo_arg: bool | None) -> dict[str, Any]:
         bl_label = "Probe Sync"
         bl_options = {"REGISTER", "UNDO"}
 
-        def execute(self, context: Any) -> set[str]:
+        def execute(self, context: bpy.types.Context | None) -> set[OperatorReturnItems]:
             bpy.data.objects.new("OpSync", None)
             return {"FINISHED"}
 
@@ -95,10 +100,10 @@ def _operator_push(global_undo: bool, undo_arg: bool | None) -> dict[str, Any]:
         _reset(global_undo)
         bpy.ops.ed.undo_push(message="base")
         if undo_arg is None:
-            bpy.ops.proscenium_probe.sync()
+            bpy.ops.proscenium_probe.sync()  # ty: ignore[unresolved-attribute] - registered above
         else:
-            bpy.ops.proscenium_probe.sync("EXEC_DEFAULT", undo_arg)
-        if not bpy.ops.ed.undo.poll():
+            bpy.ops.proscenium_probe.sync("EXEC_DEFAULT", undo_arg)  # ty: ignore[unresolved-attribute]
+        if not bpy.ops.ed.undo.poll():  # ty: ignore[missing-argument]
             return {"undo_available": False}
         bpy.ops.ed.undo()
         return {"undo_available": True, "undo_removes": "OpSync" not in _names()}

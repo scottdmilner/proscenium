@@ -56,7 +56,10 @@ def _dirty_detection(p: Probe, dest: Path) -> None:
 
     p.check("dirty contributing layers detected (load all)", lambda: dirty(stage), expect=["nested", "ref", "sub"])
     p.fact("dirty layers detected under load none", lambda: dirty(_open(root, load_all=False)))
-    p.fact("session layer is anonymous and dirty", lambda: [stage.GetSessionLayer().anonymous, stage.GetSessionLayer().dirty])
+    p.fact(
+        "session layer is anonymous and dirty",
+        lambda: [stage.GetSessionLayer().anonymous, stage.GetSessionLayer().dirty],
+    )
     p.fact(
         "fresh stage over dirty registry layers composes in-process values",
         lambda: read_values(_open(root)),
@@ -74,10 +77,17 @@ def _fresh_stage(p: Probe, dest: Path) -> None:
     try:
         p.check("Open outside any cache context returns a new stage", lambda: Usd.Stage.Open(root) != cached)
         with Usd.StageCacheContext(global_cache):
-            p.fact("Open inside the global cache context reuses the cached stage", lambda: Usd.Stage.Open(root) == cached)
+            p.fact(
+                "Open inside the global cache context reuses the cached stage", lambda: Usd.Stage.Open(root) == cached
+            )
             with Usd.StageCacheContext(Usd.BlockStageCaches):
-                p.check("BlockStageCaches inside a cache context gives a new stage", lambda: Usd.Stage.Open(root) != cached)
-        p.check("fresh stages share the root layer object", lambda: _open(Path(root)).GetRootLayer() == cached.GetRootLayer())
+                p.check(
+                    "BlockStageCaches inside a cache context gives a new stage", lambda: Usd.Stage.Open(root) != cached
+                )
+        p.check(
+            "fresh stages share the root layer object",
+            lambda: _open(Path(root)).GetRootLayer() == cached.GetRootLayer(),
+        )
     finally:
         global_cache.Erase(cached)
 

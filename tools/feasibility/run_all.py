@@ -58,7 +58,17 @@ def run_runtime(name: str, out: Path, blender: str | None) -> dict[str, Any]:
             cmd = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(HERE / "test_under_pytest.py")]
         else:
             assert blender
-            cmd = [blender, "-b", "--factory-startup", "--python-exit-code", "1", "--python", str(HERE / "probe_main.py"), "--", str(out)]
+            cmd = [
+                blender,
+                "-b",
+                "--factory-startup",
+                "--python-exit-code",
+                "1",
+                "--python",
+                str(HERE / "probe_main.py"),
+                "--",
+                str(out),
+            ]
         proc = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, check=False)
     return {"runtime": name, "returncode": proc.returncode, "log_tail": (proc.stdout + proc.stderr)[-3000:]}
 
@@ -110,7 +120,8 @@ def _prepare_source(dest: Path) -> None:
 def _wheel_cli() -> Path:
     import bpy
 
-    return Path(bpy.utils.system_resource("SCRIPTS")) / "addons_core" / "bl_pkg" / "cli" / "blender_ext.py"
+    scripts = bpy.utils.system_resource("SCRIPTS")  # ty: ignore[unresolved-attribute] - missing from stubs
+    return Path(scripts) / "addons_core" / "bl_pkg" / "cli" / "blender_ext.py"
 
 
 def summarize(path: Path) -> list[str]:
@@ -120,7 +131,10 @@ def summarize(path: Path) -> list[str]:
             lines.append(f"  {topic['topic']}: CRASHED")
             continue
         bad = [c["name"] for c in topic["checks"] if c["status"] != "pass"]
-        lines.append(f"  {topic['topic']}: {len(topic['checks']) - len(bad)}/{len(topic['checks'])} pass" + (f"; not passing: {bad}" if bad else ""))
+        lines.append(
+            f"  {topic['topic']}: {len(topic['checks']) - len(bad)}/{len(topic['checks'])} pass"
+            + (f"; not passing: {bad}" if bad else "")
+        )
     return lines
 
 

@@ -20,7 +20,9 @@ def run() -> dict[str, Any]:
     import bpy
 
     p = Probe("env")
-    p.fact("platform", lambda: {"system": platform.system(), "machine": platform.machine(), "release": platform.release()})
+    p.fact(
+        "platform", lambda: {"system": platform.system(), "machine": platform.machine(), "release": platform.release()}
+    )
     p.fact(
         "blender",
         lambda: {
@@ -42,7 +44,7 @@ def run() -> dict[str, Any]:
     p.fact("pxr_path", lambda: list(pxr.__path__))
     p.check("exactly one pxr package on sys.path", lambda: len(_pxr_copies()), expect=1)
     p.fact("pxr copies on sys.path", _pxr_copies)
-    p.check("no USD distribution installed besides Blender's", _usd_distributions, expect=[])
+    p.check("no installed distribution ships its own pxr package", _usd_distributions, expect=[])
     available = sorted(m.name for m in pkgutil.iter_modules(pxr.__path__))
     p.fact("pxr_modules", lambda: available)
     p.check("required pxr modules import", lambda: [m for m in REQUIRED_PXR if not _imports(f"pxr.{m}")], expect=[])
@@ -65,8 +67,11 @@ def _pxr_copies() -> list[str]:
 def _usd_distributions() -> list[str]:
     from importlib import metadata
 
-    names = {(d.metadata["Name"] or "").lower() for d in metadata.distributions()}
-    return sorted(n for n in names if "usd" in n)
+    # A top-level pxr/ (e.g. usd-core). bpy's pxr is nested under bpy/ and
+    # stub packages install pxr-stubs/, so neither counts.
+    return sorted(
+        d.metadata["Name"] or "?" for d in metadata.distributions() if any(f.parts[0] == "pxr" for f in d.files or [])
+    )
 
 
 def _imports(name: str) -> bool:

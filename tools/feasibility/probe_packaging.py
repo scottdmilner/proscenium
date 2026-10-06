@@ -26,7 +26,8 @@ EXT_ID = "proscenium_probe"
 def extension_cli() -> Path:
     import bpy
 
-    return Path(bpy.utils.system_resource("SCRIPTS")) / "addons_core" / "bl_pkg" / "cli" / "blender_ext.py"
+    scripts = bpy.utils.system_resource("SCRIPTS")  # ty: ignore[unresolved-attribute] - missing from stubs
+    return Path(scripts) / "addons_core" / "bl_pkg" / "cli" / "blender_ext.py"
 
 
 def run() -> dict[str, Any]:
@@ -73,7 +74,9 @@ def _install_and_enable(p: Probe, archive: Path) -> None:
     import bpy
     from pxr import UsdUtils
 
-    repos = bpy.context.preferences.extensions.repos
+    prefs = bpy.context.preferences
+    assert prefs is not None
+    repos = prefs.extensions.repos
     repo = repos.new(name="Proscenium Probe", module=REPO_MODULE, custom_directory=str(p.tmp / "repo"), source="USER")
     module_name = f"bl_ext.{REPO_MODULE}.{EXT_ID}"
     enabled = False
@@ -88,7 +91,11 @@ def _install_and_enable(p: Probe, archive: Path) -> None:
         )
         module = sys.modules.get(module_name)
         enabled = module is not None
-        p.check("installed extension is enabled and registered", lambda: module is not None and module.events, expect=["register"])
+        p.check(
+            "installed extension is enabled and registered",
+            lambda: module is not None and module.events,
+            expect=["register"],
+        )
         if module is not None:
             path = p.tmp / "mesh.usda"
             shutil.copy(SCENES / "exchange" / "mesh.usda", path)

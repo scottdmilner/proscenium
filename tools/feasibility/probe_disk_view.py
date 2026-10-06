@@ -37,7 +37,7 @@ def run() -> dict[str, Any]:
     }
     for label, build in candidates.items():
         built: dict[str, Any] = {}
-        p.fact(f"{label}: opened", lambda b=build: built.setdefault("stage", b()) is not None)
+        p.fact(f"{label}: opened", lambda b=build, d=built: d.setdefault("stage", b()) is not None)
         stage = built.get("stage")
         if not stage:
             continue
