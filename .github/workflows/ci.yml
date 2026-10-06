@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked  # fail if uv.lock is out of date
+      # Checks are defined once, in .pre-commit-config.yaml. Fixes made by
+      # ruff count as failures here, and the diff is printed.
+      - run: uv run pre-commit run --all-files --show-diff-on-failure
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender  # isolated tests need the binary
+      - run: uv sync --locked
+
+      - name: Tests
+        if: hashFiles('tests/**') != ''
+        run: uv run pytest
+
+      - name: Build extension
+        run: uv run python tools/build_extension.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-${{ matrix.os }}
+          path: dist/*.zip

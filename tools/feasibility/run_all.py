@@ -19,7 +19,6 @@ import argparse
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,18 +29,8 @@ from typing import Any
 HERE = Path(__file__).parent
 ROOT = HERE.parents[1]
 
-DEFAULT_BLENDER = {
-    "Darwin": ["/Applications/Blender.app/Contents/MacOS/Blender"],
-    "Linux": ["blender"],
-    "Windows": [r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe", "blender.exe"],
-}
-
-
-def find_blender() -> str | None:
-    for candidate in [os.environ.get("BLENDER"), *DEFAULT_BLENDER.get(platform.system(), [])]:
-        if candidate and (shutil.which(candidate) or Path(candidate).exists()):
-            return shutil.which(candidate) or candidate
-    return None
+sys.path.insert(0, str(HERE.parent))  # tools/, for blender_paths
+from blender_paths import find_blender, wheel_extension_cli  # noqa: E402
 
 
 def _env(user_dir: Path) -> dict[str, str]:
@@ -83,7 +72,7 @@ def compare_binary_cli(blender: str) -> dict[str, Any]:
         results: dict[str, Any] = {}
         for label, prefix in {
             "binary": [blender, "--factory-startup", "--command", "extension"],
-            "wheel": [sys.executable, str(_wheel_cli())],
+            "wheel": [sys.executable, str(wheel_extension_cli())],
         }.items():
             dist = tmp_path / label
             dist.mkdir()
@@ -117,13 +106,6 @@ def _prepare_source(dest: Path) -> None:
     prepare_source(dest)
 
 
-def _wheel_cli() -> Path:
-    import bpy
-
-    scripts = bpy.utils.system_resource("SCRIPTS")  # ty: ignore[unresolved-attribute] - missing from stubs
-    return Path(scripts) / "addons_core" / "bl_pkg" / "cli" / "blender_ext.py"
-
-
 def summarize(path: Path) -> list[str]:
     lines = []
     for topic in json.loads(path.read_text()):
@@ -138,9 +120,19 @@ def summarize(path: Path) -> list[str]:
     return lines
 
 
+def all_pass(path: Path) -> bool:
+    topics = json.loads(path.read_text())
+    return all("crashed" not in t and all(c["status"] == "pass" for c in t["checks"]) for t in topics)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "feasibility")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 unless every check passes in every runtime, including the binary (for CI)",
+    )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     plat = f"{platform.system().lower()}-{platform.machine().lower()}"
@@ -156,14 +148,17 @@ def main() -> int:
         print(f"{name}: exit {run['returncode']}")
         if out.exists():
             print("\n".join(summarize(out)))
+            ok = ok and (all_pass(out) or not args.strict)
         else:
             ok = False
             print(run["log_tail"])
     if blender:
         meta["cli_comparison"] = compare_binary_cli(blender)
         print("cli comparison: identical archives =", meta["cli_comparison"]["identical_archive_contents"])
+        ok = ok and (meta["cli_comparison"]["identical_archive_contents"] or not args.strict)
     else:
         print("binary: skipped (no Blender found; set BLENDER)")
+        ok = ok and not args.strict
     (args.out / f"{plat}-meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return 0 if ok else 1
 

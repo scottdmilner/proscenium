@@ -1,0 +1,28 @@
+# Single source of truth for lint checks: runs as a git hook and in CI
+# (`uv run pre-commit run --all-files`). Hooks use the tool versions pinned in
+# uv.lock via `uv run --frozen`, so `uv sync` first.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: ty
+        name: ty check
+        entry: uv run --frozen ty check
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+      - id: uv-lock
+        name: uv lock --check
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false

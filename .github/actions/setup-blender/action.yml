@@ -1,0 +1,72 @@
+name: Set up Blender
+description: Download (cached, checksum-verified) and unpack the portable Blender build, then export BLENDER.
+
+inputs:
+  version:
+    description: Blender release, e.g. 5.2.2
+    default: "5.2.2"
+
+runs:
+  using: composite
+  steps:
+    - name: Pick the download for this runner
+      shell: bash
+      run: |
+        case "${{ runner.os }}" in
+          Linux) file=linux-x64.tar.xz ;;
+          Windows) file=windows-x64.zip ;;
+          macOS) file=macos-arm64.dmg ;;  # macos-latest runners are arm64
+        esac
+        series=$(echo "${{ inputs.version }}" | cut -d. -f1,2)
+        echo "BLENDER_FILE=blender-${{ inputs.version }}-$file" >> "$GITHUB_ENV"
+        echo "BLENDER_URL=https://download.blender.org/release/Blender$series" >> "$GITHUB_ENV"
+
+    - name: Install Linux libraries for headless Blender and the bpy wheel
+      if: runner.os == 'Linux'
+      shell: bash
+      run: >
+        sudo apt-get update && sudo apt-get install -y --no-install-recommends
+        libegl1 libgl1 libice6 libsm6 libx11-6 libxext6 libxfixes3 libxi6
+        libxkbcommon0 libxrender1 libxxf86vm1
+
+    - name: Cache Blender download
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/blender-download
+        key: ${{ env.BLENDER_FILE }}
+
+    - name: Download Blender and verify its checksum
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        dl="$RUNNER_TEMP/blender-download"
+        mkdir -p "$dl"
+        curl -fsSL -o "$dl/$BLENDER_FILE" "$BLENDER_URL/$BLENDER_FILE"
+        curl -fsSL "$BLENDER_URL/blender-${{ inputs.version }}.sha256" | grep " $BLENDER_FILE\$" > "$dl/SHA256"
+        if command -v sha256sum > /dev/null; then check="sha256sum -c"; else check="shasum -a 256 -c"; fi
+        (cd "$dl" && $check SHA256)
+
+    - name: Unpack Blender
+      shell: bash
+      run: |
+        file="$RUNNER_TEMP/blender-download/$BLENDER_FILE"
+        dest="$RUNNER_TEMP/blender"
+        mkdir -p "$dest"
+        case "${{ runner.os }}" in
+          Linux)
+            tar -xf "$file" -C "$dest" --strip-components=1
+            echo "BLENDER=$dest/blender" >> "$GITHUB_ENV" ;;
+          Windows)
+            unzip -q "$file" -d "$dest"
+            echo "BLENDER=$(cygpath -w "$dest/${BLENDER_FILE%.zip}/blender.exe")" >> "$GITHUB_ENV" ;;
+          macOS)
+            mount=$(hdiutil attach -nobrowse -readonly "$file" | tail -1 | cut -f3-)
+            cp -R "$mount/Blender.app" "$dest/"
+            hdiutil detach "$mount"
+            echo "BLENDER=$dest/Blender.app/Contents/MacOS/Blender" >> "$GITHUB_ENV" ;;
+        esac
+
+    - name: Check Blender runs
+      shell: bash
+      run: '"$BLENDER" -b --factory-startup --version'

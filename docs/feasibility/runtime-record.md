@@ -36,7 +36,7 @@ Findings describe observed behavior. Where a finding suggests a mechanism, the o
 | Blender | 5.2.2 LTS, build hash `d13f752e3b9c`, build date 2026-09-15 |
 | `bpy` wheel | 5.2.2, same build hash |
 | Embedded Python | 3.13.13 (binary: Blender's bundled interpreter; wheel: uv-managed CPython 3.13.13) |
-| OpenUSD | 0.26.3 (`pxr` bundled in both; exactly one `pxr` package on `sys.path` and no other USD distribution installed, checked in each runtime) |
+| OpenUSD | 0.26.3 (`pxr` bundled in both; exactly one `pxr` package on `sys.path` and no installed distribution ships its own top-level `pxr`, checked in each runtime; the `types-usd` stubs install `pxr-stubs` and don't count) |
 | MaterialX | 1.39.4 |
 | USD plugins | 53 registered, with the same plugin names in wheel and binary |
 
