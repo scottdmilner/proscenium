@@ -13,6 +13,7 @@
 
 - The synchronization API signature.
 - Settled designs for file-backed refresh and in-memory sources, replacing the spec design notes, including the stage-level state reproduced for in-memory sources and the dirty-layer conflict check.
+- Before settling file-backed refresh, review whether the current contract (exact disk state, no cached-stage reuse, fail on dirty contributing layers) costs more USD performance than it is worth. Use the M1 [feasibility record](../feasibility/runtime-record.md) as input, and record the outcome in the [Decision Register](../DECISIONS.md) row "Strictness of the file-backed refresh contract".
 - The in-memory source key contract.
 - Identifier schemes for bindings and source entities that implement M2's draft browsing and persistent selection contract. Display-resource identifiers are defined in M5, once the representation is chosen.
 - A representation-independent ownership metadata format covering the concepts in [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle). M5 defines the representation roles.

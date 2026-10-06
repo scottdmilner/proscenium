@@ -8,3 +8,10 @@ It serves as:
 - The scene-display layer for a future USD-native stage editor.
 
 Details in `docs/PROJECT.md`
+
+## Style Guide
+
+- PEP8
+- Type annotate all function signatures
+- Prefer shorter docstrings + inline code comments over very long docstrings
+- Files should generally not exceed ~600 lines of code, and rarely exceed ~1000 lines. Split long files into appropriately organized submodules.

@@ -1,0 +1,10 @@
+#usda 1.0
+# Referenced from inside pay.usda: a contributing layer reached only through a payload.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double nestedValue = 1
+}

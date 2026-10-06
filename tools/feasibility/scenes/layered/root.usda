@@ -1,0 +1,57 @@
+#usda 1.0
+# Root layer of the layered source-access probe scene (tools/feasibility/_scenes.py).
+# Exercises every composition arc a contributing layer can arrive through: a sublayer,
+# a reference, a payload (with a nested reference inside it), an absolute-path reference
+# (added at runtime), and a reference inside the selected variant. Every value is 1 on disk;
+# probes set values to 99 in memory to tell the disk view from the in-process view.
+(
+    defaultPrim = "World"
+    subLayers = [@./sub.usda@]
+)
+
+def Xform "World"
+{
+    double rootValue = 1
+
+    def Xform "Ref" (
+        references = @./ref.usda@
+    )
+    {
+    }
+
+    def Xform "Pay" (
+        payload = @./pay.usda@
+    )
+    {
+    }
+
+    # The absolute-path reference to ../abs/abs.usda is added at runtime.
+    def Xform "Abs"
+    {
+    }
+
+    def Xform "Var" (
+        variants = {
+            string v = "b"
+        }
+        prepend variantSets = "v"
+    )
+    {
+        variantSet "v" = {
+            "a" {
+                def Xform "Inner" (
+                    references = @./var_a.usda@
+                )
+                {
+                }
+            }
+            "b" {
+                def Xform "Inner" (
+                    references = @./var_b.usda@
+                )
+                {
+                }
+            }
+        }
+    }
+}

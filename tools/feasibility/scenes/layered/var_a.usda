@@ -1,0 +1,11 @@
+#usda 1.0
+# Referenced by the UNselected variant "a" of /World/Var: must not contribute.
+# Its value is -1 so leaking into composition is detectable.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double varValue = -1
+}

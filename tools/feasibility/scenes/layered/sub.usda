@@ -1,0 +1,7 @@
+#usda 1.0
+# Sublayer of root.usda: checks that layer-stack layers count as contributing layers.
+
+over "World"
+{
+    double subValue = 1
+}

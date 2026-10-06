@@ -1,0 +1,13 @@
+#usda 1.0
+# Payload of /World/Pay: contributes only under the load-all payload policy.
+# Its nested reference checks layers introduced through a payload.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset" (
+    references = @./nested.usda@
+)
+{
+    double payValue = 1
+}
