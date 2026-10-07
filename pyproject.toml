@@ -49,7 +49,11 @@ known-third-party = ["bpy", "pxr"]
 
 [tool.ty.environment]
 python-version = "3.13"
-extra-paths = ["tools", "tools/feasibility"]
+extra-paths = ["tools", "tools/feasibility", "tests"]
+
+[tool.pyright]
+# Pylance configuration
+extraPaths = ["tools", "tools/feasibility", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
