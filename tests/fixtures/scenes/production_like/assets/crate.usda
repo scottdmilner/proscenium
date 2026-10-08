@@ -1,0 +1,123 @@
+#usda 1.0
+# Crate asset of the production-like CI fixture (tests/fixtures/production_like.py). Two meshes
+# with two materials; the Lid uses both through GeomSubsets. Four instanceable bolt references
+# give nested native instancing when the crate itself is instanced. The layout loads crates
+# through payloads.
+(
+    defaultPrim = "Crate"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Crate" (
+    assetInfo = {
+        string name = "crate"
+    }
+    kind = "component"
+)
+{
+    def Mesh "Box" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-1, -1, 0), (1, 1, 1)]
+        int[] faceVertexCounts = [4, 4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 3, 2, 1, 0, 1, 5, 4, 1, 2, 6, 5, 2, 3, 7, 6, 3, 0, 4, 7]
+        point3f[] points = [(-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0), (-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)]
+        rel material:binding = </Crate/Looks/Wood>
+    }
+
+    def Mesh "Lid"
+    {
+        float3[] extent = [(-1, -1, 1), (1, 1, 1)]
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 4]
+        point3f[] points = [(-1, -1, 1), (0, -1, 1), (1, -1, 1), (-1, 1, 1), (0, 1, 1), (1, 1, 1)]
+        uniform token subsetFamily:materialBind:familyType = "partition"
+
+        def GeomSubset "Panel" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </Crate/Looks/Wood>
+        }
+
+        def GeomSubset "Trim" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </Crate/Looks/Paint>
+        }
+    }
+
+    def Xform "Bolt_0" (
+        instanceable = true
+        references = @./bolt.usda@
+    )
+    {
+        double3 xformOp:translate = (-0.8, -0.8, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Bolt_1" (
+        instanceable = true
+        references = @./bolt.usda@
+    )
+    {
+        double3 xformOp:translate = (0.8, -0.8, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Bolt_2" (
+        instanceable = true
+        references = @./bolt.usda@
+    )
+    {
+        double3 xformOp:translate = (0.8, 0.8, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Bolt_3" (
+        instanceable = true
+        references = @./bolt.usda@
+    )
+    {
+        double3 xformOp:translate = (-0.8, 0.8, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Scope "Looks"
+    {
+        def Material "Wood"
+        {
+            token outputs:surface.connect = </Crate/Looks/Wood/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.55, 0.35, 0.2)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Material "Paint"
+        {
+            token outputs:surface.connect = </Crate/Looks/Paint/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.1, 0.3, 0.7)
+                float inputs:roughness = 0.4
+                token outputs:surface
+            }
+        }
+    }
+}

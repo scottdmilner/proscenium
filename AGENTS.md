@@ -14,12 +14,7 @@ Read [docs/PROJECT.md](docs/PROJECT.md) and [docs/spec/invariants.md](docs/spec/
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/__init__.py` and `proscenium/core/` must import without `bpy`.
   - Blender-facing code goes in modules such as `proscenium/addon.py`.
-- `tests/`: tests are split by layer, selected with pytest markers:
-  - `unit`: pure Python, no `bpy`.
-  - `blender`: in-process `bpy` wheel.
-  - `isolated`: fresh Blender binary per test.
-  - `alab`: needs `PROSCENIUM_ALAB_ROOT`.
-  - `slow`.
+- `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
   - `feasibility/`: M1 runtime probes. Results are in `docs/feasibility/runtime-record.md`.
@@ -33,13 +28,25 @@ All commands run through uv. The dev group includes the `bpy` wheel, so `bpy` an
 ```sh
 uv sync                                   # install the dev environment
 uv run pre-commit run --all-files         # all lint checks (ruff, ty, lock); same as CI
-uv run pytest                             # all tests; select layers with -m (e.g. -m unit)
-uv run python tools/build_extension.py    # dist/proscenium-<version>.zip for this platform
+uv run pytest -n auto                     # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
+uv run python tools/build_extension.py    # dist/proscenium-<version>.zip for this platform (--check: read-only)
 uv run python tools/feasibility/run_all.py  # feasibility probes (wheel, pytest, binary)
 uv run pre-commit install                 # once per clone
 ```
 
-Tests and probes that need the Blender binary find it through the `BLENDER` env var, or else the platform default install path.
+Tests and probes that need the Blender binary find it through the `BLENDER` env var, or else the platform default install path. Without a binary, binary tests are skipped, unless `PROSCENIUM_REQUIRE_BLENDER` is set (as in CI).
+
+## Tests
+
+[tests/README.md](tests/README.md) documents the test tree: which layer to use, the helpers, the fixture framework, and the rules. Read it before writing tests. In summary:
+
+- Layers are directories named for what a test runs in, not how much it covers. Each test gets its directory's marker:
+  - `bpy_free/`: plain Python with Blender modules blocked. Prefer it.
+  - `blender/`: the bpy wheel in a reused process, reset and checked clean before every test.
+  - `isolated/`: a fresh wheel or binary process per test, for what a reset can't make clean.
+- Bespoke fixtures are registered in `tests/fixtures/registry.py`. Generators are context managers that write into a tmp dir. Static layers are `.usda` files in `tests/fixtures/scenes/`.
+- Tests run in parallel. Write only under `tmp_path`, never into the repository, and copy scenes before opening them.
+- Expected results come from the spec or from how the fixture is built, never from recording the implementation's output.
 
 ## Distribution
 

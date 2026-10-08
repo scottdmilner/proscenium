@@ -1,0 +1,12 @@
+#usda 1.0
+# Referenced by variant "a" of /World/Var in the source-access scene (see root.usda), the
+# variant the file selects, so this layer contributes by default. F-DIRTY-LAYER edits it in
+# memory without saving.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double varAValue = 1
+}

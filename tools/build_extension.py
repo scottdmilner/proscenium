@@ -1,6 +1,9 @@
 """Build the Proscenium extension zip for the current platform, with its runtime wheels.
 
-    uv run python tools/build_extension.py [--source-dir DIR] [--output-dir DIR]
+    uv run python tools/build_extension.py [--source-dir DIR] [--output-dir DIR] [--check]
+
+--check (build(..., sync=False)) skips steps 2 and 3's writes: the source dir is
+only read, and the build fails if its wheels or generated block are out of date.
 
 Steps:
 1. Export the runtime dependencies (never the dev group) from uv.lock as a
@@ -55,17 +58,24 @@ def runtime_wheels() -> list[PackageWheel]:
     return sorted(wheels, key=lambda w: w.filename)
 
 
-def sync_wheels(wheels: list[PackageWheel], dest: Path) -> list[Path]:
-    """Make dest hold exactly these wheels, downloading only missing or mismatched ones."""
-    dest.mkdir(exist_ok=True)
+def sync_wheels(wheels: list[PackageWheel], dest: Path, *, write: bool = True) -> list[Path]:
+    """Make dest hold exactly these wheels, downloading only missing or mismatched ones.
+
+    With write=False nothing is changed: it fails unless dest already matches.
+    """
     wanted = {w.filename: w.hashes["sha256"] for w in wheels}
-    for path in dest.glob("*.whl"):
-        if wanted.get(path.name) != hashlib.sha256(path.read_bytes()).hexdigest():
-            path.unlink()
-    for wheel in wheels:
+    stale = [p for p in dest.glob("*.whl") if wanted.get(p.name) != hashlib.sha256(p.read_bytes()).hexdigest()]
+    missing = [w for w in wheels if not (dest / w.filename).exists() or dest / w.filename in stale]
+    if not write:
+        if stale or missing:
+            names = sorted({p.name for p in stale} | {w.filename for w in missing})
+            raise SystemExit(f"{dest}: wheels differ from uv.lock ({names}); run tools/build_extension.py")
+        return [dest / w.filename for w in wheels]
+    for path in stale:
+        path.unlink()
+    for wheel in missing:
         path = dest / wheel.filename
-        if path.exists():
-            continue
+        dest.mkdir(exist_ok=True)
         if wheel.url is None:
             raise SystemExit(f"{wheel.filename}: no download URL in uv.lock")
         with urllib.request.urlopen(wheel.url) as response:
@@ -76,8 +86,11 @@ def sync_wheels(wheels: list[PackageWheel], dest: Path) -> list[Path]:
     return [dest / w.filename for w in wheels]
 
 
-def sync_manifest(manifest: Path, wheels: list[Path]) -> bool:
-    """Rewrite the generated block; returns whether the file changed."""
+def sync_manifest(manifest: Path, wheels: list[Path], *, write: bool = True) -> bool:
+    """Rewrite the generated block; returns whether the file changed.
+
+    With write=False nothing is changed: it fails unless the block is already current.
+    """
     text = manifest.read_text(encoding="utf-8")
     head, begin, rest = text.partition(BEGIN)
     _, end, tail = rest.partition(END)
@@ -95,6 +108,10 @@ def sync_manifest(manifest: Path, wheels: list[Path]) -> bool:
     if tomllib.loads(new).get("wheels", []) != [f"./wheels/{w.name}" for w in wheels]:
         raise SystemExit(f"{manifest}: the generated block must be above the first table")
     if new != text:
+        if not write:
+            raise SystemExit(
+                f"{manifest}: the generated block is out of date with uv.lock; run tools/build_extension.py"
+            )
         manifest.write_text(new, encoding="utf-8")
     return new != text
 
@@ -108,10 +125,14 @@ def _cli(*args: str) -> None:
         raise SystemExit(f"extension {args[0]} failed ({proc.returncode}):\n{proc.stdout}{proc.stderr}")
 
 
-def build(source_dir: Path, output_dir: Path) -> Path:
-    """Sync wheels into the manifest, validate, and build; returns the archive path."""
-    wheels = sync_wheels(runtime_wheels(), source_dir / "wheels")
-    if sync_manifest(source_dir / "blender_manifest.toml", wheels):
+def build(source_dir: Path, output_dir: Path, *, sync: bool = True) -> Path:
+    """Sync wheels into the manifest, validate, and build; returns the archive path.
+
+    With sync=False the source dir is only read: the build fails unless its wheels
+    and generated block already match uv.lock. Safe to run concurrently (tests).
+    """
+    wheels = sync_wheels(runtime_wheels(), source_dir / "wheels", write=sync)
+    if sync_manifest(source_dir / "blender_manifest.toml", wheels, write=sync):
         print("updated blender_manifest.toml wheels from uv.lock")
     manifest = tomllib.loads((source_dir / "blender_manifest.toml").read_text(encoding="utf-8"))
     archive = output_dir / f"{manifest['id']}-{manifest['version']}.zip"
@@ -128,8 +149,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source-dir", type=Path, default=ROOT / "src" / "proscenium")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="never write to the source dir; fail if its wheels or manifest are out of date with uv.lock",
+    )
     args = parser.parse_args()
-    print(f"built {build(args.source_dir, args.output_dir)}")
+    print(f"built {build(args.source_dir, args.output_dir, sync=not args.check)}")
     return 0
 
 

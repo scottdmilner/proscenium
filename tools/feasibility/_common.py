@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import tempfile
 import traceback
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def jsonable(value: Any) -> Any:

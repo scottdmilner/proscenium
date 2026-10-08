@@ -32,15 +32,18 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - uses: ./.github/actions/setup-blender  # isolated tests need the binary
+      - uses: ./.github/actions/setup-blender  # binary smoke tests in tests/isolated
       - run: uv sync --locked
 
-      - name: Tests
-        if: hashFiles('tests/**') != ''
-        run: uv run pytest
-
+      # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock, which
+      # the extension test's read-only build (--check mode) needs.
       - name: Build extension
         run: uv run python tools/build_extension.py
+
+      - name: Tests
+        env:
+          PROSCENIUM_REQUIRE_BLENDER: "1"  # fail, rather than skip, binary tests without a binary
+        run: uv run pytest -n auto
 
       - uses: actions/upload-artifact@v4
         with:

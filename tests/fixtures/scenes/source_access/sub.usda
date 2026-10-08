@@ -1,0 +1,7 @@
+#usda 1.0
+# First sublayer of the source-access scene (see root.usda). F-DIRTY-LAYER rewrites it on disk.
+
+over "World"
+{
+    double subValue = 1
+}

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from _common import Probe
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def run() -> dict[str, Any]:
