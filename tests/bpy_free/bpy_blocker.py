@@ -42,8 +42,13 @@ def _bpy_dirs() -> tuple[str, tuple[str, ...]] | None:
     if spec is None or spec.origin is None:
         return None
     root = Path(spec.origin).parent
+    dirs = []
+    if os.name == "posix":  # macOS/Linux
+        dirs = root.glob("*/python/lib/python*/site-packages")
+    elif os.name == "nt":  # Windows
+        dirs = root.glob("*/python/lib/site-packages")
     # Trailing separators, so prefixes match whole directory names.
-    bundled = tuple(os.path.join(p, "") for p in root.glob("*/python/lib/python*/site-packages"))
+    bundled = tuple(os.path.join(p, "") for p in dirs)
     return os.path.join(root, ""), bundled
 
 
