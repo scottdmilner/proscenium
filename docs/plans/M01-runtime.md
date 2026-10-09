@@ -131,6 +131,15 @@ So reused workers are the default, and fresh processes are kept for the cases th
   - Every invariant bullet maps to an existing ID.
 - `tests/bpy_free/test_matrix.py` runs the checker.
 
+## Addendum — Hydra bridge (added 2026-10-09)
+
+After Phase C, a side investigation found that Hydra's scene-index API could serve as the evaluation front end, but Blender's Python `pxr` lacks `Hd`, `Hdsi`, and `UsdImaging`. A compiled bridge (`tools/feasibility/hydra_bridge/`, scikit-build-core + CMake, headers cached in gitignored `external/`) links to Blender's `libusd_ms` on macOS arm64 and passes 27 checks in the wheel and the binary; see the [record](../feasibility/runtime-record.md#compiled-hydra-bridge--macos-arm64). The front-end and core-language decision is a new gate, [M1b](../milestones/M01b-evaluation-gate.md), between M1 and M3.
+
+Effects on this plan:
+- Phase B's `feasibility.yml` gains a bridge build-and-run step on all three OSes once the CMake build supports Windows and Linux. That work and its results belong to M1b and do not gate M1's exit.
+- Phase B's "pure-Python subpackages" under `proscenium/core/` stay provisional until M1b decides; if Hydra is adopted, the core becomes a compiled module and `AGENTS.md`'s layout, build, and test rules change with it.
+- Phase D's matrix accepts `M1b` as a delivery milestone.
+
 ## Critical files
 `docs/plans/M01-runtime.md`, `tools/feasibility/*`, `docs/feasibility/runtime-record.md`, `src/proscenium/blender_manifest.toml`, `src/proscenium/__init__.py`, `pyproject.toml`, `.pre-commit-config.yaml`, `AGENTS.md`, `CLAUDE.md`, `.github/workflows/ci.yml`, `tools/build_extension.py`, `tests/{bpy_free,blender,isolated,support,fixtures}/`, `docs/testing/acceptance-spec.md`, `tools/alab_inventory.py`, `docs/testing/requirements.yaml`, `tools/matrix.py`, `docs/DECISIONS.md`. The existing `tools/bpy-site-packages` is reused as-is for wheel-based runs.
 

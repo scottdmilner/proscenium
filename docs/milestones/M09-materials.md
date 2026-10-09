@@ -9,7 +9,7 @@
 **Decisions and deliverables:**
 
 - First, before implementation: complete the bounded connection grammar and `displayColor`/`displayOpacity` interaction rules against M4's frozen cases. Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes and revising the design as needed before implementation.
-- Evaluation/planning: effective material bindings, translated networks, and material inputs that accept per-instance data.
+- Evaluation/planning: effective material bindings, translated networks, and material inputs that accept per-instance data. If M1b adopts Hydra, bindings come from Hydra's binding resolution and networks from its material network data; the connection grammar, Principled BSDF translation, and material purpose selection remain project work. Direct, inherited, collection-based, and face-subset precedence are verified against fixtures.
 - Application: materials, nodes, images (as external file references), and assignments.
 - Ownership and reuse rules for translated materials, images, node groups, and dependencies.
 

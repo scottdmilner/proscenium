@@ -31,6 +31,7 @@
   - What a partition owns.
   - How a partition is replaced as a whole.
 - Recorded limitations and fallbacks.
+- Prototypes use the evaluation front end and core language chosen in M1b. A decision in the row "Time-sampled data representation", using M1b's findings on time-sampled data detection. Compare per-time-code snapshots against keyframed transforms, mesh cache modifiers, and Geometry Nodes baking. Baking is expected to perform better at the cost of higher memory use, so measure playback, construction, memory, and `.blend` size separately. Record the time-code-to-frame mapping for any approach adopted, and how it meets the requirements listed in that row.
 - Sharing criteria and any cases requiring distinct geometry resources for correct display, with correctness fixtures and measured resource costs.
 
 Later milestones build on the partitioning decision and frozen support cases. Changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant prototypes before implementation, revising the decision record, and listing the affected milestones.

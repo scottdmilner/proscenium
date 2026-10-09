@@ -28,6 +28,8 @@ Separate change discovery from dependency invalidation. Account for inherited/sh
 
 Editor-provided change descriptions may be hints, but are not the sole correctness mechanism. Full traversal or snapshot comparison is acceptable for discovery if performance targets are met and unaffected Blender content is not unnecessarily rewritten.
 
+Design note (suggested, not settled; applies if [M1b](../milestones/M01b-evaluation-gate.md) adopts Hydra): Hydra scene-index observer notices (added, removed, renamed, dirtied) are a candidate discovery source. A dirty notice names data to re-read, not proof that its value changed, so the comparison rule below still decides writes. Notices do not cover external assets changed without USD edits, managed display damage, binding-setting or target-unit changes, display state restored by Blender undo, or differences after the imaging pipeline is rebuilt or lost.
+
 ## Affected Content
 
 Distinguish three levels:

@@ -156,6 +156,141 @@ The chosen conflict failure stays valid. Upgrading to a disk view would need M3 
   - `addon_utils.disable` calls `unregister()`.
 - The installed files contain no `pxr` directory or `usd_ms` library, and the installed extension's `pxr.Usd` is the same module object the caller uses.
 
+## Compiled Hydra bridge — macOS arm64
+
+**Verdict: feasible on the tested Blender 5.2.2 / USD 0.26.3 build.** A standalone
+Python extension links to Blender's installed `libusd_ms.dylib`, receives the
+caller's `Usd.Stage` directly, and consumes Hydra scene indices. The same compiled
+module passes **27 checks in the bpy wheel and 27 in the Blender binary**, both
+in fresh background processes. This is a local feasibility result, not adoption
+of Hydra or qualification of a distributable bridge on all platforms.
+
+### Build and reproduction
+
+Source: [`tools/feasibility/hydra_bridge/`](../../tools/feasibility/hydra_bridge/).
+Run on macOS arm64 with Blender 5.2.2 installed:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/run.py
+```
+
+The bridge has its own `pyproject.toml` using **scikit-build-core** and a
+`CMakeLists.txt`. The wrapper invokes `uv build --wheel`, extracts the module from
+the resulting wheel into `build/hydra-bridge/` for the probes, and audits its
+linkage. The wheel is a local feasibility artifact, not the extension distribution.
+The main extension still builds only through `tools/build_extension.py`.
+
+To build just the bridge wheel directly:
+
+```sh
+uv build tools/feasibility/hydra_bridge --wheel --out-dir build/hydra-bridge/wheels
+```
+
+Use `--config-setting cmake.define.BLENDER_APP=/path/to/Blender.app` with `uv build`,
+or `--blender-app /path/to/Blender.app` with the wrapper, to select another bundle.
+The bridge remains restricted to macOS arm64 and Python 3.13.
+
+CMake automatically downloads a sparse dependency checkout under the bridge's
+gitignored `external/blender-deps/` directory on the first build. It uses the macOS dependency revision pinned by
+[Blender v5.2.2](https://github.com/blender/blender/tree/v5.2.2/lib):
+`a76ef917b4849ba2b1b1deb1a643e131a884a63b` from
+[`lib-macos_arm64`](https://projects.blender.org/blender/lib-macos_arm64).
+Only USD, TBB, and Python include directories are selected. Dependency libraries
+are not linked or shipped. Subsequent builds verify and reuse the pinned checkout
+without Git network access. The source distribution excludes `external/` and
+build output; the wheel contains the module and package metadata only.
+
+The scikit-build-core conversion was verified with version 1.1.1 and CMake 3.31.1:
+a cold build fetched the headers, and a second build succeeded with `UV_OFFLINE=1`
+and Git's `protocol.allow=never`. The wheel's extracted module passed all 27
+checks again in both runtimes. Cached build files live under the bridge's
+`build/{wheel_tag}/`; isolated build environments may still cause recompilation.
+
+- Compiler: Apple clang 17.0.0 (`clang-1700.6.3.2`), C++17, arm64.
+- Headers: Blender's generated USD headers, TBB headers, and Python 3.13 headers.
+- USD namespace in headers and installed library:
+  `pxrBlender_v26_03__pxrReserved__`. Stock upstream headers without Blender's
+  configuration would not have this namespace.
+- The module uses USD's internal `pxr_boost::python` implementation and the
+  host's existing USD Python converters. No separate Boost.Python is linked.
+- Link target: `/Applications/Blender.app/Contents/Resources/lib/libusd_ms.dylib`.
+  The resulting load command is `@rpath/libusd_ms.dylib`; no absolute Blender path
+  or dependency-checkout rpath is embedded in the module.
+- Python symbols use macOS dynamic lookup. A post-build `nm` audit verifies that
+  all **99 imported Blender-USD symbols** bind explicitly to `libusd_ms`, rather
+  than relying on that fallback.
+- Import order tested: load Blender and the USD Python modules before importing
+  the bridge. Other import orders are not qualified.
+
+`build.json` records the `uv build` command, wheel/module paths, dependency revision,
+load commands, and symbol imports. CMake's build directory holds its compiler
+configuration. `wheel.json` and `binary.json` record passed checks and loaded
+USD paths; the accompanying logs and process records include subprocess exits.
+Both processes exit successfully after the checks, including shutdown. Each
+gets a temporary Blender user directory and a temporary copy of the USD fixture.
+Blender startup requires access to macOS Metal even in background mode; the
+successful runs were outside the execution sandbox.
+
+### What passed
+
+- **Shared runtime:** exactly one `libusd_ms` is loaded in each process, from
+  `bpy/lib/` in the wheel and `Blender.app/Contents/Resources/lib/` in the binary.
+  The same extension binary works with each host's library. No second USD build
+  is loaded.
+- **Stage exchange:** a Python-created file-backed stage round-trips through C++
+  with the same stage and root-layer identity. Unsaved root-layer and session
+  opinions are visible. An anonymous stage also round-trips; the bridge retains
+  it after the caller releases its Python reference.
+- **Hydra access:** `UsdImagingCreateSceneIndices` constructs a live chain.
+  Explicit cube/sphere conversion configuration is followed by
+  `HdFlatteningSceneIndex` with `HdFlattenedDataSourceProviders`.
+- **Mesh extraction:** triangle topology and points match the authored fixture;
+  point arrays arrive through the existing `Vt.Vec3fArray` converter.
+- **Implicit geometry:** a cube becomes a mesh with eight points, six quads, and
+  the expected dimensions. Sphere conversion is configured but not exercised.
+- **Inherited state:** the triangle receives its parent's translation; an edit
+  to ancestor visibility changes the effective visibility read from the chain.
+- **Time:** default-time values, interpolated values at time 2 between samples
+  1 and 3, and a return to default time match the fixture. Time changes produce
+  dirty notices; an immediate capture at the same time produces no notices.
+- **Live edits:** changing points in Python changes values read through the
+  retained chain and emits a dirty notice. Adding/removing a prim changes both
+  the queried inventory and the corresponding notifications.
+- **Lifetime:** an earlier point array remains unchanged after a later source
+  edit and disposal of the bridge. Twenty repeated construction/capture/disposal
+  cycles complete; this is not a leak or memory-growth measurement.
+- **Source preservation:** initial capture leaves root/session layer text
+  unchanged, and the source file is never saved. Deliberate source edits in the
+  probe are caller actions, not bridge actions.
+- **Instancing smoke check:** native instance inputs produce at least one Hydra
+  instancer. Instance transforms, counts, nested contexts, and appearance are
+  not validated by this check.
+
+### Limits and next gates
+
+This probe reads a small subset of Hydra data; it does not create Blender display
+objects, render images, implement source correspondence, or establish performance
+budgets. Array retention is demonstrated for one points array; zero-copy transfer
+and general snapshot immutability are not established. The observer records event
+kinds and paths, not dirty-locator coverage or complete dependency correctness.
+
+Not tested: Windows/Linux linking and packaging, other Blender builds, installed
+extension lifecycle, materials, deformation, point instancers, nested instancing,
+selection mapping, stage-setting fidelity, invalid input recovery, threading,
+undo/save/reopen, production-scale data, or memory/performance regressions.
+
+The prototype owns a strong stage reference. A production binding would need
+explicit lifetime handling to preserve the caller-release contract in
+[In-Memory Sources](../spec/source-access.md#in-memory-sources). Its native
+objects and lazily queried scene indices are not persisted Blender state.
+
+The next gate is [M1b](../milestones/M01b-evaluation-gate.md): cross-platform
+native loading against each supported Blender distribution, followed by an
+end-to-end prototype for the intended snapshot contract. The current Python-only
+implementation decision remains unchanged pending those results and M1b's
+recorded decision.
+
 ## Windows x64
 
 Pending: fill in from the CI artifacts `windows-*` once the workflow runs (Phase B).

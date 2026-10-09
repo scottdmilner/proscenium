@@ -19,6 +19,7 @@
   - Candidate approaches from the [In-Memory Sources](../spec/source-access.md#in-memory-sources) design note behave as expected.
   - Contributing layers with unsaved edits can be detected, and a fresh stage can be opened without reusing a cached one.
   - Whether a private disk view can be built without touching shared layers (see [File-Backed Refresh](../spec/source-access.md#file-backed-refresh)).
+- Which USD imaging modules Blender's Python `pxr` exposes, and whether a compiled module can link against the bundled USD and exchange stages with Python. The macOS arm64 result is in the [compiled Hydra bridge record](../feasibility/runtime-record.md#compiled-hydra-bridge--macos-arm64); Windows and Linux are M1b's first deliverable and do not gate M1's exit.
 - The extension layout, development environment, build script, lint/type-check hooks, and `AGENTS.md`.
   - `AGENTS.md` directs agents to read [PROJECT.md](../PROJECT.md) and [spec/invariants.md](../spec/invariants.md) before any work.
   - `AGENTS.md` instructs agents to keep `spec/invariants.md` in sync with the spec: any change to a guarantee in a spec file updates its statement in `invariants.md` in the same change, and vice versa. `invariants.md` stays a summary that links to and defers to the authoritative spec section; it never accumulates detail of its own.

@@ -79,7 +79,7 @@ ALab checks that the synchronizer works and performs on a real production-scale 
 
 - The reference hardware is an **M1 Max MacBook Pro**. The acceptance specification records its memory configuration, OS version, and Blender build.
 - Record repeated-run statistics, not single timings.
-- Measure separately: cold and warm source acquisition, evaluation, planning, Blender resource construction, publication and retirement, undo overhead, peak memory while old and new generations coexist, inspection-tree expansion, source-to-display lookup, selection and highlight updates, and framing calculations.
+- Measure separately: cold and warm source acquisition, evaluation, planning, transfer across any compiled-core boundary, Blender resource construction, publication and retirement, undo overhead, peak memory while old and new generations coexist, inspection-tree expansion, source-to-display lookup, selection and highlight updates, and framing calculations.
 - Measure these scenarios: initial synchronization, unchanged manual refresh, single transform edit, shared geometry edit affecting many instances, single material parameter change, payload-policy switch, and topology-changing time step.
 - ALab provides production-scale numbers. Generated fixtures of controlled size show how each cost scales.
 - M4 sets provisional budgets for comparing representations. Phase 1 records baselines on the reference hardware, not gates. Phase 2 targets are derived from those baselines (for example, "a single transform edit in ALab updates within a set time").

@@ -7,7 +7,7 @@
 **Decisions and deliverables:**
 
 - First, before implementation: complete the primvar support matrix and mesh classification rules against M4's frozen cases. Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes and revising the design as needed before implementation.
-- Evaluation/planning: validated geometry and primvar data in the snapshot and plan.
+- Evaluation/planning: validated geometry and primvar data in the snapshot and plan. If M1b adopts Hydra, the support matrix is written against Hydra's mesh and primvar data (topology, subdivision tags, indexed primvars, interpolation, subsets), and each Hydra filter conversion is classified as exact or approximate.
 - Application: mesh data, attributes, and modifiers created from the plan.
 
 **Tests:**
