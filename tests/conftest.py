@@ -2,7 +2,8 @@
 
 - Each test gets the marker of the directory it lives in (bpy_free, blender, or
   isolated), so `pytest -m bpy_free` selects tests/bpy_free/ without per-test markers.
-- Tests marked `alab` are skipped unless PROSCENIUM_ALAB_ROOT is set.
+- Tests marked `alab` are skipped unless PROSCENIUM_ALAB_ROOT is set, in the
+  environment or in the repository's .env (see .env.example).
 - Blender (the bpy wheel and binary subprocesses) uses a throwaway user
   config dir instead of the developer's real one.
 """
@@ -15,9 +16,13 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 TESTS = Path(__file__).parent
 LAYERS = ("bpy_free", "blender", "isolated")
+
+# Local settings such as PROSCENIUM_ALAB_ROOT; variables already set in the environment win.
+load_dotenv(TESTS.parent / ".env")
 
 # Blender reads BLENDER_USER_RESOURCES when bpy is imported, and subprocesses
 # inherit it. Setting it here, while pytest loads this file, happens before any

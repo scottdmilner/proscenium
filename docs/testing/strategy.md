@@ -19,6 +19,19 @@ Cover repeated synchronization, all required change cases, transform edge cases,
 
 Before-publication failure-injection tests assert that the entire published generation is unchanged, not merely that old objects still exist: materials, images, flags, correspondence, ownership metadata, inspection data, and selection resolution. Retirement failure tests assert that the new generation stays active and obsolete leftovers remain tracked and retryable. Each case uses the applicable synchronization or lifecycle outcome checks in [Acceptance Criteria](acceptance.md#bespoke-fixtures).
 
+## Metamorphic Tests
+
+Some results are hard to state in full in advance, but the spec says how they must change when the input changes. Metamorphic tests check those relations between runs. They complement bespoke fixtures and never replace a fixture's own expected results.
+
+- Each relation states the input change, the expected effect on the result, and the requirement that justifies it. The expected effect comes from the spec, like any expected result.
+- The milestone that delivers a behavior chooses its relations. Examples:
+  - Translating a root prim shifts the world transforms and bounds of its displayed descendants by that translation and changes nothing else.
+  - Making a prim instanceable, or no longer instanceable, leaves displayed appearance, bounds, and correspondence unchanged; only resource sharing may differ.
+  - Switching the payload policy and switching back gives the same result as never switching.
+  - Moving to a time code with identical evaluated values changes nothing, and in Phase 2 writes nothing.
+  - An incremental refresh gives the same result as a clean full rebuild (see [Incremental Synchronization Tests](#incremental-synchronization-tests)).
+- Relations run on bespoke fixtures. They may also run on generated inputs, provided each generated input is reproducible from a recorded seed.
+
 ## Named Contract Fixtures
 
 Each fixture is assigned to a milestone in [milestones/](../milestones/README.md) and referenced by ID.

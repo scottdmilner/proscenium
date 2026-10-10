@@ -1,6 +1,6 @@
 # Decision Register
 
-Milestones update this register when they settle a decision. Every in-scope requirement is traced in the requirement-to-test matrix created in M1, with high-risk entries marked separately. Settled contract decisions update their requirement rows and test/oracle coverage before implementation. Fixture IDs refer to [Named Contract Fixtures](testing/strategy.md#named-contract-fixtures).
+Milestones update this register when they settle a decision. Every in-scope requirement is traced in the requirement-to-test matrix created in M1, with high-risk entries marked separately by M4. Settled contract decisions update their requirement rows and test/oracle coverage before implementation. Fixture IDs refer to [Named Contract Fixtures](testing/strategy.md#named-contract-fixtures).
 
 | Decision | Owner | Chosen behavior / alternatives | Acceptance test |
 |---|---|---|---|
@@ -31,6 +31,6 @@ Milestones update this register when they settle a decision. Every in-scope requ
 | Offline appearance | M9 | **Chosen:** geometry, materials, and inspection persist; textures stay external references. Rejected: packing assets; geometry-only promise. | `F-OFFLINE` |
 | Detach contract and later refresh | M11 | **Chosen:** whole binding, surviving content as-is; remove binding-specific metadata and controls; no required baking or source reconstruction. Clear the published generation; next refresh behaves like a first synchronization. Subtree detach deferred. | `F-DETACH-SHARED`, `F-DETACH-AS-IS` |
 | Lifecycle failure safety | M11 | **Chosen:** detach commits as a whole; cleanup/removal may report committed partial progress with persistent safe retry; pre-commit failure preserves starting state; binding removal never orphans disposal work. Staging, commit points, and removal retention strategy open for M11 planning, using M5's chosen tracking mechanism. | `F-LIFECYCLE-FAILURE`, `F-UNDO-AFTER-DAMAGE` |
-| Bounds comparison contract and tolerances | M1 | Open; recorded in the acceptance specification. | Standard end-to-end checks |
+| Bounds comparison contract and tolerances | M4 | Open; recorded in [Bounds Comparison Contract](testing/acceptance.md#bounds-comparison-contract) with the representation decision. M1 finding for the expected side: `UsdGeom.BBoxCache` aligned world bounds transform a local box, so they are looser than the box of the evaluated points under rotation (USD 0.26.3: a triangle rotated 45° gives a y extent of 1.414 against 0.707). | Standard end-to-end checks |
 | Churn budgets for replacement-affected resources | M13 | Open. | M14 qualification |
 | Phase 2 performance targets | M13 | Open; derived from Phase 1 baselines. | M14 qualification |

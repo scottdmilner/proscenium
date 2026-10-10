@@ -4,10 +4,19 @@
 
 Read [docs/PROJECT.md](docs/PROJECT.md) and [docs/spec/invariants.md](docs/spec/invariants.md) first. For milestone work, also read the milestone file in [docs/milestones/](docs/milestones/), its plan in [docs/plans/](docs/plans/) if one exists, and [docs/DECISIONS.md](docs/DECISIONS.md).
 
+Do not read `docs/archive/` unless the user asks for it. It holds superseded documents kept for history; they describe intentions that were later changed and would mislead current work. Never treat them as requirements or guidance, and don't update them.
+
 ## Keep invariants in sync with the spec
 
 - Any change to a guarantee in a spec file updates its statement in `docs/spec/invariants.md` in the same change, and the reverse.
-- `invariants.md` stays a summary that links to and defers to the authoritative spec section. It never gains detail of its own.
+- `invariants.md` stays a summary that links to and defers to the authoritative spec section. It never gains detail of its own. Each bullet ends with the IDs of the matrix rows it summarizes.
+
+## Keep the requirement matrix in sync
+
+- [docs/testing/requirements.yaml](docs/testing/requirements.yaml) has a row for every requirement in PROJECT.md, spec/, and testing/, quoting its text. Any change to those docs updates the affected rows (or the `excluded` list) in the same change, then regenerates the view with `tools/matrix.py render`. Contract decisions update their rows before implementation.
+- Before a milestone implements anything, it fills in the fixtures and oracle of the rows it delivers and adds itself to `started`.
+- `tools/matrix.py check` fails on drift: a quote no longer in its section, a block no row traces, an invariant without IDs, an unknown fixture or milestone, or a started milestone's row without an oracle (or a behavior row without a fixture). It runs as a pre-commit hook and as a bpy_free test.
+- Retired IDs are never reused.
 
 ## Layout
 
@@ -17,9 +26,11 @@ Read [docs/PROJECT.md](docs/PROJECT.md) and [docs/spec/invariants.md](docs/spec/
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
+  - `matrix.py`: checks and renders the requirement-to-test matrix.
+  - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
   - `feasibility/`: M1 runtime probes. Results are in `docs/feasibility/runtime-record.md`.
   - `bpy-site-packages/`: puts the bpy wheel's bundled `pxr` on `sys.path`.
-- `docs/`: the spec, milestones, decisions, and testing docs.
+- `docs/`: the spec, milestones, decisions, and testing docs. `docs/plans/` holds each milestone's decision log; `docs/archive/` holds superseded documents (see [Before any work](#before-any-work)).
 
 ## Commands
 
@@ -27,9 +38,10 @@ All commands run through uv. The dev group includes the `bpy` wheel, so `bpy` an
 
 ```sh
 uv sync                                   # install the dev environment
-uv run pre-commit run --all-files         # all lint checks (ruff, ty, lock); same as CI
+uv run pre-commit run --all-files         # all lint checks (ruff, ty, lock, matrix); same as CI
 uv run pytest -n auto                     # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
 uv run python tools/build_extension.py    # dist/proscenium-<version>.zip for this platform (--check: read-only)
+uv run python tools/matrix.py check       # requirement matrix (render: regenerate requirements-matrix.md)
 uv run python tools/feasibility/run_all.py  # feasibility probes (wheel, pytest, binary)
 uv run pre-commit install                 # once per clone
 ```

@@ -13,7 +13,7 @@
 **Decisions and deliverables:**
 
 - Before backend selection: concrete, frozen primvar and material cases in the support specs, covering per-instance appearance, named UVs and primvar readers, face assignments, and geometry sharing, with the relevant types, domains, inheritance/indexing behavior, connections, and display-color/opacity rules.
-- A simple object/collection baseline, tested against a risk matrix of the highest-risk requirements.
+- A simple object/collection baseline, tested against a risk matrix of the highest-risk requirements. Those requirements are marked high-risk in the requirement-to-test matrix.
 - Targeted prototypes of batching (such as Geometry Nodes) or a hybrid partitioned by assets or independently updated subtrees, only where the baseline fails a requirement or its measured costs justify the alternative.
 - A stress fixture combining shear, negative-determinant transforms, nonuniform scale, reset transform stacks inside instances, nested instances with differing appearance, and separate viewport/render purposes. The question is whether the representation supports these in combination under the Geometry Sharing contract.
 - Each evaluated representation also exercises:
@@ -33,6 +33,7 @@
 - Recorded limitations and fallbacks.
 - Prototypes use the evaluation front end and core language chosen in M1b. A decision in the row "Time-sampled data representation", using M1b's findings on time-sampled data detection. Compare per-time-code snapshots against keyframed transforms, mesh cache modifiers, and Geometry Nodes baking. Baking is expected to perform better at the cost of higher memory use, so measure playback, construction, memory, and `.blend` size separately. Record the time-code-to-frame mapping for any approach adopted, and how it meets the requirements listed in that row.
 - Sharing criteria and any cases requiring distinct geometry resources for correct display, with correctness fixtures and measured resource costs.
+- The [bounds comparison contract](../testing/acceptance.md#bounds-comparison-contract) for the chosen representation, recorded in that section.
 
 Later milestones build on the partitioning decision and frozen support cases. Changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant prototypes before implementation, revising the decision record, and listing the affected milestones.
 

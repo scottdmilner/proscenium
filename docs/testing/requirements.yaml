@@ -1,0 +1,1656 @@
+# Requirement-to-test matrix (M1). The rendered view is requirements-matrix.md;
+# tools/matrix.py checks this file and regenerates the view.
+#
+# Every bullet, paragraph, table row, and code block in PROJECT.md, spec/, and
+# testing/ is either traced by a row (which quotes it) or listed under `excluded`
+# with a reason, or with the IDs of the rows that already trace what it restates.
+# Permissions, scope limits, and design guidance with no checkable outcome are
+# excluded with a reason naming the milestone that should heed them.
+# Short lead-in lines ending in ":" are skipped; their list items carry the content.
+# spec/invariants.md is not traced here: each invariant bullet names its row IDs.
+#
+# Row fields (section-level values are defaults for its rows):
+#   id            AREA-NN, stable; never reuse a retired ID.
+#   quote         Distinctive text from the requirement, matched after stripping
+#                 Markdown links, emphasis, and code marks, within `section`.
+#   kind          behavior (default): checked by bespoke fixture tests.
+#                 contract: a decision the spec says a milestone must settle; its
+#                   oracle is that decision record, and the behavior it settles
+#                   gets its own rows when decided.
+#                 process: a development or test-process rule, checked by tooling or CI.
+#   delivery      The milestone that delivers it (milestone Implements lines).
+#   phase         1 or 2: the phase whose qualification covers it.
+#   qualified_by  Behavior rows: derived (Phase 1 -> M12, Phase 2 -> M14).
+#                 Other kinds: the milestone whose record or check confirms it.
+#   fixtures      Bespoke fixtures from tests/fixtures/registry.py.
+#   oracle        What the test or check asserts, from the spec or the fixture's construction.
+#   note          Optional clarification shown with the oracle.
+#
+# M4 adds a field marking the high-risk rows from its risk matrix.
+#
+# Fixtures and oracles are recorded once known: today, the named contract fixtures
+# and M1's own rows. The delivering milestone fills in the rest before implementing
+# them; once it is listed in `started`, the checker requires an oracle on each of its
+# rows and a fixture on each of its behavior rows.
+
+started: [M1]
+
+requirements:
+
+  # --- PROJECT.md ------------------------------------------------------------------------------
+
+  - section: PROJECT.md#core-architecture
+    phase: 1
+    rows:
+      - id: ARCH-01
+        quote: "The USD hierarchy must remain accessible through source inspection"
+        delivery: M7
+      - id: ARCH-04
+        quote: "Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors."
+        delivery: M6
+      - id: ARCH-05
+        quote: "Source hierarchy and selection identities are independent of display partitioning."
+        delivery: M7
+      - id: ARCH-06
+        quote: "Tools address USD entities through the source selection model."
+        kind: contract
+        delivery: M2
+        qualified_by: M4
+      - id: ARCH-08
+        quote: "Keep the performance tests around for later"
+        kind: process
+        delivery: M4
+        qualified_by: M14
+
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    phase: 1
+    rows:
+      - id: PH1-01
+        quote: "Manual refresh is required."
+        delivery: M12
+      - id: PH1-02
+        quote: "The acceptance suite must pass"
+        kind: process
+        delivery: M12
+        qualified_by: M12
+
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    phase: 2
+    delivery: M14
+    rows:
+      - id: PH2-02
+        quote: "Preserve source selections where their source identities remain valid."
+      - id: PH2-03
+        quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
+      - id: PH2-04
+        quote: "Establish and meet representative performance targets"
+
+  - section: PROJECT.md#compatibility-and-development
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: COMP-01
+        quote: "Minimum Blender version: 5.2 LTS."
+        oracle: "The manifest's blender_version_min is 5.2.0 and the built zip validates (tools/build_extension.py)."
+      - id: COMP-02
+        quote: "Use the OpenUSD version bundled with the supported Blender distribution."
+        oracle: "Smoke tests find pxr inside Blender's bundle, and the extension zip contains no pxr or other USD build."
+      - id: COMP-03
+        quote: "Support macOS, Windows, and Linux."
+        oracle: "CI runs the full suite, including binary smoke tests, on macOS, Windows, and Linux."
+      - id: COMP-04
+        quote: "Prefer Python-only implementation."
+        kind: contract
+        delivery: M1b
+        qualified_by: M1b
+      - id: COMP-06
+        quote: "Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution."
+        delivery: M1b
+
+  # --- spec/pipeline.md -----------------------------------------------------------------------
+
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    delivery: M6
+    phase: 1
+    rows:
+      - id: SNAP-08
+        quote: "This model must not contain Blender datablock references."
+      - id: SNAP-10
+        quote: "Snapshot data cannot change during planning or application."
+      - id: SNAP-11
+        quote: "The snapshot keeps alive whatever storage it lends out, such as shared arrays."
+      - id: SNAP-13
+        quote: "Application does not retain borrowed buffers beyond the synchronization that supplied them."
+        delivery: M7
+      - id: SNAP-16
+        quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
+        delivery: M1b
+        note: "Applies if M1b adopts Hydra."
+      - id: SNAP-17
+        quote: "Hydra prim types the core does not translate"
+        delivery: M1b
+        note: "Applies if M1b adopts Hydra."
+
+  - section: spec/pipeline.md#display-plan
+    delivery: M6
+    phase: 1
+    rows:
+      - id: PLAN-08
+        quote: "Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan."
+      - id: PLAN-09
+        quote: "Anything planning depends on must arrive through one of its three inputs."
+
+  - section: spec/pipeline.md#blender-application
+    delivery: M7
+    phase: 1
+    rows:
+      - id: APP-05
+        quote: "Report failures that only application can detect as diagnostics"
+      - id: APP-06
+        quote: "When a resource fails during application, abort the transaction unless the plan already authorized a fallback for that resource."
+      - id: APP-08
+        quote: "Application must not query USD to fill in unresolved source semantics."
+
+  - section: spec/pipeline.md#why-the-boundary-is-enforced
+    delivery: M5
+    phase: 1
+    rows:
+      - id: BND-01
+        quote: "Every feature extends both evaluation/planning and application explicitly."
+        kind: process
+        qualified_by: M12
+      - id: BND-02
+        quote: "All source-semantic diagnostics and known representation limitations exist before any Blender data is mutated."
+      - id: BND-03
+        quote: "A synchronization that fails for source reasons fails before touching the existing display."
+        fixtures: [F-FAILED-SETTINGS]
+
+  - section: spec/pipeline.md#synchronization-transaction
+    delivery: M5
+    phase: 1
+    rows:
+      - id: TXN-02
+        quote: "Before publication, any failure preserves the previous published generation unchanged and attempts to dispose of prepared work."
+        fixtures: [F-FAILED-SETTINGS, F-PUBLICATION-FAILURE, F-SHARED-MATERIAL-FAILURE]
+      - id: TXN-03
+        quote: "Failed disposal leaves leftovers persistently tracked as pending cleanup"
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: TXN-04
+        quote: "For a first synchronization, no untracked partial content remains."
+        fixtures: [F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE]
+      - id: TXN-05
+        quote: "Preparation never mutates resources reachable from the published generation unless a complete rollback mechanism covers the mutation."
+        fixtures: [F-SHARED-MATERIAL-FAILURE]
+      - id: TXN-06
+        quote: "Publication switches the whole generation together"
+        fixtures: [F-PUBLICATION-FAILURE]
+      - id: TXN-07
+        quote: "After publication, retirement failures do not fail the synchronization."
+        fixtures: [F-RETIREMENT-FAILURE]
+      - id: TXN-08
+        quote: "Ownership tracking covers newly created prepared resources before subsequent fallible work"
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: TXN-09
+        quote: "Reused published resources remain protected by the existing manifest and are never disposal candidates."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: TXN-10
+        quote: "Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: TXN-12
+        quote: "These guarantees apply equally to incremental mutations in Phase 2."
+        delivery: M14
+        phase: 2
+
+  - section: spec/pipeline.md#diagnostics
+    delivery: M5
+    phase: 1
+    rows:
+      - id: DIAG-01
+        quote: "Unsupported valid content."
+      - id: DIAG-02
+        quote: "Include binding, source path, property/asset identifier, severity, and fallback where applicable."
+      - id: DIAG-03
+        quote: "Aggregate repeated problems."
+      - id: DIAG-04
+        quote: "Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history."
+        fixtures: [F-FAILED-SETTINGS]
+      - id: DIAG-05
+        quote: "Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: DIAG-06
+        quote: "Report current cleanup status separately from historical attempt results and deduplicate by operation and resource."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE, F-RETIREMENT-FAILURE]
+      - id: DIAG-07
+        quote: "An unchanged refresh produces equivalent deduplicated source/display diagnostics."
+        fixtures: [F-NO-OP-REFRESH]
+      - id: DIAG-08
+        quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: DIAG-09
+        quote: "Success: no diagnostics in any category."
+      - id: DIAG-10
+        quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
+      - id: DIAG-11
+        quote: "Fatal failure, including a source-access conflict."
+        fixtures: [F-DIRTY-LAYER]
+      - id: DIAG-13
+        quote: "Never pass unsafe invalid geometry into Blender or silently present unsupported translation as exact."
+        delivery: M8
+
+  # --- spec/source-access.md ------------------------------------------------------------------
+
+  - section: spec/source-access.md#bindings-and-source-access
+    delivery: M3
+    phase: 1
+    rows:
+      - id: BIND-02
+        quote: "Root-layer files: .usd, .usda, .usdc."
+      - id: BIND-03
+        quote: "Caller-supplied in-memory stages without requiring file reopening."
+        phase: 2
+      - id: BIND-04
+        quote: "Load-all or load-no-payload policy."
+      - id: BIND-05
+        quote: "Explicit evaluation time code, including the USD default time code."
+      - id: BIND-06
+        quote: "Coordinate-conversion and purpose/display settings."
+      - id: BIND-07
+        quote: "Multiple independent bindings, including bindings using the same source."
+      - id: BIND-08
+        quote: "The default scope is the entire available stage."
+      - id: BIND-09
+        quote: "Consume existing composition and variant selections. Do not author composition arcs or variant selections."
+      - id: BIND-10
+        quote: "Binding configuration must not cross-contaminate other bindings."
+
+  - section: spec/source-access.md#source-consistency
+    delivery: M3
+    phase: 1
+    rows:
+      - id: CONS-01
+        quote: "Synchronization is synchronous and non-reentrant."
+        delivery: M5
+      - id: CONS-03
+        quote: "Where a source change during evaluation can be detected, the attempt is discarded before publication."
+
+  - section: spec/source-access.md#source-identity
+    delivery: M3
+    phase: 2
+    rows:
+      - id: SID-02
+        quote: "Its uniqueness scope."
+        kind: contract
+        qualified_by: M3
+
+  - section: spec/source-access.md#copied-bindings
+    delivery: M3
+    phase: 1
+    fixtures: [F-OWNERSHIP-AMBIGUITY]
+    rows:
+      - id: COPY-01
+        quote: "do not assume they guarantee uniqueness."
+      - id: COPY-02
+        quote: "A binding whose identity is not unique is disabled pending repair"
+      - id: COPY-03
+        quote: "A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled."
+      - id: COPY-04
+        quote: "Copies are never automatically claimed, merged, or deleted."
+      - id: COPY-05
+        quote: "until the user makes it a new binding or detaches it."
+        delivery: M11
+
+  - section: spec/source-access.md#in-memory-sources
+    delivery: M3
+    phase: 2
+    rows:
+      - id: MEM-01
+        quote: "Do not author changes to a caller-supplied stage's layers or change its stage settings"
+        fixtures: [F-PRIVATE-STAGE]
+      - id: MEM-02
+        quote: "Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules."
+        fixtures: [F-PRIVATE-STAGE]
+      - id: MEM-03
+        quote: "M3 settles how each piece of stage-level state is reproduced"
+        kind: contract
+        qualified_by: M3
+        fixtures: [F-PRIVATE-STAGE]
+      - id: MEM-04
+        quote: "Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller."
+        fixtures: [F-PRIVATE-STAGE]
+      - id: MEM-05
+        quote: "If the caller releases the attached stage, the binding becomes unattached."
+      - id: MEM-06
+        quote: "After a .blend is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage."
+
+  - section: spec/source-access.md#file-backed-refresh
+    delivery: M3
+    phase: 1
+    rows:
+      - id: FILE-01
+        quote: "A file-backed refresh displays the source as it exists on disk."
+        fixtures: [F-DIRTY-LAYER]
+      - id: FILE-02
+        quote: "Refresh must not discard unsaved in-process edits made by other tools to layers it shares."
+        fixtures: [F-DIRTY-LAYER]
+      - id: FILE-03
+        quote: "If any contributing layer has unsaved in-process edits, refresh fails with a source-access conflict naming those layers and preserves the previous display."
+        fixtures: [F-DIRTY-LAYER]
+      - id: FILE-04
+        quote: "Refresh does not reuse a cached stage or otherwise share stage state with other bindings."
+        fixtures: [F-CACHED-STAGE]
+      - id: FILE-05
+        quote: "Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe."
+        fixtures: [F-CACHED-STAGE, F-DIRTY-LAYER]
+
+  # --- spec/lifecycle.md ----------------------------------------------------------------------
+
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    delivery: M11
+    phase: 1
+    rows:
+      - id: OWN-01
+        quote: "Keep these concepts separate in ownership records:"
+        delivery: M3
+        kind: contract
+        qualified_by: M3
+      - id: OWN-04
+        quote: "Renaming does not detach content."
+      - id: OWN-05
+        quote: "Deleting managed content does not delete its source; refresh restores required display content."
+      - id: OWN-06
+        quote: "Additional collection links do not detach managed content."
+      - id: OWN-07
+        quote: "Unrelated unmanaged content must not be modified or deleted."
+        delivery: M7
+        fixtures: [F-UNMANAGED-USER]
+      - id: OWN-08
+        quote: "Refresh does not mutate a managed resource that unmanaged content uses."
+        delivery: M7
+        fixtures: [F-UNMANAGED-USER]
+      - id: OWN-09
+        quote: "Content without sufficient ownership evidence is treated as unmanaged. Ambiguous candidates are reported, not automatically claimed or deleted."
+        fixtures: [F-OWNERSHIP-AMBIGUITY]
+      - id: OWN-10
+        quote: "Successful refresh removes stale content and accidental duplicate canonical representations."
+      - id: OWN-12
+        quote: "Cleanup: remove duplicate or obsolete managed content and unused exclusively owned resources"
+        fixtures: [F-LIFECYCLE-FAILURE]
+      - id: OWN-13
+        quote: "Detach: release a whole binding's surviving managed content as-is into unmanaged Blender content"
+        fixtures: [F-DETACH-AS-IS, F-DETACH-SHARED]
+      - id: OWN-14
+        quote: "Remove binding: remove configuration and managed content while preserving detached and unrelated content."
+        fixtures: [F-LIFECYCLE-FAILURE, F-UNMANAGED-USER]
+      - id: OWN-15
+        quote: "Lifecycle operations must preserve resources still required by other owners"
+        fixtures: [F-DETACH-SHARED, F-UNMANAGED-USER]
+
+  - section: spec/lifecycle.md#resource-stability
+    delivery: M7
+    phase: 1
+    fixtures: [F-NO-OP-REFRESH]
+    rows:
+      - id: STAB-01
+        quote: "Count active display resources and inactive pending-cleanup resources separately."
+      - id: STAB-02
+        quote: "Disposal failures may retain additional resources only as inactive, persistently tracked pending cleanup with ownership evidence."
+        fixtures: [F-NO-OP-REFRESH, F-RETIREMENT-FAILURE]
+      - id: STAB-03
+        quote: "explicit cleanup retry must restore managed-resource counts to the clean baseline"
+        fixtures: [F-NO-OP-REFRESH, F-PREPARATION-CLEANUP-FAILURE]
+      - id: STAB-04
+        quote: "Resources that must be released intact to protect detached or external users are accounted for separately"
+        fixtures: [F-NO-OP-REFRESH, F-UNMANAGED-USER]
+
+  - section: spec/lifecycle.md#detach-as-is
+    delivery: M11
+    phase: 1
+    fixtures: [F-DETACH-AS-IS]
+    rows:
+      - id: DET-01
+        quote: "Detach operates on the surviving Blender content at the time of the operation, including Blender-side edits and existing damage."
+      - id: DET-02
+        quote: "Remove the binding's ownership tags, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers."
+      - id: DET-03
+        quote: "Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies"
+      - id: DET-04
+        quote: "Changes in appearance caused by removing binding-specific mechanisms are permitted and reported"
+      - id: DET-05
+        quote: "Later refresh or removal must not mutate or delete the detached result."
+        fixtures: [F-DETACH-AS-IS, F-DETACH-SHARED]
+      - id: DET-06
+        quote: "Release this binding's surviving pending-cleanup resources intact as well"
+
+  - section: spec/lifecycle.md#lifecycle-failure-safety
+    delivery: M11
+    phase: 1
+    fixtures: [F-LIFECYCLE-FAILURE]
+    rows:
+      - id: LFS-01
+        quote: "Lifecycle operations do not access USD and report success, completed with issues, or failure, distinguishing committed changes from work still pending."
+      - id: LFS-02
+        quote: "Detach: release ownership, remove binding-specific controls and associations, and clear the published generation as one logical commit."
+      - id: LFS-03
+        quote: "Cleanup: completed disposals may remain committed if a later disposal fails."
+      - id: LFS-04
+        quote: "Remove binding: preserve detached and unrelated content."
+      - id: LFS-05
+        quote: "M11 settles staging and rollback mechanisms, commit points"
+        kind: contract
+        qualified_by: M11
+
+  - section: spec/lifecycle.md#undo-and-runtime-state
+    phase: 1
+    rows:
+      - id: UNDO-01
+        quote: "All persistent state (see Binding State) lives in Blender data"
+        delivery: M5
+      - id: UNDO-02
+        quote: "Each synchronization that publishes is exactly one undo step."
+        delivery: M5
+      - id: UNDO-03
+        quote: "A failed synchronization pushes no undo step."
+        delivery: M5
+        fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
+      - id: UNDO-04
+        quote: "With global undo disabled or in background mode, synchronization behaves the same but pushes no step."
+        delivery: M5
+      - id: UNDO-05
+        quote: "When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source."
+        delivery: M5
+      - id: UNDO-06
+        quote: "In-memory stage attachments are runtime associations keyed by binding identity."
+        delivery: M3
+        phase: 2
+      - id: UNDO-07
+        quote: "Runtime code must not hold Blender datablock references across operator calls."
+        delivery: M3
+      - id: UNDO-08
+        quote: "Detach, cleanup, and binding removal must support undo/redo"
+        delivery: M11
+        fixtures: [F-LIFECYCLE-FAILURE, F-UNDO-AFTER-DAMAGE]
+
+  - section: spec/lifecycle.md#binding-state
+    delivery: M5
+    phase: 1
+    rows:
+      - id: STATE-01
+        quote: "Binding configuration | Binding identity, source information, destination, target scene, and requested settings"
+        delivery: M3
+      - id: STATE-02
+        quote: "Published generation | Display resources, inspection snapshot, correspondence, ownership manifest"
+        fixtures: [F-FAILED-SETTINGS]
+      - id: STATE-03
+        quote: "Last attempt | Settings attempted, result state, and diagnostics"
+        fixtures: [F-FAILED-SETTINGS]
+      - id: STATE-04
+        quote: "Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence"
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: STATE-07
+        quote: "A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed."
+        delivery: M12
+        fixtures: [F-FAILED-SETTINGS]
+
+  - section: spec/lifecycle.md#pending-cleanup
+    delivery: M5
+    phase: 1
+    fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+    rows:
+      - id: PEND-01
+        quote: "Persist sufficient ownership information to retry disposal of newly prepared or obsolete resources safely."
+      - id: PEND-02
+        quote: "Retries revalidate ownership and current users"
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE, F-UNMANAGED-USER]
+      - id: PEND-03
+        quote: "Remove resolved tracking and current cleanup diagnostics rather than accumulating history."
+      - id: PEND-04
+        quote: "Unresolved work remains inactive; retries are explicit and do not require USD access."
+      - id: PEND-05
+        quote: "Undo/redo restores cleanup tracking consistently with resource ownership."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: PEND-06
+        quote: "M3 defines the persistence contract; M5 chooses and validates the mechanism"
+        kind: contract
+        qualified_by: M5
+      - id: PEND-07
+        quote: "removing configuration must not orphan pending work."
+        delivery: M11
+        fixtures: [F-LIFECYCLE-FAILURE]
+
+  - section: spec/lifecycle.md#reopening
+    delivery: M3
+    phase: 1
+    rows:
+      - id: REOPEN-01
+        quote: "Restore metadata, pending-cleanup tracking, and indexes. Do not automatically retry cleanup."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: REOPEN-02
+        quote: "Do not automatically synchronize."
+      - id: REOPEN-04
+        quote: "An unavailable source must not erase the saved representation."
+        fixtures: [F-OFFLINE]
+      - id: REOPEN-05
+        quote: "Source unavailability must not automatically detach the binding."
+        fixtures: [F-OFFLINE]
+      - id: REOPEN-06
+        quote: "Detached content remains detached."
+        delivery: M11
+        fixtures: [F-DETACH-AS-IS]
+      - id: REOPEN-07
+        quote: "The saved display remains usable without its USD source"
+        fixtures: [F-OFFLINE]
+      - id: REOPEN-08
+        quote: "Image textures remain references to external files"
+        delivery: M9
+        fixtures: [F-OFFLINE]
+
+  - section: spec/lifecycle.md#schema-versions
+    delivery: M3
+    phase: 1
+    rows:
+      - id: SCHEMA-02
+        quote: "Older supported schemas migrate on load."
+      - id: SCHEMA-03
+        quote: "If migration fails or the schema is newer than the extension supports"
+      - id: SCHEMA-04
+        quote: "Unreadable or unsupported pending-cleanup records are preserved and never authorize disposal."
+      - id: SCHEMA-05
+        quote: "Without the extension installed, the saved display remains ordinary Blender content."
+        fixtures: [F-OFFLINE]
+
+  # --- spec/interaction.md --------------------------------------------------------------------
+
+  - section: spec/interaction.md#source-inspection-and-interaction
+    delivery: M7
+    phase: 1
+    rows:
+      - id: INSP-01
+        quote: "Display selection resolves to a binding and source entity, including instance context where applicable."
+      - id: INSP-02
+        quote: "Source selection of a prim or subtree resolves to its associated display elements."
+      - id: INSP-03
+        quote: "Source inspection works independently of Blender parenting."
+      - id: INSP-04
+        quote: "Native instance roots are selectable and source-identifiable."
+        delivery: M10
+      - id: INSP-05
+        quote: "Source correspondence survives any batching, reordering, or geometry partitioning."
+        delivery: M8
+      - id: INSP-06
+        quote: "The browsing universe: which of the populated composed hierarchy"
+        kind: contract
+        delivery: M2
+        qualified_by: M4
+      - id: INSP-08
+        quote: "Persist enough inspection and correspondence information to inspect the saved display without accessing an unavailable source."
+        fixtures: [F-OFFLINE]
+      - id: INSP-09
+        quote: "Distinguish the last synchronized snapshot from newly evaluated source state."
+
+  - section: spec/interaction.md#interaction-testing
+    delivery: M2
+    phase: 1
+    rows:
+      - id: ITEST-02
+        quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
+        kind: contract
+        qualified_by: M4
+
+  # --- spec/incremental.md --------------------------------------------------------------------
+
+  - section: spec/incremental.md#change-discovery
+    delivery: M13
+    phase: 2
+    rows:
+      - id: DISC-01
+        quote: "File-backed manual refresh."
+      - id: DISC-02
+        quote: "Prim existence, activation, type, hierarchy, and variants."
+      - id: DISC-03
+        quote: "including external assets changed without any USD edit."
+        fixtures: [F-TEXTURE-IN-PLACE]
+      - id: DISC-04
+        quote: "including time changes that do not alter evaluated values."
+        fixtures: [F-SAME-VALUES]
+      - id: DISC-05
+        quote: "Managed Blender content requiring repair, distinguished from legitimate external users of managed resources."
+        fixtures: [F-UNMANAGED-USER]
+      - id: DISC-06
+        quote: "Separate change discovery from dependency invalidation."
+      - id: DISC-07
+        quote: "Recover correctly from missed or coalesced change notifications."
+      - id: DISC-08
+        quote: "Editor-provided change descriptions may be hints, but are not the sole correctness mechanism."
+
+  - section: spec/incremental.md#affected-content
+    delivery: M13
+    phase: 2
+    rows:
+      - id: AFF-01
+        quote: "Source-affected entities: source state actually changed."
+      - id: AFF-02
+        quote: "Level 3 is permitted but bounded by churn and performance budgets"
+      - id: AFF-03
+        quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
+        delivery: M14
+        fixtures: [F-NO-OP-REFRESH]
+
+  # --- spec/support/transforms.md -------------------------------------------------------------
+
+  - section: spec/support/transforms.md#transforms-and-time-codes
+    delivery: M6
+    phase: 1
+    rows:
+      - id: XFORM-01
+        quote: "Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes."
+      - id: XFORM-02
+        quote: "Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting."
+      - id: XFORM-03
+        quote: "Support matrix transforms, negative and nonuniform scale, and shear."
+        fixtures: [F-NESTED-STRESS]
+      - id: XFORM-05
+        quote: "Diagnose approximations when exact representation is unavailable."
+      - id: XFORM-06
+        quote: "Evaluate supported time-varying values at the supplied time code, including topology changes."
+      - id: XFORM-07
+        quote: "including topology changes."
+        delivery: M8
+      - id: XFORM-08
+        quote: "This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses."
+        kind: contract
+        delivery: M4
+        qualified_by: M4
+      - id: XFORM-09
+        quote: "Authored animation data and its caches are managed content"
+        delivery: M7
+        note: "Applies if M4 adopts animation data."
+      - id: XFORM-10
+        quote: "Do not change the target scene's frame rate or playback range."
+        delivery: M7
+
+  - section: spec/support/transforms.md#coordinate-conversion
+    delivery: M6
+    phase: 1
+    rows:
+      - id: CONV-01
+        quote: "Units/up-axis conversion is configurable and disabled by default. When disabled, the correction matrix is the identity."
+      - id: CONV-02
+        quote: "Enabled conversion respects the target scene's unit scale without changing scene settings."
+        delivery: M7
+      - id: CONV-03
+        quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
+      - id: CONV-07
+        quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
+        delivery: M7
+      - id: CONV-08
+        quote: "scale = stage.metersPerUnit / target_scene.unit_settings.scale_length"
+
+  # --- spec/support/geometry.md ---------------------------------------------------------------
+
+  - section: spec/support/geometry.md#supported-geometry
+    delivery: M8
+    phase: 1
+    rows:
+      - id: GEOM-01
+        quote: "Validated polygon topology and point positions."
+      - id: GEOM-02
+        quote: "Authored normals and a documented generation fallback."
+      - id: GEOM-03
+        quote: "Orientation/winding and documented double-sidedness behavior."
+      - id: GEOM-04
+        quote: "Supported UV sets with their names and meaningful domains."
+      - id: GEOM-05
+        quote: "displayColor and displayOpacity."
+      - id: GEOM-06
+        quote: "Supported arbitrary primvars converted into native float, color, and vector attributes."
+      - id: GEOM-07
+        quote: "Indexed and inherited primvars, and supported domain conversions."
+      - id: GEOM-08
+        quote: "Face-level material assignments."
+      - id: GEOM-09
+        quote: "Approximate subdivision, edge creases, and corner sharpness."
+      - id: GEOM-10
+        quote: "Topology-changing snapshots, discarding obsolete topology-dependent data."
+      - id: GEOM-11
+        quote: "Validate topology and attribute sizes before passing data to Blender."
+      - id: GEOM-12
+        quote: "Diagnose unsupported types, domains, lossy conversions, holes, and inexact subdivision mappings."
+
+  - section: spec/support/geometry.md#primvar-support-matrix
+    kind: contract
+    phase: 1
+    rows:
+      - id: PVAR-01
+        quote: "Settle the primvar support matrix before implementation."
+        delivery: M8
+        qualified_by: M8
+      - id: PVAR-02
+        quote: "Before choosing a display backend, M4 defines and freezes concrete cases"
+        delivery: M4
+        qualified_by: M4
+      - id: PVAR-03
+        quote: "Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes"
+        kind: process
+        delivery: M4
+        qualified_by: M12
+
+  - section: spec/support/geometry.md#mesh-classification
+    delivery: M8
+    phase: 1
+    rows:
+      - id: MCLS-01
+        quote: "Also classify, for each case, whether the mesh remains supported with an approximation, becomes a placeholder, or fails:"
+        kind: contract
+        qualified_by: M8
+      - id: MCLS-02
+        quote: "Geometric primvars such as velocities when unused."
+
+  # --- spec/support/instancing.md -------------------------------------------------------------
+
+  - section: spec/support/instancing.md#supported-instancing
+    delivery: M10
+    phase: 1
+    rows:
+      - id: INST-01
+        quote: "Native and nested native instances."
+        fixtures: [F-NESTED-STRESS]
+      - id: INST-02
+        quote: "Multi-mesh, multi-material instance contents."
+      - id: INST-04
+        quote: "Effective instance transforms, visibility, and purpose."
+      - id: INST-05
+        quote: "Updates to shared contents."
+      - id: INST-06
+        quote: "Transitions between instanced and non-instanced representations."
+      - id: INST-07
+        quote: "Per-instance displayColor, inherited material assignments, and named primvars driving supported material inputs."
+        fixtures: [F-NESTED-STRESS]
+
+  - section: spec/support/instancing.md#geometry-sharing
+    delivery: M10
+    phase: 1
+    rows:
+      - id: SHARE-01
+        quote: "Within a binding, deduplicate geometry whenever sharing preserves correct display."
+        delivery: M8
+      - id: SHARE-02
+        quote: "Per-instance appearance must not collapse into a single shared appearance."
+      - id: SHARE-04
+        quote: "Uses with equivalent geometry-resource requirements remain shared, including equivalent variants within cases that require distinct resources."
+      - id: SHARE-05
+        quote: "Separate bindings do not share managed geometry resources."
+      - id: SHARE-06
+        quote: "M4 records sharing criteria and the display state that requires each distinct-resource case"
+        kind: contract
+        delivery: M4
+        qualified_by: M4
+
+  # --- spec/support/materials.md --------------------------------------------------------------
+
+  - section: spec/support/materials.md#supported-materials
+    delivery: M9
+    phase: 1
+    rows:
+      - id: MAT-01
+        quote: "Constant parameters."
+      - id: MAT-02
+        quote: "Common image-texture connections."
+      - id: MAT-03
+        quote: "Named UV selection and texture-coordinate transforms."
+      - id: MAT-04
+        quote: "Texture color spaces and UDIMs."
+      - id: MAT-05
+        quote: "Direct, inherited, collection-based, and face-subset bindings with applicable precedence."
+      - id: MAT-06
+        quote: "Required per-instance variation."
+        delivery: M10
+      - id: MAT-07
+        quote: "Supported displacement signals through the material displacement path, without baking into mesh geometry."
+      - id: MAT-08
+        quote: "Target the Principled BSDF subset usable in Eevee and Cycles, with documented displacement exceptions."
+      - id: MAT-09
+        quote: "Display batching must not collapse distinct material assignments or attribute meanings."
+
+  - section: spec/support/materials.md#connection-grammar
+    kind: contract
+    phase: 1
+    rows:
+      - id: GRAM-01
+        quote: "Settle a bounded connection grammar before implementation"
+        delivery: M9
+        qualified_by: M9
+      - id: GRAM-02
+        quote: "Also settle how displayColor and displayOpacity interact with no material binding"
+        delivery: M9
+        qualified_by: M9
+      - id: GRAM-03
+        quote: "Before choosing a display backend, M4 defines and freezes concrete connection cases"
+        delivery: M4
+        qualified_by: M4
+      - id: GRAM-04
+        quote: "A chosen backend does not authorize silently narrowing required support."
+        kind: process
+        delivery: M4
+        qualified_by: M12
+
+  - section: spec/support/materials.md#ownership-and-diagnostics
+    delivery: M9
+    phase: 1
+    rows:
+      - id: MDIAG-01
+        quote: "Document ownership and reuse rules for translated materials, images, node groups, and dependencies."
+        kind: contract
+        qualified_by: M9
+      - id: MDIAG-02
+        quote: "Diagnose missing textures, unsupported networks, and incomplete translations."
+      - id: MDIAG-03
+        quote: "Do not silently substitute another UV set when the requested one is unavailable."
+
+  # --- spec/support/visibility.md -------------------------------------------------------------
+
+  - section: spec/support/visibility.md#visibility-and-purpose
+    delivery: M6
+    phase: 1
+    rows:
+      - id: VIS-01
+        quote: "Respect effective inherited visibility separately from purpose."
+      - id: VIS-02
+        quote: "Viewport | default, proxy"
+      - id: VIS-03
+        quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
+
+  - section: spec/support/visibility.md#models-and-unsupported-content
+    delivery: M6
+    phase: 1
+    rows:
+      - id: MODEL-01
+        quote: "Expose model kind and available asset metadata."
+      - id: MODEL-03
+        quote: "Support is decided per behavior, not per prim type."
+      - id: MODEL-04
+        quote: "Use a bounding-box placeholder when usable bounds are available."
+      - id: MODEL-05
+        quote: "Otherwise create an empty marker and warn."
+      - id: MODEL-06
+        quote: "Respect transforms, visibility, and purpose."
+
+  - section: spec/support/visibility.md#deferred-and-out-of-scope
+    delivery: M6
+    phase: 1
+    rows:
+      - id: DEFER-01
+        quote: "Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry"
+
+  # --- testing/strategy.md --------------------------------------------------------------------
+
+  - section: testing/strategy.md#test-layers
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: TLAY-01
+        quote: "Small temporary USD fixtures for precise semantic tests."
+        oracle: "tests/README.md layers: bespoke fixtures in tmp_path, bpy_free planning tests, application tests from hand-constructed plans, blender and isolated end-to-end tests, save/reopen and undo helpers, and the ALab job exist."
+      - id: TLAY-02
+        quote: "Cover repeated synchronization, all required change cases"
+        delivery: M12
+      - id: TLAY-03
+        quote: "Before-publication failure-injection tests assert that the entire published generation is unchanged"
+        delivery: M5
+
+  - section: testing/strategy.md#metamorphic-tests
+    kind: process
+    delivery: M6
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: TMETA-01
+        quote: "They complement bespoke fixtures and never replace a fixture's own expected results."
+      - id: TMETA-02
+        quote: "Each relation states the input change, the expected effect on the result, and the requirement that justifies it."
+      - id: TMETA-03
+        quote: "The milestone that delivers a behavior chooses its relations."
+      - id: TMETA-04
+        quote: "provided each generated input is reproducible from a recorded seed."
+
+  - section: testing/strategy.md#named-contract-fixtures
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: TFIX-01
+        quote: "Each fixture is assigned to a milestone in milestones/ and referenced by ID."
+        oracle: "tests/bpy_free/test_fixture_registry.py keeps tests/fixtures/registry.py in sync with this table and the milestone Tests sections."
+
+  - section: testing/strategy.md#incremental-synchronization-tests
+    kind: process
+    delivery: M14
+    phase: 2
+    qualified_by: M14
+    rows:
+      - id: TINC-01
+        quote: "Compare results against a clean full rebuild."
+
+  # --- testing/acceptance.md ------------------------------------------------------------------
+
+  - section: testing/acceptance.md#bespoke-fixtures
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: AFIX-01
+        quote: "The requirement-to-test matrix covers every requirement applicable to Phases 1 and 2"
+        oracle: "tools/matrix.py check (completeness, quotes, invariants, references) passes in CI; coverage per phase is checked at M12 and M14."
+        qualified_by: M1
+      - id: AFIX-07
+        quote: "Requirements that are not runtime behavior are covered without a fixture"
+        oracle: "matrix.py requires fixtures only on behavior rows; contract and process rows name their decision record or check."
+        qualified_by: M1
+      - id: AFIX-02
+        quote: "Fixtures are small, generated by code, and deterministic."
+        oracle: "Generators are code in tests/fixtures/; determinism is tested per generator (as for production_like)."
+      - id: AFIX-03
+        quote: "Expected results come from the spec, not from recording the implementation's output."
+        oracle: "Review rule in tests/README.md; generators yield the expected values they build."
+      - id: AFIX-04
+        quote: "Each fixture case declares its operation and expected outcome"
+        delivery: M3
+      - id: AFIX-05
+        quote: "M12 qualifies only Phase 1 cases and assertions. M14 qualifies Phase 2 cases and assertions and reruns Phase 1 coverage as regression checks."
+        delivery: M12
+      - id: AFIX-06
+        quote: "Fixtures with time-varying content are evaluated at the sampled time codes. Fixtures with payloads run under both payload policies."
+        delivery: M6
+
+  - section: testing/acceptance.md#standard-end-to-end-checks
+    kind: process
+    delivery: M7
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: ASTD-01
+        quote: "Synchronization completes without a fatal failure."
+      - id: ASTD-02
+        quote: "World bounds of each model's display match USD-computed bounds under the bounds comparison contract."
+      - id: ASTD-03
+        quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
+      - id: ASTD-04
+        quote: "Save and reopen preserves the display and inspection state without accessing the source."
+
+  - section: testing/acceptance.md#expected-failure-checks
+    kind: process
+    delivery: M5
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: AFAIL-01
+        quote: "The attempt reports fatal failure with the expected categorized diagnostics"
+      - id: AFAIL-02
+        quote: "Retirement failures after publication are completed-with-issues cases"
+      - id: AFAIL-03
+        quote: "For disposal-failure cases before or after publication, repeat attempts with disposal still failing."
+
+  - section: testing/acceptance.md#lifecycle-checks
+    kind: process
+    delivery: M11
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: ALIFE-01
+        quote: "Cleanup, detach, and binding removal cases assert their operation-specific requirements"
+
+  - section: testing/acceptance.md#interior-correctness
+    kind: process
+    delivery: M8
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: AINT-01
+        quote: "Matching model bounds do not establish correctness inside a model."
+      - id: AINT-02
+        quote: "Material fixtures use headless render assertions on controlled scenes"
+        delivery: M9
+
+  - section: testing/acceptance.md#sampled-time-codes
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: ATIME-01
+        quote: "Synchronization must work at any time code."
+        delivery: M6
+      - id: ATIME-02
+        quote: "Each time-varying fixture declares its topology and visibility transitions from how it is built"
+        delivery: M6
+
+  - section: testing/acceptance.md#bounds-comparison-contract
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M1
+    rows:
+      - id: ABND-01
+        quote: "M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints"
+        kind: contract
+        delivery: M4
+        qualified_by: M4
+      - id: ABND-02
+        quote: "The bounds check reuses decisions made elsewhere rather than making its own."
+        delivery: M7
+        qualified_by: M12
+
+  - section: testing/acceptance.md#production-scale-validation-alab
+    kind: process
+    delivery: M12
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: AALAB-01
+        quote: "A failure found in ALab is reproduced as a bespoke fixture before it is fixed."
+      - id: AALAB-02
+        quote: "ALab passes the standard end-to-end checks at every sampled time code and under every payload policy"
+      - id: AALAB-04
+        quote: "The tree is pinned by alab/subtrees.sha256 and checked with tools/alab_checksums.py --check."
+        delivery: M1
+        qualified_by: M1
+        oracle: "tools/alab_checksums.py --check passes on the tree (the alab-marked test in tests/bpy_free/test_alab_tools.py)."
+      - id: AALAB-03
+        quote: "Run an inventory script for each payload policy"
+        delivery: M1
+        qualified_by: M1
+        oracle: "tools/alab_inventory.py writes docs/testing/alab/inventory.md (full counts to build/alab/); the alab-marked test checks it is current."
+
+  - section: testing/acceptance.md#performance
+    kind: process
+    delivery: M4
+    phase: 1
+    qualified_by: M12
+    rows:
+      - id: APERF-05
+        quote: "The reference hardware is an M1 Max MacBook Pro."
+        delivery: M1
+        qualified_by: M1
+        oracle: "The feasibility record's macOS environment table lists the machine, memory, OS build, and Blender build."
+      - id: APERF-06
+        quote: "Measurements run in the Blender binary on AC power"
+      - id: APERF-01
+        quote: "Record repeated-run statistics, not single timings."
+      - id: APERF-02
+        quote: "ALab provides production-scale numbers. Generated fixtures of controlled size show how each cost scales."
+      - id: APERF-03
+        quote: "M4 sets provisional budgets for comparing representations. Phase 1 records baselines on the reference hardware, not gates."
+
+  - section: testing/acceptance.md#where-it-runs
+    kind: process
+    delivery: M1
+    phase: 1
+    qualified_by: M1
+    rows:
+      - id: AWHERE-01
+        quote: "Bespoke fixtures run in ordinary CI."
+        oracle: "CI runs pytest -n auto on all three platforms."
+      - id: AWHERE-02
+        quote: "A smaller generated fixture with production-like structure"
+        oracle: "tests/fixtures/production_like.py runs in CI (bpy_free and isolated tests)."
+      - id: AWHERE-03
+        quote: "ALab runs as a manual or nightly job, not in ordinary CI."
+        qualified_by: M12
+        oracle: "alab-marked tests are skipped without PROSCENIUM_ALAB_ROOT; the ALab workflow is manual or scheduled."
+
+excluded:
+  - section: PROJECT.md#project-overview
+    quotes:
+      - "This project is a Blender extension"
+      - "A snapshot synchronizer for supported USD content."
+      - "The scene-display layer for a future USD-native stage editor."
+    reason: "Project purpose (explanation)."
+  - section: PROJECT.md#documentation-map
+    reason: "Navigation and the rules for reading requirements, which this matrix applies."
+  - section: PROJECT.md#core-architecture
+    quotes:
+      - "The Blender display structure does not need to mirror the USD scene graph."
+      - "Blender objects, collections, and parenting need not reproduce that hierarchy."
+      - "Organizational prims need not have individual Blender objects."
+      - "Objects, collection instancing, Geometry Nodes, batching, or a hybrid are implementation options."
+    reason: "Permissions: they remove constraints rather than add checkable behavior; ARCH-05 and the INSP rows check the correspondence they allow."
+  - section: PROJECT.md#core-architecture
+    quotes:
+      - "USD scene graph: authoritative source hierarchy and scene semantics."
+      - "Source inspection and selection model: entities users browse"
+      - "Blender display representation: resources used to display the evaluated stage."
+      - "That preserves freedom to optimize the display later"
+    reason: "Definitions and rationale for the separation that ARCH-01, ARCH-05, and ARCH-06 require."
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["Synchronize supported content at an explicit USD time code supplied as a function parameter."]
+    restates: [BIND-05]
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["Full traversal and rebuilding are acceptable.", "Blender object identities need not survive refresh."]
+    reason: "Phase 1 permissions."
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["Geometry is deduplicated wherever sharing preserves correct display"]
+    restates: [SHARE-01]
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["Binding lifecycle, persistence, diagnostics, and failure safety are required."]
+    reason: "Summary of the lifecycle, persistence, diagnostics, and transaction rows."
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    quotes: ["Update affected representations and their dependencies.", "Leave unaffected representations untouched"]
+    restates: [AFF-01, AFF-03]
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    quotes: ["Support manual file-backed refresh and in-memory sources."]
+    restates: [FILE-01, BIND-03]
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    quotes: ["See Incremental Synchronization for detailed requirements."]
+    reason: "Navigation."
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    quotes: ["Phase 2 must be complete before Phase 3 begins."]
+    reason: "Phase 3 ordering, outside Phases 1 and 2."
+  - section: PROJECT.md#phase-3--usd-stage-editor
+    quotes: ["Tools author USD changes and use the synchronizer", "Automatic timeline synchronization is a stretch goal."]
+    reason: "Phase 3, outside Phases 1 and 2."
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["If additional compiled components become necessary, all three platforms remain required."]
+    restates: [COMP-03]
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["Planned tooling includes uv, ruff, ty, pre-commit hooks"]
+    reason: "Development tooling, set up in M1 Phase B."
+  - section: PROJECT.md#glossary
+    reason: "Definitions."
+  - section: spec/incremental.md
+    quotes: ["Phase 2 requirements. Phase goals are in Delivery Phases"]
+    reason: "File introduction."
+  - section: spec/incremental.md#change-discovery
+    quotes:
+      - "In-memory stage edits."
+      - "Evaluation time-code changes."
+      - "Binding-setting changes."
+      - "Managed display damage."
+    restates: [DISC-01]
+  - section: spec/incremental.md#change-discovery
+    quotes:
+      - "Transforms, geometry, topology, normals, and primvars."
+      - "Visibility and purpose."
+      - "Materials, networks, bindings, and dependencies"
+      - "Payload state."
+      - "Instanced/non-instanced representation and shared contents."
+      - "Evaluation time code and binding settings"
+      - "Target-scene unit scale and representation version."
+    restates: [DISC-02]
+  - section: spec/incremental.md#change-discovery
+    quotes: ["Design note (suggested, not settled; applies if M1b adopts Hydra)"]
+    reason: "Design note."
+  - section: spec/incremental.md#affected-content
+    quotes:
+      - "Dependency-affected resources: depend on changed state."
+      - "Replacement-affected resources: replaced only because they share an approved partition"
+    restates: [AFF-01]
+  - section: spec/incremental.md#affected-content
+    quotes: ["This allows conservative discovery without unnecessary Blender writes."]
+    reason: "Rationale."
+  - section: spec/interaction.md
+    quotes: ["Source inspection, the interaction contract, and how interaction is tested."]
+    reason: "File introduction."
+  - section: spec/interaction.md#source-inspection-and-interaction
+    quotes: ["Individually selectable native-instance descendants are not required."]
+    reason: "Scope limit."
+  - section: spec/interaction.md#source-inspection-and-interaction
+    quotes:
+      - "The supported metadata set for inspection."
+      - "Source-path identification."
+      - "The identity of persistent selection state."
+      - "Viewport picking granularity."
+      - "Selection highlighting and framing."
+      - "Instance-root selection."
+      - "Inspection and selection of organizational or non-geometric prims."
+      - "Interfaces needed by future USD manipulation tools."
+      - "Whether any ordinary Blender selection/manipulation behavior is required."
+    restates: [INSP-06]
+  - section: spec/interaction.md#interaction-testing
+    quotes:
+      - "Picking, highlighting, and framing normally need a window"
+      - "Future work: the following are out of scope for this project:"
+      - "A windowed test suite that drives real viewport picking"
+      - "Measuring viewport drawing performance."
+    reason: "Rationale and out-of-scope future work."
+  - section: spec/lifecycle.md
+    quotes: ["Ownership, lifecycle operations, undo and runtime state, and persistence. Cross-cutting"]
+    reason: "File introduction."
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes: ["Generated content is USD-authoritative."]
+    reason: "Permission: Blender-side edits to managed content need not survive."
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes:
+      - "Resource identity | Which managed resource this is"
+      - "Ownership | Which binding may replace or retire it"
+      - "Source coverage | Which source entities it represents"
+      - "Representation role | Why it exists"
+      - "Usage and dependencies | Which other resources depend on it"
+    restates: [OWN-01]
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes: ["Repeated unchanged refreshes keep active display resource counts and source/display diagnostics stable"]
+    restates: [STAB-01]
+  - section: spec/lifecycle.md#lifecycle-failure-safety
+    quotes: ["Failure safety for synchronization is defined separately by the Synchronization Transaction."]
+    reason: "Cross-reference."
+  - section: spec/lifecycle.md#binding-state
+    quotes: ["Source information is the file path for file-backed bindings"]
+    restates: [STATE-01]
+  - section: spec/lifecycle.md#reopening
+    quotes:
+      - "Serialization of arbitrary unsaved in-memory USD edits is not guaranteed in Phases 1 or 2."
+    reason: "Scope limit."
+  - section: spec/pipeline.md
+    quotes: ["Layer boundaries, the synchronization transaction, and diagnostics. Cross-cutting"]
+    reason: "File introduction."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Design note (suggested, not settled; M1b decides)"]
+    reason: "Design note; the requirements it lists below are rows SNAP-14 to SNAP-19, which apply if Hydra is adopted."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["The display plan may be Blender-specific."]
+    reason: "Design guidance for M5's interfaces."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["The planning context is a small immutable set of plain values"]
+    restates: [PLAN-09]
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Consume the plan and create or update Blender resources."]
+    reason: "Outline of application duties."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Handle application failures safely."]
+    restates: [APP-06]
+  - section: spec/pipeline.md#why-the-boundary-is-enforced
+    quotes:
+      - "A monolithic importer that mixes USD evaluation with Blender mutation."
+      - "Completing the entire source translator before discovering"
+      - "Prototyping the display representation before building the full translator"
+    reason: "Rationale."
+  - section: spec/pipeline.md#why-the-boundary-is-enforced
+    quotes: ["The application layer never needs USD-semantic checks to decide what to warn about."]
+    restates: [BND-02, APP-08]
+  - section: spec/pipeline.md#diagnostics
+    quotes:
+      - "Approximation."
+      - "Lossy conversion."
+      - "Missing dependencies."
+      - "Invalid data."
+      - "Source-access conflict."
+      - "Pending cleanup (retryable disposal of prepared or obsolete resources)."
+      - "Fatal failure."
+    restates: [DIAG-01]
+  - section: spec/source-access.md
+    quotes: ["Bindings and how they acquire USD sources."]
+    reason: "File introduction."
+  - section: spec/source-access.md#bindings-and-source-access
+    quotes: ["A synchronization binding associates a source with a dedicated managed destination collection"]
+    reason: "Definition of a binding; its data model is M3's binding schema."
+  - section: spec/source-access.md#source-identity
+    quotes:
+      - "Whether reattachment requires an exact key match."
+      - "Whether the root-layer identifier is authoritative or only informative."
+      - "Whether replacing the attached stage preserves existing source selections."
+      - "Whether attaching a different stage under an existing key requires explicit confirmation."
+    restates: [SID-02]
+  - section: spec/source-access.md#in-memory-sources
+    quotes: ["Design note (suggested, not settled): open a private stage per binding"]
+    reason: "Design note."
+  - section: spec/source-access.md#file-backed-refresh
+    quotes: ["USD shares opened layers across the whole process"]
+    reason: "Explanation."
+  - section: spec/source-access.md#file-backed-refresh
+    quotes: ["Design note (suggested, not settled): open the stage at each refresh"]
+    reason: "Design note."
+  - section: spec/support/geometry.md
+    quotes: ["Part of the supported scene state."]
+    reason: "File introduction."
+  - section: spec/support/geometry.md#mesh-classification
+    quotes:
+      - "Opacity interpretation."
+      - "Normal generation and domain conversion."
+      - "Degenerate but structurally valid faces."
+      - "Nonfinite positions and transforms."
+      - "Unsupported topology features on an otherwise supported mesh."
+    restates: [MCLS-02]
+  - section: spec/support/geometry.md#primvar-support-matrix
+    quotes: ["For each supported primvar category, record USD value types"]
+    restates: [PVAR-01]
+  - section: spec/support/instancing.md
+    quotes: ["Part of the supported scene state."]
+    reason: "File introduction."
+  - section: spec/support/instancing.md#supported-instancing
+    quotes: ["Instance-root selection and instance-context correspondence follow the interaction contract."]
+    restates: [INSP-01, INSP-04]
+  - section: spec/support/instancing.md#geometry-sharing
+    quotes: ["M8–M10 implement and validate those criteria."]
+    restates: [SHARE-01]
+  - section: spec/support/materials.md
+    quotes: ["Part of the supported scene state."]
+    reason: "File introduction."
+  - section: spec/support/materials.md#supported-materials
+    quotes: ["Base color, metallic, roughness, emission, opacity, and normal mapping."]
+    restates: [MAT-01]
+  - section: spec/support/materials.md#supported-materials
+    quotes: ["Translate the supported USD Preview Surface subset into Blender materials:"]
+    restates: [MAT-01]
+  - section: spec/support/materials.md#connection-grammar
+    quotes:
+      - "Supported shader and node identifiers."
+      - "Supported input/output connections."
+      - "Material purpose and render-context selection."
+      - "Texture channels and scale/bias treatment."
+      - "UV transformation conventions."
+      - "Primvar-reader types."
+      - "Normal-map conventions."
+      - "Opacity behavior."
+      - "Displacement behavior and engine exceptions."
+      - "Fallback behavior for partially supported graphs."
+    restates: [GRAM-01]
+  - section: spec/support/transforms.md
+    quotes: ["Part of the supported scene state."]
+    reason: "File introduction."
+  - section: spec/support/transforms.md#coordinate-conversion
+    quotes: ["Coordinate conversion is owned by representation planning:"]
+    reason: "Design guidance: where conversion happens (M6)."
+  - section: spec/support/visibility.md
+    quotes: ["Part of the supported scene state."]
+    reason: "File introduction."
+  - section: spec/support/visibility.md#visibility-and-purpose
+    quotes: ["Final render | default, render"]
+    restates: [VIS-02]
+  - section: spec/support/visibility.md#deferred-and-out-of-scope
+    quotes: ["Additional shader systems, generated simplified proxies, export, round trips, and render equivalence are outside scope."]
+    reason: "Out of scope."
+  - section: testing/strategy.md
+    quotes:
+      - "How the project is tested."
+      - "Most testing uses small bespoke USD fixtures"
+    reason: "Introduction and rationale."
+  - section: testing/strategy.md#test-layers
+    quotes:
+      - "Snapshot/planning tests without Blender mutation"
+      - "Application tests using hand-constructed display plans without USD access."
+      - "End-to-end Blender tests."
+      - "Save/reopen, undo/redo, and failure-injection tests."
+      - "A small number of production-scale scenes for integration and performance testing."
+    restates: [TLAY-01]
+  - section: testing/strategy.md#test-layers
+    quotes: ["Retirement failure tests assert that the new generation stays active"]
+    restates: [TLAY-03, TXN-07]
+  - section: testing/strategy.md#metamorphic-tests
+    quotes: ["Some results are hard to state in full in advance"]
+    reason: "Rationale."
+  - section: testing/strategy.md#metamorphic-tests
+    quotes:
+      - "Translating a root prim shifts the world transforms and bounds"
+      - "Making a prim instanceable, or no longer instanceable"
+      - "Switching the payload policy and switching back"
+      - "Moving to a time code with identical evaluated values"
+    reason: "Examples; the milestone that delivers each behavior chooses its relations (TMETA-03)."
+  - section: testing/strategy.md#metamorphic-tests
+    quotes: ["An incremental refresh gives the same result as a clean full rebuild"]
+    restates: [TINC-01]
+  - section: testing/strategy.md#named-contract-fixtures
+    quotes: ["|"]
+    reason: "Fixture definitions, tracked by tests/fixtures/registry.py (TFIX-01) and traced through the rows that list each fixture."
+  - section: testing/strategy.md#incremental-synchronization-tests
+    quotes:
+      - "Separately assert that unaffected content was not unnecessarily rewritten."
+      - "Check resource growth over repeated updates"
+      - "Measure required interaction operations as well as synchronization"
+    restates: [TINC-01]
+  - section: testing/acceptance.md#acceptance-criteria
+    quotes: ["These criteria define what passing means."]
+    reason: "Introduction."
+  - section: testing/acceptance.md#standard-end-to-end-checks
+    quotes:
+      - "Applied to every end-to-end synchronization case expected to complete"
+      - "Every supported mesh in the fixture's expected inventory is accounted for"
+      - "Deferred content types appear as placeholders or markers with aggregated diagnostics."
+      - "Geometry follows the Geometry Sharing contract"
+      - "An unchanged second synchronization keeps active display resource counts"
+      - "Changing the time code or payload policy and resynchronizing gives the same result"
+    restates: [ASTD-01]
+  - section: testing/acceptance.md#expected-failure-checks
+    quotes:
+      - "For synchronization cases expected to fail before publication"
+      - "The entire previous published generation remains unchanged"
+      - "Prepared resources are disposed of or remain inactive"
+      - "No synchronization undo step is added"
+      - "If disposal also fails, save/reopen preserves pending work"
+    restates: [AFAIL-01]
+  - section: testing/acceptance.md#lifecycle-checks
+    quotes:
+      - "Detach preserves surviving ordinary Blender data as-is"
+      - "Failure injection verifies before-commit preservation"
+      - "Binding removal never orphans unresolved disposal work"
+    restates: [ALIFE-01]
+  - section: testing/acceptance.md#sampled-time-codes
+    quotes:
+      - "The stage's start and end time codes."
+      - "Interior samples, including a non-integer time code."
+      - "Selected authored sample times."
+      - "Samples around topology or visibility transitions"
+      - "Time codes before the start and after the end."
+      - "The USD default time code."
+      - "Deterministically seeded additional samples where practical."
+    restates: [ATIME-01]
+  - section: testing/acceptance.md#production-scale-validation-alab
+    quotes:
+      - "ALab checks that the synchronizer works and performs"
+      - "ALab v2.3.0 with techvar assets v2.2.0, opened through the primary entry.usda file."
+    restates: [AALAB-02]
+  - section: testing/acceptance.md#performance
+    quotes:
+      - "Measure separately: cold and warm source acquisition"
+      - "Measure these scenarios: initial synchronization"
+    restates: [APERF-01]
+  - section: PROJECT.md#core-architecture
+    quotes: ["One source prim may produce multiple display elements."]
+    reason: "Permission: the display may split a prim; correspondence rows cover the result."
+  - section: PROJECT.md#core-architecture
+    quotes: ["Multiple source prims may share a display representation."]
+    reason: "Permission: the display may batch prims; correspondence rows cover the result."
+  - section: PROJECT.md#core-architecture
+    quotes: ["Prefer the simplest representation that satisfies correctness, interaction, and performance needs."]
+    reason: "Design guidance for M4's representation choice."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Shared arrays and immutable resource descriptions are acceptable where safe."]
+    reason: "Permission: sharing snapshot data is allowed where safe."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["do not invent a universal renderer abstraction unnecessarily."]
+    reason: "Design guidance for M5's interfaces."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["The context is a value object, not a plugin framework."]
+    reason: "Design guidance for M5's interfaces."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Do not build a general-purpose plugin framework."]
+    reason: "Design guidance for M5's interfaces."
+  - section: spec/pipeline.md#why-the-boundary-is-enforced
+    quotes: ["Planning tests can assert every source-semantic diagnostic without Blender."]
+    reason: "Consequence of BND-02, not a separate behavior."
+  - section: spec/pipeline.md#synchronization-transaction
+    quotes: ["Failure safety covers recoverable failures."]
+    reason: "Scope limit of failure safety."
+  - section: spec/source-access.md#source-consistency
+    quotes: ["The caller must not mutate an attached stage or its contributing layers during a synchronization."]
+    reason: "Caller obligation; CONS-03 covers detectable violations."
+  - section: spec/interaction.md#source-inspection-and-interaction
+    quotes: ["Do not assume every prim needs independent viewport picking"]
+    reason: "Design guidance for M2's interaction contract."
+  - section: spec/support/transforms.md#transforms-and-time-codes
+    quotes: ["Preserve evaluated placement rather than reconstructing editable USD transform-operation stacks."]
+    reason: "Design guidance: display evaluated placement; no op-stack reconstruction is required."
+  - section: spec/support/instancing.md#geometry-sharing
+    quotes: ["Reducing mesh-data counts never justifies an incorrect display."]
+    reason: "Design guidance for sharing decisions (M4, M8–M10)."
+  - section: spec/support/visibility.md#models-and-unsupported-content
+    quotes: ["Avoid expensive unsupported evaluation merely to obtain bounds."]
+    reason: "Design guidance for placeholder evaluation (M6)."
+  - section: testing/strategy.md#incremental-synchronization-tests
+    quotes: ["Optimize the complete display-and-interaction workflow—not object count alone."]
+    reason: "Design guidance for M4 and M13 budgets."
+  - section: testing/acceptance.md#performance
+    quotes: ["Performance claims cover synchronization and interaction-function latency, not overall viewport responsiveness."]
+    reason: "Scope of performance claims."
+  - section: PROJECT.md#project-overview
+    quotes: ["Phases 1 and 2 do not author USD, export USD, or translate Blender edits back into USD."]
+    reason: "Scope: no authoring, export, or write-back exists in Phases 1 and 2."
+  - section: PROJECT.md#phase-2--incremental-synchronization
+    quotes: ["Preserve Phase 1 correctness while avoiding unnecessary work."]
+    reason: "Restates AFIX-05."
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["Code that touches Blender stays in Python"]
+    reason: "Architecture: says where the Blender layer starts; Blender code cannot be anything but Python."
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["Do not require externally installed custom resolvers or schema plugins."]
+    reason: "Design guidance: nothing the extension ships needs external plugins."
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["Verify actual runtime capabilities"]
+    reason: "Design guidance for development; docs/feasibility/runtime-record.md is its result."
+  - section: PROJECT.md#compatibility-and-development
+    quotes: ["Keep development dependencies separate from distributable runtime dependencies; do not inadvertently bundle another OpenUSD build."]
+    reason: "True by construction: tools/build_extension.py bundles only the runtime lock's wheels."
+  - section: spec/pipeline.md#synchronization-layer-boundaries
+    quotes: ["USD stage + explicit time code + binding settings + planning context"]
+    reason: "Architecture outline of the layer inputs; PLAN-09 and APP-08 cover the boundaries."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Source hierarchy, identities, and metadata."]
+    reason: "Outline of snapshot contents; traced by the feature rows (MODEL, INSP)."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Evaluated transforms and inherited properties."]
+    reason: "Outline of snapshot contents; traced by XFORM rows."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Geometry, primvars, visibility, and purpose."]
+    reason: "Outline of snapshot contents; traced by GEOM and VIS rows."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Effective material assignments and supported networks."]
+    reason: "Outline of snapshot contents; traced by MAT rows."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Native instances, shared contents, and instance context."]
+    reason: "Outline of snapshot contents; traced by INST rows."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Source-side diagnostics."]
+    reason: "Outline of snapshot contents; traced by BND-02 and DIAG rows."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Persisted inspection data does not depend on a live USD stage."]
+    reason: "Restates INSP-08."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Values are captured into the snapshot before planning, so a live, lazily evaluated scene index is never the snapshot."]
+    reason: "Design guidance for a Hydra front end (M1b, M6)."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Hydra may generate, aggregate, or omit paths, so its paths and instance indices are not source identities."]
+    reason: "Design guidance for identifiers (M3); the identity rows cover the result."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Both viewport and render purpose sets remain available."]
+    reason: "Restates VIS-03."
+  - section: spec/pipeline.md#evaluated-source-snapshot
+    quotes: ["Application never queries the scene index."]
+    reason: "Architecture placement; restates APP-08 for a Hydra front end."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Display elements and resource descriptions."]
+    reason: "Outline of plan contents; traced by the feature rows."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Sharing and dependency relationships."]
+    reason: "Outline of plan contents; traced by SHARE rows."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Source/display correspondence."]
+    reason: "Outline of plan contents; traced by INSP rows."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Representation-specific transforms and display flags."]
+    reason: "Outline of plan contents; traced by CONV and VIS rows."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Placeholders and fallbacks."]
+    reason: "Outline of plan contents; traced by MODEL rows."
+  - section: spec/pipeline.md#display-plan
+    quotes: ["Planning diagnostics, including features the chosen representation cannot reproduce exactly."]
+    reason: "Outline of plan contents; traced by BND-02."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Apply planned geometry, materials, transforms, instances, and flags."]
+    reason: "Outline of application duties; traced by the feature rows."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Maintain ownership and source-correspondence indexes."]
+    reason: "Outline of application duties; traced by INSP and OWN rows."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Publish display and inspection state consistently"]
+    reason: "Outline of application duties; traced by TXN-06."
+  - section: spec/pipeline.md#blender-application
+    quotes: ["Retire obsolete managed resources under the Ownership and Lifecycle rules."]
+    reason: "Outline of application duties; traced by OWN-08 and OWN-10."
+  - section: spec/pipeline.md#why-the-boundary-is-enforced
+    quotes: ["Application may still report resource-consumption, runtime, and state-change failures"]
+    reason: "Permission; APP-05 traces the application failure kinds."
+  - section: spec/pipeline.md#synchronization-transaction
+    quotes: ["Acquire source → Evaluate and validate → Plan → Prepare replacement resources → Publish → Retire obsolete resources"]
+    reason: "Outline of the transaction stages; traced by the other TXN rows."
+  - section: spec/pipeline.md#synchronization-transaction
+    quotes: ["Undo grouping is not a substitute for failure-safe staging or rollback."]
+    reason: "Design guidance for M5: recovery must not rely on undo."
+  - section: spec/pipeline.md#diagnostics
+    quotes: ["A completed synchronization with issues must be distinguishable from a fully supported result."]
+    reason: "Restates DIAG-09 and DIAG-10."
+  - section: spec/source-access.md#bindings-and-source-access
+    quotes: ["Each binding stores an explicit target scene and its own units and up-axis conversion settings."]
+    reason: "Design guidance for M3's binding schema; traced by STATE-01 and CONV rows."
+  - section: spec/source-access.md#bindings-and-source-access
+    quotes: ["Opening or synchronizing must not save or modify source USD files."]
+    reason: "Scope: nothing in synchronization writes source files (see PROJ-01's exclusion)."
+  - section: spec/source-access.md#source-identity
+    quotes: ["Source identity is persisted separately from source availability."]
+    reason: "Design guidance for M3's schemas; traced by REOPEN-04, REOPEN-05, and MEM-06."
+  - section: spec/source-access.md#source-identity
+    quotes: ["A root-layer identifier alone cannot be the reattachment contract for anonymous or unsaved sources."]
+    reason: "Design guidance for M3's in-memory key contract (SID-02)."
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes: ["A resource has one owning binding but may cover many source entities and have many users."]
+    reason: "Design guidance for M3's ownership format (OWN-01)."
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes: ["Use durable identifiers and ownership metadata, not Blender display names or object hierarchy."]
+    reason: "Design guidance; OWN-04 and OWN-06 test it."
+  - section: spec/lifecycle.md#ownership-and-lifecycle
+    quotes: ["Duplicates are defined by source coverage and representation role"]
+    reason: "Definition for M11's duplicate detection; OWN-10 tests it."
+  - section: spec/lifecycle.md#binding-state
+    quotes: ["Runtime source attachment | The caller's stage for an in-memory binding | No"]
+    reason: "True by construction: a caller's stage cannot be saved in a .blend."
+  - section: spec/lifecycle.md#binding-state
+    quotes: ["Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt"]
+    reason: "Restates UNDO-07."
+  - section: spec/lifecycle.md#reopening
+    quotes: ["Refresh is explicit."]
+    reason: "Restates REOPEN-02 and PH1-01."
+  - section: spec/lifecycle.md#schema-versions
+    quotes: ["Binding records, ownership manifests, inspection snapshots, correspondence, and any separate pending-cleanup records carry schema versions."]
+    reason: "Design guidance for M3's schemas; SCHEMA-02 to SCHEMA-04 test versioning."
+  - section: spec/interaction.md#interaction-testing
+    quotes: ["The extension therefore exposes the logic behind interaction as plain functions that can be tested headless."]
+    reason: "Design guidance: the approach behind M2's headless interaction contract."
+  - section: spec/interaction.md#interaction-testing
+    quotes: ["Interaction timings measure the cost of these headless interaction functions plus any Blender data updates they trigger"]
+    reason: "Definition for M4's interaction measurements."
+  - section: spec/incremental.md#affected-content
+    quotes: ["Change discovery proposes work; comparing evaluated content decides whether a resource actually requires replacement or mutation."]
+    reason: "Design guidance; AFF-03 and DISC-04 test it."
+  - section: spec/support/transforms.md#coordinate-conversion
+    quotes: ["The evaluated snapshot keeps source units and up-axis, recording metersPerUnit and upAxis as stage metadata."]
+    reason: "Design guidance: where conversion happens (M6); CONV-03 and CONV-08 test the result."
+  - section: spec/support/transforms.md#coordinate-conversion
+    quotes: ["At synchronization start, application captures the binding's target-scene unit scale into the planning context as a plain value."]
+    reason: "Design guidance: where conversion happens (M7); CONV-03 and CONV-08 test the result."
+  - section: spec/support/transforms.md#coordinate-conversion
+    quotes: ["Planning builds one correction matrix and prefixes it to every world transform."]
+    reason: "Design guidance: where conversion happens (M6); CONV-03 and CONV-08 test the result."
+  - section: spec/support/instancing.md#supported-instancing
+    quotes: ["Shared underlying geometry."]
+    reason: "Restates SHARE-01."
+  - section: spec/support/instancing.md#geometry-sharing
+    quotes: ["Distinct geometry resources are permitted when required to preserve geometry, attributes, material assignments, or per-instance appearance"]
+    reason: "Permission; SHARE-04 and the sharing criteria (SHARE-06) cover it."
+  - section: spec/support/visibility.md#visibility-and-purpose
+    quotes: ["Do not traverse only currently visible prims"]
+    reason: "Design guidance; ARCH-04 and VIS-01 test it."
+  - section: spec/support/visibility.md#models-and-unsupported-content
+    quotes: ["Preserve source model grouping in inspection and use applicable bounds information."]
+    reason: "Restates ARCH-01 and MODEL-04."

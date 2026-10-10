@@ -9,6 +9,7 @@ import pytest
 
 from fixtures.registry import FIXTURES
 from fixtures.scenes import SCENES, Scene
+from matrix import milestone_of
 
 DOCS = Path(__file__).parents[2] / "docs"
 ID = re.compile(r"`(F-[A-Z-]+)`")
@@ -30,7 +31,7 @@ def _milestones_naming(fixture_id: str) -> set[str]:
             continue
         tests = text.split("**Tests:**", 1)[1].split("\n**", 1)[0]
         if f"`{fixture_id}`" in tests:
-            found.add(f"M{int(path.name[1:3])}")
+            found.add(milestone_of(path) or path.name)  # M01b-... -> M1b
     return found
 
 

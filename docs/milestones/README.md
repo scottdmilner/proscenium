@@ -40,7 +40,7 @@ Each milestone uses this structure:
   - An unqualified link puts every requirement in that section in scope, unless a scope limit says otherwise.
   - A qualified link puts only the named part in scope: "the X in [Section]", "[Section] schemas", or "[Section], except Y". A parenthetical names the milestone that owns the rest.
   - Each requirement is delivered by one milestone. M2 defines contracts that later milestones implement, and M12 and M14 qualify work delivered earlier; their Implements lines overlap with others by design.
-  - The requirement-to-test matrix (M1) covers every in-scope requirement, records its authoritative spec section, delivering milestone, fixture and test or oracle, and qualifying milestone, and takes precedence over Implements lines. High-risk entries are marked separately. Invariant summaries reference the authoritative requirement ID; contract decisions update the matrix before implementation.
+  - The requirement-to-test matrix (M1) covers every in-scope requirement, records its authoritative spec section, delivering milestone, fixture and test or oracle, and qualifying milestone, and takes precedence over Implements lines. M4 marks the high-risk entries, from its risk matrix. Invariant summaries reference the authoritative requirement ID; contract decisions update the matrix before implementation.
 - **Depends on:** earlier milestones and what they provide.
 - **Scope limits:** what this milestone deliberately leaves out.
 - **Decisions and deliverables:** artifacts produced and decisions recorded. Settled decisions update the [Decision Register](../DECISIONS.md).

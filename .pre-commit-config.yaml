@@ -20,6 +20,12 @@ repos:
         language: system
         types_or: [python, pyi]
         pass_filenames: false
+      - id: matrix
+        name: requirement matrix
+        entry: uv run --frozen python tools/matrix.py check
+        language: system
+        files: ^(docs/.*\.(md|yaml)|tests/fixtures/registry\.py|tools/matrix\.py)$
+        pass_filenames: false
       - id: uv-lock
         name: uv lock --check
         entry: uv lock --check

@@ -24,6 +24,7 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [spec/support/](spec/support/) | Supported scene state: [transforms](spec/support/transforms.md), [geometry](spec/support/geometry.md), [instancing](spec/support/instancing.md), [materials](spec/support/materials.md), [visibility and unsupported content](spec/support/visibility.md) |
 | [testing/strategy.md](testing/strategy.md) | Test layers and named contract fixtures |
 | [testing/acceptance.md](testing/acceptance.md) | Acceptance criteria: bespoke fixtures, standard checks, bounds contract, ALab production-scale validation, performance |
+| [testing/requirements-matrix.md](testing/requirements-matrix.md) | Requirement-to-test matrix, generated from [requirements.yaml](testing/requirements.yaml) |
 | [milestones/](milestones/README.md) | Implementation milestones M1–M14, including the M1b decision gate |
 | [DECISIONS.md](DECISIONS.md) | Decision register: open decisions and chosen behavior |
 

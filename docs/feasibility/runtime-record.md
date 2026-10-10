@@ -32,7 +32,7 @@ Findings describe observed behavior. Where a finding suggests a mechanism, the o
 | Item | Value |
 |---|---|
 | Hardware | Apple M1 Max, 32 GB (reference hardware, see [Performance](../testing/acceptance.md#performance)) |
-| OS | macOS 26.5.1 |
+| OS | macOS 26 |
 | Blender | 5.2.2 LTS, build hash `d13f752e3b9c`, build date 2026-09-15 |
 | `bpy` wheel | 5.2.2, same build hash |
 | Embedded Python | 3.13.13 (binary: Blender's bundled interpreter; wheel: uv-managed CPython 3.13.13) |

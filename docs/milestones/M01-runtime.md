@@ -31,7 +31,7 @@
   - Save/reopen and undo/redo test support.
   - Cross-platform smoke tests.
   - Reused Blender test processes with explicit state reset, retaining isolated processes where necessary.
-- The acceptance specification, the smaller generated CI fixture, and the ALab inventory for each payload policy, all as described in Acceptance Criteria.
-- A requirement-to-test matrix covering every requirement applicable to Phases 1 and 2 in PROJECT.md, spec/, and testing/. Each row records a stable requirement ID, authoritative spec section, delivery milestone, bespoke fixture and test or oracle, and qualification milestone/phase. Mark high-risk entries separately. Invariant summaries reference the authoritative requirement ID rather than creating duplicate rows. Later contract decisions update the matrix before implementation.
+- The acceptance details (sampled time codes, the pinned ALab tree, the reference hardware), the smaller generated CI fixture, and the ALab inventory for each payload policy, all as described in Acceptance Criteria.
+- A requirement-to-test matrix covering every requirement applicable to Phases 1 and 2 in PROJECT.md, spec/, and testing/. Each row records a stable requirement ID, authoritative spec section, delivery milestone, bespoke fixture and test or oracle, and qualification milestone/phase. M4 marks the high-risk entries. Invariant summaries reference the authoritative requirement ID rather than creating duplicate rows. Later contract decisions update the matrix before implementation.
 
-**Exit condition:** the runtime feasibility record shows the required Blender/USD combination works on all three platforms (or the strategy has been revised), and a reproducible development/test/package workflow, acceptance specification, and complete initial requirement-to-test matrix exist.
+**Exit condition:** the runtime feasibility record shows the required Blender/USD combination works on all three platforms (or the strategy has been revised), and a reproducible development/test/package workflow, the acceptance details, and a complete initial requirement-to-test matrix exist.

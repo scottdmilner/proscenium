@@ -7,7 +7,8 @@ IDs and milestones in sync with the docs.
 
 Fixture cases (operation, expected outcome, requirement IDs, and qualification
 phase, per docs/testing/acceptance.md#bespoke-fixtures) are not declared here
-yet; their schema is designed with the requirement-to-test matrix (M1 Phase D).
+yet: M3 designs their schema with its first fixtures. Other fixtures join the
+registry when a milestone assigns them in docs/testing/requirements.yaml.
 """
 
 from __future__ import annotations
