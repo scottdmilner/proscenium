@@ -33,7 +33,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1]
+started: [M1, M1b]
 
 requirements:
 
@@ -105,9 +105,12 @@ requirements:
         kind: contract
         delivery: M1b
         qualified_by: M1b
+        oracle: "The M1b decision record (DECISIONS.md \"Evaluation front end and core language\" and \"Python-only implementation\"), backed by the end-to-end prototype's correctness results and separate measurements."
       - id: COMP-06
         quote: "Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution."
         delivery: M1b
+        oracle: "Per platform, in the bpy wheel and the Blender binary: the build audit finds the module importing USD symbols only from Blender's usd_ms library, with no embedded search path and no bundled USD, TBB, or Python library; at run time exactly one usd_ms image is loaded, it is the host's own, and it is the image that provides USD symbols to the module."
+        note: "Applies to the M1b bridge; a compiled core adopted by M1b inherits the checks."
 
   # --- spec/pipeline.md -----------------------------------------------------------------------
 
@@ -126,12 +129,10 @@ requirements:
         delivery: M7
       - id: SNAP-16
         quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
-        delivery: M1b
-        note: "Applies if M1b adopts Hydra."
+        note: "Applies if M1b adopts Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
       - id: SNAP-17
         quote: "Hydra prim types the core does not translate"
-        delivery: M1b
-        note: "Applies if M1b adopts Hydra."
+        note: "Applies if M1b adopts Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
 
   - section: spec/pipeline.md#display-plan
     delivery: M6

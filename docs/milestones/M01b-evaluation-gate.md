@@ -55,9 +55,9 @@ What Hydra offers and where it stops, from the 2026-10-07 investigation. Points 
 
 **What the chain provides.**
 
-- `UsdImagingStageSceneIndex` alone does not resolve inherited transforms, visibility, or native-instance aggregation. `UsdImagingCreateSceneIndices` builds the processed chain: native and point-instancer processing, material-binding resolution, selection, and optional draw-mode substitution. Its native-instance aggregation regroups instances whose inherited state differs from USD's prototypes.
-- Inherited state through `HdFlatteningSceneIndex` *(tested: parent translation and ancestor visibility)*.
-- Implicit surfaces to meshes through the implicit-surface scene index *(tested: cube; sphere configured but not exercised)*, and NURBS approximation into meshes and basis curves (untested).
+- `UsdImagingStageSceneIndex` alone does not resolve inherited transforms, visibility, or native-instance aggregation. `UsdImagingCreateSceneIndices` builds the processed chain: native and point-instancer processing, flattening of inherited state at every instancing level, material-binding resolution, selection, and optional draw-mode substitution. Its native-instance aggregation regroups instances whose inherited state differs from USD's prototypes.
+- Inherited state through the `HdFlatteningSceneIndex` that `UsdImagingCreateSceneIndices` inserts *(tested: parent translation and ancestor visibility)*. The bridge also added its own flattening pass, which source reading shows was redundant.
+- Implicit surfaces to meshes through the implicit-surface scene index *(tested: cube; sphere configured but not exercised)*, and NURBS approximation into meshes and basis curves (untested). Neither reports an approximation: the converted prim is typed `mesh`, so the diagnostic has to come from the prim's original USD type.
 - Material networks as nodes, connections, and terminals per render context, plus resolved bindings.
 - Observer notices for added, removed, renamed, and dirtied prims *(tested: kinds and paths, not dirty-locator coverage)*. A dirty notice names data to re-read, not proof its value changed. The stage scene index exposes time changes and pending-update processing *(tested: time change dirties; same-time capture emits none)*.
 - Hydra's sampled data sources can report the sample times that contribute to a value over an interval. Whether the processed chain reports these accurately for time-varying data, including after flattening, is untested (see time-sampled data detection above).
@@ -71,7 +71,7 @@ What Hydra offers and where it stops, from the 2026-10-07 investigation. Points 
 - Custom schemas get display data only through imaging adapters; Hydra does not infer what an installed schema should look like.
 - It does not reduce Blender's own costs: object construction, depsgraph updates, undo storage, and old and new generations coexisting during publication.
 
-**Runtime facts.** In both the uv environment and the Blender 5.2.2 binary (USD 0.26.3), `pxr.Hd`, `pxr.Hdsi`, `pxr.UsdImaging`, and `pxr.UsdSkelImaging` are absent from Python; `pxr.UsdImagingGL` and `pxr.UsdHydra` are present but do not expose scene indices. A Python-only Hydra pipeline is therefore not possible. The `release` documentation describes APIs newer than the bundled USD, so implementation is checked against v26.03 and Blender's actual build. The bridge record lists the build details: Blender's pinned dependency headers, the `pxrBlender_v26_03__pxrReserved__` namespace, and the import order tested.
+**Runtime facts.** In both the uv environment and the Blender 5.2.2 binary (USD 0.26.3), `pxr.Hd`, `pxr.Hdsi`, `pxr.UsdImaging`, and `pxr.UsdSkelImaging` are absent from Python; `pxr.UsdImagingGL` and `pxr.UsdHydra` are present but do not expose scene indices. A Python-only Hydra pipeline is therefore not possible. The `release` documentation describes APIs newer than the bundled USD, so implementation is checked against v26.03 and Blender's actual build. The bridge record lists the build details: Blender's pinned dependency headers, the `pxrBlender_v26_03__pxrReserved__` namespace, and the import order tested. Blender 5.3 moves to USD 26.08, which changes that namespace, so a compiled core is rebuilt and re-released for each Blender minor version that changes USD.
 
 **Effect on the milestones if adopted.**
 

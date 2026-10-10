@@ -6,6 +6,7 @@ See spec/source-access.md#file-backed-refresh.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,14 @@ def _reload(p: Probe, dest: Path) -> None:
     sub = Sdf.Layer.Find(str(sub_path))
     sub.Reload()
     p.fact("non-forced Reload sees an immediate second rewrite", lambda: read_values(refresh)["sub"] == 3.0)
+    # USD compares modification timestamps for equality (SdfLayer::Reload). On Windows,
+    # ArchGetModificationTime returns whole seconds; elsewhere it has nanoseconds.
+    p.fact("layer modification timestamp has a sub-second part", lambda: _subsecond(sub_path))
+    sub.Reload(force=True)
+    time.sleep(1.1)
+    rewrite_on_disk(sub_path, "sub", 3.5)
+    sub.Reload()
+    p.fact("non-forced Reload sees a rewrite made 1.1 s later", lambda: read_values(refresh)["sub"] == 3.5)
 
     # Rewrite but restore the old mtime, so only a forced Reload should notice.
     # Pin the mtime to whole seconds first: Blender's bundled Python truncates
@@ -128,7 +137,7 @@ def _reload(p: Probe, dest: Path) -> None:
     p.check(
         "non-forced Reload skips a rewrite with unchanged mtime",
         lambda: read_values(refresh)["sub"],
-        expect=3.0,
+        expect=3.5,
     )
     sub.Reload(force=True)
     p.check("forced Reload rereads despite unchanged mtime", lambda: read_values(refresh)["sub"], expect=4.0)
@@ -137,3 +146,11 @@ def _reload(p: Probe, dest: Path) -> None:
     dirty_edit(ref, "ref")
     ref.Reload()
     p.fact("Reload on a dirty layer discards unsaved edits", lambda: read_values(other)["ref"] == 1.0)
+
+
+def _subsecond(path: Path) -> bool:
+    from pxr import Ar
+
+    resolver = Ar.GetResolver()
+    stamp = resolver.GetModificationTimestamp(str(path), resolver.Resolve(str(path))).GetTime()
+    return stamp != int(stamp)
