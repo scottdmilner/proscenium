@@ -1,0 +1,11 @@
+#usda 1.0
+# Lives outside the scene dir and is referenced by absolute path from root.usda,
+# so private-disk-view candidates that only remap relative paths are caught.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double absValue = 1
+}

@@ -34,6 +34,15 @@ This separation does not require copying all scene data or serializing an interm
 - Persisted inspection data does not depend on a live USD stage.
 - Application does not retain borrowed buffers beyond the synchronization that supplied them.
 
+Design note (suggested, not settled; [M1b](../milestones/M01b-evaluation-gate.md) decides): evaluation may read display semantics from OpenUSD's Hydra scene-index chain through a compiled core, with planning in the same core and the display plan handed to Python application. The requirements above still apply:
+
+- Values are captured into the snapshot before planning, so a live, lazily evaluated scene index is never the snapshot.
+- Source hierarchy and identities come from the composed USD stage. Hydra may generate, aggregate, or omit paths, so its paths and instance indices are not source identities.
+- Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact.
+- Hydra prim types the core does not translate, such as basis curves, points, or volumes, still receive per-behavior placeholders and diagnostics.
+- Both viewport and render purpose sets remain available.
+- Application never queries the scene index.
+
 ### Display Plan
 
 Describe how the evaluated snapshot will be represented:

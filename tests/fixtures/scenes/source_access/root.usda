@@ -1,0 +1,71 @@
+#usda 1.0
+# Root layer of the scene shared by the source-access fixtures (tests/fixtures/source_access.py):
+# F-DIRTY-LAYER, F-CACHED-STAGE, and F-PRIVATE-STAGE. Each contributing layer authors one value,
+# reached through a different arc: this root, two sublayers, a reference, a payload used by two
+# prims, and the selected variant of a variant set (the other variant's layer does not contribute).
+# Every value is 1 on disk; generators change values in memory or on disk, so each view of the
+# scene (disk, in-process, a caller's stage settings) composes distinguishable values.
+(
+    defaultPrim = "World"
+    subLayers = [
+        @./sub.usda@,
+        @./extra.usda@
+    ]
+    startTimeCode = 0
+    endTimeCode = 10
+)
+
+def Xform "World"
+{
+    double rootValue = 1
+
+    # Linear interpolation gives 5 at time 5; held interpolation gives 0.
+    double animValue.timeSamples = {
+        0: 0,
+        10: 10,
+    }
+
+    def Xform "Ref" (
+        references = @./ref.usda@
+    )
+    {
+    }
+
+    def Xform "PayA" (
+        payload = @./pay.usda@
+    )
+    {
+    }
+
+    def Xform "PayB" (
+        payload = @./pay.usda@
+    )
+    {
+    }
+
+    # The file selects "a"; F-PRIVATE-STAGE and F-CACHED-STAGE select "b" in their session layers.
+    def Xform "Var" (
+        variants = {
+            string option = "a"
+        }
+        prepend variantSets = "option"
+    )
+    {
+        variantSet "option" = {
+            "a" (
+                references = @./var_a.usda@
+            ) {
+            }
+            "b" (
+                references = @./var_b.usda@
+            ) {
+            }
+        }
+    }
+
+    # Kept out of F-PRIVATE-STAGE's population mask.
+    def Xform "Outside"
+    {
+        double outsideValue = 1
+    }
+}

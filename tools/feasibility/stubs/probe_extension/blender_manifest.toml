@@ -1,0 +1,12 @@
+# Minimal extension used by probe_packaging.py to check building, validating,
+# installing, enabling, and stage exchange through an installed extension.
+schema_version = "1.0.0"
+
+id = "proscenium_probe"
+version = "0.0.1"
+name = "Proscenium Feasibility Probe"
+tagline = "Throwaway extension for runtime feasibility probes"
+maintainer = "Scott Milner"
+type = "add-on"
+blender_version_min = "5.2.0"
+license = ["SPDX:GPL-3.0-or-later"]

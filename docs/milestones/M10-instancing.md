@@ -8,7 +8,7 @@
 
 **Decisions and deliverables:**
 
-- Evaluation/planning: complete instancing, shared contents, instance context, and per-instance variation in the snapshot and plan, replacing M6's provisional descriptions.
+- Evaluation/planning: complete instancing, shared contents, instance context, and per-instance variation in the snapshot and plan, replacing M6's provisional descriptions. If M1b adopts Hydra, verify that Hydra's native-instance aggregation, which regroups instances by inherited state, is compatible with M4's sharing criteria, and map Hydra instancers and instance indices back to instance context.
 - Application: shared and per-instance display behavior, and instance-root selection.
 - Dependency tracking between shared contents and their displayed uses.
 

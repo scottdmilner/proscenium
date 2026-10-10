@@ -1,0 +1,12 @@
+#usda 1.0
+# Referenced by /World/Ref: checks arc-introduced layers. The relative texture asset
+# path checks that non-composition asset paths still resolve to disk in a private disk view.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double refValue = 1
+    asset tex = @./textures/tex.png@
+}

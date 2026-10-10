@@ -1,0 +1,12 @@
+#usda 1.0
+# Referenced by variant "b" of /World/Var in the source-access scene (see root.usda). The file
+# does not select it, so this layer contributes only where a caller's session layer selects
+# "b". F-DIRTY-LAYER edits it in memory to give a dirty layer that is not contributing.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double varBValue = 1
+}

@@ -1,0 +1,10 @@
+#usda 1.0
+# Referenced by the selected variant "b" of /World/Var: contributes through a variant.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double varValue = 1
+}

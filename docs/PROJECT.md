@@ -24,7 +24,8 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [spec/support/](spec/support/) | Supported scene state: [transforms](spec/support/transforms.md), [geometry](spec/support/geometry.md), [instancing](spec/support/instancing.md), [materials](spec/support/materials.md), [visibility and unsupported content](spec/support/visibility.md) |
 | [testing/strategy.md](testing/strategy.md) | Test layers and named contract fixtures |
 | [testing/acceptance.md](testing/acceptance.md) | Acceptance criteria: bespoke fixtures, standard checks, bounds contract, ALab production-scale validation, performance |
-| [milestones/](milestones/README.md) | Implementation milestones M1–M14 |
+| [testing/requirements-matrix.md](testing/requirements-matrix.md) | Requirement-to-test matrix, generated from [requirements.yaml](testing/requirements.yaml) |
+| [milestones/](milestones/README.md) | Implementation milestones M1–M14, including the M1b decision gate |
 | [DECISIONS.md](DECISIONS.md) | Decision register: open decisions and chosen behavior |
 
 This file, `spec/`, and `testing/` establish project requirements and architectural direction. The milestone files detail implementation and reference those requirements; where they conflict, the requirement files take precedence. [spec/invariants.md](spec/invariants.md) summarizes cross-cutting guarantees, and the spec section each invariant links to is authoritative for details. Milestones describe planned work, not implementation status. Inspect the repository before assuming a feature exists.
@@ -98,7 +99,9 @@ Automatic timeline synchronization is a stretch goal. The evaluation time code m
 - Minimum Blender version: **5.2 LTS**.
 - Use the OpenUSD version bundled with the supported Blender distribution.
 - Support macOS, Windows, and Linux.
-- Prefer Python-only implementation. Whether performance requires compiled components is decided from measurements, starting in M4, and recorded in [DECISIONS.md](DECISIONS.md).
+- Prefer Python-only implementation. A compiled component may be adopted when measurements show Python cannot meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` does not expose, such as Hydra scene indices. M1b decides the evaluation front end and the core's language; measurement-driven decisions start in M4. Both are recorded in [DECISIONS.md](DECISIONS.md).
+- Code that touches Blender stays in Python: extensions reach Blender only through the `bpy` API.
+- Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution.
 - Do not require externally installed custom resolvers or schema plugins.
 - If additional compiled components become necessary, all three platforms remain required.
 

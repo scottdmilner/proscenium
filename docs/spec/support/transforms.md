@@ -10,8 +10,9 @@ Part of the supported scene state. Cross-cutting guarantees are summarized in [i
 - Preserve evaluated placement rather than reconstructing editable USD transform-operation stacks.
 - Diagnose approximations when exact representation is unavailable.
 - Evaluate supported time-varying values at the supplied time code, including topology changes.
-- Do not assume a USD time code equals a Blender frame.
-- Do not create Blender animation data or change frame rate/playback range.
+- A representation may treat USD time codes as Blender frames and may author Blender animation data, such as keyframes, mesh cache modifiers, or baked Geometry Nodes data, to display time-varying content. This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses.
+- Authored animation data and its caches are managed content under [Ownership and Lifecycle](../lifecycle.md#ownership-and-lifecycle).
+- Do not change the target scene's frame rate or playback range.
 
 ## Coordinate Conversion
 

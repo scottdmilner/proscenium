@@ -19,6 +19,7 @@
   - Candidate approaches from the [In-Memory Sources](../spec/source-access.md#in-memory-sources) design note behave as expected.
   - Contributing layers with unsaved edits can be detected, and a fresh stage can be opened without reusing a cached one.
   - Whether a private disk view can be built without touching shared layers (see [File-Backed Refresh](../spec/source-access.md#file-backed-refresh)).
+- Which USD imaging modules Blender's Python `pxr` exposes, and whether a compiled module can link against the bundled USD and exchange stages with Python. The macOS arm64 result is in the [compiled Hydra bridge record](../feasibility/runtime-record.md#compiled-hydra-bridge--macos-arm64); Windows and Linux are M1b's first deliverable and do not gate M1's exit.
 - The extension layout, development environment, build script, lint/type-check hooks, and `AGENTS.md`.
   - `AGENTS.md` directs agents to read [PROJECT.md](../PROJECT.md) and [spec/invariants.md](../spec/invariants.md) before any work.
   - `AGENTS.md` instructs agents to keep `spec/invariants.md` in sync with the spec: any change to a guarantee in a spec file updates its statement in `invariants.md` in the same change, and vice versa. `invariants.md` stays a summary that links to and defers to the authoritative spec section; it never accumulates detail of its own.
@@ -30,7 +31,7 @@
   - Save/reopen and undo/redo test support.
   - Cross-platform smoke tests.
   - Reused Blender test processes with explicit state reset, retaining isolated processes where necessary.
-- The acceptance specification, the smaller generated CI fixture, and the ALab inventory for each payload policy, all as described in Acceptance Criteria.
-- A requirement-to-test matrix covering every requirement applicable to Phases 1 and 2 in PROJECT.md, spec/, and testing/. Each row records a stable requirement ID, authoritative spec section, delivery milestone, bespoke fixture and test or oracle, and qualification milestone/phase. Mark high-risk entries separately. Invariant summaries reference the authoritative requirement ID rather than creating duplicate rows. Later contract decisions update the matrix before implementation.
+- The acceptance details (sampled time codes, the pinned ALab tree, the reference hardware), the smaller generated CI fixture, and the ALab inventory for each payload policy, all as described in Acceptance Criteria.
+- A requirement-to-test matrix covering every requirement applicable to Phases 1 and 2 in PROJECT.md, spec/, and testing/. Each row records a stable requirement ID, authoritative spec section, delivery milestone, bespoke fixture and test or oracle, and qualification milestone/phase. M4 marks the high-risk entries. Invariant summaries reference the authoritative requirement ID rather than creating duplicate rows. Later contract decisions update the matrix before implementation.
 
-**Exit condition:** the runtime feasibility record shows the required Blender/USD combination works on all three platforms (or the strategy has been revised), and a reproducible development/test/package workflow, acceptance specification, and complete initial requirement-to-test matrix exist.
+**Exit condition:** the runtime feasibility record shows the required Blender/USD combination works on all three platforms (or the strategy has been revised), and a reproducible development/test/package workflow, the acceptance details, and a complete initial requirement-to-test matrix exist.

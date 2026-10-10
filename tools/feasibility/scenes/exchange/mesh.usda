@@ -1,0 +1,16 @@
+#usda 1.0
+# Single-triangle mesh for the stage-exchange probe (probe_exchange.py). The probe copies
+# /Tri to /Extra in memory without saving, then runs Blender's USD importer to see whether
+# the importer shares Python's layer registry (and so sees unsaved edits).
+(
+    defaultPrim = "Tri"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Mesh "Tri"
+{
+    int[] faceVertexCounts = [3]
+    int[] faceVertexIndices = [0, 1, 2]
+    point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+}

@@ -1,0 +1,11 @@
+#usda 1.0
+# Payload of /World/PayA and /World/PayB in the source-access scene (see root.usda). Contributes
+# only when a payload is loaded; F-DIRTY-LAYER edits it in memory without saving.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double payValue = 1
+}

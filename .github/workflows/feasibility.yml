@@ -1,0 +1,35 @@
+# Runtime feasibility probes (M1). Manual only: run from the Actions tab and copy
+# the uploaded results into docs/feasibility/runtime-record.md.
+name: Feasibility
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probes:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender
+      - run: uv sync --locked
+
+      - name: Feasibility probes
+        run: uv run python tools/feasibility/run_all.py --strict
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feasibility-${{ matrix.os }}
+          path: build/feasibility/
+          if-no-files-found: warn

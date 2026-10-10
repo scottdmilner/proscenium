@@ -1,0 +1,11 @@
+#usda 1.0
+# Referenced by /World/Ref in the source-access scene (see root.usda). F-DIRTY-LAYER edits it in
+# memory without saving.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    double refValue = 1
+}

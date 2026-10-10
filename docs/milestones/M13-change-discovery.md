@@ -11,6 +11,7 @@
 - A mapping from source-affected entities to dependency-affected and replacement-affected display resources.
 - A decision on when local updates, partition rebuilds, or explicit full rebuilds are appropriate.
 - Discovery of managed display damage, distinguished from legitimate external users.
+- If M1b adopts Hydra: scene-index observer notices as one discovery source, within the limits in the [incremental design note](../spec/incremental.md#change-discovery).
 
 **Tests:**
 
