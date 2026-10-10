@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-266 rows: 197 behavior, 19 contract, 50 process; milestones started: M1.
+266 rows: 197 behavior, 19 contract, 50 process; milestones started: M1, M1b.
 
 ## PROJECT.md
 
@@ -25,8 +25,8 @@ is filled in by its delivering milestone before implementation.
 | [COMP-01](../PROJECT.md#compatibility-and-development) | Minimum Blender version: 5.2 LTS. | process | M1 | 1 / M12 | — | The manifest's blender_version_min is 5.2.0 and the built zip validates (tools/build_extension.py). |
 | [COMP-02](../PROJECT.md#compatibility-and-development) | Use the OpenUSD version bundled with the supported Blender distribution. | process | M1 | 1 / M12 | — | Smoke tests find pxr inside Blender's bundle, and the extension zip contains no pxr or other USD build. |
 | [COMP-03](../PROJECT.md#compatibility-and-development) | Support macOS, Windows, and Linux. | process | M1 | 1 / M12 | — | CI runs the full suite, including binary smoke tests, on macOS, Windows, and Linux. |
-| [COMP-04](../PROJECT.md#compatibility-and-development) | Prefer Python-only implementation. | contract | M1b | 1 / M1b | — | Set by M1b. |
-| [COMP-06](../PROJECT.md#compatibility-and-development) | Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution. | process | M1b | 1 / M12 | — | Set by M1b. |
+| [COMP-04](../PROJECT.md#compatibility-and-development) | Prefer Python-only implementation. | contract | M1b | 1 / M1b | — | The M1b decision record (DECISIONS.md "Evaluation front end and core language" and "Python-only implementation"), backed by the end-to-end prototype's correctness results and separate measurements. |
+| [COMP-06](../PROJECT.md#compatibility-and-development) | Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution. | process | M1b | 1 / M12 | — | Per platform, in the bpy wheel and the Blender binary: the build audit finds the module importing USD symbols only from Blender's usd_ms library, with no embedded search path and no bundled USD, TBB, or Python library; at run time exactly one usd_ms image is loaded, it is the host's own, and it is the image that provides USD symbols to the module. *Applies to the M1b bridge; a compiled core adopted by M1b inherits the checks.* |
 ## spec/pipeline.md
 
 | ID | Requirement | Kind | Delivery | Phase / qualified by | Fixtures | Test or oracle |
@@ -35,8 +35,8 @@ is filled in by its delivering milestone before implementation.
 | [SNAP-10](../spec/pipeline.md#evaluated-source-snapshot) | Snapshot data cannot change during planning or application. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [SNAP-11](../spec/pipeline.md#evaluated-source-snapshot) | The snapshot keeps alive whatever storage it lends out, such as shared arrays. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [SNAP-13](../spec/pipeline.md#evaluated-source-snapshot) | Application does not retain borrowed buffers beyond the synchronization that supplied them. | behavior | M7 | 1 / M12 | — | Set by M7. |
-| [SNAP-16](../spec/pipeline.md#evaluated-source-snapshot) | Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact. | behavior | M1b | 1 / M12 | — | Set by M1b. *Applies if M1b adopts Hydra.* |
-| [SNAP-17](../spec/pipeline.md#evaluated-source-snapshot) | Hydra prim types the core does not translate | behavior | M1b | 1 / M12 | — | Set by M1b. *Applies if M1b adopts Hydra.* |
+| [SNAP-16](../spec/pipeline.md#evaluated-source-snapshot) | Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact. | behavior | M6 | 1 / M12 | — | Set by M6. *Applies if M1b adopts Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
+| [SNAP-17](../spec/pipeline.md#evaluated-source-snapshot) | Hydra prim types the core does not translate | behavior | M6 | 1 / M12 | — | Set by M6. *Applies if M1b adopts Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
 | [PLAN-08](../spec/pipeline.md#display-plan) | Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [PLAN-09](../spec/pipeline.md#display-plan) | Anything planning depends on must arrive through one of its three inputs. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [APP-05](../spec/pipeline.md#blender-application) | Report failures that only application can detect as diagnostics | behavior | M7 | 1 / M12 | — | Set by M7. |

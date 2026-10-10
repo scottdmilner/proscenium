@@ -38,7 +38,7 @@ def run() -> dict[str, Any]:
     p.fact("python", lambda: {"version": sys.version, "executable": sys.executable})
 
     import pxr
-    from pxr import Ar, Plug, Usd
+    from pxr import Ar, Plug, Sdr, Usd
 
     p.fact("usd_version", lambda: ".".join(map(str, Usd.GetVersion())))
     p.fact("pxr_path", lambda: list(pxr.__path__))
@@ -55,6 +55,8 @@ def run() -> dict[str, Any]:
     )
     p.fact("plugin_env", lambda: {k: v for k, v in os.environ.items() if k.startswith(("PXR_", "BLENDER_"))})
     p.fact("resolver", lambda: type(Ar.GetResolver()).__name__)
+    # usdShaders registers UsdPreviewSurface with Sdr; the Windows bpy 5.2.2 wheel omits that plugin.
+    p.fact("Sdr knows UsdPreviewSurface", lambda: bool(Sdr.Registry().GetShaderNodeByIdentifier("UsdPreviewSurface")))
     p.fact("materialx", lambda: _version("MaterialX", "getVersionString"))
     p.check("blender has usd importer", lambda: hasattr(bpy.ops.wm, "usd_import"))
     return p.result()
