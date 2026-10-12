@@ -64,6 +64,12 @@ if(MSVC)
 else()
   target_compile_options(_hydra_bridge PRIVATE -Wall -Wextra -Wpedantic)
 endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # USD's tf/hashset.h includes libstdc++'s deprecated <ext/hash_set>, which #warns in every file that
+  # reaches sdf/path.h. USD builds itself with the same flag (cmake/defaults/gccclangshareddefaults.cmake).
+  # Deprecated functions still warn: that is -Wdeprecated-declarations.
+  target_compile_options(_hydra_bridge PRIVATE -Wno-deprecated)
+endif()
 # On the interface of Blender's exported pxr Python target; match it.
 target_compile_definitions(_hydra_bridge PRIVATE PXR_BOOST_PYTHON_NO_PY_SIGNATURES)
 target_link_libraries(_hydra_bridge PRIVATE "${USD_LIBRARY}")

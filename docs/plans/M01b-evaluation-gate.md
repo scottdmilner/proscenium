@@ -186,7 +186,7 @@ The prototype extends `tools/feasibility/hydra_bridge/` (suggested; it stays fea
 
 Branch `m01b-phase-b`, off `m01b-phase-a`.
 
-- **Status (2026-10-10): slice built, macOS only.** Locally on macOS, `prototype.usda` runs capture → C++ plan → Blender: 20 checks pass in the wheel and the binary. Each check takes its expected value from USD (`UsdGeom`, `UsdShade`) or from how the scene is built. The Phase A loading checks still pass (41). Windows and Linux are pending CI.
+- **Status (2026-10-12): slice built and passing on all three platforms.** `prototype.usda` runs capture → C++ plan → Blender. 20 prototype checks and the loading checks (41, or 42 on Windows) pass in the wheel and the binary on macOS, Linux and Windows ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). Each prototype check takes its expected value from USD (`UsdGeom`, `UsdShade`) or from how the scene is built. Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-slice-m1b-phase-b).
 - **C++17 sources in `src/`, one file per stage:**
   - `scene_index_graph`: the scene-index graph and its observer.
   - `capture`: produces the immutable `snapshot`.
