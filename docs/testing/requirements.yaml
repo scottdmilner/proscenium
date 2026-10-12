@@ -1362,8 +1362,10 @@ excluded:
     quotes: ["Final render | default, render"]
     restates: [VIS-02]
   - section: spec/support/visibility.md#deferred-and-out-of-scope
-    quotes: ["Additional shader systems, generated simplified proxies, export, round trips, and render equivalence are outside scope."]
-    reason: "Out of scope."
+    quotes:
+      - "Additional shader systems, generated simplified proxies, export, round trips, and render equivalence are outside scope."
+      - "Honoring authored `model:drawMode` (bounds, cards, origin) is a logical future step; it is not a current requirement."
+    reason: "Out of scope; draw-mode support is a noted future direction, not a requirement."
   - section: testing/strategy.md
     quotes:
       - "How the project is tested."

@@ -1,0 +1,151 @@
+#usda 1.0
+(
+    startTimeCode = 1
+    endTimeCode = 3
+    upAxis = "Z"
+)
+# Purpose: Phase B smoke scene for the Hydra prototype's capture -> plan -> Blender slice. One of each
+# path the planner takes: a mesh with a bound GeomSubset and an indexed UV primvar, an exact and an
+# approximated implicit shape, basis curves the prototype does not translate, and native instances
+# nested two deep whose roots differ only in displayColor values (LeafB also authors its own).
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Blue"
+        {
+            token outputs:surface.connect = </World/Looks/Blue/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 0, 1)
+                token outputs:surface
+            }
+        }
+    }
+
+    # Two quads side by side. Face 0 is in the Left subset (Red); face 1 takes the mesh's binding (Blue).
+    def Mesh "Grid" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4]
+        int[] faceVertexIndices = [0, 1, 4, 3, 1, 2, 5, 4]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (0, 1, 0), (1, 1, 0), (2, 1, 0)]
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:st:indices = [0, 1, 2, 3, 0, 1, 2, 3]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/Blue>
+        uniform token subsetFamily:materialBind:familyType = "nonOverlapping"
+
+        def GeomSubset "Left" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/Looks/Red>
+        }
+    }
+
+    def Sphere "Ball"
+    {
+        double radius = 0.5
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Cube "Box"
+    {
+        double size = 1
+        double3 xformOp:translate = (2, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def BasisCurves "Hair"
+    {
+        int[] curveVertexCounts = [4]
+        point3f[] points = [(4, 0, 0), (4, 0, 1), (5, 0, 1), (5, 0, 2)]
+        uniform token type = "cubic"
+        uniform token basis = "bezier"
+        float[] widths = [0.1] (
+            interpolation = "constant"
+        )
+    }
+
+    def Xform "BranchA" (
+        instanceable = true
+        prepend references = </Assets/Branch>
+    )
+    {
+        color3f[] primvars:displayColor = [(1, 0, 0)]
+        double3 xformOp:translate = (0, 6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "BranchB" (
+        instanceable = true
+        prepend references = </Assets/Branch>
+    )
+    {
+        color3f[] primvars:displayColor = [(0, 1, 0)]
+        double3 xformOp:translate = (4, 6, 0)
+        float xformOp:rotateZ = 90
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    }
+}
+
+# Abstract, so only its references are drawn.
+class Xform "Assets"
+{
+    def Xform "Leaf"
+    {
+        def Mesh "Blade"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Xform "Branch"
+    {
+        def Xform "LeafA" (
+            instanceable = true
+            prepend references = </Assets/Leaf>
+        )
+        {
+            double3 xformOp:translate = (1, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "LeafB" (
+            instanceable = true
+            prepend references = </Assets/Leaf>
+        )
+        {
+            color3f[] primvars:displayColor = [(1, 1, 0)]
+            double3 xformOp:translate = (0, 1, 0)
+            double3 xformOp:scale = (2, 2, 2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+    }
+}

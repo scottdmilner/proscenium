@@ -32,4 +32,4 @@ For unsupported geometry:
 
 Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry, cameras/lights, skeletal deformation, physics, unsupported custom-schema visualization, hole-face support, and `.usdz` packaging.
 
-Additional shader systems, generated simplified proxies, export, round trips, and render equivalence are outside scope.
+Additional shader systems, generated simplified proxies, export, round trips, and render equivalence are outside scope. Honoring authored `model:drawMode` (bounds, cards, origin) is a logical future step; it is not a current requirement.

@@ -35,13 +35,35 @@ if(NOT EXISTS "${USD_LIBRARY}")
   message(FATAL_ERROR "Blender's USD library not found: '${USD_LIBRARY}' (set USD_LIBRARY)")
 endif()
 
-Python_add_library(_hydra_bridge MODULE WITH_SOABI bridge.cpp)
+Python_add_library(_hydra_bridge MODULE WITH_SOABI
+  src/bridge.cpp
+  src/capture.cpp
+  src/diagnostics.cpp
+  src/instancing.cpp
+  src/loaded_images.cpp
+  src/mesh_builder.cpp
+  src/module.cpp
+  src/planner.cpp
+  src/prim_reader.cpp
+  src/prim_record.cpp
+  src/python_views.cpp
+  src/scene_index_graph.cpp
+  src/snapshot.cpp
+  src/validate.cpp
+)
 target_compile_features(_hydra_bridge PRIVATE cxx_std_17)
 set_target_properties(_hydra_bridge PROPERTIES CXX_EXTENSIONS OFF)
+target_include_directories(_hydra_bridge PRIVATE src)
 target_include_directories(_hydra_bridge SYSTEM PRIVATE
   "${BLENDER_DEPS}/usd/include"
   "${BLENDER_DEPS}/tbb/include"
 )
+# Warnings for the bridge's own code; USD's headers are system includes.
+if(MSVC)
+  target_compile_options(_hydra_bridge PRIVATE /W4)
+else()
+  target_compile_options(_hydra_bridge PRIVATE -Wall -Wextra -Wpedantic)
+endif()
 # On the interface of Blender's exported pxr Python target; match it.
 target_compile_definitions(_hydra_bridge PRIVATE PXR_BOOST_PYTHON_NO_PY_SIGNATURES)
 target_link_libraries(_hydra_bridge PRIVATE "${USD_LIBRARY}")
