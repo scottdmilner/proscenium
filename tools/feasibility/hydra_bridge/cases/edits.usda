@@ -1,0 +1,263 @@
+#usda 1.0
+(
+    startTimeCode = 1
+    endTimeCode = 3
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "time-code change, material parameter edit, and unchanged refresh", and whether
+# notices reach every value capture copies (incremental captures against full ones, and both against USD).
+# Each value that can vary does so in exactly one place, with samples at 1 and 3, so time 2 interpolates
+# and USD gives the expected value at any time:
+# - Mover's translation is animated, and Passenger is a static mesh under it, so only its flattened
+#   transform changes;
+# - Wave's points and displayColor are animated;
+# - Blinker's visibility is held: visible at 1, invisible from 2, visible again at 3;
+# - Comb is HermiteCurves, which Hydra doesn't image, so its animated translation and held visibility
+#   (same samples as Blinker's) come from the source-info filter rather than from Hydra.
+# The probe then edits, one step each:
+# - Paint's diffuseColor; Box's size (a cube converted to a mesh, so the edit must reach the generated
+#   points); Passenger's topology; adds and removes prims;
+# - Strip's elementType, to point and back (USD rejects a point subset in Patch's face family, a verdict
+#   on Patch from an edit on Strip), then its familyName (materialBind to another family, so its face
+#   falls back to Patch's binding);
+# - Aid's own guideVisibility, then Guides' (Aid2 has no opinion of its own, so it inherits it);
+# - doubleSided on Box (a cube) and on Passenger (a mesh);
+# - Passenger's binding, retargeted from Paint to Ink, and Holder's binding strength, which makes Holder's
+#   Paint beat Held's own Ink;
+# - Brush, static HermiteCurves: its translation, visibility, and purpose (to guide), in turn;
+# - Kit's Cup points and Handle translation, which both instances (Shelf1, Shelf2) draw.
+# Patch binds Paint for all purposes and Ink for preview, so the viewport (preview) and the final render
+# (full) show it with different materials.
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Paint"
+        {
+            token outputs:surface.connect = </World/Looks/Paint/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.2, 0.4, 0.6)
+                token outputs:surface
+            }
+        }
+
+        def Material "Ink"
+        {
+            token outputs:surface.connect = </World/Looks/Ink/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.1, 0.1, 0.1)
+                token outputs:surface
+            }
+        }
+    }
+
+    # Quiet sits under Wrap, which authors no visibility, under Hush, which is invisible: Quiet inherits
+    # invisibility through Wrap (a visibility supplied for Wrap would hide Hush's).
+    def Xform "Hush"
+    {
+        token visibility = "invisible"
+
+        def Xform "Wrap"
+        {
+            def Mesh "Quiet"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, -10, 0), (1, -10, 0), (0, -9, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def Xform "Mover"
+    {
+        double3 xformOp:translate.timeSamples = {
+            1: (0, 0, 0),
+            3: (4, 0, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Passenger" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/Paint>
+        }
+    }
+
+    def Mesh "Wave"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points.timeSamples = {
+            1: [(0, 5, 0), (1, 5, 0), (0, 6, 0)],
+            3: [(0, 5, 2), (1, 5, 2), (0, 6, 2)],
+        }
+        color3f[] primvars:displayColor.timeSamples = {
+            1: [(1, 0, 0)],
+            3: [(0, 0, 1)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "Blinker"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(5, 0, 0), (6, 0, 0), (5, 1, 0)]
+        uniform token subdivisionScheme = "none"
+        token visibility.timeSamples = {
+            1: "inherited",
+            2: "invisible",
+            3: "inherited",
+        }
+    }
+
+    def HermiteCurves "Comb"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate.timeSamples = {
+            1: (0, 8, 0),
+            3: (4, 8, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        token visibility.timeSamples = {
+            1: "inherited",
+            2: "invisible",
+            3: "inherited",
+        }
+    }
+
+    def HermiteCurves "Brush"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+    }
+
+    def Cube "Box"
+    {
+        double size = 1
+        uniform bool doubleSided = false
+        double3 xformOp:translate = (0, -5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Patch" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+        point3f[] points = [(0, 10, 0), (1, 10, 0), (1, 11, 0), (0, 11, 0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/Paint>
+        rel material:binding:preview = </World/Looks/Ink>
+
+        def GeomSubset "Strip" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </World/Looks/Ink>
+        }
+    }
+
+    def Xform "Holder" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding = </World/Looks/Paint>
+
+        def Mesh "Held" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 12, 0), (1, 12, 0), (0, 13, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/Ink>
+        }
+    }
+
+    def Xform "Guides" (
+        prepend apiSchemas = ["VisibilityAPI"]
+    )
+    {
+        uniform token guideVisibility = "invisible"
+
+        def Mesh "Aid" (
+            prepend apiSchemas = ["VisibilityAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 14, 0), (1, 14, 0), (0, 15, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "guide"
+            uniform token guideVisibility = "invisible"
+        }
+
+        def Mesh "Aid2"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(2, 14, 0), (3, 14, 0), (2, 15, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "guide"
+        }
+    }
+
+    def Xform "Shelf1" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        double3 xformOp:translate = (0, 20, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Shelf2" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        double3 xformOp:translate = (3, 20, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+class Xform "Kit"
+{
+    def Mesh "Cup"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        color3f[] primvars:displayColor = [(0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def HermiteCurves "Handle"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+    }
+}

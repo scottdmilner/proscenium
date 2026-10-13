@@ -1,0 +1,228 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, what becomes Blender data besides positions, topology and varying primvars:
+# - Authored normals become Blender's custom normals, on the domain of their interpolation: per point
+#   (Vertex), per corner and indexed (Corners, whose primvars:normals must win over its normals attribute,
+#   as in UsdGeomPointBased), per face (Faces), and per corner on a left-handed mesh, whose reversed faces
+#   carry their corners' normals with them (LeftHanded). Smooth subdivides (catmullClark by USD's fallback),
+#   so USD says its authored normals are ignored.
+# - Moving's velocities become Blender's velocity; its accelerations have no Blender equivalent, so they
+#   stay a generic attribute and are warned. Clash also has a primvar named velocity, which keeps the name.
+# - Holder's constant primvars become ID properties on its object, one of each kind Blender holds, and
+#   three it can't: an asset path, a name over Blender's 63 bytes, and the bridge's own proscenium_
+#   prefix. Integers outside Blender's 32 bits (serial, and two elements of ids, one each way) keep
+#   their low 32 bits, two's complement, with a warning.
+# - KitA and KitB are native instances of Kit: each Part object gets its instance root's tint, and keeps
+#   its own gloss over KitB's.
+# - Custom attributes UsdImaging drops are warned: Tagged's three with values (a custom one, one without
+#   the custom keyword, and a userProperties one), on a placeholder (Wire), and inside a prototype (Part,
+#   once per instance). Not warned: Tagged's declaredOnly (no value), its applied-schema guideVisibility, its
+#   transform op and its materialBind family type, and anything on Plain.
+
+def Xform "World"
+{
+    def Scope "Normals"
+    {
+        def Mesh "Vertex"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0.6, 0.8), (0.6, 0, 0.8), (0, -0.6, 0.8)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Corners"
+        {
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, -1), (0, 0, -1), (0, 0, -1), (0, 0, -1)] (
+                interpolation = "vertex"
+            )
+            normal3f[] primvars:normals = [(0, 0, 1), (0, 0.6, 0.8), (0.6, 0, 0.8)] (
+                interpolation = "faceVarying"
+            )
+            int[] primvars:normals:indices = [0, 1, 2, 2, 1, 0]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Faces"
+        {
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0.6, 0.8)] (
+                interpolation = "uniform"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "LeftHanded"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, -1), (0, 0.6, -0.8), (0.6, 0, -0.8), (0, -0.6, -0.8)] (
+                interpolation = "faceVarying"
+            )
+            uniform token orientation = "leftHanded"
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Smooth"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            normal3f[] normals = [(0, 0, 1), (0, 0.6, 0.8), (0.6, 0, 0.8), (0, -0.6, 0.8)] (
+                interpolation = "vertex"
+            )
+            double3 xformOp:translate = (8, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Scope "Motion"
+    {
+        def Mesh "Moving"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            vector3f[] velocities = [(1, 0, 0), (2, 0, 0), (3, 0, 0)]
+            vector3f[] accelerations = [(0, 0, -9.8), (0, 0, -4.9), (0, 0, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Clash"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            vector3f[] velocities = [(1, 0, 0), (2, 0, 0), (3, 0, 0)]
+            float3[] primvars:velocity = [(0, 5, 0), (0, 6, 0), (0, 7, 0)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Mesh "Holder"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (0, 5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        float primvars:roughness = 0.25
+        double primvars:scale = 2.5
+        half primvars:soft = 0.5
+        int primvars:count = 3
+        uchar primvars:level = 7
+        int64 primvars:small = 5
+        bool primvars:enabled = 1
+        string primvars:label = "crate"
+        token primvars:kind = "prop"
+        float2 primvars:offset = (0.5, 1.5)
+        int3 primvars:cell = (1, 2, 3)
+        color3f[] primvars:displayColor = [(0.25, 0.5, 0.75)]
+        float[] primvars:weights = [1, 2, 3]
+        string[] primvars:tags = ["wood", "old"]
+        float3[] primvars:anchors = [(1, 2, 3), (4, 5, 6)]
+        matrix4d primvars:pivot = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (1, 2, 3, 1))
+        int64 primvars:serial = 10000000000
+        int64[] primvars:ids = [1, 5000000000, -5000000000]
+        asset primvars:decal = @decal.png@
+        float primvars:a_primvar_name_that_is_longer_than_the_sixty_three_bytes_blender_allows = 1
+        string primvars:proscenium_source = "/Elsewhere"
+    }
+
+    def Xform "KitA" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        color3f primvars:tint = (1, 0, 0)
+        double3 xformOp:translate = (0, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "KitB" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        color3f primvars:tint = (0, 1, 0)
+        float primvars:gloss = 0.9
+        double3 xformOp:translate = (5, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Scope "Custom"
+    {
+        def Mesh "Tagged" (
+            prepend apiSchemas = ["VisibilityAPI"]
+        )
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            custom float myCustom = 3
+            float[] userProp = [1, 2]
+            custom string userProperties:note = "hand-placed"
+            custom float declaredOnly
+            uniform token guideVisibility = "visible"
+            uniform token subsetFamily:materialBind:familyType = "partition"
+            double3 xformOp:translate = (0, 15, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def BasisCurves "Wire"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (0, 0, 1)]
+            uniform token type = "linear"
+            custom int id = 4
+            double3 xformOp:translate = (2, 15, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Plain"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 15, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class Xform "Kit"
+{
+    def Mesh "Part"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+        float primvars:gloss = 0.5
+        custom float note = 1
+    }
+}

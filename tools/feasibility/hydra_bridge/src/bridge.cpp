@@ -11,16 +11,19 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
-Bridge::Bridge(const UsdStageRefPtr &stage) : stage_(stage) {
+Bridge::Bridge(const UsdStagePtr &stage) : stage_(stage) {
     TfErrorMark mark;
-    if (!stage) throw std::invalid_argument("Expected a valid USD stage");
-    graph_ = std::make_unique<SceneIndexGraph>(stage);
+    // A strong reference of the graph's own, added to the caller's rather than taken from it.
+    UsdStageRefPtr strong = TfCreateRefPtrFromProtectedWeakPtr(stage);
+    if (!strong) throw std::invalid_argument("Expected a valid USD stage");
+    graph_ = std::make_unique<SceneIndexGraph>(strong);
     RaiseTfErrors(mark);
 }
 
-SnapshotPtr Bridge::Capture(UsdTimeCode time) {
+SnapshotPtr Bridge::Capture(UsdTimeCode time, bool incremental) {
     if (!graph_) throw std::runtime_error("Bridge has been released");
-    return hydra_bridge::Capture(*graph_, time);
+    last_ = hydra_bridge::Capture(*graph_, time, incremental ? last_.get() : nullptr);
+    return last_;
 }
 
 }  // namespace hydra_bridge

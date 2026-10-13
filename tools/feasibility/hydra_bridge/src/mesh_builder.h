@@ -8,18 +8,15 @@
 
 #include <pxr/usd/sdf/path.h>
 
-#include <functional>
 #include <optional>
 #include <vector>
 
 namespace hydra_bridge {
 
-// The plan's index for a bound Hydra material path; -1 for none.
-using MaterialLookup = std::function<int(const pxr::SdfPath &)>;
-
 // nullopt when the mesh is invalid. Problems go to `problems` with the mesh's Hydra path as source;
-// an invalid primvar or subset is skipped with a diagnostic and the mesh still builds.
+// an invalid primvar or subset is skipped with a diagnostic and the mesh still builds. `slots` receives the
+// prim whose binding each material slot takes: the mesh, then each materialBind subset used.
 std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<const PrimRecord *> &subsets,
-                                  const MaterialLookup &materialIndex, Diagnostics &problems);
+                                  Diagnostics &problems, std::vector<const PrimRecord *> &slots);
 
 }  // namespace hydra_bridge

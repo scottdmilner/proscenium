@@ -8,6 +8,7 @@
 #include <pxr/imaging/hd/tokens.h>
 
 #include <sstream>
+#include <stdexcept>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -59,6 +60,45 @@ bp::dict Parameters(const std::vector<std::pair<TfToken, VtValue>> &parameters) 
     return result;
 }
 
+// A flat list, or a list of `tuple`-sized lists, as Blender nests array properties.
+template <class T>
+bp::list ListOf(const VtArray<T> &values, size_t tuple) {
+    bp::list result;
+    if (tuple == 0) {
+        for (const T &value : values) result.append(value);
+        return result;
+    }
+    for (size_t i = 0; i + tuple <= values.size(); i += tuple) {
+        bp::list row;
+        for (size_t j = 0; j < tuple; ++j) row.append(values[i + j]);
+        result.append(row);
+    }
+    return result;
+}
+
+// Python values Blender assigns as ID properties directly: bool, int, float, str, or (nested) lists of them.
+bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &properties) {
+    bp::dict result;
+    for (const auto &[name, property] : properties) {
+        const VtValue &value = property.value;
+        if (value.IsHolding<VtBoolArray>())
+            result[name] = ListOf(value.UncheckedGet<VtBoolArray>(), property.tupleSize);
+        else if (value.IsHolding<VtIntArray>())
+            result[name] = ListOf(value.UncheckedGet<VtIntArray>(), property.tupleSize);
+        else if (value.IsHolding<VtDoubleArray>())
+            result[name] = ListOf(value.UncheckedGet<VtDoubleArray>(), property.tupleSize);
+        else if (value.IsHolding<VtStringArray>())
+            result[name] = ListOf(value.UncheckedGet<VtStringArray>(), property.tupleSize);
+        else
+            result[name] = bp::object(value);
+    }
+    return result;
+}
+
+bp::object RangeOrNone(const std::optional<GfRange3d> &range) {
+    return range ? bp::object(bp::make_tuple(range->GetMin(), range->GetMax())) : bp::object();
+}
+
 bp::dict PrimDict(const PrimRecord &prim) {
     bp::dict record;
     record["type"] = prim.type.GetString();
@@ -67,7 +107,18 @@ bp::dict PrimDict(const PrimRecord &prim) {
     record["matrix"] = prim.matrix ? bp::object(*prim.matrix) : bp::object();
     record["visible"] = prim.visible;
     record["purpose"] = prim.purpose.GetString();
-    record["material_binding"] = PathOrNone(prim.materialBinding);
+    record["is_gprim"] = prim.isGprim;
+    bp::dict bindings;
+    for (const auto &[purpose, material] : prim.materialBindings) bindings[purpose.GetString()] = material.GetString();
+    record["material_bindings"] = bindings;  // flattened, per purpose ("" is allPurpose), without fallback
+    bp::dict usdBindings;
+    for (const auto &[purpose, material] : prim.usdBindings) usdBindings[purpose.GetString()] = material.GetString();
+    record["usd_bindings"] = usdBindings;  // UsdShade's, per exact purpose, from the source-info filter
+    bp::dict purposeVisibility;
+    for (const auto &[purpose, visibility] : prim.purposeVisibility) purposeVisibility[purpose.GetString()] = visibility.GetString();
+    record["purpose_visibility"] = purposeVisibility;  // authored opinions on this prim
+    record["source_double_sided"] = prim.sourceDoubleSided ? bp::object(*prim.sourceDoubleSided) : bp::object();
+    record["extent"] = RangeOrNone(prim.extent);
     record["primvars"] = Primvars(prim.primvars);
     if (const PrimvarRecord *points = prim.FindPrimvar(HdTokens->points)) record["points"] = bp::object(points->values);
     if (prim.mesh) {
@@ -83,6 +134,7 @@ bp::dict PrimDict(const PrimRecord &prim) {
         bp::dict subset;
         subset["type"] = prim.geomSubset->type.GetString();
         subset["indices"] = prim.geomSubset->indices;
+        subset["family_name"] = prim.geomSubset->familyName.GetString();
         record["subset"] = subset;
     }
     if (prim.instancedBy) {
@@ -174,9 +226,7 @@ bp::list PlanView::Meshes() const {
         record["corner_verts"] = mesh.cornerVerts;
         record["face_offsets"] = mesh.faceOffsets;
         record["material_indices"] = mesh.materialIndices;
-        bp::list slots;
-        for (int slot : mesh.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
-        record["material_slots"] = slots;
+        record["slot_count"] = mesh.slotCount;
         bp::list attributes;
         for (const Attribute &attribute : mesh.attributes) {
             bp::dict entry;
@@ -215,10 +265,17 @@ bp::list PlanView::Objects() const {
         record["instance_context"] = bp::tuple(PathList(object.instanceContext));
         record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
         record["placeholder_type"] = object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
+        record["bounds"] = RangeOrNone(object.bounds);
         record["matrix"] = object.matrix;
         record["visible"] = object.visible;
+        record["viewport"] = object.inViewport;
+        record["render"] = object.inRender;
         record["purpose"] = object.purpose.GetString();
+        bp::list slots;
+        for (int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+        record["material_slots"] = slots;
         record["primvars"] = Parameters(object.constantPrimvars);
+        record["properties"] = Properties(object.properties);
         result.append(record);
     }
     return result;
@@ -226,11 +283,54 @@ bp::list PlanView::Objects() const {
 
 bp::list PlanView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
 
-PlanView MakePlan(const SnapshotView &snapshot) {
+namespace {
+
+[[noreturn]] void Raise(PyObject *type, const std::string &message) {
+    PyErr_SetString(type, message.c_str());
+    bp::throw_error_already_set();
+    throw std::logic_error("unreachable");
+}
+
+std::string String(const bp::object &value, const char *what) {
+    bp::extract<std::string> text(value);
+    if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
+    return text();
+}
+
+// Prim purposes by their USD names; Hydra calls USD's default "geometry".
+void SetPurposes(const bp::object &names, TfTokenVector &purposes) {
+    if (names.is_none()) return;
+    purposes.clear();
+    const bp::list list(names);  // any iterable
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) {
+        const std::string name = String(list[i], "a purpose");
+        if (name == "default")
+            purposes.push_back(HdRenderTagTokens->geometry);
+        else if (name == "proxy" || name == "render" || name == "guide")
+            purposes.emplace_back(name);
+        else
+            Raise(PyExc_ValueError, "Unknown purpose '" + name + "': expected default, proxy, render, or guide");
+    }
+}
+
+void SetMaterialPurpose(const bp::object &name, TfToken &purpose) {
+    if (!name.is_none()) purpose = TfToken(String(name, "a material purpose"));
+}
+
+}  // namespace
+
+PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
+                  const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
+                  const bp::object &renderMaterialPurpose) {
+    PlanSettings settings;
+    SetPurposes(viewportPurposes, settings.viewport.purposes);
+    SetMaterialPurpose(viewportMaterialPurpose, settings.viewport.materialPurpose);
+    SetPurposes(renderPurposes, settings.render.purposes);
+    SetMaterialPurpose(renderMaterialPurpose, settings.render.materialPurpose);
     PlanPtr plan;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        plan = BuildPlan(*snapshot.data);
+        plan = BuildPlan(*snapshot.data, settings);
     }
     return PlanView{plan};
 }
@@ -242,6 +342,7 @@ void WrapViews() {
         .def("prim", &SnapshotView::Prim)
         .def("dump", &SnapshotView::Dump)
         .add_property("events", &SnapshotView::Events)
+        .add_property("copied", +[](const SnapshotView &view) { return view.data->copied; })
         .add_property("dirty_locators", &SnapshotView::DirtyLocators)
         .add_property("renames", &SnapshotView::Renames)
         .add_property("diagnostics", &SnapshotView::Diagnostics);
@@ -251,7 +352,10 @@ void WrapViews() {
         .add_property("materials", &PlanView::Materials)
         .add_property("objects", &PlanView::Objects)
         .add_property("diagnostics", &PlanView::Diagnostics);
-    bp::def("build_plan", MakePlan);
+    bp::def("build_plan", MakePlan,
+            (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
+             bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
+             bp::arg("render_material_purpose") = bp::object()));
 }
 
 }  // namespace hydra_bridge

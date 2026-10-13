@@ -1,5 +1,6 @@
 #include "scene_index_graph.h"
 
+#include <pxr/base/tf/diagnostic.h>
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/tokens.h>
@@ -65,8 +66,17 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
     UsdImagingCreateSceneIndicesInfo info;
     info.stage = stage;
     info.addDrawModeSceneIndex = false;
+    // Right after the stage scene index, where paths are still USD paths.
+    const UsdStagePtr weakStage(stage);
+    info.overridesSceneIndexCallback = [this, weakStage](const HdSceneIndexBaseRefPtr &input) -> HdSceneIndexBaseRefPtr {
+        sourceInfo_ = SourceInfoSceneIndex::New(input, weakStage);
+        return sourceInfo_;
+    };
     // Already flattens inherited state at every instancing level.
     indices_ = UsdImagingCreateSceneIndices(info);
+    // Every capture relies on the filter; a USD that skipped the overrides callback would build a graph
+    // without it. The bridge's constructor raises this error.
+    if (!sourceInfo_) TF_RUNTIME_ERROR("UsdImagingCreateSceneIndices didn't call the overrides callback");
     HdSceneIndexBaseRefPtr scene = indices_.finalSceneIndex;
     // Skinned points become plain primvars, computed on the CPU when read.
     scene = HdSiExtComputationPrimvarPruningSceneIndex::New(scene);
@@ -87,12 +97,15 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
 SceneIndexGraph::~SceneIndexGraph() {
     terminal_->RemoveObserver(HdSceneIndexObserverPtr(&observer_));
     // The stage scene index holds a strong stage reference; drop it so a caller-released stage can expire.
+    if (sourceInfo_) sourceInfo_->Detach();
     indices_.stageSceneIndex->SetStage(nullptr);
 }
 
 void SceneIndexGraph::Advance(UsdTimeCode time) {
+    if (sourceInfo_) sourceInfo_->SetTime(time);
     indices_.stageSceneIndex->SetTime(time);
     indices_.stageSceneIndex->ApplyPendingUpdates();
+    if (sourceInfo_) sourceInfo_->ApplyPendingUpdates();
     // The batching scene index is empty until its first flush, and holds notices until each one.
     batching_->Flush();
 }

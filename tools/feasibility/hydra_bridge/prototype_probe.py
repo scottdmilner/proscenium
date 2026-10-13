@@ -24,6 +24,7 @@ def run(module_dir: Path) -> dict[str, Any]:
 
     sys.path.insert(0, str(HERE))
     import apply
+    from cases import oracle
 
     checks: list[str] = []
 
@@ -56,17 +57,18 @@ def run(module_dir: Path) -> dict[str, Any]:
 
         objects = plan.objects
         by_source = {o["source"]: o for o in objects}
-        expected = _drawn_gprims(stage)
+        expected = oracle.drawn_gprims(stage)
         check("one object per source", len(by_source) == len(objects), [o["source"] for o in objects])
         check(
             "one object per drawn gprim, with its native-instance context",
             {source: o["instance_context"] for source, o in by_source.items()} == expected,
             (sorted(by_source), sorted(expected)),
         )
-        cache = UsdGeom.XformCache(TIME)
-        wrong = [s for s, o in by_source.items() if not _close(o["matrix"], _world(cache, stage, s))]
+        wrong = [s for s, o in by_source.items() if not oracle.close(o["matrix"], oracle.world(stage, s, TIME))]
         check("world transforms match UsdGeom", not wrong, wrong)
-        wrong = [s for s, o in by_source.items() if o["primvars"].get("displayColor") != _display_color(stage, s)]
+        wrong = [
+            s for s, o in by_source.items() if o["primvars"].get("displayColor") != oracle.display_color(stage, s, TIME)
+        ]
         check("displayColor matches USD primvar inheritance through instances", not wrong, wrong)
 
         def codes(source: str) -> set[str]:
@@ -111,7 +113,17 @@ def run(module_dir: Path) -> dict[str, Any]:
         blender_scene.collection.children.link(collection)
         created: dict[str, Any] = dict(zip((o["source"] for o in objects), apply.apply(plan, collection), strict=True))
         check("every planned object reaches Blender", all(o.name in collection.objects for o in created.values()))
-        check("placeholder is an empty", created["/World/Hair"].type == "EMPTY")
+        # The curves author no extent, so the placeholder takes USD's computed one and draws as bounds.
+        hair_obj: Any = created["/World/Hair"]
+        hair_bounds = oracle.placeholder_bounds(stage, "/World/Hair", TIME)
+        check(
+            "placeholder is a box drawn as bounds, with USD's computed extent",
+            hair_obj.type == "MESH"
+            and hair_obj.display_type == "BOUNDS"
+            and hair_bounds is not None
+            and [tuple(v) for v in hair["bounds"]] == [tuple(v) for v in hair_bounds],
+            (hair_obj.type, hair["bounds"], hair_bounds),
+        )
 
         grid = created["/World/Grid"].data
         usd_grid: Any = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Grid"))  # stubs: Gf values are not iterable
@@ -130,8 +142,9 @@ def run(module_dir: Path) -> dict[str, Any]:
             "indexed face-varying UVs reach a UV map",
             "st" in grid.uv_layers and [tuple(d.uv) for d in grid.uv_layers["st"].data] == [tuple(v) for v in st],
         )
-        face_materials = [grid.materials[p.material_index]["proscenium_sources"] for p in grid.polygons]
-        expected_materials = _face_materials(stage, usd_grid)
+        grid_slots = created["/World/Grid"].material_slots
+        face_materials = [grid_slots[p.material_index].material["proscenium_sources"] for p in grid.polygons]
+        expected_materials = oracle.face_materials(stage, "/World/Grid", TIME)
         check(
             "GeomSubset faces get the subset's material slot",
             all(path in sources for path, sources in zip(expected_materials, face_materials, strict=True)),
@@ -163,52 +176,6 @@ def run(module_dir: Path) -> dict[str, Any]:
             "materials": len(plan.materials),
             "diagnostics": diagnostics,
         }
-
-
-def _drawn_gprims(stage: Any) -> dict[str, tuple[str, ...]]:
-    """Every gprim USD draws, through instance proxies, with its native instance roots, outermost first."""
-    from pxr import Usd, UsdGeom
-
-    result = {}
-    for prim in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate)):
-        if prim.IsA(UsdGeom.Gprim):  # ty: ignore[no-matching-overload] - IsA also takes a schema class
-            roots = []
-            ancestor = prim.GetParent()
-            while ancestor and not ancestor.IsPseudoRoot():
-                if ancestor.IsInstance():
-                    roots.append(str(ancestor.GetPath()))
-                ancestor = ancestor.GetParent()
-            result[str(prim.GetPath())] = tuple(reversed(roots))
-    return result
-
-
-def _world(cache: Any, stage: Any, source: str) -> Any:
-    return cache.GetLocalToWorldTransform(stage.GetPrimAtPath(source))
-
-
-def _close(a: Any, b: Any) -> bool:
-    return all(abs(a[row][col] - b[row][col]) < 1e-5 for row in range(4) for col in range(4))
-
-
-def _display_color(stage: Any, source: str) -> Any:
-    from pxr import UsdGeom
-
-    primvar = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(source)).FindPrimvarWithInheritance("displayColor")
-    return primvar.Get(TIME) if primvar and primvar.HasAuthoredValue() else None
-
-
-def _face_materials(stage: Any, mesh: Any) -> list[str]:
-    """Each face's bound material: its materialBind subset's, else the mesh's."""
-    from pxr import UsdGeom, UsdShade
-
-    def bound(prim: Any) -> str:
-        return str(UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0].GetPath())
-
-    faces = [bound(mesh.GetPrim())] * len(mesh.GetFaceVertexCountsAttr().Get(TIME))
-    for subset in UsdGeom.Subset.GetGeomSubsets(mesh, "face", "materialBind"):
-        for face in subset.GetIndicesAttr().Get(TIME):
-            faces[face] = bound(subset.GetPrim())
-    return faces
 
 
 if __name__ == "__main__":

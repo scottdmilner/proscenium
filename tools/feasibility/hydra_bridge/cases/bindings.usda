@@ -1,0 +1,260 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, the cases research flagged as Hydra risks:
+# - Collection-based bindings. World binds Green to the Picked collection, which includes Loose (outside
+#   any instance) and Inside/Blade (inside a native instance). Outside/Blade is another instance of the
+#   same asset, not in the collection.
+# - Purpose-specific bindings without an allPurpose fallback in Hydra. Purposes binds Full for the full
+#   purpose. Inherits has no binding of its own. Own binds Blue for allPurpose, and PreviewOnly binds
+#   Preview for the preview purpose. UsdShade tries the requested purpose up the whole hierarchy before
+#   allPurpose.
+# - UsdGeomVisibilityAPI (purpose visibility), which Hydra doesn't image. PurposeVis hides proxies, so
+#   Proxy is invisible. Render keeps the render fallback, inherited (visible). Guide keeps the guide
+#   fallback (invisible), and ShownGuide overrides it. Inside an instance, Rig's root hides render
+#   prims, and its guide is shown from inside the prototype.
+# - A collection binding authored on the instanced asset's root (OpenUSD #3690's shape): Tagged binds
+#   Bark to its Some collection, which includes Blade, and KitA and KitB are instances of it.
+# - A binding without MaterialBindingAPI: Legacy binds Blue for allPurpose without applying the API.
+#   UsdShade honors it (with a warning), so it binds Blue, or Full for the full purpose from Purposes.
+
+def Xform "World" (
+    prepend apiSchemas = ["CollectionAPI:Picked", "MaterialBindingAPI"]
+)
+{
+    rel collection:Picked:includes = [</World/Loose>, </World/Inside/Blade>]
+    rel material:binding:collection:Picked = [</World.collection:Picked>, </World/Looks/Green>]
+
+    def Scope "Looks"
+    {
+        def Material "Green"
+        {
+        }
+
+        def Material "Blue"
+        {
+        }
+
+        def Material "Full"
+        {
+        }
+
+        def Material "Preview"
+        {
+        }
+    }
+
+    def Mesh "Loose"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Xform "Inside" (
+        instanceable = true
+        prepend references = </Assets/Leaf>
+    )
+    {
+    }
+
+    def Xform "Outside" (
+        instanceable = true
+        prepend references = </Assets/Leaf>
+    )
+    {
+        double3 xformOp:translate = (2, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Purposes" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        rel material:binding:full = </World/Looks/Full>
+
+        def Mesh "Inherits"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 2, 0), (1, 2, 0), (0, 3, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Own" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(2, 2, 0), (3, 2, 0), (2, 3, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/Blue>
+        }
+
+        def Mesh "PreviewOnly" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(4, 2, 0), (5, 2, 0), (4, 3, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding:preview = </World/Looks/Preview>
+        }
+
+        def Mesh "Legacy"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(6, 2, 0), (7, 2, 0), (6, 3, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Looks/Blue>
+        }
+    }
+
+    def Xform "KitA" (
+        instanceable = true
+        prepend references = </Assets/Tagged>
+    )
+    {
+        double3 xformOp:translate = (0, -6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "KitB" (
+        instanceable = true
+        prepend references = </Assets/Tagged>
+    )
+    {
+        double3 xformOp:translate = (2, -6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "PurposeVis" (
+        prepend apiSchemas = ["VisibilityAPI"]
+    )
+    {
+        uniform token proxyVisibility = "invisible"
+
+        def Mesh "Proxy"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 4, 0), (1, 4, 0), (0, 5, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "proxy"
+        }
+
+        def Mesh "Render"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(2, 4, 0), (3, 4, 0), (2, 5, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "render"
+        }
+
+        def Mesh "Guide"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(4, 4, 0), (5, 4, 0), (4, 5, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "guide"
+        }
+
+        def Mesh "ShownGuide" (
+            prepend apiSchemas = ["VisibilityAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(6, 4, 0), (7, 4, 0), (6, 5, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "guide"
+            uniform token guideVisibility = "visible"
+        }
+
+        def Mesh "Plain"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(8, 4, 0), (9, 4, 0), (8, 5, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Xform "Rigged" (
+        instanceable = true
+        prepend apiSchemas = ["VisibilityAPI"]
+        prepend references = </Assets/Rig>
+    )
+    {
+        uniform token renderVisibility = "invisible"
+    }
+}
+
+# Abstract, so only its references are drawn.
+class Xform "Assets"
+{
+    def Xform "Leaf"
+    {
+        def Mesh "Blade"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, -2, 0), (1, -2, 0), (0, -1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Xform "Rig"
+    {
+        def Mesh "Render"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 6, 0), (1, 6, 0), (0, 7, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "render"
+        }
+
+        def Mesh "Guide" (
+            prepend apiSchemas = ["VisibilityAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(2, 6, 0), (3, 6, 0), (2, 7, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token purpose = "guide"
+            uniform token guideVisibility = "visible"
+        }
+    }
+
+    def Xform "Tagged" (
+        prepend apiSchemas = ["CollectionAPI:Some", "MaterialBindingAPI"]
+    )
+    {
+        rel collection:Some:includes = </Assets/Tagged/Blade>
+        rel material:binding:collection:Some = [</Assets/Tagged.collection:Some>, </Assets/Tagged/Looks/Bark>]
+
+        def Scope "Looks"
+        {
+            def Material "Bark"
+            {
+            }
+        }
+
+        def Mesh "Blade"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+}

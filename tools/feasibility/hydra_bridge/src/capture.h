@@ -9,6 +9,11 @@ namespace hydra_bridge {
 // Call without the GIL. Tf errors and warnings posted during the capture become snapshot
 // diagnostics, attributed to the prim being read when they were posted. At UsdTimeCode::Default(),
 // every sample-time query reports false, so time-variance detection (Phase D) needs a numeric time.
-SnapshotPtr Capture(SceneIndexGraph &graph, pxr::UsdTimeCode time);
+//
+// With `previous`, the snapshot this graph produced last, the capture is incremental: prims that no
+// notice since then named (added, dirtied, or under a removed or renamed path) share the previous
+// snapshot's static copies instead of being copied again. Notices may over-report but are trusted not
+// to miss a change; cases/edits.py checks that against full captures.
+SnapshotPtr Capture(SceneIndexGraph &graph, pxr::UsdTimeCode time, const Snapshot *previous = nullptr);
 
 }  // namespace hydra_bridge

@@ -13,6 +13,8 @@ Respect effective inherited visibility separately from purpose.
 
 Exclude `guide` by default. Support both destinations from the same evaluated snapshot.
 
+A `guide` prim whose effective visibility is explicitly visible, through an authored `guideVisibility` on it or an ancestor, displays in the viewport.
+
 Do not traverse only currently visible prims: organization, render-only content, inherited state, and supported descendants may still be needed.
 
 ## Models and Unsupported Content

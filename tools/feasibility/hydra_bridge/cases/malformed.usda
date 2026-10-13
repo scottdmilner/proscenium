@@ -1,0 +1,292 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "malformed input". Hydra validates none of this, so every check is the core's.
+# Each prim under Bad is broken in one way, named by the prim, and every other value is valid:
+# - topology errors (index out of range, negative index, counts that don't match the indices, a
+#   two-corner face, a negative count, counts whose int sum wraps around to the index count, a hole
+#   index out of range, an unknown subdivision scheme, an unknown orientation, points of the wrong type,
+#   no points at all) must make the mesh a placeholder with an error;
+# - faces that are valid USD but that Blender's Mesh.validate() deletes (one that repeats a point, and a
+#   later face on an earlier face's points in either winding) are left out with a warning, as Blender
+#   would repair them, and the rest of the mesh builds with its per-face data and subsets aligned;
+# - primvar and subset errors (a primvar with too few values, an index past its values, and in
+#   BadPrimvars a negative index, too few indices, an unknown interpolation, uniform and face-varying
+#   count mismatches and an indexed constant whose index is past its values; negative and out-of-range
+#   subset indices) must skip that primvar or subset with an error and still build the mesh.
+# Under Sparse, an empty mesh and a mesh with points but no faces are valid USD and must build and apply.
+# Good is valid and uses Odd, a material with a timecode input, a type Hydra can't make a data source for,
+# so capture posts a Tf warning while reading it.
+
+def Xform "World"
+{
+    def Material "Odd"
+    {
+        token outputs:surface.connect = </World/Odd/Surface.outputs:surface>
+
+        def Shader "Surface"
+        {
+            uniform token info:id = "UsdPreviewSurface"
+            timecode inputs:unsupported = 3
+            color3f inputs:diffuseColor = (0.5, 0.5, 0.5)
+            token outputs:surface
+        }
+    }
+
+    def Mesh "Good" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Odd>
+        float[] primvars:weight = [0, 1, 2] (
+            interpolation = "vertex"
+        )
+    }
+
+    def Scope "Bad"
+    {
+        def Mesh "IndexOutOfRange"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 7]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "NegativeIndex"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, -1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "CountMismatch"
+        {
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "TwoCornerFace"
+        {
+            int[] faceVertexCounts = [2]
+            int[] faceVertexIndices = [0, 1]
+            point3f[] points = [(0, 0, 0), (1, 0, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "HoleOutOfRange"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            int[] holeIndices = [5]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "UnknownScheme"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "loopy"
+        }
+
+        def Mesh "WrongPointsType"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            int[] points = [0, 1, 2]
+            uniform token subdivisionScheme = "none"
+        }
+
+        # 2147483647 + 2147483647 + 5 wraps around to 3 in 32-bit arithmetic, matching the three indices.
+        def Mesh "CornerCountOverflow"
+        {
+            int[] faceVertexCounts = [2147483647, 2147483647, 5]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "NegativeCount"
+        {
+            int[] faceVertexCounts = [-3, 6]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "UnknownOrientation"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token orientation = "sideways"
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "MissingPoints"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "RepeatedPoint"
+        {
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 0, 1]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        # Face 1 lists face 0's points from another starting corner, so it is left out. Face 2 must keep
+        # its own faceId (12) and the subset's slot, which also lists the left-out face 1.
+        def Mesh "DuplicateFace"
+        {
+            int[] faceVertexCounts = [3, 3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 1, 2, 0, 1, 3, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            float[] primvars:faceId = [10, 11, 12] (
+                interpolation = "uniform"
+            )
+
+            def GeomSubset "Later"
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [1, 2]
+            }
+        }
+
+        # A back-to-back pair: the second face is the first reversed. Valid USD, but Blender keeps one.
+        def Mesh "ReversedDuplicateFace"
+        {
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 1]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        # One triangle. Each primvar but fine is broken in the way its name says.
+        def Mesh "BadPrimvars"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            float[] primvars:fine = [0, 1, 2] (
+                interpolation = "vertex"
+            )
+            float[] primvars:negativeIndex = [0, 1] (
+                interpolation = "vertex"
+            )
+            int[] primvars:negativeIndex:indices = [0, -1, 1]
+            float[] primvars:shortIndices = [0, 1, 2] (
+                interpolation = "vertex"
+            )
+            int[] primvars:shortIndices:indices = [0, 1]
+            float[] primvars:unknownInterpolation = [0, 1, 2] (
+                interpolation = "sideways"
+            )
+            float[] primvars:emptyUniform = [] (
+                interpolation = "uniform"
+            )
+            float[] primvars:longFaceVarying = [0, 1, 2, 3] (
+                interpolation = "faceVarying"
+            )
+            color3f[] primvars:displayColor = [(1, 0, 0), (0, 1, 0)] (
+                interpolation = "constant"
+            )
+            int[] primvars:displayColor:indices = [5]
+        }
+
+        def Mesh "ShortPrimvar"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            float[] primvars:weight = [0, 1] (
+                interpolation = "vertex"
+            )
+        }
+
+        def Mesh "PrimvarIndexOutOfRange"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            texCoord2f[] primvars:st = [(0, 0), (1, 0)] (
+                interpolation = "faceVarying"
+            )
+            int[] primvars:st:indices = [0, 1, 9]
+        }
+
+        def Mesh "NegativeSubsetIndex" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </World/Odd>
+
+            def GeomSubset "Broken" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [-1]
+                rel material:binding = </World/Odd>
+            }
+        }
+
+        def Mesh "SubsetIndexOutOfRange"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+
+            def GeomSubset "Broken" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [4]
+                rel material:binding = </World/Odd>
+            }
+        }
+    }
+
+    def Scope "Sparse"
+    {
+        def Mesh "Empty"
+        {
+            int[] faceVertexCounts = []
+            int[] faceVertexIndices = []
+            point3f[] points = []
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "PointsOnly"
+        {
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+}
