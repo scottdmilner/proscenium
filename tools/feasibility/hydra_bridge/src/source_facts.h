@@ -29,6 +29,9 @@ struct SourceInfoTokens {
     static const pxr::TfToken &StrongPurposes();  // token array: bound strongerThanDescendants; "" is allPurpose
     // token array, on a gprim or point instancer: authored attributes UsdImaging drops (DroppedAttribute)
     static const pxr::TfToken &DroppedAttributes();
+    // token array, on an imageable prim or subset without MaterialBindingAPI: its authored material:binding
+    // relationships, which UsdShade still honors (with a warning) for compatibility
+    static const pxr::TfToken &BindingsWithoutApi();
     // The purpose-visibility fields are named by the purpose they control: guide, proxy, render.
 };
 

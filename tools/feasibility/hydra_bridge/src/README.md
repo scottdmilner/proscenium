@@ -27,7 +27,8 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
    - UsdShade's resolved binding per material purpose, and the purposes a prim binds `strongerThanDescendants`;
    - USD's verdict on a mesh's materialBind family (`UsdGeomSubset::ValidateFamily`);
    - for prims Hydra doesn't image (HermiteCurves), their USD type;
-   - on gprims and point instancers, the authored attributes UsdImaging drops (not primvars, not in a schema), so the planner can warn.
+   - on gprims and point instancers, the authored attributes UsdImaging drops (not primvars, not in a schema), so the planner can warn;
+   - material:binding relationships authored without `MaterialBindingAPI`, which UsdShade honors only for compatibility, so the planner can warn.
 
    For prims UsdImaging doesn't image at all (no `__usdPrimInfo`) it supplies `UsdImagingDataSourcePrim`, UsdImaging's own data for a prim without an adapter (transform, visibility, purpose, authored extent, primvars). It runs on the filter's own `UsdImagingDataSourceStageGlobals` subclass, which gives it the graph's time and records what it flags as time-varying, so a time change dirties exactly that. For curves, points and HermiteCurves without an authored extent it supplies USD's computed extent, so their placeholders show bounds. Its containers read USD at the graph's time, cached per prim and rebuilt only when that prim or something its facts depend on changes (an ancestor's binding, a collection, a mesh's subsets), and it listens to the stage for edits Hydra doesn't notice, dirtying the prims concerned when the graph advances.
 
@@ -126,7 +127,7 @@ Only the schemas planning reads, each copied whole with `HdMakeStaticCopy`. The 
 - **Errors, not crashes.**
   - Every data source is null-checked when its records are read, and every index is validated before it is used.
   - Invalid geometry becomes a placeholder and a diagnostic, never an exception partway through a plan.
-  - Tf errors and warnings during capture become diagnostics; only the bridge constructor raises them. (Only a warning has been exercised during capture.)
+  - Tf errors and warnings during capture become diagnostics; only the bridge constructor raises them. Warnings posted while the bridge is built join its first capture's diagnostics, without a source; those posted at release are still printed. (Only warnings have been exercised.)
   - Recursion over instancing is depth-limited.
 - **Pulls register time-variance.** Copying pulls each planned schema, so the stage scene index flags its time-varying values, and `SetTime` dirties them. The source-info filter dirties what its stage globals recorded as time-varying when the time changes: what `UsdImagingDataSourcePrim` and its purpose-visibility attribute data sources flag, computed extents of animated points, and animated subset indices, which UsdImaging reads at the current time but never flags. It also dirties the prims whose source facts a stage edit changed.
 - **Lifetime.** The plan and snapshot are `std::shared_ptr<const …>`. Python views hold that pointer, and the Vt arrays they return keep their own storage alive. A released stage can outlive `release()` briefly (cause not identified).

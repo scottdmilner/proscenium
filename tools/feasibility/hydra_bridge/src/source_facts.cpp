@@ -68,6 +68,10 @@ const TfToken &SourceInfoTokens::StrongPurposes() {
     return token;
 }
 
+const TfToken &SourceInfoTokens::BindingsWithoutApi() {
+    static const TfToken token("bindingsWithoutApi");
+    return token;
+}
 const TfToken &SourceInfoTokens::DroppedAttributes() {
     static const TfToken token("droppedAttributes");
     return token;
@@ -226,6 +230,15 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
     if (UsdGeomImageable(prim) || UsdGeomSubset(prim)) {
         HdContainerDataSourceHandle bindings = ResolvedBindings(prim);
         if (bindings) add(SourceInfoTokens::Bindings(), bindings);
+    }
+    // UsdShade honors these too, posting a Tf warning each time it resolves them; that warning can come while
+    // the bridge is built, or from any caller, so the plan reports the fact itself.
+    if ((UsdGeomImageable(prim) || UsdGeomSubset(prim)) && !prim.HasAPI<UsdShadeMaterialBindingAPI>()) {
+        VtTokenArray unapplied;
+        for (const UsdRelationship &rel : prim.GetRelationships())
+            if (TfStringStartsWith(rel.GetName().GetString(), "material:binding") && rel.HasAuthoredTargets())
+                unapplied.push_back(rel.GetName());
+        if (!unapplied.empty()) add(SourceInfoTokens::BindingsWithoutApi(), Retained(unapplied));
     }
     if (prim.HasAPI<UsdShadeMaterialBindingAPI>()) {
         const UsdShadeMaterialBindingAPI binding(prim);

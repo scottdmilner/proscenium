@@ -1,6 +1,7 @@
 // The object Python holds: a caller's stage and the retained scene-index graph over it.
 #pragma once
 
+#include "diagnostics.h"
 #include "scene_index_graph.h"
 #include "snapshot.h"
 
@@ -13,7 +14,8 @@ namespace hydra_bridge {
 
 class Bridge {
 public:
-    // Raises Tf errors posted while building the graph. The stage arrives as a weak pointer: Tf's Python
+    // Raises Tf errors posted while building the graph; warnings posted then go to the first capture's
+    // diagnostics, since building already reads the stage. The stage arrives as a weak pointer: Tf's Python
     // converter for a TfRefPtr argument moves ownership from the Python object into C++, so a bridge
     // taking a TfRefPtr would destroy a stage its caller still holds when the bridge released it.
     explicit Bridge(const pxr::UsdStagePtr &stage);
@@ -35,6 +37,7 @@ private:
     pxr::UsdStagePtr stage_;
     std::unique_ptr<SceneIndexGraph> graph_;
     SnapshotPtr last_;  // the graph's notices since this capture are the ones not yet taken
+    Diagnostics pending_;  // warnings posted while building the graph, until the first capture takes them
 };
 
 }  // namespace hydra_bridge

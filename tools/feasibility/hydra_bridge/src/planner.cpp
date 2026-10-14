@@ -87,6 +87,9 @@ private:
                                 mesh->subdivisionScheme == PxOsdOpenSubdivTokens->loop;
         plan_->meshes.push_back(std::move(*mesh));
         AddObjects(prim, static_cast<int>(plan_->meshes.size() - 1), TfToken(), &slots);
+        // A subset has no object of its own; its bindings are reported on the mesh's copies.
+        for (const PrimRecord *subset : subsets_[prim.path])
+            WarnBindingsWithoutApi(*subset, prim.path, "Subset " + subset->path.GetName() + ": ");
         if (!prim.materialBindFamilyIssue.empty())
             MapToSources({Severity::Warning, "invalid-subset-family", prim.path,
                           "USD rejects the materialBind family: " + prim.materialBindFamilyIssue});
@@ -170,6 +173,17 @@ private:
             MapToSources({Severity::Warning, "dropped-attribute", prim.path,
                           "Attributes that are neither primvars nor schema attributes are not transferred: " + names});
         }
+        WarnBindingsWithoutApi(prim, prim.path, "");
+    }
+
+    // UsdShade honors a binding authored without MaterialBindingAPI, but only for compatibility.
+    void WarnBindingsWithoutApi(const PrimRecord &bound, const SdfPath &source, const std::string &what) {
+        if (bound.bindingsWithoutApi.empty()) return;
+        std::string names;
+        for (const TfToken &name : bound.bindingsWithoutApi) names += (names.empty() ? "" : ", ") + name.GetString();
+        MapToSources({Severity::Warning, "binding-without-api", source,
+                      what + "Material bindings authored without MaterialBindingAPI, which UsdShade honors only for "
+                             "compatibility: " + names});
     }
 
     // The prim's own constant primvars, an indexed one flattened through its index.

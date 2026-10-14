@@ -73,6 +73,7 @@ struct PrimRecord {
     bool pointInstancerPrototype = false;
     std::string materialBindFamilyIssue;  // source-info filter: why USD rejects this mesh's materialBind family
     pxr::TfTokenVector droppedAttributes;  // source-info filter: authored attributes UsdImaging drops
+    pxr::TfTokenVector bindingsWithoutApi;  // source-info filter: material:binding relationships without the API
     pxr::SdfPath originPath;  // primOrigin/scenePath: prototype-relative inside prototypes
     std::optional<pxr::GfMatrix4d> matrix;
     bool visible = true;

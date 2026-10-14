@@ -460,7 +460,7 @@ Record which values each signal reports and where they disagree, and check the v
 
 Branch `m01b-phase-d`, off `m01b-phase-c`.
 
-- **Status (2026-10-13): passes locally, CI pending.** The `animation` case passes in the macOS wheel and binary (125 correctness checks in all). Results are in the [feasibility record](../feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d).
+- **Status (2026-10-14): passes on all three platforms.** The `animation` case, and the instances case with its richer leaf meshes, pass in the wheel and the binary on macOS, Windows and Linux, with the same findings everywhere: 125 correctness checks per host, plus the loading (42; 43 on Windows) and prototype (20) checks, with no compiler warnings ("Hydra bridge" workflow, [run 38636577232](https://github.com/scottdmilner/proscenium/actions/runs/38636577232), commit `4ae78fb`). Results are in the [feasibility record](../feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d).
 - **What earlier phases already gave.** Capture took numeric times and recorded dirty locators (Phase B). The edits case checked values at four times, including a static mesh under an animated parent, and measured over-reporting (Phase C). Neither had compared what a time change dirties with the scene's construction.
 - **Decision (with the user, 2026-10-13): one time code per capture, no interval query.** `GetContributingSampleTimesForInterval` answers a motion-blur question: which samples reconstruct a value over a shutter window around the current frame. Its header says so, and Blender computes its own motion blur.
   - A first version of this phase queried it over frame ranges and recorded its window semantics (bracketing samples, window ends, false at a zero-width sample frame) as misreports.
@@ -476,6 +476,11 @@ Branch `m01b-phase-d`, off `m01b-phase-c`.
   - UsdImaging never flags animated subset indices, so incremental captures kept stale subsets. The filter now flags them.
 - **Skinning works through the graph's ext-computation pruning,** for one linear-blend skin with identity transforms: Body's points match `ComputeSkinnedPoints` at every time. UsdSkel's primvars still reach the plan as attributes and a property: recorded, not fixed, since it is M8's geometry policy.
 - **Filter rebuilds per time change are wider than needed** (16 on the case's scene, from every dirtied prim; 3 in an ad hoc build that invalidated only for extents). Not changed; Phase E measures the cost (listed in its plan).
+- **Warnings posted outside capture** (2026-10-14, after the CI run above). The CI logs printed 491 HermiteCurves warnings and 131 for bindings without `MaterialBindingAPI`, all expected. But those posted while a bridge is built never became diagnostics, because only a capture collects them. Two fixes, each with checks a mutation run showed fail without them:
+  - The bridge collects warnings while it is built and adds them, without a source, to its first capture's diagnostics, as events reach the capture after them. Release-time warnings are still printed, since no capture follows.
+  - The filter reports bindings authored without `MaterialBindingAPI` (`bindingsWithoutApi`), so the plan warns on each copy's source whenever USD would honor such a binding, independent of when USD posts its own warning.
+
+  128 checks pass in both hosts on all three platforms, with no compiler warnings ([run 38642723300](https://github.com/scottdmilner/proscenium/actions/runs/38642723300), commit `a1c8b80`).
 - **Notes for M4.** The record's [notes on evaluating frames](../feasibility/runtime-record.md#for-m4-evaluating-frames): per-frame capture with dirty-driven change discovery, caching as a layer above it, and direct USD when a representation needs authored keys. The M4 milestone links to them.
 
 ## Phase E — Measurements

@@ -14,6 +14,10 @@ namespace hydra_bridge {
 // notice since then named (added, dirtied, or under a removed or renamed path) share the previous
 // snapshot's static copies instead of being copied again. Notices may over-report but are trusted not
 // to miss a change; cases/edits.py checks that against full captures.
-SnapshotPtr Capture(SceneIndexGraph &graph, pxr::UsdTimeCode time, const Snapshot *previous = nullptr);
+//
+// `carried` are diagnostics posted before this capture, outside any capture (while the graph was built). They
+// join the graph's own, unattributed to a prim.
+SnapshotPtr Capture(SceneIndexGraph &graph, pxr::UsdTimeCode time, const Snapshot *previous = nullptr,
+                    Diagnostics carried = {});
 
 }  // namespace hydra_bridge

@@ -130,6 +130,14 @@ def run(case: Case) -> None:
     bound = {m for s in sources for m in oracle.face_materials(stage, s, TIME) if m is not None}
     material_sources = [path for material in plan.materials for path in material["sources"]]
     not_material = [p for p in material_sources if not stage.GetPrimAtPath(p).IsA(UsdShade.Material)]  # ty: ignore[no-matching-overload]
+    warned = {d["source"] for d in plan.diagnostics if d["code"] == "binding-without-api"}
+    usd = {s for s in sources if oracle.binds_without_api(stage.GetPrimAtPath(s))}
+    case.check(
+        "every copy of a prototype prim binding without MaterialBindingAPI gets a binding-without-api warning on "
+        "its own source, and no other copy does",
+        warned == usd and len(usd) == 40 and all(s.endswith("/NoApi") for s in usd),
+        (len(warned), len(usd), sorted(warned ^ usd)[:4]),
+    )
     case.check(
         "instanced materials list each USD source once, every source is a Material, and every bound material is one",
         len(material_sources) == len(set(material_sources)) and not not_material and bound <= set(material_sources),
