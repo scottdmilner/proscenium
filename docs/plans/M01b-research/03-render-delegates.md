@@ -360,10 +360,9 @@ This gives, for each instance tuple, the chain of USD instance roots, built with
 ## 6. Time-sampled data (input to the M1b probe)
 
 - Sample-time queries are relative to the stage scene index's current time. `UsdImagingDataSourceAttribute::GetContributingSampleTimesForInterval` returns `false` (not varying) when `!ValueMightBeTimeVarying()` or the time is not numeric. Otherwise it returns `GetTimeSamplesInInterval` plus the bracketing samples, offset by the current time **[V usdImaging/dataSourceAttribute.h:71-115]**.
-- **Flattened transforms merge parent and local sample times** **[V hd/flattenedXformDataSourceProvider.cpp:31-40]**. **[inferred]** So a static mesh under an animated ancestor should report a varying `xform.matrix` in the flattened scene. That is the case the milestone asks to verify.
+- **Flattened transforms merge parent and local sample times** **[V hd/flattenedXformDataSourceProvider.cpp:31-40]**. **[inferred]** So a static mesh under an animated ancestor should report a varying `xform.matrix` in the flattened scene.
 - Flattened indexed primvars merge the sample times of values and indices **[V hd/primvarSchema.cpp:114-123]**.
 - The renderers ask over the shutter interval, and fall back to offset 0 when the answer is "not varying" **[V sceneIndexAdapterSceneDelegate.cpp:2395-2420]**.
-- **[inferred]** A non-render consumer can call `GetContributingSampleTimesForInterval(-inf, +inf)`, or the stage range relative to now, on the points, xform, visibility, topology and primvar data sources to classify each value as static or animated. Data sources computed by filters, such as implicit → mesh points from a varying radius, must forward this correctly. Verify per filter.
 
 ---
 
@@ -481,7 +480,7 @@ Do not adopt (a).
    - for point instancers use (instancer path, index), as dev HdPrman does.
    - **For representation, prefer HdPrman's approach** (nested prototype groups, flattening only beyond a depth or for unsupported per-instance attributes, analogous to Blender collection instancing) **over Embree's full Cartesian flattening.**
 5. **Validate before Blender** (§8), and turn Tf warnings into diagnostics.
-6. **Classify time variation with `GetContributingSampleTimesForInterval`** on the *flattened* data sources (§6). Probe every filter in the chain.
+6. **Evaluate one time code per capture**, and learn what a time change affects from the dirties `SetTime` sends. Probe every filter in the chain.
 7. **Materials:**
    - choose the network with `GetMaterialNetwork({mtlx?, universal})` (Storm's rule);
    - convert with `HdConvertToHdMaterialNetwork2`, or read through `HdDataSourceMaterialNetworkInterface`;

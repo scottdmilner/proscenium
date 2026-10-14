@@ -9,6 +9,7 @@
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/relationship.h>
 #include <pxr/usd/usd/timeCode.h>
+#include <pxr/usdImaging/usdImaging/dataSourceStageGlobals.h>
 
 #include <cstdint>
 #include <functional>
@@ -66,8 +67,10 @@ bool SourceFact(const pxr::UsdPrim &prim, const pxr::TfToken &name);
 // Its value reaches neither the snapshot nor Blender, so the planner warns about it.
 bool DroppedAttribute(const pxr::UsdPrim &prim, const pxr::TfToken &name);
 
-// The source facts of `prim` (the contents of the prosceniumSource container); null for none.
-pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim);
+// The source facts of `prim` (the contents of the prosceniumSource container); null for none. Facts that
+// can be animated (authored purpose visibility) are UsdImaging attribute data sources on `globals`: they
+// read at its time and are flagged time-varying, so a time change dirties them.
+pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim, const pxr::UsdImagingDataSourceStageGlobals &globals);
 
 // USD's computed extent for a point-based prim Hydra gives no extent and doesn't draw as a mesh, as an extent
 // schema container; null otherwise.

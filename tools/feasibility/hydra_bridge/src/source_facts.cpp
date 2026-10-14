@@ -19,7 +19,9 @@
 #include <pxr/usd/usdGeom/xformOp.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/usd/usdShade/tokens.h>
+#include <pxr/usdImaging/usdImaging/dataSourceAttribute.h>
 #include <pxr/usdImaging/usdImaging/usdPrimInfoSchema.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -185,7 +187,7 @@ HdContainerDataSourceHandle ComputedExtent(const UsdPrim &prim, const TfToken &h
             .Build());
 }
 
-HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim) {
+HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingDataSourceStageGlobals &globals) {
     TfTokenVector names;
     std::vector<HdDataSourceBaseHandle> values;
     auto add = [&](const TfToken &name, HdDataSourceBaseHandle value) {
@@ -211,12 +213,14 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim) {
         TfToken family;
         if (subset.GetFamilyNameAttr().Get(&family)) add(SourceInfoTokens::FamilyName(), Retained(family));
     }
-    // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy.
+    // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy. Read at the
+    // graph's time, and dirtied when an animated one changes with it.
     if (UsdGeomImageable imageable{prim}) {
         for (const TfToken &purpose : {UsdGeomTokens->guide, UsdGeomTokens->proxy, UsdGeomTokens->render}) {
             const UsdAttribute attribute = imageable.GetPurposeVisibilityAttr(purpose);
-            TfToken visibility;
-            if (attribute && attribute.HasAuthoredValue() && attribute.Get(&visibility)) add(purpose, Retained(visibility));
+            if (attribute && attribute.HasAuthoredValue())
+                add(purpose, UsdImagingDataSourceAttributeNew(attribute, globals, prim.GetPath(),
+                                                              HdDataSourceLocator(SourceInfoTokens::Schema(), purpose)));
         }
     }
     if (UsdGeomImageable(prim) || UsdGeomSubset(prim)) {

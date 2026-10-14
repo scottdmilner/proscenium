@@ -35,10 +35,9 @@ Runtime fact (checked on this machine): `/Applications/Blender.app/Contents/Reso
    - Instances are split into separate instancers by: material bindings, purpose, geomModel (draw mode), model (assetInfo), skel binding, and the *set* of constant primvar names and roles. **[src V/usdImaging/usdImaging/sceneIndices.cpp:142-158; niInstanceAggregationSceneIndex.cpp:733-798]**
    - Visibility becomes `instancerTopology/mask`. **[src …:591-621]**
 6. **Native instancers populate `instanceLocations` (instance-root paths); point instancers do not.** For a point instancer, the instance index equals the USD point index. **[src niInstanceAggregationSceneIndex.cpp:560-589,643-645; V/usdImaging/usdImaging/dataSourcePointInstancer.cpp:256-275]**
-7. **Time-varying information is available in two forms, with different gaps.**
-   - Per-data-source `GetContributingSampleTimesForInterval`.
-   - The set of dirty notices emitted by `SetTime`, which covers exactly the locators flagged by `ValueMightBeTimeVarying` *for data sources that have been pulled*.
-   - Visibility, instancer masks, and several mesh fields (orientation, doubleSided, subdivisionScheme, subdivisionTags) report no sample times. Some of these are not flagged at all. See §8.
+7. **Time-varying information comes from the dirty notices `SetTime` emits.**
+   - They cover exactly the locators flagged by `ValueMightBeTimeVarying` *for data sources that have been pulled*.
+   - Several mesh fields (orientation, doubleSided, subdivisionScheme, subdivisionTags) are not flagged. See §8.
 
 ---
 
@@ -520,8 +519,6 @@ Durable identity:
 - Returns `false` if `!ValueMightBeTimeVarying()` or the current time is `Default`.
 - Otherwise returns `GetTimeSamplesInInterval([t+start, t+end])` plus the bracketing samples outside the edges, relative to t, as **float**.
 - Returns true only if more than one time results.
-- **Gotcha [inferred from code]:** for a zero-width interval `[0,0]` at a time exactly on an authored sample, the result is one time, so it **returns false**. Between samples it returns true.
-- Query a wide interval (e.g. `[stageStart−t, stageEnd−t]`) to ask "does this vary?"
 - `ValueMightBeTimeVarying` is false with a single time sample (USD semantics), so single-sample attributes read as static.
 
 **Xform.**
@@ -554,7 +551,6 @@ Durable identity:
   1. Pull every prim's needed data sources once, so the flags are registered.
   2. Call `SetTime(t + δ)`, or `SetTime(t, true)`.
   3. Record the `PrimsDirtied` entries seen at the terminal. That is the set of time-varying (prim, locator) pairs, already expanded by flattening to descendants and rerooted into propagated prototypes.
-  4. Combine with `GetContributingSampleTimesForInterval` over the stage range for interval and sample positions.
 - Limits:
   - It inherits `ValueMightBeTimeVarying`'s conservative answers (value clips, splines).
   - It misses unflagged locators.
@@ -610,11 +606,8 @@ Durable identity:
 10. Collection material bindings are evaluated on Hydra paths; instance-proxy paths are unsupported (XXX). There is no specific-purpose → allPurpose fallback in the resolving scene index.
 11. `UsdGeomVisibilityAPI` is not imaged. HermiteCurves has no Hydra 2.0 data.
 12. Time variance:
-    - Visibility and masks report no sample times.
     - Several mesh fields are unflagged.
-    - Zero-width interval queries return false at exact sample times.
     - Flags are registered only when data sources are pulled and are never cleared until `SetStage`.
-    - Hydra sample times are float.
 13. The stage scene index holds a strong stage reference. Notices are queued until `ApplyPendingUpdates`, and reads in between may be inconsistent **[inferred]**.
 14. Extents are not computed. `primvars:*` primvars with no authored value are absent.
 15. The implicit filter ignores authored `doubleSided` and always emits rightHanded orientation.
@@ -640,5 +633,5 @@ The prototype should verify these, never against Hydra's own output:
 - **Subsets and primvars:** check subset families against USD. Check indexed primvars keep `indices`.
 - **Implicits:** emit the approximation diagnostic yourself, from `__usdPrimInfo/typeName` ∈ {Sphere, Cone, Cylinder, Capsule} after conversion.
 - **Nested instances:** fixture where outer instance roots differ in `primvars:displayColor` and in material binding. Expect the instancer count from §5.3. Run the §5.6 reverse mapping and compare against USD instance-proxy paths and `UsdGeomXformCache` world matrices.
-- **Time:** compare (a) `SetTime` dirty sets and (b) wide-interval sample times against `UsdAttribute::ValueMightBeTimeVarying` / `GetTimeSamples`. Include a static mesh under an animated Xform (expect its xform reported) and animated visibility (expect a dirty notice but no sample times).
+- **Time:** compare `SetTime` dirty sets against `UsdAttribute::ValueMightBeTimeVarying` / `GetTimeSamples`. Include a static mesh under an animated Xform (expect its xform dirtied) and animated visibility (expect a dirty notice).
 - **Skinning:** compare points at several times against UsdSkel CPU skinning.

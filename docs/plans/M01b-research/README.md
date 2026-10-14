@@ -11,6 +11,8 @@ Four investigations made before the [M1b plan](../M01b-evaluation-gate.md), whos
 | [03-render-delegates.md](03-render-delegates.md) | HdStorm, HdEmbree, and HdPrman as reference consumers; reusable helpers; patterns for a non-render consumer |
 | [04-native-build-boundary.md](04-native-build-boundary.md) | Building against Blender's USD on macOS, Windows, and Linux; one-USD checks; stage exchange; zero-copy transfer; errors; distribution; prior art |
 
+**Edited after M1b Phase D (2026-10-13).** The reports' advice to classify time variation with `GetContributingSampleTimesForInterval` is removed: it is a motion-blur query over a shutter window around the current frame, and the core evaluates one time code per capture, discovering changes from `SetTime`'s dirties ([plan, Phase D log](../M01b-evaluation-gate.md#phase-d-log)). Their descriptions of what the query returns are kept.
+
 The zero-copy measurement in report 04 is reproducible with the `buffer_transfer` feasibility probe (`tools/feasibility/probe_buffer_transfer.py`).
 
 Source paths in the reports are relative to the checkout named in each report's label section. File paths cited from a local checkout are not in this repository.

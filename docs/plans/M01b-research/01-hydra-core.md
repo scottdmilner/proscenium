@@ -46,9 +46,7 @@ These came up while checking the code against the questions. Each is detailed in
    and the bridge never enables it, so the `Flush()` call [bridge 68] has no effect.
 4. **`Snapshot(None)` reads default values.** It calls `SetTime(UsdTimeCode::Default())`, so every
    `UsdAttributeQuery::Get` reads the *default* value, not a time sample [v26.03
-   `usdImaging/usdImaging/dataSourceAttribute.h:48-53`]. Every
-   `GetContributingSampleTimesForInterval` then returns false
-   [`dataSourceAttribute.h:80-84`; `dataSourcePrim.cpp:426-430`]. The stage scene index's initial
+   `usdImaging/usdImaging/dataSourceAttribute.h:48-53`]. The stage scene index's initial
    time is numeric 0.0, not Default [v26.03 `usdImaging/usdImaging/stageSceneIndex.h:149` +
    `usd/usd/timeCode.h:75`].
 5. **The observer misses the initial population.** The bridge attaches its observer after
@@ -494,8 +492,6 @@ Static mesh under an animated parent:
   `dataSource.cpp:104-112` and `timeSampleArray.cpp:123-169`). So **the same animated parent can
   read as "varying" on its own and "not varying" through a child's combiner at a zero-width
   query.** [inferred by tracing; not run]
-- **Recommendation:** to detect animation, query a real interval, for example the stage frame
-  range relative to the current time, or ±1 frame. Never use `[0,0]`.
 - Dirties: when time changes, the stage index dirties the parent's `xform` (flagged when its
   UsdImaging xform data source was built), and the flattening index invalidates and dirties every
   cached descendant, `ComputeDirtyLocatorsForDescendants` being universal [v26.03
@@ -765,29 +761,25 @@ chain reproducible.
    disappeared. Treat Added on a known path as a full refresh, including its subtree [§3].
 5. **Dependency-declared dirties need `HdDependencyForwardingSceneIndex`.** UsdImaging does not add
    it, and implicit surfaces depend on it [§0, §2].
-6. **Inconsistent "is time varying" answers.** Zero-width queries are unreliable (attribute on an
-   exact sample → false; combiner over an animated xform → false; UsdImaging xform alone → true).
-   Visibility never reports sample times. `Default` time always reports false [§4].
-7. **`nullptr` `outSampleTimes` crashes** UsdImaging sources and anything merging them [§4, §8].
-8. **Silent fallbacks.** Wrong types read as absent. Missing values read as `T{}`. No topology
+6. **Silent fallbacks.** Wrong types read as absent. Missing values read as `T{}`. No topology
    validation [§8].
-9. **Threading.** Reads may run in parallel, but never during notice delivery, scene-index
+7. **Threading.** Reads may run in parallel, but never during notice delivery, scene-index
    mutation or stage edits. Observers and notices are single-threaded. Release the GIL for parallel
    work [§5].
-10. **Paths differ from USD for instanced content.** `UsdNiPropagatedPrototypes/…/UsdNiInstancer/
+8. **Paths differ from USD for instanced content.** `UsdNiPropagatedPrototypes/…/UsdNiInstancer/
     UsdNiPrototype/…`. Prototype content is flattened relative to the prototype. Use `primOrigin`
     and `instancerTopology` and compose instance transforms yourself [§2].
-11. **Material bindings.** Collection-based bindings are not resolved by
+9. **Material bindings.** Collection-based bindings are not resolved by
     `UsdImagingMaterialBindingsResolvingSceneIndex` in v26.03 [§2]. The result is per purpose
     (`HdMaterialBindingsSchema`). Hdsi's further resolution is a Storm plugin.
-12. **The flattening index caches every queried prim** for the life of the chain, until removed or
+10. **The flattening index caches every queried prim** for the life of the chain, until removed or
     dirtied. Memory grows with scene size [§2]. Double flattening (the current bridge) doubles this.
-13. **Plugin environment leaks into results.** UsdImaging scene index plugins (such as
+11. **Plugin environment leaks into results.** UsdImaging scene index plugins (such as
     usdSkelImaging) and prim adapters load from whatever Blender's PlugRegistry knows, and they
     cannot be opted out of in `UsdImagingCreateSceneIndices` [§6].
-14. **Visibility flattening** resolves "local wins, else parent", which the code comments call
+12. **Visibility flattening** resolves "local wins, else parent", which the code comments call
     non-spec. UsdImaging only ever emits `false` or absent, which keeps it correct for USD input [§2].
-15. **API drift after 26.03 (dev).**
+13. **API drift after 26.03 (dev).**
     - `UsdImagingCreateSceneIndices` is deprecated for `UsdImagingSceneIndex`.
     - `HdSceneIndexPrim::operator bool` became explicit.
     - The plugin registry was reworked.
@@ -795,6 +787,6 @@ chain reproducible.
       code must handle null [dev `usdImaging/usdImaging/dataSourcePrim.cpp` diff].
     - `SetTime`'s default argument was split into overloads [dev `stageSceneIndex.h` diff].
     - Write against the 26.03 API and guard all schema accesses for null.
-16. **Docs are thin.** The release docs make no threading guarantees and say little about holding
+14. **Docs are thin.** The release docs make no threading guarantees and say little about holding
     handles. "No pure Hydra 2.0 HdRenderer yet" means the non-render-delegate consumer path has
     little in-tree precedent beyond tests and HdSt-internal observers [guide 615].

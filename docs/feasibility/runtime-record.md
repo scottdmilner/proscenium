@@ -352,7 +352,7 @@ For prims UsdImaging doesn't image at all, it supplies `UsdImagingDataSourcePrim
 |---|---|---|
 | GeomSubsets and indexed primvars (17 checks) | Captured primvars keep USD's indices and unflattened values. Each face's material is UsdShade's materialBind assignment, in the plan and in Blender through each object's slots, matched exactly. That covers faces in no subset, an unbound subset, a mesh with nothing bound, and subsets in another family or in none. A left-handed mesh (triangle, quad, triangle) has its corners reversed after the first, and every face-varying, vertex, uniform and varying value lands on its Blender domain to match `ComputeFlattened`; its face normals follow USD's orientation. An indexed constant displayColor reaches the object flattened. | Hydra binds subsets of any family, including one with no `familyName`; only materialBind subsets make slots. Overlapping materialBind subsets give the face to the first by name, with a warning; a family USD's `ValidateFamily` rejects is diagnosed with USD's reason, and families it accepts are not. A materialBind subset of points is ignored with a warning. A primvar named `sharp_face` (a Blender built-in) isn't transferred. A mesh with USD's default scheme, catmullClark, gets `subdivision-not-applied`. |
 | Implicit shapes (13) | The cube, plane, sphere, cone, cylinder, capsule and a bicubic NURBS patch all become meshes. Only the inexact ones are diagnosed. Exact meshes' vertices are exactly the corners of USD's extent. Approximated meshes' vertices lie on the surface USD's parameters define, and span at least 90% of its extent on every axis. Faces point outward in Blender. World transforms and `doubleSided` (fallbacks included) match. | Hydra loses the Cube's authored `doubleSided = true` and keeps Plane's fallback true. Approximations are catmullClark cages: sphere 100 faces, capsule 90, cylinder 30, cone 20. The NURBS patch is displayed as its control hull (9 faces), which is accepted and diagnosed as an approximation: its bounds equal the control points', while the surface's midpoint, computed from the control points, is z = 1.5 under the hull's 2. |
-| Nested native instances (17) | 360 drawn copies: Leaf (9 meshes) in Branch (4 leaves), in 10 Branch instances, 2 of them inside Tree instances, so three levels deep. Every copy matches USD: source and instance context, world transform, effective visibility (including invisible groups one and two levels above an instance root, and inside a prototype), inherited purpose, and displayColor (indexed on an outer root). Named primvars (string, bool, int2, float3, a three-element float array, and scalar string and float) match USD inheritance in value and shape; they come from each instance root's own record, since Hydra's instance aggregation keeps only an array's first element. Materials match UsdShade per copy, in the plan and in Blender, through strong outer and inner bindings (including OpenUSD #1571's case), a collection authored inside the asset, `material:binding = None`, a binding to a non-Material, and a binding without `MaterialBindingAPI`. | **A Hydra propagation bug** (below). There are 33 instancers and 216 plan meshes for the 360 copies, with at most 6 objects sharing one. Each leaf mesh's copies share one points buffer. |
+| Nested native instances (18) | 360 drawn copies: Leaf (9 meshes) in Branch (4 leaves), in 10 Branch instances, 2 of them inside Tree instances, so three levels deep. Every copy matches USD: source and instance context, world transform, effective visibility (including invisible groups one and two levels above an instance root, and inside a prototype), inherited purpose, and displayColor (indexed on an outer root). Named primvars (string, bool, int2, float3, a three-element float array, and scalar string and float) match USD inheritance in value and shape; they come from each instance root's own record, since Hydra's instance aggregation keeps only an array's first element. Materials match UsdShade per copy, in the plan and in Blender, through strong outer and inner bindings (including OpenUSD #1571's case), a collection authored inside the asset, `material:binding = None`, a binding to a non-Material, and a binding without `MaterialBindingAPI`. The leaf meshes are small but not trivial (since Phase D): a quad grid with a materialBind subset and indexed face-varying UVs, a box with indexed face-varying normals, a pyramid mixing quads and triangles, vertex and uniform primvars, and a left-handed strip. Every copy's Blender mesh matches its USD prototype: points, corners, UVs, custom normals and primvars on their domains, and the subset's faces take UsdShade's material in each copy. | **A Hydra propagation bug** (below). There are 33 instancers and 216 plan meshes for the 360 copies, with at most 6 objects sharing one. Each leaf mesh's copies share one points buffer. The meshes are small (at most 9 points), so these are counts, not costs. |
 | Time, edits, incremental capture (7) | 23 steps on two bridges over one stage, one capturing in full and one incrementally. The steps are times 1, 2, 2.5 and 3, then edits, each in turn:<br>- unchanged refreshes;<br>- a material parameter;<br>- a cube's size;<br>- a topology;<br>- added and removed prims;<br>- a subset's elementType, which changes its mesh's family verdict, and back;<br>- a familyName;<br>- guideVisibility on a prim and on an ancestor;<br>- doubleSided on a cube and on a mesh;<br>- a binding retarget and a strength change;<br>- a static HermiteCurves' transform, visibility and purpose;<br>- prototype content seen by two instances.<br><br>At every step the plan matches USD (transforms, visibility, purpose, displayColor, destinations, per-face materials for both purposes, points, doubleSided, placeholders, material parameters) and equals a new bridge's plan. Each step changes USD's values for exactly the prims it names. Animated HermiteCurves (transform and held visibility) match at each time. | Incremental captures equal full captures record by record (an absent instancer matrix counts as identity) and plan by plan. An unchanged refresh delivers no notices, copies nothing and plans identically. Dirtied prims whose records didn't change: `Blinker` at 2.5 (held visibility); `Aid` and `Aid2` after an ancestor's guideVisibility edit (records hold only each prim's own opinions); `Holder` after its strength change. |
 | Untranslated types (14) | One placeholder per unsupported gprim and per point instancer, with an `untranslated-type` warning on its USD path. That covers basis curves, NURBS curves, points, HermiteCurves, a Volume, and basis curves and a point instancer inside native instances, with instance context per copy. Each keeps its world transform, effective visibility and purpose. An authored extent, or else USD's computed extent for curves and points, gives a bounding-box placeholder (a box mesh drawn as bounds); a point instancer or volume without an authored extent gives an empty marker. A point instancer's prototype prims get no objects. A mesh under unsupported basis curves is still built. | HermiteCurves aren't imaged: Hydra has only a typeless prim, without its own transform or visibility (from source reading and snapshot inspection). The filter supplies type, transform, visibility and purpose. |
 | Large arrays (9) | A 512 × 512 quad grid: 263,169 points, 1,048,576 corners, a vertex float and face-varying UVs. The plan's arrays equal the authored arrays byte for byte, and Blender's equal the plan's. They are read-only contiguous buffers in `'f'`/`'i'`, and a buffer in the wrong format is refused. The plan-buffer `foreach_set` is at least 5× faster than from a list (the minimum of five runs of each). | Each attribute and corner transfer allocates under 1 KiB of Python memory (`tracemalloc`, which doesn't see Blender's own allocator). `polygons.foreach_set('loop_start')` allocates a 1 MiB temporary, 4 bytes per face. In one binary run, `foreach_set` took 0.09 ms from the plan buffer against 3.2 ms from a list. |
@@ -383,11 +383,77 @@ For prims UsdImaging doesn't image at all, it supplies `UsdImagingDataSourcePrim
 - The cause wasn't identified. `~UsdStage` releases the root layer synchronously, so it isn't asynchronous teardown inside the stage.
 - The check now waits up to 2 s for both and records the wait in `wheel.json`/`binary.json`.
 
+### Time-sampled data detection (M1b Phase D)
+
+**Settled with the user (2026-10-13): the core evaluates one time code per capture.** It doesn't ask Hydra what varies over an interval. A higher layer can cache several evaluated frames when a representation needs them.
+
+The signal the milestone first proposed, `HdSampledDataSource::GetContributingSampleTimesForInterval`, is a motion-blur API. Its header (`hd/dataSource.h`, v26.03) defines the interval as "a shutter window of interest… relative to the current frame". It returns the sample times "such that the caller can reconstruct the signal over the shutter window", and may return boundary samples outside the window. It returns false when the value "is uniform across the shutter window". Blender computes its own motion blur, so a Blender display has no shutter window to ask about.
+
+An ad hoc query over frame ranges, since removed, behaved as that contract says. It reported:
+- the bracketing samples, beyond the window, for attribute values;
+- the window's ends for flattened transforms and skinned points;
+- nothing for a zero-width window at a sample frame.
+
+It also reported no visibility at all, Hydra's own or an instancer's mask. Those are motion-blur semantics, not a frame-range variance detector, so they aren't recorded as gaps.
+
+The `animation` case (`cases/animation.usda`, 6 checks) checks what per-frame capture needs instead. Each prim varies in one kind of value or in none, with samples at 1 and 3 (held values also at 2):
+- points, including equal samples and a single sample;
+- static prims one and two levels under an animated ancestor, and an instance under one;
+- visibility: a prim's own, an ancestor's, and an instance root's ancestor's;
+- topology;
+- primvar values, and indices alone;
+- subset indices;
+- animated `guideVisibility`;
+- HermiteCurves;
+- a computed extent;
+- one skinned mesh.
+
+**Status:** passes locally (macOS arm64, bpy wheel and Blender 5.2.2 binary, 2026-10-13). All 125 correctness checks pass there, as do the loading (42) and prototype (20) checks. It hasn't run on CI yet.
+
+- **Direct USD is the oracle.** `ValueMightBeTimeVarying` on every authored attribute a value depends on reports exactly the values built to vary (one check). Those attributes include ancestors' transform ops and visibility, purpose visibility, primvar indices, subset indices, and the bound skeleton's animation. Like everything else here, it reports two equal samples as varying and a single sample as not (one check).
+- **Time-change dirties are exact.** At 1 → 1.5 → 2 → 3, each change dirties exactly the varying values (one check), with coarse locators for transforms and visibility (`xform`, `visibility`). That covers:
+  - visibility, as the instancer's `instancerTopology/mask` for the instance copy;
+  - instance transforms, as the instancer's `hydra:instanceTransforms`;
+  - the filter's computed extent;
+  - the skeleton's resolved transforms beside the skinned points.
+
+  Equal samples are dirtied too. This is the change discovery per-frame capture relies on.
+- **Values at each time.** At 1, 1.5, 2, 3 and back at 1, the plan from a full capture and from an incremental capture matches USD (two checks). That covers:
+  - transforms and visibility;
+  - points, with Body's skinned points matching UsdSkel's `ComputeSkinnedPoints`;
+  - topology, and per-face materials from animated subsets;
+  - primvars with animated values or indices, and constant primvars as object properties;
+  - the guide's visibility in the viewport;
+  - placeholder bounds from the computed extent.
+
+  The skinned check holds only because every transform in the scene is identity, so skeleton space is the mesh's local space.
+
+**Two filter bugs found and fixed:**
+- **Animated purpose visibility was read at default time.** The filter read authored `guideVisibility` (and proxy and render visibility) with `Get()`, which reads the default value and ignores time samples (found by reading the code). It now hands out UsdImaging's attribute data sources (`UsdImagingDataSourceAttributeNew`) on its own stage globals. These read at the graph's time and flag themselves as time-varying, so a time change dirties them. In a mutation run that read the opinion once, at the earliest time, the values check failed (Aid visible at 2).
+- **Animated subset indices were never dirtied** (measured). UsdImaging's subset data source reads them at the current time but never flags them as time-varying, so an incremental capture kept the previous subset assignment. The filter now flags a subset whose `indices` might vary. In a mutation run without that flag, the dirties check failed, and so did the incremental check when run alone (wrong at 2 and 3).
+
+**Other findings:**
+- **USD's family verdict covers default time.** `UsdGeomSubset::ValidateFamily` checks the default value as well as every sample. A partition authored only as time samples is rejected ("Number of unique indices at time DEFAULT does not match the element count"). Seen ad hoc before the fixture's subsets gained defaults.
+- **Skeletons are drawn as hidden guides.** UsdSkelImaging images a Skeleton as a bone mesh with guide purpose, so the plan has a hidden object for it.
+- **Skinning inputs stay on the mesh.** UsdSkel's primvars on the skinned mesh are planned as data: `skel:jointIndices` and `skel:jointWeights` as attributes, and `skel:geomBindTransform` as an object property, though skinning has already consumed them.
+- **The filter rebuilds more than it needs to on a time change.** It rebuilds a prim's facts whenever Hydra or its own flags dirty it, though only computed extents hold a value that goes stale (measured ad hoc with a temporary counter: 16 rebuilds per change on this scene; an ad hoc build that invalidated only on extent and points dirties rebuilt 3, with every check passing). Not changed; it is a cost for Phase E to weigh.
+
+#### For M4: evaluating frames
+
+The "Time-sampled data representation" row compares per-time-code snapshots with animation data. What M1b establishes for it:
+- **Each frame is one capture.** Capture at a time code gives values that match USD at that time. A time change dirties exactly what varies, so an incremental capture copies only that (measured ad hoc on this scene: 25 of 40 prims per change, and none for a repeat of the same time).
+- **Caching several frames is a layer above capture.** For a baked or keyed representation, that layer evaluates the frames it needs and keeps what changed. Two sources can tell it what changed:
+  - **The dirties between successive captures.** These are exact here, including visibility and values Hydra computes (flattened and instance transforms, skinned points). Equal samples are dirtied anyway, so dirtied values may be unchanged; comparing values, or array identity, settles it.
+  - **Direct USD**, when a representation needs authored keys rather than evaluated frames: `GetTimeSamplesInInterval` on the attributes a value depends on, for example to key held visibility exactly on its samples. The core must then know each value's dependencies, including what the imaging chain computes (a cube's `size` behind its generated points, a skeleton's animation behind skinned points). Hydra's adapters already encode those dependencies.
+- **Not needed:** Hydra's interval query, which answers a motion-blur question.
+- **Untested:** value clips, splines, point instancers, animated material parameters, skinning beyond one linear-blend skin with identity transforms, and the cost of capturing every frame of a range at scale (Phase E).
+
 ### Limits and next gates
 
 The prototype and correctness checks use small bespoke scenes. Untested:
-- time-varying detection (Phase D), including animated visibility on an instance root's ancestor;
-- deformation;
+- animated values beyond the animation case: value clips, splines, point instancers, animated material parameters, and skinning under non-identity transforms or instancing;
+- deformation other than one linear-blend skin (blend shapes, dual quaternions, several influences per point);
+- dropping UsdSkel's primvars from a skinned mesh's planned data;
 - translating point instancers (they are placeholders);
 - performance at scale (Phase E), including the filter's UsdShade queries and computed extents per prim;
 - a keyless UsdImaging adapter in place of the filter on Linux and Windows. On macOS it can't be manufactured: `libusd_ms` doesn't export the `type_info` of the adapter factory base class, so its `dynamic_cast` rejects a factory from another binary (ad hoc, M1b plan's Hydra-native review);
