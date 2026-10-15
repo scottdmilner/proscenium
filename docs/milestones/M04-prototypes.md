@@ -24,7 +24,7 @@
   - Small updates within larger scenes.
   - Detaching a whole binding under [Detach As-Is](../spec/lifecycle.md#detach-as-is): identify binding-specific controls to remove and ordinary Blender dependencies to retain, without requiring baking or source reconstruction.
 - Provisional performance budgets, and measurements of initial construction, refresh, interaction, and resource costs against them. Interaction costs are defined in [Interaction Testing](../spec/interaction.md#interaction-testing).
-- Answers to every M2 feasibility question and the finalized interaction contract, including a compatibility review and any required updates to M3's identifiers and persistence schemas before M5 begins.
+- Answers to every [M2 feasibility question](../plans/M02-contracts.md#feasibility-questions-for-m4) and the finalized interaction contract, including a compatibility review and any required updates to M3's identifiers and persistence schemas before M5 begins.
 - For the chosen representation, a record of what a real viewport pick is assumed to supply, as an accepted risk.
 - A partitioning decision record:
   - The partition unit, such as one per model or per prototype.

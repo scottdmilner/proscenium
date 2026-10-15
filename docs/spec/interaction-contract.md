@@ -1,6 +1,6 @@
 # Interaction Contract
 
-The draft interaction contract that [Source Inspection and Interaction](interaction.md#source-inspection-and-interaction) requires: what source inspection exposes, how selections resolve, and how they reach Blender. **Draft (M2):** M4 answers the open feasibility questions in the [M2 plan](../plans/M02-contracts.md#feasibility-questions-for-m4-draft) and finalizes this contract; M7, M8, and M10 implement it. Cross-cutting guarantees are summarized in [invariants.md](invariants.md).
+The draft interaction contract that [Source Inspection and Interaction](interaction.md#source-inspection-and-interaction) requires: what source inspection exposes, how selections resolve, and how they reach Blender. **Draft (M2):** M4 answers the open feasibility questions in the [M2 plan](../plans/M02-contracts.md#feasibility-questions-for-m4) and finalizes this contract; M7, M8, and M10 implement it. Cross-cutting guarantees are summarized in [invariants.md](invariants.md).
 
 The contract defines what the display layer provides, not its Blender structure. Each requirement is stated as the result of a headless function (see [Headless Functions](#headless-functions)), so it can be checked against any display representation.
 
