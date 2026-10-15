@@ -180,8 +180,10 @@ The attribute path costs about one memory copy. `vertices.co` is about 100 times
 **Verdict: feasible on the tested Blender 5.2.2 / USD 0.26.3 build.** A standalone
 Python extension links to Blender's bundled `libusd_ms`, receives the caller's
 `Usd.Stage` directly, and consumes Hydra scene indices. The same compiled module
-passes **36 checks in the bpy wheel and 36 in the Blender binary**, both in fresh
-background processes (2026-10-10, locally and in the "Hydra bridge" workflow, [run 38040274107](https://github.com/scottdmilner/proscenium/actions/runs/38040274107)).
+passes **41 loading checks and 20 prototype checks in the bpy wheel, and the same in the
+Blender binary**, each in a fresh background process (2026-10-12, locally and in the
+"Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). The prototype checks cover M1b Phase B's slice:
+capture, a C++ display plan, and application to Blender ([below](#prototype-slice-m1b-phase-b)).
 This is a feasibility result, not adoption of Hydra or qualification of a distributable
 bridge. The same checks pass on [Windows x64](#compiled-hydra-bridge) and
 [Linux x64](#compiled-hydra-bridge-1), recorded under those platforms.
@@ -193,7 +195,7 @@ The same commands run on macOS arm64, Linux x64, and Windows x64:
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py   # build, extract, audit linkage
-uv run python tools/feasibility/hydra_bridge/run.py     # checks in the wheel and the binary
+uv run python tools/feasibility/hydra_bridge/run.py     # loading and prototype checks, wheel and binary
 ```
 
 `run.py` finds the Blender binary through `BLENDER` or the platform default
@@ -233,7 +235,7 @@ CI results below:
 No dependency library is shipped. `--usd-library` selects another link input on
 macOS and Linux; only its install name or SONAME is recorded in the module.
 
-**Build settings, all platforms:** C++17; Blender's generated USD headers (namespace
+**Build settings, all platforms:** C++17, with `-Wall -Wextra -Wpedantic` (`/W4` on MSVC) on the bridge's own sources; Blender's generated USD headers (namespace
 `pxrBlender_v26_03__pxrReserved__`, which stock upstream headers do not have);
 `PXR_BOOST_PYTHON_NO_PY_SIGNATURES`, which Blender's exported pxr Python target
 defines; hidden symbol visibility; no embedded rpath. The module uses USD's internal
@@ -253,13 +255,14 @@ linked.
 | Windows | Imports `usd_ms.dll` and `python313.dll`; no debug runtime; linker version ≤ 14.44 |
 | All | The CMake install holds one top-level module and no USD, TBB, Python, or other library |
 
-On macOS (2026-10-10): the module's 99 imported `pxrBlender` symbols all bind to
-`libusd_ms`, and `minos` is 11.2, both locally (Apple clang 17.0.0, macOS 26.2 SDK) and
-in the workflow (AppleClang 21.0.0).
+On macOS ([run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), 2026-10-12): the module's 269 imported `pxrBlender` symbols all bind to
+`libusd_ms`, and `minos` is 11.2 (AppleClang 21.0.0, no compiler warnings). The Phase A
+module had 99, before the prototype's capture and planning code.
 
 `build.json` records the platform, pins, CMake configure command, module path,
-and audit results. `wheel.json` and `binary.json` record passed checks and loaded USD
-paths; the accompanying logs and process records include subprocess exits. Both
+and audit results. `wheel.json` and `binary.json` record the loading checks and loaded USD
+paths; `prototype-wheel.json` and `prototype-binary.json` record the prototype checks and
+the plan's diagnostics; the accompanying logs and process records include subprocess exits. Both
 processes exit successfully after the checks, including shutdown. Each gets a
 temporary Blender user directory and a temporary copy of the USD fixture. On macOS,
 Blender startup requires access to Metal even in background mode; the successful local
@@ -279,30 +282,58 @@ runs were outside the execution sandbox.
 - **Stage lifetime:**
   - A retained Hydra chain keeps a stage alive after the caller releases it, because the stage scene index holds a strong reference.
   - After the bridge's `release()`, which detaches the stage from the chain, a caller-released stage expires: its anonymous root layer is gone. The bridge then reports no stage, and a capture raises.
-- **Errors:** passing `None` instead of a stage raises a Python exception rather than crashing. Entry points also convert Tf errors posted during a call into Python exceptions, but no check posts one yet.
-- **Hydra access:** `UsdImagingCreateSceneIndices` constructs a live chain, followed only by an explicit cube/sphere-to-mesh `HdsiImplicitSurfaceSceneIndex`. The bridge's earlier extra `HdFlatteningSceneIndex` is gone; the chain's own flattening supplies inherited state.
+- **Errors:** passing `None` instead of a stage raises a Python exception rather than crashing. Constructing the bridge converts Tf errors into Python exceptions; during a capture they become diagnostics instead. No loading check posts one.
+- **Hydra access:** the bridge builds the scene-index graph: `UsdImagingCreateSceneIndices` (draw mode off), then ext-computation primvar pruning, implicit surfaces to meshes (all six shapes), NURBS approximation, dependency forwarding, and prim-type notice batching. There is no extra `HdFlatteningSceneIndex`; the chain's own flattening supplies inherited state.
 - **Mesh extraction:** triangle topology and points match the authored fixture; point arrays arrive through the existing `Vt.Vec3fArray` converter.
-- **Implicit geometry:** a cube becomes a mesh with eight points, six quads, and the expected dimensions. Sphere conversion is configured but not exercised.
+- **Implicit geometry:** a cube becomes a mesh with eight points, six quads, and the expected dimensions. Sphere conversion is exercised by the prototype checks.
 - **Inherited state:** the triangle receives its parent's translation; an edit to ancestor visibility changes the effective visibility read from the chain.
-- **Time:** default-time values, interpolated values at time 2 between samples 1 and 3, and a return to default time match the fixture. Time changes produce dirty notices; an immediate capture at the same time produces no notices.
-- **Live edits:** changing points in Python changes values read through the retained chain and emits a dirty notice. Adding or removing a prim changes both the queried inventory and the corresponding notifications.
-- **Lifetime of captured data:** an earlier point array remains unchanged after a later source edit and disposal of the bridge. Twenty repeated construction/capture/disposal cycles complete; this is not a leak or memory-growth measurement.
+- **Time:** `capture()` takes a numeric time, `None` or no argument (default time), or a `Usd.TimeCode`; anything else raises `TypeError`.
+  - Values at time 1, interpolated values at time 2 (between samples 1 and 3), and a return to time 1 match the fixture.
+  - After the time-1 sample is edited, default time still reads the authored default value, not the sample. The snapshot reports no numeric time there.
+  - Time changes produce dirty notices; an immediate capture at the same time produces none.
+- **Live edits:** changing a points sample in Python changes values read through the retained chain and emits a dirty notice. Adding or removing a prim changes both the queried inventory and the corresponding notifications.
+- **Lifetime of captured data:** an earlier point array, and the snapshot it came from, remain unchanged after a later source edit and disposal of the bridge. Twenty repeated construction/capture/disposal cycles complete; this is not a leak or memory-growth measurement.
 - **Source preservation:** initial capture leaves root/session layer text unchanged, and the source file is never saved. Deliberate source edits in the probe are caller actions, not bridge actions.
 - **Instancing smoke check:** native instance inputs produce at least one Hydra instancer. Instance transforms, counts, nested contexts, and appearance are not validated by this check.
 
+### Prototype slice (M1b Phase B)
+
+`prototype_probe.py` runs capture, the C++ plan, and `apply.py` on `prototype.usda`. That scene has one example of each planner path:
+- a mesh with a bound GeomSubset and an indexed UV primvar;
+- an exact implicit shape (cube) and an approximated one (sphere);
+- basis curves, which the prototype doesn't translate;
+- native instances nested two deep, differing in displayColor.
+
+Expected values come from USD (`UsdGeom.XformCache`, primvar inheritance, `UsdShade` bindings and shader inputs) or from the scene's construction, never from Hydra. All 20 checks pass in the wheel and the binary on all three platforms.
+
+The plan has 8 objects, 5 meshes and 2 materials. Its only diagnostics are the approximated sphere and the basis-curve placeholder.
+
+- **Snapshot:** an `HdRetainedSceneIndex` of `HdMakeStaticCopy` copies of the schemas planning reads, and no others. It and the plan are unchanged by a later stage edit, which only the next capture sees.
+- **Sources:** one object per gprim USD draws through instance proxies, with its native-instance roots (outermost first), as `Usd.PrimRange` with instance proxies enumerates them.
+- **Values:** world transforms match `UsdGeom.XformCache` within 1e-5. displayColor matches `FindPrimvarWithInheritance` through both instancing levels, including an inner instance root's value overriding an outer one's.
+- **Diagnostics:** the sphere is diagnosed as approximated and the cube is not. The basis curves become an empty placeholder with a diagnostic.
+- **Materials:** the plan's UsdPreviewSurface `diffuseColor` matches the shader's input, and each face's material slot is the one `UsdShade` binds to its GeomSubset or mesh.
+- **Blender:**
+  - Positions, corner vertices and face sizes match the USD mesh, and `Mesh.validate()` reports nothing to fix.
+  - The indexed face-varying UVs reach a UV map, matching USD's flattened primvar.
+  - Objects that share a plan mesh share Blender mesh data.
+  - Plan arrays reach `foreach_set` as read-only, contiguous buffers in Blender's element types (`'f'`, `'i'`).
+
 ### Limits and next gates
 
-This probe reads a small subset of Hydra data. It does not create Blender display
-objects, render images, implement source correspondence, or establish performance
-budgets. Array retention is demonstrated for one points array; zero-copy transfer
-into Blender is covered separately by the `buffer_transfer` probe, and general
-snapshot immutability is not established. The observer records event kinds and
-paths, not dirty-locator coverage or complete dependency correctness.
+The prototype checks are smoke checks of each path on one small scene. Phase C's per-case fixtures test correctness in depth. Untested here:
+- malformed geometry (only checked ad hoc on macOS);
+- time-varying detection;
+- material edits and an unchanged refresh;
+- deformation and point instancers;
+- collection-based and purpose-specific bindings;
+- performance at scale.
 
-Not tested: Windows arm64 and other unsupported platforms, other Blender builds, installed extension lifecycle, materials,
-deformation, point instancers, nested instancing, selection mapping, stage-setting
-fidelity, malformed geometry, threading, undo/save/reopen, production-scale data, or
-memory/performance regressions.
+Zero-copy transfer is measured separately by the `buffer_transfer` probe. The observer records event kinds, paths and dirty locators; their coverage is not yet tested.
+
+Not tested: Windows arm64 and other unsupported platforms, other Blender builds, installed extension lifecycle,
+selection mapping, stage-setting fidelity, threading beyond the capture's parallel read pass,
+undo/save/reopen, production-scale data, or memory/performance regressions.
 
 `release()` is explicit. A production binding would call it when its source is
 released, to preserve the caller-release contract in
@@ -331,8 +362,7 @@ recorded decision.
   - **Observed effect** (second [run 38034363291](https://github.com/scottdmilner/proscenium/actions/runs/38034363291)): in the Windows wheel, `Sdr.Registry().GetShaderNodeByIdentifier("UsdPreviewSurface")` raises `Tf.ErrorException` from `usdShaders`' discovery plugin: "Could not find shader resource: shaderDefs.usda". The discovery code still runs, because it is compiled into `usd_ms`, but its resources are missing. The binary finds the node.
   - **Consequences:**
     - Code that queries Sdr for UsdPreviewSurface behaves differently in the Windows wheel, such as reading default input values.
-    - Because the Hydra bridge raises posted Tf errors as exceptions, a bridge call that triggers Sdr discovery would raise there.
-    - Reading the v26.03 source suggests UsdImaging's scene-index material path consults Sdr only for shaders without an `info:id`, but that is untested.
+    - The bridge's capture records Tf errors as diagnostics rather than raising them. In [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), the prototype's UsdPreviewSurface materials, whose shaders have an `info:id`, produced no Tf errors in the Windows wheel. That fits the source-reading inference that UsdImaging's material path consults Sdr only for shaders without one. It was observed for this fixture only.
     - The plugins the bridge uses (`usdImaging`, `hdsi`, `usdSkelImaging`) are present in every runtime. The binary is authoritative.
 - **`PXR_USD_WINDOWS_DLL_PATH` is set:** to `blender.shared` in the binary and to the `bpy` directory in the wheel, alongside `PXR_MTLX_STDLIB_SEARCH_PATHS`. No `PXR_PLUGINPATH_NAME` is set.
 - **A non-forced `Reload()` misses a rewrite within the same second,** in all three runtimes.
@@ -343,10 +373,11 @@ recorded decision.
 
 ### Compiled Hydra bridge
 
-**Passes:** 37 checks in the bpy wheel and 37 in the Blender 5.2.2 binary ("Hydra bridge" workflow, [run 38040274107](https://github.com/scottdmilner/proscenium/actions/runs/38040274107), `windows-latest`, 2026-10-10; first passed in [run 38030083435](https://github.com/scottdmilner/proscenium/actions/runs/38030083435)). Both processes exit 0. These are the macOS checks plus a pre-import check that the host had already loaded `usd_ms.dll`.
+**Passes:** 42 loading checks and 20 prototype checks in the bpy wheel, and the same in the Blender 5.2.2 binary ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), `windows-latest`, 2026-10-12; loading first passed in [run 38030083435](https://github.com/scottdmilner/proscenium/actions/runs/38030083435)). Every process exits 0. The loading checks are the macOS ones plus a pre-import check that the host had already loaded `usd_ms.dll`. The prototype results match macOS, with the same two diagnostics.
 
-- **Build:** MSVC 19.44.35229 (tools 14.44.35207), loaded by `build.py` through Visual Studio's `vswhere` and `vcvarsall -vcvars_ver=14.44`; CMake and Ninja come from the dev group in `.venv`. The runner also has Visual Studio 2026 installed, so without the pin a newer toolset would have built the module. (The first run selected the same toolset with the `ilammy/msvc-dev-cmd` action.)
-- **Audit:** the module imports `usd_ms.dll`, `python313.dll`, `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `kernel32.dll`, and three `api-ms-win-crt-*` DLLs, with no debug runtime. Linker version 14.44.
+- **Build:** MSVC 19.44.35229 (tools 14.44.35207), loaded by `build.py` through Visual Studio's `vswhere` and `vcvarsall -vcvars_ver=14.44`; CMake and Ninja come from the dev group in `.venv`. No warnings at `/W4`. The runner also has Visual Studio 2026 installed, so without the pin a newer toolset would have built the module. (The first run selected the same toolset with the `ilammy/msvc-dev-cmd` action.)
+- **Audit:** the module imports `usd_ms.dll`, `python313.dll`, `tbb12.dll`, `msvcp140.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `kernel32.dll`, and four `api-ms-win-crt-*` DLLs, with no debug runtime. Linker version 14.44.
+  - `tbb12.dll` is new since Phase A: the capture's parallel read pass uses `WorkParallelForN`. Blender ships that DLL, and the module loads in both hosts.
 - **One USD per process:**
   - Wheel: `bpy\usd_ms.dll`, beside `bpy\__init__.pyd`.
   - Binary: `blender.shared\usd_ms.dll`.
@@ -370,13 +401,15 @@ recorded decision.
 
 ### Compiled Hydra bridge
 
-**Passes:** 36 checks in the bpy wheel and 36 in the Blender 5.2.2 binary ("Hydra bridge" workflow, [run 38040274107](https://github.com/scottdmilner/proscenium/actions/runs/38040274107), 2026-10-10; first passed in [run 38030083435](https://github.com/scottdmilner/proscenium/actions/runs/38030083435)). Both processes exit 0. The module was built in `quay.io/pypa/manylinux_2_28_x86_64` and tested on `ubuntu-latest`.
+**Passes:** 41 loading checks and 20 prototype checks in the bpy wheel, and the same in the Blender 5.2.2 binary ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), 2026-10-12; loading first passed in [run 38030083435](https://github.com/scottdmilner/proscenium/actions/runs/38030083435)). Every process exits 0. The prototype results match macOS, with the same two diagnostics. The module was built in `quay.io/pypa/manylinux_2_28_x86_64` and tested on `ubuntu-latest`.
 
 - **Build:** GCC 14.2.1 (`gcc-toolset-14`), the compiler that built Blender's `libusd_ms.so`.
+  - The only warning is libstdc++'s deprecated-header `#warning`, once per source file. It comes from USD's `tf/hashset.h` including `<ext/hash_set>`.
+  - USD builds itself with `-Wno-deprecated` for this reason (`cmake/defaults/gccclangshareddefaults.cmake`). The bridge passes the same flag on GCC, and the build has no warnings ([run 38295477698](https://github.com/scottdmilner/proscenium/actions/runs/38295477698)).
 - **Audit:**
-  - `NEEDED`: `libusd_ms.so`, `libdl.so.2`, `libstdc++.so.6`, `libm.so.6`, `libgcc_s.so.1`, and `libc.so.6`.
+  - `NEEDED`: `libusd_ms.so`, `libdl.so.2`, `libstdc++.so.6`, `libm.so.6`, `libgcc_s.so.1`, `libc.so.6`, and `ld-linux-x86-64.so.2`.
   - No RPATH or RUNPATH, and no libpython.
-  - 100 undefined `pxrBlender` symbols.
+  - 250 undefined `pxrBlender` symbols (100 for the Phase A module).
   - Highest symbol versions GLIBC 2.14 and GLIBCXX 3.4.21, below Blender's floor.
 - **One USD per process:**
   - Wheel: `bpy/lib/libusd_ms.so`.

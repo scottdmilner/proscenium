@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import subprocess
@@ -14,6 +15,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
 
 from blender_paths import find_blender  # noqa: E402
+
+# Result-name prefix -> script: native loading (Phase A), and the capture -> plan -> Blender prototype.
+PROBES = {"": "probe.py", "prototype-": "prototype_probe.py"}
 
 
 def main() -> int:
@@ -27,22 +31,22 @@ def main() -> int:
         parser.error("no Blender binary found: set BLENDER or pass --blender")
     out = args.out.resolve()
     passed = True
-    for runtime, prefix in (
-        ("wheel", [sys.executable, str(HERE / "probe.py")]),
-        (
-            "binary",
-            [
+    for probe, runtime in itertools.product(PROBES, ("wheel", "binary")):
+        script = str(HERE / PROBES[probe])
+        if runtime == "wheel":
+            prefix = [sys.executable, script]
+        else:
+            prefix = [
                 args.blender,
                 "--background",
                 "--factory-startup",
                 "--python-exit-code",
                 "1",
                 "--python",
-                str(HERE / "probe.py"),
+                script,
                 "--",
-            ],
-        ),
-    ):
+            ]
+        runtime = probe + runtime
         result_path = out / f"{runtime}.json"
         result_path.unlink(missing_ok=True)
         with tempfile.TemporaryDirectory(prefix="hydra-bridge-user-") as user_dir:

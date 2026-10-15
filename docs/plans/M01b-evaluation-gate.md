@@ -169,9 +169,8 @@ The prototype extends `tools/feasibility/hydra_bridge/` (suggested; it stays fea
   1. `UsdImagingCreateSceneIndices` (draw mode off)
   2. ext-computation pruning
   3. implicit surfaces → mesh
-  4. NURBS approximation
-  5. dependency forwarding
-  6. prim-type notice batching
+  4. dependency forwarding
+  5. prim-type notice batching
 - **Capture** at an explicit numeric time code:
   - `SetTime`, `ApplyPendingUpdates`, then one parallel read pass with the GIL released.
   - Values are copied into an immutable snapshot (`VtArray`s are copy-on-write, so the snapshot can hold them without a deep copy).
@@ -182,6 +181,86 @@ The prototype extends `tools/feasibility/hydra_bridge/` (suggested; it stays fea
   - Geometry is validated before anything reaches Blender: point and face-vertex counts, index bounds, primvar lengths per interpolation, and subset bounds. `PxOsdMeshTopology::Validate` can be reused.
   - Tf warnings and errors raised during capture become diagnostics.
 - **Transfer and application in Python:** plan arrays are exposed through the buffer protocol in Blender's exact element types, and applied with `foreach_set` on attribute data, with no Python-side copies.
+
+### Phase B log
+
+Branch `m01b-phase-b`, off `m01b-phase-a`.
+
+- **Status (2026-10-12): slice built and passing on all three platforms.** `prototype.usda` runs capture → C++ plan → Blender. 20 prototype checks and the loading checks (41, or 42 on Windows) pass in the wheel and the binary on macOS, Linux and Windows ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). Each prototype check takes its expected value from USD (`UsdGeom`, `UsdShade`) or from how the scene is built. Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-slice-m1b-phase-b).
+- **C++17 sources in `src/`, one file per stage:**
+  - `scene_index_graph`: the scene-index graph and its observer.
+  - `capture`: produces the immutable `snapshot`.
+  - `instancing`: reverse mapping.
+  - `validate`, `mesh_builder` and `planner`: produce the `plan`.
+  - `python_views` and `module`: the Python bindings.
+  - `diagnostics`, `loaded_images` and `bridge`.
+
+  `src/README.md` describes the data flow, the files, the Python API and the conventions.
+
+  The bridge's own code builds with `-Wall -Wextra -Wpedantic` (`/W4` on MSVC); USD's headers are system includes.
+- **Scene-index graph in the plan's order.** Prim-type notice batching is the terminal, and capture flushes it each time: the scene is empty until the first flush, and notices wait for each one. All prim types share one batching priority, because capture re-reads every prim rather than applying notices. Materials first might suit a Phase 2 consumer that applies notices incrementally, but that is untested and undecided.
+- **Draw mode off** (`addDrawModeSceneIndex = false`), carried over from the M1 bridge.
+  - With it on, `UsdImagingDrawModeSceneIndex` would replace a model's subtree with generated stand-ins: a bounds box, origin axes, or cards with Storm-only glslfx materials. Capture would then never see the source meshes, subsets, primvars, or bindings, and the spec puts generated simplified proxies out of scope.
+  - The `geomModel` data still reaches each prim, and it still splits instancers. The planner can therefore read it if Proscenium later honors `model:drawMode`, which [Deferred and Out of Scope](../spec/support/visibility.md#deferred-and-out-of-scope) notes as a logical future step.
+  - From source reading; not tested.
+- **Capture takes a numeric time, default time, or a `Usd.TimeCode`.** `capture()` and `capture(None)` mean default time.
+  - At default time every sample-time query reports false, so Phase D's detection needs numeric times.
+  - The Phase A checks now run mostly at time 1, the fixture's first points sample. Two were renamed, and "snapshot outlives its bridge" was added.
+  - Default time has four checks. One reads the authored default value after the time-1 sample has been edited. The others cover the time reported at default time, the `None` and `Usd.TimeCode` arguments, and a rejected non-time argument.
+- **Tf errors and warnings during capture become diagnostics.**
+  - Each prim read opens its own `TfErrorMark`, so errors are attributed to the prim being read.
+  - Warnings go to a `TfDiagnosticMgr` delegate, which attributes them through a thread-local current prim.
+  - Constructing the bridge still raises.
+  - This changes the Phase A watch item: an Sdr error in the Windows wheel should now appear as a diagnostic instead of failing the capture (to be seen on CI).
+- **No GIL during the chain update, the parallel read pass (`WorkParallelForN`), or planning.**
+- **Prototype simplifications, each weighed in Phase C:**
+  - Material bindings use `allPurpose` only. The spec leaves purpose selection open (M9).
+  - Every face-set GeomSubset becomes a material slot through its binding, because `familyName` is not exposed. Where subsets overlap, the first keeps the face and a diagnostic is raised.
+  - Point instancers get a diagnostic and are not translated. The milestone's cases are native instances.
+  - Normals and value types other than float, float2, float3 and int are not transferred, with an info diagnostic.
+- **Constant primvars travel per object, not on the shared mesh.** A primvar on the prim itself, of any interpolation, shadows an inherited per-instance value, and an inner instance root's value beats an outer one's, as in USD inheritance. Varying primvars become attributes on Blender's domains, with indexed values expanded in C++. Left-handed faces are reversed, keeping their first corner.
+- **The snapshot is built with Hydra's own tools.** It is an `HdRetainedSceneIndex` of `HdMakeStaticCopy` copies of only the schemas planning reads (`PlannedSchemas()`), one retained container per prim. Planning reads its records from it (`prim_reader`), so null checks stay in one place. `snapshot.dump(path)` prints a prim's copy through `HdDebugPrintDataSource`.
+  - **Not a complete copy** (settled with the user, 2026-10-12). The [spec](../spec/pipeline.md#evaluated-source-snapshot) requires values captured before planning and unchanged during it, and says the separation "does not require copying all scene data". An editor authors through the USD stage, not the snapshot.
+  - **Why not complete:**
+    - A full copy was tried first. `HdMakeStaticCopy` dropped `ArResolverContext` under `system/assetResolution` on `/` and every instance root, each with a Tf error, because the type is outside its typed dispatch.
+    - Keeping that value needed a custom copy. Recognising the type then hit a **boundary finding**: `VtValue::IsHolding<ArResolverContext>()` is false in this module. For types outside Vt's known value types it compares `type_info` objects, and our hidden-visibility module has its own typeinfo for USD classes that aren't exported. Any production type check across the boundary needs the same care.
+    - A full copy also pulls every data source, so `SetTime` dirties everything.
+  - **Precedent:** neither usdview (OpenUSD `dev` 5bc38c9) nor the Maya Hydra viewport (maya-hydra 6de1e2c, maya-usd 48eae12) freezes a scene index.
+    - Both read live and keep their own converted per-prim state, refreshed on dirty notices.
+    - `HdMakeStaticCopy` has two production callers, both for narrow subtrees: a material prim, and the instance-aggregation key entries.
+    - maya-hydra stores light parameters it can't type in the untyped `HdRetainedSampledDataSource`.
+  - **For Phase C's incremental refresh:**
+    - Re-copy only the prims named in notices and reuse the other prims' retained handles. Retained containers never change, so earlier snapshots stay intact.
+    - `HdsiComputeSceneIndexDiffDelta` compares handles, not values, so it only lists the re-copied prims. The oracle for incremental capture is therefore a full re-read compared record by record.
+  - **For Phase D:** the copy keeps one sample per value, at shutter offset 0. Sample-time queries (`GetContributingSampleTimesForInterval`) must therefore run on the live graph during capture, not on the snapshot.
+- **Source identity: `HdxPrimOriginInfo` measured against our frame mapping.**
+  - For the comparison, a temporary `build_plan` mode took sources and instance contexts from Hydra's picking reverse mapping, `HdxPrimOriginInfo::FromPickHits` on the snapshot, instead of `Frame::Map`. Transforms, visibility and inherited primvars still came from the frames, because Hydra has no consumer-side helper for them.
+  - The two agreed on every source and context in `prototype.usda`, and at every benchmark size.
+  - **Benchmark** (*measured*, with a since-removed script; bpy wheel, Apple M1 Max, minimum of 5 runs, one machine). Each "branch" draws ten leaf meshes two instancing levels deep:
+
+    | Branches | Objects | Capture | `build_plan`, frames | `build_plan`, `HdxPrimOriginInfo` |
+    |---|---|---|---|---|
+    | 10 | 100 | 0.43 ms | 0.07 ms | 0.17 ms |
+    | 100 | 1,000 | 1.3 ms | 0.46 ms | 1.8 ms |
+    | 1,000 | 10,000 | 6.1 ms | 4.8 ms | 54 ms |
+    | 5,000 | 50,000 | 32 ms | 25 ms | 1,330 ms |
+
+  - **Cause: a quadratic cost in v26.03.** `_FromPickHitWithCache` (`hdx/pickTask.cpp:1182,1194`) copies the cached instancer info into a local, then indexes it with non-const `VtArray::operator[]`. That detaches the shared arrays, copying every instance location on every hit.
+    - OpenUSD `dev` (5bc38c9) reads them with `cdata()` and a comment saying why. It isn't in `dev`'s CHANGELOG, so the release that ships the fix is unknown.
+  - **Decision (with the user, 2026-10-12): identity stays on the frame mapping.** The `HdxPrimOriginInfo` mode, its agreement check and the benchmark were removed.
+  - **Switch to `HdxPrimOriginInfo` once the USD Blender bundles has the `cdata()` fix.** Re-run the comparison first, checking that the two agree and that it scales linearly. Point-instancer identity, which `HdxPrimOriginInfo` handles and we don't, would come with the switch. A note in `src/instancing.h` points here.
+- **USD's own helpers where it has them.** Capture uses:
+  - `HdSceneIndexPrimView` for the traversal, instead of a hand-written stack.
+
+  Reading the records then uses:
+  - `HdPrimvarSchema::IsIndexed` and `GetIndexedPrimvarValue` for primvar values and indices;
+  - `HdDataSourceMaterialNetworkInterface`, the interface Hydra's own material filters use, for networks;
+  - `VtArray<SdfPath>` as Hydra hands it out.
+
+  Mesh topology is held as a `PxOsdMeshTopology`, and validation starts with `PxOsdMeshTopology::Validate`. Its checks cover corner counts, negative indices, the index count, hole indices, and the scheme and orientation tokens. The bridge adds only what USD can't check without the points: indices below the point count, and counts within Blender's `int`.
+
+  `Validate` rejects USD's `"none"` scheme (no subdivision), because it accepts only OpenSubdiv's refinement schemes. Such meshes therefore validate as bilinear, since none of the other checks depend on the scheme. An ad hoc run confirmed the validator's messages for a two-corner face, a negative index, an index-count mismatch, a bad scheme, and an out-of-range index. Phase C's malformed-input fixtures will make these checks permanent.
+- **Application** (`apply.py`) sets `position`, `.corner_vert`, `polygons.loop_start`, `material_index`, and each attribute through flat `memoryview` casts of the Vt arrays. `flat()` rejects a format that doesn't match Blender's, rather than letting `foreach_set` fall back to reading items one at a time. Edges come from `mesh.update(calc_edges=True)`.
 
 ## Phase C — Prototype correctness
 

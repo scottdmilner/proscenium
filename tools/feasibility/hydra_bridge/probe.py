@@ -47,65 +47,76 @@ def run(module_dir: Path) -> dict[str, Any]:
         bridge = native.Bridge(stage)
         check("native stage round-trip preserves identity", bridge.stage() == stage)
         check("native root layer is caller's layer", bridge.stage().GetRootLayer() == stage.GetRootLayer())
-        initial = bridge.snapshot(None)
-        prims = initial["prims"]
-        check("unsaved root and session opinions visible", "/Unsaved" in prims and "/SessionOnly" in prims)
-        tri = prims["/World/Tri"]
+        # Captures are at explicit numeric time codes; time 1 is the fixture's first points sample.
+        initial = bridge.capture(1.0)
+        paths = initial.paths()
+        check("unsaved root and session opinions visible", "/Unsaved" in paths and "/SessionOnly" in paths)
+        tri = initial.prim("/World/Tri")
         check("mesh topology extracted", list(tri["counts"]) == [3] and list(tri["indices"]) == [0, 1, 2])
         check("existing Vt converter used", isinstance(tri["points"], Vt.Vec3fArray))
         check(
-            "default-time points extracted",
+            "time-sampled points extracted",
             list(tri["points"]) == [Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(0, 1, 0)],
         )
         check("inherited world transform flattened", tri["matrix"].ExtractTranslation() == Gf.Vec3d(10, 0, 0))
-        cube = prims["/World/Cube"]
+        cube = initial.prim("/World/Cube")
         check(
             "cube converted to mesh",
             cube["type"] == "mesh" and len(cube["points"]) == 8 and list(cube["counts"]) == [4] * 6,
         )
         check("cube dimensions preserved", all(abs(component) == 1 for point in cube["points"] for component in point))
-        check("native instancing produces instancer data", any(p["type"] == "instancer" for p in prims.values()))
+        types = {initial.prim(path)["type"] for path in paths}
+        check("native instancing produces instancer data", "instancer" in types)
         check(
             "capture leaves source layers unchanged",
             layers_before == [layer.ExportToString() for layer in (stage.GetRootLayer(), stage.GetSessionLayer())],
         )
 
-        middle = bridge.snapshot(2.0)
-        check("interpolated explicit time", middle["prims"]["/World/Tri"]["points"][1] == Gf.Vec3f(2, 0, 0))
-        check("time change produces dirty notice", ("dirtied", "/World/Tri") in middle["events"])
-        check("unchanged capture produces no notices", bridge.snapshot(2.0)["events"] == [])
-        check("return to default time", bridge.snapshot(None)["prims"]["/World/Tri"]["points"][1] == Gf.Vec3f(1, 0, 0))
+        middle = bridge.capture(2.0)
+        check("interpolated explicit time", middle.prim("/World/Tri")["points"][1] == Gf.Vec3f(2, 0, 0))
+        check("time change produces dirty notice", ("dirtied", "/World/Tri") in middle.events)
+        check("unchanged capture produces no notices", bridge.capture(2.0).events == [])
+        check("return to an earlier time", bridge.capture(1.0).prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0))
 
         attr = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Tri")).GetPointsAttr()
-        attr.Set([(0, 0, 0), (7, 0, 0), (0, 7, 0)])
-        edited = bridge.snapshot(None)
+        attr.Set([(0, 0, 0), (7, 0, 0), (0, 7, 0)], 1.0)
+        edited = bridge.capture(1.0)
         check(
-            "live Python edit reaches retained Hydra chain",
-            edited["prims"]["/World/Tri"]["points"][1] == Gf.Vec3f(7, 0, 0),
+            "live Python edit reaches retained Hydra chain", edited.prim("/World/Tri")["points"][1] == Gf.Vec3f(7, 0, 0)
         )
-        check("live edit produces dirty notice", ("dirtied", "/World/Tri") in edited["events"])
+        check("live edit produces dirty notice", ("dirtied", "/World/Tri") in edited.events)
+        # The fixture's default points equal the time-1 sample; that sample is now edited, so default time
+        # must read the authored default value, not a sample.
+        default = bridge.capture()
+        check("default time reads default values", default.prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0))
+        check("default time reports no numeric time", default.time is None and edited.time == 1.0)
+        check(
+            "None and Usd.TimeCode select times",
+            bridge.capture(None).prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0)
+            and bridge.capture(Usd.TimeCode(1.0)).prim("/World/Tri")["points"][1] == Gf.Vec3f(7, 0, 0),
+        )
+        check("non-time argument raises", _raises(lambda b=bridge: b.capture("now"), TypeError))
         UsdGeom.Imageable(stage.GetPrimAtPath("/World")).GetVisibilityAttr().Set("invisible")
-        check("inherited visibility updates", bridge.snapshot(None)["prims"]["/World/Tri"]["visible"] is False)
+        check("inherited visibility updates", bridge.capture(1.0).prim("/World/Tri")["visible"] is False)
         stage.DefinePrim("/Added", "Xform")
-        added = bridge.snapshot(None)
-        check("added prim propagates", "/Added" in added["prims"] and ("added", "/Added") in added["events"])
+        added = bridge.capture(1.0)
+        check("added prim propagates", "/Added" in added.paths() and ("added", "/Added") in added.events)
         stage.RemovePrim("/Added")
-        removed = bridge.snapshot(None)
-        check(
-            "removed prim propagates", "/Added" not in removed["prims"] and ("removed", "/Added") in removed["events"]
-        )
+        removed = bridge.capture(1.0)
+        check("removed prim propagates", "/Added" not in removed.paths() and ("removed", "/Added") in removed.events)
         check("source file never saved", scene.read_bytes() == original_file)
 
         del bridge, stage, attr
         gc.collect()
         check("captured array survives edits and bridge disposal", tri["points"][1] == Gf.Vec3f(1, 0, 0))
+        check("snapshot outlives its bridge", initial.prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0))
         anonymous = Usd.Stage.CreateInMemory()
         anonymous.DefinePrim("/Anonymous", "Xform")
         layer_id = anonymous.GetRootLayer().identifier
         anon_bridge = native.Bridge(anonymous)
         check(
             "anonymous stage round-trip",
-            anon_bridge.stage() == anonymous and "/Anonymous" in anon_bridge.snapshot(None)["prims"],
+            anon_bridge.stage() == anonymous and "/Anonymous" in anon_bridge.capture(0.0).paths(),
         )
         del anonymous
         gc.collect()
@@ -115,13 +126,13 @@ def run(module_dir: Path) -> dict[str, Any]:
         gc.collect()
         check("released bridge lets a caller-released stage expire", Sdf.Layer.Find(layer_id) is None)
         check("released bridge reports no stage", anon_bridge.stage() is None)
-        check("snapshot after release raises", _raises(lambda b=anon_bridge: b.snapshot(None), RuntimeError))
+        check("capture after release raises", _raises(lambda b=anon_bridge: b.capture(0.0), RuntimeError))
         del anon_bridge
         for _ in range(20):
             transient = Usd.Stage.CreateInMemory()
             transient.DefinePrim("/Repeated", "Xform")
             instance = native.Bridge(transient)
-            assert "/Repeated" in instance.snapshot(None)["prims"]
+            assert "/Repeated" in instance.capture(0.0).paths()
             del instance, transient
         check("repeated construction and disposal", True)
         check("invalid stage raises", _raises(lambda: native.Bridge(None), Exception))
@@ -147,7 +158,7 @@ def run(module_dir: Path) -> dict[str, Any]:
             "usd_namespace": native.usd_namespace,
             "loaded_usd_libraries": libraries,
             "module": native.__file__,
-            "prim_types": sorted({p["type"] for p in prims.values()}),
+            "prim_types": sorted(types),
         }
 
 
