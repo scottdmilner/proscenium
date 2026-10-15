@@ -21,7 +21,7 @@ Applied to every end-to-end synchronization case expected to complete successful
 - World bounds of each model's display match USD-computed bounds under the bounds comparison contract.
 - Geometry follows the [Geometry Sharing](../spec/support/instancing.md#geometry-sharing) contract: equivalent uses share resources, required distinct geometry or appearance data remains correct, and equivalent variants remain deduplicated. Each distinct-resource case has a recorded display reason and correctness oracle. Separate bindings do not share or contaminate managed resources. Unique mesh-data counts are recorded as an aggregate regression metric; lower counts do not excuse incorrect display.
 - An unchanged second synchronization keeps active display resource counts and source/display diagnostics stable under [Resource Stability](../spec/lifecycle.md#resource-stability). When disposal succeeds, total managed-resource counts also remain stable. Count inactive pending-cleanup resources separately; disposal failures may increase only those tracked counts and their current cleanup diagnostics.
-- Save and reopen preserves the display and inspection state without accessing the source.
+- Save and reopen preserves the display and correspondence without accessing the source.
 - Changing the time code or payload policy and resynchronizing gives the same result as a clean synchronization at the new settings.
 
 ### Expected-Failure Checks
@@ -29,7 +29,7 @@ Applied to every end-to-end synchronization case expected to complete successful
 For synchronization cases expected to fail before publication, including source-access conflicts and injected preparation or publication failures:
 
 - The attempt reports fatal failure with the expected categorized diagnostics and attempted settings recorded in the last-attempt state.
-- The entire previous published generation remains unchanged: its settings, geometry, materials, images, flags, ownership, inspection, correspondence, and selection-resolution state. On first synchronization, no active partial display appears.
+- The entire previous published generation remains unchanged: its settings, geometry, materials, images, flags, ownership, correspondence, and selection-resolution state. On first synchronization, no active partial display appears.
 - Prepared resources are disposed of or remain inactive and persistently tracked as pending cleanup with ownership evidence and diagnostics. No untracked partial content remains, under the [Synchronization Transaction](../spec/pipeline.md#synchronization-transaction) contract.
 - No synchronization undo step is added, including when global undo is enabled. Binding configuration and the published generation remain unchanged; the last-attempt record and pending-cleanup tracking may change.
 - If disposal also fails, save/reopen preserves pending work, and explicit retry after removing the failure resolves it without USD access. Retries preserve active, detached, reused, and externally required resources.
@@ -84,7 +84,7 @@ ALab checks that the synchronizer works and performs on a real production-scale 
 - The reference hardware is an **M1 Max MacBook Pro**. The [feasibility record](../feasibility/runtime-record.md#environment) records its memory configuration, OS version, and Blender build.
 - Measurements run in the Blender binary on AC power, with no other heavy load, and record the OS version and Blender build hash. A change to either starts a new baseline.
 - Record repeated-run statistics, not single timings.
-- Measure separately: cold and warm source acquisition, evaluation, planning, transfer across any compiled-core boundary, Blender resource construction, publication and retirement, undo overhead, peak memory while old and new generations coexist, inspection-tree expansion, source-to-display lookup, selection and highlight updates, and framing calculations.
+- Measure separately: cold and warm source acquisition, evaluation, planning, transfer across any compiled-core boundary, Blender resource construction, publication and retirement, undo overhead, peak memory while old and new generations coexist, inspection-tree expansion, source-to-display lookup, and selection and highlight updates.
 - Measure these scenarios: initial synchronization, unchanged manual refresh, single transform edit, shared geometry edit affecting many instances, single material parameter change, payload-policy switch, and topology-changing time step.
 - ALab provides production-scale numbers. Generated fixtures of controlled size show how each cost scales.
 - M4 sets provisional budgets for comparing representations. Phase 1 records baselines on the reference hardware, not gates. Phase 2 targets are derived from those baselines (for example, "a single transform edit in ALab updates within a set time").

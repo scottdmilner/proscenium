@@ -26,7 +26,7 @@ Before working on any milestone, read [PROJECT.md](../PROJECT.md), [spec/invaria
 
 ## Ordering Constraints
 
-- M1b decided the evaluation front end and the core's language (C++ with Hydra, 2026-10-14) before M3 defines the identifier schemes and inspection snapshot format that the core implements.
+- M1b decided the evaluation front end and the core's language (C++ with Hydra, 2026-10-14) before M3 defines the identifier schemes that the core implements.
 - The interaction contract is settled and display representations are prototyped before a display backend is committed.
 - Evaluation/planning (M6) and application (M7) are deliberately separate milestones, and every later feature milestone extends both sides explicitly (see [Why the Boundary Is Enforced](../spec/pipeline.md#why-the-boundary-is-enforced)).
 - M4 freezes the primvar and material cases needed for backend feasibility before selecting a representation. M8 and M9 complete their support matrix and grammar before implementation; additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes and updating the decision record and affected milestones.

@@ -4,7 +4,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 
 ## Source Authority
 
-- USD is authoritative. Synchronization never authors USD, saves or modifies source files, authors composition arcs or variant selections, or changes a caller's stage settings. → [Bindings and Source Access](source-access.md#bindings-and-source-access), [In-Memory Sources](source-access.md#in-memory-sources) (BIND-09, MEM-01)
+- USD is authoritative. Synchronization never authors USD, saves or modifies source files, authors composition arcs or variant selections, or changes a caller's stage settings. Live inspection is read-only in the same way. → [Bindings and Source Access](source-access.md#bindings-and-source-access), [In-Memory Sources](source-access.md#in-memory-sources), [Two Layers and the Live Stage](interaction-contract.md#two-layers-and-the-live-stage) (BIND-09, MEM-01, ICON-06)
 - Tools address USD entities through the source selection model, never by inferring USD structure from Blender parenting or names. → [Core Architecture](../PROJECT.md#core-architecture) (ARCH-06)
 - Bindings never cross-contaminate each other's configuration, stage state, or resources. → [Bindings and Source Access](source-access.md#bindings-and-source-access) (BIND-10)
 - Synchronization is synchronous and non-reentrant. → [Source Consistency](source-access.md#source-consistency) (CONS-01)

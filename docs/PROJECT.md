@@ -20,6 +20,7 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [spec/source-access.md](spec/source-access.md) | Bindings, source consistency and identity, copied bindings, in-memory sources, file-backed refresh |
 | [spec/lifecycle.md](spec/lifecycle.md) | Ownership, lifecycle operations, detach, undo and runtime state, persistence |
 | [spec/interaction.md](spec/interaction.md) | Source inspection, interaction contract, interaction testing |
+| [spec/interaction-contract.md](spec/interaction-contract.md) | Draft interaction contract: browsing universe, inspection metadata, picking, selection, Blender selection |
 | [spec/incremental.md](spec/incremental.md) | Phase 2 change discovery and affected content |
 | [spec/support/](spec/support/) | Supported scene state: [transforms](spec/support/transforms.md), [geometry](spec/support/geometry.md), [instancing](spec/support/instancing.md), [materials](spec/support/materials.md), [visibility and unsupported content](spec/support/visibility.md) |
 | [testing/strategy.md](testing/strategy.md) | Test layers and named contract fixtures |
@@ -99,7 +100,7 @@ Automatic timeline synchronization is a stretch goal. The evaluation time code m
 - Minimum Blender version: **5.2 LTS**.
 - Use the OpenUSD version bundled with the supported Blender distribution.
 - Support macOS, Windows, and Linux.
-- Prefer Python-only implementation. A compiled component may be adopted when measurements show Python cannot meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` does not expose, such as Hydra scene indices. M1b adopted a C++ core that reads Hydra scene indices for evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison; measurement-driven decisions start in M4. Both are recorded in [DECISIONS.md](DECISIONS.md).
+- Prefer Python-only implementation. A compiled component may be adopted when measurements show Python cannot meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` does not expose, such as Hydra scene indices. M1b adopted a C++ core that reads Hydra scene indices for evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison. M2 added a C++ inspection layer, a library the core calls that maps selections by kind on the live stage and does not depend on the core ([Interaction Contract](spec/interaction-contract.md#two-layers-and-the-live-stage)). Further measurement-driven decisions start in M4. All are recorded in [DECISIONS.md](DECISIONS.md).
 - Code that touches Blender stays in Python: extensions reach Blender only through the `bpy` API.
 - Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution.
 - Do not require externally installed custom resolvers or schema plugins.
@@ -136,6 +137,6 @@ Each entry links to the section that defines the term in full.
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |
 | **Materialize** | Turning display content that depends on managed shared resources or extension-specific mechanisms into standalone Blender data. |
-| **Browsing universe** | The set of source entities that source inspection exposes, defined in M2. |
+| **Browsing universe** | The set of source entities that source inspection exposes. See [Browsing Universe](spec/interaction-contract.md#browsing-universe). |
 | **Bespoke fixture** | A small, code-generated USD test scene built to exercise specific requirements. See [Bespoke Fixtures](testing/acceptance.md#bespoke-fixtures). |
 | **Production-scale fixture** | A real production scene, currently ALab, used to check integration and performance at scale. |

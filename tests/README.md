@@ -51,9 +51,11 @@ tests/
 │   ├── runner.py             the script the fresh process executes
 │   └── bodies/               functions run inside the fresh process
 ├── support/                  helpers used by more than one layer or by fixtures/
+├── tools/                    scripts for inspecting fixtures; not tests
 └── fixtures/                 bespoke USD fixtures
     ├── registry.py           the named contract fixtures
     ├── source_access.py      generators for F-DIRTY-LAYER, F-PRIVATE-STAGE, F-CACHED-STAGE
+    ├── interaction.py        generators for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
         └── __init__.py       the Scene index and copy_scene
@@ -105,6 +107,7 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 | `usd.py` | `open_fresh(path, load)`: open a stage that no stage cache can hand back. |
 | `blend.py` | `save_and_reopen(path)`: save and reopen the open file. Any bpy reference held across it is invalid afterwards. |
 | `undo.py` | `push`, `undo`, `redo` an undo step, failing if none is available. `require_global_undo()` skips when global undo is off, where background-mode undo is unavailable (see the [feasibility record](../docs/feasibility/runtime-record.md#undo)). |
+| `interaction_oracle.py` | Expected results of the [interaction contract](../docs/spec/interaction-contract.md) on a fixture's live stage, from USD's own APIs: display elements, floors, the browsing universe, and kind-level targets. Checks of a representation's headless functions compare against it. |
 
 ### `fixtures/`
 
@@ -120,6 +123,7 @@ Bespoke fixtures are the main correctness evidence ([acceptance.md](../docs/test
 
   Entering writes the fixture and builds any in-process state, such as open stages, unsaved edits, or cache entries. Leaving releases that state. The yielded object carries the values the fixture is built to produce. Tests compare against those, not against recorded output.
 - **`source_access.py`** has the generators for `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE` (owned by M3), all over `scenes/source_access/`. Each docstring states what state it sets up, and `bpy_free/test_source_access_fixtures.py` checks that the generator actually produces it.
+- **`interaction.py`** has the generators for `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP` over `scenes/interaction/`. Each yields the live stage and the results the scene is built to produce, written out by hand; `bpy_free/test_interaction_fixtures.py` checks that `support/interaction_oracle.py` derives the same results. `tools/show_interaction_fixtures.py` prints them (run it from the repository root as `uv run python tests/tools/show_interaction_fixtures.py`).
 - **`production_like.py`** is the smaller generated CI fixture: a deep organizational hierarchy, instanceable crate payloads with nested instanceable bolts, multi-material assets, and one non-instanced crate. `expected_inventory(params, load_all)` derives what each payload policy must compose. `bpy_free/test_production_like.py` checks that against USD, and also checks determinism and a pinned checksum. Change the checksum only deliberately, together with the generator or its assets.
 - **`scenes/`** holds static `.usda` layers, one directory per scene. Each layer has a header comment saying what it's for. Write static content as files here, not as Python strings.
   - `scenes/__init__.py` indexes them: the `Scene` enum has one member per directory, and `copy_scene(Scene.SOURCE_ACCESS, tmp_path)` copies a scene's files into `tmp_path` and returns it. Generators copy a scene, then make runtime-specific edits through the Sdf API.

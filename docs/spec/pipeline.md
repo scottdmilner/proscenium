@@ -31,7 +31,6 @@ This separation does not require copying all scene data or serializing an interm
 
 - Snapshot data cannot change during planning or application.
 - The snapshot keeps alive whatever storage it lends out, such as shared arrays.
-- Persisted inspection data does not depend on a live USD stage.
 - Application does not retain borrowed buffers beyond the synchronization that supplied them.
 
 Design note (settled by [M1b](../milestones/M01b-evaluation-gate.md); see [DECISIONS.md](../DECISIONS.md) "Evaluation front end and core language"): evaluation reads display semantics from OpenUSD's Hydra scene-index chain through a compiled core, with planning in the same core and the display plan handed to Python application. The requirements above still apply:
@@ -65,8 +64,8 @@ The **planning context** is a small immutable set of plain values captured befor
 Consume the plan and create or update Blender resources.
 
 - Apply planned geometry, materials, transforms, instances, and flags.
-- Maintain ownership and source-correspondence indexes.
-- Publish display and inspection state consistently (see [Synchronization Transaction](#synchronization-transaction)).
+- Maintain ownership indexes, and record which Blender resources realize the plan's correspondence entries. Correspondence itself comes from the plan ([Interaction Contract](interaction-contract.md#two-layers-and-the-live-stage)).
+- Publish display and correspondence state consistently (see [Synchronization Transaction](#synchronization-transaction)).
 - Retire obsolete managed resources under the [Ownership and Lifecycle](lifecycle.md#ownership-and-lifecycle) rules.
 - Handle application failures safely.
 - Report failures that only application can detect as diagnostics: resource-consumption failures (a texture that has disappeared or fails to decode), runtime failures (a resource or node operation fails), and state-change failures (the destination became invalid).

@@ -20,11 +20,11 @@
   - Multi-mesh, multi-material assets.
   - Required per-instance shading variation.
   - Source lookup from pick data.
-  - Highlighting and framing source selections.
+  - Highlighting source selections, and mirroring them into Blender's selection.
   - Small updates within larger scenes.
   - Detaching a whole binding under [Detach As-Is](../spec/lifecycle.md#detach-as-is): identify binding-specific controls to remove and ordinary Blender dependencies to retain, without requiring baking or source reconstruction.
 - Provisional performance budgets, and measurements of initial construction, refresh, interaction, and resource costs against them. Interaction costs are defined in [Interaction Testing](../spec/interaction.md#interaction-testing).
-- Answers to every M2 feasibility question and the finalized interaction contract, including a compatibility review and any required updates to M3's identifiers and persistence schemas before M5 begins.
+- Answers to every [M2 feasibility question](../plans/M02-contracts.md#feasibility-questions-for-m4) and the finalized interaction contract, including a compatibility review and any required updates to M3's identifiers and persistence schemas before M5 begins.
 - For the chosen representation, a record of what a real viewport pick is assumed to supply, as an accepted risk.
 - A partitioning decision record:
   - The partition unit, such as one per model or per prototype.
@@ -34,6 +34,10 @@
 - Prototypes use the evaluation front end and core language chosen in M1b: a C++ core reading Hydra scene indices, with Python application. A decision in the row "Time-sampled data representation", using M1b's findings on time-sampled data detection, including its [notes on evaluating frames](../feasibility/runtime-record.md#for-m4-evaluating-frames): one capture per time code, with caching of several frames as a layer above it. Compare per-time-code snapshots against keyframed transforms, mesh cache modifiers, and Geometry Nodes baking. Baking is expected to perform better at the cost of higher memory use, so measure playback, construction, memory, and `.blend` size separately. Record the time-code-to-frame mapping for any approach adopted, and how it meets the requirements listed in that row.
 - Sharing criteria and any cases requiring distinct geometry resources for correct display, with correctness fixtures and measured resource costs.
 - The [bounds comparison contract](../testing/acceptance.md#bounds-comparison-contract) for the chosen representation, recorded in that section.
+
+**Tests:**
+
+- Checks of each evaluated representation's headless interaction functions against the M2 oracle, written here and reused by M7 and M10: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 
 Later milestones build on the partitioning decision and frozen support cases. Changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant prototypes before implementation, revising the decision record, and listing the affected milestones.
 

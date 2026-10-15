@@ -17,7 +17,7 @@ Use:
 
 Cover repeated synchronization, all required change cases, transform edge cases, invalid geometry, materials, nested instancing, per-instance variation, visibility/purpose, unsupported ancestors, source correspondence, multiple bindings, lifecycle safety, and protection of unmanaged content.
 
-Before-publication failure-injection tests assert that the entire published generation is unchanged, not merely that old objects still exist: materials, images, flags, correspondence, ownership metadata, inspection data, and selection resolution. Retirement failure tests assert that the new generation stays active and obsolete leftovers remain tracked and retryable. Each case uses the applicable synchronization or lifecycle outcome checks in [Acceptance Criteria](acceptance.md#bespoke-fixtures).
+Before-publication failure-injection tests assert that the entire published generation is unchanged, not merely that old objects still exist: materials, images, flags, correspondence, ownership metadata, and selection resolution. Retirement failure tests assert that the new generation stays active and obsolete leftovers remain tracked and retryable. Each case uses the applicable synchronization or lifecycle outcome checks in [Acceptance Criteria](acceptance.md#bespoke-fixtures).
 
 ## Metamorphic Tests
 
@@ -43,7 +43,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-CACHED-STAGE` | **Cached-stage isolation:** ambient stage reuse does not cross-contaminate bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
-| `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence or inspection publication fails. |
+| `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |
 | `F-RETIREMENT-FAILURE` | **Retirement failure:** the new display is active; obsolete resources remain tracked. |
 | `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities and missing resource tags. |
@@ -57,6 +57,9 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-SAME-VALUES` | **Same evaluated values at a different time (Phase 2):** no unnecessary display writes. |
 | `F-UNDO-AFTER-DAMAGE` | **Undo after partial external display damage.** |
 | `F-NO-OP-REFRESH` | **No-op refresh:** resource counts and diagnostics follow [Resource Stability](../spec/lifecycle.md#resource-stability), including separate pending-cleanup accounting and recovery; in Phase 2, zero unnecessary writes. |
+| `F-KIND-HIERARCHY` | **Kind hierarchy:** an assembly, group, and component above meshes, a mesh under no model, and intermediate prims with nothing Hydra needs to keep; selection by kind and expansion follow the composed stage. |
+| `F-NESTED-SELECTION` | **Selection floors in nested native instances:** one prototype used inside and outside an outer instance, and a kind on an instance root; nothing inside instance contents is a selection target. |
+| `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |
 
 ## Incremental Synchronization Tests
 

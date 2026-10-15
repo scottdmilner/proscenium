@@ -1,0 +1,194 @@
+#usda 1.0
+# F-UNIVERSE-MEMBERSHIP (tests/fixtures/interaction.py): which prims are in the browsing universe.
+# Each child of /World is one case, named for it. In the universe: shown and proxy-purpose meshes,
+# the shown half of Mixed, a curves prim (a placeholder, since curves are deferred), and a points
+# prim with no points or extent (an empty marker). Not in it: an invisible subtree, guide- and
+# render-only subtrees, an inactive prim, a payload the fixture leaves unloaded, a materials
+# scope, an Xform with nothing beneath, a camera (no display support), and the abstract
+# /Prototypes. Blinker's visibility is animated: displayed at time 0, invisible at time 5.
+(
+    defaultPrim = "World"
+    startTimeCode = 0
+    endTimeCode = 10
+)
+
+def Xform "World"
+{
+    def Xform "Shown"
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Proxy"
+    {
+        def Mesh "Box"
+        {
+            uniform token purpose = "proxy"
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Hidden"
+    {
+        token visibility = "invisible"
+
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Guide"
+    {
+        uniform token purpose = "guide"
+
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "RenderOnly"
+    {
+        def Mesh "Box"
+        {
+            uniform token purpose = "render"
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Mixed"
+    {
+        def Mesh "Shown"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+
+        def Mesh "Render"
+        {
+            uniform token purpose = "render"
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Inactive" (
+        active = false
+    )
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "Payload" (
+        prepend payload = </Prototypes/PayloadAsset>
+    )
+    {
+    }
+
+    def Scope "Looks"
+    {
+        def Material "Material"
+        {
+            token outputs:surface.connect = </World/Looks/Material/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                token outputs:surface
+            }
+        }
+    }
+
+    def Xform "Empty"
+    {
+        def Xform "Inner"
+        {
+        }
+    }
+
+    def Camera "Camera"
+    {
+    }
+
+    def BasisCurves "Placeholder"
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        float3[] extent = [(0, 0, 0), (1, 0, 0)]
+    }
+
+    def Points "Marker"
+    {
+    }
+
+    def Xform "Blinker"
+    {
+        token visibility.timeSamples = {
+            0: "inherited",
+            5: "invisible",
+        }
+
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    class Xform "Abstract"
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    class Xform "PayloadAsset"
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+}

@@ -33,7 +33,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b]
+started: [M1, M1b, M2]
 
 requirements:
 
@@ -56,6 +56,7 @@ requirements:
         kind: contract
         delivery: M2
         qualified_by: M4
+        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log. M4 finalizes it."
       - id: ARCH-08
         quote: "Keep the performance tests around for later"
         kind: process
@@ -481,7 +482,7 @@ requirements:
         quote: "Binding configuration | Binding identity, source information, destination, target scene, and requested settings"
         delivery: M3
       - id: STATE-02
-        quote: "Published generation | Display resources, inspection snapshot, correspondence, ownership manifest"
+        quote: "Published generation | Display resources, correspondence, ownership manifest"
         fixtures: [F-FAILED-SETTINGS]
       - id: STATE-03
         quote: "Last attempt | Settings attempted, result state, and diagnostics"
@@ -584,9 +585,11 @@ requirements:
         kind: contract
         delivery: M2
         qualified_by: M4
-      - id: INSP-08
-        quote: "Persist enough inspection and correspondence information to inspect the saved display without accessing an unavailable source."
+        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md) settles each item, and the M2 plan's Phase A log records why. M4 answers its feasibility questions and finalizes it."
+      - id: INSP-10
+        quote: "Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection."
         fixtures: [F-OFFLINE]
+        note: "Replaces INSP-08 (retired), which required persisted inspection."
       - id: INSP-09
         quote: "Distinguish the last synchronized snapshot from newly evaluated source state."
 
@@ -598,6 +601,169 @@ requirements:
         quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
         kind: contract
         qualified_by: M4
+        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 records what a real pick is assumed to supply."
+
+  # --- spec/interaction-contract.md -----------------------------------------------------------
+  # Draft contract settled by M2 (INSP-06); M4 finalizes it, and its rows may change then.
+
+  - section: spec/interaction-contract.md#two-layers-and-the-live-stage
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-01
+        quote: "It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected."
+      - id: ICON-02
+        quote: "It stores no inspection data."
+      - id: ICON-03
+        quote: "It never reads the display, the plan, or the snapshot"
+      - id: ICON-04
+        quote: "It does not depend on the compiled core: it shares no code with it"
+        kind: process
+        qualified_by: M7
+        note: "COMP-06 covers its linkage."
+      - id: ICON-05
+        quote: "so paths never pass through Python between the layers"
+        kind: process
+        qualified_by: M7
+      - id: ICON-06
+        quote: "The inspection layer is read-only."
+        fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
+        oracle: "After kind-level select_targets calls, the stage's layers are not dirty and its load set and population mask are unchanged."
+      - id: ICON-07
+        quote: "For an in-memory source it is the caller's stage."
+        delivery: M3
+        phase: 2
+
+  - section: spec/interaction-contract.md#without-a-live-stage
+    delivery: M7
+    phase: 1
+    fixtures: [F-OFFLINE]
+    rows:
+      - id: ICON-08
+        quote: "each of the core's interaction functions reports that the source is unavailable"
+        oracle: "With no live stage, each of the core's five functions reports the source unavailable."
+      - id: ICON-09
+        quote: "stored persistent selections are kept unchanged"
+        oracle: "With no live stage, a stored persistent selection is unchanged after each of the core's five functions is called."
+
+  - section: spec/interaction-contract.md#source-entities-and-hierarchy
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-10
+        quote: "Hydra paths and nesting are never used for grouping or selection expansion."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "Expansion of a group or assembly target reaches every displayed mesh beneath it on the composed stage, although its intermediate prims carry nothing Hydra keeps."
+
+  - section: spec/interaction-contract.md#browsing-universe
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-11
+        quote: "every prim outside native-instance contents that has a viewport display element of its own"
+        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
+        oracle: "displayed is true exactly for the prims the oracle finds with a viewport display element in their subtree (including placeholders, empty markers, and native instances), from UsdGeomImageable visibility and purpose and instance traversal."
+      - id: ICON-12
+        quote: "Content displayed only in the final render destination is not in the universe."
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "displayed is false for render-only prims and for ancestors with only render-only content beneath."
+      - id: ICON-13
+        quote: "Ancestors of displayed content are in the universe, including organizational prims that Hydra does not keep."
+        fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
+        oracle: "displayed is true for every ancestor of displayed content, including organizational Xforms."
+      - id: ICON-14
+        quote: "Prims with nothing displayed in their subtree are not in the universe"
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "displayed is false for the materials scope, an organizational Xform with nothing displayed beneath, and invisible and guide-only subtrees."
+      - id: ICON-15
+        quote: "Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe."
+        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
+        oracle: "displayed is false for instance-proxy paths, an unloaded payload root, inactive prims, and an abstract prim."
+      - id: ICON-16
+        quote: "It is derived from correspondence, not stored"
+
+  - section: spec/interaction-contract.md#picking
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-17
+        quote: "Resolution uses only the published generation's correspondence, never Blender names or parenting."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "resolve_pick returns the same entity after the display objects are renamed and reparented in Blender."
+
+  - section: spec/interaction-contract.md#selection
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-18
+        quote: "The caller supplies a selection level: either the prim level or a model kind."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "select_targets accepts the prim level and any registered model kind."
+      - id: ICON-19
+        quote: "The floor of an entity is the outermost native-instance root enclosing it"
+        delivery: M10
+        fixtures: [F-NESTED-SELECTION]
+        oracle: "A pick anywhere in instance contents, including a nested instance, resolves to the outermost instance root as its floor; no target is inside instance contents."
+      - id: ICON-20
+        quote: "At the prim level, the target is the floor."
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "At the prim level, select_targets returns each entity's floor."
+      - id: ICON-21
+        quote: "At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage"
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "At a kind level, targets match the oracle's nearest ancestor-or-self with that kind or one derived from it (Kind.Registry.IsA), falling back to the floor when none exists or the floor is absent from the stage."
+      - id: ICON-22
+        quote: "Selecting a target selects its subtree"
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "highlight_targets of one target covers exactly the oracle's display elements at or beneath its path; expansion is observed through the display elements it reaches."
+      - id: ICON-23
+        quote: "Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities"
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "highlight_targets covers every display element of the expanded entities and no other."
+
+  - section: spec/interaction-contract.md#persistent-selection
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-24
+        quote: "A persistent selection is an ordered set of (binding identifier, USD path) entries plus an optional active entry"
+        delivery: M3
+      - id: ICON-25
+        quote: "Resolution checks each entry against its binding's published generation"
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "Resolving a persistent selection expands exactly its entries that displayed reports in the current generation."
+      - id: ICON-26
+        quote: "An entry whose path is not in that generation's universe stays stored and is reported unresolved."
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "An entry for a prim hidden by animated visibility stays stored and unresolved, and resolves again in a generation that displays it."
+
+  - section: spec/interaction-contract.md#blender-selection
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-27
+        quote: "A managed display object whose source coverage lies entirely within the expanded selection is selected"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "After apply_selection, display objects covering only selected entities are selected and those covering none are not."
+      - id: ICON-28
+        quote: "When the active entry has exactly one display object, it is the active Blender object. When it has several, such as a component shown by several objects, all of them are selected and there is no active object."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "After apply_selection, the active object is the active entry's display object when it has one; when it has several, all are selected and no object is active."
+      - id: ICON-29
+        quote: "The selection state of unmanaged objects is never changed."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "apply_selection leaves the selection of unmanaged objects unchanged."
+      - id: ICON-30
+        quote: "Selecting displayed content in Blender produces a source selection"
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "selection_from_blender, given read_blender_selection's result, returns the targets at the given level of the selected display objects' entities."
+
+  - section: spec/interaction-contract.md#interfaces-for-future-tools
+    delivery: M7
+    phase: 1
+    rows:
+      - id: ICON-31
+        quote: "Future USD manipulation tools receive: the live stage"
 
   # --- spec/incremental.md --------------------------------------------------------------------
 
@@ -983,7 +1149,7 @@ requirements:
       - id: ASTD-03
         quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
       - id: ASTD-04
-        quote: "Save and reopen preserves the display and inspection state without accessing the source."
+        quote: "Save and reopen preserves the display and correspondence without accessing the source."
 
   - section: testing/acceptance.md#expected-failure-checks
     kind: process
@@ -1215,11 +1381,51 @@ excluded:
     restates: [INSP-06]
   - section: spec/interaction.md#interaction-testing
     quotes:
-      - "Picking, highlighting, and framing normally need a window"
+      - "Picking and highlighting normally need a window"
       - "Future work: the following are out of scope for this project:"
       - "A windowed test suite that drives real viewport picking"
+      - "Framing source selections."
       - "Measuring viewport drawing performance."
     reason: "Rationale and out-of-scope future work."
+  - section: spec/interaction.md#source-inspection-and-interaction
+    quotes: ["The draft Interaction Contract settles these items."]
+    restates: [INSP-06]
+  - section: spec/interaction-contract.md
+    quotes:
+      - "The draft interaction contract that Source Inspection and Interaction requires"
+      - "The contract defines what the display layer provides, not its Blender structure."
+    reason: "File introduction."
+  - section: spec/interaction-contract.md#two-layers-and-the-live-stage
+    quotes: ["Callers of the contract have the binding's live USD stage."]
+    reason: "Scope: browsing and inspection use the USD API on the live stage; the ICON rows trace what the contract provides."
+  - section: spec/interaction-contract.md#two-layers-and-the-live-stage
+    quotes: ["The live stage may differ from the display once the source has changed since synchronization."]
+    reason: "Explanation, and the file-backed live stage deferred to M3's decision row; ICON-06 traces the in-memory case."
+  - section: spec/interaction-contract.md#source-entities-and-hierarchy
+    quotes: ["A source entity is a binding plus a USD prim path"]
+    restates: [INSP-01, INSP-03]
+  - section: spec/interaction-contract.md#selection
+    quotes: ["Selection runs through both layers."]
+    reason: "Overview of the selection steps; the ICON selection rows trace each one."
+  - section: spec/interaction-contract.md#picking
+    quotes: ["A pick resolves to the binding and source entity of the display element hit"]
+    restates: [INSP-01, ITEST-02]
+  - section: spec/interaction-contract.md#blender-selection
+    quotes: ["Blender's transform tools are not USD authoring tools."]
+    reason: "Scope limit; the lifecycle permission that generated content is USD-authoritative covers edits."
+  - section: spec/interaction-contract.md#headless-functions
+    quotes:
+      - "Design note (names and signatures are settled by M3 and M7)"
+      - "resolve_pick | what a viewport pick supplies"
+      - "displayed | source paths"
+      - "highlight_targets | selection targets"
+      - "Core bindings, which route to the correspondence and inspection layers internally:"
+      - "select_targets | resolved entities and a selection level"
+      - "selection_from_blender | the display-resource identities"
+      - "apply_selection | display targets, with those of the active entry marked"
+      - "read_blender_selection | Blender's selection state"
+      - "displayed serves both a stage browser"
+    reason: "Design note: illustrative function shapes for ITEST-02; the ICON rows trace the behavior."
   - section: spec/lifecycle.md
     quotes: ["Ownership, lifecycle operations, undo and runtime state, and persistence. Cross-cutting"]
     reason: "File introduction."
@@ -1540,9 +1746,6 @@ excluded:
     quotes: ["Source-side diagnostics."]
     reason: "Outline of snapshot contents; traced by BND-02 and DIAG rows."
   - section: spec/pipeline.md#evaluated-source-snapshot
-    quotes: ["Persisted inspection data does not depend on a live USD stage."]
-    reason: "Restates INSP-08."
-  - section: spec/pipeline.md#evaluated-source-snapshot
     quotes: ["Values are captured into the snapshot before planning, so a live, lazily evaluated scene index is never the snapshot."]
     reason: "Design guidance for a Hydra front end (M1b, M6)."
   - section: spec/pipeline.md#evaluated-source-snapshot
@@ -1576,10 +1779,10 @@ excluded:
     quotes: ["Apply planned geometry, materials, transforms, instances, and flags."]
     reason: "Outline of application duties; traced by the feature rows."
   - section: spec/pipeline.md#blender-application
-    quotes: ["Maintain ownership and source-correspondence indexes."]
+    quotes: ["Maintain ownership indexes, and record which Blender resources realize the plan's correspondence entries."]
     reason: "Outline of application duties; traced by INSP and OWN rows."
   - section: spec/pipeline.md#blender-application
-    quotes: ["Publish display and inspection state consistently"]
+    quotes: ["Publish display and correspondence state consistently"]
     reason: "Outline of application duties; traced by TXN-06."
   - section: spec/pipeline.md#blender-application
     quotes: ["Retire obsolete managed resources under the Ownership and Lifecycle rules."]
@@ -1627,7 +1830,7 @@ excluded:
     quotes: ["Refresh is explicit."]
     reason: "Restates REOPEN-02 and PH1-01."
   - section: spec/lifecycle.md#schema-versions
-    quotes: ["Binding records, ownership manifests, inspection snapshots, correspondence, and any separate pending-cleanup records carry schema versions."]
+    quotes: ["Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions."]
     reason: "Design guidance for M3's schemas; SCHEMA-02 to SCHEMA-04 test versioning."
   - section: spec/interaction.md#interaction-testing
     quotes: ["The extension therefore exposes the logic behind interaction as plain functions that can be tested headless."]
