@@ -38,6 +38,7 @@ endif()
 Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/bridge.cpp
   src/capture.cpp
+  src/copy_bindings.cpp
   src/diagnostics.cpp
   src/fact_timings.cpp
   src/instancing.cpp

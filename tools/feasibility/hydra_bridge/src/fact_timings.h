@@ -30,6 +30,7 @@ enum class FactTiming {
     MeshLayout,
     MeshSlots,
     MeshPrimvars,
+    CopyBindings,  // the OpenUSD #3690 workaround, when it recomputes (copy_bindings.h)
     Count
 };
 

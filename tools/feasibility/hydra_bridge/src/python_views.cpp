@@ -215,6 +215,24 @@ bp::list SnapshotView::Renames() const {
 
 bp::list SnapshotView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
 
+bp::dict SnapshotView::CopyBindings() const {
+    bp::dict result;
+    bp::list instances;
+    bp::dict materials;
+    if (const auto &copies = data->copyBindings) {
+        for (const SdfPath &path : copies->instances) instances.append(path.GetString());
+        static const char *const kPurposes[] = {"allPurpose", "preview", "full"};
+        for (const auto &[path, bound] : copies->materials) {
+            bp::dict perPurpose;
+            for (size_t p = 0; p < bound.size(); ++p) perPurpose[kPurposes[p]] = bound[p].GetString();
+            materials[path.GetString()] = perPurpose;
+        }
+    }
+    result["instances"] = instances;
+    result["materials"] = materials;
+    return result;
+}
+
 bp::object PlanView::Time() const { return TimeOrNone(data->time); }
 
 bp::list PlanView::Meshes() const {
@@ -345,7 +363,8 @@ void WrapViews() {
         .add_property("copied", +[](const SnapshotView &view) { return view.data->copied; })
         .add_property("dirty_locators", &SnapshotView::DirtyLocators)
         .add_property("renames", &SnapshotView::Renames)
-        .add_property("diagnostics", &SnapshotView::Diagnostics);
+        .add_property("diagnostics", &SnapshotView::Diagnostics)
+        .add_property("copy_bindings", &SnapshotView::CopyBindings);
     bp::class_<PlanView>("Plan", bp::no_init)
         .add_property("time", &PlanView::Time)
         .add_property("meshes", &PlanView::Meshes)

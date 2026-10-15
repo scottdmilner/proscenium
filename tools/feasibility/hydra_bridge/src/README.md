@@ -75,6 +75,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
 | `loaded_images.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
+| `copy_bindings.h/.cpp` | **Workaround for OpenUSD #3690:** UsdShade's binding per drawn copy, on its instance-proxy path, for the instances a binding collection reaches (Hydra and per-prototype resolution miss collections naming paths inside instances). Cached in the source-info filter until a binding or collection edit; the planner uses it for those copies |
 | `fact_timings.h/.cpp` | Phase E only: time the source-info filter spends building facts and in each USD query (bindings, strong purposes, family verdict, dropped attributes, computed extents), summed over threads, and how planning's time splits (reading, building each mesh and its parts, objects) |
 
 The rest of `hydra_bridge/` builds, runs and checks the module:
@@ -108,6 +109,7 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 bridge.release()  # lets a caller-released stage expire; capture() then raises
+snapshot.copy_bindings  # workaround for OpenUSD #3690: {"instances": [...], "materials": {copy: {purpose: material}}}
 _hydra_bridge.take_filter_timings()  # Phase E: {kind: (calls, seconds)} of the filter's USD reads since the last call
 ```
 

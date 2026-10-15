@@ -57,6 +57,8 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
 // - otherwise the instance root's own, which sits in the enclosing namespace and is resolved the same way.
 // A binding to something that isn't a Material binds nothing and ends the search, as in UsdShade.
 // M1b plan, Phase C log: "Nested-instance binding bug"; checked by cases/instances.py.
+// This misses collections that name paths inside an instance (OpenUSD #3690): the planner resolves the copies
+// they reach through the workaround in copy_bindings.h instead.
 pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame,
                            const pxr::TfToken &purpose);
 

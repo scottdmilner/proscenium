@@ -23,7 +23,8 @@ const char *const kNames[kKinds] = {"build",
                                     "mesh: deleted faces",
                                     "mesh: layout",
                                     "mesh: slots",
-                                    "mesh: primvars"};
+                                    "mesh: primvars",
+                                    "copy bindings"};
 
 struct Counter {
     std::atomic<uint64_t> calls{0};

@@ -276,8 +276,36 @@ private:
                                const TfToken &purpose) {
         std::vector<int> materials;
         materials.reserve(slots.size());
-        for (const PrimRecord *slot : slots) materials.push_back(MaterialIndex(BoundMaterial(table_, *slot, frame, purpose)));
+        for (const PrimRecord *slot : slots) materials.push_back(MaterialIndex(SlotMaterial(*slot, frame, purpose)));
         return materials;
+    }
+
+    // The Hydra material a slot binds in one drawn copy.
+    SdfPath SlotMaterial(const PrimRecord &slot, const Frame &frame, const TfToken &purpose) {
+        // WORKAROUND for OpenUSD #3690 (copy_bindings.h): a copy a binding collection reaches takes
+        // UsdShade's own answer for its instance-proxy path.
+        const CopyBindings *copies = snapshot_.copyBindings.get();
+        if (copies && !frame.context.empty()) {
+            const std::optional<size_t> index = MaterialPurposeIndex(purpose);
+            const auto found = copies->materials.find(frame.Map(slot.path));
+            if (index && found != copies->materials.end()) return HydraMaterial(found->second[*index]);
+        }
+        return BoundMaterial(table_, slot, frame, purpose);
+    }
+
+    // The Hydra material prim that draws USD material `usdPath` (an instance proxy for a material inside an
+    // instance); `usdPath` itself if none does, which MaterialIndex reports as missing. Built on first use, so
+    // scenes without per-copy bindings plan exactly as before.
+    SdfPath HydraMaterial(const SdfPath &usdPath) {
+        if (usdPath.IsEmpty()) return usdPath;
+        if (!materialsByUsdPath_) {
+            materialsByUsdPath_.emplace();
+            for (const PrimRecord &prim : table_.prims)
+                if (prim.material)
+                    for (const Frame &frame : resolver_.FramesOf(prim)) materialsByUsdPath_->emplace(frame.Map(prim.path), prim.path);
+        }
+        const auto found = materialsByUsdPath_->find(usdPath);
+        return found != materialsByUsdPath_->end() ? found->second : usdPath;
     }
 
     int MaterialIndex(const SdfPath &path) {
@@ -326,6 +354,7 @@ private:
     InstanceResolver resolver_;
     std::unordered_map<SdfPath, std::vector<const PrimRecord *>, SdfPath::Hash> subsets_;  // by mesh path
     std::unordered_map<SdfPath, int, SdfPath::Hash> materials_;
+    std::optional<std::unordered_map<SdfPath, SdfPath, SdfPath::Hash>> materialsByUsdPath_;  // see HydraMaterial
     std::set<std::pair<SdfPath, TfToken>> unconverted_;  // constant primvars already warned about, by source
 };
 

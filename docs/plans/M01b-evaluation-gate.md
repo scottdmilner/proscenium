@@ -335,7 +335,7 @@ Branch `m01b-phase-c`, off `m01b-phase-b`.
   | Untranslated types | Pass | HermiteCurves aren't imaged at all (from source reading and snapshot inspection); the filter supplies their type, transform, visibility and purpose. Point instancers get one placeholder each. |
   | Large arrays | Pass | Blender copies face offsets: `polygons.foreach_set('loop_start')` allocates a temporary of 4 bytes per face. Every other transfer allocates no Python memory beyond about 1 KiB (`tracemalloc`; Blender's own allocator isn't measured). |
   | Malformed input | Pass: errors and diagnostics, no crash, nothing `Mesh.validate()` would change reaches Blender; faces it would delete are left out with a warning | A wrong-typed attribute arrives empty, so the message describes missing points, not a type error. |
-  | Bindings and purpose visibility | Pass, except two collection gaps | Collection bindings that name instance-proxy paths are missed; **no workaround** (below). Purpose visibility needs the filter. |
+  | Bindings and purpose visibility | Pass, except two collection gaps | Collection bindings that name instance-proxy paths are missed; no workaround in Phase C (below; since Phase E, a workaround for OpenUSD #3690). Purpose visibility needs the filter. |
   | Normals, velocities, constant primvars, custom attributes | Pass | UsdImaging passes only primvars and schema attributes; the filter lists the attributes it drops, so they can be warned (below). |
   | Prim and material purposes per destination | Pass | The Phase B application ignored prim purpose. Hydra resolves each purpose separately but the nested binding bug makes its values unusable inside instances, so the core resolves each destination itself (below). |
 
@@ -375,11 +375,11 @@ Branch `m01b-phase-c`, off `m01b-phase-b`.
     - This replaces two earlier versions that tried to correct Hydra's values. The audit fooled the second with a collection that didn't include the prim, and with an empty binding.
   - **History.** The first version missed strong inner roots (6 copies wrong, found ad hoc). Disabling the strength rule then, ad hoc, failed the check on `BranchE`'s two Blades.
   - **Upstream.** OpenUSD [#1571](https://github.com/PixarAnimationStudios/OpenUSD/issues/1571)'s case (a strong outer binding) is now in the fixture and matches. [#3690](https://github.com/PixarAnimationStudios/OpenUSD/issues/3690) is a different bug (collections, below). No upstream issue was found for the re-rooting; it is worth reporting.
-- **Collection bindings that name instance-proxy paths: gaps without a bounded workaround.**
+- **Collection bindings that name instance-proxy paths: gaps without a bounded workaround in Phase C** (since Phase E, a workaround for OpenUSD #3690; see the Phase E log).
   - **Shapes:** a collection outside the instance that includes one instance's prim, and a collection on the instanced asset's root (`KitA`/`KitB`, the shape of #3690's scene, which has a single instance and also loses its binding through our pipeline, ad hoc).
   - **Why:** a prototype can't see proxy paths. The source suggests Hydra evaluates membership on prototype paths (marked XXX).
   - **What works:** a collection authored below the asset's root, inside the prototype, matches UsdShade through the filter.
-  - **Fixing the rest** means evaluating such collections per instance and splitting instances by them, outside Hydra's aggregation. Phase F weighs this.
+  - **Fixing the rest** means evaluating such collections per instance, outside Hydra's aggregation. Phase E does this; splitting instances isn't needed, since the plan already gives each drawn copy its own material slots.
 - **A type-identity finding at the module boundary.**
   - An `SdfPath` value made in the bridge's module isn't recognized by USD's own code: `HdMakeStaticCopy` posts "Unsupported type SdfPath". It is the same boundary as Phase B's `ArResolverContext`, now for a core type.
   - Bound paths therefore travel as tokens, and the core maps them to Hydra paths through the prim's prototype-relative origin.
@@ -567,7 +567,7 @@ The measurements report what was run; they are not extrapolated to Phase 2 budge
 
 Branch `m01b-phase-e`, off `m01b-phase-d`.
 
-- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. The correctness checks are unchanged (128 in both hosts, macOS).
+- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
 - **Harness** (`hydra_bridge/measure/`):
   - **`run.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
   - **`child.py`** marks each stage with CPU time, the lifetime peak and the live heap.
@@ -579,16 +579,16 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
   - **A smaller run** (with the user, 2026-10-14): three repeats, five stress scenes (one small and one large mesh, 10,000 prims, nested instancing, animation) and ALab, with no bespoke fixtures. It takes about 6 minutes; the first plan would have taken about 1.5 hours.
   - **Retained memory is read as live heap.** The footprint stays high after memory is freed (the allocator keeps the pages), so it says little about what is still owned. The live heap showed both sides back to under 40 MB after deleting their data.
   - **The cleanup re-evaluates the depsgraph after deleting data.** Evaluated copies hold their memory until the next evaluation: 1.7 GB on ALab's imported data.
-- **Results on ALab, against the matched importer** (the recorded run, with parallel planning):
-  - **Time:** 3.69 s against 3.45 s (1.07×).
-  - **Peak memory:** 3,113 MB against 1,795 MB (1.73×).
-  - **The Hydra stages (1.27 s) take less time than Blender construction (1.86 s).**
-  - **With the bridge alive,** 1,451 MB of live heap is held: the snapshot (517 MB at capture) and the plan (901 MB at planning).
+- **Results on ALab, against the matched importer** (the recorded run, with parallel planning and the OpenUSD #3690 workaround):
+  - **Time:** 3.50 s against 3.24 s (1.08×).
+  - **Peak memory:** 3,112 MB against 1,798 MB (1.73×).
+  - **The Hydra stages (1.15 s) take less time than Blender construction (1.62 s).**
+  - **With the bridge alive,** 1,453 MB of live heap is held: the snapshot (516 MB at capture) and the plan (904 MB at planning).
 
   All three parts of the tentative criterion 4 hold. In the first run, with serial planning, the stage-split part didn't: the Hydra stages took 2.12 s against 1.91 s (time 1.43×, memory 1.76×). The user sets the final criterion.
 - **Answers to the items carried in:**
   - **Sharing:** 3,945 plan meshes for 6,679 mesh copies on ALab, the same as the instancing importer.
-  - **The filter's per-prim queries:** they cost 0.53 s of CPU (summed over threads) while ALab's bridge is built, out of 1.88 s. Binding resolution is most of it (0.35 s). On 10,000 small prims the filter takes 0.83 s of the stage's 1.05 s, 0.63 s of it bindings.
+  - **The filter's per-prim queries:** they cost 0.52 s of CPU (summed over threads) while ALab's bridge is built, out of 2.16 s. Binding resolution is most of it (0.34 s). On 10,000 small prims the filter takes 0.95 s of the stage's 1.09 s, 0.75 s of it bindings.
 - **Where planning's time goes** (2026-10-14, measured after the run above, with timers in the planner):
   - On ALab, building meshes one at a time is 95% of planning: 1.30 s of 1.36 s. Objects take 0.02 s, and reading the records 0.03 s.
   - Within mesh building, USD's `PxOsdMeshTopology::Validate` takes 0.55 s, finding the faces Blender would delete 0.28 s, primvars 0.31 s and the layout 0.12 s.
@@ -597,6 +597,13 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
     1. Build meshes in parallel, with a serial pass for objects and diagnostics in prim order, so the plan stays identical.
     2. For a single large mesh, run its independent passes concurrently and parallelize the bridge's own loops; USD's validation is one call.
     3. Not worth it now: parallel object building, which takes 0.02 s.
+- **Collection bindings inside instances: a workaround for OpenUSD #3690** (with the user, 2026-10-14).
+  - **Why.** Phase C's two collection gaps break the prototype's contract to resolve bindings as USD does. Blender's importer, by contrast, matches USD only with scene instancing off.
+  - **What.** For the instances a binding collection reaches, UsdShade resolves each drawn copy on its instance-proxy path at capture, and the planner uses those answers. Other instances keep the per-prototype resolution (option 2 of the options weighed: scoped, not every copy).
+  - **Labeling.** The code is labeled `WORKAROUND for OpenUSD #3690` at each site (`src/copy_bindings.*`, and its uses in the filter, capture, snapshot and planner). A known-gap check on Hydra's own bindings shows when a fix lands.
+  - **Checks.** The two gap checks became checks that the plan matches UsdShade. Two more cover the workaround's scope and an edit. Each failed in a mutation run without the behavior it guards.
+  - **Cost** (ad hoc): 0.001 s on instances-1000 and 0.044 s on ALab, neither of which has a binding collection; 0.185 s with a collection reaching all 1,000 instances (21,000 copies).
+  - Details are in the record's [section on it](../feasibility/runtime-record.md#collection-bindings-inside-instances-workaround-for-openusd-3690).
 - **Option 1 implemented** (with the user, 2026-10-14). `Planner::BuildMeshes` builds every mesh in parallel; the serial pass adds them to the plan in prim order.
   - **ALab:** planning goes from 1.20 s to 0.26 s (5.7 cores), synchronization from 4.61 s to 3.69 s, and the Hydra stages from 2.12 s to 1.27 s.
   - **The large mesh is unchanged** (0.61 s), as expected.

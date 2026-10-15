@@ -70,6 +70,16 @@ void SourceInfoSceneIndex::Detach() {
     stage_ = nullptr;
 }
 
+std::shared_ptr<const CopyBindings> SourceInfoSceneIndex::CurrentCopyBindings() {
+    const uint64_t generation = bindingsGeneration_.load();
+    if (!copyBindings_ || copyBindingsAt_ != generation) {
+        const ScopedFactTiming timing(FactTiming::CopyBindings);
+        copyBindings_ = std::make_shared<const CopyBindings>(ComputeCopyBindings(stage_));
+        copyBindingsAt_ = generation;
+    }
+    return copyBindings_;
+}
+
 void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
     if (time == time_) return;
     time_ = time;
@@ -146,6 +156,7 @@ void SourceInfoSceneIndex::ApplyPendingUpdates() {
         // strength rules reach across instances, so every prim's bindings are re-resolved. Rare edits; a
         // per-collection dependency map would narrow it.
         if (bindingsChanged) {
+            ++bindingsGeneration_;
             for (const auto &[path, cached] : cache_) dirtied.emplace_back(path, facts);
             InvalidateAll();
         }
@@ -222,6 +233,7 @@ void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase &, const HdSceneIn
         std::lock_guard<std::mutex> lock(mutex_);
         // Hydra lists every added prim, so an exact erase suffices; removals list only subtree roots.
         InvalidateAll();
+        ++bindingsGeneration_;
         for (const auto &entry : entries) {
             if (auto found = cache_.find(entry.primPath); found != cache_.end()) {
                 *found->second.generation = kForgotten;
@@ -245,6 +257,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase &,
             Forget(entry.primPath);
         }
         InvalidateAll();
+        ++bindingsGeneration_;
     }
     _SendPrimsRemoved(entries);
 }

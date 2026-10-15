@@ -26,6 +26,7 @@
 // graph advances (ApplyPendingUpdates), asking UsdImagingDataSourcePrim::Invalidate which locators changed.
 #pragma once
 
+#include "copy_bindings.h"
 #include "source_facts.h"
 
 #include <pxr/pxr.h>
@@ -67,6 +68,10 @@ public:
     // stage aren't built again from USD. Call before the stage scene index's SetStage(nullptr), never
     // alongside reads.
     void Detach();
+    // WORKAROUND for OpenUSD #3690 (copy_bindings.h): UsdShade's bindings for the copies binding collections
+    // reach, recomputed only after a binding or collection edit or a resync. Call between graph advances,
+    // never alongside reads.
+    std::shared_ptr<const CopyBindings> CurrentCopyBindings();
 
     pxr::HdSceneIndexPrim GetPrim(const pxr::SdfPath &primPath) const override;
     pxr::SdfPathVector GetChildPrimPaths(const pxr::SdfPath &primPath) const override;
@@ -122,6 +127,11 @@ private:
     mutable PathSet supplied_;  // prims given UsdImaging's prim data (Hydra doesn't image them)
     // Locators flagged as time-varying, per prim, dirtied on every time change.
     mutable std::unordered_map<pxr::SdfPath, pxr::HdDataSourceLocatorSet, pxr::SdfPath::Hash> timeVarying_;
+    // Moves whenever any prim's bindings may have changed (a binding or collection edit, a resync), and the
+    // copy bindings computed at a generation.
+    std::atomic<uint64_t> bindingsGeneration_{1};
+    std::shared_ptr<const CopyBindings> copyBindings_;
+    uint64_t copyBindingsAt_ = 0;
     // Properties stage edits changed since the last ApplyPendingUpdates, per prim.
     std::unordered_map<pxr::SdfPath, pxr::TfTokenVector, pxr::SdfPath::Hash> pending_;
 };
