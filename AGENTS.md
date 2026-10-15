@@ -62,6 +62,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
   - The core never keeps a released stage alive.
   - Each workaround for an OpenUSD bug is labeled `WORKAROUND for OpenUSD #<issue>` at every site, and a known-gap check fails when the bug stops reproducing.
 - **Style:** C++17, warnings as the bridge's CMakeLists.txt sets them, and no warnings in any platform's build. M3 adds clang-format and clang-tidy as pre-commit hooks with the first core code.
+- **Inspection layer:** a C++ library that maps picked prims to selection targets by kind on the live stage ([interaction contract](docs/spec/interaction-contract.md#two-layers-and-the-live-stage)). The core calls it and exposes it through the core's own bindings; it has no Python bindings, and never includes or calls the core. The build and style rules above apply to it too. M7 builds it.
 - **Tests:** through the core's Python module, in the test layers below. Expected values come from the spec, from USD's own APIs (`UsdGeom`, `UsdShade`), or from how the fixture is built, never from Hydra's output. A test whose input could crash native code runs in `isolated/`, since a crash ends the process.
 
 ## Tests
@@ -93,3 +94,4 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.
 - Evidence docs (feasibility records, decision rows) claim only what a check actually tested.
+- Keep Git commits as small, self-contained, and parseable as possible: one new feature per commit.

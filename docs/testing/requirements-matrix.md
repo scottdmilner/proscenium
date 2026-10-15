@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-267 rows: 198 behavior, 19 contract, 50 process; milestones started: M1, M1b.
+298 rows: 227 behavior, 19 contract, 52 process; milestones started: M1, M1b.
 
 ## PROJECT.md
 
@@ -139,7 +139,7 @@ is filled in by its delivering milestone before implementation.
 | [UNDO-07](../spec/lifecycle.md#undo-and-runtime-state) | Runtime code must not hold Blender datablock references across operator calls. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [UNDO-08](../spec/lifecycle.md#undo-and-runtime-state) | Detach, cleanup, and binding removal must support undo/redo | behavior | M11 | 1 / M12 | `F-LIFECYCLE-FAILURE`, `F-UNDO-AFTER-DAMAGE` | Set by M11. |
 | [STATE-01](../spec/lifecycle.md#binding-state) | Binding configuration \| Binding identity, source information, destination, target scene, and requested settings | behavior | M3 | 1 / M12 | — | Set by M3. |
-| [STATE-02](../spec/lifecycle.md#binding-state) | Published generation \| Display resources, inspection snapshot, correspondence, ownership manifest | behavior | M5 | 1 / M12 | `F-FAILED-SETTINGS` | Set by M5. |
+| [STATE-02](../spec/lifecycle.md#binding-state) | Published generation \| Display resources, correspondence, ownership manifest | behavior | M5 | 1 / M12 | `F-FAILED-SETTINGS` | Set by M5. |
 | [STATE-03](../spec/lifecycle.md#binding-state) | Last attempt \| Settings attempted, result state, and diagnostics | behavior | M5 | 1 / M12 | `F-FAILED-SETTINGS` | Set by M5. |
 | [STATE-04](../spec/lifecycle.md#binding-state) | Pending cleanup \| Unresolved prepared or obsolete resources, ownership evidence | behavior | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
 | [STATE-07](../spec/lifecycle.md#binding-state) | A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed. | behavior | M12 | 1 / M12 | `F-FAILED-SETTINGS` | Set by M12. |
@@ -171,9 +171,44 @@ is filled in by its delivering milestone before implementation.
 | [INSP-04](../spec/interaction.md#source-inspection-and-interaction) | Native instance roots are selectable and source-identifiable. | behavior | M10 | 1 / M12 | — | Set by M10. |
 | [INSP-05](../spec/interaction.md#source-inspection-and-interaction) | Source correspondence survives any batching, reordering, or geometry partitioning. | behavior | M8 | 1 / M12 | — | Set by M8. |
 | [INSP-06](../spec/interaction.md#source-inspection-and-interaction) | The browsing universe: which of the populated composed hierarchy | contract | M2 | 1 / M4 | — | Set by M2. |
-| [INSP-08](../spec/interaction.md#source-inspection-and-interaction) | Persist enough inspection and correspondence information to inspect the saved display without accessing an unavailable source. | behavior | M7 | 1 / M12 | `F-OFFLINE` | Set by M7. |
+| [INSP-10](../spec/interaction.md#source-inspection-and-interaction) | Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection. | behavior | M7 | 1 / M12 | `F-OFFLINE` | Set by M7. *Replaces INSP-08 (retired), which required persisted inspection.* |
 | [INSP-09](../spec/interaction.md#source-inspection-and-interaction) | Distinguish the last synchronized snapshot from newly evaluated source state. | behavior | M7 | 1 / M12 | — | Set by M7. |
 | [ITEST-02](../spec/interaction.md#interaction-testing) | Interaction feasibility and qualification are claimed at the level of these headless functions | contract | M2 | 1 / M4 | — | Set by M2. |
+## spec/interaction-contract.md
+
+| ID | Requirement | Kind | Delivery | Phase / qualified by | Fixtures | Test or oracle |
+|---|---|---|---|---|---|---|
+| [ICON-01](../spec/interaction-contract.md#two-layers-and-the-live-stage) | It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-02](../spec/interaction-contract.md#two-layers-and-the-live-stage) | It stores no inspection data. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-03](../spec/interaction-contract.md#two-layers-and-the-live-stage) | It never reads the display, the plan, or the snapshot | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-04](../spec/interaction-contract.md#two-layers-and-the-live-stage) | It does not depend on the compiled core: it shares no code with it | process | M7 | 1 / M7 | — | Set by M7. *COMP-06 covers its linkage.* |
+| [ICON-05](../spec/interaction-contract.md#two-layers-and-the-live-stage) | so paths never pass through Python between the layers | process | M7 | 1 / M7 | — | Set by M7. |
+| [ICON-06](../spec/interaction-contract.md#two-layers-and-the-live-stage) | The inspection layer is read-only. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-07](../spec/interaction-contract.md#two-layers-and-the-live-stage) | For an in-memory source it is the caller's stage. | behavior | M3 | 2 / M14 | — | Set by M3. |
+| [ICON-08](../spec/interaction-contract.md#without-a-live-stage) | every interaction function reports that the source is unavailable | behavior | M7 | 1 / M12 | `F-OFFLINE` | Set by M7. |
+| [ICON-09](../spec/interaction-contract.md#without-a-live-stage) | stored persistent selections are kept unchanged | behavior | M7 | 1 / M12 | `F-OFFLINE` | Set by M7. |
+| [ICON-10](../spec/interaction-contract.md#source-entities-and-hierarchy) | Hydra paths and nesting are never used for grouping or selection expansion. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-11](../spec/interaction-contract.md#browsing-universe) | every prim outside native-instance contents that has a viewport display element of its own | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-12](../spec/interaction-contract.md#browsing-universe) | Content displayed only in the final render destination is not in the universe. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-13](../spec/interaction-contract.md#browsing-universe) | Ancestors of displayed content are in the universe, including organizational prims that Hydra does not keep. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-14](../spec/interaction-contract.md#browsing-universe) | Prims with nothing displayed in their subtree are not in the universe | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-15](../spec/interaction-contract.md#browsing-universe) | Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-16](../spec/interaction-contract.md#browsing-universe) | It is derived from correspondence, not stored | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-17](../spec/interaction-contract.md#picking) | Resolution uses only the published generation's correspondence, never Blender names or parenting. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-18](../spec/interaction-contract.md#selection) | The caller supplies a selection level: either the prim level or a model kind. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-19](../spec/interaction-contract.md#selection) | The floor of an entity is the outermost native-instance root enclosing it | behavior | M10 | 1 / M12 | — | Set by M10. |
+| [ICON-20](../spec/interaction-contract.md#selection) | At the prim level, the target is the floor. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-21](../spec/interaction-contract.md#selection) | At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-22](../spec/interaction-contract.md#selection) | Selecting a target selects its subtree | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-23](../spec/interaction-contract.md#selection) | Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-24](../spec/interaction-contract.md#persistent-selection) | A persistent selection is an ordered set of (binding identifier, USD path) entries plus an optional active entry | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [ICON-25](../spec/interaction-contract.md#persistent-selection) | Resolution checks each entry against its binding's published generation | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-26](../spec/interaction-contract.md#persistent-selection) | An entry whose path is not in that generation's universe stays stored and is reported unresolved. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-27](../spec/interaction-contract.md#blender-selection) | A managed display object whose source coverage lies entirely within the expanded selection is selected | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-28](../spec/interaction-contract.md#blender-selection) | The active Blender object is a display object of the active entry when one exists. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-29](../spec/interaction-contract.md#blender-selection) | The selection state of unmanaged objects is never changed. | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-30](../spec/interaction-contract.md#blender-selection) | Selecting displayed content in Blender produces a source selection | behavior | M7 | 1 / M12 | — | Set by M7. |
+| [ICON-31](../spec/interaction-contract.md#interfaces-for-future-tools) | Future USD manipulation tools receive: the live stage | behavior | M7 | 1 / M12 | — | Set by M7. |
 ## spec/incremental.md
 
 | ID | Requirement | Kind | Delivery | Phase / qualified by | Fixtures | Test or oracle |
@@ -304,7 +339,7 @@ is filled in by its delivering milestone before implementation.
 | [ASTD-01](../testing/acceptance.md#standard-end-to-end-checks) | Synchronization completes without a fatal failure. | process | M7 | 1 / M12 | — | Set by M7. |
 | [ASTD-02](../testing/acceptance.md#standard-end-to-end-checks) | World bounds of each model's display match USD-computed bounds under the bounds comparison contract. | process | M7 | 1 / M12 | — | Set by M7. |
 | [ASTD-03](../testing/acceptance.md#standard-end-to-end-checks) | Unique mesh-data counts are recorded as an aggregate regression metric | process | M7 | 1 / M12 | — | Set by M7. |
-| [ASTD-04](../testing/acceptance.md#standard-end-to-end-checks) | Save and reopen preserves the display and inspection state without accessing the source. | process | M7 | 1 / M12 | — | Set by M7. |
+| [ASTD-04](../testing/acceptance.md#standard-end-to-end-checks) | Save and reopen preserves the display and correspondence without accessing the source. | process | M7 | 1 / M12 | — | Set by M7. |
 | [AFAIL-01](../testing/acceptance.md#expected-failure-checks) | The attempt reports fatal failure with the expected categorized diagnostics | process | M5 | 1 / M12 | — | Set by M5. |
 | [AFAIL-02](../testing/acceptance.md#expected-failure-checks) | Retirement failures after publication are completed-with-issues cases | process | M5 | 1 / M12 | — | Set by M5. |
 | [AFAIL-03](../testing/acceptance.md#expected-failure-checks) | For disposal-failure cases before or after publication, repeat attempts with disposal still failing. | process | M5 | 1 / M12 | — | Set by M5. |

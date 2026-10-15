@@ -88,7 +88,7 @@ Keep these distinct:
 | State | Contents | Persisted |
 |---|---|---|
 | Binding configuration | Binding identity, source information, destination, target scene, and requested settings (time code, payload policy, conversion, purpose) | Yes |
-| Published generation | Display resources, inspection snapshot, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
+| Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
 | Last attempt | Settings attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
 | Runtime source attachment | The caller's stage for an in-memory binding | No |
@@ -115,13 +115,13 @@ On reopening a `.blend`:
 - Source unavailability must not automatically detach the binding.
 - Detached content remains detached.
 
-The saved display remains usable without its USD source: geometry, transforms, translated materials, inspection, and correspondence persist in the `.blend`. Image textures remain references to external files, so texture appearance requires those files to be reachable. Packing assets into the `.blend` is not guaranteed in Phases 1 or 2.
+The saved display remains usable without its USD source: geometry, transforms, translated materials, and correspondence persist in the `.blend`. Inspection and selection need the source ([Without a Live Stage](interaction-contract.md#without-a-live-stage)). Image textures remain references to external files, so texture appearance requires those files to be reachable. Packing assets into the `.blend` is not guaranteed in Phases 1 or 2.
 
 Serialization of arbitrary unsaved in-memory USD edits is not guaranteed in Phases 1 or 2.
 
 ### Schema Versions
 
-Binding records, ownership manifests, inspection snapshots, correspondence, and any separate pending-cleanup records carry schema versions.
+Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions.
 
 - Older supported schemas migrate on load.
 - If migration fails or the schema is newer than the extension supports, preserve the display, disable refresh and lifecycle operations for that binding, and report why.

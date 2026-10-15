@@ -20,7 +20,7 @@
   - Multi-mesh, multi-material assets.
   - Required per-instance shading variation.
   - Source lookup from pick data.
-  - Highlighting and framing source selections.
+  - Highlighting source selections, and mirroring them into Blender's selection.
   - Small updates within larger scenes.
   - Detaching a whole binding under [Detach As-Is](../spec/lifecycle.md#detach-as-is): identify binding-specific controls to remove and ordinary Blender dependencies to retain, without requiring baking or source reconstruction.
 - Provisional performance budgets, and measurements of initial construction, refresh, interaction, and resource costs against them. Interaction costs are defined in [Interaction Testing](../spec/interaction.md#interaction-testing).

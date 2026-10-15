@@ -17,7 +17,7 @@ Use:
 
 Cover repeated synchronization, all required change cases, transform edge cases, invalid geometry, materials, nested instancing, per-instance variation, visibility/purpose, unsupported ancestors, source correspondence, multiple bindings, lifecycle safety, and protection of unmanaged content.
 
-Before-publication failure-injection tests assert that the entire published generation is unchanged, not merely that old objects still exist: materials, images, flags, correspondence, ownership metadata, inspection data, and selection resolution. Retirement failure tests assert that the new generation stays active and obsolete leftovers remain tracked and retryable. Each case uses the applicable synchronization or lifecycle outcome checks in [Acceptance Criteria](acceptance.md#bespoke-fixtures).
+Before-publication failure-injection tests assert that the entire published generation is unchanged, not merely that old objects still exist: materials, images, flags, correspondence, ownership metadata, and selection resolution. Retirement failure tests assert that the new generation stays active and obsolete leftovers remain tracked and retryable. Each case uses the applicable synchronization or lifecycle outcome checks in [Acceptance Criteria](acceptance.md#bespoke-fixtures).
 
 ## Metamorphic Tests
 
@@ -43,7 +43,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-CACHED-STAGE` | **Cached-stage isolation:** ambient stage reuse does not cross-contaminate bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
-| `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence or inspection publication fails. |
+| `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |
 | `F-RETIREMENT-FAILURE` | **Retirement failure:** the new display is active; obsolete resources remain tracked. |
 | `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities and missing resource tags. |
