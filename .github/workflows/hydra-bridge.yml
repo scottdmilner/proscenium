@@ -1,0 +1,132 @@
+# Compiled Hydra bridge (M1b). Copy the uploaded results into docs/feasibility/runtime-record.md.
+#
+# Each platform builds against the headers Blender v5.2.2 pins, audits the module's
+# linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run.py).
+name: Hydra bridge
+
+on:
+  workflow_dispatch:
+  # Manual dispatch needs the file on the default branch; until then, pushing a change to the
+  # bridge on an M1b branch runs it.
+  push:
+    branches: ["m01b-*"]
+    paths:
+      - "tools/feasibility/hydra_bridge/**"
+      - ".github/workflows/hydra-bridge.yml"
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender
+      - run: uv sync --locked
+      - uses: actions/cache@v4
+        with:
+          path: tools/feasibility/hydra_bridge/external
+          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+      - name: Build and audit
+        run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Checks in the wheel and the binary
+        run: uv run python tools/feasibility/hydra_bridge/run.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydra-bridge-macos-arm64
+          path: build/hydra-bridge/
+          if-no-files-found: warn
+
+  # Built on Blender's glibc floor (manylinux_2_28, GCC 14), then tested on a current distribution.
+  # Unlike macOS (deployment target) and Windows (pinned MSVC toolset), Linux has no compiler setting
+  # for an older floor: the build host's glibc and libstdc++ set the symbol versions. The manylinux
+  # image lacks the desktop libraries bpy and the Blender binary load, so the tests run in a second job.
+  linux-build:
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: command -v git || dnf install -y git
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/cache@v4
+        with:
+          path: tools/feasibility/hydra_bridge/external
+          key: hydra-bridge-deps-Linux-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+      - name: Build and audit
+        run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Upload module
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydra-bridge-linux-x64-build
+          path: build/hydra-bridge/
+          if-no-files-found: warn
+
+  linux-test:
+    needs: linux-build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: hydra-bridge-linux-x64-build
+          path: build/hydra-bridge/
+      - name: Checks in the wheel and the binary
+        run: uv run python tools/feasibility/hydra_bridge/run.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydra-bridge-linux-x64
+          path: build/hydra-bridge/
+          if-no-files-found: warn
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender
+      - run: uv sync --locked
+      - uses: actions/cache@v4
+        with:
+          path: tools/feasibility/hydra_bridge/external
+          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+      # build.py loads the pinned MSVC toolset (14.44, matching Blender's usd_ms.dll and CRT) itself,
+      # through Visual Studio's vswhere and vcvarsall.
+      - name: Build and audit
+        run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Checks in the wheel and the binary
+        run: uv run python tools/feasibility/hydra_bridge/run.py
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hydra-bridge-windows-x64
+          path: build/hydra-bridge/
+          if-no-files-found: warn

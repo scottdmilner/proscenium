@@ -3,8 +3,8 @@ description: Download (cached, checksum-verified) and unpack the portable Blende
 
 inputs:
   version:
-    description: Blender release, e.g. 5.2.2
-    default: "5.2.2"
+    description: Blender release, e.g. 5.2.2 (default, the bpy version in uv.lock; needs setup-uv first)
+    default: ""
 
 runs:
   using: composite
@@ -12,13 +12,19 @@ runs:
     - name: Pick the download for this runner
       shell: bash
       run: |
+        version="${{ inputs.version }}"
+        if [ -z "$version" ]; then
+          # The same source the Hydra bridge's dependency pins come from (tools/blender_release.py).
+          version=$(uv run --no-project python tools/blender_release.py)
+        fi
         case "${{ runner.os }}" in
           Linux) file=linux-x64.tar.xz ;;
           Windows) file=windows-x64.zip ;;
           macOS) file=macos-arm64.dmg ;;  # macos-latest runners are arm64
         esac
-        series=$(echo "${{ inputs.version }}" | cut -d. -f1,2)
-        echo "BLENDER_FILE=blender-${{ inputs.version }}-$file" >> "$GITHUB_ENV"
+        series=$(echo "$version" | cut -d. -f1,2)
+        echo "BLENDER_VERSION=$version" >> "$GITHUB_ENV"
+        echo "BLENDER_FILE=blender-$version-$file" >> "$GITHUB_ENV"
         echo "BLENDER_URL=https://download.blender.org/release/Blender$series" >> "$GITHUB_ENV"
 
     - name: Install Linux libraries for headless Blender and the bpy wheel
@@ -43,7 +49,7 @@ runs:
         dl="$RUNNER_TEMP/blender-download"
         mkdir -p "$dl"
         curl -fsSL -o "$dl/$BLENDER_FILE" "$BLENDER_URL/$BLENDER_FILE"
-        curl -fsSL "$BLENDER_URL/blender-${{ inputs.version }}.sha256" | grep " $BLENDER_FILE\$" > "$dl/SHA256"
+        curl -fsSL "$BLENDER_URL/blender-$BLENDER_VERSION.sha256" | grep " $BLENDER_FILE\$" > "$dl/SHA256"
         if command -v sha256sum > /dev/null; then check="sha256sum -c"; else check="shasum -a 256 -c"; fi
         (cd "$dl" && $check SHA256)
 
