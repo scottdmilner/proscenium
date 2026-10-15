@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-266 rows: 197 behavior, 19 contract, 50 process; milestones started: M1, M1b.
+267 rows: 198 behavior, 19 contract, 50 process; milestones started: M1, M1b.
 
 ## PROJECT.md
 
@@ -270,6 +270,7 @@ is filled in by its delivering milestone before implementation.
 | [VIS-01](../spec/support/visibility.md#visibility-and-purpose) | Respect effective inherited visibility separately from purpose. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [VIS-02](../spec/support/visibility.md#visibility-and-purpose) | Viewport \| default, proxy | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | M6 | 1 / M12 | — | Set by M6. |
+| [VIS-04](../spec/support/visibility.md#visibility-and-purpose) | A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-01](../spec/support/visibility.md#models-and-unsupported-content) | Expose model kind and available asset metadata. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-03](../spec/support/visibility.md#models-and-unsupported-content) | Support is decided per behavior, not per prim type. | behavior | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-04](../spec/support/visibility.md#models-and-unsupported-content) | Use a bounding-box placeholder when usable bounds are available. | behavior | M6 | 1 / M12 | — | Set by M6. |

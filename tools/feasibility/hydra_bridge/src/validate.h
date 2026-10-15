@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 namespace hydra_bridge {
 
@@ -26,5 +27,16 @@ std::string ValidatePrimvar(const PrimvarRecord &primvar, const MeshCounts &coun
 
 // Face indices within the mesh.
 std::string ValidateSubset(const GeomSubsetRecord &subset, size_t faceCount);
+
+// Faces that are valid USD but that Blender's Mesh.validate() deletes (measured): one that uses a point more
+// than once, and each later face on the same points as an earlier one, whatever its winding, since Blender
+// keeps the first. Leaving them out is Blender's own repair. Call after ValidateTopology succeeds.
+struct RejectedFaces {
+    std::vector<bool> drop;  // per captured face
+    size_t repeatedPoint = 0;
+    size_t duplicate = 0;
+    std::string example;  // the first of each kind, for the diagnostic
+};
+RejectedFaces FacesBlenderDeletes(const pxr::PxOsdMeshTopology &topology);
 
 }  // namespace hydra_bridge

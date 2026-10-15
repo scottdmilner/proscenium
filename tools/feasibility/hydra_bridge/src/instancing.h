@@ -29,9 +29,37 @@ struct Frame {
     pxr::GfMatrix4d world{1.0};
     bool visible = true;
     ConstantPrimvars instancePrimvars;  // innermost instance first, one entry per name
+    // The nearest authored guide/proxy/render visibility at or above the instance root, per purpose.
+    PurposeVisibility purposeVisibility;
+    // The instance root's own bindings, per purpose, resolved in the enclosing namespace, and the purposes
+    // bound strongerThanDescendants at or above the instance root (see BoundMaterial).
+    std::vector<std::pair<pxr::TfToken, pxr::SdfPath>> bindings;
+    pxr::TfTokenVector strongPurposes;
 
     pxr::SdfPath Map(const pxr::SdfPath &hydraPath) const { return hydraPath.ReplacePrefix(hydraRoot, usdRoot); }
 };
+
+// UsdGeomImageable::ComputeEffectiveVisibility for the prim's own purpose, in one drawn copy: invisible if
+// visibility is; otherwise default-purpose prims are visible, and the others take the nearest authored
+// opinion for their purpose, in the prototype then up through the instance roots. With none, guides are
+// invisible and proxy and render prims visible. Hydra doesn't image UsdGeomVisibilityAPI, so the opinions
+// come from the source-info filter.
+bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Frame &frame);
+
+// The material bound to a prim drawn in `frame`, for `purpose` falling back to allPurpose as UsdShade does.
+// Hydra's flattened bindings aren't used: inside prototypes they miss collection bindings and, from a v26.03
+// propagation bug (also in dev 5bc38c9), re-root an inner instance root's binding to a material in the
+// enclosing prototype into the inner prototype, naming a missing material or a different one that shares its
+// relative path. Instead, for each purpose:
+// - a strongerThanDescendants binding at or above the instance root wins;
+// - otherwise UsdShade's binding inside the prototype (the source-info filter's, which covers collections,
+//   strength, and bindings without MaterialBindingAPI there);
+// - otherwise the instance root's own, which sits in the enclosing namespace and is resolved the same way.
+// A binding to something that isn't a Material binds nothing and ends the search, as in UsdShade.
+// M1b plan, Phase C log: "Nested-instance binding bug"; checked by cases/instances.py.
+pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame,
+                           const pxr::TfToken &purpose);
+
 
 class InstanceResolver {
 public:

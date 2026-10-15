@@ -36,8 +36,12 @@ struct PlanView {
     bp::list Diagnostics() const;
 };
 
-// Plans without holding the GIL.
-PlanView MakePlan(const SnapshotView &snapshot);
+// Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",
+// "render", "guide") and a material purpose ("" for allPurpose, "preview", "full"); None keeps the default
+// (PlanSettings).
+PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
+                  const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
+                  const bp::object &renderMaterialPurpose);
 
 void WrapViews();
 

@@ -1,0 +1,196 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "untranslated type". Gprims the prototype doesn't translate, each of which must
+# become a placeholder with a diagnostic, keeping its transform, visibility and purpose (Rig is translated,
+# so every placeholder's world transform is non-trivial):
+# - Boxed and Spline author an extent, so they get bounding-box placeholders. Spline is NURBS curves,
+#   which Hydra's NURBS filter turns into basis curves.
+# - Unboxed and Dots have no extent, so they get empty markers.
+# - Tangents is HermiteCurves, which Hydra doesn't image at all.
+# - Hidden is invisible; Guide has the guide purpose, which is invisible by default.
+# - Fog is a Volume with an authored extent, so it gets a bounding-box placeholder.
+# - Scatter is a point instancer with an extent: one bounding-box placeholder on its own path, and nothing
+#   for its prototype prim, which USD draws only as Scatter's instances.
+# - KitA and KitB are native instances of Kit, so each gets its own copy of Kit's placeholders, with its
+#   instance context: Wire (basis curves with an extent) and Studs (a point instancer without one).
+# Parent is unsupported basis curves with a supported mesh child, which must still be built.
+# Animated transforms and visibility on a type Hydra doesn't image are checked in edits.usda (Comb).
+
+def Xform "World"
+{
+    def Xform "Rig"
+    {
+        double3 xformOp:translate = (0, 0, 2)
+        float xformOp:rotateZ = 45
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+
+        def BasisCurves "Boxed"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (1, 2, 3)]
+            float3[] extent = [(0, 0, 0), (1, 2, 3)]
+            uniform token type = "linear"
+        }
+
+        def NurbsCurves "Spline"
+        {
+            int[] curveVertexCounts = [4]
+            point3f[] points = [(0, 0, 0), (1, 1, 0), (2, -1, 0), (3, 0, 0)]
+            float3[] extent = [(0, -1, 0), (3, 1, 0)]
+            int[] order = [4]
+            double[] knots = [0, 0, 0, 0, 1, 1, 1, 1]
+            double3 xformOp:translate = (0, 5, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def BasisCurves "Unboxed"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (0, 0, 1)]
+            uniform token type = "linear"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Points "Dots"
+        {
+            point3f[] points = [(0, 0, 0), (1, 0, 0)]
+            float[] widths = [0.1, 0.1] (
+                interpolation = "vertex"
+            )
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def HermiteCurves "Tangents"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0)]
+            vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def BasisCurves "Hidden"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (0, 1, 0)]
+            uniform token type = "linear"
+            token visibility = "invisible"
+        }
+
+        def BasisCurves "Guide"
+        {
+            int[] curveVertexCounts = [2]
+            point3f[] points = [(0, 0, 0), (0, 1, 0)]
+            uniform token type = "linear"
+            uniform token purpose = "guide"
+        }
+    }
+
+    def BasisCurves "Parent"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (0, 0, 1)]
+        uniform token type = "linear"
+        double3 xformOp:translate = (0, -5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Child"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Volume "Fog"
+    {
+        float3[] extent = [(0, 0, 0), (1, 2, 1)]
+        double3 xformOp:translate = (0, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel field:density = </World/Fog/Density>
+
+        def OpenVDBAsset "Density"
+        {
+            asset filePath = @fog.vdb@
+            token fieldName = "density"
+        }
+    }
+
+    def PointInstancer "Scatter"
+    {
+        point3f[] positions = [(0, 0, 0), (2, 0, 0)]
+        int[] protoIndices = [0, 0]
+        float3[] extent = [(0, 0, 0), (3, 1, 0)]
+        rel prototypes = </World/Scatter/Prototypes/Pebble>
+        double3 xformOp:translate = (0, 15, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Scope "Prototypes"
+        {
+            def Mesh "Pebble"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def Xform "KitA" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        double3 xformOp:translate = (10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "KitB" (
+        instanceable = true
+        prepend references = </Kit>
+    )
+    {
+        double3 xformOp:translate = (10, 5, 0)
+        float xformOp:rotateZ = 90
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    }
+}
+
+class Xform "Kit"
+{
+    def BasisCurves "Wire"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (0, 1, 1)]
+        float3[] extent = [(0, 0, 0), (0, 1, 1)]
+        uniform token type = "linear"
+        double3 xformOp:translate = (1, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PointInstancer "Studs"
+    {
+        point3f[] positions = [(0, 0, 0), (0, 2, 0)]
+        int[] protoIndices = [0, 0]
+        rel prototypes = </Kit/Studs/Prototypes/Stud>
+        double3 xformOp:translate = (2, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Scope "Prototypes"
+        {
+            def Mesh "Stud"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+}

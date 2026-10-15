@@ -4,10 +4,12 @@
 #pragma once
 
 #include "diagnostics.h"
+#include "properties.h"
 #include "snapshot.h"
 
 #include <pxr/pxr.h>
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/gf/range3d.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/base/vt/types.h>
@@ -16,6 +18,7 @@
 #include <pxr/usd/usd/timeCode.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -44,8 +47,10 @@ struct MeshData {
     pxr::VtVec3fArray positions;
     pxr::VtIntArray cornerVerts;      // per corner
     pxr::VtIntArray faceOffsets;      // per face: its first corner (Blender's loop_start)
-    pxr::VtIntArray materialIndices;  // per face, into materialSlots
-    std::vector<int> materialSlots;   // into Plan::materials; -1 for no material
+    // Per face, its material slot: 0 for the mesh's own binding, then one per materialBind subset. Objects
+    // say which material each slot holds, so one mesh serves both destinations.
+    pxr::VtIntArray materialIndices;
+    int slotCount = 1;
     std::vector<Attribute> attributes;
     pxr::TfToken subdivisionScheme;
     bool doubleSided = false;
@@ -63,12 +68,19 @@ struct ObjectEntry {
     pxr::SdfPathVector instanceContext;  // native instance roots, outermost first
     int mesh = -1;                       // into Plan::meshes; -1 for a placeholder
     pxr::TfToken placeholderType;        // the untranslated Hydra type, for a placeholder
-    pxr::GfMatrix4d matrix{1.0};         // world, USD row-vector convention
-    bool visible = true;
+    std::optional<pxr::GfRange3d> bounds;  // a placeholder's local bounds, when Hydra has an extent
+    pxr::GfMatrix4d matrix{1.0};           // world, USD row-vector convention
+    bool visible = true;                   // effective visibility for the object's own purpose
+    // Whether the object displays there: visible, and its purpose is one the destination includes.
+    bool inViewport = false;
+    bool inRender = false;
+    std::vector<int> materialSlots;  // per mesh slot, into Plan::materials; -1 for no material
     pxr::TfToken purpose;
     // The prim's own constant primvars, then inherited per-instance values it doesn't shadow,
-    // innermost instance first. Each value is a one-element array.
+    // innermost instance first, as USD authored them.
     ConstantPrimvars constantPrimvars;
+    // The same primvars as the ID properties Blender holds, by primvar name; those it can't hold are diagnosed.
+    std::vector<std::pair<std::string, PropertyValue>> properties;
 };
 
 struct Plan {
@@ -81,7 +93,23 @@ struct Plan {
 
 using PlanPtr = std::shared_ptr<const Plan>;
 
+// What one destination displays: prim purposes (Hydra's names, so USD's default is "geometry"), and the
+// material purpose its bindings are resolved for (empty: allPurpose; any other falls back to allPurpose, as
+// in UsdShade).
+struct Destination {
+    pxr::TfTokenVector purposes;
+    pxr::TfToken materialPurpose;
+};
+
+// Binding settings that change the plan. A guide is invisible unless USD makes it explicitly visible
+// (guideVisibility), so including guides in the viewport shows exactly those (spec VIS-04).
+struct PlanSettings {
+    Destination viewport{{pxr::TfToken("geometry"), pxr::TfToken("proxy"), pxr::TfToken("guide")},
+                         pxr::TfToken("preview")};
+    Destination render{{pxr::TfToken("geometry"), pxr::TfToken("render")}, pxr::TfToken("full")};
+};
+
 // Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception.
-PlanPtr BuildPlan(const Snapshot &snapshot);
+PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings = {});
 
 }  // namespace hydra_bridge

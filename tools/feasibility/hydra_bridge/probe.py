@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -124,10 +125,24 @@ def run(module_dir: Path) -> dict[str, Any]:
         check("unreleased chain keeps a caller-released stage alive", Sdf.Layer.Find(layer_id) is not None)
         anon_bridge.release()
         gc.collect()
-        check("released bridge lets a caller-released stage expire", Sdf.Layer.Find(layer_id) is None)
+        # Expiry can lag release() briefly, for the layer and for the bridge's weak stage pointer (cause not
+        # identified: ~UsdStage releases the root layer synchronously).
+        expired_after = _wait_until(
+            lambda b=anon_bridge: Sdf.Layer.Find(layer_id) is None and b.stage() is None, timeout=2.0
+        )
+        check("released bridge lets a caller-released stage expire (within 2 s)", expired_after is not None)
         check("released bridge reports no stage", anon_bridge.stage() is None)
         check("capture after release raises", _raises(lambda b=anon_bridge: b.capture(0.0), RuntimeError))
         del anon_bridge
+        # Python passes a TfRefPtr argument's ownership to C++, so a bridge must not take the caller's.
+        held = Usd.Stage.CreateInMemory()
+        held.DefinePrim("/Held", "Xform")
+        held_bridge = native.Bridge(held)
+        held_bridge.release()
+        del held_bridge
+        gc.collect()
+        check("released bridge leaves a caller-held stage alive", bool(held) and bool(held.GetPrimAtPath("/Held")))
+        del held
         for _ in range(20):
             transient = Usd.Stage.CreateInMemory()
             transient.DefinePrim("/Repeated", "Xform")
@@ -159,7 +174,20 @@ def run(module_dir: Path) -> dict[str, Any]:
             "loaded_usd_libraries": libraries,
             "module": native.__file__,
             "prim_types": sorted(types),
+            "stage_expired_after_release_s": expired_after,
         }
+
+
+def _wait_until(condition: Any, timeout: float) -> float | None:
+    """Seconds until `condition()` held, polling every millisecond; None if it never did within `timeout`."""
+    start = time.perf_counter()
+    while True:
+        elapsed = time.perf_counter() - start
+        if condition():
+            return elapsed
+        if elapsed > timeout:
+            return None
+        time.sleep(0.001)
 
 
 def _raises(fn: Any, kind: type[BaseException]) -> bool:

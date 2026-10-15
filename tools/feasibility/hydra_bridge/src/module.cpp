@@ -35,13 +35,13 @@ UsdTimeCode ToTimeCode(const bp::object &time) {
 }
 
 // SetTime, ApplyPendingUpdates, and the parallel read pass run without the GIL.
-SnapshotView Capture(Bridge &bridge, const bp::object &time) {
+SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental) {
     TfErrorMark mark;
     const UsdTimeCode code = ToTimeCode(time);
     SnapshotPtr snapshot;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        snapshot = bridge.Capture(code);
+        snapshot = bridge.Capture(code, incremental);
     }
     RaiseTfErrors(mark);
     return SnapshotView{snapshot};
@@ -59,9 +59,9 @@ bp::list ToList(const std::vector<T> &values) {
 
 PXR_BOOST_PYTHON_MODULE(_hydra_bridge) {
     using namespace hydra_bridge;
-    bp::class_<Bridge, bp::noncopyable>("Bridge", bp::init<UsdStageRefPtr>())
+    bp::class_<Bridge, bp::noncopyable>("Bridge", bp::init<UsdStagePtr>())
         .def("stage", &Stage)
-        .def("capture", &Capture, (bp::arg("time") = bp::object()))
+        .def("capture", &Capture, (bp::arg("time") = bp::object(), bp::arg("incremental") = false))
         .def("release", &Bridge::Release);
     WrapViews();
     bp::def("loaded_usd_libraries", +[]() { return ToList(LoadedUsdLibraries()); });

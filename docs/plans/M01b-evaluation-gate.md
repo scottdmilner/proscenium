@@ -36,7 +36,7 @@ Four source-reading investigations covered the Hydra 2 core, the UsdImaging scen
   - **There is no approximation signal.** The prim's type becomes `mesh`.
   - Cube and plane are exact.
   - Sphere, cone, cylinder, and capsule become coarse catmullClark cages with hard-coded tessellation (10 segments, sphere 10×10).
-  - doubleSided is forced to false.
+  - doubleSided is forced to false, except Plane, which keeps its own (Phase C: the filter passes Plane's through and loses a Cube's authored true).
   - The original USD type stays readable (`__usdPrimInfo`), so the diagnostic can be derived from it.
   - NURBS approximation produces the control hull.
 - **Native instancing.**
@@ -213,7 +213,7 @@ Branch `m01b-phase-b`, off `m01b-phase-a`.
   - Constructing the bridge still raises.
   - This changes the Phase A watch item: an Sdr error in the Windows wheel should now appear as a diagnostic instead of failing the capture (to be seen on CI).
 - **No GIL during the chain update, the parallel read pass (`WorkParallelForN`), or planning.**
-- **Prototype simplifications, each weighed in Phase C:**
+- **Prototype simplifications, each weighed in Phase C** (the first two and the last are superseded there: bindings are resolved per destination purpose, only the materialBind family makes slots, and normals are transferred):
   - Material bindings use `allPurpose` only. The spec leaves purpose selection open (M9).
   - Every face-set GeomSubset becomes a material slot through its binding, because `familyName` is not exposed. Where subsets overlap, the first keeps the face and a diagnostic is raised.
   - Point instancers get a diagnostic and are not translated. The milestone's cases are native instances.
@@ -277,6 +277,179 @@ Each case gets a `.usda` scene with a purpose comment. Expected values come from
 | Malformed input | Out-of-range indices, wrong primvar lengths, and negative subset indices raise Python exceptions or diagnostics, never crash | Hydra does not validate |
 
 Also checked, because research found them and the spec requires them: collection-based bindings on prims inside instances, purpose-specific bindings without an allPurpose fallback, and `UsdGeomVisibilityAPI`. Each either has a workaround in the core or is recorded as a gap the decision weighs.
+
+### Phase C log
+
+Branch `m01b-phase-c`, off `m01b-phase-b`.
+
+- **Status (2026-10-13): all ten cases pass on macOS arm64, Windows x64 and Linux x64, in the wheel and the binary** ("Hydra bridge" workflow, [run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667)). That is 118 correctness checks per host, with the same count per case everywhere; the loading (42, 43 on Windows) and prototype (20) checks also pass. The run's Windows build had two `/W4` warnings, fixed since, with clang flags that now report them on macOS; the next run ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)) builds without warnings on every platform. In that run a single-sample timing check failed in the macOS binary (4.8× against the 5× asked for); it now takes the minimum of five runs per path, and every job then passes ([run 38362866907](https://github.com/scottdmilner/proscenium/actions/runs/38362866907), commit `679566c`). Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-correctness-m1b-phase-c).
+- **Layout.** `correctness_probe.py` runs each case in `cases/`: one `.usda` scene with a purpose comment and one check module per case. A failing case is recorded and the others still run. `run.py` runs it in both hosts beside the other probes.
+  - Scene values come from `cases/oracle.py` (UsdGeom, UsdShade) or the scene's construction. The prototype probe shares that module.
+  - Application, and incremental capture, are checked against the plan or a full capture; the edits case also checks each step against USD and a new bridge.
+  - **Known gaps are checks too.** `known_gap` asserts that each gap still reproduces, so the record can't go stale silently.
+  - The cases are the seven milestone cases, plus bindings (the research risks), purposes (destinations), and primvars (what becomes Blender data besides varying attributes; added with the user).
+- **Audit (2026-10-12).** Four subagents reviewed the cases before the result above:
+  - three covered the code and tests (geometry; instancing and materials; time, untranslated types and infrastructure);
+  - one checked these docs against the checks.
+
+  They found real bugs, all now fixed and covered:
+  - **Frozen source-info values.** The filter's containers held values fixed when built. A downstream scene index keeps input containers between notices, so animated or edited HermiteCurves kept their first-read transform and visibility, even on a new bridge.
+  - **Missed notices.** Edits to a `familyName`, an authored guideVisibility, or `doubleSided` sent no notice at all.
+  - **Visibility.** An invisible ancestor of an instance root was ignored. A guide whose nearest opinion is `inherited` counted as visible, and the oracle shared that mistake.
+  - **Binding detection.** The binding workaround's "authored binding" test was fooled by a collection that doesn't include the prim, and by an empty binding.
+  - **Collections inside assets.** A collection authored inside an instanced asset was lost in every instance.
+  - **Point instancers.** Their prototypes became stray placeholders.
+  - **Primvars.**
+    - Indexed constant primvars were dropped.
+    - Per-instance primvars of several types were dropped, and scalars came back as one-element arrays.
+    - A primvar named after a Blender built-in (`sharp_face`) changed shading.
+  - **Faces.** A face using a point twice, or two faces with the same points, reached Blender, which `Mesh.validate()` would change.
+  - **Application and reporting.**
+    - Empty and points-only meshes crashed application.
+    - Overlapping subsets depended on Hydra's child order.
+    - Point-element subsets and unapplied subdivision had no diagnostic.
+    - The loading probe's expiry check was flaky.
+
+  They also found checks that could pass vacuously, and these docs overstating several results; both are corrected. Remaining holes are listed in the record's limits.
+- **Source-info filter** (`src/source_info_scene_index.*`), the core's one addition to the graph. It sits in `UsdImagingCreateSceneIndices`' overrides slot, right after the stage scene index, where paths are still USD paths (prototypes included). Under a `prosceniumSource` container it supplies what the chain drops:
+  - subset `familyName`;
+  - authored purpose visibility;
+  - `doubleSided`;
+  - UsdShade's resolved binding per material purpose, and the purposes a prim binds `strongerThanDescendants`;
+  - USD's verdict on a mesh's materialBind family (`UsdGeomSubset::ValidateFamily`);
+  - for prims Hydra doesn't image, their USD type;
+  - on gprims and point instancers, the authored attributes UsdImaging drops (below).
+
+  More about the filter:
+  - **Unimaged prims.** For prims UsdImaging doesn't image at all (no `__usdPrimInfo`, such as HermiteCurves), it supplies `UsdImagingDataSourcePrim`: transform, visibility, purpose, authored extent and primvars, which is what UsdImaging gives any prim it has no adapter for. Flattening applies them, and inheritance works as in UsdImaging.
+    - **Time.** Those data sources run on the filter's own `UsdImagingDataSourceStageGlobals` subclass. It gives them the graph's time and records what they flag as time-varying, so `SetTime` dirties exactly that, as `UsdImagingStageSceneIndex::SetTime` does (measured: an animated HermiteCurves is dirtied for `xform` and `visibility`, a static one not at all).
+    - **Edits.** An edit to such a prim is dirtied for the locators `UsdImagingDataSourcePrim::Invalidate` gives.
+    - **History.** Earlier versions hand-built these schemas. The first supplied a visible `true` for every typeless prim, Xforms and Scopes included, which hid an invisible ancestor's visibility from everything below (found in the Hydra-native review, below). The hand-built transform, visibility, purpose and time-variance code is gone.
+  - **Extents.** For a point-based prim Hydra gives no extent and doesn't draw as a mesh (curves, points, HermiteCurves), it supplies USD's computed extent (`UsdGeomBoundable::ComputeExtentFromPlugins`), so its placeholder shows bounds. Point instancers and volumes are left out: their extents would mean evaluating prototypes or reading field files merely for a placeholder.
+  - **Freshness.** Its containers read USD at the graph's time when first accessed. Its containers are cached per prim and rebuilt only when that prim, or something its facts depend on, changes: an edit to it, an ancestor's binding or any collection (every prim's bindings), or one of a mesh's subsets (its family verdict). Resyncs rebuild everything when next read. Measured with a temporary counter: one build per prim on the instances scene (56 for 55, all while the bridge is built), none on later captures, 4 per time change on the edits scene (its animated prims) and none at release; the previous single generation counter built 366 times for 55 prims in the first capture alone, and rebuilt every prim after any notice.
+  - **Edits Hydra misses.** It listens to `UsdNotice::ObjectsChanged`, and when the graph advances it dirties the prims whose source facts changed.
+  - **Prototypes.** Propagation carries all of this into every prototype copy.
+- **Results by case** (details and numbers in the record):
+
+  | Case | Result | Gap found, and the workaround |
+  |---|---|---|
+  | GeomSubsets and indexed primvars | Pass | Hydra binds a subset of any family, including one with no `familyName`; only materialBind subsets make slots, by the filter's family. |
+  | Implicit shapes | Pass | Hydra loses a Cube's authored `doubleSided = true`; the filter supplies USD's value. The NURBS patch is displayed as its control hull, which is accepted (diagnosed as an approximation). **Correction to research:** Hydra keeps Plane's `doubleSided`, so it isn't always forced to false. |
+  | Nested instances | Pass, 360 copies three levels deep | **A Hydra propagation bug** (below). |
+  | Time, edits, incremental capture | Pass, against USD, a new bridge and full captures | Notices over-report, but no step missed a change once the filter listened to the stage. |
+  | Untranslated types | Pass | HermiteCurves aren't imaged at all (from source reading and snapshot inspection); the filter supplies their type, transform, visibility and purpose. Point instancers get one placeholder each. |
+  | Large arrays | Pass | Blender copies face offsets: `polygons.foreach_set('loop_start')` allocates a temporary of 4 bytes per face. Every other transfer allocates no Python memory beyond about 1 KiB (`tracemalloc`; Blender's own allocator isn't measured). |
+  | Malformed input | Pass: errors and diagnostics, no crash, nothing `Mesh.validate()` would change reaches Blender; faces it would delete are left out with a warning | A wrong-typed attribute arrives empty, so the message describes missing points, not a type error. |
+  | Bindings and purpose visibility | Pass, except two collection gaps | Collection bindings that name instance-proxy paths are missed; **no workaround** (below). Purpose visibility needs the filter. |
+  | Normals, velocities, constant primvars, custom attributes | Pass | UsdImaging passes only primvars and schema attributes; the filter lists the attributes it drops, so they can be warned (below). |
+  | Prim and material purposes per destination | Pass | The Phase B application ignored prim purpose. Hydra resolves each purpose separately but the nested binding bug makes its values unusable inside instances, so the core resolves each destination itself (below). |
+
+- **Primvars beyond varying attributes** (settled with the user, 2026-10-12). Phase B skipped normals, and authored constant primvars only as `displayColor`.
+  - **Normals are Blender's custom normals.** Blender 5.2 keeps custom normals as a `custom_normal` float-vector attribute on points, faces or corners, so authored normals go to the domain of their interpolation through the same zero-copy transfer as other attributes. Indexed normals are expanded in C++, and `primvars:normals` wins over the `normals` attribute (UsdImaging's choice, checked against UsdGeom's rule). On a left-handed mesh each reversed corner keeps its own normal.
+    - Blender stores the vectors as given: an ad hoc wheel test read back a zero and a length-2 normal unchanged. The fixtures' normals are unit length; non-unit authored normals are untested in rendering.
+    - A subdivision surface's authored normals are ignored with an `ignored-normals` diagnostic, as UsdGeomMesh specifies. The prototype displays the cage, so they would apply to flat faces they weren't authored for.
+  - **Velocities are Blender's `velocity`.** `accelerations` stay a generic attribute with a `no-blender-equivalent` warning, since Blender has no acceleration attribute. A primvar named `velocity` keeps the name, and `velocities` are then skipped with a `name-collision` warning. Whether Blender's velocity attribute expects USD's units (per second) is unchecked.
+  - **Constant primvars are ID properties on each object**, named as the primvar, so an Attribute node of type Object can read them. They follow the existing inheritance: the prim's own, then its instance roots' that it doesn't shadow. The plan converts them to what ID properties hold:
+    - bool, int and float scalars (USD's narrower and wider types widened or narrowed to Blender's), strings and tokens;
+    - vectors as arrays; arrays of scalars or strings as lists; arrays of vectors, and matrices, as lists of rows;
+    - a one-element array as its element, as constant primvars are conventionally authored (`displayColor = [(r, g, b)]`), which also lets shaders read it as a color.
+
+    Integers outside 32 bits keep their low 32 bits (two's complement wrap), best effort, with a `narrowed-primvar` warning per primvar (Blender's integer properties are 32-bit, measured). Not held, and warned (`untransferred-primvar`): types with no property form (an asset path, quaternions), arrays of matrices, names over 63 bytes, and the `proscenium_` prefix, which the bridge's own properties use. `displayColor` still also sets the object's color.
+  - **Dropped custom attributes are warned.** UsdImaging gives Hydra only primvars and attributes its adapters map (measured: `userProp`, `custom float myCustom` and an unprefixed `float3[]` never reach the snapshot). The source-info filter therefore lists, for each gprim and point instancer, the authored attributes with values that no schema of the prim defines and USD doesn't read on its behalf, and the planner warns with `dropped-attribute`. Primvars, transform ops, applied-schema attributes, unauthored declarations, GeomSubset family types and collection settings are left out. The family types were a false positive on the existing scenes, found by scanning them. Adding or removing such an attribute updates the warning on the next capture.
+  - **A primvar with a Blender built-in name** (`sharp_face`) is now a warning rather than info, since its data is lost.
+- **Code review (2026-10-12).** Ten notes from a review, each checked before changing anything:
+  - **Fixed:**
+    - The planner resolved both destinations' materials for every copy, so a proxy-only prim's `full` binding became a material nothing displayed. Each destination is now resolved only when the object displays there (a copy in neither keeps the viewport's). `purposes.usda` gains `Unseen`, and a check that every planned material is linked; reverting the fix fails it.
+    - The filter's cache lived in containers rebuilt on every `GetPrim`, and one generation counter invalidated every prim on any notice. Now it caches per prim, with dependency invalidation (see Freshness above). That exposed a dependency the counter had hidden: a subset edit changes its mesh's family verdict. An edits step now changes Strip's elementType to point and back; with the parent invalidation removed, the long-lived bridge misses USD's new verdict and the new-bridge check fails.
+    - **Faces Blender's `Mesh.validate()` deletes are a best-effort repair, not a placeholder** (settled with the user). A face that uses a point more than once, and a later face on an earlier face's points in either winding, are valid USD that Blender's `validate()` deletes, keeping the first of each duplicate set (measured, including the reversed pair). The planner now does the same repair before Blender: it leaves those faces out with a `faces-left-out` warning, and the rest of the mesh builds. Per-face primvars, face-varying corners and subsets follow the remaining faces, and a subset index naming a left-out face is ignored (`malformed.usda` `DuplicateFace`: face 2 keeps its uniform value and its subset's slot). Every Blender mesh still passes `validate()` unchanged.
+    - The check no longer makes one vector per face: it sorts each face in place in one copy of the indices and sorts per-face hashes. Measured (bpy wheel, 1M quads, minimum of 5): the whole plan takes about 120 ms either way, so the old check wasn't measurably slow; the new one avoids a million allocations.
+    - `velocities` become `velocity` only per point; on another domain they keep their name.
+    - The graph raises at construction if `UsdImagingCreateSceneIndices` never calls the overrides callback, and `Advance` no longer assumes the filter.
+  - **Checked and unchanged:**
+    - *Reversed-winding duplicate faces* are duplicates to Blender too: `validate()` merges a face with its reverse (measured). `malformed.usda` gains `ReversedDuplicateFace`, now repaired as above.
+    - *Custom normals on point and face domains.* Blender 5.2 takes a float-vector `custom_normal` on points, faces and corners (measured), and the primvars case compares `corner_normals` with USD for each, not only the attribute's existence.
+    - *Guides under an `inherited` opinion.* `ComputeEffectiveVisibility` returns the nearest authored opinion, `inherited` included (measured: a child authoring `inherited` under a parent authoring `visible` gives `inherited`), and UsdGeomVisibilityAPI makes a guide visible only when its purpose visibility evaluates to `visible`. Render and proxy prims evaluating to `inherited` stay visible. The core already follows this; `purposes.usda`'s InheritedGuide covers it.
+    - *Guide in the default viewport purposes.* VIS-03 excludes guides by default and VIS-04 shows explicitly visible ones. Including the guide purpose with the guide rule gives exactly that; the plan settings document it.
+    - *Two objects with one source.* By design: a copy shown in both destinations with different materials is two objects sharing a mesh, distinguished by their `viewport` and `render` flags. Their identity is source, instance context and destination, which M5's binding records must carry (the [spec](../spec/lifecycle.md#ownership-and-lifecycle) records representation role separately from source).
+- **Nested-instance binding bug** (v26.03, and unchanged in `dev` at `5bc38c9`, from source reading).
+  - Every prototype level is re-rooted to the same placeholder path (`UsdImaging_NiPrototypeSceneIndex::GetPrototypePath()`). An inner instance root's binding to a material in the enclosing prototype is therefore re-rooted into the inner prototype.
+  - In the fixture, Moss's binding names a prim that doesn't exist, and Bark's names the inner prototype's own Bark instead of Branch's, a different material, **with no diagnostic**. With `strongerThanDescendants` on the inner root, Hydra applies the strength but keeps the broken path.
+  - **Workaround: the core doesn't use Hydra's flattened bindings.**
+    - The filter records UsdShade's binding per purpose for every imageable prim and subset. Inside a prototype that covers what the prototype authors: collection membership, strength, empty bindings, bindings to non-Materials, and bindings without `MaterialBindingAPI`.
+    - `BoundMaterial` adds what lies at or above each instance root: a strong binding there wins; otherwise the prototype's own; otherwise the instance root's own. Then it falls back to allPurpose, as UsdShade does.
+    - This replaces two earlier versions that tried to correct Hydra's values. The audit fooled the second with a collection that didn't include the prim, and with an empty binding.
+  - **History.** The first version missed strong inner roots (6 copies wrong, found ad hoc). Disabling the strength rule then, ad hoc, failed the check on `BranchE`'s two Blades.
+  - **Upstream.** OpenUSD [#1571](https://github.com/PixarAnimationStudios/OpenUSD/issues/1571)'s case (a strong outer binding) is now in the fixture and matches. [#3690](https://github.com/PixarAnimationStudios/OpenUSD/issues/3690) is a different bug (collections, below). No upstream issue was found for the re-rooting; it is worth reporting.
+- **Collection bindings that name instance-proxy paths: gaps without a bounded workaround.**
+  - **Shapes:** a collection outside the instance that includes one instance's prim, and a collection on the instanced asset's root (`KitA`/`KitB`, the shape of #3690's scene, which has a single instance and also loses its binding through our pipeline, ad hoc).
+  - **Why:** a prototype can't see proxy paths. The source suggests Hydra evaluates membership on prototype paths (marked XXX).
+  - **What works:** a collection authored below the asset's root, inside the prototype, matches UsdShade through the filter.
+  - **Fixing the rest** means evaluating such collections per instance and splitting instances by them, outside Hydra's aggregation. Phase F weighs this.
+- **A type-identity finding at the module boundary.**
+  - An `SdfPath` value made in the bridge's module isn't recognized by USD's own code: `HdMakeStaticCopy` posts "Unsupported type SdfPath". It is the same boundary as Phase B's `ArResolverContext`, now for a core type.
+  - Bound paths therefore travel as tokens, and the core maps them to Hydra paths through the prim's prototype-relative origin.
+  - **Rule for production:** values the core gives Hydra must be Vt's own types, and so must per-instance primvar types it recognizes.
+- **Sharing, as evidence for M4 and M8.** The nested-instance scene plans 216 meshes for 360 drawn copies, with at most 6 objects sharing one.
+  - Hydra splits instancers by binding and purpose, so copies share a Hydra prim only where their instance roots agree.
+  - Each leaf mesh's copies share one points buffer, so deduplicating by array identity looks cheap. That it's copy-on-write from the one USD prototype is an inference; the prototype doesn't do it.
+  - The [Geometry Sharing](../spec/support/instancing.md#geometry-sharing) requirement can't rest on Hydra's instancers alone.
+- **Splitting by binding is Pixar's current policy, and planned to change.** In the AOUSD forum thread [Hydra Prototype and Instances](https://forum.aousd.org/t/hydra-prototype-and-instances/1747) (August 2024), Pixar's Tom C confirms that "currently, instances need to share a material binding". He calls it a "lightweight policy choice": material bindings are among `UsdImagingStageSceneIndex`'s `instanceDataSourceNames`. Pixar plans per-instance bindings on one prototype, via "a new hydra schema and a bit of glue code".
+  - That explains the sharing result above.
+  - The core doesn't depend on it: materials are resolved for each drawn copy and linked per object. A first version resolved them once per Hydra prim, guarded by a warning, which per-copy resolution made unnecessary.
+  - The same thread says `instanceLocations` serve "picking, selection, and collection resolution", not drawing. That matches how the reverse mapping uses them, and may be where a fix for #3690 would resolve collections (an inference).
+- **Prim and material purposes per destination** (settled with the user, 2026-10-12).
+  - The [spec](../spec/support/visibility.md#visibility-and-purpose) has the viewport show default and proxy prims, and the final render default and render prims, both from one snapshot. Explicitly visible guides display in the viewport (spec row VIS-04, added with the user). The Phase B application ignored purpose.
+  - **Settings.** `PlanSettings` (binding settings) gives each destination its prim purposes and its material purpose. The defaults are `{default, proxy, guide}` with preview for the viewport, and `{default, render}` with full for the render. A guide displays only when its nearest guideVisibility opinion is `visible`, so including guides shows only the explicitly visible ones.
+  - **Material slots follow subsets, not materials.** Slot 0 is the mesh's binding, then one slot per materialBind subset in name order. One mesh serves both destinations even where they group its faces differently. Each object links its own material to each slot (`link = 'OBJECT'`).
+  - **Objects:**
+    - A copy that displays in both destinations with the same materials is one object.
+    - One whose preview and full materials differ is two objects sharing one mesh.
+    - A copy in neither is one hidden object, kept for correspondence.
+    - Materials are resolved for each drawn copy.
+  - **Material resolution stays the core's, for now.** Correction (Hydra-native review): the graph's `UsdImagingMaterialBindingsResolvingSceneIndex` already resolves every purpose separately, with no allPurpose fallback (measured: `/World/Both` gives preview and full, `/World/Same` allPurpose). Only `HdsiMaterialBindingResolvingSceneIndex`, which the bridge doesn't use, collapses them to one purpose (from source: `GetNames()` returns only its target). What keeps resolution in the core is the nested-instance binding bug and the collection handling inside prototypes, not purposes; once those are fixed upstream, Hydra's per-purpose bindings plus the core's allPurpose fallback would serve both destinations.
+  - **Render-time switching isn't needed.** Per-destination objects use Blender's own hide flags.
+    - In one ad hoc background-mode test (Blender 5.2.2 binary, Workbench, the blocking `render.render()` operator, still and animation), a `render_init` handler's material swap reached the render and `render_complete` restored it.
+    - Interactive F12, cancellation, undo and other engines are untested.
+    - Geometry Nodes' Is Viewport node is available as a handler-free switch.
+    - Both are left for M4.
+  - In ad hoc runs made deliberately wrong (preview materials for the render, or render prims in the viewport), the purposes case failed on the matching check. Which material purpose each destination uses remains M9's choice.
+- **Incremental capture** (`capture(time, incremental=True)`).
+  - It re-copies the prims that notices since the previous capture named, and shares the rest.
+  - On the edits case's 23 steps it equals full captures, record by record and plan by plan, and both equal USD and a new bridge.
+  - In an ad hoc mutation run, a bridge made to return its previous snapshot at a step failed these checks there.
+  - An unchanged refresh delivers no notices, copies nothing and plans identically.
+  - **Over-reporting** is visible: dirtied prims whose records didn't change (paths in the record's findings).
+  - **Scope:** one scene, not proof that notices are complete. Phase D's time-variance work and M13 build on it.
+- **A lifetime bug from Phase B, fixed.** `Bridge(stage)` took a `UsdStageRefPtr`, and Tf's Python converter for a `TfRefPtr` argument moves ownership from the Python object into C++ (`pxr/base/tf/pyPtrHelpers.h`). Releasing or deleting a bridge therefore destroyed a stage its caller still held.
+  - The bridge now takes a `UsdStagePtr` and adds its own strong reference.
+  - A new loading check covers it, making 42 loading checks (43 on Windows).
+  - Production bindings across this boundary need the same care.
+- **Expiry can lag `release()`** (cause not identified).
+  - `~UsdStage` releases the root layer synchronously (`usd/stage.cpp`), so it isn't asynchronous teardown inside the stage.
+  - In 200 ad hoc iterations, the root layer outlived `release()` in 28. In another ad hoc run, the layer was gone before the bridge's weak stage pointer had expired (1 in 22).
+  - The check waits up to 2 s for both and records the wait.
+- **Hydra-native review (2026-10-12).** Three subagents checked every bridge fix against OpenUSD v26.03, `dev` (5bc38c9) and maya-hydra for a native equivalent, and whether Blender 5.2.2's `libusd_ms` exports it. Inferences are theirs unless measured.
+  - **Adopted:**
+    - Point-instancer prototypes are recognized by Hydra's `__usdPrimInfo:piPropagatedPrototypes` marker, and point instancers by their null `instanceLocations` (documented in `HdInstancerTopologySchema`; maya-hydra uses the same test), replacing a path-prefix test.
+    - Indexed constant primvars flatten through `UsdGeomPrimvar::ComputeFlattened`, which reports bad indices; Hydra's own flattener substitutes defaults with an unattributed warning.
+    - Placeholder bounds use `ComputeExtentFromPlugins` (see the filter).
+    - The materialBind family verdict comes from `UsdGeomSubset::ValidateFamily` (a new `invalid-subset-family` warning with USD's reason); the overlap rule itself stays the core's, since nothing native picks a winner (Storm draws an overlapping face in both subsets).
+    - Instance-root ancestor visibility comes from Hydra's instancer mask, which is computed from the flattened instance root. The core's ancestor walk only compensated for the filter's visibility bug and is gone.
+    - Per-instance primvars come from the instance root's own record, flattened in its namespace with the authored type and shape. Hydra's instance aggregation keeps only an array's first element and takes names and types from the first instance (measured: `[7, 8]` reached copies as `[7]`), so the instancer's arrays are no longer read.
+  - **Bugs this found, now fixed and covered:** the filter's visible `true` for typeless prims (an unauthored Xform under an invisible group showed its meshes; `edits.usda` `Hush/Wrap/Quiet`), and truncated per-instance arrays (`instances.usda` `weights`).
+  - **Tried and blocked on macOS: a keyless UsdImaging API-schema adapter** (`"apiSchemaName": ""` in plugInfo). The stage scene index runs one on every prim with its real stage globals and asks it to invalidate on property changes, so it would have replaced the filter's laziness, generation cache, time dirtying, notice listener and supplied schemas (via `UsdImagingDataSourcePrim`).
+    - Built ad hoc (2026-10-12, macOS wheel; the code is kept outside the repository). The bridge wrote a plugInfo.json naming its module and registered it with `PlugRegistry::RegisterPlugins` before UsdImaging's first use. UsdImaging found the type, loaded the plugin, and then failed with "Cannot manufacture type 'hydra_bridge::SourceInfoAdapter'".
+    - **Cause: the type-identity boundary again.** `UsdImagingAdapterRegistry` gets the factory with `TfType::GetFactory<UsdImagingAPISchemaAdapterFactoryBase>()`, a `dynamic_cast` inside `libusd_ms`. That base class is defined inline in its header, so its `type_info` is local to each binary: `libusd_ms` doesn't export it (`nm`), and the bridge's module has its own. The cast can't recognize the bridge's factory.
+    - The adapter base class itself is exported, but every factory must derive from the unexported one. So, with Blender 5.2.2's library on macOS, no adapter built outside `libusd_ms` can be manufactured.
+    - Linux and Windows compare `type_info` by name, so it may work there (untested). macOS is a required platform, so the filter stays.
+    - Hf's plugins (Hydra scene-index plugins, render delegates) avoid this by design. `HfPluginRegistry::Define` passes the factory as a `std::function` through the exported `_SetFactory`, and `libusd_ms` wraps it in its own factory class (`hf/pluginEntry.h:97` gives the reason). Their base classes' `type_info` objects are exported. A scene-index plugin is only a filtering scene index, though, with no access to the stage scene index's globals or property invalidation, so it can't replace the adapter; the bridge already inserts its filter directly.
+    - **Rule for a compiled core:** register any Tf-factory type through an exported USD helper like Hf's, never by deriving from a header-only factory base.
+    - **Adopted instead: the lighter variant.** The filter stays, but builds UsdImaging's own data sources with a bridge-owned `UsdImagingDataSourceStageGlobals` subclass (see the filter above). That only calls virtual methods and exported constructors, with no cast across the boundary. All checks and the audit reproductions pass as before.
+  - **No native equivalent (keep custom):** subset familyName, purpose visibility, a Cube's `doubleSided` (hard-coded false in v26.03 and `dev`), bound paths as tokens (`libusd_ms` doesn't export `SdfPath`'s `type_info`, so `VtValue::IsHolding` can't match a value made in the module), domain maps and left-handed reversal, the face checks, reserved names, diagnostics deduplication, and the incremental-capture design (Hydra's caching scene indices read live values; usdview and maya-hydra re-pull dirty prims the same way).
+  - **Upstream state:** `dev` reroots collection path expressions into prototypes, fixing collections authored inside assets in Hydra; the nested re-rooting bug and collections naming instance-proxy paths remain. `HdxPrimOriginInfo`'s quadratic cost is fixed in `dev` (`cdata()`).
+  - **Production direction for subdivision:** Blender's Subdivision Surface modifier, as Blender's own USD importer uses; OpenSubdiv's refiner (`PxOsdRefinerFactory`, with Blender's `libosdCPU`) only if baked or loop results are needed.
+- **Diagnostics are deduplicated in capture.** Hydra can read a value more than once, posting the same warning each time.
+- **Plan records are typed by hand, for the prototype only.** `plan_types.py` describes the plan's records as `TypedDict`s copied from the dicts `python_views.cpp` builds, and `apply.py` is annotated with them. If Hydra is adopted, production code should bind the records as classes with attribute access (`mesh.positions`) and ship stubs for them, so the types can't drift from the bindings. This belongs to M5, where the plan interface becomes the C++/Python boundary.
 
 ## Phase D — Time-sampled data detection
 

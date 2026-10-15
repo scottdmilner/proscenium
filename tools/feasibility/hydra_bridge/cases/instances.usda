@@ -1,0 +1,456 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "nested native instances with differing inherited appearance". Ten instances of
+# Branch (or StrongBranch), each holding four instances of Leaf, so every leaf mesh is drawn forty times.
+# Two of the Branches sit inside Grove, an instance of Tree, so those copies nest three levels deep.
+# The copies differ in what they inherit from their instance roots and the roots' ancestors:
+# - transforms at every level, including rotation and scale;
+# - visibility: BranchC and LeafC are invisible; Hidden is invisible in the prototype itself; Shroud, an
+#   invisible Xform inside Branch, wraps LeafD; HiddenGroup and Hidden2 are invisible groups one and two
+#   levels above an instance root that has no visibility opinion of its own;
+# - purpose: BranchB is proxy;
+# - material bindings: Blade binds Bark directly inside Leaf, so the instance roots' bindings never
+#   reach it. Stem has no binding of its own, so it takes the nearest instance root's: Gold from BranchA,
+#   Silver from BranchD or Grove, Moss from LeafB, or Branch's own Bark from LeafA. Branch's Bark has the
+#   same relative path as Leaf's, so a binding re-rooted into the wrong prototype finds a material there.
+#   StrongBranch is Branch with LeafA's and LeafB's bindings made strongerThanDescendants, so in BranchE
+#   they also beat Blade's own Bark binding. BranchF binds Copper, outside any prototype,
+#   strongerThanDescendants, so it beats every binding inside it (OpenUSD #1571's case). In Tree, BranchP
+#   binds Tree's Pine strongerThanDescendants, a material two prototypes up from the leaves;
+# - bindings authored inside Leaf that UsdShade resolves its own way: Tuft binds Lichen to a collection
+#   that includes Picked but not Unpicked; Unbound authors an empty binding (material:binding = None);
+#   NotMaterial binds a Mesh; NoApi binds Lichen without MaterialBindingAPI;
+# - displayColor: each branch's value, LeafB's own beating its branch's, and Tip's own beating both;
+#   Grove's is indexed, so it must be read through its index; BranchQ's beats Grove's;
+# - named primvars: BranchA authors string, bool, int2 and float3 arrays and a three-element float array
+#   (Hydra's instance aggregation keeps only an array's first element), and LeafB's own label and cell
+#   beat them. BranchD authors scalar (non-array) string and float primvars.
+# Bark and Lichen are defined inside Leaf, and Moss inside Branch, so those materials are themselves instanced.
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Gold"
+        {
+            token outputs:surface.connect = </World/Looks/Gold/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0.8, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Silver"
+        {
+            token outputs:surface.connect = </World/Looks/Silver/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.8, 0.8, 0.8)
+                token outputs:surface
+            }
+        }
+
+        def Material "Copper"
+        {
+            token outputs:surface.connect = </World/Looks/Copper/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.7, 0.4, 0.2)
+                token outputs:surface
+            }
+        }
+    }
+
+    def Xform "BranchA" (
+        instanceable = true
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = </Assets/Branch>
+    )
+    {
+        color3f[] primvars:displayColor = [(1, 0, 0)]
+        string[] primvars:label = ["branchA"]
+        bool[] primvars:flag = [1]
+        int2[] primvars:cell = [(1, 2)]
+        float3[] primvars:tint = [(0.5, 0.25, 0)]
+        float[] primvars:weights = [7, 8, 9]
+        rel material:binding = </World/Looks/Gold>
+    }
+
+    def Xform "BranchB" (
+        instanceable = true
+        prepend references = </Assets/Branch>
+    )
+    {
+        color3f[] primvars:displayColor = [(0, 1, 0)]
+        uniform token purpose = "proxy"
+        double3 xformOp:translate = (5, 0, 0)
+        float xformOp:rotateZ = 90
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    }
+
+    def Xform "BranchC" (
+        instanceable = true
+        prepend references = </Assets/Branch>
+    )
+    {
+        token visibility = "invisible"
+        double3 xformOp:translate = (10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "BranchD" (
+        instanceable = true
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = </Assets/Branch>
+    )
+    {
+        color3f[] primvars:displayColor = [(0, 0, 1)]
+        string primvars:note = "branchD"
+        float primvars:rough = 0.5
+        rel material:binding = </World/Looks/Silver>
+        double3 xformOp:translate = (15, 0, 0)
+        double3 xformOp:scale = (1, 1, 3)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+
+    def Xform "BranchE" (
+        instanceable = true
+        prepend references = </Assets/StrongBranch>
+    )
+    {
+        double3 xformOp:translate = (20, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "BranchF" (
+        instanceable = true
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = </Assets/Branch>
+    )
+    {
+        rel material:binding = </World/Looks/Copper> (
+            bindMaterialAs = "strongerThanDescendants"
+        )
+        double3 xformOp:translate = (25, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "HiddenGroup"
+    {
+        token visibility = "invisible"
+
+        def Xform "Inst" (
+            instanceable = true
+            prepend references = </Assets/Branch>
+        )
+        {
+            double3 xformOp:translate = (30, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "Hidden2"
+    {
+        token visibility = "invisible"
+
+        def Xform "Mid"
+        {
+            def Xform "Inst" (
+                instanceable = true
+                prepend references = </Assets/Branch>
+            )
+            {
+                double3 xformOp:translate = (35, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+    }
+
+    def Xform "Grove" (
+        instanceable = true
+        prepend apiSchemas = ["MaterialBindingAPI"]
+        prepend references = </Assets/Tree>
+    )
+    {
+        color3f[] primvars:displayColor = [(1, 0, 1), (0.2, 0.2, 0.2)]
+        int[] primvars:displayColor:indices = [1]
+        rel material:binding = </World/Looks/Silver>
+        double3 xformOp:translate = (0, 20, 0)
+        float xformOp:rotateZ = 45
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    }
+}
+
+# Abstract, so only its references are drawn.
+class Xform "Assets"
+{
+    def Xform "Leaf"
+    {
+        def Scope "Looks"
+        {
+            def Material "Bark"
+            {
+                token outputs:surface.connect = </Assets/Leaf/Looks/Bark/Surface.outputs:surface>
+
+                def Shader "Surface"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0.4, 0.2, 0)
+                    token outputs:surface
+                }
+            }
+
+            def Material "Lichen"
+            {
+                token outputs:surface.connect = </Assets/Leaf/Looks/Lichen/Surface.outputs:surface>
+
+                def Shader "Surface"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0.6, 0.7, 0.3)
+                    token outputs:surface
+                }
+            }
+        }
+
+        def Xform "Tuft" (
+            prepend apiSchemas = ["CollectionAPI:Picked", "MaterialBindingAPI"]
+        )
+        {
+            rel collection:Picked:includes = </Assets/Leaf/Tuft/Picked>
+            rel material:binding:collection:Picked = [</Assets/Leaf/Tuft.collection:Picked>, </Assets/Leaf/Looks/Lichen>]
+
+            def Mesh "Picked"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 3), (1, 0, 3), (0, 1, 3)]
+                uniform token subdivisionScheme = "none"
+            }
+
+            def Mesh "Unpicked"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 4), (1, 0, 4), (0, 1, 4)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+
+        def Mesh "Unbound" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 5), (1, 0, 5), (0, 1, 5)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = None
+        }
+
+        def Mesh "NotMaterial" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 6), (1, 0, 6), (0, 1, 6)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </Assets/Leaf/Tip>
+        }
+
+        def Mesh "NoApi"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 7), (1, 0, 7), (0, 1, 7)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </Assets/Leaf/Looks/Lichen>
+        }
+
+        def Mesh "Blade" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            rel material:binding = </Assets/Leaf/Looks/Bark>
+        }
+
+        def Mesh "Stem"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (0.1, 0, 0), (0, 0, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Tip"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 1), (0.1, 0, 1), (0, 0, 1.2)]
+            uniform token subdivisionScheme = "none"
+            color3f[] primvars:displayColor = [(1, 1, 1)]
+        }
+
+        def Mesh "Hidden"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 2), (1, 0, 2), (0, 1, 2)]
+            uniform token subdivisionScheme = "none"
+            token visibility = "invisible"
+        }
+    }
+
+    def Xform "Branch"
+    {
+        def Scope "Looks"
+        {
+            def Material "Bark"
+            {
+                token outputs:surface.connect = </Assets/Branch/Looks/Bark/Surface.outputs:surface>
+
+                def Shader "Surface"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0.1, 0.1, 0.1)
+                    token outputs:surface
+                }
+            }
+
+            def Material "Moss"
+            {
+                token outputs:surface.connect = </Assets/Branch/Looks/Moss/Surface.outputs:surface>
+
+                def Shader "Surface"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0.2, 0.5, 0.2)
+                    token outputs:surface
+                }
+            }
+        }
+
+        def Xform "LeafA" (
+            instanceable = true
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            prepend references = </Assets/Leaf>
+        )
+        {
+            rel material:binding = </Assets/Branch/Looks/Bark>
+            double3 xformOp:translate = (1, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "LeafB" (
+            instanceable = true
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            prepend references = </Assets/Leaf>
+        )
+        {
+            color3f[] primvars:displayColor = [(1, 1, 0)]
+            string[] primvars:label = ["leafB"]
+            int2[] primvars:cell = [(7, 8)]
+            rel material:binding = </Assets/Branch/Looks/Moss>
+            double3 xformOp:translate = (0, 2, 0)
+            double3 xformOp:scale = (2, 2, 2)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+
+        def Xform "LeafC" (
+            instanceable = true
+            prepend references = </Assets/Leaf>
+        )
+        {
+            token visibility = "invisible"
+            double3 xformOp:translate = (0, 4, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "Shroud"
+        {
+            token visibility = "invisible"
+
+            def Xform "LeafD" (
+                instanceable = true
+                prepend references = </Assets/Leaf>
+            )
+            {
+                double3 xformOp:translate = (0, 6, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+    }
+
+    def Xform "StrongBranch" (
+        prepend references = </Assets/Branch>
+    )
+    {
+        over "LeafA"
+        {
+            rel material:binding = </Assets/StrongBranch/Looks/Bark> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+        }
+
+        over "LeafB"
+        {
+            rel material:binding = </Assets/StrongBranch/Looks/Moss> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+        }
+    }
+
+    def Xform "Tree"
+    {
+        def Scope "Looks"
+        {
+            def Material "Pine"
+            {
+                token outputs:surface.connect = </Assets/Tree/Looks/Pine/Surface.outputs:surface>
+
+                def Shader "Surface"
+                {
+                    uniform token info:id = "UsdPreviewSurface"
+                    color3f inputs:diffuseColor = (0, 0.3, 0.1)
+                    token outputs:surface
+                }
+            }
+        }
+
+        def Xform "BranchP" (
+            instanceable = true
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            prepend references = </Assets/Branch>
+        )
+        {
+            rel material:binding = </Assets/Tree/Looks/Pine> (
+                bindMaterialAs = "strongerThanDescendants"
+            )
+        }
+
+        def Xform "BranchQ" (
+            instanceable = true
+            prepend references = </Assets/Branch>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 1, 1)]
+            double3 xformOp:translate = (3, 0, 0)
+            double3 xformOp:scale = (0.5, 0.5, 0.5)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        }
+    }
+}

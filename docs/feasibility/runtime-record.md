@@ -180,10 +180,11 @@ The attribute path costs about one memory copy. `vertices.co` is about 100 times
 **Verdict: feasible on the tested Blender 5.2.2 / USD 0.26.3 build.** A standalone
 Python extension links to Blender's bundled `libusd_ms`, receives the caller's
 `Usd.Stage` directly, and consumes Hydra scene indices. The same compiled module
-passes **41 loading checks and 20 prototype checks in the bpy wheel, and the same in the
-Blender binary**, each in a fresh background process (2026-10-12, locally and in the
-"Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). The prototype checks cover M1b Phase B's slice:
+passed **41 loading checks and 20 prototype checks in the bpy wheel, and the same in the
+Blender binary**, each in a fresh background process ("Hydra bridge" workflow,
+[run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), 2026-10-12). The prototype checks cover M1b Phase B's slice:
 capture, a C++ display plan, and application to Blender ([below](#prototype-slice-m1b-phase-b)).
+Phase C added a loading check and the correctness cases ([below](#prototype-correctness-m1b-phase-c)), which pass on all three platforms ([run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667)).
 This is a feasibility result, not adoption of Hydra or qualification of a distributable
 bridge. The same checks pass on [Windows x64](#compiled-hydra-bridge) and
 [Linux x64](#compiled-hydra-bridge-1), recorded under those platforms.
@@ -195,7 +196,7 @@ The same commands run on macOS arm64, Linux x64, and Windows x64:
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py   # build, extract, audit linkage
-uv run python tools/feasibility/hydra_bridge/run.py     # loading and prototype checks, wheel and binary
+uv run python tools/feasibility/hydra_bridge/run.py     # loading, prototype and correctness checks, wheel and binary
 ```
 
 `run.py` finds the Blender binary through `BLENDER` or the platform default
@@ -262,7 +263,8 @@ module had 99, before the prototype's capture and planning code.
 `build.json` records the platform, pins, CMake configure command, module path,
 and audit results. `wheel.json` and `binary.json` record the loading checks and loaded USD
 paths; `prototype-wheel.json` and `prototype-binary.json` record the prototype checks and
-the plan's diagnostics; the accompanying logs and process records include subprocess exits. Both
+the plan's diagnostics; `correctness-wheel.json` and `correctness-binary.json` record each Phase C case's checks,
+findings and any failure; the accompanying logs and process records include subprocess exits. Both
 processes exit successfully after the checks, including shutdown. Each gets a
 temporary Blender user directory and a temporary copy of the USD fixture. On macOS,
 Blender startup requires access to Metal even in background mode; the successful local
@@ -281,11 +283,12 @@ runs were outside the execution sandbox.
   - An anonymous stage also round-trips.
 - **Stage lifetime:**
   - A retained Hydra chain keeps a stage alive after the caller releases it, because the stage scene index holds a strong reference.
-  - After the bridge's `release()`, which detaches the stage from the chain, a caller-released stage expires: its anonymous root layer is gone. The bridge then reports no stage, and a capture raises.
+  - After the bridge's `release()`, which detaches the stage from the chain, a caller-released stage expires: its anonymous root layer is gone, within the check's 2 s wait, together with the bridge's weak stage pointer (expiry can lag `release()`; see [Phase C](#prototype-correctness-m1b-phase-c)). The bridge then reports no stage, and a capture raises.
+  - A released bridge leaves a stage the caller still holds alive (added in Phase C).
 - **Errors:** passing `None` instead of a stage raises a Python exception rather than crashing. Constructing the bridge converts Tf errors into Python exceptions; during a capture they become diagnostics instead. No loading check posts one.
 - **Hydra access:** the bridge builds the scene-index graph: `UsdImagingCreateSceneIndices` (draw mode off), then ext-computation primvar pruning, implicit surfaces to meshes (all six shapes), NURBS approximation, dependency forwarding, and prim-type notice batching. There is no extra `HdFlatteningSceneIndex`; the chain's own flattening supplies inherited state.
 - **Mesh extraction:** triangle topology and points match the authored fixture; point arrays arrive through the existing `Vt.Vec3fArray` converter.
-- **Implicit geometry:** a cube becomes a mesh with eight points, six quads, and the expected dimensions. Sphere conversion is exercised by the prototype checks.
+- **Implicit geometry:** a cube becomes a mesh with eight points, six quads, and the expected dimensions. Phase C's implicit case checks all six shapes and a NURBS patch.
 - **Inherited state:** the triangle receives its parent's translation; an edit to ancestor visibility changes the effective visibility read from the chain.
 - **Time:** `capture()` takes a numeric time, `None` or no argument (default time), or a `Usd.TimeCode`; anything else raises `TypeError`.
   - Values at time 1, interpolated values at time 2 (between samples 1 and 3), and a return to time 1 match the fixture.
@@ -306,12 +309,12 @@ runs were outside the execution sandbox.
 
 Expected values come from USD (`UsdGeom.XformCache`, primvar inheritance, `UsdShade` bindings and shader inputs) or from the scene's construction, never from Hydra. All 20 checks pass in the wheel and the binary on all three platforms.
 
-The plan has 8 objects, 5 meshes and 2 materials. Its only diagnostics are the approximated sphere and the basis-curve placeholder.
+The plan has 8 objects, 5 meshes and 2 materials. Its only diagnostics are the approximated sphere and the basis-curve placeholder (as run for Phase B; Phase C's checks are below).
 
 - **Snapshot:** an `HdRetainedSceneIndex` of `HdMakeStaticCopy` copies of the schemas planning reads, and no others. It and the plan are unchanged by a later stage edit, which only the next capture sees.
 - **Sources:** one object per gprim USD draws through instance proxies, with its native-instance roots (outermost first), as `Usd.PrimRange` with instance proxies enumerates them.
 - **Values:** world transforms match `UsdGeom.XformCache` within 1e-5. displayColor matches `FindPrimvarWithInheritance` through both instancing levels, including an inner instance root's value overriding an outer one's.
-- **Diagnostics:** the sphere is diagnosed as approximated and the cube is not. The basis curves become an empty placeholder with a diagnostic.
+- **Diagnostics:** the sphere is diagnosed as approximated and the cube is not. The basis curves become a placeholder with a diagnostic: an empty in Phase B, a bounds-drawn box of USD's computed extent since Phase C.
 - **Materials:** the plan's UsdPreviewSurface `diffuseColor` matches the shader's input, and each face's material slot is the one `UsdShade` binds to its GeomSubset or mesh.
 - **Blender:**
   - Positions, corner vertices and face sizes match the USD mesh, and `Mesh.validate()` reports nothing to fix.
@@ -319,20 +322,86 @@ The plan has 8 objects, 5 meshes and 2 materials. Its only diagnostics are the a
   - Objects that share a plan mesh share Blender mesh data.
   - Plan arrays reach `foreach_set` as read-only, contiguous buffers in Blender's element types (`'f'`, `'i'`).
 
+### Prototype correctness (M1b Phase C)
+
+`correctness_probe.py` runs each case on its own scene in `cases/`: one `.usda` file with a purpose comment and one check module. The large-array grid is the exception: it is authored through UsdGeom into a temporary crate file.
+
+**Passes on all three platforms:** all 118 checks in the bpy wheel and in the Blender 5.2.2 binary, on macOS arm64, Windows x64 and Linux x64, with the same count per case everywhere ("Hydra bridge" workflow, [run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667), commit `b919252`, 2026-10-13). The loading checks (42; 43 on Windows) and the prototype checks (20) pass in the same runs. That run's Windows build had two `/W4` warnings, fixed since (see [Windows](#compiled-hydra-bridge)). In the next run ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)), the macOS binary failed one check, a timing: `foreach_set` from the plan buffer took 0.92 ms against 4.36 ms from a list, 4.8× where the check asks for 5× (the earlier binary run measured 35×). Each path had been timed once; the check now takes the minimum of five runs of each (locally 0.06 ms against 3.0 ms). Every other process of that run passed. With that change, every job passes ([run 38362866907](https://github.com/scottdmilner/proscenium/actions/runs/38362866907), commit `679566c`): 118 correctness, 42 loading (43 on Windows) and 20 prototype checks in each host on each platform, with no compiler warnings, and `foreach_set` from the plan buffer 17× to 55× faster than from a list.
+
+**USD warns about HermiteCurves on every platform, as expected.** UsdImaging posts "Datasource support not yet added for adapter 'UsdImagingHermiteCurvesAdapter'" (`UsdImagingPrimAdapter::GetImagingSubprims`) for each HermiteCurves prim. That is why Hydra doesn't image them, and the filter's supplied data covers it. Measured locally: it is posted while the bridge is built (twice for the untranslated scene's one prim, eight times for the edits scene's two) and again at release, both outside capture, so Tf prints it. Posted during a capture, it becomes one `tf-warning` diagnostic with no source, beside the `untranslated-type` warning that names each prim.
+
+Where the checks get their expected values:
+- **Scene values** come from USD (`UsdGeom`, `UsdShade`, `ComputeExtentFromPlugins`) or from how the scene is built.
+- **Application and incremental capture** are checked against the plan or against a full capture. In the edits case, each step is also checked against USD and against a new bridge.
+- **Known gaps** are checks too: each asserts that its gap still reproduces.
+
+The tests were audited on 2026-10-12, before this result, by four reviewers covering geometry, instancing and materials, time and untranslated types, and these docs. The audit found bugs in the core, which are fixed (listed in the M1b plan's Phase C log), and holes in the tests, which these cases now cover.
+
+**The source-info filter.** The core adds one Hydra filter. It sits in `UsdImagingCreateSceneIndices`' overrides slot, right after the stage scene index, where paths are still USD paths. Under a `prosceniumSource` container it supplies what the chain drops:
+- subset `familyName`;
+- authored purpose visibility;
+- `doubleSided`;
+- UsdShade's resolved binding for each material purpose, and the purposes a prim binds `strongerThanDescendants`;
+- USD's verdict on a mesh's materialBind family (`ValidateFamily`);
+- the USD type of prims Hydra doesn't image;
+- on gprims and point instancers, the authored attributes UsdImaging drops.
+
+For prims UsdImaging doesn't image at all, it supplies `UsdImagingDataSourcePrim` (transform, visibility, purpose, authored extent, primvars), as UsdImaging does for prims without an adapter. Those data sources run on the filter's own stage globals, so a time change dirties exactly what they flag as time-varying. For curves, points and HermiteCurves without an authored extent it supplies USD's computed extent. Its containers read USD on each access, at the graph's time. It listens to the stage for edits Hydra doesn't notice.
+
+| Case | Checked against USD | Found |
+|---|---|---|
+| GeomSubsets and indexed primvars (17 checks) | Captured primvars keep USD's indices and unflattened values. Each face's material is UsdShade's materialBind assignment, in the plan and in Blender through each object's slots, matched exactly. That covers faces in no subset, an unbound subset, a mesh with nothing bound, and subsets in another family or in none. A left-handed mesh (triangle, quad, triangle) has its corners reversed after the first, and every face-varying, vertex, uniform and varying value lands on its Blender domain to match `ComputeFlattened`; its face normals follow USD's orientation. An indexed constant displayColor reaches the object flattened. | Hydra binds subsets of any family, including one with no `familyName`; only materialBind subsets make slots. Overlapping materialBind subsets give the face to the first by name, with a warning; a family USD's `ValidateFamily` rejects is diagnosed with USD's reason, and families it accepts are not. A materialBind subset of points is ignored with a warning. A primvar named `sharp_face` (a Blender built-in) isn't transferred. A mesh with USD's default scheme, catmullClark, gets `subdivision-not-applied`. |
+| Implicit shapes (13) | The cube, plane, sphere, cone, cylinder, capsule and a bicubic NURBS patch all become meshes. Only the inexact ones are diagnosed. Exact meshes' vertices are exactly the corners of USD's extent. Approximated meshes' vertices lie on the surface USD's parameters define, and span at least 90% of its extent on every axis. Faces point outward in Blender. World transforms and `doubleSided` (fallbacks included) match. | Hydra loses the Cube's authored `doubleSided = true` and keeps Plane's fallback true. Approximations are catmullClark cages: sphere 100 faces, capsule 90, cylinder 30, cone 20. The NURBS patch is displayed as its control hull (9 faces), which is accepted and diagnosed as an approximation: its bounds equal the control points', while the surface's midpoint, computed from the control points, is z = 1.5 under the hull's 2. |
+| Nested native instances (17) | 360 drawn copies: Leaf (9 meshes) in Branch (4 leaves), in 10 Branch instances, 2 of them inside Tree instances, so three levels deep. Every copy matches USD: source and instance context, world transform, effective visibility (including invisible groups one and two levels above an instance root, and inside a prototype), inherited purpose, and displayColor (indexed on an outer root). Named primvars (string, bool, int2, float3, a three-element float array, and scalar string and float) match USD inheritance in value and shape; they come from each instance root's own record, since Hydra's instance aggregation keeps only an array's first element. Materials match UsdShade per copy, in the plan and in Blender, through strong outer and inner bindings (including OpenUSD #1571's case), a collection authored inside the asset, `material:binding = None`, a binding to a non-Material, and a binding without `MaterialBindingAPI`. | **A Hydra propagation bug** (below). There are 33 instancers and 216 plan meshes for the 360 copies, with at most 6 objects sharing one. Each leaf mesh's copies share one points buffer. |
+| Time, edits, incremental capture (7) | 23 steps on two bridges over one stage, one capturing in full and one incrementally. The steps are times 1, 2, 2.5 and 3, then edits, each in turn:<br>- unchanged refreshes;<br>- a material parameter;<br>- a cube's size;<br>- a topology;<br>- added and removed prims;<br>- a subset's elementType, which changes its mesh's family verdict, and back;<br>- a familyName;<br>- guideVisibility on a prim and on an ancestor;<br>- doubleSided on a cube and on a mesh;<br>- a binding retarget and a strength change;<br>- a static HermiteCurves' transform, visibility and purpose;<br>- prototype content seen by two instances.<br><br>At every step the plan matches USD (transforms, visibility, purpose, displayColor, destinations, per-face materials for both purposes, points, doubleSided, placeholders, material parameters) and equals a new bridge's plan. Each step changes USD's values for exactly the prims it names. Animated HermiteCurves (transform and held visibility) match at each time. | Incremental captures equal full captures record by record (an absent instancer matrix counts as identity) and plan by plan. An unchanged refresh delivers no notices, copies nothing and plans identically. Dirtied prims whose records didn't change: `Blinker` at 2.5 (held visibility); `Aid` and `Aid2` after an ancestor's guideVisibility edit (records hold only each prim's own opinions); `Holder` after its strength change. |
+| Untranslated types (14) | One placeholder per unsupported gprim and per point instancer, with an `untranslated-type` warning on its USD path. That covers basis curves, NURBS curves, points, HermiteCurves, a Volume, and basis curves and a point instancer inside native instances, with instance context per copy. Each keeps its world transform, effective visibility and purpose. An authored extent, or else USD's computed extent for curves and points, gives a bounding-box placeholder (a box mesh drawn as bounds); a point instancer or volume without an authored extent gives an empty marker. A point instancer's prototype prims get no objects. A mesh under unsupported basis curves is still built. | HermiteCurves aren't imaged: Hydra has only a typeless prim, without its own transform or visibility (from source reading and snapshot inspection). The filter supplies type, transform, visibility and purpose. |
+| Large arrays (9) | A 512 × 512 quad grid: 263,169 points, 1,048,576 corners, a vertex float and face-varying UVs. The plan's arrays equal the authored arrays byte for byte, and Blender's equal the plan's. They are read-only contiguous buffers in `'f'`/`'i'`, and a buffer in the wrong format is refused. The plan-buffer `foreach_set` is at least 5× faster than from a list (the minimum of five runs of each). | Each attribute and corner transfer allocates under 1 KiB of Python memory (`tracemalloc`, which doesn't see Blender's own allocator). `polygons.foreach_set('loop_start')` allocates a 1 MiB temporary, 4 bytes per face. In one binary run, `foreach_set` took 0.09 ms from the plan buffer against 3.2 ms from a list. |
+| Malformed input (14) | 11 broken topologies become placeholders, each with an `invalid-mesh` error whose message gives the reason expected from how it's built: an out-of-range index, a negative index, count mismatches, a two-corner face, a negative count, counts summing past `int`, a hole out of range, an unknown scheme or orientation, and missing or wrong-typed points. Faces Blender's `Mesh.validate()` deletes (one using a point twice, a later face on an earlier face's points in either winding) are left out with a `faces-left-out` warning instead, as Blender would repair them: the rest of each mesh builds, and per-face data and subset slots stay with their faces. Invalid primvars and subsets are skipped with reasons, and the meshes and their valid primvars still build. An empty mesh and a points-only mesh are planned without diagnostics and match USD's counts in Blender. Every Blender mesh passes `Mesh.validate()` unchanged. API misuse raises Python exceptions, and diagnostics have no duplicates. | A `timecode` shader input posts a Tf warning during capture, which becomes one diagnostic on the material's USD path. Wrong-typed points read as empty. Several reasons are PxOsd's own message text, which a USD upgrade can reword. |
+| Bindings and purpose visibility (8) | A collection binding outside instances, purpose bindings for allPurpose, preview and full, and a binding without `MaterialBindingAPI` all match UsdShade. Effective purpose visibility matches `ComputeEffectiveVisibility`, including an opinion on an instance root. | **Two collection gaps** (below). Hydra flattens each purpose separately with no allPurpose fallback. Hydra reports a hidden proxy as visible, because purpose visibility isn't imaged. |
+| Prim and material purposes per destination (9) | Default, proxy, render and guide prims: one guide explicitly visible, and one whose nearest opinion is `inherited`. A render prim hidden by `renderVisibility`, a mesh whose subsets the destinations bind differently, and a native instance with each purpose. The viewport shows exactly default, proxy and explicitly visible guide prims, and the render default and render prims, each once. Each destination's object has UsdShade's materials for its purpose, matched exactly. Prims shown in both with the same materials are one object; with different materials, two objects sharing one mesh, both with the right source and instance context. Blender's hide flags and object-linked slots match the plan, and every planned material is linked by an object (a proxy prim's `full` binding, which nothing displays, isn't planned). | The Phase B application ignored purpose. Hydra's graph resolves each purpose separately, but its bindings inside instances are unusable (the nested binding bug), so the core resolves them. |
+| Normals, velocities, constant primvars, custom attributes (10) | Authored normals per point, per corner (indexed, with `primvars:normals` winning over the `normals` attribute) and per face are Blender's custom normals, and `corner_normals` match USD for every Blender corner, a left-handed mesh's reversed corners included. A catmullClark mesh's normals are ignored with a diagnostic. `velocities` are Blender's `velocity` attribute; `accelerations` stay a generic attribute; a primvar named `velocity` keeps the name. 16 constant primvars, one of each kind Blender holds, become ID properties on the object, matching USD's values under the plan's conversion. An int64 and an int64 array beyond 32 bits (both ways) are wrapped to their low 32 bits, with one warning each; each instance's object gets its instance root's tint and keeps its own gloss. Dropped attributes are listed exactly: three on a mesh, one on a placeholder, one inside a prototype (once per instance), none for unauthored, applied-schema, transform-op or subset-family attributes; adding and removing one updates an incremental capture. | UsdImaging passes only primvars and schema attributes to Hydra. The three constant primvars Blender can't hold (an asset path, a name over 63 bytes, the `proscenium_` prefix) are warned and not authored. Accelerations, the `velocity` name collision and the ignored normals are warned. |
+
+**The nested-instance binding bug.** Every prototype level is re-rooted to the same placeholder path, `UsdImaging_NiPrototypeSceneIndex::GetPrototypePath()` (v26.03, and unchanged in `dev` at `5bc38c9`, from source reading). An inner instance root's binding to a material in the enclosing prototype is therefore re-rooted into the inner prototype.
+- In the fixture, Moss's binding names a prim that doesn't exist, and Bark's names the inner prototype's own Bark: a different material, with no diagnostic.
+- With `strongerThanDescendants` on the inner root, Hydra applies the strength but keeps the broken path. Both are known-gap checks.
+- **The core doesn't use Hydra's flattened bindings.** The filter records UsdShade's binding for each prim. Inside a prototype, that covers everything the prototype authors. The core adds only what lies at or above each instance root: a strong binding there wins; otherwise the prototype's own binding; otherwise the instance root's.
+- All 360 copies match UsdShade.
+
+**Collection bindings: two gaps without a workaround.**
+- **A collection outside the instance:** USD binds `Inside/Blade` through a collection while `Outside/Blade`, another instance of the same prototype, stays unbound. The plan binds neither.
+- **A collection on the instanced asset's root:** `KitA` and `KitB` each bind their own `Looks/Bark`, the shape of the scene attached to [OpenUSD #3690](https://github.com/PixarAnimationStudios/OpenUSD/issues/3690) (open). The plan binds nothing.
+- **Why:** in both, the collection names instance-proxy paths, which a prototype can't see.
+- **What works:** a collection authored below the asset's root, inside the prototype, now matches UsdShade.
+
+**A type-identity finding at the module boundary.** An `SdfPath` value made in the bridge's module isn't recognized by USD's own code: `HdMakeStaticCopy` posts "Unsupported type SdfPath". This is the same boundary as Phase B's `ArResolverContext`, now for a core type. It also blocks UsdImaging plugin adapters built outside `libusd_ms` on macOS: the adapter factory base class's `type_info` isn't exported either (an ad hoc experiment; see the plan's Hydra-native review). The filter therefore passes bound material paths as tokens, and the core maps them to Hydra paths. Values the core gives Hydra must be Vt's own types.
+
+**Stage lifetime fix.** `Bridge(stage)` used to take a `UsdStageRefPtr`. Tf's Python converter for a `TfRefPtr` argument moves ownership from the Python object into C++ (`pxr/base/tf/pyPtrHelpers.h`), so releasing or deleting a bridge destroyed a stage its caller still held. The bridge now takes a `UsdStagePtr` and adds its own reference. The loading check "released bridge leaves a caller-held stage alive" covers it.
+
+**Expiry can lag `release()`.**
+- In 200 ad hoc iterations (macOS wheel), the root layer was still registered right after `release()` in 28, and gone within 50 ms in all.
+- Another ad hoc run saw the layer gone before the bridge's weak stage pointer had expired (1 in 22).
+- The cause wasn't identified. `~UsdStage` releases the root layer synchronously, so it isn't asynchronous teardown inside the stage.
+- The check now waits up to 2 s for both and records the wait in `wheel.json`/`binary.json`.
+
 ### Limits and next gates
 
-The prototype checks are smoke checks of each path on one small scene. Phase C's per-case fixtures test correctness in depth. Untested here:
-- malformed geometry (only checked ad hoc on macOS);
-- time-varying detection;
-- material edits and an unchanged refresh;
-- deformation and point instancers;
-- collection-based and purpose-specific bindings;
-- performance at scale.
+The prototype and correctness checks use small bespoke scenes. Untested:
+- time-varying detection (Phase D), including animated visibility on an instance root's ancestor;
+- deformation;
+- translating point instancers (they are placeholders);
+- performance at scale (Phase E), including the filter's UsdShade queries and computed extents per prim;
+- a keyless UsdImaging adapter in place of the filter on Linux and Windows. On macOS it can't be manufactured: `libusd_ms` doesn't export the `type_info` of the adapter factory base class, so its `dynamic_cast` rejects a factory from another binary (ad hoc, M1b plan's Hydra-native review);
+- layer muting, sublayer edits and variant switches in the edits case (ad hoc probes passed);
+- animated unimaged prims inside a prototype;
+- primvars with `elementSize > 1`: the bridge doesn't read elementSize (UsdImaging passes it through), so their counts fail validation and they're reported invalid;
+- non-unit authored normals in rendering, and whether Blender's `velocity` expects USD's per-second units;
+- texCoord3f and constant texCoords;
+- a real Tf error during capture: only a warning has been exercised.
 
-Zero-copy transfer is measured separately by the `buffer_transfer` probe. The observer records event kinds, paths and dirty locators; their coverage is not yet tested.
+Zero-copy transfer is also measured separately by the `buffer_transfer` probe.
 
 Not tested: Windows arm64 and other unsupported platforms, other Blender builds, installed extension lifecycle,
-selection mapping, stage-setting fidelity, threading beyond the capture's parallel read pass,
+selection mapping, stage-setting fidelity, threading beyond the parallel read passes of capture and planning,
 undo/save/reopen, production-scale data, or memory/performance regressions.
 
 `release()` is explicit. A production binding would call it when its source is
@@ -384,6 +453,10 @@ recorded decision.
   - In both, the image providing USD code to the module is that same file.
 - **Loading:** the module's import of `usd_ms.dll` resolved to the copy the host had already loaded, though no DLL directory points at it. This confirms on this run what the research inferred from the loader's documented behaviour.
 
+- **Phase C** ([run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667), 2026-10-13): 43 loading, 20 prototype and 118 correctness checks pass in both hosts.
+  - The build had two `/W4` warnings in Phase C code: C4267 in `properties.cpp`, a `size_t` matrix index where Gf takes `int`, and C4458 in `prim_record.cpp`, a parameter named like a member. Both are fixed. Clang builds now add `-Wshadow-all -Wshorten-64-to-32`, which report both (checked against the run's sources) and two harmless lambda shadowings, now renamed. The next build, of commit `a6d8186` ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)), has no warnings on Windows, nor on macOS with the new flags.
+  - No Sdr message appears in the run's Windows logs or JSON. The probes don't save every diagnostic, so this shows only that Phase A's Sdr error didn't fail anything.
+
 ## Linux x64
 
 **Go.** All 55 checks pass in all three runtimes ("Feasibility" workflow, [run 38032882242](https://github.com/scottdmilner/proscenium/actions/runs/38032882242), `ubuntu-latest`, 2026-10-10). Apart from paths and timings, every recorded fact matches macOS except those below.
@@ -411,6 +484,7 @@ recorded decision.
   - No RPATH or RUNPATH, and no libpython.
   - 250 undefined `pxrBlender` symbols (100 for the Phase A module).
   - Highest symbol versions GLIBC 2.14 and GLIBCXX 3.4.21, below Blender's floor.
+- **Phase C** ([run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667), 2026-10-13): 42 loading, 20 prototype and 118 correctness checks pass in both hosts. The build has no warnings. The audit's `NEEDED` list and symbol versions are unchanged; the module now imports 374 USD symbols (`usd_import_count`).
 - **One USD per process:**
   - Wheel: `bpy/lib/libusd_ms.so`.
   - Binary: `lib/libusd_ms.so` in the unpacked tarball.

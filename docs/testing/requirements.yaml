@@ -861,6 +861,8 @@ requirements:
         quote: "Viewport | default, proxy"
       - id: VIS-03
         quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
+      - id: VIS-04
+        quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
 
   - section: spec/support/visibility.md#models-and-unsupported-content
     delivery: M6

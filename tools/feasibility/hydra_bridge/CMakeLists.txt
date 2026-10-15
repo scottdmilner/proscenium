@@ -46,9 +46,12 @@ Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/planner.cpp
   src/prim_reader.cpp
   src/prim_record.cpp
+  src/properties.cpp
   src/python_views.cpp
   src/scene_index_graph.cpp
   src/snapshot.cpp
+  src/source_facts.cpp
+  src/source_info_scene_index.cpp
   src/validate.cpp
 )
 target_compile_features(_hydra_bridge PRIVATE cxx_std_17)
@@ -63,6 +66,11 @@ if(MSVC)
   target_compile_options(_hydra_bridge PRIVATE /W4)
 else()
   target_compile_options(_hydra_bridge PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+# Clang's nearest equivalents of MSVC's /W4 shadowing (C4456-C4458) and size_t narrowing (C4267), so a macOS
+# build reports what the Windows one would.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(_hydra_bridge PRIVATE -Wshadow-all -Wshorten-64-to-32)
 endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   # USD's tf/hashset.h includes libstdc++'s deprecated <ext/hash_set>, which #warns in every file that

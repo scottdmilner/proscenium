@@ -3,6 +3,7 @@
 #pragma once
 
 #include "snapshot.h"
+#include "source_info_scene_index.h"
 
 #include <pxr/pxr.h>
 #include <pxr/imaging/hd/sceneIndex.h>
@@ -45,6 +46,7 @@ public:
 
 private:
     pxr::UsdImagingSceneIndices indices_;
+    SourceInfoSceneIndexRefPtr sourceInfo_;
     pxr::HdsiPrimTypeNoticeBatchingSceneIndexRefPtr batching_;
     pxr::HdSceneIndexBaseRefPtr terminal_;
     RecordingObserver observer_;

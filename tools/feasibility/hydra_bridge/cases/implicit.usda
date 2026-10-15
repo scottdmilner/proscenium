@@ -1,0 +1,85 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "implicit shape -> mesh". One of each implicit shape Hydra converts, plus a cubic
+# NURBS patch for the NURBS-approximating filter. Cube and Plane are exact as meshes; the others are not and
+# must be diagnosed. Sizes, radii, axes and transforms are non-default so the converted meshes can be
+# checked against USD's own extents, transforms and each shape's surface (Sphere radius, Cylinder and Cone
+# radius along their axis, Capsule distance from its axis segment). Box authors doubleSided = true; Floor relies on
+# Plane's schema fallback, which is also true; Ball keeps the gprim fallback, false.
+
+def Xform "World"
+{
+    def Cube "Box"
+    {
+        double size = 2
+        uniform bool doubleSided = true
+        double3 xformOp:translate = (0, 0, 1)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Plane "Floor"
+    {
+        double width = 4
+        double length = 2
+        uniform token axis = "Z"
+        double3 xformOp:translate = (0, 5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Sphere "Ball"
+    {
+        double radius = 1.5
+        double3 xformOp:translate = (5, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Cone "Spike"
+    {
+        double height = 2
+        double radius = 0.5
+        uniform token axis = "X"
+        double3 xformOp:translate = (10, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Cylinder "Pipe"
+    {
+        double height = 3
+        double radius = 0.5
+        uniform token axis = "Y"
+        double3 xformOp:translate = (0, 10, 0)
+        float xformOp:rotateZ = 30
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+    }
+
+    def Capsule "Pill"
+    {
+        double height = 1
+        double radius = 0.25
+        uniform token axis = "Z"
+        double3 xformOp:translate = (5, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # Bicubic, one span each way: a curved surface whose interior lies below its control hull (the surface's
+    # midpoint is at z = 1.5, the hull's peak at z = 2). Hydra's approximation is the hull itself.
+    def NurbsPatch "Sheet"
+    {
+        int uVertexCount = 4
+        int vVertexCount = 4
+        int uOrder = 4
+        int vOrder = 4
+        double[] uKnots = [0, 0, 0, 0, 1, 1, 1, 1]
+        double[] vKnots = [0, 0, 0, 0, 1, 1, 1, 1]
+        point3f[] points = [
+            (0, 0, 0), (1, 0, 1), (2, 0, 1), (3, 0, 0),
+            (0, 1, 1), (1, 1, 2), (2, 1, 2), (3, 1, 1),
+            (0, 2, 1), (1, 2, 2), (2, 2, 2), (3, 2, 1),
+            (0, 3, 0), (1, 3, 1), (2, 3, 1), (3, 3, 0),
+        ]
+        double3 xformOp:translate = (10, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

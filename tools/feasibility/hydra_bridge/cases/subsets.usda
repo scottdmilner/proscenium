@@ -1,0 +1,317 @@
+#usda 1.0
+(
+    upAxis = "Z"
+)
+# Purpose: M1b Phase C, "mesh with GeomSubsets and indexed primvars". Strip is four quads in a row:
+# - face 0 is in the Left subset (Red), face 1 in Middle (Green);
+# - face 2 is in Unbound, a materialBind subset with no binding of its own, so it takes the mesh's Blue;
+# - face 3 is in no materialBind subset, so it also takes Blue.
+# Tagged (componentTag family) lists faces 0, 1 and 3 with a Yellow binding. UsdShade ignores it because
+# only the materialBind family assigns materials. Face 3 is in no other subset, so it is what catches a
+# planner that can't tell families apart, whatever order Hydra lists the subsets in (not USD's order).
+# Unfamilied authors no familyName (USD's fallback, the empty token) and binds Purple to face 3. UsdShade
+# ignores it too, so face 3 keeps the mesh's Blue, though Hydra binds the subset.
+# Strip's primvars cover indexed and non-indexed values on each interpolation the planner maps to a Blender
+# domain; its face-varying UVs differ at every corner of a face and between faces. Nothing binds Loose or
+# its ancestors: face 0 is in no subset and face 2 is in Bare, a materialBind subset with no binding, so both
+# have no material; only face 1, in Right, has one.
+# Mixed is left-handed, with a triangle, a quad and a triangle (irregular corner offsets), so Blender must
+# reverse each face after its first corner. Its points run counterclockwise seen from +Z, so its faces
+# face -Z. Its primvars are face-varying (indexed and not, float and color), vertex and uniform UVs, an
+# indexed varying float, an indexed constant displayColor, and sharp_face, a name Blender reserves for
+# flat shading, which must not reach Blender.
+# Overlap has three materialBind subsets (in a nonOverlapping family) that all list face 0, authored in an
+# order that is neither name order nor its reverse: B_Green, A_Red, C_Yellow. Face 0 takes the first by name,
+# A_Red, with an overlapping-subsets warning; face 1 is only in B_Green, face 2 in none (Blue). Points is a
+# materialBind subset of points, which can't assign materials: an unsupported-subset warning, and ignored.
+# Smooth authors no subdivisionScheme, so USD's fallback, catmullClark, applies, and Hard authors bilinear. The
+# prototype displays every mesh's control cage, so only Smooth gets a subdivision-not-applied warning.
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Green"
+        {
+            token outputs:surface.connect = </World/Looks/Green/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 1, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Blue"
+        {
+            token outputs:surface.connect = </World/Looks/Blue/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 0, 1)
+                token outputs:surface
+            }
+        }
+
+        def Material "Purple"
+        {
+            token outputs:surface.connect = </World/Looks/Purple/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.5, 0, 1)
+                token outputs:surface
+            }
+        }
+
+        def Material "Yellow"
+        {
+            token outputs:surface.connect = </World/Looks/Yellow/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 1, 0)
+                token outputs:surface
+            }
+        }
+    }
+
+    def Mesh "Strip" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [4, 4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 6, 5, 1, 2, 7, 6, 2, 3, 8, 7, 3, 4, 9, 8]
+        point3f[] points = [
+            (0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 0, 0),
+            (0, 1, 0), (1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0),
+        ]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/Blue>
+        uniform token subsetFamily:materialBind:familyType = "nonOverlapping"
+
+        # Indexed face-varying UVs: no two corners of a face, and no two faces, share a sequence.
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1), (0.5, 0), (1, 0.5), (0.5, 1), (0, 0.5)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:st:indices = [0, 1, 2, 3, 4, 5, 6, 7, 3, 2, 5, 0, 7, 6, 1, 4]
+
+        # Indexed per-point floats: three distinct values over ten points.
+        float[] primvars:weight = [0, 0.5, 1] (
+            interpolation = "vertex"
+        )
+        int[] primvars:weight:indices = [0, 1, 2, 1, 0, 2, 1, 0, 1, 2]
+
+        # Indexed per-face colors.
+        color3f[] primvars:tint = [(1, 0, 0), (0, 0, 1)] (
+            interpolation = "uniform"
+        )
+        int[] primvars:tint:indices = [0, 1, 1, 0]
+
+        # Non-indexed per-point vectors and per-face ints.
+        float3[] primvars:rest = [
+            (0, 0, 1), (1, 0, 1), (2, 0, 1), (3, 0, 1), (4, 0, 1),
+            (0, 1, 1), (1, 1, 1), (2, 1, 1), (3, 1, 1), (4, 1, 1),
+        ] (
+            interpolation = "vertex"
+        )
+        int[] primvars:id = [7, 8, 9, 10] (
+            interpolation = "uniform"
+        )
+
+        def GeomSubset "Tagged" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "componentTag"
+            int[] indices = [0, 1, 3]
+            rel material:binding = </World/Looks/Yellow>
+        }
+
+        def GeomSubset "Left" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/Looks/Red>
+        }
+
+        def GeomSubset "Middle" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </World/Looks/Green>
+        }
+
+        def GeomSubset "Unfamilied" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            int[] indices = [3]
+            rel material:binding = </World/Looks/Purple>
+        }
+
+        def GeomSubset "Unbound"
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [2]
+        }
+    }
+
+    def Mesh "Loose"
+    {
+        int[] faceVertexCounts = [4, 4, 4]
+        int[] faceVertexIndices = [0, 1, 5, 4, 1, 2, 6, 5, 2, 3, 7, 6]
+        point3f[] points = [(0, 3, 0), (1, 3, 0), (2, 3, 0), (3, 3, 0), (0, 4, 0), (1, 4, 0), (2, 4, 0), (3, 4, 0)]
+        uniform token subdivisionScheme = "none"
+
+        def GeomSubset "Right" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            rel material:binding = </World/Looks/Red>
+        }
+
+        def GeomSubset "Bare"
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [2]
+        }
+    }
+
+    def Mesh "Mixed"
+    {
+        int[] faceVertexCounts = [3, 4, 3]
+        int[] faceVertexIndices = [0, 1, 2, 1, 3, 4, 2, 3, 5, 4]
+        point3f[] points = [(0, 6, 0), (1, 6, 0), (0, 7, 0), (2, 6, 0), (2, 7, 0), (3, 6.5, 0)]
+        uniform token orientation = "leftHanded"
+        uniform token subdivisionScheme = "none"
+
+        float[] primvars:corner = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19] (
+            interpolation = "faceVarying"
+        )
+        float[] primvars:cornerIndexed = [100, 200, 300, 400] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:cornerIndexed:indices = [0, 1, 2, 3, 2, 1, 0, 3, 1, 2]
+        color3f[] primvars:cornerColor = [
+            (1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (0, 1, 1),
+            (1, 0, 1), (1, 1, 1), (0.5, 0, 0), (0, 0.5, 0), (0, 0, 0.5),
+        ] (
+            interpolation = "faceVarying"
+        )
+        texCoord2f[] primvars:pointUV = [(0, 0), (1, 0), (0, 1), (2, 0), (2, 1), (3, 0.5)] (
+            interpolation = "vertex"
+        )
+        texCoord2f[] primvars:faceUV = [(0, 0), (1, 1)] (
+            interpolation = "uniform"
+        )
+        int[] primvars:faceUV:indices = [1, 0, 1]
+        float[] primvars:spread = [7, 8, 9] (
+            interpolation = "varying"
+        )
+        int[] primvars:spread:indices = [0, 1, 2, 2, 1, 0]
+        color3f[] primvars:displayColor = [(1, 0, 0), (0, 1, 0)] (
+            interpolation = "constant"
+        )
+        int[] primvars:displayColor:indices = [1]
+        float[] primvars:sharp_face = [1, 1, 1] (
+            interpolation = "uniform"
+        )
+    }
+
+    def Mesh "Overlap" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3, 3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 1, 3, 2, 3, 4, 2]
+        point3f[] points = [(0, 9, 0), (1, 9, 0), (0, 10, 0), (1, 10, 0), (2, 10, 0)]
+        uniform token subdivisionScheme = "none"
+        rel material:binding = </World/Looks/Blue>
+        uniform token subsetFamily:materialBind:familyType = "nonOverlapping"
+
+        def GeomSubset "B_Green" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0, 1]
+            rel material:binding = </World/Looks/Green>
+        }
+
+        def GeomSubset "A_Red" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/Looks/Red>
+        }
+
+        def GeomSubset "C_Yellow" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            rel material:binding = </World/Looks/Yellow>
+        }
+
+        def GeomSubset "Points" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "point"
+            uniform token familyName = "materialBind"
+            int[] indices = [0, 1, 2]
+            rel material:binding = </World/Looks/Yellow>
+        }
+    }
+
+    def Mesh "Smooth"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 8, 0), (1, 8, 0), (1, 9, 0), (0, 9, 0)]
+    }
+
+    def Mesh "Hard"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(2, 8, 0), (3, 8, 0), (3, 9, 0), (2, 9, 0)]
+        uniform token subdivisionScheme = "bilinear"
+    }
+}

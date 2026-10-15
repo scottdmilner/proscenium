@@ -1,7 +1,10 @@
 #include "prim_reader.h"
 
+#include "source_info_scene_index.h"
+
 #include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/dataSourceMaterialNetworkInterface.h>
+#include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/geomSubsetSchema.h>
 #include <pxr/imaging/hd/instancedBySchema.h>
 #include <pxr/imaging/hd/instancerTopologySchema.h>
@@ -93,6 +96,65 @@ MaterialRecord ReadMaterial(const SdfPath &path, const HdContainerDataSourceHand
     return out;
 }
 
+// A stage path the source-info filter reported for `record`, in Hydra's namespace. Inside a prototype the
+// prim's origin is prototype-relative, so the prim's Hydra path minus that many components is the Hydra
+// prototype root, and a path under the stage's /__Prototype_N maps under it. Other paths are the same in both.
+SdfPath ToHydraPath(const PrimRecord &record, const SdfPath &stagePath) {
+    const SdfPath &origin = record.originPath;
+    if (origin.IsEmpty() || origin.IsAbsolutePath() || stagePath.GetPathElementCount() == 0) return stagePath;
+    const SdfPath prototype = stagePath.GetPrefixes().front();
+    if (!TfStringStartsWith(prototype.GetName(), "__Prototype_")) return stagePath;
+    SdfPath root = record.path;
+    for (size_t i = 0; i < origin.GetPathElementCount() && !root.IsAbsoluteRootPath(); ++i) root = root.GetParentPath();
+    return stagePath.ReplacePrefix(prototype, root);
+}
+
+// What the source-info filter added; see source_info_scene_index.h.
+void ReadSourceInfo(const HdContainerDataSourceHandle &source, PrimRecord &record) {
+    auto info = HdContainerDataSource::Cast(source->Get(SourceInfoTokens::Schema()));
+    if (!info) return;
+    auto get = [&](const TfToken &name) { return info->Get(name); };
+    if (record.usdTypeName.IsEmpty())
+        record.usdTypeName = ValueOr(HdTokenDataSource::Cast(get(SourceInfoTokens::TypeName())));
+    record.isGprim = ValueOr(HdBoolDataSource::Cast(get(SourceInfoTokens::IsGprim())), false);
+    if (auto doubleSided = HdBoolDataSource::Cast(get(SourceInfoTokens::DoubleSided())))
+        record.sourceDoubleSided = doubleSided->GetTypedValue(kNow);
+    for (const TfToken &purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
+        if (auto visibility = HdTokenDataSource::Cast(get(purpose)))
+            record.purposeVisibility.emplace_back(purpose, visibility->GetTypedValue(kNow));
+    auto tokens = [&](const TfToken &name, TfTokenVector &out) {
+        if (auto array = HdTypedSampledDataSource<VtTokenArray>::Cast(get(name))) {
+            const VtTokenArray values = array->GetTypedValue(kNow);
+            out.assign(values.begin(), values.end());
+        }
+    };
+    tokens(SourceInfoTokens::StrongPurposes(), record.strongBindingPurposes);
+    tokens(SourceInfoTokens::DroppedAttributes(), record.droppedAttributes);
+    if (auto bindings = HdContainerDataSource::Cast(get(SourceInfoTokens::Bindings()))) {
+        static const TfToken kAllPurpose("allPurpose");
+        for (const TfToken &purpose : bindings->GetNames())
+            if (auto material = HdTokenDataSource::Cast(bindings->Get(purpose)))
+            {
+                const std::string path = material->GetTypedValue(kNow).GetString();
+                record.usdBindings.emplace_back(purpose == kAllPurpose ? TfToken() : purpose,
+                                                path.empty() ? SdfPath() : ToHydraPath(record, SdfPath(path)));
+            }
+    }
+    if (auto issue = HdTokenDataSource::Cast(get(SourceInfoTokens::FamilyIssue())))
+        record.materialBindFamilyIssue = issue->GetTypedValue(kNow).GetString();
+    if (record.geomSubset)
+        record.geomSubset->familyName = ValueOr(HdTokenDataSource::Cast(get(SourceInfoTokens::FamilyName())));
+}
+
+void ReadMaterialBindings(const HdContainerDataSourceHandle &source, PrimRecord &record) {
+    HdMaterialBindingsSchema bindings = HdMaterialBindingsSchema::GetFromParent(source);
+    if (!bindings) return;
+    for (const TfToken &purpose : bindings.GetContainer()->GetNames()) {
+        SdfPath path = ValueOr(bindings.GetMaterialBinding(purpose).GetPath());
+        if (!path.IsEmpty()) record.materialBindings.emplace_back(purpose, std::move(path));
+    }
+}
+
 }  // namespace
 
 const TfTokenVector &PlannedSchemas() {
@@ -103,6 +165,7 @@ const TfTokenVector &PlannedSchemas() {
         HdPrimvarsSchema::GetSchemaToken(),            HdMeshSchema::GetSchemaToken(),
         HdGeomSubsetSchema::GetSchemaToken(),          HdInstancedBySchema::GetSchemaToken(),
         HdInstancerTopologySchema::GetSchemaToken(),   HdMaterialSchema::GetSchemaToken(),
+        HdExtentSchema::GetSchemaToken(),              SourceInfoTokens::Schema(),
     };
     return schemas;
 }
@@ -114,23 +177,30 @@ bool ReadPrim(const HdSceneIndexBase &scene, const SdfPath &path, PrimRecord &re
     const HdContainerDataSourceHandle &source = prim.dataSource;
     record.path = path;
     record.type = prim.primType;
-    record.usdTypeName = ValueOr(UsdImagingUsdPrimInfoSchema::GetFromParent(source).GetTypeName());
+    const UsdImagingUsdPrimInfoSchema primInfo = UsdImagingUsdPrimInfoSchema::GetFromParent(source);
+    record.usdTypeName = ValueOr(primInfo.GetTypeName());
+    record.pointInstancerPrototype = static_cast<bool>(primInfo.GetPiPropagatedPrototypes());
     record.originPath = HdPrimOriginSchema::GetFromParent(source).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
     if (HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
         record.matrix = matrix->GetTypedValue(kNow);
     record.visible = ValueOr(HdVisibilitySchema::GetFromParent(source).GetVisibility(), true);
     record.purpose = ValueOr(HdPurposeSchema::GetFromParent(source).GetPurpose());
-    record.materialBinding = ValueOr(HdMaterialBindingsSchema::GetFromParent(source).GetMaterialBinding().GetPath());
+    ReadMaterialBindings(source, record);
+    if (HdExtentSchema extent = HdExtentSchema::GetFromParent(source)) {
+        if (HdVec3dDataSourceHandle min = extent.GetMin(), max = extent.GetMax(); min && max)
+            record.extent = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));
+    }
     ReadPrimvars(source, record);
     if (HdMeshSchema mesh = HdMeshSchema::GetFromParent(source)) record.mesh = ReadMesh(mesh);
     if (HdGeomSubsetSchema subset = HdGeomSubsetSchema::GetFromParent(source))
-        record.geomSubset = GeomSubsetRecord{ValueOr(subset.GetType()), ValueOr(subset.GetIndices())};
+        record.geomSubset = GeomSubsetRecord{ValueOr(subset.GetType()), ValueOr(subset.GetIndices()), TfToken()};
     if (HdInstancedBySchema instancedBy = HdInstancedBySchema::GetFromParent(source))
         record.instancedBy = InstancedByRecord{ValueOr(instancedBy.GetPaths()), ValueOr(instancedBy.GetPrototypeRoots())};
     if (HdInstancerTopologySchema topology = HdInstancerTopologySchema::GetFromParent(source))
         record.instancer = ReadInstancer(topology);
     if (HdMaterialSchema material = HdMaterialSchema::GetFromParent(source))
         record.material = ReadMaterial(path, source, material);
+    ReadSourceInfo(source, record);
     return true;
 }
 

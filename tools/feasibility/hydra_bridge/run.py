@@ -16,8 +16,9 @@ sys.path.insert(0, str(HERE.parents[1]))
 
 from blender_paths import find_blender  # noqa: E402
 
-# Result-name prefix -> script: native loading (Phase A), and the capture -> plan -> Blender prototype.
-PROBES = {"": "probe.py", "prototype-": "prototype_probe.py"}
+# Result-name prefix -> script: native loading (Phase A), the capture -> plan -> Blender prototype (Phase B),
+# and the per-case correctness checks (Phase C).
+PROBES = {"": "probe.py", "prototype-": "prototype_probe.py", "correctness-": "correctness_probe.py"}
 
 
 def main() -> int:
