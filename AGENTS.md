@@ -22,13 +22,14 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/__init__.py` and `proscenium/core/` must import without `bpy`.
+  - `proscenium/core/` also holds the compiled core's C++ source. See [Compiled core](#compiled-core).
   - Blender-facing code goes in modules such as `proscenium/addon.py`.
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
   - `matrix.py`: checks and renders the requirement-to-test matrix.
   - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
-  - `feasibility/`: M1 runtime probes. Results are in `docs/feasibility/runtime-record.md`.
+  - `feasibility/`: M1 runtime probes and M1b's Hydra bridge (`hydra_bridge/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.
   - `bpy-site-packages/`: puts the bpy wheel's bundled `pxr` on `sys.path`.
 - `docs/`: the spec, milestones, decisions, and testing docs. `docs/plans/` holds each milestone's decision log; `docs/archive/` holds superseded documents (see [Before any work](#before-any-work)).
 
@@ -48,6 +49,21 @@ uv run pre-commit install                 # once per clone
 
 Tests and probes that need the Blender binary find it through the `BLENDER` env var, or else the platform default install path. Without a binary, binary tests are skipped, unless `PROSCENIUM_REQUIRE_BLENDER` is set (as in CI).
 
+## Compiled core
+
+M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECISIONS.md) "Evaluation front end and core language"). It holds evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison. Everything that touches Blender stays in Python. The display plan is the one boundary: an immutable object whose large arrays Python reads without copying.
+
+- **Source:** C++ in `src/proscenium/core/`, beside that package's Python. The manifest's `[build]` patterns keep C++ sources and CMake files out of the zip; only the built module ships, in the same package.
+- **Build:** through `tools/build_extension.py`, from `src/proscenium/core/` only: one zip per platform, built on that platform, against the dependency headers of the Blender release `uv.lock` pins, and linked only to Blender's bundled `usd_ms`. M3 adds this to the script. The Hydra bridge in `tools/feasibility/` is test code and never goes through it; its `build.py` and `prepare_deps.py` are the reference for toolsets, flags, and the linkage audit.
+- **Boundary rules** (M1b findings):
+  - Every entry point turns Tf errors and C++ exceptions into Python exceptions.
+  - Arrays for Blender cross as 1-D read-only buffers whose element types match Blender's exactly (`'f'`, `'i'`, `'?'`). Any other type would silently take Blender's slow path.
+  - Values the core gives Hydra are Vt's own types; a type made in the core's module isn't recognized by USD's code.
+  - The core never keeps a released stage alive.
+  - Each workaround for an OpenUSD bug is labeled `WORKAROUND for OpenUSD #<issue>` at every site, and a known-gap check fails when the bug stops reproducing.
+- **Style:** C++17, warnings as the bridge's CMakeLists.txt sets them, and no warnings in any platform's build. M3 adds clang-format and clang-tidy as pre-commit hooks with the first core code.
+- **Tests:** through the core's Python module, in the test layers below. Expected values come from the spec, from USD's own APIs (`UsdGeom`, `UsdShade`), or from how the fixture is built, never from Hydra's output. A test whose input could crash native code runs in `isolated/`, since a crash ends the process.
+
 ## Tests
 
 [tests/README.md](tests/README.md) documents the test tree: which layer to use, the helpers, the fixture framework, and the rules. Read it before writing tests. In summary:
@@ -62,7 +78,7 @@ Tests and probes that need the Blender binary find it through the `BLENDER` env 
 
 ## Distribution
 
-`tools/build_extension.py` is the only distribution build. Its output, `dist/proscenium-<version>.zip`, is what Blender installs. The Python wheel from `uv build` only exists so `proscenium` installs editable in the dev environment. Never publish or distribute it.
+`tools/build_extension.py` is the only distribution build. Its output, `dist/proscenium-<version>.zip`, is what Blender installs. Releases ship one zip per platform and Blender minor version on GitHub releases ([DECISIONS.md](docs/DECISIONS.md) "Native core distribution"). The Python wheel from `uv build` only exists so `proscenium` installs editable in the dev environment. Never publish or distribute it.
 
 ## Dependencies
 

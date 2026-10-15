@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 
 
-def run(module_dir: Path) -> dict[str, Any]:
+def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
+    # `native`: the module already imported, as from an installed extension (distribution.py).
     import bpy
     from pxr import Gf, Sdf, Usd, UsdGeom, Vt
 
@@ -33,8 +34,9 @@ def run(module_dir: Path) -> dict[str, Any]:
         check(
             "host loaded usd_ms.dll before the bridge", bool(ctypes.WinDLL("kernel32").GetModuleHandleW("usd_ms.dll"))
         )
-    sys.path.insert(0, str(module_dir))
-    native = importlib.import_module("_hydra_bridge")
+    if native is None:
+        sys.path.insert(0, str(module_dir))
+        native = importlib.import_module("_hydra_bridge")
 
     with tempfile.TemporaryDirectory(prefix="hydra-bridge-scene-") as tmp:
         scene = Path(tmp) / "scene.usda"

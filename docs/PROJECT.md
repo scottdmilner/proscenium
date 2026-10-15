@@ -99,7 +99,7 @@ Automatic timeline synchronization is a stretch goal. The evaluation time code m
 - Minimum Blender version: **5.2 LTS**.
 - Use the OpenUSD version bundled with the supported Blender distribution.
 - Support macOS, Windows, and Linux.
-- Prefer Python-only implementation. A compiled component may be adopted when measurements show Python cannot meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` does not expose, such as Hydra scene indices. M1b decides the evaluation front end and the core's language; measurement-driven decisions start in M4. Both are recorded in [DECISIONS.md](DECISIONS.md).
+- Prefer Python-only implementation. A compiled component may be adopted when measurements show Python cannot meet the budgets, or when it reuses OpenUSD functionality that Blender's Python `pxr` does not expose, such as Hydra scene indices. M1b adopted a C++ core that reads Hydra scene indices for evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison; measurement-driven decisions start in M4. Both are recorded in [DECISIONS.md](DECISIONS.md).
 - Code that touches Blender stays in Python: extensions reach Blender only through the `bpy` API.
 - Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution.
 - Do not require externally installed custom resolvers or schema plugins.
