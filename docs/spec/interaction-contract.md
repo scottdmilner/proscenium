@@ -21,7 +21,7 @@ The live stage may differ from the display once the source has changed since syn
 
 ## Without a Live Stage
 
-Interaction requires the binding's live stage. Without one, such as when a saved display is reopened with its source unavailable, the saved display remains displayed as ordinary Blender content, every interaction function reports that the source is unavailable, and stored persistent selections are kept unchanged.
+Interaction requires the binding's live stage. Without one, such as when a saved display is reopened with its source unavailable, the saved display remains displayed as ordinary Blender content, each of the core's interaction functions reports that the source is unavailable, and stored persistent selections are kept unchanged. The Python display component's functions read only display targets and Blender's state, not the source.
 
 ## Source Entities and Hierarchy
 

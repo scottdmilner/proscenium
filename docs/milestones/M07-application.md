@@ -21,7 +21,7 @@
 - The M5 failure-injection tests, rerun unchanged against the real application layer.
 - Application-time resource failures abort the transaction unless the plan authorized a fallback.
 - `F-UNMANAGED-USER`.
-- The M2 contract test kit, through an adapter for the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
+- The M4 interaction checks against the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 - End-to-end tests using M6-generated plans.
 
 **Exit condition:** the application layer displays and inspects plans, passes the M5 failure-injection suite and `F-UNMANAGED-USER`, and meets the boundary rule in Blender Application.

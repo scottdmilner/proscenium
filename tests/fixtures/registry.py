@@ -18,7 +18,7 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import source_access
+from . import interaction, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -70,8 +70,23 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-SAME-VALUES", "Same evaluated values at a different time (Phase 2)", ("M12", "M13")),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
         Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M12", "M14")),
-        Fixture("F-KIND-HIERARCHY", "Kind hierarchy with organizational prims Hydra does not keep", ("M2", "M4", "M7")),
-        Fixture("F-NESTED-SELECTION", "Selection floors in nested native instances", ("M2", "M4", "M7", "M10")),
-        Fixture("F-UNIVERSE-MEMBERSHIP", "Browsing-universe membership and exclusions", ("M2", "M4", "M7")),
+        Fixture(
+            "F-KIND-HIERARCHY",
+            "Kind hierarchy with organizational prims Hydra does not keep",
+            ("M2", "M4", "M7"),
+            interaction.kind_hierarchy,
+        ),
+        Fixture(
+            "F-NESTED-SELECTION",
+            "Selection floors in nested native instances",
+            ("M2", "M4", "M7", "M10"),
+            interaction.nested_selection,
+        ),
+        Fixture(
+            "F-UNIVERSE-MEMBERSHIP",
+            "Browsing-universe membership and exclusions",
+            ("M2", "M4", "M7"),
+            interaction.universe_membership,
+        ),
     )
 }

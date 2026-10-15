@@ -601,7 +601,7 @@ requirements:
         quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
         kind: contract
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 contract test kit checks them through a display adapter. M4 records what a real pick is assumed to supply."
+        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 records what a real pick is assumed to supply."
 
   # --- spec/interaction-contract.md -----------------------------------------------------------
   # Draft contract settled by M2 (INSP-06); M4 finalizes it, and its rows may change then.
@@ -640,11 +640,11 @@ requirements:
     fixtures: [F-OFFLINE]
     rows:
       - id: ICON-08
-        quote: "every interaction function reports that the source is unavailable"
-        oracle: "With no live stage, every headless function reports the source unavailable."
+        quote: "each of the core's interaction functions reports that the source is unavailable"
+        oracle: "With no live stage, each of the core's five functions reports the source unavailable."
       - id: ICON-09
         quote: "stored persistent selections are kept unchanged"
-        oracle: "With no live stage, a stored persistent selection is unchanged after every headless function is called."
+        oracle: "With no live stage, a stored persistent selection is unchanged after each of the core's five functions is called."
 
   - section: spec/interaction-contract.md#source-entities-and-hierarchy
     delivery: M7
@@ -715,7 +715,7 @@ requirements:
       - id: ICON-22
         quote: "Selecting a target selects its subtree"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
-        oracle: "Expanding a target gives exactly the oracle's universe members at or beneath its path."
+        oracle: "highlight_targets of one target covers exactly the oracle's display elements at or beneath its path; expansion is observed through the display elements it reaches."
       - id: ICON-23
         quote: "Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
@@ -752,7 +752,7 @@ requirements:
       - id: ICON-29
         quote: "The selection state of unmanaged objects is never changed."
         fixtures: [F-KIND-HIERARCHY]
-        oracle: "apply_selection leaves the selection and active state of unmanaged objects unchanged."
+        oracle: "apply_selection leaves the selection of unmanaged objects unchanged."
       - id: ICON-30
         quote: "Selecting displayed content in Blender produces a source selection"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]

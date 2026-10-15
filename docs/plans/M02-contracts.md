@@ -13,9 +13,9 @@ M2 delivers three contract rows, all qualified by M4: ARCH-06 (tools address USD
 - **Callers have the live stage.** They browse and inspect it through the USD API. The contract provides only what the stage can't answer: what is displayed, and how display and source map to each other.
 - **Two layers.** A persisted correspondence layer, produced by synchronization through the Hydra pipeline, resolves picks, says which prims are displayed, and shows selections; it stores no inspection data. An inspection layer maps picked prims to selection targets by model kind on the live stage. Hydra is needed for display, not for inspection.
 - **The inspection layer is C++, independent of the core.** It doesn't touch Blender, shares no code with the compiled core, and doesn't depend on its scene indices, snapshot, or plan. Chosen because a kind-level selection runs correspondence → inspection → correspondence, and a Python middle step would be GIL-bound per-path work between two compiled calls (DECISIONS.md "Inspection layer"). Correspondence is already compiled: since M1b the core maintains it from Hydra as part of planning, and application only records which Blender resources realize it. The inspection layer is a library the core calls, and the core's bindings expose the interaction functions, so paths never pass through Python between the layers. The only Python is the display component that reads and writes Blender's selection. Which stage is live for a file-backed binding, and whether it stays open, is left to M3.
-- **Nothing interaction-related works without a live stage.** A saved display with its source unavailable is plain displayed content; interaction functions report the source unavailable, and stored selections are kept.
+- **Nothing interaction-related works without a live stage.** A saved display with its source unavailable is plain displayed content; the core's interaction functions report the source unavailable, and stored selections are kept.
 - **Framing is out of scope.** The contract provides no framing of source selections in Phases 1 and 2; it is recorded as future work in [Interaction Testing](../spec/interaction.md#interaction-testing).
-- **Deliverable: the spec plus a contract test kit.** A spec section defines the contract as headless functions. Matrix rows trace the behavior it settles. A test suite, parametrized by a display adapter, checks any representation against the contract, so M4 can plug in each prototype.
+- **Deliverable: the spec, plus fixtures and an oracle.** A spec section defines the contract as headless functions. Matrix rows trace the behavior it settles. Fixture scenes cover the contract's cases, and an oracle derives their expected results from USD. Checks of the headless functions wait for code to check: M4 writes them against its prototypes, since the functions' signatures and encodings are settled by M3 and M7.
 
 ## Draft contract
 
@@ -54,7 +54,7 @@ Produced [spec/interaction-contract.md](../spec/interaction-contract.md), linked
 ### Phase B — Requirement matrix
 
 - Add M2 to `started` and give ARCH-06, INSP-06, and ITEST-02 their oracle: the contract file and this plan's decision log.
-- Fill in the fixtures and oracles of the ICON rows that the contract test kit checks (Phase A added the rows themselves, since spec changes update the matrix in the same change).
+- Fill in the fixtures and oracles of the ICON rows that headless checks can assert (Phase A added the rows themselves, since spec changes update the matrix in the same change).
 - Register the interaction fixtures in `tests/fixtures/registry.py`, and add them to [Named Contract Fixtures](../testing/strategy.md#named-contract-fixtures) if the registry test requires it.
 - `tools/matrix.py check` and `render`.
 
@@ -63,22 +63,28 @@ Produced [spec/interaction-contract.md](../spec/interaction-contract.md), linked
 Added M2 to `started`; ARCH-06, INSP-06, and ITEST-02 name the draft contract and the Phase A log as their decision record. Registered three stub fixtures, `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP`, in `tests/fixtures/registry.py` and the [Named Contract Fixtures](../testing/strategy.md#named-contract-fixtures) table. Phase C writes their scenes and generators.
 
 - **Placeholders and empty markers are universe cases,** in `F-UNIVERSE-MEMBERSHIP`, since what they test is membership. The fixture also animates visibility, so an entry can be unresolved in one generation and resolve again in another (ICON-26).
-- **Oracles on the rows the kit checks,** although their delivery milestones (M3, M7, M10) haven't started: each states what the check asserts. Rows the kit can't check through the headless functions are left to their milestone: ICON-01 (a summary), ICON-02, ICON-03, and ICON-16 (what is stored and what each layer reads, checked by M7 in the implementation), ICON-07 and ICON-24 (M3's binding and storage), and ICON-31 (M7's tool interfaces). ICON-04 and ICON-05 are process rows for M7.
+- **Oracles on the rows headless checks can assert,** although their delivery milestones (M3, M7, M10) haven't started: each states what a check asserts. Rows that can't be checked through the headless functions are left to their milestone: ICON-01 (a summary), ICON-02, ICON-03, and ICON-16 (what is stored and what each layer reads, checked by M7 in the implementation), ICON-07 and ICON-24 (M3's binding and storage), and ICON-31 (M7's tool interfaces). ICON-04 and ICON-05 are process rows for M7.
 - **Active object** (with the user). An active entry may be shown by several display objects, such as a component, and Blender has one active object per view layer. With exactly one, it is active; with several, all are selected and no object is active. `apply_selection` receives the active entry's display targets, since the Python component never sees source paths.
-- **Milestone Tests sections name the fixtures,** as the registry test requires: M2 (the kit against its reference adapter and broken variants), M4 (each prototype's adapter), M7 (the real display), and M10 (instance-root floors). M2's deliverables list the kit.
+- **Milestone Tests sections name the fixtures,** as the registry test requires: M2 (the oracle against the fixtures), M4 (checks of each prototype), M7 (the real display), and M10 (instance-root floors).
 
-### Phase C — Contract test kit
+### Phase C — Interaction fixtures and oracle
 
 - **Fixture scenes** (`.usda` with purpose comments, under `tests/fixtures/scenes/interaction/`):
   - `F-KIND-HIERARCHY`, a kind hierarchy: assembly > group > component > meshes, plus a mesh under no model. Its intermediate Xforms and groups carry nothing Hydra needs to keep, so a check catches hierarchy taken from Hydra.
   - `F-NESTED-SELECTION`, nested native instances, with the same prototype used inside and outside an outer instance, and a component kind on an instance root.
   - `F-UNIVERSE-MEMBERSHIP`, universe membership: invisible subtrees, guide- and render-only prims, inactive and abstract prims, an unloaded payload, a materials scope, an organizational Xform with nothing displayed beneath, an unsupported gprim (placeholder) and an empty marker case, and visibility animated so a prim is displayed at one time code and not another.
 - **Oracle**, from USD APIs only: hierarchy and kinds from the composed stage (`Usd.ModelAPI`, `Kind.Registry`); universe membership from `UsdGeomImageable.ComputeVisibility`/`ComputePurposeInfo` and instance traversal.
-- **Adapter protocol and checks** in `tests/support/interaction/`: each check takes an adapter and a fixture and compares against the oracle. M4 supplies an adapter per prototype. The Blender-layer checks (`apply_selection`, `read_blender_selection`) run only against adapters that create Blender data.
-- **Reference adapter** (bpy-free): a minimal display model of one element per displayed gprim copy, built by a plain stage traversal that is independent of the oracle's code. It shows the checks run.
-- **Kind-selection checks** go through `select_targets` at a kind level: targets match the oracle (including a kind derived from the requested one, no matching ancestor, and a floor absent from the stage), and the stage's layers, load set, and population mask are unchanged. The core's bindings arrive with M7, so in M2 the checks run against a minimal Python reference and its broken variants.
-- **Offline checks:** with no live stage, every function reports the source unavailable and stored selections are unchanged.
-- **Every check must be able to fail**: a test runs each check against a deliberately broken variant of the reference adapter and asserts that it fails. Examples: a target inside an instance, a subtree expanded from a flattened hierarchy, an extra highlight target, or a render-only prim in the universe.
+
+#### Phase C log
+
+The scenes are in `tests/fixtures/scenes/interaction/`, their generators in `tests/fixtures/interaction.py`, registered for the three fixtures, and the oracle in `tests/support/interaction_oracle.py`.
+
+- **No checks of the headless functions in M2** (with the user). The functions' signatures, plain-value encodings, and what a pick supplies (Q2) are settled by M3, M4, and M7, so checks written now would test a stand-in and be rewritten. M4 writes them against its first prototype, using these fixtures and the oracle; M7 and M10 reuse them. The fixtures and oracle state expected results in USD terms, which hold whatever the code looks like.
+- **Facts written by hand, checked against the oracle.** Each generator yields the display elements, universe, floors, kind targets, and exclusions its scene is built to produce. A fixture test checks that the oracle derives the same, so later checks can compare against the oracle across every prim.
+- **Entities inside instance contents are named by their instance-proxy paths,** which carry the instance context. M3 settles the real encoding; checks translate.
+- **Only the core's functions report an unavailable source** (with the user). The Python display component's functions read display targets and Blender's state, never the source, so [Without a Live Stage](../spec/interaction-contract.md#without-a-live-stage) names the core's functions.
+- **Oracles narrowed to what a check can assert.** ICON-22: expansion is observed through the display elements it reaches, since no function returns it. ICON-29: only the unmanaged objects' selection, since mirroring an active entry changes which object is active, and that object may be unmanaged. ICON-08 and ICON-09 name the core's five functions.
+- **Left to M4: kinds outside a valid model hierarchy.** The contract reads a prim's authored kind; whether a kind level also matches a prim whose ancestors are not all models (`Usd.Prim.IsModel` false) is open. The fixtures keep valid model hierarchies, so they don't decide it.
 
 ### Phase D — Feasibility questions for M4
 

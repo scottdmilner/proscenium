@@ -20,6 +20,7 @@ class Scene(Enum):
 
     SOURCE_ACCESS = "source_access"  # layers for F-DIRTY-LAYER, F-PRIVATE-STAGE, F-CACHED-STAGE
     PRODUCTION_LIKE = "production_like"  # assets/ for the generated CI fixture
+    INTERACTION = "interaction"  # one layer each for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
 
     @property
     def path(self) -> Path:

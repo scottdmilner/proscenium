@@ -1,0 +1,97 @@
+#usda 1.0
+# F-NESTED-SELECTION (tests/fixtures/interaction.py): selection floors in nested native instances.
+# The Bolt prototype is instanced on its own (/World/Bolt) and nested inside each Crate instance,
+# so the same prototype appears inside and outside an outer instance. The Crate instance roots
+# carry a component kind; inside the prototypes, Hardware is a subcomponent and Bolt a component,
+# kinds that no selection may reach because nothing inside instance contents is a target. The
+# prototypes are abstract class prims, outside the browsing universe.
+(
+    defaultPrim = "World"
+)
+
+def Xform "World" (
+    kind = "assembly"
+)
+{
+    def Xform "Bolt" (
+        instanceable = true
+        references = </Prototypes/Bolt>
+    )
+    {
+        double3 xformOp:translate = (0, 4, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "CrateA" (
+        instanceable = true
+        kind = "component"
+        references = </Prototypes/Crate>
+    )
+    {
+    }
+
+    def Xform "Shelf" (
+        kind = "group"
+    )
+    {
+        def Xform "CrateB" (
+            instanceable = true
+            kind = "component"
+            references = </Prototypes/Crate>
+        )
+        {
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    class Xform "Bolt" (
+        kind = "component"
+    )
+    {
+        def Mesh "Head"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    class Xform "Crate"
+    {
+        def Mesh "Body"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+
+        def Xform "Hardware" (
+            kind = "subcomponent"
+        )
+        {
+            def Xform "Bolt1" (
+                instanceable = true
+                references = </Prototypes/Bolt>
+            )
+            {
+                double3 xformOp:translate = (0, 1, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            def Xform "Bolt2" (
+                instanceable = true
+                references = </Prototypes/Bolt>
+            )
+            {
+                double3 xformOp:translate = (1, 1, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+        }
+    }
+}
