@@ -475,7 +475,7 @@ Branch `m01b-phase-d`, off `m01b-phase-c`.
   - Purpose visibility was read at default time. It is now UsdImaging's attribute data sources on the filter's globals, read at the graph's time and dirtied when it changes.
   - UsdImaging never flags animated subset indices, so incremental captures kept stale subsets. The filter now flags them.
 - **Skinning works through the graph's ext-computation pruning,** for one linear-blend skin with identity transforms: Body's points match `ComputeSkinnedPoints` at every time. UsdSkel's primvars still reach the plan as attributes and a property: recorded, not fixed, since it is M8's geometry policy.
-- **Filter rebuilds per time change are wider than needed** (16 on the case's scene, from every dirtied prim; 3 in an ad hoc build that invalidated only for extents). Not changed; Phase E measures the cost (listed in its plan).
+- **Filter rebuilds per time change are wider than needed** (16 on the case's scene, from every dirtied prim; 3 in an ad hoc build that invalidated only for extents). Not changed; Phase E imports one frame only, so the cost is left for M4 (listed in Phase E's plan).
 - **Warnings posted outside capture** (2026-10-14, after the CI run above). The CI logs printed 491 HermiteCurves warnings and 131 for bindings without `MaterialBindingAPI`, all expected. But those posted while a bridge is built never became diagnostics, because only a capture collects them. Two fixes, each with checks a mutation run showed fail without them:
   - The bridge collects warnings while it is built and adds them, without a source, to its first capture's diagnostics, as events reach the capture after them. Release-time warnings are still printed, since no capture follows.
   - The filter reports bindings authored without `MaterialBindingAPI` (`bindingsWithoutApi`), so the plan warns on each copy's source whenever USD would honor such a binding, independent of when USD posts its own warning.
@@ -485,26 +485,133 @@ Branch `m01b-phase-d`, off `m01b-phase-c`.
 
 ## Phase E — Measurements
 
-Kept separate, as the milestone requires: Hydra capture, C++ planning, C++ → Python transfer, Blender construction, and peak memory.
+Kept separate, as the milestone requires: Hydra capture, C++ planning, C++ → Python transfer, Blender construction, and peak memory. Results come from the Blender binary on the reference hardware, under [Performance](../testing/acceptance.md#performance): AC power, no other heavy load, the OS version and Blender build hash recorded, and repeated runs.
 
-- **Baseline:** a direct-USD Python implementation of the same capture on the same fixtures.
-- **Scale:** the bespoke fixtures, a synthetic stress scene (many instances, large meshes), and ALab under the pinned [acceptance](../testing/acceptance.md) setup, on the reference hardware.
-- **Carried in from Phases C and D:**
-  - **Time changes.** Capture after a time change, incremental and full, over a frame range of an animated scene. Phase D settled one time code per capture, so a frame range costs one capture per frame.
-  - **Filter rebuilds per time change.** The source-info filter rebuilds a prim's cached facts for every prim dirtied on a time change, though only computed extents go stale (Phase D: 16 rebuilds per change on the animation case, 3 in an ad hoc build that invalidated only for extents). Measure what those rebuilds cost at scale, to decide whether narrowing the invalidation is worth it.
-  - **Sharing.** On the stress scene and ALab: plan meshes against distinct USD meshes, and what the difference costs in Blender construction and memory. Phase C's count (216 meshes for 9 leaf meshes) comes from small meshes.
+- **Baseline: Blender's native USD importer** (`bpy.ops.wm.usd_import`). This replaces a direct-USD Python implementation of the same capture (with the user, 2026-10-14). A pure-Python version is very unlikely to come close to compiled code, so comparing against it would say little. The importer is C++ reading USD directly, and its cost is one users already accept to get USD into Blender.
+  - **The feature sets differ.**
+    - **The importer:**
+      - opens its own stage from the file;
+      - skips invisible prims by default;
+      - builds an object hierarchy, Principled BSDF networks from UsdPreviewSurface, curves, lights, cameras, armatures and subdivision modifiers;
+      - makes collection instances for native instances;
+      - reads animated meshes and transforms when the depsgraph evaluates, through Mesh Sequence Cache modifiers and Transform Cache constraints, not while it imports. The first depsgraph evaluation is therefore part of its cost.
+    - **The prototype:** works from a caller's stage and builds:
+      - flat objects with world matrices;
+      - viewport-color materials;
+      - one mesh per plan mesh;
+      - placeholders for untranslated types;
+      - objects for every purpose.
+  - **Three importer configurations.**
+    - **Defaults:** what a user gets.
+    - **Matched:** the options closest to the prototype. Every purpose and invisible prims are imported, and UsdPreviewSurface conversion, unit scaling and the types the prototype makes placeholders for are off (`measure/child.py` lists them).
+    - **Expanded:** matched, with scene instancing off. Added during Phase E: with instancing on, the importer drops materials bound at an instance root, which the prototype honors (see the Phase E log).
+    - **Counts recorded with every run:** objects, meshes, materials, collections, vertices and corners, so the difference in work shows next to the numbers.
+  - **Compared end to end.** The importer is one operator call: its stage open, translation and construction can't be timed apart. The comparisons are:
+    - initial synchronization, from opening the file in a fresh process through the first depsgraph evaluation;
+    - Blender construction plus that evaluation, on its own.
+  - **One frame only** (with the user, 2026-10-14): each run imports one time code. Frame changes and frame ranges are not measured.
+- **Prototype stages, each measured separately:**
+  1. stage open;
+  2. bridge construction (the scene-index chain);
+  3. capture;
+  4. C++ planning;
+  5. transfer (the plan's Python views);
+  6. Blender construction;
+  7. the first depsgraph evaluation;
+  8. release.
+- **CPU and memory, during and after.**
+  - **Sampling.** Each run is a fresh binary process with factory startup. A parent process samples it at a short fixed interval with psutil, added to the dev group (with the user, 2026-10-14), recording:
+    - resident memory;
+    - CPU time (user and system);
+    - thread count.
+    The child writes stage markers for aligning the samples. An in-process sampler thread may not run while C++ code or an operator holds the GIL, so it isn't relied on.
+  - **Per stage:**
+    - wall time;
+    - CPU time, and its ratio to wall time (average cores busy);
+    - peak resident memory within the stage, from the samples, and the process's own peak counter where the OS provides one;
+    - resident memory at the end.
+  - **Baseline memory.** The empty factory-startup process is measured and subtracted.
+  - **Retained memory after synchronization.** Measured once memory settles, at each of these points:
+    1. with the bridge alive, since incremental capture keeps the scene-index chain and its flattening cache;
+    2. after releasing the bridge;
+    3. after also dropping the stage;
+    4. after deleting the Blender data.
+    The differences split what is retained into Hydra chain, stage and Blender data. For the importer, retained memory is measured after the import and again after deleting its data.
+  - **Platform names.** Which memory counter each platform reports is recorded by name. On macOS, Activity Monitor's figure (physical footprint) differs from resident memory.
+- **Repeats.**
+  - Three runs per scene and configuration (cut from five with the user, 2026-10-14, to keep the run short), alternating importer and prototype, reporting the median and range.
+  - The OS file cache is warm, as in the anonymous-view timings: purging it needs root. Each sequence's first run is also reported separately.
+- **Scenes:**
+  - **The bespoke fixtures:** dropped from the measured set (with the user, 2026-10-14). The smallest stress scene shows the fixed overhead.
+  - **Generated stress scenes of controlled size**, each varying one dimension:
+    - mesh size: one mesh, of thousands and of millions of points;
+    - prim count: 10,000 small meshes;
+    - instancing: prototypes times instances, nested two levels, with appearance variation that splits instancers;
+    - animation: a large deforming mesh and many animated transforms, imported at one time code. The importer adds cache modifiers and constraints for them, so its first depsgraph evaluation reads them.
+    A script writes them under `build/` (not committed) and records their parameters.
+  - **ALab, through a custom entry point** (with the user, 2026-10-14). Load-all, at one time code, pinned under [Production-Scale Validation](../testing/acceptance.md#production-scale-validation-alab), run by hand. Load-none is empty, so it isn't measured.
+    - **Why.** Both sides then import the same content. The importer translates content the prototype only marks with placeholders, and that work would otherwise count against it.
+    - **The entry point.** A new root layer sublayers `entry.usda` and deactivates every prim of a type the prototype doesn't translate. From the [inventory](../testing/alab/inventory.md), that means lights, the camera, NurbsCurves, Points, PointInstancers and `ALAudio`.
+      - A script writes it under `build/`, with a comment stating its purpose. It finds the prims by traversing the composed stage and records the paths it deactivated. The pinned ALab tree is unchanged.
+    - **Limit.** A stronger layer can't deactivate prims inside native-instance prototypes, because opinions on instance proxies are ignored. ALab has 3 RectLights there (6 expanded), so they stay. The matched importer configuration doesn't import lights, and the prototype gives them placeholders. The run records what remains of each untranslated type.
+- **Carried in from Phase C:**
+  - **Sharing.** On the instancing stress scene and ALab: plan meshes against distinct USD meshes, and what the difference costs in Blender construction and memory. Phase C's count (216 meshes for 9 leaf meshes) comes from small meshes.
   - **The filter's per-prim USD queries** on first capture: UsdShade's binding resolution for each material purpose, the materialBind family verdict, the dropped-attribute scan, and computed extents (Phase C's limits).
+- **CI** runs the harness on one small scene on all three platforms, to keep it working. Shared runners make its numbers unreliable, so none are recorded as results.
+
+- **Not measured, left for M4:** time changes and frame ranges, and the filter's rebuilds on a time change. The source-info filter rebuilds a prim's cached facts for every prim dirtied on a time change, though only computed extents go stale (Phase D: 16 rebuilds per change on the animation case, 3 in an ad hoc build that invalidated only for extents). Whether narrowing that invalidation is worth it depends on how M4 evaluates frames ([notes](../feasibility/runtime-record.md#for-m4-evaluating-frames)).
 
 The measurements report what was run; they are not extrapolated to Phase 2 budgets.
 
+### Phase E log
+
+Branch `m01b-phase-e`, off `m01b-phase-d`.
+
+- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. The correctness checks are unchanged (128 in both hosts, macOS).
+- **Harness** (`hydra_bridge/measure/`):
+  - **`run.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
+  - **`child.py`** marks each stage with CPU time, the lifetime peak and the live heap.
+  - **Inputs:** `stress.py` generates the scenes, and `alab_entry.py` writes ALab's entry point.
+  - **`report.py`** summarizes the runs.
+  - **Timers for the filter and the planner** (`src/fact_timings.*`, exposed as `take_filter_timings()`) are for this phase only.
+- **Changes to the plan while running:**
+  - **A third importer configuration, "expanded"** (matched without scene instancing). With instancing on, the importer drops materials bound at an instance root, so neither of the first two builds what the prototype builds on instancing scenes.
+  - **A smaller run** (with the user, 2026-10-14): three repeats, five stress scenes (one small and one large mesh, 10,000 prims, nested instancing, animation) and ALab, with no bespoke fixtures. It takes about 6 minutes; the first plan would have taken about 1.5 hours.
+  - **Retained memory is read as live heap.** The footprint stays high after memory is freed (the allocator keeps the pages), so it says little about what is still owned. The live heap showed both sides back to under 40 MB after deleting their data.
+  - **The cleanup re-evaluates the depsgraph after deleting data.** Evaluated copies hold their memory until the next evaluation: 1.7 GB on ALab's imported data.
+- **Results on ALab, against the matched importer:**
+  - **Time:** 4.61 s against 3.23 s (1.43×).
+  - **Peak memory:** 3,129 MB against 1,780 MB (1.76×).
+  - **The Hydra stages (2.12 s) take longer than Blender construction (1.91 s).** Planning (1.20 s) runs on one core.
+  - **With the bridge alive,** 1,455 MB of live heap is held: the snapshot (517 MB at capture) and the plan (904 MB at planning).
+
+  Against the tentative criterion 4, the time and memory parts hold and the stage-split part doesn't. The user sets the final criterion.
+- **Answers to the items carried in:**
+  - **Sharing:** 3,945 plan meshes for 6,679 mesh copies on ALab, the same as the instancing importer.
+  - **The filter's per-prim queries:** they cost 0.56 s of CPU (summed over threads) while ALab's bridge is built, out of 2.08 s. Binding resolution is most of it (0.37 s). On 10,000 small prims the filter takes 0.94 s of the stage's 1.14 s, 0.75 s of it bindings.
+- **Where planning's time goes** (2026-10-14, measured after the run above, with timers in the planner):
+  - On ALab, building meshes one at a time is 95% of planning: 1.30 s of 1.36 s. Objects take 0.02 s, and reading the records 0.03 s.
+  - Within mesh building, USD's `PxOsdMeshTopology::Validate` takes 0.55 s, finding the faces Blender would delete 0.28 s, primvars 0.31 s and the layout 0.12 s.
+  - On the 4.2M-point mesh, half of its 0.62 s is USD's validation.
+  - The options for multithreading planning are, in order:
+    1. Build meshes in parallel, with a serial pass for objects and diagnostics in prim order, so the plan stays identical.
+    2. For a single large mesh, run its independent passes concurrently and parallelize the bridge's own loops; USD's validation is one call.
+    3. Not worth it now: parallel object building, which takes 0.02 s.
+  - Not implemented: the prototype measures, and a production core decides.
+
 ## Phase F — Decision
 
-**Criteria, fixed before results:** Hydra is adopted only if all of these hold:
+**Criteria, fixed before results** (except criterion 4's thresholds, below)**:** Hydra is adopted only if all of these hold:
 
 1. Native loading works on all three platforms in both hosts.
 2. Distribution works through the chosen channel (Phase 0 settled that a compiled core is acceptable).
 3. Every Phase C case passes, or its gap has a bounded workaround in the core that keeps the requirement intact (Hydra does not relax requirements).
-4. Measurements show no regression against the Python baseline that matters at ALab scale, and a gain in at least one of capture or planning.
+4. **Tentative (with the user, 2026-10-14), replacing the Python-baseline criterion:** at ALab scale (the custom entry point), measured against Blender's native importer in its matched configuration:
+   - initial synchronization's end-to-end time is at most 2× the importer's, and so is its peak memory;
+   - the Hydra stages (capture, planning and transfer) together take less time than Blender construction;
+   - memory retained with the bridge alive is reported, not gated.
+
+   The user sets the final criterion after seeing Phase E's data. Unlike the other criteria, it is not fixed before results, and the decision record says so.
 
 Otherwise: "Hydra not adopted", and the Python-only row continues under M4.
 

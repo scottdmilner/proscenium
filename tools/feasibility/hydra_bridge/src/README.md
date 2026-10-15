@@ -75,6 +75,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
 | `loaded_images.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
+| `fact_timings.h/.cpp` | Phase E only: time the source-info filter spends building facts and in each USD query (bindings, strong purposes, family verdict, dropped attributes, computed extents), summed over threads, and how planning's time splits (reading, building each mesh and its parts, objects) |
 
 The rest of `hydra_bridge/` builds, runs and checks the module:
 
@@ -90,6 +91,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags) |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
+| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters |
 | `../cases/<case>.py`, `.usda` | One check module and scene per case: `subsets`, `implicit`, `instances`, `edits`, `untranslated`, `malformed`, `bindings`, `purposes`, `primvars`, `animation` (Phase D: what a time change dirties, and values at each time), and `large_arrays` (its scene is generated) |
 
 ## Python API
@@ -106,6 +108,7 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 bridge.release()  # lets a caller-released stage expire; capture() then raises
+_hydra_bridge.take_filter_timings()  # Phase E: {kind: (calls, seconds)} of the filter's USD reads since the last call
 ```
 
 A capture evaluates one time code. At default time it reads authored default values, so animated values need a numeric time. Capturing several frames, and caching them, is a layer above capture ([feasibility record](../../../../docs/feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d)).

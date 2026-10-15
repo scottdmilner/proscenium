@@ -1,5 +1,7 @@
 #include "source_facts.h"
 
+#include "fact_timings.h"
+
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
 #include <pxr/imaging/hd/purposeSchema.h>
@@ -180,6 +182,7 @@ HdContainerDataSourceHandle ResolvedBindings(const UsdPrim &prim) {
 HdContainerDataSourceHandle ComputedExtent(const UsdPrim &prim, const TfToken &hydraType, UsdTimeCode time) {
     if (!prim.IsA<UsdGeomPointBased>() || hydraType == HdPrimTypeTokens->mesh || hydraType == HdPrimTypeTokens->nurbsPatch)
         return nullptr;
+    const ScopedFactTiming timing(FactTiming::ComputedExtent);
     VtVec3fArray extent;
     if (!UsdGeomBoundable::ComputeExtentFromPlugins(UsdGeomBoundable(prim), time, &extent) || extent.size() != 2)
         return nullptr;
@@ -207,6 +210,7 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
     }
     // USD's own verdict on a mesh's materialBind family (overlaps in a nonOverlapping family, and so on).
     if (UsdGeomMesh mesh{prim}) {
+        const ScopedFactTiming timing(FactTiming::FamilyVerdict);
         static const TfToken kMaterialBind("materialBind");
         std::string reason;
         if (!UsdGeomSubset::GetGeomSubsets(mesh, TfToken(), kMaterialBind).empty() &&
@@ -228,6 +232,7 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
         }
     }
     if (UsdGeomImageable(prim) || UsdGeomSubset(prim)) {
+        const ScopedFactTiming timing(FactTiming::Bindings);
         HdContainerDataSourceHandle bindings = ResolvedBindings(prim);
         if (bindings) add(SourceInfoTokens::Bindings(), bindings);
     }
@@ -241,6 +246,7 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
         if (!unapplied.empty()) add(SourceInfoTokens::BindingsWithoutApi(), Retained(unapplied));
     }
     if (prim.HasAPI<UsdShadeMaterialBindingAPI>()) {
+        const ScopedFactTiming timing(FactTiming::StrongPurposes);
         const UsdShadeMaterialBindingAPI binding(prim);
         VtTokenArray strong;
         auto isStrong = [](const UsdRelationship &rel) {
@@ -256,6 +262,7 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
         if (!strong.empty()) add(SourceInfoTokens::StrongPurposes(), Retained(strong));
     }
     if (ReportsDroppedAttributes(prim)) {
+        const ScopedFactTiming timing(FactTiming::DroppedAttributes);
         VtTokenArray dropped;
         for (const UsdAttribute &attribute : prim.GetAuthoredAttributes())
             if (attribute.HasAuthoredValue() && DroppedAttribute(prim, attribute.GetName()))

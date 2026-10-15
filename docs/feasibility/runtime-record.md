@@ -438,7 +438,7 @@ The `animation` case (`cases/animation.usda`, 6 checks) checks what per-frame ca
 - **USD's family verdict covers default time.** `UsdGeomSubset::ValidateFamily` checks the default value as well as every sample. A partition authored only as time samples is rejected ("Number of unique indices at time DEFAULT does not match the element count"). Seen ad hoc before the fixture's subsets gained defaults.
 - **Skeletons are drawn as hidden guides.** UsdSkelImaging images a Skeleton as a bone mesh with guide purpose, so the plan has a hidden object for it.
 - **Skinning inputs stay on the mesh.** UsdSkel's primvars on the skinned mesh are planned as data: `skel:jointIndices` and `skel:jointWeights` as attributes, and `skel:geomBindTransform` as an object property, though skinning has already consumed them.
-- **The filter rebuilds more than it needs to on a time change.** It rebuilds a prim's facts whenever Hydra or its own flags dirty it, though only computed extents hold a value that goes stale (measured ad hoc with a temporary counter: 16 rebuilds per change on this scene; an ad hoc build that invalidated only on extent and points dirties rebuilt 3, with every check passing). Not changed; it is a cost for Phase E to weigh.
+- **The filter rebuilds more than it needs to on a time change.** It rebuilds a prim's facts whenever Hydra or its own flags dirty it, though only computed extents hold a value that goes stale (measured ad hoc with a temporary counter: 16 rebuilds per change on this scene; an ad hoc build that invalidated only on extent and points dirties rebuilt 3, with every check passing). Not changed. Phase E imports one frame only, so its cost is left for M4.
 
 #### For M4: evaluating frames
 
@@ -448,7 +448,121 @@ The "Time-sampled data representation" row compares per-time-code snapshots with
   - **The dirties between successive captures.** These are exact here, including visibility and values Hydra computes (flattened and instance transforms, skinned points). Equal samples are dirtied anyway, so dirtied values may be unchanged; comparing values, or array identity, settles it.
   - **Direct USD**, when a representation needs authored keys rather than evaluated frames: `GetTimeSamplesInInterval` on the attributes a value depends on, for example to key held visibility exactly on its samples. The core must then know each value's dependencies, including what the imaging chain computes (a cube's `size` behind its generated points, a skeleton's animation behind skinned points). Hydra's adapters already encode those dependencies.
 - **Not needed:** Hydra's interval query, which answers a motion-blur question.
-- **Untested:** value clips, splines, point instancers, animated material parameters, skinning beyond one linear-blend skin with identity transforms, and the cost of capturing every frame of a range at scale (Phase E).
+- **Untested:** value clips, splines, point instancers, animated material parameters, skinning beyond one linear-blend skin with identity transforms, and the cost of capturing every frame of a range at scale (Phase E measures one frame only).
+
+### Measurements (M1b Phase E)
+
+Blender's USD importer (`bpy.ops.wm.usd_import`) against the prototype, importing one time code. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-10-14. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/run.py   # stress scenes and ALab, about 6 minutes
+```
+
+The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge/measure/summary.md` (not committed).
+
+**Method:**
+- **Runs.** Each run is a fresh binary process with factory startup and an empty scene. There are three runs per scene and mode, alternating, with the OS file cache warm. Figures below are medians, and the ranges are in the summary. The widest came from a sequence's first run: 0.65 s against a 0.33 s median for the default importer on mesh-2048, and 5.45 s against 4.63 s on ALab.
+- **Sampling.** A parent process samples the run every 10 ms with psutil: resident memory, CPU time and threads, plus the physical footprint on macOS (Activity Monitor's figure), which is the counter reported here. The child marks each stage boundary with:
+  - its CPU time;
+  - its lifetime peak footprint;
+  - its **live heap**: bytes malloc has handed out and not taken back (`malloc_zone_statistics`).
+- **Baseline.** Memory is relative to the run's empty process: 130 MB for the importer, and 139 MB for the prototype, which has already imported the module and `pxr`.
+- **Importer configurations:**
+  - **defaults**;
+  - **matched**: every purpose and invisible prims imported; no UsdPreviewSurface conversion, unit scaling, lights, cameras, curves, points, volumes or skeletons (`measure/child.py`);
+  - **expanded**: matched, with scene instancing off.
+- **ALab** is imported at time 1004 through a measurement entry point (`measure/alab_entry.py`). It is a root layer over `entry.usda` that deactivates the 111 prims the prototype doesn't translate: 51 lights, 33 NurbsCurves, 21 PointInstancers, 5 `ALAudio` prims and 1 camera. Three RectLights inside native-instance prototypes (6 copies) can't be deactivated from a stronger layer and remain.
+
+**Initial synchronization**, from opening the file to the first depsgraph evaluation (wall time and peak footprint):
+
+| Scene | Content | Importer defaults | Importer matched | Importer expanded | Prototype | Prototype vs matched |
+|---|---|---|---|---|---|---|
+| mesh-64 | 1 mesh, 4,225 points | 0.04 s, 0 MB | 0.04 s, 1 MB | 0.05 s, 3 MB | 0.04 s, 1 MB | about the same |
+| mesh-2048 | 1 mesh, 4.2M points, face-varying UVs | 0.33 s, 788 MB | 0.34 s, 824 MB | 0.39 s, 791 MB | 1.01 s, 1,349 MB | 2.97× time, 1.64× memory |
+| prims-10000 | 10,000 cubes, 2 materials | 1.14 s, 528 MB | 1.11 s, 523 MB | 1.09 s, 519 MB | 1.62 s, 854 MB | 1.46×, 1.63× |
+| instances-1000 | 1,000 instanced clusters of 10 instanced leaves (1,089-point grids); 2 materials bound at the cluster roots | 0.11 s, 29 MB | 0.11 s, 29 MB | 2.39 s, 1,951 MB | 0.74 s, 339 MB | not the same work (below) |
+| animation | a deforming 66k-point grid and 1,000 animated cubes | 0.17 s, 106 MB | 0.17 s, 103 MB | 0.16 s, 107 MB | 0.20 s, 100 MB | 1.18×, 0.97× |
+| ALab | the measurement entry point | 4.63 s, 1,533 MB | 3.23 s, 1,780 MB | 5.34 s, 3,133 MB | 4.61 s, 3,129 MB | 1.43×, 1.76× |
+
+**On ALab both sides build the same geometry.**
+
+| | Meshes | Vertices | Materials | Objects |
+|---|---|---|---|---|
+| Matched importer | 3,945 | 7,615,582 | 801 | 6,832 (1,417 collection instances) |
+| Prototype | 3,946 (one is a placeholder's bounds) | 7,615,590 | 806 | 7,018 |
+
+The default importer is slower than the matched one because it also builds 5,074 shader nodes and 1,611 images.
+
+**Prototype stages on ALab:**
+
+| Stage | Wall | Cores | Live heap at end |
+|---|---|---|---|
+| Stage open | 0.58 s | 2.2 | 95 MB |
+| Bridge construction | 0.41 s | 5.1 | 140 MB |
+| Capture | 0.45 s | 8.2 | 657 MB |
+| Planning | 1.20 s | 1.0 | 1,561 MB |
+| Transfer | 0.07 s | 1.0 | 1,565 MB |
+| Construction | 1.81 s | 3.2 | 2,939 MB |
+| First evaluation | 0.10 s | 2.2 | 3,029 MB |
+
+The Hydra stages (bridge construction through transfer) take 2.12 s; Blender construction and evaluation take 1.91 s. CPU time for the whole synchronization:
+- matched importer: 13.3 s, in 3.23 s of wall time (4.1 cores on average);
+- prototype: 14.7 s, in 4.61 s (3.2 cores).
+
+**Against the tentative Phase F criterion** (ALab, matched importer):
+- Time (1.43×) and peak memory (1.76×) are within 2×.
+- The Hydra stages (2.12 s) take longer than Blender construction (1.91 s), so that part doesn't hold.
+- The final criterion is the user's to set.
+
+**Findings:**
+- **Planning is serial.** It runs on one core in every scene. It is the largest Hydra stage on ALab (1.20 s) and on the large mesh (0.62 s of the prototype's 1.01 s, where the whole importer takes 0.34 s). Capture and bridge construction are parallel (8.2 and 5.1 cores on ALab).
+  - **Where planning's time goes**, from timers in the planner (medians of three runs in a later measurement, when ALab's planning took 1.36 s rather than 1.20 s):
+
+    | Part | ALab | mesh-2048 |
+    |---|---|---|
+    | Building meshes (`BuildMesh`), one at a time | 1.30 s (3,945 meshes) | 0.62 s |
+    | — USD's topology validation (`PxOsdMeshTopology::Validate`) | 0.55 s | 0.30 s |
+    | — finding the faces Blender would delete | 0.28 s | 0.16 s |
+    | — primvars to attributes | 0.31 s | 0.06 s |
+    | — the corner layout | 0.12 s | 0.08 s |
+    | — material slots, and the bridge's own range checks | 0.04 s | 0.02 s |
+    | Objects for every drawn copy, with materials and diagnostics | 0.02 s | 0.00 s |
+    | Reading the records (already parallel) | 0.03 s | 0.00 s |
+
+    Meshes don't depend on one another, so building them in parallel would cover 95% of ALab's planning. For one large mesh, half the time is USD's validation, which the bridge calls as a single function.
+- **The prototype's extra peak is what the bridge holds while Blender data is built.**
+  - On ALab the live heap is 3,033 MB after synchronization. Releasing the bridge, its snapshot and the plan frees 1,455 MB; the harness drops all three together. Dropping the stage frees 82 MB more, and deleting the Blender data frees the remaining 1,459 MB.
+  - By stage, capture adds 517 MB of live heap (the snapshot) and planning adds 904 MB (the plan).
+  - The harness keeps the plan until release, though construction no longer needs it. Dropping it earlier would lower what is retained (inferred, not measured).
+- **Freed memory isn't returned at once.** After deleting each run's data, the live heap is back to 4–37 MB on every scene, on both sides, so neither side was found to leak. The footprint can stay high: on mesh-2048 it was 1,240 MB with 4 MB of live heap. So retained memory is judged by live heap. The finding was ad hoc, in the wheel: with the bridge released on ALab, the live heap was back to within 12 MB of the opened stage, while in three runs the footprint stayed 67–570 MB above it.
+- **Depsgraph evaluation.**
+  - The importer evaluates the depsgraph inside its operator: requesting the evaluated depsgraph afterwards added nothing (ad hoc, in the wheel, on prims-10000).
+  - On the same scene, the prototype's construction added 138 MB of live heap and its first evaluation 397 MB, together comparable to the importer's 500 MB.
+  - Evaluated copies hold their memory until the next evaluation. Deleting ALab's imported data left 1.7 GB of live heap until a depsgraph update, and 27 MB after one (ad hoc), so the harness evaluates after deleting.
+- **Scene instancing in the importer drops materials bound at or above an instance root** (measured on instances-1000 and on the 100-cluster smoke scene).
+  - **What it builds.** With instancing on (defaults and matched), the importer builds 1 mesh and 1,010 collection instances, but no materials. With it off (expanded), it honors the bindings, building 10,000 meshes in 2.39 s and 1,951 MB. The prototype honors them with 2 meshes, one per material variant, shared by 10,000 objects (0.74 s, 339 MB).
+  - **Why** (from the Blender 5.2.2 source):
+    - An instance becomes an empty that instances a collection (`USDInstanceReader`, created in `usd_reader_stage.cc` when `support_scene_instancing` is on). The collection is built once per USD prototype from `UsdStage::GetPrototypes()`.
+    - A mesh in that collection resolves its material on the prototype's own prim (`compute_bound_material` in `usd_reader_mesh.cc`, through `ComputeBoundMaterial`). Under `/__Prototype_N`, the instance root and its ancestors aren't on the prim's path, so their bindings are never seen.
+    - Nothing on the instancing empty carries a material.
+    - USD shares one prototype among instances whose roots bind different materials, so one collection couldn't show both in any case.
+  - **Checked ad hoc in the wheel.** With the smoke scene's binding moved onto the leaf mesh inside the asset, the instancing importer imported the material and assigned it.
+- **Sharing at scale** (carried in from Phase C). ALab's plan has 3,945 meshes for 6,679 composed mesh copies, the same count as the instancing importer's meshes. The expanded importer builds 6,679 meshes and peaks 1.35 GB higher than matched.
+- **The filter's per-prim USD queries** run while the bridge is built, as the graph first reads each prim.
+  - On ALab: 9,011 fact builds take 0.56 s of CPU, summed over threads, out of the stage's 2.08 s. Resolving bindings for each material purpose takes 0.37 s of that.
+  - On prims-10000: 0.94 s of 1.14 s, of which bindings take 0.75 s.
+  - The family verdict, dropped-attribute scan and computed extents take at most 0.08 s on any scene.
+  - Times come from timers in the filter (`src/fact_timings.*`), not a profiler.
+- **Blender construction.** The prototype's per-object work runs on one core: 0.62 s for 10,000 objects in prims-10000, and 0.33 s on instances-1000. Large meshes construct on 5 cores (mesh-2048).
+- **Animation is left live by the importer.** It adds Mesh Sequence Cache modifiers and Transform Cache constraints (1 and 1,000 on the animation scene; 355 and 10 on ALab), which read USD when the frame changes. The prototype's result is static at the imported time. Frame changes are not measured.
+
+**Not measured:**
+- Windows and Linux: CI runs the harness on one small scene only, to keep it working, and records no numbers.
+- Cold-cache opens; the wheel host.
+- Frame changes, and the filter's rebuilds on a time change (left for M4).
+
+The memory counters for Windows (working set, peak working set) and Linux (resident set, `mallinfo2`) are implemented but haven't been checked against another tool.
 
 ### Limits and next gates
 
@@ -457,7 +571,7 @@ The prototype and correctness checks use small bespoke scenes. Untested:
 - deformation other than one linear-blend skin (blend shapes, dual quaternions, several influences per point);
 - dropping UsdSkel's primvars from a skinned mesh's planned data;
 - translating point instancers (they are placeholders);
-- performance at scale (Phase E), including the filter's UsdShade queries and computed extents per prim;
+- performance on Windows and Linux, with a cold file cache, and across frame changes (Phase E measured macOS only, one time code per run);
 - a keyless UsdImaging adapter in place of the filter on Linux and Windows. On macOS it can't be manufactured: `libusd_ms` doesn't export the `type_info` of the adapter factory base class, so its `dynamic_cast` rejects a factory from another binary (ad hoc, M1b plan's Hydra-native review);
 - layer muting, sublayer edits and variant switches in the edits case (ad hoc probes passed);
 - animated unimaged prims inside a prototype;
@@ -470,15 +584,17 @@ Zero-copy transfer is also measured separately by the `buffer_transfer` probe.
 
 Not tested: Windows arm64 and other unsupported platforms, other Blender builds, installed extension lifecycle,
 selection mapping, stage-setting fidelity, threading beyond the parallel read passes of capture and planning,
-undo/save/reopen, production-scale data, or memory/performance regressions.
+undo/save/reopen, correctness on production-scale data (ALab is measured for cost only, on macOS), or
+memory/performance regressions.
 
 `release()` is explicit. A production binding would call it when its source is
 released, to preserve the caller-release contract in
 [In-Memory Sources](../spec/source-access.md#in-memory-sources). The bridge's native
 objects and lazily queried scene indices are not persisted Blender state.
 
-Native loading now holds on all three platforms for this module. The remaining gate is
-the end-to-end prototype in the [M1b plan](../plans/M01b-evaluation-gate.md).
+Native loading now holds on all three platforms for this module, and the prototype's correctness
+and measurements are recorded. The remaining gate is the decision (Phase F of the
+[M1b plan](../plans/M01b-evaluation-gate.md)).
 The current Python-only implementation decision remains unchanged pending M1b's
 recorded decision.
 

@@ -1,5 +1,7 @@
 #include "validate.h"
 
+#include "fact_timings.h"
+
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/pxOsd/meshTopologyValidation.h>
 #include <pxr/imaging/pxOsd/tokens.h>
@@ -9,6 +11,7 @@
 #include <utility>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -32,7 +35,9 @@ std::string ValidateTopology(const PxOsdMeshTopology &topology, size_t pointCoun
     // "none" (no subdivision) is valid; no other check depends on the scheme, so it validates as bilinear.
     const bool unsubdivided = topology.GetScheme() == PxOsdOpenSubdivTokens->none;
     const PxOsdMeshTopology checked = unsubdivided ? topology.WithScheme(PxOsdOpenSubdivTokens->bilinear) : topology;
+    std::optional<ScopedFactTiming> usdTiming(std::in_place, FactTiming::MeshUsdValidate);
     if (PxOsdMeshTopologyValidation validation = checked.Validate(); !validation) return validation.begin()->message;
+    usdTiming.reset();
     // USD can't check indices against points it doesn't have. The corner sum is recomputed in size_t,
     // since an int sum of huge counts could overflow and still match the index count.
     if (pointCount > kMaxIndex) return "More points than Blender can index";

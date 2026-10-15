@@ -39,6 +39,7 @@ Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/bridge.cpp
   src/capture.cpp
   src/diagnostics.cpp
+  src/fact_timings.cpp
   src/instancing.cpp
   src/loaded_images.cpp
   src/mesh_builder.cpp

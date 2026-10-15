@@ -1,4 +1,5 @@
 // BuildPlan: meshes with material slots, objects per drawn copy, placeholders, and diagnostics.
+#include "fact_timings.h"
 #include "instancing.h"
 #include "mesh_builder.h"
 #include "plan.h"
@@ -39,13 +40,14 @@ public:
     Planner(const Snapshot &snapshot, const PlanSettings &settings)
         : snapshot_(snapshot),
           settings_(settings),
-          table_(ReadPrims(snapshot.scene)),
+          table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics) {
         plan_->time = snapshot.time;
     }
 
     PlanPtr Run() {
+        const ScopedFactTiming timing(FactTiming::PlanRun);
         for (const PrimRecord &prim : table_.prims)
             if (prim.geomSubset) subsets_[prim.path.GetParentPath()].push_back(&prim);
         // A point instancer's prototype originals carry Hydra's piPropagatedPrototypes marker; they are drawn
@@ -73,11 +75,20 @@ public:
     }
 
 private:
+    static PrimTable TimedRead(const HdSceneIndexBaseRefPtr &scene) {
+        const ScopedFactTiming timing(FactTiming::PlanRead);
+        return ReadPrims(scene);
+    }
+
     void AddMesh(const PrimRecord &prim) {
         if (resolver_.FramesOf(prim).empty()) return;
         Diagnostics problems;
         std::vector<const PrimRecord *> slots;
-        std::optional<MeshData> mesh = BuildMesh(prim, subsets_[prim.path], problems, slots);
+        std::optional<MeshData> mesh;
+        {
+            const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
+            mesh = BuildMesh(prim, subsets_[prim.path], problems, slots);
+        }
         for (const Diagnostic &problem : problems) MapToSources(problem);
         if (!mesh) {
             AddObjects(prim, -1, HdPrimTypeTokens->mesh);
@@ -108,6 +119,7 @@ private:
     // each of the mesh's material slots takes.
     void AddObjects(const PrimRecord &prim, int mesh, const TfToken &placeholderType,
                     const std::vector<const PrimRecord *> *slots = nullptr) {
+        const ScopedFactTiming timing(FactTiming::PlanObjects);
         const std::vector<Frame> &frames = resolver_.FramesOf(prim);
         const ConstantPrimvars own = OwnConstants(prim);
         // An unimaged prim can lack a purpose; USD's default is Hydra's "geometry".
