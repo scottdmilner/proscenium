@@ -1,16 +1,20 @@
 // BuildPlan: meshes with material slots, objects per drawn copy, placeholders, and diagnostics.
+#include "fact_timings.h"
 #include "instancing.h"
 #include "mesh_builder.h"
 #include "plan.h"
 #include "prim_reader.h"
 
+#include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/pxOsd/tokens.h>
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -39,13 +43,14 @@ public:
     Planner(const Snapshot &snapshot, const PlanSettings &settings)
         : snapshot_(snapshot),
           settings_(settings),
-          table_(ReadPrims(snapshot.scene)),
+          table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics) {
         plan_->time = snapshot.time;
     }
 
     PlanPtr Run() {
+        const ScopedFactTiming timing(FactTiming::PlanRun);
         for (const PrimRecord &prim : table_.prims)
             if (prim.geomSubset) subsets_[prim.path.GetParentPath()].push_back(&prim);
         // A point instancer's prototype originals carry Hydra's piPropagatedPrototypes marker; they are drawn
@@ -55,9 +60,11 @@ public:
                 if (const PrimRecord *record = table_.Find(path); record && record->pointInstancerPrototype) return true;
             return false;
         };
-        for (const PrimRecord &prim : table_.prims) {
+        std::vector<BuiltMesh> built = BuildMeshes();
+        for (size_t i = 0; i < table_.prims.size(); ++i) {
+            const PrimRecord &prim = table_.prims[i];
             if (prim.type == HdPrimTypeTokens->mesh && prim.mesh)
-                AddMesh(prim);
+                AddMesh(prim, built[i]);
             else if (Untranslated(prim.type))
                 AddObjects(prim, -1, prim.type);
             else if (prim.instancer && prim.instancer->instanceLocations.empty())
@@ -73,12 +80,44 @@ public:
     }
 
 private:
-    void AddMesh(const PrimRecord &prim) {
-        if (resolver_.FramesOf(prim).empty()) return;
+    // BuildMesh's results for one prim, before anything is added to the plan.
+    struct BuiltMesh {
+        std::optional<MeshData> mesh;
         Diagnostics problems;
         std::vector<const PrimRecord *> slots;
-        std::optional<MeshData> mesh = BuildMesh(prim, subsets_[prim.path], problems, slots);
-        for (const Diagnostic &problem : problems) MapToSources(problem);
+    };
+
+    // Every mesh, built in parallel: BuildMesh reads only its prim and the prim's subsets. Everything that
+    // adds to the plan (meshes, objects, materials, diagnostics, and the instance resolver's cache) runs
+    // after, in prim order, so the plan is the one a serial build makes. A mesh with no drawn copy is built
+    // and then dropped, as deciding that first would move the resolver's diagnostics.
+    std::vector<BuiltMesh> BuildMeshes() const {
+        std::vector<BuiltMesh> built(table_.prims.size());
+        static const std::vector<const PrimRecord *> kNoSubsets;
+        WorkParallelForN(table_.prims.size(), [&](size_t begin, size_t end) {
+            for (size_t i = begin; i < end; ++i) {
+                const PrimRecord &prim = table_.prims[i];
+                if (prim.type != HdPrimTypeTokens->mesh || !prim.mesh) continue;
+                const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
+                const auto found = subsets_.find(prim.path);
+                BuiltMesh &result = built[i];
+                result.mesh = BuildMesh(prim, found == subsets_.end() ? kNoSubsets : found->second, result.problems,
+                                        result.slots);
+            }
+        });
+        return built;
+    }
+
+    static PrimTable TimedRead(const HdSceneIndexBaseRefPtr &scene) {
+        const ScopedFactTiming timing(FactTiming::PlanRead);
+        return ReadPrims(scene);
+    }
+
+    void AddMesh(const PrimRecord &prim, BuiltMesh &built) {
+        if (resolver_.FramesOf(prim).empty()) return;
+        std::optional<MeshData> &mesh = built.mesh;
+        const std::vector<const PrimRecord *> &slots = built.slots;
+        for (const Diagnostic &problem : built.problems) MapToSources(problem);
         if (!mesh) {
             AddObjects(prim, -1, HdPrimTypeTokens->mesh);
             return;
@@ -108,6 +147,7 @@ private:
     // each of the mesh's material slots takes.
     void AddObjects(const PrimRecord &prim, int mesh, const TfToken &placeholderType,
                     const std::vector<const PrimRecord *> *slots = nullptr) {
+        const ScopedFactTiming timing(FactTiming::PlanObjects);
         const std::vector<Frame> &frames = resolver_.FramesOf(prim);
         const ConstantPrimvars own = OwnConstants(prim);
         // An unimaged prim can lack a purpose; USD's default is Hydra's "geometry".
@@ -236,8 +276,36 @@ private:
                                const TfToken &purpose) {
         std::vector<int> materials;
         materials.reserve(slots.size());
-        for (const PrimRecord *slot : slots) materials.push_back(MaterialIndex(BoundMaterial(table_, *slot, frame, purpose)));
+        for (const PrimRecord *slot : slots) materials.push_back(MaterialIndex(SlotMaterial(*slot, frame, purpose)));
         return materials;
+    }
+
+    // The Hydra material a slot binds in one drawn copy.
+    SdfPath SlotMaterial(const PrimRecord &slot, const Frame &frame, const TfToken &purpose) {
+        // WORKAROUND for OpenUSD #3690 (copy_bindings.h): a copy a binding collection reaches takes
+        // UsdShade's own answer for its instance-proxy path.
+        const CopyBindings *copies = snapshot_.copyBindings.get();
+        if (copies && !frame.context.empty()) {
+            const std::optional<size_t> index = MaterialPurposeIndex(purpose);
+            const auto found = copies->materials.find(frame.Map(slot.path));
+            if (index && found != copies->materials.end()) return HydraMaterial(found->second[*index]);
+        }
+        return BoundMaterial(table_, slot, frame, purpose);
+    }
+
+    // The Hydra material prim that draws USD material `usdPath` (an instance proxy for a material inside an
+    // instance); `usdPath` itself if none does, which MaterialIndex reports as missing. Built on first use, so
+    // scenes without per-copy bindings plan exactly as before.
+    SdfPath HydraMaterial(const SdfPath &usdPath) {
+        if (usdPath.IsEmpty()) return usdPath;
+        if (!materialsByUsdPath_) {
+            materialsByUsdPath_.emplace();
+            for (const PrimRecord &prim : table_.prims)
+                if (prim.material)
+                    for (const Frame &frame : resolver_.FramesOf(prim)) materialsByUsdPath_->emplace(frame.Map(prim.path), prim.path);
+        }
+        const auto found = materialsByUsdPath_->find(usdPath);
+        return found != materialsByUsdPath_->end() ? found->second : usdPath;
     }
 
     int MaterialIndex(const SdfPath &path) {
@@ -286,6 +354,7 @@ private:
     InstanceResolver resolver_;
     std::unordered_map<SdfPath, std::vector<const PrimRecord *>, SdfPath::Hash> subsets_;  // by mesh path
     std::unordered_map<SdfPath, int, SdfPath::Hash> materials_;
+    std::optional<std::unordered_map<SdfPath, SdfPath, SdfPath::Hash>> materialsByUsdPath_;  // see HydraMaterial
     std::set<std::pair<SdfPath, TfToken>> unconverted_;  // constant primvars already warned about, by source
 };
 

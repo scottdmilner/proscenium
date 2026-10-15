@@ -1,6 +1,7 @@
 // Feasibility probe only: consume Blender's USD, never link a second USD build.
 #include "bridge.h"
 #include "diagnostics.h"
+#include "fact_timings.h"
 #include "loaded_images.h"
 #include "python_views.h"
 
@@ -47,6 +48,13 @@ SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental) {
     return SnapshotView{snapshot};
 }
 
+// Phase E: the source-info filter's USD reads since the last call, as {kind: (calls, seconds)}.
+bp::dict TakeFilterTimings() {
+    bp::dict result;
+    for (const auto &[name, calls, seconds] : TakeFactTimings()) result[name] = bp::make_tuple(calls, seconds);
+    return result;
+}
+
 template <class T>
 bp::list ToList(const std::vector<T> &values) {
     bp::list result;
@@ -64,6 +72,7 @@ PXR_BOOST_PYTHON_MODULE(_hydra_bridge) {
         .def("capture", &Capture, (bp::arg("time") = bp::object(), bp::arg("incremental") = false))
         .def("release", &Bridge::Release);
     WrapViews();
+    bp::def("take_filter_timings", &TakeFilterTimings);
     bp::def("loaded_usd_libraries", +[]() { return ToList(LoadedUsdLibraries()); });
     bp::def("usd_providing_library", &UsdProvidingLibrary);
     bp::scope().attr("usd_version") = bp::make_tuple(PXR_MAJOR_VERSION, PXR_MINOR_VERSION, PXR_PATCH_VERSION);

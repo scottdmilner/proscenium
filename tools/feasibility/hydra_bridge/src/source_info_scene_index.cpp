@@ -1,5 +1,7 @@
 #include "source_info_scene_index.h"
 
+#include "fact_timings.h"
+
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/geomSubsetSchema.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
@@ -66,6 +68,16 @@ void SourceInfoSceneIndex::Detach() {
     for (auto &[path, cached] : cache_) *cached.generation = kForgotten;
     cache_.clear();
     stage_ = nullptr;
+}
+
+std::shared_ptr<const CopyBindings> SourceInfoSceneIndex::CurrentCopyBindings() {
+    const uint64_t generation = bindingsGeneration_.load();
+    if (!copyBindings_ || copyBindingsAt_ != generation) {
+        const ScopedFactTiming timing(FactTiming::CopyBindings);
+        copyBindings_ = std::make_shared<const CopyBindings>(ComputeCopyBindings(stage_));
+        copyBindingsAt_ = generation;
+    }
+    return copyBindings_;
 }
 
 void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
@@ -144,6 +156,7 @@ void SourceInfoSceneIndex::ApplyPendingUpdates() {
         // strength rules reach across instances, so every prim's bindings are re-resolved. Rare edits; a
         // per-collection dependency map would narrow it.
         if (bindingsChanged) {
+            ++bindingsGeneration_;
             for (const auto &[path, cached] : cache_) dirtied.emplace_back(path, facts);
             InvalidateAll();
         }
@@ -164,6 +177,7 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, con
     HdContainerDataSourceHandle container = LazyContainer::New(
         [self, prim, input, imaged, hydraType, generation]() -> HdContainerDataSourceHandle {
             if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
+            const ScopedFactTiming timing(FactTiming::Build);
             HdContainerDataSourceHandle info = SourceInfo(prim, *self->globals_);
             // For a prim UsdImaging has no data for, the data it gives any prim without an adapter.
             HdContainerDataSourceHandle supplied;
@@ -219,6 +233,7 @@ void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase &, const HdSceneIn
         std::lock_guard<std::mutex> lock(mutex_);
         // Hydra lists every added prim, so an exact erase suffices; removals list only subtree roots.
         InvalidateAll();
+        ++bindingsGeneration_;
         for (const auto &entry : entries) {
             if (auto found = cache_.find(entry.primPath); found != cache_.end()) {
                 *found->second.generation = kForgotten;
@@ -242,6 +257,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase &,
             Forget(entry.primPath);
         }
         InvalidateAll();
+        ++bindingsGeneration_;
     }
     _SendPrimsRemoved(entries);
 }

@@ -1,7 +1,8 @@
 # Compiled Hydra bridge (M1b). Copy the uploaded results into docs/feasibility/runtime-record.md.
 #
 # Each platform builds against the headers Blender v5.2.2 pins, audits the module's
-# linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run.py).
+# linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run.py),
+# then the Phase E measurement harness on one small scene (measure/run.py).
 name: Hydra bridge
 
 on:
@@ -35,6 +36,9 @@ jobs:
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Checks in the wheel and the binary
         run: uv run python tools/feasibility/hydra_bridge/run.py
+      # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
+      - name: Measurement harness, one small scene
+        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,6 +97,9 @@ jobs:
           path: build/hydra-bridge/
       - name: Checks in the wheel and the binary
         run: uv run python tools/feasibility/hydra_bridge/run.py
+      # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
+      - name: Measurement harness, one small scene
+        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,6 +130,9 @@ jobs:
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Checks in the wheel and the binary
         run: uv run python tools/feasibility/hydra_bridge/run.py
+      # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
+      - name: Measurement harness, one small scene
+        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

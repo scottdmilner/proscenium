@@ -70,11 +70,13 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `instancing.h/.cpp` | Reverse mapping from instancers to USD sources, as `HdxPrimOriginInfo` does it: walks `instancedBy` upward and folds in `instanceLocations`, instance transforms, the instancer's visibility mask, the instance roots' own constant primvars and bindings, and purpose-visibility opinions at each level. `BoundMaterial` combines the filter's UsdShade bindings with what's bound at or above each instance root (Hydra's flattened bindings are unusable inside instances). Switch source identity to `HdxPrimOriginInfo` once Blender's USD has its `cdata()` fix (plan log) |
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
-| `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan` |
+| `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
 | `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
 | `loaded_images.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
+| `copy_bindings.h/.cpp` | **Workaround for OpenUSD #3690:** UsdShade's binding per drawn copy, on its instance-proxy path, for the instances a binding collection reaches (Hydra and per-prototype resolution miss collections naming paths inside instances). Cached in the source-info filter until a binding or collection edit; the planner uses it for those copies |
+| `fact_timings.h/.cpp` | Phase E only: time the source-info filter spends building facts and in each USD query (bindings, strong purposes, family verdict, dropped attributes, computed extents), summed over threads, and how planning's time splits (reading, building each mesh and its parts, objects) |
 
 The rest of `hydra_bridge/` builds, runs and checks the module:
 
@@ -90,6 +92,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags) |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
+| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters |
 | `../cases/<case>.py`, `.usda` | One check module and scene per case: `subsets`, `implicit`, `instances`, `edits`, `untranslated`, `malformed`, `bindings`, `purposes`, `primvars`, `animation` (Phase D: what a time change dirties, and values at each time), and `large_arrays` (its scene is generated) |
 
 ## Python API
@@ -106,6 +109,8 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 bridge.release()  # lets a caller-released stage expire; capture() then raises
+snapshot.copy_bindings  # workaround for OpenUSD #3690: {"instances": [...], "materials": {copy: {purpose: material}}}
+_hydra_bridge.take_filter_timings()  # Phase E: {kind: (calls, seconds)} of the filter's USD reads since the last call
 ```
 
 A capture evaluates one time code. At default time it reads authored default values, so animated values need a numeric time. Capturing several frames, and caching them, is a layer above capture ([feasibility record](../../../../docs/feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d)).

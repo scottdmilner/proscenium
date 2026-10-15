@@ -1,5 +1,7 @@
 #include "mesh_builder.h"
 
+#include "fact_timings.h"
+
 #include "validate.h"
 
 #include <pxr/base/gf/half.h>
@@ -15,6 +17,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <string>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -231,9 +234,13 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
     // UsdImaging reads a points attribute of another type as an empty array.
     if (positions->empty() && !mesh.topology.GetFaceVertexIndices().empty())
         return fail("No points (a points attribute that isn't point3f reads as empty)");
+    std::optional<ScopedFactTiming> validateTiming(std::in_place, FactTiming::MeshValidate);
     if (std::string problem = ValidateTopology(mesh.topology, positions->size()); !problem.empty()) return fail(problem);
+    validateTiming.reset();
     // Valid USD that Blender's Mesh.validate() would repair by deleting faces: the same repair, warned.
+    std::optional<ScopedFactTiming> deletedTiming(std::in_place, FactTiming::MeshDeletedFaces);
     const RejectedFaces rejected = FacesBlenderDeletes(mesh.topology);
+    deletedTiming.reset();
     if (rejected.repeatedPoint + rejected.duplicate > 0)
         problems.push_back({Severity::Warning, "faces-left-out", prim.path,
                             std::to_string(rejected.repeatedPoint) + " face(s) using a point more than once and " +
@@ -241,6 +248,7 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
                                 " face(s) on an earlier face's points are left out, as Blender's Mesh.validate() "
                                 "deletes them (" + rejected.example + ")"});
 
+    std::optional<ScopedFactTiming> layoutTiming(std::in_place, FactTiming::MeshLayout);
     Layout layout = MakeLayout(mesh.topology, positions->size(), rejected.drop);
     MeshData data;
     data.name = prim.path.GetName();
@@ -253,7 +261,12 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
     data.doubleSided = prim.sourceDoubleSided.value_or(mesh.doubleSided);
     if (!mesh.topology.GetHoleIndices().empty())
         problems.push_back({Severity::Warning, "holes-ignored", prim.path, "Hole faces are kept as ordinary faces"});
-    AssignSlots(prim, subsets, layout, data, problems, slots);
+    layoutTiming.reset();
+    {
+        const ScopedFactTiming timing(FactTiming::MeshSlots);
+        AssignSlots(prim, subsets, layout, data, problems, slots);
+    }
+    const ScopedFactTiming primvarTiming(FactTiming::MeshPrimvars);
 
     static const TfToken kVelocities("velocities"), kAccelerations("accelerations");
     const bool subdivided = data.subdivisionScheme != PxOsdOpenSubdivTokens->none;

@@ -24,6 +24,9 @@ struct SnapshotView {
     bp::dict DirtyLocators() const;                  // path -> locator strings
     bp::list Renames() const;                        // (old path, new path) tuples
     bp::list Diagnostics() const;
+    // WORKAROUND for OpenUSD #3690: {"instances": [paths], "materials": {copy path: {purpose: material}}},
+    // purposes "allPurpose", "preview", "full"; a material is "" when nothing binds.
+    bp::dict CopyBindings() const;
 };
 
 struct PlanView {

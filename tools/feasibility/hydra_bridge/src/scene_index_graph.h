@@ -43,6 +43,8 @@ public:
     void Advance(pxr::UsdTimeCode time);
     const pxr::HdSceneIndexBaseRefPtr &Terminal() const { return terminal_; }
     std::vector<Event> TakeEvents() { return observer_.Take(); }
+    // WORKAROUND for OpenUSD #3690 (copy_bindings.h). Call between advances, never alongside reads.
+    std::shared_ptr<const CopyBindings> CopyBindingsNow() { return sourceInfo_->CurrentCopyBindings(); }
 
 private:
     pxr::UsdImagingSceneIndices indices_;
