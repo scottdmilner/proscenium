@@ -81,6 +81,12 @@ def heap_in_use() -> int | None:
             ctypes.CDLL(None).malloc_zone_statistics(None, ctypes.byref(stats))  # every zone
             return stats.size_in_use
         if sys.platform.startswith("linux"):
+            # Blender's release builds replace malloc with TBB's proxy on Linux (WITH_TBB_MALLOC_PROXY in
+            # build_files/cmake/config/blender_release.cmake), which glibc's counters don't see: they read 0.
+            # The bpy wheel turns the proxy off (bpy_module.cmake), so glibc's malloc is the allocator there.
+            with open("/proc/self/maps", encoding="utf-8") as maps:
+                if "libtbbmalloc_proxy" in maps.read():
+                    return None
             libc = ctypes.CDLL(None)
             libc.mallinfo2.restype = _Mallinfo2  # glibc 2.33 and later
             info = libc.mallinfo2()

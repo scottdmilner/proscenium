@@ -567,7 +567,7 @@ The measurements report what was run; they are not extrapolated to Phase 2 budge
 
 Branch `m01b-phase-e`, off `m01b-phase-d`.
 
-- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
+- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. All checks and the harness pass on all three platforms ([run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604), commit `b0bb4ce`): 131 correctness checks in both hosts, no compiler warnings. A first run failed on Windows in the harness (it loaded the C library before checking the platform); fixed in `b0bb4ce`. Run 38676508604 then showed Linux's live heap reading 0 throughout, because Blender's binary replaces malloc with TBB's proxy there; the harness now reports no live heap in the binary on Linux, as on Windows. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
 - **Harness** (`hydra_bridge/measure/`):
   - **`run.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
   - **`child.py`** marks each stage with CPU time, the lifetime peak and the live heap.

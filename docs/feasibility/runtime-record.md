@@ -461,6 +461,8 @@ uv run python tools/feasibility/hydra_bridge/measure/run.py   # stress scenes an
 
 The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge/measure/summary.md` (not committed).
 
+**CI.** The harness runs on one small scene (instances-100, every mode) on macOS, Windows and Linux; all runs completed in [run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604) (commit `b0bb4ce`). CI's numbers aren't recorded. In the same run, all 131 correctness checks pass in both hosts on all three platforms (bindings 13, instances 19), with the loading (42; 43 on Windows) and prototype (20) checks, and no compiler warnings.
+
 **Method:**
 - **Runs.** Each run is a fresh binary process with factory startup and an empty scene. There are three runs per scene and mode, alternating, with the OS file cache warm. Figures below are medians, and the ranges are in the summary. Apart from scenes under 0.1 s, the widest range came from a sequence's first run: 1.56 s against a 0.41 s median, for the default importer on mesh-2048.
 - **Run-to-run variation.** Between runs of the whole set, the matched importer took 3.23 s, 3.45 s and 3.24 s on ALab, so ratios are taken within one run.
@@ -579,7 +581,7 @@ They held only after planning went parallel: with serial planning, the Hydra sta
 - Cold-cache opens; the wheel host.
 - Frame changes, and the filter's rebuilds on a time change (left for M4).
 
-The memory counters for Windows (working set, peak working set) and Linux (resident set, `mallinfo2`) are implemented but haven't been checked against another tool. Windows has no live-heap reading: its C runtime has no equivalent call, so those columns are empty there.
+The memory counters for Windows (working set, peak working set) and Linux (resident set) are implemented but haven't been checked against another tool. **The live heap is read on macOS only in the Blender binary.** Blender's release builds replace malloc with TBB's proxy on Linux and Windows x64 (`WITH_TBB_MALLOC_PROXY`, `build_files/cmake/config/blender_release.cmake`), which glibc's `mallinfo2` doesn't see: it read 0 MB throughout on CI. The harness therefore reports no live heap there, and none on Windows, whose C runtime has no such call. The bpy wheel turns the proxy off (`bpy_module.cmake`), so `mallinfo2` would apply in a wheel run on Linux (not measured).
 
 #### Collection bindings inside instances (workaround for OpenUSD #3690)
 
