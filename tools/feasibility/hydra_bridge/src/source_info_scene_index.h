@@ -1,7 +1,8 @@
 // Source facts the UsdImaging chain drops, added under one container (`prosceniumSource`) so they survive
 // instance propagation and reach the snapshot like any other schema:
 // - a GeomSubset's familyName (Hydra keeps every family's subsets but not which family each is in);
-// - authored guide, proxy, and render visibility (UsdGeomVisibilityAPI is not imaged);
+// - authored guide, proxy, and render visibility (UsdGeomVisibilityAPI is not imaged), as UsdImaging
+//   attribute data sources, so animated opinions read at the graph's time and are dirtied when it changes;
 // - a gprim's doubleSided (the implicit-surface filter loses a Cube's authored true);
 // - USD's verdict on a mesh's materialBind family (UsdGeomSubset::ValidateFamily);
 // - an extent computed by USD (ComputeExtentFromPlugins) for a point-based prim Hydra gives none, such as

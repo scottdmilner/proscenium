@@ -97,6 +97,13 @@ def bound_material(prim: Usd.Prim, material_purpose: str = "") -> str | None:
     return str(material.GetPath()) if material else None
 
 
+def binds_without_api(prim: Usd.Prim) -> bool:
+    """Whether the prim authors a material:binding relationship without MaterialBindingAPI applied."""
+    return not prim.HasAPI(UsdShade.MaterialBindingAPI) and any(  # ty: ignore[no-matching-overload] - HasAPI also takes a schema class
+        rel.GetName().startswith("material:binding") and rel.HasAuthoredTargets() for rel in prim.GetRelationships()
+    )
+
+
 def face_materials(stage: Usd.Stage, source: str, time: float, material_purpose: str = "") -> list[str | None]:
     """Each face's bound material: its materialBind subset's, else the mesh's, as UsdShade assigns them."""
     mesh = UsdGeom.Mesh(stage.GetPrimAtPath(source))

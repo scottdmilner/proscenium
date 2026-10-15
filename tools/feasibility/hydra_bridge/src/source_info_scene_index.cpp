@@ -1,6 +1,7 @@
 #include "source_info_scene_index.h"
 
 #include <pxr/imaging/hd/extentSchema.h>
+#include <pxr/imaging/hd/geomSubsetSchema.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
@@ -73,7 +74,8 @@ void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
     HdSceneIndexObserver::DirtiedPrimEntries dirtied;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        // Only the computed extents read the time; UsdImaging's data sources read it from Globals.
+        // UsdImaging's data sources (supplied prims, purpose visibility) read the time from Globals and flag
+        // themselves; computed extents are retained values, so their prims are rebuilt.
         for (const auto &[path, locators] : timeVarying_) {
             dirtied.emplace_back(path, locators);
             Invalidate(path);
@@ -162,7 +164,7 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, con
     HdContainerDataSourceHandle container = LazyContainer::New(
         [self, prim, input, imaged, hydraType, generation]() -> HdContainerDataSourceHandle {
             if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
-            HdContainerDataSourceHandle info = SourceInfo(prim);
+            HdContainerDataSourceHandle info = SourceInfo(prim, *self->globals_);
             // For a prim UsdImaging has no data for, the data it gives any prim without an adapter.
             HdContainerDataSourceHandle supplied;
             if (!imaged) {
@@ -174,6 +176,12 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, con
             HdContainerDataSourceHandle extent = hasExtent ? nullptr : ComputedExtent(prim, hydraType, self->time_);
             if (extent && UsdGeomPointBased(prim).GetPointsAttr().ValueMightBeTimeVarying())
                 self->globals_->FlagAsTimeVarying(prim.GetPath(), HdExtentSchema::GetDefaultLocator());
+            // UsdImaging's subset data source reads animated indices at the current time but never flags them,
+            // so a time change wouldn't dirty them and an incremental capture would keep stale subsets (Phase D,
+            // measured).
+            if (UsdGeomSubset subset{prim}; subset && subset.GetIndicesAttr().ValueMightBeTimeVarying())
+                self->globals_->FlagAsTimeVarying(
+                    prim.GetPath(), HdDataSourceLocator(HdGeomSubsetSchemaTokens->geomSubset, HdGeomSubsetSchemaTokens->indices));
             HdContainerDataSourceHandle added =
                 info ? HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info) : HdContainerDataSourceHandle();
             for (const HdContainerDataSourceHandle &more : {supplied, extent})

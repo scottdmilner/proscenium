@@ -9,6 +9,7 @@
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/relationship.h>
 #include <pxr/usd/usd/timeCode.h>
+#include <pxr/usdImaging/usdImaging/dataSourceStageGlobals.h>
 
 #include <cstdint>
 #include <functional>
@@ -28,6 +29,9 @@ struct SourceInfoTokens {
     static const pxr::TfToken &StrongPurposes();  // token array: bound strongerThanDescendants; "" is allPurpose
     // token array, on a gprim or point instancer: authored attributes UsdImaging drops (DroppedAttribute)
     static const pxr::TfToken &DroppedAttributes();
+    // token array, on an imageable prim or subset without MaterialBindingAPI: its authored material:binding
+    // relationships, which UsdShade still honors (with a warning) for compatibility
+    static const pxr::TfToken &BindingsWithoutApi();
     // The purpose-visibility fields are named by the purpose they control: guide, proxy, render.
 };
 
@@ -66,8 +70,10 @@ bool SourceFact(const pxr::UsdPrim &prim, const pxr::TfToken &name);
 // Its value reaches neither the snapshot nor Blender, so the planner warns about it.
 bool DroppedAttribute(const pxr::UsdPrim &prim, const pxr::TfToken &name);
 
-// The source facts of `prim` (the contents of the prosceniumSource container); null for none.
-pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim);
+// The source facts of `prim` (the contents of the prosceniumSource container); null for none. Facts that
+// can be animated (authored purpose visibility) are UsdImaging attribute data sources on `globals`: they
+// read at its time and are flagged time-varying, so a time change dirties them.
+pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim, const pxr::UsdImagingDataSourceStageGlobals &globals);
 
 // USD's computed extent for a point-based prim Hydra gives no extent and doesn't draw as a mesh, as an extent
 // schema container; null otherwise.

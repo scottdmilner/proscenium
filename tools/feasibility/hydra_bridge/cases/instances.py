@@ -6,7 +6,7 @@ from collections import Counter
 from typing import Any
 
 import numpy
-from pxr import UsdShade
+from pxr import UsdGeom, UsdShade
 
 from . import oracle
 from .harness import Case, normalized
@@ -32,6 +32,14 @@ LEAF_B_BINDINGS = {
     "/World/Grove/BranchP/LeafB/Tuft/Picked": "/World/Grove/Looks/Pine",  # strong root two prototypes up
     "/World/Grove/BranchQ/LeafB/Stem": "/World/Grove/BranchQ/Looks/Moss",  # third level, inner root's
 }
+# Blade's Vein subset binds Lichen on faces 1 and 3; its other faces keep Blade's own Bark. A strong instance
+# root beats both. Guards that the subset decides per-face materials in some copies and not in others.
+BLADE_FACES = {
+    "/World/BranchA/LeafA/Blade": ["/World/BranchA/LeafA/Looks/Bark", "/World/BranchA/LeafA/Looks/Lichen"] * 2,
+    "/World/BranchE/LeafB/Blade": ["/World/BranchE/Looks/Moss"] * 4,
+}
+# Blender's domain for each primvar interpolation the leaf meshes use.
+DOMAINS = {"vertex": "POINT", "varying": "POINT", "uniform": "FACE", "faceVarying": "CORNER"}
 
 
 def run(case: Case) -> None:
@@ -45,12 +53,14 @@ def run(case: Case) -> None:
     def usd_binding(source: str) -> str | None:
         return oracle.face_materials(stage, source, TIME)[0]
 
+    blade_faces = {s: oracle.face_materials(stage, s, TIME) for s in BLADE_FACES}
     case.check(
         "USD resolves the scene as it is built",
         len(expected) == DRAWN
         and {s: usd_binding(s) for s in LEAF_B_BINDINGS} == LEAF_B_BINDINGS
+        and blade_faces == BLADE_FACES
         and all(not oracle.visible(stage, s, TIME) for s in expected if any(g in s for g in HIDING_GROUPS)),
-        (len(expected), {s: usd_binding(s) for s in LEAF_B_BINDINGS}),
+        (len(expected), {s: usd_binding(s) for s in LEAF_B_BINDINGS}, blade_faces),
     )
     case.check("one object per source", len(by_source) == len(objects), Counter(o["source"] for o in objects))
     case.check(
@@ -120,6 +130,14 @@ def run(case: Case) -> None:
     bound = {m for s in sources for m in oracle.face_materials(stage, s, TIME) if m is not None}
     material_sources = [path for material in plan.materials for path in material["sources"]]
     not_material = [p for p in material_sources if not stage.GetPrimAtPath(p).IsA(UsdShade.Material)]  # ty: ignore[no-matching-overload]
+    warned = {d["source"] for d in plan.diagnostics if d["code"] == "binding-without-api"}
+    usd = {s for s in sources if oracle.binds_without_api(stage.GetPrimAtPath(s))}
+    case.check(
+        "every copy of a prototype prim binding without MaterialBindingAPI gets a binding-without-api warning on "
+        "its own source, and no other copy does",
+        warned == usd and len(usd) == 40 and all(s.endswith("/NoApi") for s in usd),
+        (len(warned), len(usd), sorted(warned ^ usd)[:4]),
+    )
     case.check(
         "instanced materials list each USD source once, every source is a Material, and every bound material is one",
         len(material_sources) == len(set(material_sources)) and not not_material and bound <= set(material_sources),
@@ -161,8 +179,56 @@ def run(case: Case) -> None:
         not wrong,
         dict(list(wrong.items())[:6]),
     )
+    check_geometry(case, stage, created, sources)
     # Last, so a failure here doesn't hide the checks above.
     check_primvars(SCALAR_PRIMVARS, "named scalar (non-array) primvars on an instance root (string, float)")
+
+
+def check_geometry(case: Case, stage: Any, created: dict[str, Any], sources: list[str]) -> None:
+    """Each copy's Blender mesh against its USD prototype mesh, through the instance proxy."""
+    wrong = {}
+    for source in sources:
+        mesh: Any = created[source].data
+        usd = UsdGeom.Mesh(stage.GetPrimAtPath(source))
+        layout = oracle.mesh_layout(usd, TIME)
+        points = [oracle.components(p) for p in usd.GetPointsAttr().Get(TIME)]
+        if not oracle.all_close([oracle.components(v.co) for v in mesh.vertices], points):
+            wrong[f"{source} points"] = len(mesh.vertices)
+        if [loop.vertex_index for loop in mesh.loops] != layout["corner_verts"]:
+            wrong[f"{source} corners"] = ([loop.vertex_index for loop in mesh.loops], layout["corner_verts"])
+        for primvar in UsdGeom.PrimvarsAPI(usd).GetAuthoredPrimvars():
+            name = primvar.GetPrimvarName()
+            interpolation = primvar.GetInterpolation()
+            flattened = [oracle.components(v) for v in primvar.ComputeFlattened(TIME)]
+            if name == "normals":
+                # Blender's custom normals, per corner here (faceVarying).
+                expected = [flattened[c] for c in layout["source_corner"]]
+                found = [oracle.components(n.vector) for n in mesh.corner_normals]
+                if not mesh.has_custom_normals or not oracle.all_close(found, expected, 1e-5):
+                    wrong[f"{source}.normals"] = (mesh.has_custom_normals, found[:4], expected[:4])
+                continue
+            if interpolation == UsdGeom.Tokens.constant:
+                continue  # object-level primvars, checked above
+            texcoord = primvar.GetTypeName().role == "TextureCoordinate"
+            expected = oracle.on_domain(flattened, interpolation, texcoord, layout)
+            if texcoord:
+                layer = mesh.uv_layers.get(name)
+                values = None if layer is None else [oracle.components(d.uv) for d in layer.data]
+            else:
+                attribute = mesh.attributes.get(name)
+                values = (
+                    None
+                    if attribute is None or attribute.domain != DOMAINS[interpolation]
+                    else [oracle.element_value(d) for d in attribute.data]
+                )
+            if values is None or not oracle.all_close(values, expected):
+                wrong[f"{source}.{name}"] = (values, expected)
+    case.check(
+        "in Blender, every copy's mesh matches its USD prototype: points, corners (a left-handed mesh reversed), "
+        "indexed face-varying UVs, face-varying custom normals, and vertex and uniform primvars on their domains",
+        not wrong,
+        dict(list(wrong.items())[:6]),
+    )
 
 
 def check_hydra_gaps(case: Case, snapshot: Any) -> None:

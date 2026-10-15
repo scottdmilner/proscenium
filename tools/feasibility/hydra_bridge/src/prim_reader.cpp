@@ -130,6 +130,7 @@ void ReadSourceInfo(const HdContainerDataSourceHandle &source, PrimRecord &recor
     };
     tokens(SourceInfoTokens::StrongPurposes(), record.strongBindingPurposes);
     tokens(SourceInfoTokens::DroppedAttributes(), record.droppedAttributes);
+    tokens(SourceInfoTokens::BindingsWithoutApi(), record.bindingsWithoutApi);
     if (auto bindings = HdContainerDataSource::Cast(get(SourceInfoTokens::Bindings()))) {
         static const TfToken kAllPurpose("allPurpose");
         for (const TfToken &purpose : bindings->GetNames())

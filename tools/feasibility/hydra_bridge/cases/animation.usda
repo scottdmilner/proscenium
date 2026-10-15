@@ -1,0 +1,384 @@
+#usda 1.0
+(
+    startTimeCode = 1
+    endTimeCode = 3
+    upAxis = "Z"
+)
+# Purpose: M1b Phase D, "time-sampled data detection". Each prim varies in one kind of value, or in none,
+# so which values vary over [1, 3] follows from how the scene is built. Samples are at 1 and 3 unless
+# stated; held values (tokens, integers, topology) also sample at 2, so they change inside the interval.
+# - Points: Wave's points; Steady's points have two identical samples (time-varying to USD, unchanged in
+#   value); Single's have one sample (not time-varying); Still has none.
+# - Transforms: Rig's translation is animated, and Arm (an Xform) and Hand (a mesh) below it are static, so
+#   only their flattened transforms vary, one and two levels down. Spin's rotation is animated, and Turned
+#   is a static instance of Leaf under it, so the leaf's copy varies through its instance root's ancestor.
+# - Visibility: Blinker's own, held; Shade (an Xform) is invisible at 2 only, so Shaded below it and Hid, an
+#   instance of Leaf, vary through an ancestor.
+# - Topology: Morph has one triangle at 1 and 2, two from 3 (faceVertexCounts and faceVertexIndices).
+# - Primvars: Tinted's constant displayColor (interpolated) and its constant int primvar level (held,
+#   becoming an object property); Remapped's indexed vertex primvar weight, whose indices alone are
+#   animated, so its values change though its value array doesn't; Tagged's uniform int faceId (held).
+# - Subsets: Split's materialBind subset First lists face 0 at 1, then face 1 from 2 (Red), and Second the
+#   other face (Blue), so each face's material changes at 2. Both also author time 1's indices as their
+#   default: USD's family verdict checks the default as well as every sample, and without one rejects the
+#   partition at default time.
+# - Purpose visibility: Aid is a guide whose guideVisibility is visible at 1 and 3 and invisible at 2, an
+#   opinion only the source-info filter supplies, so it must read the opinion at the capture time.
+# - Unimaged: Comb is HermiteCurves (not imaged by Hydra) with an animated translation, supplied by the filter.
+# - Computed extent: Strands is BasisCurves with animated points and no authored extent, so its placeholder
+#   bounds come from USD's computed extent at each time.
+# - Skinning: Skinned binds Body to Skel, whose Anim moves the Tip joint +2 in x from 1 to 3; Body's tip
+#   point follows it, and its two base points stay put. Its authored points are static.
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Blue"
+        {
+            token outputs:surface.connect = </World/Looks/Blue/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 0, 1)
+                token outputs:surface
+            }
+        }
+    }
+
+    def Mesh "Wave"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points.timeSamples = {
+            1: [(0, 0, 0), (1, 0, 0), (0, 1, 0)],
+            3: [(0, 0, 2), (1, 0, 2), (0, 1, 2)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "Steady"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points.timeSamples = {
+            1: [(2, 0, 0), (3, 0, 0), (2, 1, 0)],
+            3: [(2, 0, 0), (3, 0, 0), (2, 1, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "Single"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points.timeSamples = {
+            2: [(4, 0, 0), (5, 0, 0), (4, 1, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "Still"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(6, 0, 0), (7, 0, 0), (6, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Xform "Rig"
+    {
+        double3 xformOp:translate.timeSamples = {
+            1: (0, 2, 0),
+            3: (4, 2, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Xform "Arm"
+        {
+            double3 xformOp:translate = (0, 0, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def Mesh "Hand"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
+    def Xform "Spin"
+    {
+        float xformOp:rotateZ.timeSamples = {
+            1: 0,
+            3: 90,
+        }
+        uniform token[] xformOpOrder = ["xformOp:rotateZ"]
+
+        def Xform "Turned" (
+            instanceable = true
+            prepend references = </Assets/Leaf>
+        )
+        {
+            double3 xformOp:translate = (0, 4, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Mesh "Blinker"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 6, 0), (1, 6, 0), (0, 7, 0)]
+        uniform token subdivisionScheme = "none"
+        token visibility.timeSamples = {
+            1: "inherited",
+            2: "invisible",
+            3: "inherited",
+        }
+    }
+
+    def Xform "Shade"
+    {
+        token visibility.timeSamples = {
+            1: "inherited",
+            2: "invisible",
+            3: "inherited",
+        }
+
+        def Mesh "Shaded"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(2, 6, 0), (3, 6, 0), (2, 7, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Xform "Hid" (
+            instanceable = true
+            prepend references = </Assets/Leaf>
+        )
+        {
+            double3 xformOp:translate = (4, 6, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Mesh "Morph"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            1: [3],
+            2: [3],
+            3: [3, 3],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2],
+            2: [0, 1, 2],
+            3: [0, 1, 2, 1, 3, 2],
+        }
+        point3f[] points = [(0, 8, 0), (1, 8, 0), (0, 9, 0), (1, 9, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "Tinted"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(2, 8, 0), (3, 8, 0), (2, 9, 0)]
+        uniform token subdivisionScheme = "none"
+        color3f[] primvars:displayColor.timeSamples = {
+            1: [(1, 0, 0)],
+            3: [(0, 0, 1)],
+        }
+        int primvars:level.timeSamples = {
+            1: 1,
+            2: 2,
+            3: 3,
+        }
+    }
+
+    def Mesh "Remapped"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(4, 8, 0), (5, 8, 0), (4, 9, 0)]
+        uniform token subdivisionScheme = "none"
+        float[] primvars:weight = [0.25, 0.75] (
+            interpolation = "vertex"
+        )
+        int[] primvars:weight:indices.timeSamples = {
+            1: [0, 0, 1],
+            2: [1, 1, 0],
+            3: [1, 1, 0],
+        }
+    }
+
+    def Mesh "Tagged"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(6, 8, 0), (7, 8, 0), (6, 9, 0)]
+        uniform token subdivisionScheme = "none"
+        int[] primvars:faceId (
+            interpolation = "uniform"
+        )
+        int[] primvars:faceId.timeSamples = {
+            1: [10],
+            2: [20],
+            3: [30],
+        }
+    }
+
+    def Mesh "Split" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3, 3]
+        int[] faceVertexIndices = [0, 1, 2, 1, 3, 2]
+        point3f[] points = [(0, 10, 0), (1, 10, 0), (0, 11, 0), (1, 11, 0)]
+        uniform token subdivisionScheme = "none"
+        uniform token subsetFamily:materialBind:familyType = "partition"
+
+        def GeomSubset "First" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [0]
+            int[] indices.timeSamples = {
+                1: [0],
+                2: [1],
+                3: [1],
+            }
+            rel material:binding = </World/Looks/Red>
+        }
+
+        def GeomSubset "Second" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            uniform token elementType = "face"
+            uniform token familyName = "materialBind"
+            int[] indices = [1]
+            int[] indices.timeSamples = {
+                1: [1],
+                2: [0],
+                3: [0],
+            }
+            rel material:binding = </World/Looks/Blue>
+        }
+    }
+
+    def Mesh "Aid" (
+        prepend apiSchemas = ["VisibilityAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(2, 10, 0), (3, 10, 0), (2, 11, 0)]
+        uniform token purpose = "guide"
+        uniform token subdivisionScheme = "none"
+        token guideVisibility.timeSamples = {
+            1: "visible",
+            2: "invisible",
+            3: "visible",
+        }
+    }
+
+    def HermiteCurves "Comb"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate.timeSamples = {
+            1: (4, 10, 0),
+            3: (8, 10, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def BasisCurves "Strands"
+    {
+        uniform token type = "linear"
+        int[] curveVertexCounts = [2]
+        point3f[] points.timeSamples = {
+            1: [(0, 12, 0), (1, 12, 0)],
+            3: [(0, 12, 0), (3, 12, 2)],
+        }
+    }
+
+    def SkelRoot "Skinned"
+    {
+        def Skeleton "Skel" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            uniform token[] joints = ["Root", "Root/Tip"]
+            uniform matrix4d[] bindTransforms = [((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)), ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 1, 1))]
+            uniform matrix4d[] restTransforms = [((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)), ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 1, 1))]
+            rel skel:animationSource = </World/Skinned/Skel/Anim>
+
+            def SkelAnimation "Anim"
+            {
+                uniform token[] joints = ["Root", "Root/Tip"]
+                float3[] translations.timeSamples = {
+                    1: [(0, 0, 0), (0, 0, 1)],
+                    3: [(0, 0, 0), (2, 0, 1)],
+                }
+                quatf[] rotations = [(1, 0, 0, 0), (1, 0, 0, 0)]
+                half3[] scales = [(1, 1, 1), (1, 1, 1)]
+            }
+        }
+
+        def Mesh "Body" (
+            prepend apiSchemas = ["SkelBindingAPI"]
+        )
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 14, 0), (1, 14, 0), (0, 14, 1)]
+            uniform token subdivisionScheme = "none"
+            int[] primvars:skel:jointIndices = [0, 0, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            float[] primvars:skel:jointWeights = [1, 1, 1] (
+                elementSize = 1
+                interpolation = "vertex"
+            )
+            matrix4d primvars:skel:geomBindTransform = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+            rel skel:skeleton = </World/Skinned/Skel>
+        }
+    }
+}
+
+# Abstract, so only its references are drawn.
+class Xform "Assets"
+{
+    def Xform "Leaf"
+    {
+        def Mesh "Blade"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+}

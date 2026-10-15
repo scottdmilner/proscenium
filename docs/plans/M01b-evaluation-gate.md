@@ -52,7 +52,7 @@ Four source-reading investigations covered the Hydra 2 core, the UsdImaging scen
   - Networks are exposed as nodes, parameters, connections, and terminals per render context. `HdMaterialSchema::GetMaterialNetwork` falls back to the universal context, where UsdPreviewSurface lives.
   - Collection-based bindings are evaluated on Hydra paths, so **they miss prims inside instances** (marked XXX in the source).
   - **A purpose-specific binding does not fall back to allPurpose.**
-- **Skinning** is resolved in the chain by default, by a CPU ext computation. Deformed points are readable only after adding ext-computation pruning. Whether the points are correct, and whether their sample times are reported, is unverified.
+- **Skinning** is resolved in the chain by default, by a CPU ext computation. Deformed points are readable only after adding ext-computation pruning. Whether the points are correct is unverified (Phase D: correct for one linear-blend skin).
 - **Not imaged:** `UsdGeomVisibilityAPI` (purpose visibility), HermiteCurves, and computed extents.
 - **Lifetime.**
   - `UsdImagingStageSceneIndex` holds a strong stage reference. To honour the caller-release contract, the core must call `SetStage(nullptr)` on release.
@@ -64,14 +64,9 @@ Four source-reading investigations covered the Hydra 2 core, the UsdImaging scen
 - A dirty notice covers child locators, not child prims. Flattening adds descendant dirties only for descendants whose data was pulled before.
 - A resync arrives as Added on existing paths, plus Removed for paths that are gone.
 - `SetTime` dirties exactly the locators that were flagged time-varying (from `ValueMightBeTimeVarying`), and only on data sources already pulled. Flags are never cleared, so dirties also arrive for removed paths and unchanged values.
-- **`GetContributingSampleTimesForInterval`:**
-  - Attributes report sample times, and a static child under an animated parent reports its parent's (the flattened-xform combiner merges both).
-  - A zero-width interval gives inconsistent answers (false exactly on a sample frame), so detection must query a real interval.
-  - Visibility and instancer masks never report sample times; they appear only as dirties.
-  - Mesh orientation, scheme, doubleSided, and subdivision tags are not flagged.
-  - **Crash risk:** UsdImaging sampled sources write to the output vector without a null check, so always pass one.
+- Mesh orientation, scheme, doubleSided, and subdivision tags are not flagged time-varying, so `SetTime` never dirties them.
 - Data-source handles read the stage and current time live, so a handle is not a snapshot. Values must be copied out. The xform combiner caches its value at offset 0 and goes stale across `SetTime`.
-- Capturing with `UsdTimeCode::Default()` makes every sample-time query return false. The stage scene index starts at numeric time 0.0.
+- At `UsdTimeCode::Default()`, attribute data sources read authored default values. The stage scene index starts at numeric time 0.0.
 
 ### Threading and errors
 
@@ -204,7 +199,7 @@ Branch `m01b-phase-b`, off `m01b-phase-a`.
   - The `geomModel` data still reaches each prim, and it still splits instancers. The planner can therefore read it if Proscenium later honors `model:drawMode`, which [Deferred and Out of Scope](../spec/support/visibility.md#deferred-and-out-of-scope) notes as a logical future step.
   - From source reading; not tested.
 - **Capture takes a numeric time, default time, or a `Usd.TimeCode`.** `capture()` and `capture(None)` mean default time.
-  - At default time every sample-time query reports false, so Phase D's detection needs numeric times.
+  - At default time animated values read their authored defaults, so animation needs numeric times.
   - The Phase A checks now run mostly at time 1, the fixture's first points sample. Two were renamed, and "snapshot outlives its bridge" was added.
   - Default time has four checks. One reads the authored default value after the time-1 sample has been edited. The others cover the time reported at default time, the `None` and `Usd.TimeCode` arguments, and a rejected non-time argument.
 - **Tf errors and warnings during capture become diagnostics.**
@@ -232,7 +227,7 @@ Branch `m01b-phase-b`, off `m01b-phase-a`.
   - **For Phase C's incremental refresh:**
     - Re-copy only the prims named in notices and reuse the other prims' retained handles. Retained containers never change, so earlier snapshots stay intact.
     - `HdsiComputeSceneIndexDiffDelta` compares handles, not values, so it only lists the re-copied prims. The oracle for incremental capture is therefore a full re-read compared record by record.
-  - **For Phase D:** the copy keeps one sample per value, at shutter offset 0. Sample-time queries (`GetContributingSampleTimesForInterval`) must therefore run on the live graph during capture, not on the snapshot.
+  - **For Phase D:** the copy keeps one sample per value, at shutter offset 0, so a snapshot is one time code. Several frames mean several captures.
 - **Source identity: `HdxPrimOriginInfo` measured against our frame mapping.**
   - For the comparison, a temporary `build_plan` mode took sources and instance contexts from Hydra's picking reverse mapping, `HdxPrimOriginInfo::FromPickHits` on the snapshot, instead of `Frame::Map`. Transforms, visibility and inherited primvars still came from the frames, because Hydra has no consumer-side helper for them.
   - The two agreed on every source and context in `prototype.usda`, and at every benchmark size.
@@ -393,6 +388,7 @@ Branch `m01b-phase-c`, off `m01b-phase-b`.
   - Hydra splits instancers by binding and purpose, so copies share a Hydra prim only where their instance roots agree.
   - Each leaf mesh's copies share one points buffer, so deduplicating by array identity looks cheap. That it's copy-on-write from the one USD prototype is an inference; the prototype doesn't do it.
   - The [Geometry Sharing](../spec/support/instancing.md#geometry-sharing) requirement can't rest on Hydra's instancers alone.
+  - **Counts only.** The leaf meshes are small (at most 9 points), though since Phase D they carry a materialBind subset, indexed face-varying UVs and normals, vertex and uniform primvars and a left-handed mesh, and every copy is checked against USD in Blender. The counts didn't change with that. So this says how Hydra splits copies, not what the 216 meshes cost, or whether identity-based deduplication holds for production meshes and for edits on one copy. Phase E measures sharing at scale.
 - **Splitting by binding is Pixar's current policy, and planned to change.** In the AOUSD forum thread [Hydra Prototype and Instances](https://forum.aousd.org/t/hydra-prototype-and-instances/1747) (August 2024), Pixar's Tom C confirms that "currently, instances need to share a material binding". He calls it a "lightweight policy choice": material bindings are among `UsdImagingStageSceneIndex`'s `instanceDataSourceNames`. Pixar plans per-instance bindings on one prototype, via "a new hydra schema and a bit of glue code".
   - That explains the sharing result above.
   - The core doesn't depend on it: materials are resolved for each drawn copy and linked per object. A first version resolved them once per Hydra prim, guarded by a warning, which per-copy resolution made unnecessary.
@@ -453,13 +449,39 @@ Branch `m01b-phase-c`, off `m01b-phase-b`.
 
 ## Phase D — Time-sampled data detection
 
-Recorded in the feasibility record whatever the decision. For points, transforms, primvars, visibility, and topology, compare against authored samples and against `UsdAttribute::ValueMightBeTimeVarying`, including a static mesh under an animated ancestor. Three candidate signals:
+Recorded in the feasibility record whatever the decision. Each capture evaluates one time code. For points, transforms, primvars, visibility, and topology, compare what a time change reports against authored samples and against `UsdAttribute::ValueMightBeTimeVarying`, including a static mesh under an animated ancestor. Two signals:
 
-1. `GetContributingSampleTimesForInterval` over a real interval (never zero-width).
-2. The dirty set that `SetTime` emits.
-3. Direct USD queries.
+1. The dirty set that `SetTime` emits.
+2. Direct USD queries.
 
-Record which values each signal reports, over what interval, and where they disagree. Visibility is expected to appear only as a dirty. Skinned points are included if the ext-computation path works.
+Record which values each signal reports and where they disagree, and check the values captured at each time against USD. Skinned points are included if the ext-computation path works.
+
+### Phase D log
+
+Branch `m01b-phase-d`, off `m01b-phase-c`.
+
+- **Status (2026-10-14): passes on all three platforms.** The `animation` case, and the instances case with its richer leaf meshes, pass in the wheel and the binary on macOS, Windows and Linux, with the same findings everywhere: 125 correctness checks per host, plus the loading (42; 43 on Windows) and prototype (20) checks, with no compiler warnings ("Hydra bridge" workflow, [run 38636577232](https://github.com/scottdmilner/proscenium/actions/runs/38636577232), commit `4ae78fb`). Results are in the [feasibility record](../feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d).
+- **What earlier phases already gave.** Capture took numeric times and recorded dirty locators (Phase B). The edits case checked values at four times, including a static mesh under an animated parent, and measured over-reporting (Phase C). Neither had compared what a time change dirties with the scene's construction.
+- **Decision (with the user, 2026-10-13): one time code per capture, no interval query.** `GetContributingSampleTimesForInterval` answers a motion-blur question: which samples reconstruct a value over a shutter window around the current frame. Its header says so, and Blender computes its own motion blur.
+  - A first version of this phase queried it over frame ranges and recorded its window semantics (bracketing samples, window ends, false at a zero-width sample frame) as misreports.
+  - To make visibility visible to that query, it also added a visibility opinion to the filter.
+  - Both, and the `sample_interval` capture option, are removed. The record keeps the query's behaviour as an ad hoc observation.
+  - Caching several evaluated frames, when a representation needs it, is a layer above capture.
+- **What the case checks instead:**
+  - direct USD against the construction, as the oracle;
+  - that each time change dirties exactly the varying values, visibility and instance masks included;
+  - the plan at each time, from full and incremental captures, against USD, skinned points included.
+- **Two filter bugs, fixed, each with a check a mutation run showed fails without it:**
+  - Purpose visibility was read at default time. It is now UsdImaging's attribute data sources on the filter's globals, read at the graph's time and dirtied when it changes.
+  - UsdImaging never flags animated subset indices, so incremental captures kept stale subsets. The filter now flags them.
+- **Skinning works through the graph's ext-computation pruning,** for one linear-blend skin with identity transforms: Body's points match `ComputeSkinnedPoints` at every time. UsdSkel's primvars still reach the plan as attributes and a property: recorded, not fixed, since it is M8's geometry policy.
+- **Filter rebuilds per time change are wider than needed** (16 on the case's scene, from every dirtied prim; 3 in an ad hoc build that invalidated only for extents). Not changed; Phase E measures the cost (listed in its plan).
+- **Warnings posted outside capture** (2026-10-14, after the CI run above). The CI logs printed 491 HermiteCurves warnings and 131 for bindings without `MaterialBindingAPI`, all expected. But those posted while a bridge is built never became diagnostics, because only a capture collects them. Two fixes, each with checks a mutation run showed fail without them:
+  - The bridge collects warnings while it is built and adds them, without a source, to its first capture's diagnostics, as events reach the capture after them. Release-time warnings are still printed, since no capture follows.
+  - The filter reports bindings authored without `MaterialBindingAPI` (`bindingsWithoutApi`), so the plan warns on each copy's source whenever USD would honor such a binding, independent of when USD posts its own warning.
+
+  128 checks pass in both hosts on all three platforms, with no compiler warnings ([run 38642723300](https://github.com/scottdmilner/proscenium/actions/runs/38642723300), commit `a1c8b80`).
+- **Notes for M4.** The record's [notes on evaluating frames](../feasibility/runtime-record.md#for-m4-evaluating-frames): per-frame capture with dirty-driven change discovery, caching as a layer above it, and direct USD when a representation needs authored keys. The M4 milestone links to them.
 
 ## Phase E — Measurements
 
@@ -467,6 +489,11 @@ Kept separate, as the milestone requires: Hydra capture, C++ planning, C++ → P
 
 - **Baseline:** a direct-USD Python implementation of the same capture on the same fixtures.
 - **Scale:** the bespoke fixtures, a synthetic stress scene (many instances, large meshes), and ALab under the pinned [acceptance](../testing/acceptance.md) setup, on the reference hardware.
+- **Carried in from Phases C and D:**
+  - **Time changes.** Capture after a time change, incremental and full, over a frame range of an animated scene. Phase D settled one time code per capture, so a frame range costs one capture per frame.
+  - **Filter rebuilds per time change.** The source-info filter rebuilds a prim's cached facts for every prim dirtied on a time change, though only computed extents go stale (Phase D: 16 rebuilds per change on the animation case, 3 in an ad hoc build that invalidated only for extents). Measure what those rebuilds cost at scale, to decide whether narrowing the invalidation is worth it.
+  - **Sharing.** On the stress scene and ALab: plan meshes against distinct USD meshes, and what the difference costs in Blender construction and memory. Phase C's count (216 meshes for 9 leaf meshes) comes from small meshes.
+  - **The filter's per-prim USD queries** on first capture: UsdShade's binding resolution for each material purpose, the materialBind family verdict, the dropped-attribute scan, and computed extents (Phase C's limits).
 
 The measurements report what was run; they are not extrapolated to Phase 2 budgets.
 

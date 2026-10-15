@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from . import oracle
 
@@ -24,7 +24,8 @@ VISIBILITY_MESHES = [
 
 def run(case: Case) -> None:
     stage = case.open("bindings.usda")
-    snapshot = case.native.Bridge(stage).capture(TIME)
+    bridge = case.native.Bridge(stage)
+    snapshot = bridge.capture(TIME)
     # Both destinations resolve the same material purpose, so each prim has one object per plan.
     plans = {
         purpose: case.native.build_plan(snapshot, viewport_material_purpose=purpose, render_material_purpose=purpose)
@@ -72,6 +73,30 @@ def run(case: Case) -> None:
         legacy == {"": ["/World/Looks/Blue"], "full": ["/World/Looks/Full"], "preview": ["/World/Looks/Blue"]}
         and all(oracle.materials_match(legacy[p], planned_legacy[p], exact=True) for p in plans),
         (legacy, planned_legacy),
+    )
+
+    warned = {d["source"] for d in plans[""].diagnostics if d["code"] == "binding-without-api"}
+    usd = {s for s in oracle.drawn_gprims(stage) if oracle.binds_without_api(stage.GetPrimAtPath(s))}
+    case.check(
+        "each drawn prim binding without MaterialBindingAPI gets a binding-without-api warning, and no other",
+        warned == usd == {"/World/Purposes/Legacy"},
+        (warned, usd),
+    )
+
+    # UsdShade's own Tf warning for that binding is posted while the bridge is built, outside any capture.
+    def legacy_warnings(diagnostics: list[dict[str, Any]]) -> int:
+        return sum(
+            d["code"] == "tf-warning"
+            and "MaterialBindingAPI" in d["message"]
+            and "/World/Purposes/Legacy" in d["message"]
+            for d in diagnostics
+        )
+
+    first, second = legacy_warnings(snapshot.diagnostics), legacy_warnings(bridge.capture(TIME).diagnostics)
+    case.check(
+        "a Tf warning posted while the bridge is built reaches its first capture's diagnostics once, not later ones",
+        (first, second) == (1, 0),
+        (first, second),
     )
 
     tagged = {s: oracle.face_materials(stage, s, TIME) for s in ("/World/KitA/Blade", "/World/KitB/Blade")}

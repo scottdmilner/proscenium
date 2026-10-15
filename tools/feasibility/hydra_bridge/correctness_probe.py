@@ -28,6 +28,7 @@ CASES = [
     "bindings",
     "purposes",
     "primvars",
+    "animation",
 ]
 
 

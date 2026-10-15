@@ -95,12 +95,14 @@ private:
 
 }  // namespace
 
-SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous) {
+SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous, Diagnostics carried) {
     auto snapshot = std::make_shared<Snapshot>();
     snapshot->time = time;
     WarningCollector warnings;
     SdfPathVector paths;
-    Diagnostics graphDiagnostics;
+    Diagnostics graphDiagnostics = std::move(carried);
+    // Prim attribution is per capture; a carried warning names no prim of this snapshot.
+    for (Diagnostic &diagnostic : graphDiagnostics) diagnostic.source = SdfPath();
     {
         TfErrorMark mark;
         graph.Advance(time);

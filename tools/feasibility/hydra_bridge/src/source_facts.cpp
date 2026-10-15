@@ -19,7 +19,9 @@
 #include <pxr/usd/usdGeom/xformOp.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/usd/usdShade/tokens.h>
+#include <pxr/usdImaging/usdImaging/dataSourceAttribute.h>
 #include <pxr/usdImaging/usdImaging/usdPrimInfoSchema.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -66,6 +68,10 @@ const TfToken &SourceInfoTokens::StrongPurposes() {
     return token;
 }
 
+const TfToken &SourceInfoTokens::BindingsWithoutApi() {
+    static const TfToken token("bindingsWithoutApi");
+    return token;
+}
 const TfToken &SourceInfoTokens::DroppedAttributes() {
     static const TfToken token("droppedAttributes");
     return token;
@@ -185,7 +191,7 @@ HdContainerDataSourceHandle ComputedExtent(const UsdPrim &prim, const TfToken &h
             .Build());
 }
 
-HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim) {
+HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingDataSourceStageGlobals &globals) {
     TfTokenVector names;
     std::vector<HdDataSourceBaseHandle> values;
     auto add = [&](const TfToken &name, HdDataSourceBaseHandle value) {
@@ -211,17 +217,28 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim) {
         TfToken family;
         if (subset.GetFamilyNameAttr().Get(&family)) add(SourceInfoTokens::FamilyName(), Retained(family));
     }
-    // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy.
+    // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy. Read at the
+    // graph's time, and dirtied when an animated one changes with it.
     if (UsdGeomImageable imageable{prim}) {
         for (const TfToken &purpose : {UsdGeomTokens->guide, UsdGeomTokens->proxy, UsdGeomTokens->render}) {
             const UsdAttribute attribute = imageable.GetPurposeVisibilityAttr(purpose);
-            TfToken visibility;
-            if (attribute && attribute.HasAuthoredValue() && attribute.Get(&visibility)) add(purpose, Retained(visibility));
+            if (attribute && attribute.HasAuthoredValue())
+                add(purpose, UsdImagingDataSourceAttributeNew(attribute, globals, prim.GetPath(),
+                                                              HdDataSourceLocator(SourceInfoTokens::Schema(), purpose)));
         }
     }
     if (UsdGeomImageable(prim) || UsdGeomSubset(prim)) {
         HdContainerDataSourceHandle bindings = ResolvedBindings(prim);
         if (bindings) add(SourceInfoTokens::Bindings(), bindings);
+    }
+    // UsdShade honors these too, posting a Tf warning each time it resolves them; that warning can come while
+    // the bridge is built, or from any caller, so the plan reports the fact itself.
+    if ((UsdGeomImageable(prim) || UsdGeomSubset(prim)) && !prim.HasAPI<UsdShadeMaterialBindingAPI>()) {
+        VtTokenArray unapplied;
+        for (const UsdRelationship &rel : prim.GetRelationships())
+            if (TfStringStartsWith(rel.GetName().GetString(), "material:binding") && rel.HasAuthoredTargets())
+                unapplied.push_back(rel.GetName());
+        if (!unapplied.empty()) add(SourceInfoTokens::BindingsWithoutApi(), Retained(unapplied));
     }
     if (prim.HasAPI<UsdShadeMaterialBindingAPI>()) {
         const UsdShadeMaterialBindingAPI binding(prim);
