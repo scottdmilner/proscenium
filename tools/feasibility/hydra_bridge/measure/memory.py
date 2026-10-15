@@ -76,18 +76,18 @@ def heap_in_use() -> int | None:
     Unlike resident memory or the footprint, it drops as soon as memory is freed, even when the allocator
     keeps the pages: the difference between the two is the allocator's retention."""
     try:
-        libc = ctypes.CDLL(None)
         if sys.platform == "darwin":
             stats = _MallocStatistics()
-            libc.malloc_zone_statistics(None, ctypes.byref(stats))  # every zone
+            ctypes.CDLL(None).malloc_zone_statistics(None, ctypes.byref(stats))  # every zone
             return stats.size_in_use
         if sys.platform.startswith("linux"):
+            libc = ctypes.CDLL(None)
             libc.mallinfo2.restype = _Mallinfo2  # glibc 2.33 and later
             info = libc.mallinfo2()
             return info.uordblks + info.hblkhd
     except (AttributeError, OSError):
         return None
-    return None
+    return None  # Windows and others: no live-heap call
 
 
 def own_peaks() -> dict[str, int]:

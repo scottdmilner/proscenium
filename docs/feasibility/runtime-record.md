@@ -579,7 +579,7 @@ They held only after planning went parallel: with serial planning, the Hydra sta
 - Cold-cache opens; the wheel host.
 - Frame changes, and the filter's rebuilds on a time change (left for M4).
 
-The memory counters for Windows (working set, peak working set) and Linux (resident set, `mallinfo2`) are implemented but haven't been checked against another tool.
+The memory counters for Windows (working set, peak working set) and Linux (resident set, `mallinfo2`) are implemented but haven't been checked against another tool. Windows has no live-heap reading: its C runtime has no equivalent call, so those columns are empty there.
 
 #### Collection bindings inside instances (workaround for OpenUSD #3690)
 
