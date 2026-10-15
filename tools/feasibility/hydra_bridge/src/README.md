@@ -70,7 +70,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `instancing.h/.cpp` | Reverse mapping from instancers to USD sources, as `HdxPrimOriginInfo` does it: walks `instancedBy` upward and folds in `instanceLocations`, instance transforms, the instancer's visibility mask, the instance roots' own constant primvars and bindings, and purpose-visibility opinions at each level. `BoundMaterial` combines the filter's UsdShade bindings with what's bound at or above each instance root (Hydra's flattened bindings are unusable inside instances). Switch source identity to `HdxPrimOriginInfo` once Blender's USD has its `cdata()` fix (plan log) |
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
-| `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan` |
+| `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
 | `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |

@@ -5,13 +5,16 @@
 #include "plan.h"
 #include "prim_reader.h"
 
+#include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/pxOsd/tokens.h>
 
 #include <algorithm>
+#include <optional>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -57,9 +60,11 @@ public:
                 if (const PrimRecord *record = table_.Find(path); record && record->pointInstancerPrototype) return true;
             return false;
         };
-        for (const PrimRecord &prim : table_.prims) {
+        std::vector<BuiltMesh> built = BuildMeshes();
+        for (size_t i = 0; i < table_.prims.size(); ++i) {
+            const PrimRecord &prim = table_.prims[i];
             if (prim.type == HdPrimTypeTokens->mesh && prim.mesh)
-                AddMesh(prim);
+                AddMesh(prim, built[i]);
             else if (Untranslated(prim.type))
                 AddObjects(prim, -1, prim.type);
             else if (prim.instancer && prim.instancer->instanceLocations.empty())
@@ -75,21 +80,44 @@ public:
     }
 
 private:
+    // BuildMesh's results for one prim, before anything is added to the plan.
+    struct BuiltMesh {
+        std::optional<MeshData> mesh;
+        Diagnostics problems;
+        std::vector<const PrimRecord *> slots;
+    };
+
+    // Every mesh, built in parallel: BuildMesh reads only its prim and the prim's subsets. Everything that
+    // adds to the plan (meshes, objects, materials, diagnostics, and the instance resolver's cache) runs
+    // after, in prim order, so the plan is the one a serial build makes. A mesh with no drawn copy is built
+    // and then dropped, as deciding that first would move the resolver's diagnostics.
+    std::vector<BuiltMesh> BuildMeshes() const {
+        std::vector<BuiltMesh> built(table_.prims.size());
+        static const std::vector<const PrimRecord *> kNoSubsets;
+        WorkParallelForN(table_.prims.size(), [&](size_t begin, size_t end) {
+            for (size_t i = begin; i < end; ++i) {
+                const PrimRecord &prim = table_.prims[i];
+                if (prim.type != HdPrimTypeTokens->mesh || !prim.mesh) continue;
+                const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
+                const auto found = subsets_.find(prim.path);
+                BuiltMesh &result = built[i];
+                result.mesh = BuildMesh(prim, found == subsets_.end() ? kNoSubsets : found->second, result.problems,
+                                        result.slots);
+            }
+        });
+        return built;
+    }
+
     static PrimTable TimedRead(const HdSceneIndexBaseRefPtr &scene) {
         const ScopedFactTiming timing(FactTiming::PlanRead);
         return ReadPrims(scene);
     }
 
-    void AddMesh(const PrimRecord &prim) {
+    void AddMesh(const PrimRecord &prim, BuiltMesh &built) {
         if (resolver_.FramesOf(prim).empty()) return;
-        Diagnostics problems;
-        std::vector<const PrimRecord *> slots;
-        std::optional<MeshData> mesh;
-        {
-            const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
-            mesh = BuildMesh(prim, subsets_[prim.path], problems, slots);
-        }
-        for (const Diagnostic &problem : problems) MapToSources(problem);
+        std::optional<MeshData> &mesh = built.mesh;
+        const std::vector<const PrimRecord *> &slots = built.slots;
+        for (const Diagnostic &problem : built.problems) MapToSources(problem);
         if (!mesh) {
             AddObjects(prim, -1, HdPrimTypeTokens->mesh);
             return;

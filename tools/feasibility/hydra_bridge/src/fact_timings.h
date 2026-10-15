@@ -17,8 +17,9 @@ enum class FactTiming {
     FamilyVerdict,
     DroppedAttributes,
     ComputedExtent,
-    // Planning: the whole run after reading, reading the records (parallel), and the serial work per prim.
-    // BuildMesh's parts are nested in PlanBuildMesh; AddObjects includes its diagnostics and materials.
+    // Planning: the whole run after reading, reading the records, building meshes (in parallel, so summed
+    // over threads, with its parts nested), and the serial work of adding objects, which includes their
+    // diagnostics and materials.
     PlanRun,
     PlanRead,
     PlanBuildMesh,

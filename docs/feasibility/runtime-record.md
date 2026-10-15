@@ -452,7 +452,7 @@ The "Time-sampled data representation" row compares per-time-code snapshots with
 
 ### Measurements (M1b Phase E)
 
-Blender's USD importer (`bpy.ops.wm.usd_import`) against the prototype, importing one time code. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-10-14. Reproduce with:
+Blender's USD importer (`bpy.ops.wm.usd_import`) against the prototype, importing one time code. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-10-14, with the planner building meshes in parallel. Reproduce with:
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py
@@ -462,7 +462,8 @@ uv run python tools/feasibility/hydra_bridge/measure/run.py   # stress scenes an
 The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge/measure/summary.md` (not committed).
 
 **Method:**
-- **Runs.** Each run is a fresh binary process with factory startup and an empty scene. There are three runs per scene and mode, alternating, with the OS file cache warm. Figures below are medians, and the ranges are in the summary. The widest came from a sequence's first run: 0.65 s against a 0.33 s median for the default importer on mesh-2048, and 5.45 s against 4.63 s on ALab.
+- **Runs.** Each run is a fresh binary process with factory startup and an empty scene. There are three runs per scene and mode, alternating, with the OS file cache warm. Figures below are medians, and the ranges are in the summary. Apart from scenes under 0.1 s, the widest range came from a sequence's first run: 0.68 s against a 0.41 s median, for the default importer on mesh-2048.
+- **Run-to-run variation.** Between runs of the whole set, the matched importer took 3.23 s and 3.45 s on ALab, so ratios are taken within one run.
 - **Sampling.** A parent process samples the run every 10 ms with psutil: resident memory, CPU time and threads, plus the physical footprint on macOS (Activity Monitor's figure), which is the counter reported here. The child marks each stage boundary with:
   - its CPU time;
   - its lifetime peak footprint;
@@ -478,12 +479,12 @@ The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge
 
 | Scene | Content | Importer defaults | Importer matched | Importer expanded | Prototype | Prototype vs matched |
 |---|---|---|---|---|---|---|
-| mesh-64 | 1 mesh, 4,225 points | 0.04 s, 0 MB | 0.04 s, 1 MB | 0.05 s, 3 MB | 0.04 s, 1 MB | about the same |
-| mesh-2048 | 1 mesh, 4.2M points, face-varying UVs | 0.33 s, 788 MB | 0.34 s, 824 MB | 0.39 s, 791 MB | 1.01 s, 1,349 MB | 2.97× time, 1.64× memory |
-| prims-10000 | 10,000 cubes, 2 materials | 1.14 s, 528 MB | 1.11 s, 523 MB | 1.09 s, 519 MB | 1.62 s, 854 MB | 1.46×, 1.63× |
-| instances-1000 | 1,000 instanced clusters of 10 instanced leaves (1,089-point grids); 2 materials bound at the cluster roots | 0.11 s, 29 MB | 0.11 s, 29 MB | 2.39 s, 1,951 MB | 0.74 s, 339 MB | not the same work (below) |
-| animation | a deforming 66k-point grid and 1,000 animated cubes | 0.17 s, 106 MB | 0.17 s, 103 MB | 0.16 s, 107 MB | 0.20 s, 100 MB | 1.18×, 0.97× |
-| ALab | the measurement entry point | 4.63 s, 1,533 MB | 3.23 s, 1,780 MB | 5.34 s, 3,133 MB | 4.61 s, 3,129 MB | 1.43×, 1.76× |
+| mesh-64 | 1 mesh, 4,225 points | 0.05 s, 0 MB | 0.04 s, 1 MB | 0.03 s, 0 MB | 0.04 s, 2 MB | about the same |
+| mesh-2048 | 1 mesh, 4.2M points, face-varying UVs | 0.41 s, 812 MB | 0.40 s, 784 MB | 0.42 s, 826 MB | 1.06 s, 1,351 MB | 2.64× time, 1.72× memory |
+| prims-10000 | 10,000 cubes, 2 materials | 1.19 s, 514 MB | 1.14 s, 522 MB | 1.16 s, 510 MB | 1.66 s, 859 MB | 1.45×, 1.64× |
+| instances-1000 | 1,000 instanced clusters of 10 instanced leaves (1,089-point grids); 2 materials bound at the cluster roots | 0.11 s, 30 MB | 0.10 s, 29 MB | 2.45 s, 1,938 MB | 0.77 s, 342 MB | not the same work (below) |
+| animation | a deforming 66k-point grid and 1,000 animated cubes | 0.19 s, 107 MB | 0.18 s, 105 MB | 0.19 s, 106 MB | 0.21 s, 102 MB | 1.12×, 0.97× |
+| ALab | the measurement entry point | 5.17 s, 1,530 MB | 3.45 s, 1,795 MB | 5.48 s, 3,078 MB | 3.69 s, 3,113 MB | 1.07×, 1.73× |
 
 **On ALab both sides build the same geometry.**
 
@@ -498,26 +499,28 @@ The default importer is slower than the matched one because it also builds 5,074
 
 | Stage | Wall | Cores | Live heap at end |
 |---|---|---|---|
-| Stage open | 0.58 s | 2.2 | 95 MB |
-| Bridge construction | 0.41 s | 5.1 | 140 MB |
-| Capture | 0.45 s | 8.2 | 657 MB |
-| Planning | 1.20 s | 1.0 | 1,561 MB |
-| Transfer | 0.07 s | 1.0 | 1,565 MB |
-| Construction | 1.81 s | 3.2 | 2,939 MB |
-| First evaluation | 0.10 s | 2.2 | 3,029 MB |
+| Stage open | 0.58 s | 2.3 | 95 MB |
+| Bridge construction | 0.42 s | 4.5 | 140 MB |
+| Capture | 0.52 s | 6.9 | 657 MB |
+| Planning | 0.26 s | 5.7 | 1,558 MB |
+| Transfer | 0.06 s | 1.0 | 1,563 MB |
+| Construction | 1.77 s | 3.3 | 2,938 MB |
+| First evaluation | 0.09 s | 2.5 | 3,028 MB |
 
-The Hydra stages (bridge construction through transfer) take 2.12 s; Blender construction and evaluation take 1.91 s. CPU time for the whole synchronization:
-- matched importer: 13.3 s, in 3.23 s of wall time (4.1 cores on average);
-- prototype: 14.7 s, in 4.61 s (3.2 cores).
+The Hydra stages (bridge construction through transfer) take 1.27 s; Blender construction and evaluation take 1.86 s. CPU time for the whole synchronization:
+- matched importer: 13.8 s, in 3.45 s of wall time (4.0 cores on average);
+- prototype: 14.7 s, in 3.69 s (4.0 cores).
 
-**Against the tentative Phase F criterion** (ALab, matched importer):
-- Time (1.43×) and peak memory (1.76×) are within 2×.
-- The Hydra stages (2.12 s) take longer than Blender construction (1.91 s), so that part doesn't hold.
-- The final criterion is the user's to set.
+**Against the tentative Phase F criterion** (ALab, matched importer), all three parts hold:
+- time: 1.07×, within 2×;
+- peak memory: 1.73×, within 2×;
+- the Hydra stages (1.27 s) take less time than Blender construction (1.86 s).
+
+They held only after planning went parallel: with serial planning, the Hydra stages took 2.12 s against 1.91 s (time 1.43×, memory 1.76×). The final criterion is the user's to set.
 
 **Findings:**
-- **Planning is serial.** It runs on one core in every scene. It is the largest Hydra stage on ALab (1.20 s) and on the large mesh (0.62 s of the prototype's 1.01 s, where the whole importer takes 0.34 s). Capture and bridge construction are parallel (8.2 and 5.1 cores on ALab).
-  - **Where planning's time goes**, from timers in the planner (medians of three runs in a later measurement, when ALab's planning took 1.36 s rather than 1.20 s):
+- **Planning.** In the first run of the set it was serial: one core in every scene, and the largest Hydra stage on ALab (1.20 s) and on the large mesh (0.62 s of the prototype's 1.01 s). Capture and bridge construction were already parallel.
+  - **Where planning's time went**, from timers in the planner (medians of three runs of a serial build, when ALab's planning took 1.36 s):
 
     | Part | ALab | mesh-2048 |
     |---|---|---|
@@ -530,31 +533,43 @@ The Hydra stages (bridge construction through transfer) take 2.12 s; Blender con
     | Objects for every drawn copy, with materials and diagnostics | 0.02 s | 0.00 s |
     | Reading the records (already parallel) | 0.03 s | 0.00 s |
 
-    Meshes don't depend on one another, so building them in parallel would cover 95% of ALab's planning. For one large mesh, half the time is USD's validation, which the bridge calls as a single function.
+    For one large mesh, half the time is USD's validation, which the bridge calls as a single function.
+  - **Meshes are now built in parallel** (`Planner::BuildMeshes`). Everything that adds to the plan still runs afterwards in prim order: meshes, objects, materials, diagnostics and the instance resolver's cache.
+
+    | | ALab planning | ALab sync | Hydra stages | 4.2M-point mesh planning |
+    |---|---|---|---|---|
+    | Serial | 1.20 s (1.0 core) | 4.61 s | 2.12 s | 0.62 s |
+    | Parallel | 0.26 s (5.7 cores) | 3.69 s | 1.27 s | 0.61 s |
+
+    - **Other scenes** were unchanged within their ranges.
+    - **The threads contend.** Mesh building's time, summed over threads, rose from 1.30 s to 2.00 s. This is recorded for the production core under [For production planning](#for-production-planning-m8).
+    - **The plan is unchanged.** All 128 correctness checks pass. On ALab, a canonical digest of the plan is the same for the committed serial planner and for the new code, on one thread (`PXR_WORK_THREAD_LIMIT=1`) and on all threads. The digest covers every object with its mesh contents and materials, plus the diagnostics, in an order-free form.
+  - **The plan's order varies between processes,** even on one thread and with the committed planner, though its content doesn't (ad hoc, ALab). The cause was not investigated.
+  - **Duplicate meshes:** ALab's 3,945 plan meshes hold 3,369 distinct contents (same digest), so content deduplication would remove 576 more meshes (ad hoc).
 - **The prototype's extra peak is what the bridge holds while Blender data is built.**
-  - On ALab the live heap is 3,033 MB after synchronization. Releasing the bridge, its snapshot and the plan frees 1,455 MB; the harness drops all three together. Dropping the stage frees 82 MB more, and deleting the Blender data frees the remaining 1,459 MB.
-  - By stage, capture adds 517 MB of live heap (the snapshot) and planning adds 904 MB (the plan).
+  - On ALab the live heap is 3,031 MB after synchronization. Releasing the bridge, its snapshot and the plan frees 1,451 MB; the harness drops all three together. Dropping the stage frees 82 MB more, and deleting the Blender data frees the remaining 1,461 MB.
+  - By stage, capture adds 517 MB of live heap (the snapshot) and planning adds 901 MB (the plan).
   - The harness keeps the plan until release, though construction no longer needs it. Dropping it earlier would lower what is retained (inferred, not measured).
-- **Freed memory isn't returned at once.** After deleting each run's data, the live heap is back to 4–37 MB on every scene, on both sides, so neither side was found to leak. The footprint can stay high: on mesh-2048 it was 1,240 MB with 4 MB of live heap. So retained memory is judged by live heap. The finding was ad hoc, in the wheel: with the bridge released on ALab, the live heap was back to within 12 MB of the opened stage, while in three runs the footprint stayed 67–570 MB above it.
+- **Freed memory isn't returned at once.** After deleting each run's data, the live heap is back to 4–37 MB on every scene, on both sides, so neither side was found to leak. The footprint can stay high: on mesh-2048 it was 1,255 MB with 4 MB of live heap. So retained memory is judged by live heap. The finding was ad hoc, in the wheel: with the bridge released on ALab, the live heap was back to within 12 MB of the opened stage, while in three runs the footprint stayed 67–570 MB above it.
 - **Depsgraph evaluation.**
   - The importer evaluates the depsgraph inside its operator: requesting the evaluated depsgraph afterwards added nothing (ad hoc, in the wheel, on prims-10000).
   - On the same scene, the prototype's construction added 138 MB of live heap and its first evaluation 397 MB, together comparable to the importer's 500 MB.
   - Evaluated copies hold their memory until the next evaluation. Deleting ALab's imported data left 1.7 GB of live heap until a depsgraph update, and 27 MB after one (ad hoc), so the harness evaluates after deleting.
 - **Scene instancing in the importer drops materials bound at or above an instance root** (measured on instances-1000 and on the 100-cluster smoke scene).
-  - **What it builds.** With instancing on (defaults and matched), the importer builds 1 mesh and 1,010 collection instances, but no materials. With it off (expanded), it honors the bindings, building 10,000 meshes in 2.39 s and 1,951 MB. The prototype honors them with 2 meshes, one per material variant, shared by 10,000 objects (0.74 s, 339 MB).
+  - **What it builds.** With instancing on (defaults and matched), the importer builds 1 mesh and 1,010 collection instances, but no materials. With it off (expanded), it honors the bindings, building 10,000 meshes in 2.45 s and 1,938 MB. The prototype honors them with 2 meshes, one per material variant, shared by 10,000 objects (0.77 s, 342 MB).
   - **Why** (from the Blender 5.2.2 source):
     - An instance becomes an empty that instances a collection (`USDInstanceReader`, created in `usd_reader_stage.cc` when `support_scene_instancing` is on). The collection is built once per USD prototype from `UsdStage::GetPrototypes()`.
     - A mesh in that collection resolves its material on the prototype's own prim (`compute_bound_material` in `usd_reader_mesh.cc`, through `ComputeBoundMaterial`). Under `/__Prototype_N`, the instance root and its ancestors aren't on the prim's path, so their bindings are never seen.
     - Nothing on the instancing empty carries a material.
     - USD shares one prototype among instances whose roots bind different materials, so one collection couldn't show both in any case.
   - **Checked ad hoc in the wheel.** With the smoke scene's binding moved onto the leaf mesh inside the asset, the instancing importer imported the material and assigned it.
-- **Sharing at scale** (carried in from Phase C). ALab's plan has 3,945 meshes for 6,679 composed mesh copies, the same count as the instancing importer's meshes. The expanded importer builds 6,679 meshes and peaks 1.35 GB higher than matched.
+- **Sharing at scale** (carried in from Phase C). ALab's plan has 3,945 meshes for 6,679 composed mesh copies, the same count as the instancing importer's meshes. The expanded importer builds 6,679 meshes and peaks 1.28 GB higher than matched.
 - **The filter's per-prim USD queries** run while the bridge is built, as the graph first reads each prim.
-  - On ALab: 9,011 fact builds take 0.56 s of CPU, summed over threads, out of the stage's 2.08 s. Resolving bindings for each material purpose takes 0.37 s of that.
-  - On prims-10000: 0.94 s of 1.14 s, of which bindings take 0.75 s.
-  - The family verdict, dropped-attribute scan and computed extents take at most 0.08 s on any scene.
+  - On ALab: 9,011 fact builds take 0.53 s of CPU, summed over threads, out of the stage's 1.88 s. Resolving bindings for each material purpose takes 0.35 s of that.
+  - On prims-10000: 0.83 s of 1.05 s, of which bindings take 0.63 s.
+  - The family verdict, dropped-attribute scan and computed extents take at most 0.07 s on any scene.
   - Times come from timers in the filter (`src/fact_timings.*`), not a profiler.
-- **Blender construction.** The prototype's per-object work runs on one core: 0.62 s for 10,000 objects in prims-10000, and 0.33 s on instances-1000. Large meshes construct on 5 cores (mesh-2048).
+- **Blender construction.** The prototype's per-object work runs on one core: 0.63 s for 10,000 objects in prims-10000, and 0.33 s on instances-1000. Large meshes construct on 5 cores (mesh-2048).
 - **Animation is left live by the importer.** It adds Mesh Sequence Cache modifiers and Transform Cache constraints (1 and 1,000 on the animation scene; 355 and 10 on ALab), which read USD when the frame changes. The prototype's result is static at the imported time. Frame changes are not measured.
 
 **Not measured:**
@@ -563,6 +578,26 @@ The Hydra stages (bridge construction through transfer) take 2.12 s; Blender con
 - Frame changes, and the filter's rebuilds on a time change (left for M4).
 
 The memory counters for Windows (working set, peak working set) and Linux (resident set, `mallinfo2`) are implemented but haven't been checked against another tool.
+
+#### For production planning (M8)
+
+What the prototype's planner leaves for a production core to address:
+- **Parallel mesh building contends for something** (measured, cause not investigated). With meshes built in parallel on ALab, the time inside `BuildMesh`, summed over threads, rose from 1.30 s to 2.00 s:
+
+  | Part | Serial | Parallel |
+  |---|---|---|
+  | Primvars | 0.31 s | 0.71 s |
+  | Layout | 0.12 s | 0.21 s |
+  | Deleted faces | 0.28 s | 0.35 s |
+  | USD's validation | 0.55 s | 0.68 s |
+
+  The timers sum each call's wall time (`steady_clock`), not CPU time, so waiting and preemption count. Causes to rule out:
+  - **the allocator:** every primvar gathers into a new array, after building a per-element source table (`SourceElements`, 8 bytes per element);
+  - **first-touch page faults** on those fresh arrays, and memory bandwidth;
+  - **slower cores:** the M1 Max's two efficiency cores run slower than its eight performance cores.
+
+  A production core should profile the parallel pass, for example with Instruments' Time Profiler and System Trace, before tuning it. Reusing buffers, and skipping the source tables when the layout is the identity, are candidates.
+- **One large mesh is still built on one thread.** Half of it is USD's validation, a single call. The M1b plan's Phase E log lists the options.
 
 ### Limits and next gates
 

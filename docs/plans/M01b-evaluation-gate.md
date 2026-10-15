@@ -579,16 +579,16 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
   - **A smaller run** (with the user, 2026-10-14): three repeats, five stress scenes (one small and one large mesh, 10,000 prims, nested instancing, animation) and ALab, with no bespoke fixtures. It takes about 6 minutes; the first plan would have taken about 1.5 hours.
   - **Retained memory is read as live heap.** The footprint stays high after memory is freed (the allocator keeps the pages), so it says little about what is still owned. The live heap showed both sides back to under 40 MB after deleting their data.
   - **The cleanup re-evaluates the depsgraph after deleting data.** Evaluated copies hold their memory until the next evaluation: 1.7 GB on ALab's imported data.
-- **Results on ALab, against the matched importer:**
-  - **Time:** 4.61 s against 3.23 s (1.43×).
-  - **Peak memory:** 3,129 MB against 1,780 MB (1.76×).
-  - **The Hydra stages (2.12 s) take longer than Blender construction (1.91 s).** Planning (1.20 s) runs on one core.
-  - **With the bridge alive,** 1,455 MB of live heap is held: the snapshot (517 MB at capture) and the plan (904 MB at planning).
+- **Results on ALab, against the matched importer** (the recorded run, with parallel planning):
+  - **Time:** 3.69 s against 3.45 s (1.07×).
+  - **Peak memory:** 3,113 MB against 1,795 MB (1.73×).
+  - **The Hydra stages (1.27 s) take less time than Blender construction (1.86 s).**
+  - **With the bridge alive,** 1,451 MB of live heap is held: the snapshot (517 MB at capture) and the plan (901 MB at planning).
 
-  Against the tentative criterion 4, the time and memory parts hold and the stage-split part doesn't. The user sets the final criterion.
+  All three parts of the tentative criterion 4 hold. In the first run, with serial planning, the stage-split part didn't: the Hydra stages took 2.12 s against 1.91 s (time 1.43×, memory 1.76×). The user sets the final criterion.
 - **Answers to the items carried in:**
   - **Sharing:** 3,945 plan meshes for 6,679 mesh copies on ALab, the same as the instancing importer.
-  - **The filter's per-prim queries:** they cost 0.56 s of CPU (summed over threads) while ALab's bridge is built, out of 2.08 s. Binding resolution is most of it (0.37 s). On 10,000 small prims the filter takes 0.94 s of the stage's 1.14 s, 0.75 s of it bindings.
+  - **The filter's per-prim queries:** they cost 0.53 s of CPU (summed over threads) while ALab's bridge is built, out of 1.88 s. Binding resolution is most of it (0.35 s). On 10,000 small prims the filter takes 0.83 s of the stage's 1.05 s, 0.63 s of it bindings.
 - **Where planning's time goes** (2026-10-14, measured after the run above, with timers in the planner):
   - On ALab, building meshes one at a time is 95% of planning: 1.30 s of 1.36 s. Objects take 0.02 s, and reading the records 0.03 s.
   - Within mesh building, USD's `PxOsdMeshTopology::Validate` takes 0.55 s, finding the faces Blender would delete 0.28 s, primvars 0.31 s and the layout 0.12 s.
@@ -597,7 +597,14 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
     1. Build meshes in parallel, with a serial pass for objects and diagnostics in prim order, so the plan stays identical.
     2. For a single large mesh, run its independent passes concurrently and parallelize the bridge's own loops; USD's validation is one call.
     3. Not worth it now: parallel object building, which takes 0.02 s.
-  - Not implemented: the prototype measures, and a production core decides.
+- **Option 1 implemented** (with the user, 2026-10-14). `Planner::BuildMeshes` builds every mesh in parallel; the serial pass adds them to the plan in prim order.
+  - **ALab:** planning goes from 1.20 s to 0.26 s (5.7 cores), synchronization from 4.61 s to 3.69 s, and the Hydra stages from 2.12 s to 1.27 s.
+  - **The large mesh is unchanged** (0.61 s), as expected.
+  - **Against the matched importer in the same run:** 1.07× the time and 1.73× the peak memory, with the Hydra stages below Blender construction (1.86 s). All three parts of the tentative criterion 4 now hold.
+  - **The plan is identical** (canonical digest on ALab, and the correctness checks).
+  - **Found while checking:** the plan's order varies between processes, though its content doesn't. Its 3,945 meshes hold 3,369 distinct contents.
+  - Options 2 and 3 are not implemented.
+  - **Mesh building's summed time rose from 1.30 s to 2.00 s in parallel,** so the threads contend for something. It is recorded for the production core in the record's [notes for production planning](../feasibility/runtime-record.md#for-production-planning-m8), which the M8 milestone links.
 
 ## Phase F — Decision
 
