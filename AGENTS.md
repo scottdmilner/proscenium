@@ -94,4 +94,5 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.
 - Evidence docs (feasibility records, decision rows) claim only what a check actually tested.
+- Docs and decision logs state the current decision and its reasons, not how it was reached. Don't describe earlier drafts, revisions, or options that were never decided on ("revised four times", "three, not four", "no longer", "rather than X" where X was never adopted). Name a rejected alternative only when its reason still guides later work.
 - Keep Git commits as small, self-contained, and parseable as possible: one new feature per commit.
