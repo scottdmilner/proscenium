@@ -18,7 +18,8 @@ HERE = Path(__file__).resolve().parent
 TIME = 1.0
 
 
-def run(module_dir: Path) -> dict[str, Any]:
+def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
+    # `native`: the module already imported, as from an installed extension (distribution.py).
     import bpy
     from pxr import Usd, UsdGeom, UsdShade
 
@@ -33,8 +34,9 @@ def run(module_dir: Path) -> dict[str, Any]:
             raise AssertionError(name if detail is None else f"{name}: {detail}")
         checks.append(name)
 
-    sys.path.insert(0, str(module_dir))
-    native = importlib.import_module("_hydra_bridge")
+    if native is None:
+        sys.path.insert(0, str(module_dir))
+        native = importlib.import_module("_hydra_bridge")
 
     with tempfile.TemporaryDirectory(prefix="hydra-prototype-scene-") as tmp:
         scene = Path(tmp) / "prototype.usda"

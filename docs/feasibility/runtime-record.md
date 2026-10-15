@@ -185,8 +185,9 @@ Blender binary**, each in a fresh background process ("Hydra bridge" workflow,
 [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802), 2026-10-12). The prototype checks cover M1b Phase B's slice:
 capture, a C++ display plan, and application to Blender ([below](#prototype-slice-m1b-phase-b)).
 Phase C added a loading check and the correctness cases ([below](#prototype-correctness-m1b-phase-c)), which pass on all three platforms ([run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667)).
-This is a feasibility result, not adoption of Hydra or qualification of a distributable
-bridge. The same checks pass on [Windows x64](#compiled-hydra-bridge) and
+M1b adopted Hydra on this evidence (Phase F, [DECISIONS.md](../DECISIONS.md) "Evaluation front end and
+core language"); the bridge itself remains feasibility code. Phase F also installed it from a per-platform
+extension zip ([below](#distribution-m1b-phase-f)). The same checks pass on [Windows x64](#compiled-hydra-bridge) and
 [Linux x64](#compiled-hydra-bridge-1), recorded under those platforms.
 
 ### Build and reproduction
@@ -461,7 +462,7 @@ uv run python tools/feasibility/hydra_bridge/measure/run.py   # stress scenes an
 
 The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge/measure/summary.md` (not committed).
 
-**CI.** The harness runs on one small scene (instances-100, every mode) on macOS, Windows and Linux; all runs completed in [run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604) (commit `b0bb4ce`). CI's numbers aren't recorded. In the same run, all 131 correctness checks pass in both hosts on all three platforms (bindings 13, instances 19), with the loading (42; 43 on Windows) and prototype (20) checks, and no compiler warnings.
+**CI.** The harness runs on one small scene (instances-100, every mode) on macOS, Windows and Linux; all runs completed in [run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604) (commit `b0bb4ce`), and again in [run 38677751979](https://github.com/scottdmilner/proscenium/actions/runs/38677751979) (commit `06dd5e9`), where Linux and Windows report no live heap and macOS reports it. CI's numbers aren't recorded. In both runs, all 131 correctness checks pass in both hosts on all three platforms (bindings 13, instances 19), with the loading (42; 43 on Windows) and prototype (20) checks, and no compiler warnings.
 
 **Method:**
 - **Runs.** Each run is a fresh binary process with factory startup and an empty scene. There are three runs per scene and mode, alternating, with the OS file cache warm. Figures below are medians, and the ranges are in the summary. Apart from scenes under 0.1 s, the widest range came from a sequence's first run: 1.56 s against a 0.41 s median, for the default importer on mesh-2048.
@@ -513,12 +514,12 @@ The Hydra stages (bridge construction through transfer) take 1.15 s; Blender con
 - matched importer: 14.0 s, in 3.24 s of wall time (4.3 cores on average);
 - prototype: 14.7 s, in 3.50 s (4.2 cores).
 
-**Against the tentative Phase F criterion** (ALab, matched importer), all three parts hold:
+**Against Phase F's performance criterion** (ALab, matched importer; tentative here, made final unchanged by the user in Phase F), all three parts hold:
 - time: 1.08×, within 2×;
 - peak memory: 1.73×, within 2×;
 - the Hydra stages (1.15 s) take less time than Blender construction (1.62 s).
 
-They held only after planning went parallel: with serial planning, the Hydra stages took 2.12 s against 1.91 s (time 1.43×, memory 1.76×). The final criterion is the user's to set.
+They held only after planning went parallel: with serial planning, the Hydra stages took 2.12 s against 1.91 s (time 1.43×, memory 1.76×).
 
 **Findings:**
 - **Planning.** In the first run of the set it was serial: one core in every scene, and the largest Hydra stage on ALab (1.20 s) and on the large mesh (0.62 s of the prototype's 1.01 s). Capture and bridge construction were already parallel.
@@ -639,6 +640,27 @@ What the prototype's planner leaves for a production core to address:
   A production core should profile the parallel pass, for example with Instruments' Time Profiler and System Trace, before tuning it. Reusing buffers, and skipping the source tables when the layout is the identity, are candidates.
 - **One large mesh is still built on one thread.** Half of it is USD's validation, a single call. The M1b plan's Phase E log lists the options.
 
+### Distribution (M1b Phase F)
+
+The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/distribution.py package   # build/hydra-bridge/dist/proscenium-0.1.0-<platform>.zip
+uv run python tools/feasibility/hydra_bridge/distribution.py install
+```
+
+- **The zip.** `distribution.py package` copies `src/proscenium`, adds the module and its `build.json` to `core/`, and sets the manifest's `platforms` to this platform alone. The extension CLI from the bpy wheel then validates the copy, builds it with `--split-platforms` (which names the zip for the platform), and validates the zip. This is a test zip: `tools/build_extension.py`, the product build, doesn't take the bridge. Its six files are the extension's four, the module and `build.json`; it bundles no USD.
+- **Three sessions of the Blender binary**, sharing one empty user directory (`BLENDER_USER_RESOURCES`), without `--factory-startup` so preferences carry over:
+  1. **Install.** A copy of the zip naming another platform is refused ("This platform (macos-arm64) isn't one of (windows-x64)"; the operator still reports `FINISHED`, so the check is that nothing was installed). The real zip installs into `user_default`, Install from Disk's repository, and is enabled; enabling doesn't load the compiled module. Preferences are saved. 7 checks.
+  2. **A new session.** The extension is enabled from the saved preferences and loaded at startup. `bl_ext.user_default.proscenium.core._hydra_bridge` loads from the installed package, and the loading checks (42) and prototype checks (20) pass against it. Disabling turns the extension off and leaves the compiled module imported, as Python never unloads one; re-enabling imports the same module object, which still captures. 8 checks.
+  3. **Uninstall,** in a session where the compiled module was never loaded, removes the installed files and disables the extension. 6 checks.
+- **Results.** macOS arm64 (reference hardware, Blender 5.2.2 binary, 2026-10-14): all pass. **Windows x64 and Linux x64: pending** the workflow's `distribution` jobs, which install the zip each build job uploads on a fresh runner with no build tree.
+- **Untested:**
+  - a download through a browser and a release page (macOS quarantine; the probe installs a locally built file);
+  - updating or uninstalling while the module is loaded, which a Windows file lock may refuse (inferred), and an update to a different build in the same session, whose module name and converters are already registered (research §6);
+  - Blender versions other than 5.2.2, and `blender_version_max`, which the zip doesn't set yet.
+
 ### Limits and next gates
 
 The prototype and correctness checks use small bespoke scenes. Untested:
@@ -657,8 +679,8 @@ The prototype and correctness checks use small bespoke scenes. Untested:
 
 Zero-copy transfer is also measured separately by the `buffer_transfer` probe.
 
-Not tested: Windows arm64 and other unsupported platforms, other Blender builds, installed extension lifecycle,
-selection mapping, stage-setting fidelity, threading beyond the parallel read passes of capture and planning,
+Not tested: Windows arm64 and other unsupported platforms, other Blender builds, the installed extension lifecycle
+beyond [Distribution](#distribution-m1b-phase-f)'s, selection mapping, stage-setting fidelity, threading beyond the parallel read passes of capture and planning,
 undo/save/reopen, correctness on production-scale data (ALab is measured for cost only, on macOS), or
 memory/performance regressions.
 
@@ -667,11 +689,10 @@ released, to preserve the caller-release contract in
 [In-Memory Sources](../spec/source-access.md#in-memory-sources). The bridge's native
 objects and lazily queried scene indices are not persisted Blender state.
 
-Native loading now holds on all three platforms for this module, and the prototype's correctness
-and measurements are recorded. The remaining gate is the decision (Phase F of the
-[M1b plan](../plans/M01b-evaluation-gate.md)).
-The current Python-only implementation decision remains unchanged pending M1b's
-recorded decision.
+Native loading holds on all three platforms for this module, and the prototype's correctness,
+measurements and distribution are recorded. On that evidence M1b adopted Hydra, with a C++ core
+(Phase F of the [M1b plan](../plans/M01b-evaluation-gate.md#phase-f-log), and
+[DECISIONS.md](../DECISIONS.md) "Evaluation front end and core language").
 
 ## Windows x64
 

@@ -567,7 +567,7 @@ The measurements report what was run; they are not extrapolated to Phase 2 budge
 
 Branch `m01b-phase-e`, off `m01b-phase-d`.
 
-- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. All checks and the harness pass on all three platforms ([run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604), commit `b0bb4ce`): 131 correctness checks in both hosts, no compiler warnings. A first run failed on Windows in the harness (it loaded the C library before checking the platform); fixed in `b0bb4ce`. Run 38676508604 then showed Linux's live heap reading 0 throughout, because Blender's binary replaces malloc with TBB's proxy there; the harness now reports no live heap in the binary on Linux, as on Windows. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
+- **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. All checks and the harness pass on all three platforms ([run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604), commit `b0bb4ce`): 131 correctness checks in both hosts, no compiler warnings. A first run failed on Windows in the harness (it loaded the C library before checking the platform); fixed in `b0bb4ce`. Run 38676508604 then showed Linux's live heap reading 0 throughout, because Blender's binary replaces malloc with TBB's proxy there; the harness now reports no live heap in the binary on Linux, as on Windows. [Run 38677751979](https://github.com/scottdmilner/proscenium/actions/runs/38677751979) (commit `06dd5e9`) confirms it, with every job passing and the same check counts. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
 - **Harness** (`hydra_bridge/measure/`):
   - **`run.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
   - **`child.py`** marks each stage with CPU time, the lifetime peak and the live heap.
@@ -620,12 +620,12 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
 1. Native loading works on all three platforms in both hosts.
 2. Distribution works through the chosen channel (Phase 0 settled that a compiled core is acceptable).
 3. Every Phase C case passes, or its gap has a bounded workaround in the core that keeps the requirement intact (Hydra does not relax requirements).
-4. **Tentative (with the user, 2026-10-14), replacing the Python-baseline criterion:** at ALab scale (the custom entry point), measured against Blender's native importer in its matched configuration:
+4. **Set with the user (tentative 2026-10-14, made final unchanged after Phase E's data), replacing the Python-baseline criterion:** at ALab scale (the custom entry point), measured against Blender's native importer in its matched configuration:
    - initial synchronization's end-to-end time is at most 2× the importer's, and so is its peak memory;
    - the Hydra stages (capture, planning and transfer) together take less time than Blender construction;
    - memory retained with the bridge alive is reported, not gated.
 
-   The user sets the final criterion after seeing Phase E's data. Unlike the other criteria, it is not fixed before results, and the decision record says so.
+   Unlike the other criteria, it was not fixed before results, and the decision record says so.
 
 Otherwise: "Hydra not adopted", and the Python-only row continues under M4.
 
@@ -634,6 +634,22 @@ Otherwise: "Hydra not adopted", and the Python-only row continues under M4.
 - The DECISIONS.md rows "Evaluation front end and core language", "Python-only implementation", "Native core distribution" (if adopted), and "Compiled Hydra evaluation bridge".
 - The time-sampling findings, for the "Time-sampled data representation" row.
 - If Hydra is adopted, the milestone's follow-up updates (AGENTS.md, PROJECT.md, and milestones M3, M5, M6, M8–M10, M13), made in the same change.
+
+### Phase F log
+
+- **Decision (the user, 2026-10-14): Hydra adopted**, with a C++ core. Recorded in [DECISIONS.md](../DECISIONS.md) "Evaluation front end and core language", with "Python-only implementation", "Native core distribution", "Compiled Hydra evaluation bridge" and the time-sampling findings in "Time-sampled data representation".
+- **Settled with the user (2026-10-14):**
+  - Criterion 4 is the tentative one, unchanged.
+  - Criterion 2 is tested before the decision is recorded, not deferred: nothing had installed the module from an extension zip.
+  - **Channel: GitHub releases**, one zip per platform and Blender minor version. Not chosen: a self-hosted extension repository, or both.
+  - **The core's source lives in `src/proscenium/core/`**, beside the extension's Python, and the built module goes in the same package. The milestone asked for a location outside the extension directory; the C++ sources are instead kept out of the zip by the manifest's `[build]` exclusions.
+- **Criteria:**
+  1. **Native loading: holds.** 42 loading checks (43 on Windows) in both hosts on all three platforms ([run 38677751979](https://github.com/scottdmilner/proscenium/actions/runs/38677751979)).
+  2. **Distribution: holds on macOS; Windows and Linux pending CI.** `distribution.py` packages a test zip for the platform (a copy of `src/proscenium` with the module in `core/`, built by the extension CLI; the product build doesn't take the bridge), installs it from disk into the Blender binary, then in a new session loads it from saved preferences and passes the loading (42) and prototype (20) checks against the installed module, and then uninstalls it. Another platform's zip is refused. CI repeats this on a fresh runner per platform given only the zip ([record](../feasibility/runtime-record.md#distribution-m1b-phase-f)).
+  3. **Correctness: holds.** All ten Phase C cases pass, 131 checks per host on all three platforms. Each Hydra gap the cases found has a workaround in the core that keeps the requirement, and the known-gap checks fail when a gap stops reproducing. Hydra's flattened bindings are replaced by UsdShade's resolution, including the labeled workaround for OpenUSD #3690. The source-info filter supplies what UsdImaging doesn't image or misreports: HermiteCurves, purpose visibility, a Cube's `doubleSided`, subset families, dropped attributes, and the edits Hydra misses. The approximation diagnostic comes from the original USD type, and the core validates geometry that Hydra doesn't.
+  4. **Performance: holds** on ALab against the matched importer: 1.08× its time and 1.73× its peak memory, and the Hydra stages take 1.15 s, including bridge construction (0.76 s without), against Blender construction's 1.62 s. Retained memory is reported, not gated: 1,453 MB of live heap with the bridge alive. Outside the criterion, the single 4.2M-point mesh took 2.89× the importer's time; it is in the [production-planning notes for M8](../feasibility/runtime-record.md#for-production-planning-m8).
+- **Follow-up updates, made in this change:** AGENTS.md (the core's location, build, C++ style and tests), PROJECT.md, the pipeline and incremental design notes, the requirement rows that applied "if Hydra is adopted", and milestones M2–M6, M8–M10 and M13.
+- **Status (2026-10-14): decided; criterion 2's Windows and Linux runs pending.** If either fails, the decision is revisited with the user before M3 starts.
 
 ## Requirement matrix
 

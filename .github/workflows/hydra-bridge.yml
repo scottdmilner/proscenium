@@ -2,7 +2,9 @@
 #
 # Each platform builds against the headers Blender v5.2.2 pins, audits the module's
 # linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run.py),
-# then the Phase E measurement harness on one small scene (measure/run.py).
+# then the Phase E measurement harness on one small scene (measure/run.py). Each build job also packages
+# Proscenium's extension zip with the module (distribution.py); the distribution jobs install that zip into
+# Blender on a fresh runner given only the zip (M1b Phase F).
 name: Hydra bridge
 
 on:
@@ -14,6 +16,7 @@ on:
     paths:
       - "tools/feasibility/hydra_bridge/**"
       - ".github/workflows/hydra-bridge.yml"
+      - "src/proscenium/**"
 
 jobs:
   macos:
@@ -34,6 +37,14 @@ jobs:
           key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Package the extension zip
+        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: proscenium-macos-arm64
+          path: build/hydra-bridge/dist/*.zip
+          if-no-files-found: error
       - name: Checks in the wheel and the binary
         run: uv run python tools/feasibility/hydra_bridge/run.py
       # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
@@ -70,6 +81,14 @@ jobs:
           key: hydra-bridge-deps-Linux-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Package the extension zip
+        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: proscenium-linux-x64
+          path: build/hydra-bridge/dist/*.zip
+          if-no-files-found: error
       - name: Upload module
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,6 +147,14 @@ jobs:
       # through Visual Studio's vswhere and vcvarsall.
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
+      - name: Package the extension zip
+        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: proscenium-windows-x64
+          path: build/hydra-bridge/dist/*.zip
+          if-no-files-found: error
       - name: Checks in the wheel and the binary
         run: uv run python tools/feasibility/hydra_bridge/run.py
       # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
@@ -139,4 +166,40 @@ jobs:
         with:
           name: hydra-bridge-windows-x64
           path: build/hydra-bridge/
+          if-no-files-found: warn
+
+  # What a user does with a downloaded release zip: install from disk, restart, use, uninstall. Each runs on a
+  # fresh runner with no build tree; the checks run against the installed module.
+  distribution:
+    needs: [macos, linux-build, windows]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, platform: macos-arm64 }
+          - { runner: ubuntu-latest, platform: linux-x64 }
+          - { runner: windows-latest, platform: windows-x64 }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: ./.github/actions/setup-blender
+      - run: uv sync --locked
+      - uses: actions/download-artifact@v4
+        with:
+          name: proscenium-${{ matrix.platform }}
+          path: build/hydra-bridge/dist/
+      - name: Install, use and uninstall in the Blender binary
+        run: uv run python tools/feasibility/hydra_bridge/distribution.py install
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.platform }}
+          path: build/hydra-bridge/distribution-*
           if-no-files-found: warn
