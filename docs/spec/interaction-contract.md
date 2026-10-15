@@ -69,7 +69,7 @@ A persistent selection is an ordered set of (binding identifier, USD path) entri
 A source selection is mirrored into Blender's selection state:
 
 - A managed display object whose source coverage lies entirely within the expanded selection is selected, and one covering none of it is deselected. M4 settles partial coverage.
-- The active Blender object is a display object of the active entry when one exists.
+- When the active entry has exactly one display object, it is the active Blender object. When it has several, such as a component shown by several objects, all of them are selected and there is no active object.
 - The selection state of unmanaged objects is never changed.
 
 Selecting displayed content in Blender produces a source selection: the targets, at the current selection level, of the source entities the Blender selection identifies. Whether this uses Blender's native selection tools or a selection tool the extension provides is settled by M4.
@@ -94,7 +94,7 @@ Python display component:
 
 | Function | Input | Result |
 |---|---|---|
-| `apply_selection` | display targets and an active entry | Blender's selection and active state, mirrored |
+| `apply_selection` | display targets, with those of the active entry marked | Blender's selection and active state, mirrored |
 | `read_blender_selection` | Blender's selection state | the display-resource identities of the selected and active managed objects |
 
 `displayed` serves both a stage browser, to mark displayed prims, and persistent-selection resolution.

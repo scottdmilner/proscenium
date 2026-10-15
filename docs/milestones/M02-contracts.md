@@ -13,5 +13,10 @@
 
 - A draft interaction contract covering everything Source Inspection and Interaction says the contract must settle, expressed as headless-testable functions. This includes the browsing universe, the supported inspection metadata set, and the identity of persistent selection state.
 - A list of feasibility questions that depend on what Blender can actually do, such as whether individual instances inside a batched representation can be resolved from pick data. Since M1b adopted Hydra, include whether Hydra-processed paths, including aggregated native instances, map back to source entities with their instance context. The contract itself stays independent of the evaluation front end.
+- A contract test kit: checks of the headless functions, parametrized by a display adapter, so M4 can run them against each prototype and M7 and M10 against the real display.
+
+**Tests:**
+
+- The contract test kit against a reference adapter, and against deliberately broken variants of it, which each check must fail: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 
 **Exit condition:** a draft contract of testable inspection and interaction requirements that can be evaluated against different display implementations, plus a list of open feasibility questions for M4.

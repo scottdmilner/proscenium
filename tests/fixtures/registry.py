@@ -70,5 +70,8 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-SAME-VALUES", "Same evaluated values at a different time (Phase 2)", ("M12", "M13")),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
         Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M12", "M14")),
+        Fixture("F-KIND-HIERARCHY", "Kind hierarchy with organizational prims Hydra does not keep", ("M2", "M4", "M7")),
+        Fixture("F-NESTED-SELECTION", "Selection floors in nested native instances", ("M2", "M4", "M7", "M10")),
+        Fixture("F-UNIVERSE-MEMBERSHIP", "Browsing-universe membership and exclusions", ("M2", "M4", "M7")),
     )
 }

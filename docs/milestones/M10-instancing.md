@@ -16,6 +16,7 @@
 
 - Per-instance material variation, including per-instance `displayColor` and named primvars driving material inputs.
 - Nested combinations, not just isolated instancing features: `F-NESTED-STRESS`.
+- Instance-root selection floors through the M2 contract test kit: `F-NESTED-SELECTION`.
 - Sharing assertions against M4's criteria: equivalent uses share geometry, required distinct geometry and appearance data remains correct, and equivalent variants remain deduplicated. Attribute/render assertions verify per-instance appearance, not mesh counts alone.
 - Multiple bindings and shared-content changes.
 - Benchmarks of representative scenes.

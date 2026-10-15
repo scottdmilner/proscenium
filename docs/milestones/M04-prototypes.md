@@ -35,6 +35,10 @@
 - Sharing criteria and any cases requiring distinct geometry resources for correct display, with correctness fixtures and measured resource costs.
 - The [bounds comparison contract](../testing/acceptance.md#bounds-comparison-contract) for the chosen representation, recorded in that section.
 
+**Tests:**
+
+- The M2 contract test kit, through an adapter for each evaluated representation: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
+
 Later milestones build on the partitioning decision and frozen support cases. Changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant prototypes before implementation, revising the decision record, and listing the affected milestones.
 
 **Exit condition:** a display design that passes the frozen support cases, risk matrix, and stress fixture, validated against the finalized interaction contract at the level of the headless interaction functions, with compatible M3 identifiers and persistence schemas and a recorded partitioning decision—not merely a fast static-scene prototype.
