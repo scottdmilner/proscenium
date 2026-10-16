@@ -61,6 +61,7 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 #### Phase A log
 
 - **A2, file-backed refresh.** FILE-04 now rules out stage caches and shared stages, not reuse of the binding's own stage. Two new rows: FILE-06, the dirty check's scope, and FILE-07, that a reused stage displays what a newly opened one would. FILE-01 adds the opinions in the binding stage's anonymous layers to what refresh displays, for a future editor's unsaved edits (with the user). The binding's stage is listed in [Binding State](../spec/lifecycle.md#binding-state) as runtime state. The same-second change check is a design note that Phase C settles.
+- **A3, live stage.** The contract names each binding's live stage (ICON-32, ICON-07). A file-backed binding has none until its first synchronization, including after reopening (ICON-33), since the extension opens sources only when asked to synchronize. Tools need the live stage to author into its anonymous layers, so they get it from the binding, which never places it in a stage cache (ICON-34).
 
 ### Phase B — Compiled core bring-up
 

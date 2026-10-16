@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-300 rows: 229 behavior, 19 contract, 52 process; milestones started: M1, M1b, M2.
+303 rows: 232 behavior, 19 contract, 52 process; milestones started: M1, M1b, M2.
 
 ## PROJECT.md
 
@@ -186,7 +186,10 @@ is filled in by its delivering milestone before implementation.
 | [ICON-04](../spec/interaction-contract.md#two-layers-and-the-live-stage) | It does not depend on the compiled core: it shares no code with it | process | M7 | 1 / M7 | — | Set by M7. *COMP-06 covers its linkage.* |
 | [ICON-05](../spec/interaction-contract.md#two-layers-and-the-live-stage) | so paths never pass through Python between the layers | process | M7 | 1 / M7 | — | Set by M7. |
 | [ICON-06](../spec/interaction-contract.md#two-layers-and-the-live-stage) | The inspection layer is read-only. | behavior | M7 | 1 / M12 | `F-KIND-HIERARCHY`, `F-UNIVERSE-MEMBERSHIP` | After kind-level select_targets calls, the stage's layers are not dirty and its load set and population mask are unchanged. |
+| [ICON-32](../spec/interaction-contract.md#two-layers-and-the-live-stage) | For a file-backed binding, the live stage is the binding's own stage, which it reuses across refreshes | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [ICON-33](../spec/interaction-contract.md#two-layers-and-the-live-stage) | Until its first synchronization, including after a .blend is reopened, a file-backed binding has no live stage. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [ICON-07](../spec/interaction-contract.md#two-layers-and-the-live-stage) | For an in-memory source it is the caller's stage. | behavior | M3 | 2 / M14 | — | Set by M3. |
+| [ICON-34](../spec/interaction-contract.md#two-layers-and-the-live-stage) | Callers get a binding's live stage from the binding, which never places it in a stage cache. | behavior | M3 | 1 / M12 | `F-CACHED-STAGE` | Set by M3. |
 | [ICON-08](../spec/interaction-contract.md#without-a-live-stage) | each of the core's interaction functions reports that the source is unavailable | behavior | M7 | 1 / M12 | `F-OFFLINE` | With no live stage, each of the core's five functions reports the source unavailable. |
 | [ICON-09](../spec/interaction-contract.md#without-a-live-stage) | stored persistent selections are kept unchanged | behavior | M7 | 1 / M12 | `F-OFFLINE` | With no live stage, a stored persistent selection is unchanged after each of the core's five functions is called. |
 | [ICON-10](../spec/interaction-contract.md#source-entities-and-hierarchy) | Hydra paths and nesting are never used for grouping or selection expansion. | behavior | M7 | 1 / M12 | `F-KIND-HIERARCHY` | Expansion of a group or assembly target reaches every displayed mesh beneath it on the composed stage, although its intermediate prims carry nothing Hydra keeps. |
