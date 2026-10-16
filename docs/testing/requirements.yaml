@@ -267,6 +267,25 @@ requirements:
       - id: BIND-10
         quote: "Binding configuration must not cross-contaminate other bindings."
 
+  - section: spec/source-access.md#synchronization-api
+    delivery: M3
+    phase: 1
+    rows:
+      - id: API-01
+        quote: "Callers reach a binding through a binding handle: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state."
+      - id: API-02
+        quote: "The time code becomes the binding's requested time code, and the attempt uses the binding's requested settings."
+      - id: API-03
+        quote: "The other requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
+      - id: API-06
+        quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used."
+      - id: API-04
+        quote: "An expected failure, such as a source-access conflict or an unavailable source, is a result, not an exception."
+        delivery: M5
+      - id: API-05
+        quote: "Exceptions report misuse only, such as a call made during another synchronization."
+        delivery: M5
+
   - section: spec/source-access.md#source-consistency
     delivery: M3
     phase: 1
@@ -1718,6 +1737,21 @@ excluded:
   - section: spec/pipeline.md#synchronization-transaction
     quotes: ["Failure safety covers recoverable failures."]
     reason: "Scope limit of failure safety."
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["synchronizes the binding at an explicit USD time code, which may be the default time code."]
+    restates: [BIND-05]
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
+    restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["Design note (suggested, settled by M3 and M5): the module, exact names, and the result's fields"]
+    reason: "Design note for M3 Phase C and M5."
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["Each method looks the binding up when it is called, and two handles are equal when their identifiers are."]
+    restates: [API-01]
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["Operations that span bindings are module functions"]
+    reason: "Design guidance for M3's API; SID-03 tests attaching under a key."
   - section: spec/source-access.md#source-consistency
     quotes: ["The caller must not mutate an attached stage or its contributing layers during a synchronization."]
     reason: "Caller obligation; CONS-03 covers detectable violations."
