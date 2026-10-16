@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-298 rows: 227 behavior, 19 contract, 52 process; milestones started: M1, M1b, M2.
+300 rows: 229 behavior, 19 contract, 52 process; milestones started: M1, M1b, M2.
 
 ## PROJECT.md
 
@@ -94,10 +94,12 @@ is filled in by its delivering milestone before implementation.
 | [MEM-04](../spec/source-access.md#in-memory-sources) | Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller. | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. |
 | [MEM-05](../spec/source-access.md#in-memory-sources) | If the caller releases the attached stage, the binding becomes unattached. | behavior | M3 | 2 / M14 | — | Set by M3. |
 | [MEM-06](../spec/source-access.md#in-memory-sources) | After a .blend is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage. | behavior | M3 | 2 / M14 | — | Set by M3. |
-| [FILE-01](../spec/source-access.md#file-backed-refresh) | A file-backed refresh displays the source as it exists on disk. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER` | Set by M3. |
+| [FILE-01](../spec/source-access.md#file-backed-refresh) | A file-backed refresh displays the source as it exists on disk, composed with the opinions in the binding stage's anonymous layers: its session layer and the anonymous layers beneath it. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER` | Set by M3. |
 | [FILE-02](../spec/source-access.md#file-backed-refresh) | Refresh must not discard unsaved in-process edits made by other tools to layers it shares. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER` | Set by M3. |
 | [FILE-03](../spec/source-access.md#file-backed-refresh) | If any contributing layer has unsaved in-process edits, refresh fails with a source-access conflict naming those layers and preserves the previous display. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER` | Set by M3. |
-| [FILE-04](../spec/source-access.md#file-backed-refresh) | Refresh does not reuse a cached stage or otherwise share stage state with other bindings. | behavior | M3 | 1 / M12 | `F-CACHED-STAGE` | Set by M3. |
+| [FILE-06](../spec/source-access.md#file-backed-refresh) | The contributing layers are the non-anonymous layers the binding's stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER` | Set by M3. |
+| [FILE-04](../spec/source-access.md#file-backed-refresh) | refresh never takes a stage from a stage cache or otherwise shares stage state with other bindings or tools. | behavior | M3 | 1 / M12 | `F-CACHED-STAGE` | Set by M3. |
+| [FILE-07](../spec/source-access.md#file-backed-refresh) | never a dirty or anonymous one, so a refresh that reuses the binding's stage displays the same result as a stage newly opened from the same files with the same anonymous layers. | behavior | M3 | 1 / M12 | `F-DIRTY-LAYER`, `F-CACHED-STAGE` | Set by M3. |
 | [FILE-05](../spec/source-access.md#file-backed-refresh) | Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe. | behavior | M3 | 1 / M12 | `F-CACHED-STAGE`, `F-DIRTY-LAYER` | Set by M3. |
 ## spec/lifecycle.md
 
