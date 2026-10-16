@@ -635,10 +635,20 @@ requirements:
         quote: "The inspection layer is read-only."
         fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
         oracle: "After kind-level select_targets calls, the stage's layers are not dirty and its load set and population mask are unchanged."
+      - id: ICON-32
+        quote: "For a file-backed binding, the live stage is the binding's own stage, which it reuses across refreshes"
+        delivery: M3
+      - id: ICON-33
+        quote: "Until its first synchronization, including after a .blend is reopened, a file-backed binding has no live stage."
+        delivery: M3
       - id: ICON-07
         quote: "For an in-memory source it is the caller's stage."
         delivery: M3
         phase: 2
+      - id: ICON-34
+        quote: "Callers get a binding's live stage from the binding, which never places it in a stage cache."
+        delivery: M3
+        fixtures: [F-CACHED-STAGE]
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
@@ -1406,7 +1416,7 @@ excluded:
     reason: "Scope: browsing and inspection use the USD API on the live stage; the ICON rows trace what the contract provides."
   - section: spec/interaction-contract.md#two-layers-and-the-live-stage
     quotes: ["The live stage may differ from the display once the source has changed since synchronization."]
-    reason: "Explanation, and the file-backed live stage deferred to M3's decision row; ICON-06 traces the in-memory case."
+    reason: "Explanation."
   - section: spec/interaction-contract.md#source-entities-and-hierarchy
     quotes: ["A source entity is a binding plus a USD prim path"]
     restates: [INSP-01, INSP-03]

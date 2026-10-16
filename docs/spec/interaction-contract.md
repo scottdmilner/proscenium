@@ -17,7 +17,9 @@ The core's Python bindings expose the interaction functions, and the core routes
 
 The inspection layer is read-only. It never authors USD, loads or unloads payloads, changes the population mask, or changes any other stage setting.
 
-The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the published generation's time code. Which stage is live for a binding, and whether a file-backed binding keeps its stage open between synchronizations, is settled by M3 (see [DECISIONS.md](../DECISIONS.md) "Strictness of the file-backed refresh contract"). For an in-memory source it is the caller's stage.
+For a file-backed binding, the live stage is the binding's own stage, which it reuses across refreshes ([File-Backed Refresh](source-access.md#file-backed-refresh)). Until its first synchronization, including after a `.blend` is reopened, a file-backed binding has no live stage. For an in-memory source it is the caller's stage. Callers get a binding's live stage from the binding, which never places it in a stage cache.
+
+The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the published generation's time code.
 
 ## Without a Live Stage
 
