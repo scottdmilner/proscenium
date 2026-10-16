@@ -29,13 +29,15 @@ Binding configuration must not cross-contaminate other bindings. Opening or sync
 
 ## Source Identity
 
-Source identity is persisted separately from source availability. M3 defines the in-memory source key contract:
+Source identity is persisted separately from source availability. An in-memory binding's source identity is its **source key**, a string the caller chooses when it creates the binding. The binding also stores the root-layer identifier of the stage last attached to it.
 
-- Its uniqueness scope.
-- Whether reattachment requires an exact key match.
-- Whether the root-layer identifier is authoritative or only informative. A root-layer identifier alone cannot be the reattachment contract for anonymous or unsaved sources.
-- Whether replacing the attached stage preserves existing source selections.
-- Whether attaching a different stage under an existing key requires explicit confirmation.
+- A source key names one in-memory source within a `.blend`. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key.
+- Reattachment requires an exact key match.
+- The root-layer identifier is informative only: it is never used to find the bindings for a stage.
+- Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged.
+- Replacing the attached stage preserves stored source selections; they resolve against the next published generation.
+
+The key is the reattachment contract because the root-layer identifier of an anonymous or unsaved source does not survive the session.
 
 ## Copied Bindings
 

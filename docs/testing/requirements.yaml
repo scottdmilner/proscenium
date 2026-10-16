@@ -281,10 +281,17 @@ requirements:
     delivery: M3
     phase: 2
     rows:
-      - id: SID-02
-        quote: "Its uniqueness scope."
-        kind: contract
-        qualified_by: M3
+      - id: SID-03
+        quote: "A source key names one in-memory source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key."
+        note: "SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled."
+      - id: SID-04
+        quote: "Reattachment requires an exact key match."
+      - id: SID-05
+        quote: "The root-layer identifier is informative only: it is never used to find the bindings for a stage."
+      - id: SID-06
+        quote: "Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged."
+      - id: SID-07
+        quote: "Replacing the attached stage preserves stored source selections; they resolve against the next published generation."
 
   - section: spec/source-access.md#copied-bindings
     delivery: M3
@@ -1515,12 +1522,8 @@ excluded:
     quotes: ["A synchronization binding associates a source with a dedicated managed destination collection"]
     reason: "Definition of a binding; its data model is M3's binding schema."
   - section: spec/source-access.md#source-identity
-    quotes:
-      - "Whether reattachment requires an exact key match."
-      - "Whether the root-layer identifier is authoritative or only informative."
-      - "Whether replacing the attached stage preserves existing source selections."
-      - "Whether attaching a different stage under an existing key requires explicit confirmation."
-    restates: [SID-02]
+    quotes: ["The key is the reattachment contract because the root-layer identifier of an anonymous or unsaved source does not survive the session."]
+    reason: "Explanation."
   - section: spec/source-access.md#in-memory-sources
     quotes: ["The caller's stage is the stage a caller attaches to an in-memory binding."]
     reason: "Definitions."
@@ -1836,11 +1839,8 @@ excluded:
     quotes: ["Opening or synchronizing must not save or modify source USD files."]
     reason: "Scope: nothing in synchronization writes source files (see PROJ-01's exclusion)."
   - section: spec/source-access.md#source-identity
-    quotes: ["Source identity is persisted separately from source availability."]
+    quotes: ["Source identity is persisted separately from source availability.", "The binding also stores the root-layer identifier of the stage last attached to it."]
     reason: "Design guidance for M3's schemas; traced by REOPEN-04, REOPEN-05, and MEM-06."
-  - section: spec/source-access.md#source-identity
-    quotes: ["A root-layer identifier alone cannot be the reattachment contract for anonymous or unsaved sources."]
-    reason: "Design guidance for M3's in-memory key contract (SID-02)."
   - section: spec/lifecycle.md#ownership-and-lifecycle
     quotes: ["A resource has one owning binding but may cover many source entities and have many users."]
     reason: "Design guidance for M3's ownership format (OWN-01)."
