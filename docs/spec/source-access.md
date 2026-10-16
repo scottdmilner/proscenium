@@ -21,6 +21,20 @@ Consume existing composition and variant selections. Do not author composition a
 
 Binding configuration must not cross-contaminate other bindings. Opening or synchronizing must not save or modify source USD files.
 
+## Synchronization API
+
+Callers reach a binding through a **binding handle**: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. Each method looks the binding up when it is called, and two handles are equal when their identifiers are.
+
+- `synchronize(time_code)` synchronizes the binding at an explicit USD time code, which may be the default time code. The time code becomes the binding's requested time code, and the attempt uses the binding's requested settings.
+- The other requested settings (payload policy, conversion, purpose) change only through `set_settings(...)`, which records them without synchronizing.
+- `synchronize` returns an immutable result: its result state and deduplicated diagnostics ([Diagnostics](pipeline.md#diagnostics)). An expected failure, such as a source-access conflict or an unavailable source, is a result, not an exception.
+- A handle whose binding no longer exists, for example after undo or binding removal, raises when used.
+- Exceptions report misuse only, such as a call made during another synchronization.
+
+Operations that span bindings are module functions: creating a binding, finding a scene's bindings, and attaching a stage under a source key ([Source Identity](#source-identity)).
+
+Design note (suggested, settled by M3 and M5): the module, exact names, and the result's fields are settled with the implementation. The handle's methods delegate to functions keyed by binding identifier, which are what tests exercise.
+
 ## Source Consistency
 
 - Synchronization is synchronous and non-reentrant.

@@ -2,7 +2,7 @@
 
 How M3 will settle its contracts and deliver tested source access, the binding model, and versioned persistence schemas, and the order of work. Requirements are in the [M3 milestone](../milestones/M03-bindings.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M2 plan](M02-contracts.md).
 
-M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), CONS-03, SID-03 to SID-07, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01, MEM-02, and MEM-04 to MEM-08), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
+M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), API-01 to API-03, API-06, CONS-03, SID-03 to SID-07, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01, MEM-02, and MEM-04 to MEM-08), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
 
 ## Settled with the user (2026-10-15)
 
@@ -48,11 +48,11 @@ If a commit grows past one feature, it splits, and this list is updated in the s
    - The edit target is irrelevant to reading and isn't copied.
    - Updated together: In-Memory Sources and the DECISIONS.md row "Stage-level state reproduced for in-memory sources".
 5. **In-memory source key contract.** Source Identity, the SID rows (SID-03 to SID-07), and the DECISIONS.md row "In-memory source key contract".
-6. **Synchronization API signature,** as design text: a Python function taking a binding and an explicit time code, with settings as keyword arguments. M3 implements only source acquisition behind it; M5 builds the transaction.
+6. **Synchronization API signature.** A Synchronization API section in source-access.md (API-01 to API-06) and a DECISIONS.md row. M3 implements source acquisition behind it and `set_settings`; M5 builds the transaction.
 7. **Fixture case schema (AFIX-04).** The schema M1 left to M3's first cases: operation, expected outcome, requirement IDs, and phase. It goes into `tests/fixtures/registry.py`, with its test and the row's oracle.
 8. **Oracles on rows whose fixtures already exist:** the FILE, MEM, COPY, OWN-01, REOPEN, and SCHEMA-05 rows.
 9. **One commit per new fixture, each with the rows it covers.** About twenty behavior rows have no fixture yet. Candidates:
-   1. Multiple independent bindings on one source, including a file-backed and an in-memory binding on the same file (BIND-02 to BIND-10, CONS-03).
+   1. Multiple independent bindings on one source, including a file-backed and an in-memory binding on the same file (BIND-02 to BIND-10, CONS-03, API-01 to API-03, API-06).
    2. In-memory release and reattachment (MEM-05, MEM-06, UNDO-06, ICON-07, SID-03 to SID-07).
    3. Schema-version records: older, failed-migration, and newer (SCHEMA-02 to SCHEMA-04).
    4. Binding state and selection persistence (STATE-01, UNDO-07, REOPEN-02, ICON-24).
@@ -64,6 +64,7 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 - **A3, live stage.** The contract names each binding's live stage (ICON-32, ICON-07). A file-backed binding has none until its first synchronization, including after reopening (ICON-33), since the extension opens sources only when asked to synchronize. Tools need the live stage to author into its anonymous layers, so they get it from the binding, which never places it in a stage cache (ICON-34).
 - **A4, in-memory stage-level state.** The design note's private stage becomes the contract (MEM-07, MEM-08), as M1 tested it; MEM-03 is retired. The caller's settings are matched at each synchronization, not only on attach, because the caller may change them between synchronizations. Whether the binding keeps its private stage across synchronizations, as a file-backed binding keeps its own, is a design note for Phase C.
 - **A5, in-memory source key.** The key names a source (with the user), so bindings with different payload policies on one caller stage share it and one attach call serves them all. The settled contract replaces the open questions (SID-03 to SID-07); SID-02 is retired. A root-layer mismatch needs confirmation, and without it the attachment fails.
+- **A6, synchronization API** (with the user). A binding handle holds only the binding's persistent identifier, so it gives methods without holding a datablock or state across operator calls (UNDO-07); operations that span bindings, such as attaching under a source key, stay module functions. `synchronize(time_code)` takes only the time code, as PROJECT.md requires it as a parameter; other settings change through `set_settings`. Expected failures are results, since a completed-with-issues result needs a return value anyway. M3 delivers API-01 to API-03 and API-06; the result and exception rows (API-04, API-05) are M5's.
 
 ### Phase B — Compiled core bring-up
 

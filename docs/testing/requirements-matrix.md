@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-308 rows: 239 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2.
+314 rows: 245 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2.
 
 ## PROJECT.md
 
@@ -80,6 +80,12 @@ is filled in by its delivering milestone before implementation.
 | [BIND-08](../spec/source-access.md#bindings-and-source-access) | The default scope is the entire available stage. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [BIND-09](../spec/source-access.md#bindings-and-source-access) | Consume existing composition and variant selections. Do not author composition arcs or variant selections. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [BIND-10](../spec/source-access.md#bindings-and-source-access) | Binding configuration must not cross-contaminate other bindings. | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [API-01](../spec/source-access.md#synchronization-api) | Callers reach a binding through a binding handle: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [API-02](../spec/source-access.md#synchronization-api) | The time code becomes the binding's requested time code, and the attempt uses the binding's requested settings. | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [API-03](../spec/source-access.md#synchronization-api) | The other requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing. | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [API-06](../spec/source-access.md#synchronization-api) | A handle whose binding no longer exists, for example after undo or binding removal, raises when used. | behavior | M3 | 1 / M12 | — | Set by M3. |
+| [API-04](../spec/source-access.md#synchronization-api) | An expected failure, such as a source-access conflict or an unavailable source, is a result, not an exception. | behavior | M5 | 1 / M12 | — | Set by M5. |
+| [API-05](../spec/source-access.md#synchronization-api) | Exceptions report misuse only, such as a call made during another synchronization. | behavior | M5 | 1 / M12 | — | Set by M5. |
 | [CONS-01](../spec/source-access.md#source-consistency) | Synchronization is synchronous and non-reentrant. | behavior | M5 | 1 / M12 | — | Set by M5. |
 | [CONS-03](../spec/source-access.md#source-consistency) | Where a source change during evaluation can be detected, the attempt is discarded before publication. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [SID-03](../spec/source-access.md#source-identity) | A source key names one in-memory source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key. | behavior | M3 | 2 / M14 | — | Set by M3. *SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled.* |
