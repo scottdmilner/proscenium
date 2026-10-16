@@ -38,9 +38,9 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 
 | ID | Fixture |
 |---|---|
-| `F-DIRTY-LAYER` | **Dirty-layer conflict:** disk changes and unsaved in-process changes coexist. |
+| `F-DIRTY-LAYER` | **Dirty-layer conflict:** disk changes and unsaved in-process changes coexist, including a dirty layer that contributes only through a payload; a refresh that reuses the binding's stage sees the disk changes and keeps the opinions in its anonymous layers. |
 | `F-PRIVATE-STAGE` | **Private-stage fidelity:** caller stage settings differ from defaults. |
-| `F-CACHED-STAGE` | **Cached-stage isolation:** ambient stage reuse does not cross-contaminate bindings. |
+| `F-CACHED-STAGE` | **Cached-stage isolation:** an ambient cached stage for the same root is never handed to a binding, and a binding's own stage is never shared with other bindings or tools. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
 | `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |

@@ -92,6 +92,7 @@ Keep these distinct:
 | Last attempt | Settings attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
 | Runtime source attachment | The caller's stage for an in-memory binding | No |
+| Runtime source stage | The stage a file-backed binding opened and reuses across refreshes | No; after a `.blend` is reopened, the next refresh opens it |
 | Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt |
 
 A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed. This applies equally to changed source paths, changed conversion settings, and undo restoring an older display.

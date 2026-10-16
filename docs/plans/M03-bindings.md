@@ -2,11 +2,12 @@
 
 How M3 will settle its contracts and deliver tested source access, the binding model, and versioned persistence schemas, and the order of work. Requirements are in the [M3 milestone](../milestones/M03-bindings.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M2 plan](M02-contracts.md).
 
-M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), CONS-03, SID-02, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01 to MEM-06), the File-Backed Refresh rows (FILE-01 to FILE-05), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
+M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), CONS-03, SID-02, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01 to MEM-06), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
 
 ## Settled with the user (2026-10-15)
 
 - **A file-backed binding reuses its own stage.** The binding opens one stage outside every USD stage cache (`Usd.BlockStageCaches`), keeps it, and reuses it across refreshes. It is never shared with another binding or tool. Refresh reloads the clean contributing layers that changed on disk, so the binding's Hydra chain can also persist across refreshes for Phase 2. A first synchronization, including the first after reopening a `.blend`, opens the stage.
+- **The binding stage's anonymous layers are displayed.** A file-backed refresh shows the disk layers composed with the opinions in the binding stage's session layer and the anonymous layers beneath it, so a future editor can show unsaved edits through the live stage without saving and reopening. Synchronization never authors them, refresh never reloads them, and they are not saved in the `.blend`. Dirty disk layers still conflict.
 - **That stage is the binding's live stage** for [live inspection](../spec/interaction-contract.md#two-layers-and-the-live-stage). For an in-memory binding, the live stage is the caller's.
 - **Dirty contributing layers still fail refresh** with a source-access conflict naming them. Reloading a dirty layer discards its edits (M1 record), so refresh never reloads one.
 - **The dirty check covers what the binding composes:** the layers the binding's stage uses under its payload policy (`GetUsedLayers`), excluding anonymous layers. Under load-none, a dirty layer reached only through an unloaded payload doesn't conflict, since it can't change what is displayed.
@@ -56,6 +57,10 @@ If a commit grows past one feature, it splits, and this list is updated in the s
    3. Schema-version records: older, failed-migration, and newer (SCHEMA-02 to SCHEMA-04).
    4. Binding state and selection persistence (STATE-01, UNDO-07, REOPEN-02, ICON-24).
 10. **Start M3:** add it to `started`, then `tools/matrix.py render`.
+
+#### Phase A log
+
+- **A2, file-backed refresh.** FILE-04 now rules out stage caches and shared stages, not reuse of the binding's own stage. Two new rows: FILE-06, the dirty check's scope, and FILE-07, that a reused stage displays what a newly opened one would. FILE-01 adds the opinions in the binding stage's anonymous layers to what refresh displays, for a future editor's unsaved edits (with the user). The binding's stage is listed in [Binding State](../spec/lifecycle.md#binding-state) as runtime state. The same-second change check is a design note that Phase C settles.
 
 ### Phase B — Compiled core bring-up
 

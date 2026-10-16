@@ -331,7 +331,7 @@ requirements:
     phase: 1
     rows:
       - id: FILE-01
-        quote: "A file-backed refresh displays the source as it exists on disk."
+        quote: "A file-backed refresh displays the source as it exists on disk, composed with the opinions in the binding stage's anonymous layers: its session layer and the anonymous layers beneath it."
         fixtures: [F-DIRTY-LAYER]
       - id: FILE-02
         quote: "Refresh must not discard unsaved in-process edits made by other tools to layers it shares."
@@ -339,9 +339,15 @@ requirements:
       - id: FILE-03
         quote: "If any contributing layer has unsaved in-process edits, refresh fails with a source-access conflict naming those layers and preserves the previous display."
         fixtures: [F-DIRTY-LAYER]
+      - id: FILE-06
+        quote: "The contributing layers are the non-anonymous layers the binding's stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute."
+        fixtures: [F-DIRTY-LAYER]
       - id: FILE-04
-        quote: "Refresh does not reuse a cached stage or otherwise share stage state with other bindings."
+        quote: "refresh never takes a stage from a stage cache or otherwise shares stage state with other bindings or tools."
         fixtures: [F-CACHED-STAGE]
+      - id: FILE-07
+        quote: "never a dirty or anonymous one, so a refresh that reuses the binding's stage displays the same result as a stage newly opened from the same files with the same anonymous layers."
+        fixtures: [F-DIRTY-LAYER, F-CACHED-STAGE]
       - id: FILE-05
         quote: "Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe."
         fixtures: [F-CACHED-STAGE, F-DIRTY-LAYER]
@@ -1507,11 +1513,17 @@ excluded:
     quotes: ["Design note (suggested, not settled): open a private stage per binding"]
     reason: "Design note."
   - section: spec/source-access.md#file-backed-refresh
-    quotes: ["USD shares opened layers across the whole process"]
+    quotes: ["Each file-backed binding keeps its own stage and reuses it across refreshes. The binding opens it outside every USD stage cache;"]
+    restates: [FILE-04, FILE-07]
+  - section: spec/source-access.md#file-backed-refresh
+    quotes: ["Tools may author there through the live stage to show unsaved edits; synchronization never does."]
+    reason: "Permission for Phase 3 tools; that synchronization never authors USD is BIND-09."
+  - section: spec/source-access.md#file-backed-refresh
+    quotes: ["The binding's stage is runtime state.", "USD shares opened layers across the whole process"]
     reason: "Explanation."
   - section: spec/source-access.md#file-backed-refresh
-    quotes: ["Design note (suggested, not settled): open the stage at each refresh"]
-    reason: "Design note."
+    quotes: ["Design note (suggested, settled by M3): a non-forced layer reload compares modification times"]
+    reason: "Design note for M3's change check; FILE-07 tests its outcome."
   - section: spec/support/geometry.md
     quotes: ["Part of the supported scene state."]
     reason: "File introduction."
@@ -1823,6 +1835,9 @@ excluded:
   - section: spec/lifecycle.md#binding-state
     quotes: ["Runtime source attachment | The caller's stage for an in-memory binding | No"]
     reason: "True by construction: a caller's stage cannot be saved in a .blend."
+  - section: spec/lifecycle.md#binding-state
+    quotes: ["Runtime source stage | The stage a file-backed binding opened and reuses across refreshes | No"]
+    reason: "True by construction: a stage cannot be saved in a .blend."
   - section: spec/lifecycle.md#binding-state
     quotes: ["Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt"]
     reason: "Restates UNDO-07."

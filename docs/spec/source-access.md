@@ -61,12 +61,14 @@ Design note (suggested, not settled): open a private stage per binding over the 
 
 Requirements:
 
-- A file-backed refresh displays the source as it exists on disk.
+- A file-backed refresh displays the source as it exists on disk, composed with the opinions in the binding stage's anonymous layers: its session layer and the anonymous layers beneath it. Tools may author there through the live stage to show unsaved edits; synchronization never does.
 - Refresh must not discard unsaved in-process edits made by other tools to layers it shares.
 - **If any contributing layer has unsaved in-process edits, refresh fails** with a source-access conflict naming those layers and preserves the previous display.
-- Refresh does not reuse a cached stage or otherwise share stage state with other bindings.
+- The contributing layers are the non-anonymous layers the binding's stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute.
+- Each file-backed binding keeps its own stage and reuses it across refreshes. The binding opens it outside every USD stage cache; refresh never takes a stage from a stage cache or otherwise shares stage state with other bindings or tools.
+- Refresh reloads the clean contributing layers that changed on disk, never a dirty or anonymous one, so a refresh that reuses the binding's stage displays the same result as a stage newly opened from the same files with the same anonymous layers.
 - Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe.
 
-USD shares opened layers across the whole process, so file-backed and in-memory bindings on the same files can see each other's layer state.
+The binding's stage is runtime state. The first synchronization opens it, including the first after a `.blend` is reopened, with an empty session layer: edits in anonymous layers are not saved in the `.blend`. USD shares opened layers across the whole process, so file-backed and in-memory bindings on the same files can see each other's layer state.
 
-Design note (suggested, not settled): open the stage at each refresh outside any stage-cache context, check contributing layers for unsaved edits before evaluation, and reload the clean ones. If M1 shows that a private disk view can be built reliably without touching shared layers, M3 may replace the conflict failure with that view. That change only turns failures into successes.
+Design note (suggested, settled by M3): a non-forced layer reload compares modification times, which miss a rewrite within the same second on Windows ([feasibility record](../feasibility/runtime-record.md#dirty-layers-and-fresh-stages)). Refresh needs a change check that does not.
