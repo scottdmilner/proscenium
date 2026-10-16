@@ -134,6 +134,7 @@ Each entry links to the section that defines the term in full.
 | **Requested settings / last attempt** | The settings the user has asked for, and the record of the most recent synchronization attempt and its result. Both are kept separate from the published generation. See [Binding State](spec/lifecycle.md#binding-state). |
 | **Payload policy** | Load-all or load-no-payload. |
 | **Contributing layer** | Any layer that contributes opinions to the composed stage, whether through its layer stack or through composition arcs. |
+| **Caller's stage / private stage** | The stage a caller attaches to an in-memory binding, and the separate stage the binding opens over the same layers, which shares its opinions but not its stage settings. See [In-Memory Sources](spec/source-access.md#in-memory-sources). |
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |
 | **Materialize** | Turning display content that depends on managed shared resources or extension-specific mechanisms into standalone Blender data. |

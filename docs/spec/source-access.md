@@ -47,15 +47,19 @@ Custom properties can be copied by duplication; do not assume they guarantee uni
 
 ## In-Memory Sources
 
+The **caller's stage** is the stage a caller attaches to an in-memory binding. The binding's **private stage** is a separate stage the binding opens over the same root and session layer objects. In USD, layers hold opinions and exist once per process, while each stage has its own settings stored in no layer: load set, population mask, muted layers, interpolation type, and edit target. The two stages therefore share every opinion, but not each other's settings.
+
 Requirements:
 
 - Do not author changes to a caller-supplied stage's layers or change its stage settings, including load state, population mask, layer muting, and edit target.
-- Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules. M3 settles how each piece of stage-level state is reproduced: muted layers, population mask, resolver context, interpolation settings, and session-layer opinions.
+- Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules.
+- Each in-memory binding evaluates a private stage over the caller's root and session layers, opened outside every USD stage cache with the caller's resolver context. Because the layers are shared, the caller's unsaved layer edits and session-layer opinions are seen live.
+- At each synchronization, the private stage's population mask, muted layers, and interpolation type match the caller's stage. The caller's edit target does not affect composition and is not reproduced.
 - Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller.
 - If the caller releases the attached stage, the binding becomes unattached. Replacing it follows the [Source Identity](#source-identity) rules.
 - After a `.blend` is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
 
-Design note (suggested, not settled): open a private stage per binding over the caller's root and session layers, using the binding's payload policy. Shared layers would make unsaved caller edits visible without reopening files. Persist the source kind, a caller-chosen source key, and the root-layer identifier.
+Design note (suggested, settled by M3): the binding keeps its private stage across synchronizations while the same caller stage stays attached, as a file-backed binding keeps its own. Persist the source kind, a caller-chosen source key, and the root-layer identifier.
 
 ## File-Backed Refresh
 

@@ -2,7 +2,7 @@
 
 How M3 will settle its contracts and deliver tested source access, the binding model, and versioned persistence schemas, and the order of work. Requirements are in the [M3 milestone](../milestones/M03-bindings.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M2 plan](M02-contracts.md).
 
-M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), CONS-03, SID-02, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01 to MEM-06), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
+M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), CONS-03, SID-02, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01, MEM-02, and MEM-04 to MEM-08), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-01, -02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
 
 ## Settled with the user (2026-10-15)
 
@@ -40,7 +40,7 @@ If a commit grows past one feature, it splits, and this list is updated in the s
    - FILE-04 says "Refresh does not reuse a cached stage", which read literally forbids reusing the binding's own stage. New wording: the binding's stage never comes from a USD stage cache (`UsdUtils.StageCache`, or a `Usd.StageCacheContext` another tool set up), and is never shared with another binding or tool. The binding may keep and reuse a stage it opened itself. Clean-layer reloads stay the only effect other stages can observe.
    - Updated together: the FILE rows, the file-backed bullet in [invariants.md](../spec/invariants.md), the DECISIONS.md rows "Strictness of the file-backed refresh contract" and "Dirty contributing layers on file-backed refresh", and the `F-DIRTY-LAYER` and `F-CACHED-STAGE` descriptions in [strategy.md](../testing/strategy.md).
 3. **Live stage per binding.** [interaction-contract.md](../spec/interaction-contract.md#two-layers-and-the-live-stage) names the live stage for both source kinds, with ICON-07 and the live-stage notes in the DECISIONS.md rows "Browsing universe and inspection metadata set" and "Inspection layer".
-4. **Stage-level state for in-memory sources (MEM-03).** Suggested contract:
+4. **Stage-level state for in-memory sources (MEM-07, MEM-08).**
    - A private stage over the caller's root and session layers.
    - Muted layers, population mask, resolver context, and interpolation are copied.
    - The binding's payload policy replaces the caller's load rules.
@@ -62,6 +62,7 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 
 - **A2, file-backed refresh.** FILE-04 now rules out stage caches and shared stages, not reuse of the binding's own stage. Two new rows: FILE-06, the dirty check's scope, and FILE-07, that a reused stage displays what a newly opened one would. FILE-01 adds the opinions in the binding stage's anonymous layers to what refresh displays, for a future editor's unsaved edits (with the user). The binding's stage is listed in [Binding State](../spec/lifecycle.md#binding-state) as runtime state. The same-second change check is a design note that Phase C settles.
 - **A3, live stage.** The contract names each binding's live stage (ICON-32, ICON-07). A file-backed binding has none until its first synchronization, including after reopening (ICON-33), since the extension opens sources only when asked to synchronize. Tools need the live stage to author into its anonymous layers, so they get it from the binding, which never places it in a stage cache (ICON-34).
+- **A4, in-memory stage-level state.** The design note's private stage becomes the contract (MEM-07, MEM-08), as M1 tested it; MEM-03 is retired. The caller's settings are matched at each synchronization, not only on attach, because the caller may change them between synchronizations. Whether the binding keeps its private stage across synchronizations, as a file-backed binding keeps its own, is a design note for Phase C.
 
 ### Phase B — Compiled core bring-up
 
