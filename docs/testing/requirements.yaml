@@ -1173,6 +1173,7 @@ requirements:
       - id: AFIX-04
         quote: "Each fixture case declares its operation and expected outcome"
         delivery: M3
+        oracle: "tests/bpy_free/test_fixture_cases.py: each case in tests/fixtures/registry.py declares an operation and outcome, cites behavior rows that list its fixture, and has the highest phase of those rows; every behavior row of a started milestone is cited by a case of each fixture it lists that has cases."
       - id: AFIX-05
         quote: "M12 qualifies only Phase 1 cases and assertions. M14 qualifies Phase 2 cases and assertions and reruns Phase 1 coverage as regression checks."
         delivery: M12
