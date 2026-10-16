@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-304 rows: 234 behavior, 18 contract, 52 process; milestones started: M1, M1b, M2.
+308 rows: 239 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2.
 
 ## PROJECT.md
 
@@ -82,7 +82,11 @@ is filled in by its delivering milestone before implementation.
 | [BIND-10](../spec/source-access.md#bindings-and-source-access) | Binding configuration must not cross-contaminate other bindings. | behavior | M3 | 1 / M12 | — | Set by M3. |
 | [CONS-01](../spec/source-access.md#source-consistency) | Synchronization is synchronous and non-reentrant. | behavior | M5 | 1 / M12 | — | Set by M5. |
 | [CONS-03](../spec/source-access.md#source-consistency) | Where a source change during evaluation can be detected, the attempt is discarded before publication. | behavior | M3 | 1 / M12 | — | Set by M3. |
-| [SID-02](../spec/source-access.md#source-identity) | Its uniqueness scope. | contract | M3 | 2 / M3 | — | Set by M3. |
+| [SID-03](../spec/source-access.md#source-identity) | A source key names one in-memory source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key. | behavior | M3 | 2 / M14 | — | Set by M3. *SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled.* |
+| [SID-04](../spec/source-access.md#source-identity) | Reattachment requires an exact key match. | behavior | M3 | 2 / M14 | — | Set by M3. |
+| [SID-05](../spec/source-access.md#source-identity) | The root-layer identifier is informative only: it is never used to find the bindings for a stage. | behavior | M3 | 2 / M14 | — | Set by M3. |
+| [SID-06](../spec/source-access.md#source-identity) | Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged. | behavior | M3 | 2 / M14 | — | Set by M3. |
+| [SID-07](../spec/source-access.md#source-identity) | Replacing the attached stage preserves stored source selections; they resolve against the next published generation. | behavior | M3 | 2 / M14 | — | Set by M3. |
 | [COPY-01](../spec/source-access.md#copied-bindings) | do not assume they guarantee uniqueness. | behavior | M3 | 1 / M12 | `F-OWNERSHIP-AMBIGUITY` | Set by M3. |
 | [COPY-02](../spec/source-access.md#copied-bindings) | A binding whose identity is not unique is disabled pending repair | behavior | M3 | 1 / M12 | `F-OWNERSHIP-AMBIGUITY` | Set by M3. |
 | [COPY-03](../spec/source-access.md#copied-bindings) | A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled. | behavior | M3 | 1 / M12 | `F-OWNERSHIP-AMBIGUITY` | Set by M3. |
