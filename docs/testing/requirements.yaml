@@ -319,12 +319,16 @@ requirements:
     rows:
       - id: COPY-01
         quote: "do not assume they guarantee uniqueness."
+        oracle: "Each copy route F-OWNERSHIP-AMBIGUITY builds (duplicate collection, full-copy and linked-copy scene, append from another .blend, a record copied through Python) leaves candidates sharing one binding identity, and detection finds every candidate."
       - id: COPY-02
         quote: "A binding whose identity is not unique is disabled pending repair"
+        oracle: "Each candidate the rule does not keep canonical (every candidate, when it cannot decide) is disabled pending repair: its display and records are unchanged, refresh is refused with a diagnostic naming the ambiguity, and the state survives save/reopen."
       - id: COPY-03
         quote: "A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled."
+        oracle: "For each copy route, the canonical candidate is the one the rule in Copied Bindings names, and it is the same on repeated detection and after save/reopen; where the rule cannot decide, every candidate is disabled."
       - id: COPY-04
         quote: "Copies are never automatically claimed, merged, or deleted."
+        oracle: "After detection, every candidate's binding record, ownership tags, and managed content are unchanged: nothing is claimed, merged, or deleted."
       - id: COPY-05
         quote: "until the user makes it a new binding or detaches it."
         delivery: M11
@@ -336,19 +340,24 @@ requirements:
       - id: MEM-01
         quote: "Do not author changes to a caller-supplied stage's layers or change its stage settings"
         fixtures: [F-PRIVATE-STAGE]
+        oracle: "Each synchronization, under either payload policy, leaves caller_settings and layer_contents of the caller's stage as they were before it."
       - id: MEM-02
         quote: "Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules."
         fixtures: [F-PRIVATE-STAGE]
+        oracle: "The private stage composes the generator's caller_values, including the unsaved root edit and the session-layer opinions, except payload content, which follows the binding's payload policy."
       - id: MEM-07
         quote: "Each in-memory binding evaluates a private stage over the caller's root and session layers, opened outside every USD stage cache with the caller's resolver context."
         fixtures: [F-PRIVATE-STAGE]
         note: "MEM-07 and MEM-08 replace MEM-03 (retired), the contract row M3 settled."
+        oracle: "The private stage is not the caller's stage, its root and session layers are the caller's layer objects, it is in no stage cache, and its resolver context equals the caller's."
       - id: MEM-08
         quote: "At each synchronization, the private stage's population mask, muted layers, and interpolation type match the caller's stage."
         fixtures: [F-PRIVATE-STAGE]
+        oracle: "At each synchronization, the private stage's population mask, muted layers, and interpolation type equal the caller's, including after the caller changes them between synchronizations; the animated value at time 5 matches caller_anim_at_5."
       - id: MEM-04
         quote: "Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller."
         fixtures: [F-PRIVATE-STAGE]
+        oracle: "A load-all and a load-none binding on the caller's stage each compose payload content by their own policy, and neither changes the other's private stage or the caller's load set."
       - id: MEM-05
         quote: "If the caller releases the attached stage, the binding becomes unattached."
       - id: MEM-06
@@ -361,24 +370,31 @@ requirements:
       - id: FILE-01
         quote: "A file-backed refresh displays the source as it exists on disk, composed with the opinions in the binding stage's anonymous layers: its session layer and the anonymous layers beneath it."
         fixtures: [F-DIRTY-LAYER]
+        oracle: "With the dirty layers' edits reverted, the binding's stage composes the generator's disk_values with the changed_on_disk value, and an opinion authored in the binding stage's session layer is composed over them."
       - id: FILE-02
         quote: "Refresh must not discard unsaved in-process edits made by other tools to layers it shares."
         fixtures: [F-DIRTY-LAYER]
+        oracle: "After the failed refresh, each layer in dirty_contributing is still dirty and still holds its in_process_values edit."
       - id: FILE-03
         quote: "If any contributing layer has unsaved in-process edits, refresh fails with a source-access conflict naming those layers and preserves the previous display."
         fixtures: [F-DIRTY-LAYER]
+        oracle: "Refresh fails with a source-access conflict naming exactly the dirty contributing layers (ref, pay, and var_a under load-all), and publishes nothing."
       - id: FILE-06
         quote: "The contributing layers are the non-anonymous layers the binding's stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute."
         fixtures: [F-DIRTY-LAYER]
+        oracle: "Under load-none, the conflict names ref and var_a but not the payload-only pay; under either policy it never names dirty_not_contributing (var_b)."
       - id: FILE-04
         quote: "refresh never takes a stage from a stage cache or otherwise shares stage state with other bindings or tools."
         fixtures: [F-CACHED-STAGE]
+        oracle: "With the ambient stage cached in UsdUtils.StageCache and its cache context active, the binding's stage is not the ambient stage, and the ambient stage's settings and values equal ambient_values after refresh."
       - id: FILE-07
         quote: "never a dirty or anonymous one, so a refresh that reuses the binding's stage displays the same result as a stage newly opened from the same files with the same anonymous layers."
         fixtures: [F-DIRTY-LAYER, F-CACHED-STAGE]
+        oracle: "After refresh, the binding's reused stage composes the same values as a stage opened fresh from the same files with the same session-layer opinions, and the session-layer opinion survives the refresh."
       - id: FILE-05
         quote: "Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe."
         fixtures: [F-CACHED-STAGE, F-DIRTY-LAYER]
+        oracle: "After refresh reloads a clean layer changed on disk, another stage composing it (the caller's stage in F-DIRTY-LAYER, the ambient stage in F-CACHED-STAGE) composes the new disk value, and that stage's caller_settings are unchanged."
 
   # --- spec/lifecycle.md ----------------------------------------------------------------------
 
@@ -391,6 +407,7 @@ requirements:
         delivery: M3
         kind: contract
         qualified_by: M3
+        oracle: "M3's ownership metadata format (M3 plan, Phase D log), which records resource identity, ownership, source coverage, representation role, and usage as separate fields."
       - id: OWN-04
         quote: "Renaming does not detach content."
       - id: OWN-05
@@ -562,14 +579,17 @@ requirements:
       - id: REOPEN-01
         quote: "Restore metadata, pending-cleanup tracking, and indexes. Do not automatically retry cleanup."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, pending-cleanup tracking, and runtime indexes equal their values before saving, and the leftovers remain: no cleanup ran."
       - id: REOPEN-02
         quote: "Do not automatically synchronize."
       - id: REOPEN-04
         quote: "An unavailable source must not erase the saved representation."
         fixtures: [F-OFFLINE]
+        oracle: "Reopening F-OFFLINE with its source moved away keeps every managed datablock of the saved display, with its ownership tags."
       - id: REOPEN-05
         quote: "Source unavailability must not automatically detach the binding."
         fixtures: [F-OFFLINE]
+        oracle: "Reopening F-OFFLINE with its source moved away keeps the binding's configuration and published generation; nothing is detached."
       - id: REOPEN-06
         quote: "Detached content remains detached."
         delivery: M11
@@ -577,6 +597,7 @@ requirements:
       - id: REOPEN-07
         quote: "The saved display remains usable without its USD source"
         fixtures: [F-OFFLINE]
+        oracle: "Reopening F-OFFLINE with its source moved away keeps the saved display's geometry, transforms, materials, and correspondence records unchanged."
       - id: REOPEN-08
         quote: "Image textures remain references to external files"
         delivery: M9
@@ -595,6 +616,7 @@ requirements:
       - id: SCHEMA-05
         quote: "Without the extension installed, the saved display remains ordinary Blender content."
         fixtures: [F-OFFLINE]
+        oracle: "Opening F-OFFLINE's saved .blend without the extension installed shows its geometry, transforms, and materials as ordinary Blender data, and loading reports no errors."
 
   # --- spec/interaction.md --------------------------------------------------------------------
 
@@ -677,6 +699,7 @@ requirements:
         quote: "Callers get a binding's live stage from the binding, which never places it in a stage cache."
         delivery: M3
         fixtures: [F-CACHED-STAGE]
+        oracle: "After synchronization, the stage the binding handle returns as live is the binding's own stage, is not in UsdUtils.StageCache, and is not the ambient stage."
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
