@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-303 rows: 232 behavior, 19 contract, 52 process; milestones started: M1, M1b, M2.
+304 rows: 234 behavior, 18 contract, 52 process; milestones started: M1, M1b, M2.
 
 ## PROJECT.md
 
@@ -90,7 +90,8 @@ is filled in by its delivering milestone before implementation.
 | [COPY-05](../spec/source-access.md#copied-bindings) | until the user makes it a new binding or detaches it. | behavior | M11 | 1 / M12 | `F-OWNERSHIP-AMBIGUITY` | Set by M11. |
 | [MEM-01](../spec/source-access.md#in-memory-sources) | Do not author changes to a caller-supplied stage's layers or change its stage settings | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. |
 | [MEM-02](../spec/source-access.md#in-memory-sources) | Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules. | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. |
-| [MEM-03](../spec/source-access.md#in-memory-sources) | M3 settles how each piece of stage-level state is reproduced | contract | M3 | 2 / M3 | `F-PRIVATE-STAGE` | Set by M3. |
+| [MEM-07](../spec/source-access.md#in-memory-sources) | Each in-memory binding evaluates a private stage over the caller's root and session layers, opened outside every USD stage cache with the caller's resolver context. | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. *MEM-07 and MEM-08 replace MEM-03 (retired), the contract row M3 settled.* |
+| [MEM-08](../spec/source-access.md#in-memory-sources) | At each synchronization, the private stage's population mask, muted layers, and interpolation type match the caller's stage. | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. |
 | [MEM-04](../spec/source-access.md#in-memory-sources) | Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller. | behavior | M3 | 2 / M14 | `F-PRIVATE-STAGE` | Set by M3. |
 | [MEM-05](../spec/source-access.md#in-memory-sources) | If the caller releases the attached stage, the binding becomes unattached. | behavior | M3 | 2 / M14 | — | Set by M3. |
 | [MEM-06](../spec/source-access.md#in-memory-sources) | After a .blend is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage. | behavior | M3 | 2 / M14 | — | Set by M3. |

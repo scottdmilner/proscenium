@@ -313,10 +313,12 @@ requirements:
       - id: MEM-02
         quote: "Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules."
         fixtures: [F-PRIVATE-STAGE]
-      - id: MEM-03
-        quote: "M3 settles how each piece of stage-level state is reproduced"
-        kind: contract
-        qualified_by: M3
+      - id: MEM-07
+        quote: "Each in-memory binding evaluates a private stage over the caller's root and session layers, opened outside every USD stage cache with the caller's resolver context."
+        fixtures: [F-PRIVATE-STAGE]
+        note: "MEM-07 and MEM-08 replace MEM-03 (retired), the contract row M3 settled."
+      - id: MEM-08
+        quote: "At each synchronization, the private stage's population mask, muted layers, and interpolation type match the caller's stage."
         fixtures: [F-PRIVATE-STAGE]
       - id: MEM-04
         quote: "Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller."
@@ -1520,8 +1522,14 @@ excluded:
       - "Whether attaching a different stage under an existing key requires explicit confirmation."
     restates: [SID-02]
   - section: spec/source-access.md#in-memory-sources
-    quotes: ["Design note (suggested, not settled): open a private stage per binding"]
-    reason: "Design note."
+    quotes: ["The caller's stage is the stage a caller attaches to an in-memory binding."]
+    reason: "Definitions."
+  - section: spec/source-access.md#in-memory-sources
+    quotes: ["Design note (suggested, settled by M3): the binding keeps its private stage across synchronizations"]
+    reason: "Design note for M3 Phase C and M3's binding schema."
+  - section: spec/source-access.md#in-memory-sources
+    quotes: ["Because the layers are shared, the caller's unsaved layer edits and session-layer opinions are seen live.", "The caller's edit target does not affect composition and is not reproduced."]
+    reason: "Explanation; MEM-02 tests that the caller's composed content is evaluated."
   - section: spec/source-access.md#file-backed-refresh
     quotes: ["Each file-backed binding keeps its own stage and reuses it across refreshes. The binding opens it outside every USD stage cache;"]
     restates: [FILE-04, FILE-07]
