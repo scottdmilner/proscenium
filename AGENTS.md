@@ -27,6 +27,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
+  - `native_build.py`, `blender_deps.py`: build compiled modules against the locked Blender release's USD, and audit their linkage.
   - `matrix.py`: checks and renders the requirement-to-test matrix.
   - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
   - `feasibility/`: M1 runtime probes and M1b's Hydra bridge (`hydra_bridge/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.
@@ -54,7 +55,7 @@ Tests and probes that need the Blender binary find it through the `BLENDER` env 
 M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECISIONS.md) "Evaluation front end and core language"). It holds evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison. Everything that touches Blender stays in Python. The display plan is the one boundary: an immutable object whose large arrays Python reads without copying.
 
 - **Source:** C++ in `src/proscenium/core/`, beside that package's Python. The manifest's `[build]` patterns keep C++ sources and CMake files out of the zip; only the built module ships, in the same package.
-- **Build:** through `tools/build_extension.py`, from `src/proscenium/core/` only: one zip per platform, built on that platform, against the dependency headers of the Blender release `uv.lock` pins, and linked only to Blender's bundled `usd_ms`. M3 adds this to the script. The Hydra bridge in `tools/feasibility/` is test code and never goes through it; its `build.py` and `prepare_deps.py` are the reference for toolsets, flags, and the linkage audit.
+- **Build:** through `tools/build_extension.py`, from `src/proscenium/core/` only: one zip per platform, built on that platform, against the dependency headers of the Blender release `uv.lock` pins, and linked only to Blender's bundled `usd_ms`. M3 adds this to the script. The Hydra bridge in `tools/feasibility/` is test code and never goes through it. Both build through `tools/native_build.py` (toolsets and the linkage audit) and `tools/blender_deps.py` (the pinned headers); the bridge's CMakeLists.txt is the reference for flags.
 - **Boundary rules** (M1b findings):
   - Every entry point turns Tf errors and C++ exceptions into Python exceptions.
   - Arrays for Blender cross as 1-D read-only buffers whose element types match Blender's exactly (`'f'`, `'i'`, `'?'`). Any other type would silently take Blender's slow path.

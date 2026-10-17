@@ -9,15 +9,11 @@ if(NOT (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
   message(FATAL_ERROR "Unsupported platform for the Hydra bridge: ${CMAKE_SYSTEM_NAME}")
 endif()
 
-find_package(Python 3.13 EXACT REQUIRED COMPONENTS Interpreter)
-# prepare_deps.py holds the per-platform pins and prints the checkout directory.
-execute_process(
-  COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/prepare_deps.py"
-  OUTPUT_VARIABLE BLENDER_DEPS
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  COMMAND_ERROR_IS_FATAL ANY
-)
-file(TO_CMAKE_PATH "${BLENDER_DEPS}" BLENDER_DEPS)
+# The locked Blender release's headers (and Windows import libraries); tools/native_build.py passes them.
+set(BLENDER_DEPS "" CACHE PATH "Blender's dependency checkout (tools/blender_deps.py)")
+if(NOT EXISTS "${BLENDER_DEPS}/usd/include/pxr/pxr.h")
+  message(FATAL_ERROR "Blender's dependency headers not found: '${BLENDER_DEPS}' (set BLENDER_DEPS)")
+endif()
 
 # Blender's Python headers, keeping the build interpreter's SOABI, and Blender's USD to link.
 if(WIN32)
@@ -27,7 +23,7 @@ if(WIN32)
   set(USD_LIBRARY "${BLENDER_DEPS}/usd/lib/usd_ms.lib")
 else()
   set(Python_INCLUDE_DIR "${BLENDER_DEPS}/python/include/python3.13")
-  # Any file whose install name or SONAME is Blender's usd_ms; build.py passes the bpy wheel's.
+  # Any file whose install name or SONAME is Blender's usd_ms; native_build.py passes the bpy wheel's.
   set(USD_LIBRARY "" CACHE FILEPATH "Blender's libusd_ms to link against")
 endif()
 find_package(Python 3.13 EXACT REQUIRED COMPONENTS Interpreter Development.Module)

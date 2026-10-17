@@ -13,7 +13,7 @@ dependencies = []
 dev = [
     "bpy~=5.2.0",  # one Blender minor: each compiled bridge build binds to its USD namespace
     "bpy-site-packages",
-    "cmake>=3.26",  # cmake and ninja build the Hydra bridge (tools/feasibility/hydra_bridge/build.py)
+    "cmake>=3.26",  # cmake and ninja build compiled modules (tools/native_build.py)
     "fake-bpy-module-5-2>=20260730",
     "ninja>=1.13.2",
     "packaging>=26.3",

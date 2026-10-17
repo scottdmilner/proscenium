@@ -33,8 +33,8 @@ jobs:
       - run: uv sync --locked
       - uses: actions/cache@v4
         with:
-          path: tools/feasibility/hydra_bridge/external
-          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+          path: build/blender-deps
+          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
@@ -77,8 +77,8 @@ jobs:
       - run: uv sync --locked
       - uses: actions/cache@v4
         with:
-          path: tools/feasibility/hydra_bridge/external
-          key: hydra-bridge-deps-Linux-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+          path: build/blender-deps
+          key: hydra-bridge-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
@@ -141,8 +141,8 @@ jobs:
       - run: uv sync --locked
       - uses: actions/cache@v4
         with:
-          path: tools/feasibility/hydra_bridge/external
-          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/feasibility/hydra_bridge/prepare_deps.py', 'uv.lock') }}
+          path: build/blender-deps
+          key: hydra-bridge-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       # build.py loads the pinned MSVC toolset (14.44, matching Blender's usd_ms.dll and CRT) itself,
       # through Visual Studio's vswhere and vcvarsall.
       - name: Build and audit

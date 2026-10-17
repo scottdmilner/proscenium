@@ -80,6 +80,10 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 4. **Error translation and the stage handle.** Error translation covers every entry point. The handle takes the caller's stage, adds its own reference, and has an explicit `release()`. Test: releasing the caller's in-memory stage leaves the binding unattached (MEM-05), in `isolated/` since native code is involved.
 5. **Source-entity identifiers.** A USD path plus instance context (the chain of native-instance roots), with encoding, decoding, and equality. They are never Hydra-generated paths or instancer indices. Tests: round-trips over `F-NESTED-SELECTION`.
 
+#### Phase B log
+
+- **B1, shared build code.** `tools/blender_deps.py` (the pins and the dependency checkout) and `tools/native_build.py` (toolsets, the CMake build, and the linkage audit) come from the bridge's `prepare_deps.py` and `build.py`. The bridge's `build.py` is now a caller that names its module and writes `build.json`. The build script passes `BLENDER_DEPS` to CMake, so a CMake project doesn't locate the checkout itself. The dependency cache moves to `build/blender-deps/`, shared by the core and the bridge. Compiler flags stay in each CMakeLists.txt; the core's copies the bridge's in B2.
+
 ### Phase C — Source access
 
 All of this goes in a bpy-free source-access package. Tests are synchronization cases on the existing generators in `tests/fixtures/source_access.py`.
