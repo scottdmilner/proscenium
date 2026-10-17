@@ -4,5 +4,6 @@ The compiled module, _core, links Blender's usd_ms without embedding a path to i
 into a process that already has that library.
 """
 
-# Only for processes without bpy, such as tests/bpy_free: importing pxr loads Blender's usd_ms.
-from pxr import Tf  # noqa: F401
+# Importing pxr.Usd loads Blender's usd_ms, which only processes without bpy (such as tests/bpy_free) lack, and
+# registers the Python converters for USD types that _core's arguments use, which any process may lack.
+from pxr import Usd  # noqa: F401
