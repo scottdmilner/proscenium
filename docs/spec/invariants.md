@@ -8,7 +8,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 - Tools address USD entities through the source selection model, never by inferring USD structure from Blender parenting or names. → [Core Architecture](../PROJECT.md#core-architecture) (ARCH-06)
 - Bindings never cross-contaminate each other's configuration, stage state, or resources. → [Bindings and Source Access](source-access.md#bindings-and-source-access) (BIND-10)
 - Synchronization is synchronous and non-reentrant. → [Source Consistency](source-access.md#source-consistency) (CONS-01)
-- A file-backed refresh fails with a source-access conflict if any contributing layer has unsaved in-process edits. It never discards those edits and never reuses a cached stage. Reloading clean shared layers is its only effect visible to other stages. → [File-Backed Refresh](source-access.md#file-backed-refresh) (FILE-02, FILE-03, FILE-04, FILE-05)
+- A file-backed refresh fails with a source-access conflict if any non-anonymous layer the binding composes has unsaved in-process edits. It never discards those edits, never takes its stage from a stage cache, and never shares its stage with other bindings or tools. Reloading clean shared layers is its only effect visible to other stages. → [File-Backed Refresh](source-access.md#file-backed-refresh) (FILE-02, FILE-03, FILE-04, FILE-05, FILE-06)
 
 ## Layer Boundaries
 

@@ -31,7 +31,7 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 
 This file, `spec/`, and `testing/` establish project requirements and architectural direction. The milestone files detail implementation and reference those requirements; where they conflict, the requirement files take precedence. [spec/invariants.md](spec/invariants.md) summarizes cross-cutting guarantees, and the spec section each invariant links to is authoritative for details. Milestones describe planned work, not implementation status. Inspect the repository before assuming a feature exists.
 
-**How to read requirements.** Everything in this file, `spec/`, and `testing/` is a requirement unless it is labeled a **design note** (a suggested approach that the named milestone settles) or is plainly explanation, such as rationale or examples. "Must", "never", imperatives ("do not…"), and plain present-tense statements ("refresh does not reuse a cached stage") are equally binding. "Prefer" sets a default that holds unless a recorded decision overrides it, either in [DECISIONS.md](DECISIONS.md) or in a milestone's decision record. Terms are defined in the [Glossary](#glossary).
+**How to read requirements.** Everything in this file, `spec/`, and `testing/` is a requirement unless it is labeled a **design note** (a suggested approach that the named milestone settles) or is plainly explanation, such as rationale or examples. "Must", "never", imperatives ("do not…"), and plain present-tense statements ("refresh never takes a stage from a stage cache") are equally binding. "Prefer" sets a default that holds unless a recorded decision overrides it, either in [DECISIONS.md](DECISIONS.md) or in a milestone's decision record. Terms are defined in the [Glossary](#glossary).
 
 ## Core Architecture
 
@@ -134,6 +134,7 @@ Each entry links to the section that defines the term in full.
 | **Requested settings / last attempt** | The settings the user has asked for, and the record of the most recent synchronization attempt and its result. Both are kept separate from the published generation. See [Binding State](spec/lifecycle.md#binding-state). |
 | **Payload policy** | Load-all or load-no-payload. |
 | **Contributing layer** | Any layer that contributes opinions to the composed stage, whether through its layer stack or through composition arcs. |
+| **Caller's stage / private stage** | The stage a caller attaches to an in-memory binding, and the separate stage the binding opens over the same layers, which shares its opinions but not its stage settings. See [In-Memory Sources](spec/source-access.md#in-memory-sources). |
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |
 | **Materialize** | Turning display content that depends on managed shared resources or extension-specific mechanisms into standalone Blender data. |
