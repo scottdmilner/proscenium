@@ -1,0 +1,13 @@
+# The compiled core's clang-tidy checks, run by pre-commit through tools/clang_tidy.py. Every warning fails.
+# Left out: trailing return types (a style choice) and include-cleaner, which can't follow pxr's umbrella headers.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  misc-*,
+  -misc-include-cleaner,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*
+WarningsAsErrors: "*"
+HeaderFilterRegex: "src/proscenium/core/"

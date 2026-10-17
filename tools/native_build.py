@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from blender_deps import LIBS, Platform, blender_version, current_platform, prepare, release
+from blender_deps import LIBS, Platform, blender_version, current_platform, deps_dir, prepare, release
 
 # The dev group's cmake and ninja, installed beside this interpreter.
 SCRIPTS = Path(sysconfig.get_path("scripts"))
@@ -47,21 +47,10 @@ def build_module(source: Path, out: Path, name: str, usd_library: Path | None = 
     key = current_platform()
     out.mkdir(parents=True, exist_ok=True)
     blender = release()
-    _check_installed_bpy(blender)
-    deps = prepare(key)
-    build = out.with_name(out.name + "-cmake")  # beside out, which holds only results
-    command = [
-        _tool("cmake"), "-S", str(source), "-B", str(build), "-G", "Ninja",
-        f"-DCMAKE_MAKE_PROGRAM={_tool('ninja')}",
-        "-DCMAKE_BUILD_TYPE=Release",
-        # Configures for this interpreter's SOABI; the headers come from Blender's lib repo.
-        f"-DPython_EXECUTABLE={sys.executable}",
-        f"-DBLENDER_DEPS={deps.as_posix()}",
-    ]  # fmt: skip
-    if key != Platform.WINDOWS_X64:
-        command.append(f"-DUSD_LIBRARY={(usd_library or _wheel_usd_library(key)).resolve()}")
-    env = _build_env(key)
-    subprocess.run(command, check=True, env=env)
+    build = cmake_dir(out)
+    command = configure(source, build, usd_library)
+    deps = deps_dir(key)
+    env = build_env(key)
     subprocess.run([command[0], "--build", str(build)], check=True, env=env)
     with tempfile.TemporaryDirectory(prefix=f"{name}-install-") as tmp:
         subprocess.run([command[0], "--install", str(build), "--prefix", tmp], check=True, env=env)
@@ -84,6 +73,34 @@ def build_module(source: Path, out: Path, name: str, usd_library: Path | None = 
     return Built(module, manifest)
 
 
+def cmake_dir(out: Path) -> Path:
+    """The CMake build directory for the results directory out: beside it, since out holds only results."""
+    return out.with_name(out.name + "-cmake")
+
+
+def configure(source: Path, build: Path, usd_library: Path | None = None) -> list[str]:
+    """Configure the CMake project at source in build, and return the command.
+
+    Also writes build/compile_commands.json, which clang-tidy reads (tools/clang_tidy.py).
+    """
+    key = current_platform()
+    _check_installed_bpy(release())
+    deps = prepare(key)
+    command = [
+        tool("cmake"), "-S", str(source), "-B", str(build), "-G", "Ninja",
+        f"-DCMAKE_MAKE_PROGRAM={tool('ninja')}",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        # Configures for this interpreter's SOABI; the headers come from Blender's lib repo.
+        f"-DPython_EXECUTABLE={sys.executable}",
+        f"-DBLENDER_DEPS={deps.as_posix()}",
+    ]  # fmt: skip
+    if key != Platform.WINDOWS_X64:
+        command.append(f"-DUSD_LIBRARY={(usd_library or _wheel_usd_library(key)).resolve()}")
+    subprocess.run(command, check=True, env=build_env(key))
+    return command
+
+
 def _check_installed_bpy(blender: dict[str, str]) -> None:
     """The installed bpy wheel must be the locked release, read from its metadata."""
     installed = importlib.metadata.version("bpy")
@@ -91,14 +108,15 @@ def _check_installed_bpy(blender: dict[str, str]) -> None:
         raise RuntimeError(f"The installed bpy is {installed}, not the locked {blender['tag']}; run uv sync")
 
 
-def _tool(name: str) -> str:
+def tool(name: str) -> str:
+    """A dev-group tool installed beside this interpreter."""
     found = shutil.which(name, path=str(SCRIPTS))
     if found is None:
         raise RuntimeError(f"{name} not found in {SCRIPTS}; run uv sync")
     return found
 
 
-def _build_env(key: Platform) -> dict[str, str]:
+def build_env(key: Platform) -> dict[str, str]:
     if key == Platform.WINDOWS_X64:
         # Ninja uses the compiler from this environment; the Visual Studio generator would pick its own.
         return msvc_env()

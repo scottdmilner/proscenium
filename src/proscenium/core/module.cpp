@@ -1,5 +1,6 @@
 // The compiled core's Python module, proscenium.core._core. It links only Blender's usd_ms.
 #include <pxr/pxr.h>
+
 #include <pxr/external/boost/python.hpp>
 
 namespace bp = PXR_NS::pxr_boost::python;

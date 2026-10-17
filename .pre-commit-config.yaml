@@ -20,6 +20,18 @@ repos:
         language: system
         types_or: [python, pyi]
         pass_filenames: false
+      # The compiled core's C++ (src/proscenium/core/); its .clang-format and .clang-tidy hold the style and checks.
+      - id: clang-format
+        name: clang-format
+        entry: uv run --frozen clang-format -i
+        language: system
+        files: ^src/proscenium/core/.*\.(cpp|h)$
+      - id: clang-tidy
+        name: clang-tidy
+        entry: uv run --frozen python tools/clang_tidy.py
+        language: system
+        files: ^(src/proscenium/core/(.*\.(cpp|h)|CMakeLists\.txt|\.clang-tidy)|tools/(clang_tidy|native_build|blender_deps)\.py)$
+        pass_filenames: false
       - id: matrix
         name: requirement matrix
         entry: uv run --frozen python tools/matrix.py check

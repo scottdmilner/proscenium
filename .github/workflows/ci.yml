@@ -13,6 +13,11 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked  # fail if uv.lock is out of date
+      # clang-tidy parses the compiled core with Blender's dependency headers (tools/clang_tidy.py).
+      - uses: actions/cache@v4
+        with:
+          path: build/blender-deps
+          key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       # Checks are defined once, in .pre-commit-config.yaml. Fixes made by
       # ruff count as failures here, and the diff is printed.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
