@@ -96,7 +96,7 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 Current tests:
 - `test_roundtrip.py`: save/reopen with persistent and transient `load_post` handlers.
 - `test_ci_fixture.py`: the CI fixture's inventory with Blender's `pxr`, under both payload policies.
-- `test_extension.py`: installing, enabling, and disabling the zip built by `tools/build_extension.py` in check mode (`sync=False`), which only reads `src/proscenium` and fails if its wheels or manifest are out of date with `uv.lock` (run `tools/build_extension.py` to sync them).
+- `test_extension.py`: installing, enabling, and disabling the zip built by `tools/build_extension.py` in check mode (`sync=False`), which only reads `src/proscenium` and fails if its wheels or manifest are out of date with `uv.lock`, or its compiled core with its sources (run `tools/build_extension.py` to sync them). The installed copy's compiled core loads and matches the host's USD version, and the zip's manifest names this platform.
 
 ### `support/`
 

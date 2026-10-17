@@ -1,0 +1,87 @@
+cmake_minimum_required(VERSION 3.26)
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+  # Blender 5.2's floor; must be set before project(). The core must load wherever Blender does.
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "11.2" CACHE STRING "Minimum macOS version")
+endif()
+project(proscenium_core LANGUAGES CXX)
+
+if(NOT (WIN32 OR APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  message(FATAL_ERROR "Unsupported platform for the compiled core: ${CMAKE_SYSTEM_NAME}")
+endif()
+
+# The locked Blender release's headers (and Windows import libraries); tools/native_build.py passes them.
+set(BLENDER_DEPS "" CACHE PATH "Blender's dependency checkout (tools/blender_deps.py)")
+if(NOT EXISTS "${BLENDER_DEPS}/usd/include/pxr/pxr.h")
+  message(FATAL_ERROR "Blender's dependency headers not found: '${BLENDER_DEPS}' (set BLENDER_DEPS)")
+endif()
+
+# Blender's Python headers, keeping the build interpreter's SOABI, and Blender's USD to link.
+if(WIN32)
+  set(Python_INCLUDE_DIR "${BLENDER_DEPS}/python/313/include")
+  set(Python_LIBRARY "${BLENDER_DEPS}/python/313/libs/python313.lib")
+  # The bpy wheel has no import library; only the lib repo does.
+  set(USD_LIBRARY "${BLENDER_DEPS}/usd/lib/usd_ms.lib")
+else()
+  set(Python_INCLUDE_DIR "${BLENDER_DEPS}/python/include/python3.13")
+  # Any file whose install name or SONAME is Blender's usd_ms; native_build.py passes the bpy wheel's.
+  set(USD_LIBRARY "" CACHE FILEPATH "Blender's libusd_ms to link against")
+endif()
+find_package(Python 3.13 EXACT REQUIRED COMPONENTS Interpreter Development.Module)
+if(NOT EXISTS "${USD_LIBRARY}")
+  message(FATAL_ERROR "Blender's USD library not found: '${USD_LIBRARY}' (set USD_LIBRARY)")
+endif()
+
+Python_add_library(_core MODULE WITH_SOABI
+  module.cpp
+)
+target_compile_features(_core PRIVATE cxx_std_17)
+set_target_properties(_core PROPERTIES CXX_EXTENSIONS OFF)
+target_include_directories(_core SYSTEM PRIVATE
+  "${BLENDER_DEPS}/usd/include"
+  "${BLENDER_DEPS}/tbb/include"
+)
+# Warnings for the core's own code; USD's headers are system includes.
+if(MSVC)
+  target_compile_options(_core PRIVATE /W4)
+else()
+  target_compile_options(_core PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+# Clang's nearest equivalents of MSVC's /W4 shadowing (C4456-C4458) and size_t narrowing (C4267), so a macOS
+# build reports what the Windows one would.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(_core PRIVATE -Wshadow-all -Wshorten-64-to-32)
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  # USD's tf/hashset.h includes libstdc++'s deprecated <ext/hash_set>, which #warns in every file that
+  # reaches sdf/path.h. USD builds itself with the same flag (cmake/defaults/gccclangshareddefaults.cmake).
+  # Deprecated functions still warn: that is -Wdeprecated-declarations.
+  target_compile_options(_core PRIVATE -Wno-deprecated)
+endif()
+# On the interface of Blender's exported pxr Python target; match it.
+target_compile_definitions(_core PRIVATE PXR_BOOST_PYTHON_NO_PY_SIGNATURES)
+target_link_libraries(_core PRIVATE "${USD_LIBRARY}")
+
+if(WIN32)
+  # Blender's CRT and STL layout: release dynamic runtime only, and USD's MSVC flags.
+  set_target_properties(_core PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+  target_compile_options(_core PRIVATE /permissive- /Zc:inline /Zc:__cplusplus /bigobj /EHsc)
+  target_compile_definitions(_core PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+  # oneTBB headers auto-link tbb12.lib.
+  target_link_directories(_core PRIVATE "${BLENDER_DEPS}/tbb/lib")
+else()
+  set_target_properties(_core PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    # The host loads its own USD first. Do not embed a machine's library paths.
+    SKIP_BUILD_RPATH TRUE
+    INSTALL_RPATH ""
+    INSTALL_RPATH_USE_LINK_PATH FALSE
+  )
+  if(NOT APPLE)
+    # libusd_ms.so's own dependencies sit beside it; let the linker find them without embedding a path.
+    get_filename_component(USD_LIBRARY_DIR "${USD_LIBRARY}" DIRECTORY)
+    target_link_options(_core PRIVATE "-Wl,-rpath-link,${USD_LIBRARY_DIR}")
+  endif()
+endif()
+
+install(TARGETS _core LIBRARY DESTINATION .)

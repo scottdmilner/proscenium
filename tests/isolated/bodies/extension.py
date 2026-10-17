@@ -5,6 +5,7 @@ Runs in a fresh Blender process (isolated/harness.py); see tests/isolated/test_e
 
 from __future__ import annotations
 
+import importlib
 import sys
 from typing import Any
 
@@ -14,7 +15,7 @@ REPO = "proscenium_test_repo"
 
 
 def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
-    """Install `archive` into a temporary local repo with enable_on_install, then disable it."""
+    """Install `archive` into a temporary local repo with enable_on_install, load its compiled core, then disable it."""
     import addon_utils  # in the wheel, importable only after bpy
 
     prefs = bpy.context.preferences
@@ -29,6 +30,12 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
         "enabled_after_install": name in prefs.addons,
         "registered_after_install": module.addon.is_registered(),
     }
+    from pxr import Usd
+
+    core = importlib.import_module(f"{name}.core._core")
+    result["core_file"] = core.__file__
+    result["core_usd_version"] = list(core.usd_version())
+    result["host_usd_version"] = list(Usd.GetVersion())
     # default_set=True also removes the preferences entry, as unchecking it in the UI does.
     addon_utils.disable(name, default_set=True)
     result["enabled_after_disable"] = name in prefs.addons

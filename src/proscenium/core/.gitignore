@@ -1,0 +1,3 @@
+# The compiled module, built by tools/build_extension.py
+/_core.*.so
+/_core.*.pyd
