@@ -33,7 +33,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2]
+started: [M1, M1b, M2, M3]
 
 requirements:
 

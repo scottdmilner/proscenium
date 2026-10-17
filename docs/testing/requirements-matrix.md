@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-314 rows: 245 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2.
+314 rows: 245 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2, M3.
 
 ## PROJECT.md
 
