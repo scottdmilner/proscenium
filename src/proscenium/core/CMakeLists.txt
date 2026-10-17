@@ -32,7 +32,9 @@ if(NOT EXISTS "${USD_LIBRARY}")
 endif()
 
 Python_add_library(_core MODULE WITH_SOABI
+  errors.cpp
   module.cpp
+  stage_handle.cpp
 )
 target_compile_features(_core PRIVATE cxx_std_17)
 set_target_properties(_core PROPERTIES CXX_EXTENSIONS OFF)
