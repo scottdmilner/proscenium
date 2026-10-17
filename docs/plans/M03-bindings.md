@@ -51,11 +51,13 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 6. **Synchronization API signature.** A Synchronization API section in source-access.md (API-01 to API-06) and a DECISIONS.md row. M3 implements source acquisition behind it and `set_settings`; M5 builds the transaction.
 7. **Fixture case schema (AFIX-04).** The schema M1 left to M3's first cases: operation, expected outcome, requirement IDs, and phase. It goes into `tests/fixtures/registry.py`, with its test and the row's oracle.
 8. **Oracles on rows whose fixtures already exist:** the FILE, MEM, COPY, OWN-01, REOPEN, and SCHEMA-05 rows.
-9. **One commit per new fixture, each with the rows it covers.** About twenty behavior rows have no fixture yet. Candidates:
-   1. Multiple independent bindings on one source, including a file-backed and an in-memory binding on the same file (BIND-02 to BIND-10, CONS-03, API-01 to API-03, API-06).
-   2. In-memory release and reattachment (MEM-05, MEM-06, UNDO-06, ICON-07, SID-03 to SID-07).
-   3. Schema-version records: older, failed-migration, and newer (SCHEMA-02 to SCHEMA-04).
-   4. Binding state and selection persistence (STATE-01, UNDO-07, REOPEN-02, ICON-24).
+9. **New fixtures, with the rows they cover,** in one commit. These are stubs; their generators land with the code that uses them.
+   1. `F-MULTI-BINDING`: independent bindings on one source, including a file-backed and an in-memory binding on the same file (BIND-02 to BIND-10).
+   2. `F-SOURCE-CHANGE`: a source layer changed while the binding evaluates (CONS-03).
+   3. `F-REATTACH`: in-memory release and reattachment (MEM-05, MEM-06, UNDO-06, ICON-07, SID-03 to SID-07).
+   4. `F-SCHEMA-VERSIONS`: older, failed-migration, and newer records (SCHEMA-02 to SCHEMA-04).
+   5. `F-BINDING-STATE`: binding handles, configuration, live stage, and persistent selection (API-01 to API-03, API-06, STATE-01, UNDO-07, REOPEN-02, ICON-24, ICON-32, ICON-33).
+   6. M3 co-owns `F-OFFLINE`, which its reopening rows already use, and writes its generator in Phase D.
 10. **Start M3:** add it to `started`, then `tools/matrix.py render`.
 
 #### Phase A log
@@ -67,6 +69,7 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 - **A6, synchronization API** (with the user). A binding handle holds only the binding's persistent identifier, so it gives methods without holding a datablock or state across operator calls (UNDO-07); operations that span bindings, such as attaching under a source key, stay module functions. `synchronize(time_code)` takes only the time code, as PROJECT.md requires it as a parameter; other settings change through `set_settings`. Expected failures are results, since a completed-with-issues result needs a return value anyway. M3 delivers API-01 to API-03 and API-06; the result and exception rows (API-04, API-05) are M5's.
 - **A7, fixture case schema.** A case is a name, an operation, an outcome, the rows it checks, and its phase, declared on the fixture in the registry. The phase is derived from the rows rather than chosen, and a test checks it. The source-access fixtures get their first cases, covering every row that lists them. Their operation is synchronization, though M3 runs only the acquisition step; M5 runs the same cases through the whole transaction. Once M3 starts, the coverage test requires a case for each of its rows on every fixture with cases.
 - **A8, oracles on rows with fixtures.** The FILE, MEM, COPY, REOPEN, SCHEMA-05, and ICON-34 rows state what a test asserts, in terms of the generators' fields where a generator exists. OWN-01 is a contract, so its oracle is Phase D's ownership format. The F-OFFLINE and F-PREPARATION-CLEANUP-FAILURE oracles wait on those fixtures' owning milestones for their generators.
+- **A9, new fixtures.** Every remaining M3 behavior row gets a fixture: `F-MULTI-BINDING` for the BIND rows, so one scene checks both what each binding reads and that it leaves the others alone; `F-SOURCE-CHANGE` for CONS-03; `F-REATTACH` for the key contract and attachment; `F-SCHEMA-VERSIONS` for migration; and `F-BINDING-STATE` for handles, configuration, the live stage, and persistent selection. BIND-05 is checked as what `synchronize` records, since M3 implements only acquisition. M3 co-owns `F-OFFLINE` (with the user), whose reopening rows it delivers; M9 extends it with materials and textures.
 
 ### Phase B — Compiled core bring-up
 
