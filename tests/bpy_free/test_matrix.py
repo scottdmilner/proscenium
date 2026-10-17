@@ -73,12 +73,15 @@ def test_field_problems_are_reported(loaded: matrix.Matrix) -> None:
 
 def test_started_milestone_rows_need_oracle_and_fixture(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
-    assert not _row(m, "FILE-01").oracle  # M3 fills it in; not required while M3 has not started
+    m.started.discard("M3")
+    _row(m, "FILE-01").oracle = ""
+    _row(m, "BIND-02").fixtures = []
+    assert not any(p.startswith(("FILE-01 ", "BIND-02 ")) for p in matrix.check(m))  # not required before M3 starts
     m.started.add("M3")
     problems = matrix.check(m)
     assert "FILE-01 (spec/source-access.md#file-backed-refresh): M3 has started, so the row needs an oracle" in problems
     assert not any(p.startswith("FILE-02 ") and "bespoke fixture" in p for p in problems)  # it has F-DIRTY-LAYER
-    assert any("BIND-02" in p and "needs a bespoke fixture" in p for p in problems)  # no fixture assigned yet
+    assert any("BIND-02" in p and "needs a bespoke fixture" in p for p in problems)
 
 
 def test_invariant_citing_a_row_outside_its_links_is_reported(loaded: matrix.Matrix) -> None:

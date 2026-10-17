@@ -26,11 +26,13 @@
 
 **Tests:**
 
-- Isolation between a file-backed binding and an in-memory stage on the same file.
-- With M1b's compiled core: releasing the caller's in-memory stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`).
+- Independent bindings on one source, including a file-backed binding and an in-memory stage on the same file (`F-MULTI-BINDING`).
+- With M1b's compiled core: releasing the caller's in-memory stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment under the key contract (`F-REATTACH`).
 - `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`.
 - Copied-binding detection from `F-OWNERSHIP-AMBIGUITY`.
-- Loading older, failed-migration, and newer-schema records.
+- Loading older, failed-migration, and newer-schema records (`F-SCHEMA-VERSIONS`).
+- A source change during evaluation (`F-SOURCE-CHANGE`).
+- Binding handles, configuration, the live stage, and persistent selection through save/reopen and undo (`F-BINDING-STATE`), and reopening with the source unavailable (`F-OFFLINE`).
 - Compatibility tests for source-entity identifiers and persisted selection state against M2's draft contract.
 
 **Exit condition:** independent bindings whose source access passes `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`, with versioned persistence schemas and indexes that survive reopening.

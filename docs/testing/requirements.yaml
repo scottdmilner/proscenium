@@ -249,23 +249,41 @@ requirements:
     rows:
       - id: BIND-02
         quote: "Root-layer files: .usd, .usda, .usdc."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "Bindings on the .usd, .usda, and .usdc copies of the fixture's scene each acquire a stage that composes the same values."
       - id: BIND-03
         quote: "Caller-supplied in-memory stages without requiring file reopening."
         phase: 2
+        fixtures: [F-MULTI-BINDING]
+        oracle: "An in-memory binding on the caller's stage composes the caller's unsaved root-layer edit, which a stage reopened from the file would not."
       - id: BIND-04
         quote: "Load-all or load-no-payload policy."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "A load-all and a load-none binding on the same file compose the fixture's payload content by their own policy."
       - id: BIND-05
         quote: "Explicit evaluation time code, including the USD default time code."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and records each exactly as the binding's requested time code."
       - id: BIND-06
         quote: "Coordinate-conversion and purpose/display settings."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "Each binding keeps its own units, up-axis, and purpose settings: setting one binding's leaves the others' as they were."
       - id: BIND-07
         quote: "Multiple independent bindings, including bindings using the same source."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "Two file-backed bindings and an in-memory binding on the same file each have their own stage, distinct from the others'."
       - id: BIND-08
         quote: "The default scope is the entire available stage."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "A binding with default settings acquires a stage with no population mask restriction, composing every prim the fixture's scene defines."
       - id: BIND-09
         quote: "Consume existing composition and variant selections. Do not author composition arcs or variant selections."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "After acquisitions under both payload policies, no layer of the source is dirty or changed on disk, and the stage composes the scene's authored variant selections."
       - id: BIND-10
         quote: "Binding configuration must not cross-contaminate other bindings."
+        fixtures: [F-MULTI-BINDING]
+        oracle: "Changing one binding's requested settings or payload policy leaves every other binding's configuration, stage, and stage settings unchanged."
 
   - section: spec/source-access.md#synchronization-api
     delivery: M3
@@ -273,12 +291,20 @@ requirements:
     rows:
       - id: API-01
         quote: "Callers reach a binding through a binding handle: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state."
+        fixtures: [F-BINDING-STATE]
+        oracle: "A handle compares equal to one built from the same identifier, and stays usable across undo, redo, and save/reopen while its binding exists."
       - id: API-02
         quote: "The time code becomes the binding's requested time code, and the attempt uses the binding's requested settings."
+        fixtures: [F-BINDING-STATE]
+        oracle: "After synchronize(t) for any t, the default time code included, the binding's requested time code is t, and the attempt's settings equal the binding's requested settings."
       - id: API-03
         quote: "The other requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
+        fixtures: [F-BINDING-STATE]
+        oracle: "set_settings changes the requested settings and nothing else: the published generation, last attempt, and live stage are unchanged, and no synchronization runs."
       - id: API-06
         quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used."
+        fixtures: [F-BINDING-STATE]
+        oracle: "After a binding is removed, or its creation is undone, every method of a handle to it raises, as does an equal handle made afterwards."
       - id: API-04
         quote: "An expected failure, such as a source-access conflict or an unavailable source, is a result, not an exception."
         delivery: M5
@@ -295,6 +321,8 @@ requirements:
         delivery: M5
       - id: CONS-03
         quote: "Where a source change during evaluation can be detected, the attempt is discarded before publication."
+        fixtures: [F-SOURCE-CHANGE]
+        oracle: "When the fixture changes a contributing layer while the binding evaluates, the attempt fails before publication with a diagnostic naming the layer, and the published generation is unchanged."
 
   - section: spec/source-access.md#source-identity
     delivery: M3
@@ -303,14 +331,24 @@ requirements:
       - id: SID-03
         quote: "A source key names one in-memory source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key."
         note: "SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled."
+        fixtures: [F-REATTACH]
+        oracle: "Attaching a stage under a key attaches it to both bindings created with that key, and not to a binding with another key."
       - id: SID-04
         quote: "Reattachment requires an exact key match."
+        fixtures: [F-REATTACH]
+        oracle: "Attaching under a key that differs from a binding's, even only in case or whitespace, leaves that binding unattached."
       - id: SID-05
         quote: "The root-layer identifier is informative only: it is never used to find the bindings for a stage."
+        fixtures: [F-REATTACH]
+        oracle: "Attaching a stage whose root layer matches a binding's stored identifier, under a different key, does not attach it to that binding."
       - id: SID-06
         quote: "Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged."
+        fixtures: [F-REATTACH]
+        oracle: "Attaching a stage with a different root-layer identifier under an existing key fails without confirmation and leaves every binding's attachment unchanged; with confirmation it attaches, and the stored identifier becomes the new one."
       - id: SID-07
         quote: "Replacing the attached stage preserves stored source selections; they resolve against the next published generation."
+        fixtures: [F-REATTACH]
+        oracle: "After the attached stage is replaced, the persistent selection's entries for those bindings are unchanged."
 
   - section: spec/source-access.md#copied-bindings
     delivery: M3
@@ -360,8 +398,12 @@ requirements:
         oracle: "A load-all and a load-none binding on the caller's stage each compose payload content by their own policy, and neither changes the other's private stage or the caller's load set."
       - id: MEM-05
         quote: "If the caller releases the attached stage, the binding becomes unattached."
+        fixtures: [F-REATTACH]
+        oracle: "Once the caller drops every reference to the attached stage, the stage expires and the binding reports itself unattached."
       - id: MEM-06
         quote: "After a .blend is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage."
+        fixtures: [F-REATTACH]
+        oracle: "After save/reopen, an in-memory binding reports its source unavailable until a stage is attached under its key; refreshing it before then gives a diagnostic and changes no published state."
 
   - section: spec/source-access.md#file-backed-refresh
     delivery: M3
@@ -517,9 +559,13 @@ requirements:
         quote: "In-memory stage attachments are runtime associations keyed by binding identity."
         delivery: M3
         phase: 2
+        fixtures: [F-REATTACH]
+        oracle: "Undoing and redoing a change to an attached binding leaves its stage attached, found by binding identity."
       - id: UNDO-07
         quote: "Runtime code must not hold Blender datablock references across operator calls."
         delivery: M3
+        fixtures: [F-BINDING-STATE]
+        oracle: "After undo, redo, file load, and deletion of managed content, lookups through runtime indexes return current datablocks or raise; none returns a removed one."
       - id: UNDO-08
         quote: "Detach, cleanup, and binding removal must support undo/redo"
         delivery: M11
@@ -532,6 +578,8 @@ requirements:
       - id: STATE-01
         quote: "Binding configuration | Binding identity, source information, destination, target scene, and requested settings"
         delivery: M3
+        fixtures: [F-BINDING-STATE]
+        oracle: "A binding's identity, source information, destination, target scene, and requested settings survive save/reopen exactly, stored apart from its published generation and last attempt."
       - id: STATE-02
         quote: "Published generation | Display resources, correspondence, ownership manifest"
         fixtures: [F-FAILED-SETTINGS]
@@ -582,6 +630,8 @@ requirements:
         oracle: "After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, pending-cleanup tracking, and runtime indexes equal their values before saving, and the leftovers remain: no cleanup ran."
       - id: REOPEN-02
         quote: "Do not automatically synchronize."
+        fixtures: [F-BINDING-STATE]
+        oracle: "Reopening a .blend with bindings runs no synchronization: no published generation or last attempt changes, and no USD source is opened."
       - id: REOPEN-04
         quote: "An unavailable source must not erase the saved representation."
         fixtures: [F-OFFLINE]
@@ -609,10 +659,16 @@ requirements:
     rows:
       - id: SCHEMA-02
         quote: "Older supported schemas migrate on load."
+        fixtures: [F-SCHEMA-VERSIONS]
+        oracle: "Records at an older supported version load at the current version, keeping every field the older version held."
       - id: SCHEMA-03
         quote: "If migration fails or the schema is newer than the extension supports"
+        fixtures: [F-SCHEMA-VERSIONS]
+        oracle: "A binding whose records fail migration, or are newer than supported, keeps its display and records, refuses refresh and lifecycle operations, and reports why."
       - id: SCHEMA-04
         quote: "Unreadable or unsupported pending-cleanup records are preserved and never authorize disposal."
+        fixtures: [F-SCHEMA-VERSIONS]
+        oracle: "Unreadable or unsupported pending-cleanup records are unchanged after load and save, and cleanup disposes of none of the resources they name."
       - id: SCHEMA-05
         quote: "Without the extension installed, the saved display remains ordinary Blender content."
         fixtures: [F-OFFLINE]
@@ -688,13 +744,19 @@ requirements:
       - id: ICON-32
         quote: "For a file-backed binding, the live stage is the binding's own stage, which it reuses across refreshes"
         delivery: M3
+        fixtures: [F-BINDING-STATE]
+        oracle: "After a file-backed binding's first synchronization, its live stage is the stage it synchronized with, and it is the same stage after a second refresh."
       - id: ICON-33
         quote: "Until its first synchronization, including after a .blend is reopened, a file-backed binding has no live stage."
         delivery: M3
+        fixtures: [F-BINDING-STATE]
+        oracle: "Before its first synchronization, and after reopening until a refresh, a file-backed binding has no live stage."
       - id: ICON-07
         quote: "For an in-memory source it is the caller's stage."
         delivery: M3
         phase: 2
+        fixtures: [F-REATTACH]
+        oracle: "An in-memory binding's live stage is the caller's attached stage, not its private stage."
       - id: ICON-34
         quote: "Callers get a binding's live stage from the binding, which never places it in a stage cache."
         delivery: M3
@@ -795,6 +857,8 @@ requirements:
       - id: ICON-24
         quote: "A persistent selection is an ordered set of (binding identifier, USD path) entries plus an optional active entry"
         delivery: M3
+        fixtures: [F-BINDING-STATE]
+        oracle: "A persistent selection with entries from two bindings and an active entry saves and reopens with the same entries, in order, and the same active entry."
       - id: ICON-25
         quote: "Resolution checks each entry against its binding's published generation"
         fixtures: [F-UNIVERSE-MEMBERSHIP]
