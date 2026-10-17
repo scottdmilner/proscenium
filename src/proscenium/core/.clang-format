@@ -1,0 +1,3 @@
+# The compiled core's C++ style (clang-format, run by pre-commit). The manifest keeps dotfiles out of the zip.
+BasedOnStyle: Google
+ColumnLimit: 120
