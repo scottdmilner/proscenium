@@ -17,7 +17,38 @@ jobs:
       # ruff count as failures here, and the diff is printed.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
 
+  # The compiled core for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
+  # manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
+  # tools/build_extension.py uses this module because its build record is current.
+  core-linux:
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: command -v git || dnf install -y git
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/cache@v4
+        with:
+          path: build/blender-deps
+          key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - name: Build the compiled core
+        run: uv run python tools/build_extension.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-linux-x64
+          path: |
+            build/core/build.json
+            src/proscenium/core/_core.*.so
+          if-no-files-found: error
+
   test:
+    needs: core-linux
     strategy:
       fail-fast: false
       matrix:
@@ -33,9 +64,18 @@ jobs:
           enable-cache: true
       - uses: ./.github/actions/setup-blender  # binary smoke tests in tests/isolated
       - run: uv sync --locked
+      - uses: actions/cache@v4
+        if: runner.os != 'Linux'
+        with:
+          path: build/blender-deps
+          key: blender-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: actions/download-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: core-linux-x64
 
-      # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock, which
-      # the extension test's read-only build (--check mode) needs.
+      # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock and builds the compiled core
+      # (on Linux, it keeps core-linux's), which the extension test's read-only build (--check mode) needs.
       - name: Build extension
         run: uv run python tools/build_extension.py
 
