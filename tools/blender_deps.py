@@ -1,8 +1,10 @@
-"""Cache exact Blender headers (and Windows import libraries); warm builds need no Git network access.
+"""Cache exact Blender headers (and Windows import libraries) for compiled modules; warm builds need no network.
 
-Prints the dependency directory on stdout for CMake; progress goes to stderr.
-The Blender release comes from uv.lock's bpy version (tools/blender_release.py). Its git tag
-records each precompiled-library repo's revision as a submodule under lib/; those are the pins.
+The Blender release comes from uv.lock's bpy version (blender_release.py). Its git tag records
+each precompiled-library repo's revision as a submodule under lib/; those are the pins. The cache
+is build/blender-deps/, shared by the compiled core and the feasibility bridge.
+
+Usage: python tools/blender_deps.py   # prints the dependency directory; progress goes to stderr
 """
 
 from __future__ import annotations
@@ -16,10 +18,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[1]))
+from blender_release import blender_tag, blender_version
 
-from blender_release import blender_tag, blender_version  # noqa: E402
+CACHE = Path(__file__).resolve().parents[1] / "build" / "blender-deps"
 
 BLENDER_URL = "https://projects.blender.org/blender/blender.git"
 
@@ -86,14 +87,14 @@ def current_platform() -> Platform:
         ("Windows", "amd64"): Platform.WINDOWS_X64,
     }.get((system, machine))
     if key is None:
-        raise RuntimeError(f"Unsupported platform for the Hydra bridge: {system} {machine}")
+        raise RuntimeError(f"Unsupported platform for compiled modules: {system} {machine}")
     return key
 
 
 def release() -> dict[str, str]:
     """The locked Blender release: its tag, commit, and lib/ submodule revisions; cached per tag."""
     tag = blender_tag()
-    cache = HERE / "external" / f"blender-{tag}.json"
+    cache = CACHE / f"blender-{tag}.json"
     if cache.is_file():
         return json.loads(cache.read_text(encoding="utf-8"))
     _log(f"Resolving Blender {tag} library revisions from {BLENDER_URL}")
@@ -113,7 +114,7 @@ def release() -> dict[str, str]:
 
 
 def deps_dir(key: Platform) -> Path:
-    return HERE / "external" / LIBS[key].repo
+    return CACHE / LIBS[key].repo
 
 
 def prepare(key: Platform) -> Path:

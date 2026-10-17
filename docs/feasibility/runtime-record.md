@@ -214,16 +214,17 @@ only through `tools/build_extension.py`.
 
 **Dependencies.** The target release is the bpy version in `uv.lock` (5.2.2;
 `tools/blender_release.py`). The same helper picks the Blender binary CI downloads.
-`prepare_deps.py` reads that release's git tag (`v5.2.2`) from a shallow, treeless
+`tools/blender_deps.py` (the bridge's `prepare_deps.py` until M3 moved it, unchanged in
+logic) reads that release's git tag (`v5.2.2`) from a shallow, treeless
 clone of `blender.git` and takes the precompiled-library revisions from its `lib/`
 submodule pointers. The resolved tag, commit, and revisions are cached in
-`external/blender-<tag>.json`. `build.py` checks that the installed bpy wheel's version
+`build/blender-deps/blender-<tag>.json`. `build.py` checks that the installed bpy wheel's version
 is the locked one, from its metadata. The probe then checks in each host that
 `bpy.app.build_hash` is the tag's commit (`d13f752e3b9c`) recorded in `build.json`. So
 headers, link input, and test hosts come from one release.
 
-On the first build `prepare_deps.py` makes a blobless sparse checkout of the
-platform's library repo under the bridge's gitignored `external/<repo>/`. A warm build
+On the first build `blender_deps.py` makes a blobless sparse checkout of the
+platform's library repo under the gitignored `build/blender-deps/<repo>/`. A warm build
 needs no network access: on macOS (2026-10-10) it succeeded with `UV_OFFLINE=1` and Git's
 `protocol.allow=never`. The revisions resolved from `v5.2.2` match those used for the
 CI results below:
