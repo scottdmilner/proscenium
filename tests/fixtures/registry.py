@@ -103,7 +103,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("shared-reload", SYNC, SUCCESS, ("LAYER-06", "LAYER-07", "SRC-05"), 1),
             ),
         ),
-        Fixture("F-MULTI-BINDING", "Independent bindings on one source", ("M3",)),
+        # Cases join once every row it lists has a test: BIND-05 and BIND-06 need the synchronization API.
+        Fixture("F-MULTI-BINDING", "Independent bindings on one source", ("M3",), source_access.multi_binding),
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
         # Cases join once every row it lists has a test: SRC-03 and SID-07 need the binding records (Phase D).
         Fixture("F-REATTACH", "Release and reattachment", ("M3",), source_access.reattach),
