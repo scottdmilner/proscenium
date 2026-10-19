@@ -13,6 +13,8 @@ and leaves everyone else's state alone:
   defaults. Source Stages.
 - cached_stage (F-CACHED-STAGE): a stage for the same file sitting in a stage
   cache with an active cache context. Source Stages, Layer State and Reloading.
+- multi_binding (F-MULTI-BINDING): the scene's root layer saved as .usda, .usdc,
+  and .usd, and a caller's stage over the .usda one. Bindings and Source Access.
 - reattach (F-REATTACH): a caller's stage, another stage over the same root layer,
   and a stage over a copy of the scene, whose root layer differs. Source Identity
   and Source Stages.
@@ -279,3 +281,30 @@ def reattach(dest: Path) -> Generator[ReattachScene]:
         other_root=open_fresh(other),
         values=dict(DISK),
     )
+
+
+# The root-layer formats a file source may have (source-access.md#bindings-and-source-access).
+ROOT_FORMATS = (".usda", ".usdc", ".usd")
+
+
+@dataclass
+class MultiBindingScene:
+    roots: dict[str, Path]  # by extension in ROOT_FORMATS: the same root layer in each format
+    caller: Usd.Stage  # for an attached source: a caller's stage over the .usda root, loading every payload
+    values: dict[str, float | None]  # what each root composes, load-all
+
+
+@contextmanager
+def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
+    """F-MULTI-BINDING: one scene for several bindings, with its root layer in each format.
+
+    root.usdc and root.usd are exports of root.usda (.usd is written as crate) beside it, so
+    they compose the same layers.
+    """
+    scene = copy_scene(Scene.SOURCE_ACCESS, dest)
+    root = Sdf.Layer.OpenAsAnonymous(str(scene / "root.usda"))
+    roots = {".usda": scene / "root.usda"}
+    for extension in (".usdc", ".usd"):
+        roots[extension] = scene / f"root{extension}"
+        root.Export(str(roots[extension]))
+    yield MultiBindingScene(roots=roots, caller=open_fresh(roots[".usda"]), values=dict(DISK))

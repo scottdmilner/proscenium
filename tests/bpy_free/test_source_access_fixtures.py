@@ -104,3 +104,13 @@ def test_reattach(tmp_path: Path) -> None:
         assert other != scene.caller.GetRootLayer().identifier
         for stage in (scene.caller, scene.same_root, scene.other_root):
             assert read_values(stage) == scene.values
+
+
+def test_multi_binding(tmp_path: Path) -> None:
+    with source_access.multi_binding(tmp_path) as scene:
+        assert list(scene.roots) == list(source_access.ROOT_FORMATS)
+        crate = {extension: path.read_bytes().startswith(b"PXR-USDC") for extension, path in scene.roots.items()}
+        assert crate == {".usda": False, ".usdc": True, ".usd": True}  # .usd is written as crate
+        for path in scene.roots.values():
+            assert read_values(open_fresh(path)) == scene.values
+        assert read_values(scene.caller) == scene.values
