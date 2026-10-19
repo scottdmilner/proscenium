@@ -93,3 +93,14 @@ def test_cached_stage_erased_on_exit(tmp_path: Path) -> None:
     with source_access.cached_stage(tmp_path) as scene:
         cache_id = scene.cache_id
     assert not UsdUtils.StageCache.Get().Contains(cache_id)
+
+
+def test_reattach(tmp_path: Path) -> None:
+    with source_access.reattach(tmp_path) as scene:
+        assert scene.same_root != scene.caller
+        assert scene.same_root.GetRootLayer() == scene.caller.GetRootLayer()
+        assert scene.same_root.GetSessionLayer() != scene.caller.GetSessionLayer()
+        other = scene.other_root.GetRootLayer().identifier
+        assert other != scene.caller.GetRootLayer().identifier
+        for stage in (scene.caller, scene.same_root, scene.other_root):
+            assert read_values(stage) == scene.values
