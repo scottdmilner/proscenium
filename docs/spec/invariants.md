@@ -4,11 +4,11 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 
 ## Source Authority
 
-- USD is authoritative. Synchronization never authors USD, saves or modifies source files, authors composition arcs or variant selections, or changes a caller's stage settings. Live inspection is read-only in the same way. → [Bindings and Source Access](source-access.md#bindings-and-source-access), [In-Memory Sources](source-access.md#in-memory-sources), [Two Layers and the Live Stage](interaction-contract.md#two-layers-and-the-live-stage) (BIND-09, MEM-01, ICON-06)
+- USD is authoritative. Synchronization never authors USD, saves or modifies source files, authors composition arcs or variant selections, or changes a caller's stage settings. Live inspection is read-only in the same way. → [Bindings and Source Access](source-access.md#bindings-and-source-access), [Source Stages](source-access.md#source-stages), [Two Layers and the Live Stage](interaction-contract.md#two-layers-and-the-live-stage) (BIND-09, SRC-04, ICON-06)
 - Tools address USD entities through the source selection model, never by inferring USD structure from Blender parenting or names. → [Core Architecture](../PROJECT.md#core-architecture) (ARCH-06)
 - Bindings never cross-contaminate each other's configuration, stage state, or resources. → [Bindings and Source Access](source-access.md#bindings-and-source-access) (BIND-10)
 - Synchronization is synchronous and non-reentrant. → [Source Consistency](source-access.md#source-consistency) (CONS-01)
-- A file-backed refresh fails with a source-access conflict if any non-anonymous layer the binding composes has unsaved in-process edits. It never discards those edits, never takes its stage from a stage cache, and never shares its stage with other bindings or tools. Reloading clean shared layers is its only effect visible to other stages. → [File-Backed Refresh](source-access.md#file-backed-refresh) (FILE-02, FILE-03, FILE-04, FILE-05, FILE-06)
+- Bindings display their source's layers as loaded in the process, unsaved edits included, and synchronization never reloads them. A reload happens only on request, may discard unsaved edits, and is the only effect source access has that other stages can observe. A binding with a file source never takes its source stage from a stage cache, places it in one, or shares it with other bindings or tools. → [Layer State and Reloading](source-access.md#layer-state-and-reloading), [Source Stages](source-access.md#source-stages) (LAYER-01, LAYER-03, LAYER-06, SRC-01)
 
 ## Layer Boundaries
 

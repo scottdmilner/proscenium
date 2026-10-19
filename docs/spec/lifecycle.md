@@ -74,7 +74,7 @@ All persistent state (see [Binding State](#binding-state)) lives in Blender data
 - A failed synchronization pushes no undo step. It may update the last-attempt record and pending-cleanup tracking, but leaves binding configuration and the published generation unchanged.
 - With global undo disabled or in background mode, synchronization behaves the same but pushes no step.
 - When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source.
-- In-memory stage attachments are runtime associations keyed by binding identity. Undo neither restores nor removes them; a binding that still exists after undo stays attached.
+- Attachments of callers' stages are runtime associations keyed by binding identity. Undo neither restores nor removes them; a binding that still exists after undo stays attached.
 - Runtime code must not hold Blender datablock references across operator calls. This covers indexes, UI caches, callbacks, queued work, and retained plans. Runtime indexes are disposable caches keyed by persistent identifiers, rebuilt after file load, deletion, undo, and redo, and guarded by a generation counter so stale lookups fail loudly instead of returning dead references.
 
 Detach, cleanup, and binding removal **must support undo/redo**, including consistent ownership, binding state, and pending-cleanup tracking. With global undo enabled outside background mode, each invocation that commits lifecycle changes adds exactly one undo step, including partial cleanup or removal reported as completed with issues. A failure before any logical commit adds no undo step. Undo/redo restores the actual pre-operation or committed state, including pre-existing Blender edits or damage; detach does not reconstruct a historical synchronized state.
@@ -91,13 +91,13 @@ Keep these distinct:
 | Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
 | Last attempt | Settings attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
-| Runtime source attachment | The caller's stage for an in-memory binding | No |
-| Runtime source stage | The stage a file-backed binding opened and reuses across refreshes | No; after a `.blend` is reopened, the next refresh opens it |
+| Runtime source attachment | The caller's stage attached to a binding with an attached source | No |
+| Runtime source stage | The source stage a binding with a file source opened and reuses across refreshes, and every binding's evaluation stage | No; after a `.blend` is reopened, the next refresh opens it |
 | Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt |
 
 A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed. This applies equally to changed source paths, changed conversion settings, and undo restoring an older display.
 
-Source information is the file path for file-backed bindings, or the reattachment information for in-memory bindings (see [Source Identity](source-access.md#source-identity)).
+Source information is a file source's path, or an attached source's reattachment information (see [Source Identity](source-access.md#source-identity)).
 
 ### Pending Cleanup
 

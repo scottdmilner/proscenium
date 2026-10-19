@@ -16,9 +16,9 @@
 - Verified runtime behaviors that later milestones depend on:
   - Post-load, post-undo, and post-redo handlers fire reliably, including in the test runner.
   - A synchronization invoked from the Python API can push its own undo step, and undo behavior with global undo disabled and in background mode.
-  - Candidate approaches from the [In-Memory Sources](../spec/source-access.md#in-memory-sources) design note behave as expected.
+  - Candidate approaches from the [Source Stages](../spec/source-access.md#source-stages) design note behave as expected.
   - Contributing layers with unsaved edits can be detected, and a fresh stage can be opened without reusing a cached one.
-  - Whether a private disk view can be built without touching shared layers (see [File-Backed Refresh](../spec/source-access.md#file-backed-refresh)).
+  - Whether a private disk view can be built without touching shared layers (see [Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)).
 - Which USD imaging modules Blender's Python `pxr` exposes, and whether a compiled module can link against the bundled USD and exchange stages with Python. The macOS arm64 result is in the [compiled Hydra bridge record](../feasibility/runtime-record.md#compiled-hydra-bridge--macos-arm64); Windows and Linux are M1b's first deliverable and do not gate M1's exit.
 - The extension layout, development environment, build script, lint/type-check hooks, and `AGENTS.md`.
   - `AGENTS.md` directs agents to read [PROJECT.md](../PROJECT.md) and [spec/invariants.md](../spec/invariants.md) before any work.

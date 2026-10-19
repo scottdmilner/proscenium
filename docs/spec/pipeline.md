@@ -127,7 +127,8 @@ Distinguish:
 - Lossy conversion.
 - Missing dependencies.
 - Invalid data.
-- Source-access conflict.
+- Unavailable source.
+- Source state (informational): layers displayed with unsaved in-process edits ([Layer State and Reloading](source-access.md#layer-state-and-reloading)).
 - Pending cleanup (retryable disposal of prepared or obsolete resources).
 - Fatal failure.
 
@@ -137,9 +138,9 @@ Aggregate repeated problems. Source/display diagnostics belong to a published ge
 
 Each synchronization reports one result state, derived from its diagnostics:
 
-- **Success:** no diagnostics in any category.
+- **Success:** no diagnostics in any category other than source state.
 - **Completed with issues:** at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure.
-- **Fatal failure,** including a source-access conflict.
+- **Fatal failure,** including an unavailable source.
 
 A completed synchronization with issues must be distinguishable from a fully supported result.
 

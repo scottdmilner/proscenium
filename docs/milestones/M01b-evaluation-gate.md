@@ -30,7 +30,7 @@
 - If Hydra is adopted, the distribution design in the row "Native core distribution", and the follow-up updates listed below.
 - **Time-sampled data findings**, recorded in the feasibility record whatever the front-end decision. They feed the open row "Time-sampled data representation", which compares per-time-code snapshots with animation-data representations: keyframes, mesh cache modifiers, and Geometry Nodes baking. [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes) permits mapping time codes to frames and authoring animation data. A mesh cache modifier that reads the USD file must still settle these conflicts:
   - [Blender Application](../spec/pipeline.md#blender-application): a modifier that reads the USD file at depsgraph time is application querying USD.
-  - [In-memory sources](../spec/source-access.md#in-memory-sources) and unsaved layers are invisible to a file reader.
+  - [Attached sources](../spec/source-access.md#source-stages) and unsaved layers are invisible to a file reader.
   - [Reopening](../spec/lifecycle.md#reopening): a saved display must survive an unavailable source.
   - Source-semantic diagnostics must all exist before Blender is mutated.
 

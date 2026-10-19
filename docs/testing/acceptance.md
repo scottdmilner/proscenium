@@ -26,7 +26,7 @@ Applied to every end-to-end synchronization case expected to complete successful
 
 ### Expected-Failure Checks
 
-For synchronization cases expected to fail before publication, including source-access conflicts and injected preparation or publication failures:
+For synchronization cases expected to fail before publication, including an unavailable source and injected preparation or publication failures:
 
 - The attempt reports fatal failure with the expected categorized diagnostics and attempted settings recorded in the last-attempt state.
 - The entire previous published generation remains unchanged: its settings, geometry, materials, images, flags, ownership, correspondence, and selection-resolution state. On first synchronization, no active partial display appears.

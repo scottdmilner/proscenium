@@ -37,36 +37,36 @@ def test_rendered_view_is_current(loaded: matrix.Matrix) -> None:
 
 def test_drifted_quote_is_reported(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
-    _row(m, "FILE-03").quote = "If any contributing layer has unsaved edits, refresh warns"
-    assert any(p.startswith("FILE-03: quote not found") for p in matrix.check(m))
+    _row(m, "LAYER-03").quote = "Layers are reloaded at every refresh"
+    assert any(p.startswith("LAYER-03: quote not found") for p in matrix.check(m))
 
 
 def test_untraced_block_is_reported(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
-    m.rows = [r for r in m.rows if r.id != "FILE-03"]
+    m.rows = [r for r in m.rows if r.id != "LAYER-03"]
     problems = matrix.check(m)
-    assert any("not traced" in p and "If any contributing layer has unsaved in-process edits" in p for p in problems)
-    assert any("unknown requirement FILE-03" in p for p in problems)  # the invariant citing it
+    assert any("not traced" in p and "Layers are reloaded only on request" in p for p in problems)
+    assert any("unknown requirement LAYER-03" in p for p in problems)  # the invariant citing it
 
 
 def test_ambiguous_quote_is_reported(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
-    _row(m, "FILE-03").quote = "refresh"
-    assert any(p.startswith("FILE-03: quote matches") for p in matrix.check(m))
+    _row(m, "LAYER-03").quote = "reload"
+    assert any(p.startswith("LAYER-03: quote matches") for p in matrix.check(m))
 
 
 def test_field_problems_are_reported(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
-    m.rows.append(dataclasses.replace(_row(m, "FILE-03")))  # duplicate ID
-    _row(m, "FILE-02").fixtures = ["F-NOT-REGISTERED"]
-    _row(m, "FILE-04").delivery = "M99"
-    _row(m, "FILE-05").qualified_by = "M14"  # Phase 1 behavior qualifies in M12
+    m.rows.append(dataclasses.replace(_row(m, "LAYER-03")))  # duplicate ID
+    _row(m, "LAYER-01").fixtures = ["F-NOT-REGISTERED"]
+    _row(m, "SRC-01").delivery = "M99"
+    _row(m, "LAYER-06").qualified_by = "M14"  # Phase 1 behavior qualifies in M12
     problems = "\n".join(matrix.check(m))
     for expected in [
-        "FILE-03 (spec/source-access.md#file-backed-refresh): duplicate ID",
-        "FILE-02 (spec/source-access.md#file-backed-refresh): fixture F-NOT-REGISTERED is not in",
-        "FILE-04 (spec/source-access.md#file-backed-refresh): delivery 'M99' is not a milestone",
-        "FILE-05 (spec/source-access.md#file-backed-refresh): Phase 1 behavior qualifies in M12",
+        "LAYER-03 (spec/source-access.md#layer-state-and-reloading): duplicate ID",
+        "LAYER-01 (spec/source-access.md#layer-state-and-reloading): fixture F-NOT-REGISTERED is not in",
+        "SRC-01 (spec/source-access.md#source-stages): delivery 'M99' is not a milestone",
+        "LAYER-06 (spec/source-access.md#layer-state-and-reloading): Phase 1 behavior qualifies in M12",
     ]:
         assert expected in problems
 
@@ -74,20 +74,20 @@ def test_field_problems_are_reported(loaded: matrix.Matrix) -> None:
 def test_started_milestone_rows_need_oracle_and_fixture(loaded: matrix.Matrix) -> None:
     m = copy.deepcopy(loaded)
     m.started.discard("M3")
-    _row(m, "FILE-01").oracle = ""
+    _row(m, "SRC-05").oracle = ""
     _row(m, "BIND-02").fixtures = []
-    assert not any(p.startswith(("FILE-01 ", "BIND-02 ")) for p in matrix.check(m))  # not required before M3 starts
+    assert not any(p.startswith(("SRC-05 ", "BIND-02 ")) for p in matrix.check(m))  # not required before M3 starts
     m.started.add("M3")
     problems = matrix.check(m)
-    assert "FILE-01 (spec/source-access.md#file-backed-refresh): M3 has started, so the row needs an oracle" in problems
-    assert not any(p.startswith("FILE-02 ") and "bespoke fixture" in p for p in problems)  # it has F-DIRTY-LAYER
+    assert "SRC-05 (spec/source-access.md#source-stages): M3 has started, so the row needs an oracle" in problems
+    assert not any(p.startswith("LAYER-01 ") and "bespoke fixture" in p for p in problems)  # it has F-DIRTY-LAYER
     assert any("BIND-02" in p and "needs a bespoke fixture" in p for p in problems)
 
 
 def test_invariant_citing_a_row_outside_its_links_is_reported(loaded: matrix.Matrix) -> None:
     rows = {r.id: r for r in copy.deepcopy(loaded).rows}
-    rows["FILE-03"].section = "spec/pipeline.md#diagnostics"  # the File-Backed Refresh invariant cites FILE-03
-    assert any("FILE-03 is in spec/pipeline.md#diagnostics" in p for p in matrix.check_invariants(rows))
+    rows["LAYER-03"].section = "spec/pipeline.md#diagnostics"  # the layer-state invariant cites LAYER-03
+    assert any("LAYER-03 is in spec/pipeline.md#diagnostics" in p for p in matrix.check_invariants(rows))
 
 
 def test_milestones_include_the_gate() -> None:

@@ -38,12 +38,12 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 
 | ID | Fixture |
 |---|---|
-| `F-DIRTY-LAYER` | **Dirty-layer conflict:** disk changes and unsaved in-process changes coexist, including a dirty layer that contributes only through a payload; a refresh that reuses the binding's stage sees the disk changes and keeps the opinions in its anonymous layers. |
-| `F-PRIVATE-STAGE` | **Private-stage fidelity:** caller stage settings differ from defaults and change between synchronizations. |
+| `F-DIRTY-LAYER` | **Dirty layers:** disk changes and unsaved in-process changes coexist, including a dirty layer that contributes only through a payload. A binding displays them as loaded, and a requested reload of its reused stage rereads the disk content, discarding the edits, and keeps the opinions in its anonymous layers. |
+| `F-PRIVATE-STAGE` | **Evaluation-stage fidelity:** an attached stage's settings differ from defaults and change between synchronizations. |
 | `F-CACHED-STAGE` | **Cached-stage isolation:** an ambient cached stage for the same root is never handed to a binding, and a binding's own stage is never shared with other bindings or tools or placed in a stage cache. |
-| `F-MULTI-BINDING` | **Independent bindings on one source:** file-backed bindings with different settings and payload policies, and an in-memory binding, on one scene saved as `.usd`, `.usda`, and `.usdc`. |
+| `F-MULTI-BINDING` | **Independent bindings on one source:** bindings with a file source and different settings and payload policies, and one with an attached source, on one scene saved as `.usd`, `.usda`, and `.usdc`. |
 | `F-SOURCE-CHANGE` | **Source change during evaluation:** a contributing layer changes while the binding evaluates; the attempt is discarded before publication. |
-| `F-REATTACH` | **In-memory release and reattachment:** a caller's stage released, reattached under its key, shared by two bindings with one key, replaced by a stage with a different root layer, and missing after reopening. |
+| `F-REATTACH` | **Release and reattachment:** a caller's stage released, reattached under its key, shared by two bindings with one key, replaced by a stage with a different root layer, and missing after reopening. |
 | `F-SCHEMA-VERSIONS` | **Schema versions:** binding, ownership, and pending-cleanup records at an older supported version, at an older version whose migration fails, at a newer version, and unreadable. |
 | `F-BINDING-STATE` | **Binding state through handles:** bindings created, configured, synchronized, saved and reopened, undone, and removed through handles, with a persistent selection over two bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |

@@ -231,12 +231,12 @@ requirements:
         quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
       - id: DIAG-09
-        quote: "Success: no diagnostics in any category."
+        quote: "Success: no diagnostics in any category other than source state."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
       - id: DIAG-11
-        quote: "Fatal failure, including a source-access conflict."
-        fixtures: [F-DIRTY-LAYER]
+        quote: "Fatal failure, including an unavailable source."
+        fixtures: [F-OFFLINE]
       - id: DIAG-13
         quote: "Never pass unsafe invalid geometry into Blender or silently present unsupported translation as exact."
         delivery: M8
@@ -255,7 +255,7 @@ requirements:
         quote: "Caller-supplied in-memory stages without requiring file reopening."
         phase: 2
         fixtures: [F-MULTI-BINDING]
-        oracle: "An in-memory binding on the caller's stage composes the caller's unsaved root-layer edit, which a stage reopened from the file would not."
+        oracle: "A binding with the caller's stage attached composes the caller's unsaved root-layer edit, which a stage reopened from the file would not."
       - id: BIND-04
         quote: "Load-all or load-no-payload policy."
         fixtures: [F-MULTI-BINDING]
@@ -271,7 +271,7 @@ requirements:
       - id: BIND-07
         quote: "Multiple independent bindings, including bindings using the same source."
         fixtures: [F-MULTI-BINDING]
-        oracle: "Two file-backed bindings and an in-memory binding on the same file each have their own stage, distinct from the others'."
+        oracle: "Two bindings with the same file source and one with a stage over that file attached each have their own evaluation stage, distinct from the others' and from the attached stage."
       - id: BIND-08
         quote: "The default scope is the entire available stage."
         fixtures: [F-MULTI-BINDING]
@@ -305,8 +305,12 @@ requirements:
         quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used."
         fixtures: [F-BINDING-STATE]
         oracle: "After a binding is removed, or its creation is undone, every method of a handle to it raises, as does an equal handle made afterwards."
+      - id: API-07
+        quote: "reload(layers=None) rereads the binding's source layers from disk on request"
+        fixtures: [F-BINDING-STATE]
+        oracle: "reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers."
       - id: API-04
-        quote: "An expected failure, such as a source-access conflict or an unavailable source, is a result, not an exception."
+        quote: "An expected failure, such as an unavailable source, is a result, not an exception."
         delivery: M5
       - id: API-05
         quote: "Exceptions report misuse only, such as a call made during another synchronization."
@@ -329,7 +333,7 @@ requirements:
     phase: 2
     rows:
       - id: SID-03
-        quote: "A source key names one in-memory source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key."
+        quote: "A source key names one attached source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key."
         note: "SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled."
         fixtures: [F-REATTACH]
         oracle: "Attaching a stage under a key attaches it to both bindings created with that key, and not to a binding with another key."
@@ -371,72 +375,84 @@ requirements:
         quote: "until the user makes it a new binding or detaches it."
         delivery: M11
 
-  - section: spec/source-access.md#in-memory-sources
-    delivery: M3
-    phase: 2
-    rows:
-      - id: MEM-01
-        quote: "Do not author changes to a caller-supplied stage's layers or change its stage settings"
-        fixtures: [F-PRIVATE-STAGE]
-        oracle: "Each synchronization, under either payload policy, leaves caller_settings and layer_contents of the caller's stage as they were before it."
-      - id: MEM-02
-        quote: "Evaluate the caller's composed content as the caller's stage presents it, except that the binding's payload policy replaces the caller's load rules."
-        fixtures: [F-PRIVATE-STAGE]
-        oracle: "The private stage composes the generator's caller_values, including the unsaved root edit and the session-layer opinions, except payload content, which follows the binding's payload policy."
-      - id: MEM-07
-        quote: "Each in-memory binding evaluates a private stage over the caller's root and session layers, opened outside every USD stage cache with the caller's resolver context."
-        fixtures: [F-PRIVATE-STAGE]
-        note: "MEM-07 and MEM-08 replace MEM-03 (retired), the contract row M3 settled."
-        oracle: "The private stage is not the caller's stage, its root and session layers are the caller's layer objects, it is in no stage cache, and its resolver context equals the caller's."
-      - id: MEM-08
-        quote: "At each synchronization, the private stage's population mask, muted layers, and interpolation type match the caller's stage."
-        fixtures: [F-PRIVATE-STAGE]
-        oracle: "At each synchronization, the private stage's population mask, muted layers, and interpolation type equal the caller's, including after the caller changes them between synchronizations; the animated value at time 5 matches caller_anim_at_5."
-      - id: MEM-04
-        quote: "Multiple bindings on the same in-memory source may use different payload policies without affecting each other or the caller."
-        fixtures: [F-PRIVATE-STAGE]
-        oracle: "A load-all and a load-none binding on the caller's stage each compose payload content by their own policy, and neither changes the other's private stage or the caller's load set."
-      - id: MEM-05
-        quote: "If the caller releases the attached stage, the binding becomes unattached."
-        fixtures: [F-REATTACH]
-        oracle: "Once the caller drops every reference to the attached stage, the stage expires and the binding reports itself unattached."
-      - id: MEM-06
-        quote: "After a .blend is reopened, an in-memory binding reports its source as unavailable until the caller attaches a stage."
-        fixtures: [F-REATTACH]
-        oracle: "After save/reopen, an in-memory binding reports its source unavailable until a stage is attached under its key; refreshing it before then gives a diagnostic and changes no published state."
-
-  - section: spec/source-access.md#file-backed-refresh
+  - section: spec/source-access.md#source-stages
     delivery: M3
     phase: 1
     rows:
-      - id: FILE-01
-        quote: "A file-backed refresh displays the source as it exists on disk, composed with the opinions in the binding stage's anonymous layers: its session layer and the anonymous layers beneath it."
-        fixtures: [F-DIRTY-LAYER]
-        oracle: "With the dirty layers' edits reverted, the binding's stage composes the generator's disk_values with the changed_on_disk value, and an opinion authored in the binding stage's session layer is composed over them."
-      - id: FILE-02
-        quote: "Refresh must not discard unsaved in-process edits made by other tools to layers it shares."
-        fixtures: [F-DIRTY-LAYER]
-        oracle: "After the failed refresh, each layer in dirty_contributing is still dirty and still holds its in_process_values edit."
-      - id: FILE-03
-        quote: "If any contributing layer has unsaved in-process edits, refresh fails with a source-access conflict naming those layers and preserves the previous display."
-        fixtures: [F-DIRTY-LAYER]
-        oracle: "Refresh fails with a source-access conflict naming exactly the dirty contributing layers (ref, pay, and var_a under load-all), and publishes nothing."
-      - id: FILE-06
-        quote: "The contributing layers are the non-anonymous layers the binding's stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute."
-        fixtures: [F-DIRTY-LAYER]
-        oracle: "Under load-none, the conflict names ref and var_a but not the payload-only pay; under either policy it never names dirty_not_contributing (var_b)."
-      - id: FILE-04
-        quote: "refresh never takes a stage from a stage cache or otherwise shares stage state with other bindings or tools."
+      - id: SRC-01
+        quote: "A binding with a file source opens its source stage outside every USD stage cache, at its first synchronization, including the first after a .blend is reopened, and keeps and reuses it across synchronizations. It never takes the stage from a stage cache, places it in one, or shares it with other bindings or tools."
+        note: "SRC-01 to SRC-08 replace MEM-01, MEM-02, MEM-04 to MEM-08, FILE-04, and FILE-08 (retired): the in-memory and file-backed contracts became one kind of binding with the user on 2026-10-18."
         fixtures: [F-CACHED-STAGE]
-        oracle: "With the ambient stage cached in UsdUtils.StageCache and its cache context active, the binding's stage is not the ambient stage, and the ambient stage's settings and values equal ambient_values after refresh."
-      - id: FILE-07
-        quote: "never a dirty or anonymous one, so a refresh that reuses the binding's stage displays the same result as a stage newly opened from the same files with the same anonymous layers."
-        fixtures: [F-DIRTY-LAYER, F-CACHED-STAGE]
-        oracle: "After refresh, the binding's reused stage composes the same values as a stage opened fresh from the same files with the same session-layer opinions, and the session-layer opinion survives the refresh."
-      - id: FILE-05
-        quote: "Refresh may reload clean shared layers from disk. Other stages using those layers then see the current disk content. This is the only effect synchronization may have that other stages can observe."
+        oracle: "With the ambient stage cached in UsdUtils.StageCache and its cache context active, the binding's source stage is not the ambient stage and is in no stage cache, the same stage is returned on the next acquisition, two bindings on the file get different stages, and the ambient stage's settings and values equal ambient_values."
+      - id: SRC-02
+        quote: "If the caller releases an attached stage, the binding becomes unattached."
+        phase: 2
+        fixtures: [F-REATTACH]
+        oracle: "Once the caller drops every reference to the attached stage, the stage expires and the binding reports itself unattached."
+      - id: SRC-03
+        quote: "After a .blend is reopened, a binding with an attached source reports its source as unavailable until the caller attaches a stage."
+        phase: 2
+        fixtures: [F-REATTACH]
+        oracle: "After save/reopen, a binding with an attached source reports its source unavailable until a stage is attached under its key; refreshing it before then gives a diagnostic and changes no published state."
+      - id: SRC-04
+        quote: "Do not author changes to an attached stage's layers or change its stage settings"
+        phase: 2
+        fixtures: [F-PRIVATE-STAGE]
+        oracle: "Each synchronization, under either payload policy, leaves caller_settings and layer_contents of the attached stage as they were before it."
+      - id: SRC-05
+        quote: "Evaluate the source stage's composed content as the source stage presents it, including the opinions in its session layer and the anonymous layers beneath it, except that the binding's payload policy replaces the source stage's load rules."
+        fixtures: [F-PRIVATE-STAGE, F-CACHED-STAGE]
+        oracle: "For an attached source, the evaluation stage composes the generator's caller_values, including the unsaved root edit and the session-layer opinions, except payload content, which follows the binding's payload policy. For a file source, an opinion authored in the source stage's session layer is composed over the source's layers, and one in the ambient stage's session layer is not."
+      - id: SRC-06
+        quote: "Each binding evaluates an evaluation stage, which composes the source stage's root and session layers and is opened outside every USD stage cache with the source stage's resolver context."
+        phase: 2
+        fixtures: [F-PRIVATE-STAGE]
+        oracle: "For an attached source, the evaluation stage is not the attached stage, its root and session layers are the attached stage's layer objects, it is in no stage cache, and its resolver context equals the attached stage's."
+      - id: SRC-07
+        quote: "At each synchronization, the evaluation stage's population mask, muted layers, and interpolation type match the source stage's."
+        phase: 2
+        fixtures: [F-PRIVATE-STAGE]
+        oracle: "At each synchronization, the evaluation stage's population mask, muted layers, and interpolation type equal the attached stage's, including after the caller changes them between synchronizations; the animated value at time 5 matches caller_anim_at_5."
+      - id: SRC-08
+        quote: "Multiple bindings on the same source may use different payload policies without affecting each other or the source stage."
+        phase: 2
+        fixtures: [F-PRIVATE-STAGE]
+        oracle: "A load-all and a load-none binding on the attached stage each compose payload content by their own policy, and neither changes the other's evaluation stage or the attached stage's load set."
+
+  - section: spec/source-access.md#layer-state-and-reloading
+    delivery: M3
+    phase: 1
+    rows:
+      - id: LAYER-01
+        quote: "A binding displays its source's layers as they are loaded, including unsaved in-process edits in dirty layers and the content a layer had when it was read, even if its file has changed since. Synchronization never reloads a layer."
+        note: "LAYER-01 to LAYER-07 replace FILE-01, FILE-02, FILE-03, FILE-05, FILE-06, and FILE-07 (retired), the refresh contract settled with the user on 2026-10-18."
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "A binding with the file source acquires a stage composing in_process_values, sub.usda included at its loaded value 1 though its file says 2, and acquiring again changes no layer and sends no change notice."
+      - id: LAYER-02
+        quote: "When a synchronization displays dirty layers, it reports an informational source-state diagnostic naming them."
+        delivery: M5
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "A synchronization under F-DIRTY-LAYER succeeds and reports one source-state diagnostic naming the dirty contributing layers (ref, pay, and var_a under load-all)."
+      - id: LAYER-03
+        quote: "Layers are reloaded only on request, through the binding's reload"
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "After reload(), the binding's stage composes disk_values with the changed_on_disk value; each layer in dirty_contributing is clean with its disk value; var_b (dirty_not_contributing) keeps its edit; the binding stage's session-layer opinion is still composed."
+      - id: LAYER-04
+        quote: "The contributing layers are the non-anonymous layers the binding's evaluation stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute, and anonymous layers are never reloaded."
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "Under load-none, reload() leaves pay.usda dirty with its edit and rereads ref and var_a."
+      - id: LAYER-05
+        quote: "reload(layers) rereads only the named layers, each of which must be a contributing layer of the binding. Naming any other layer is misuse: the call raises and reloads nothing."
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "reload([sub]) rereads only sub.usda: ref, pay, and var_a keep their edits. Naming var_b, an anonymous layer, or an unknown identifier, alone or with sub, raises and leaves every layer as it was."
+      - id: LAYER-06
+        quote: "Every stage that composes a reloaded layer sees its new content, including an attached stage. This is the only effect source access may have that other stages can observe."
         fixtures: [F-CACHED-STAGE, F-DIRTY-LAYER]
-        oracle: "After refresh reloads a clean layer changed on disk, another stage composing it (the caller's stage in F-DIRTY-LAYER, the ambient stage in F-CACHED-STAGE) composes the new disk value, and that stage's caller_settings are unchanged."
+        oracle: "After a reload rereads a layer, another stage composing it (the caller's stage in F-DIRTY-LAYER, the ambient stage in F-CACHED-STAGE) composes its new content, and that stage's caller_settings are unchanged."
+      - id: LAYER-07
+        quote: "After a reload, a binding's reused evaluation stage displays the same result as a stage newly opened from the same files with the same anonymous layers."
+        fixtures: [F-DIRTY-LAYER, F-CACHED-STAGE]
+        oracle: "After reload(), the binding's reused stage composes the same values as a stage opened fresh from the same files with the same session-layer opinions, and the session-layer opinion survives the reload."
 
   # --- spec/lifecycle.md ----------------------------------------------------------------------
 
@@ -556,7 +572,7 @@ requirements:
         quote: "When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source."
         delivery: M5
       - id: UNDO-06
-        quote: "In-memory stage attachments are runtime associations keyed by binding identity."
+        quote: "Attachments of callers' stages are runtime associations keyed by binding identity."
         delivery: M3
         phase: 2
         fixtures: [F-REATTACH]
@@ -742,26 +758,26 @@ requirements:
         fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
         oracle: "After kind-level select_targets calls, the stage's layers are not dirty and its load set and population mask are unchanged."
       - id: ICON-32
-        quote: "For a file-backed binding, the live stage is the binding's own stage, which it reuses across refreshes"
+        quote: "for a file source, the stage the binding opened and reuses across refreshes"
         delivery: M3
         fixtures: [F-BINDING-STATE]
-        oracle: "After a file-backed binding's first synchronization, its live stage is the stage it synchronized with, and it is the same stage after a second refresh."
+        oracle: "After the first synchronization of a binding with a file source, its live stage is the source stage it synchronized with, and it is the same stage after a second refresh."
       - id: ICON-33
-        quote: "Until its first synchronization, including after a .blend is reopened, a file-backed binding has no live stage."
+        quote: "A binding with a file source has no live stage until its first synchronization, including after a .blend is reopened."
         delivery: M3
         fixtures: [F-BINDING-STATE]
-        oracle: "Before its first synchronization, and after reopening until a refresh, a file-backed binding has no live stage."
+        oracle: "Before its first synchronization, and after reopening until a refresh, a binding with a file source has no live stage."
       - id: ICON-07
-        quote: "For an in-memory source it is the caller's stage."
+        quote: "and for an attached source, the caller's stage."
         delivery: M3
         phase: 2
         fixtures: [F-REATTACH]
-        oracle: "An in-memory binding's live stage is the caller's attached stage, not its private stage."
+        oracle: "A binding with an attached source has the caller's attached stage as its live stage, not its evaluation stage."
       - id: ICON-34
         quote: "Callers get a binding's live stage from the binding, which never places it in a stage cache."
         delivery: M3
         fixtures: [F-CACHED-STAGE]
-        oracle: "After synchronization, the stage the binding handle returns as live is the binding's own stage, is not in UsdUtils.StageCache, and is not the ambient stage."
+        oracle: "After synchronization, the stage the binding handle returns as live for a file source is the source stage the binding opened, is not in UsdUtils.StageCache, and is not the ambient stage."
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
@@ -903,7 +919,7 @@ requirements:
     phase: 2
     rows:
       - id: DISC-01
-        quote: "File-backed manual refresh."
+        quote: "Manual refresh of a file source."
       - id: DISC-02
         quote: "Prim existence, activation, type, hierarchy, and variants."
       - id: DISC-03
@@ -1443,8 +1459,8 @@ excluded:
     quotes: ["Update affected representations and their dependencies.", "Leave unaffected representations untouched"]
     restates: [AFF-01, AFF-03]
   - section: PROJECT.md#phase-2--incremental-synchronization
-    quotes: ["Support manual file-backed refresh and in-memory sources."]
-    restates: [FILE-01, BIND-03]
+    quotes: ["Support manual refresh of file sources and attached sources."]
+    restates: [SRC-05, BIND-03]
   - section: PROJECT.md#phase-2--incremental-synchronization
     quotes: ["See Incremental Synchronization for detailed requirements."]
     reason: "Navigation."
@@ -1467,7 +1483,7 @@ excluded:
     reason: "File introduction."
   - section: spec/incremental.md#change-discovery
     quotes:
-      - "In-memory stage edits."
+      - "Edits to an attached stage."
       - "Evaluation time-code changes."
       - "Binding-setting changes."
       - "Managed display damage."
@@ -1579,7 +1595,7 @@ excluded:
     quotes: ["Failure safety for synchronization is defined separately by the Synchronization Transaction."]
     reason: "Cross-reference."
   - section: spec/lifecycle.md#binding-state
-    quotes: ["Source information is the file path for file-backed bindings"]
+    quotes: ["Source information is a file source's path, or an attached source's reattachment information"]
     restates: [STATE-01]
   - section: spec/lifecycle.md#reopening
     quotes:
@@ -1618,7 +1634,8 @@ excluded:
       - "Lossy conversion."
       - "Missing dependencies."
       - "Invalid data."
-      - "Source-access conflict."
+      - "Unavailable source."
+      - "Source state (informational): layers displayed with unsaved in-process edits"
       - "Pending cleanup (retryable disposal of prepared or obsolete resources)."
       - "Fatal failure."
     restates: [DIAG-01]
@@ -1631,27 +1648,39 @@ excluded:
   - section: spec/source-access.md#source-identity
     quotes: ["The key is the reattachment contract because the root-layer identifier of an anonymous or unsaved source does not survive the session."]
     reason: "Explanation."
-  - section: spec/source-access.md#in-memory-sources
-    quotes: ["The caller's stage is the stage a caller attaches to an in-memory binding."]
+  - section: spec/source-access.md#source-stages
+    quotes: ["Every binding has a source stage: the stage its source is composed on."]
     reason: "Definitions."
-  - section: spec/source-access.md#in-memory-sources
-    quotes: ["Design note (suggested, settled by M3): the binding keeps its private stage across synchronizations"]
-    reason: "Design note for M3 Phase C and M3's binding schema."
-  - section: spec/source-access.md#in-memory-sources
-    quotes: ["Because the layers are shared, the caller's unsaved layer edits and session-layer opinions are seen live.", "The caller's edit target does not affect composition and is not reproduced."]
-    reason: "Explanation; MEM-02 tests that the caller's composed content is evaluated."
-  - section: spec/source-access.md#file-backed-refresh
-    quotes: ["Each file-backed binding keeps its own stage and reuses it across refreshes. The binding opens it outside every USD stage cache;"]
-    restates: [FILE-04, FILE-07]
-  - section: spec/source-access.md#file-backed-refresh
-    quotes: ["Tools may author there through the live stage to show unsaved edits; synchronization never does."]
+  - section: spec/source-access.md#source-stages
+    quotes: ["Replacing it follows the Source Identity rules.", "Refreshing an unattached binding produces a diagnostic and preserves the saved display."]
+    restates: [SRC-03, SID-06]
+  - section: spec/source-access.md#source-stages
+    quotes: ["A reload the caller requests is the one change to its layers"]
+    restates: [LAYER-03]
+  - section: spec/source-access.md#source-stages
+    quotes: ["Because the layers are shared, the source stage's unsaved layer edits and session-layer opinions are seen live.", "The source stage's edit target does not affect composition and is not reproduced."]
+    reason: "Explanation; SRC-05 tests that the source stage's composed content is evaluated."
+  - section: spec/source-access.md#source-stages
+    quotes: ["Tools may author in the source stage's session layer"]
     reason: "Permission for Phase 3 tools; that synchronization never authors USD is BIND-09."
-  - section: spec/source-access.md#file-backed-refresh
-    quotes: ["The binding's stage is runtime state.", "USD shares opened layers across the whole process"]
+  - section: spec/source-access.md#source-stages
+    quotes: ["A source stage the binding opened, and the attachment of a caller's stage, are runtime state"]
+    reason: "Explanation; lifecycle.md's Binding State rows trace what is persisted."
+  - section: spec/source-access.md#source-stages
+    quotes: ["Design note (settled by M3): when the binding opened its source stage itself"]
+    reason: "Design note settled by M3 Phase C; SRC-01 and SRC-07 test its outcome."
+  - section: spec/source-access.md#source-stages
+    quotes: ["Design note (suggested, settled by M3): persist the kind of source"]
+    reason: "Design note for M3's binding schema."
+  - section: spec/source-access.md#layer-state-and-reloading
+    quotes: ["A binding evaluates its source's layers as they are loaded in the process."]
     reason: "Explanation."
-  - section: spec/source-access.md#file-backed-refresh
-    quotes: ["Design note (suggested, settled by M3): a non-forced layer reload compares modification times"]
-    reason: "Design note for M3's change check; FILE-07 tests its outcome."
+  - section: spec/source-access.md#layer-state-and-reloading
+    quotes: ["Design note (settled by M3): reload uses USD's non-forced layer reload"]
+    reason: "Design note settled by M3 Phase C; LAYER-03 and LAYER-07 test its outcome."
+  - section: spec/source-access.md#layer-state-and-reloading
+    quotes: ["Design note (suggested, settled by M5): the source-state diagnostic may also name layers"]
+    reason: "Design note for M5's diagnostics."
   - section: spec/support/geometry.md
     quotes: ["Part of the supported scene state."]
     reason: "File introduction."
@@ -1961,8 +1990,8 @@ excluded:
     quotes: ["Opening or synchronizing must not save or modify source USD files."]
     reason: "Scope: nothing in synchronization writes source files (see PROJ-01's exclusion)."
   - section: spec/source-access.md#source-identity
-    quotes: ["Source identity is persisted separately from source availability.", "The binding also stores the root-layer identifier of the stage last attached to it."]
-    reason: "Design guidance for M3's schemas; traced by REOPEN-04, REOPEN-05, and MEM-06."
+    quotes: ["Source identity is persisted separately from source availability.", "A binding with an attached source also stores the root-layer identifier of the stage last attached to it."]
+    reason: "Design guidance for M3's schemas; traced by REOPEN-04, REOPEN-05, and SRC-03."
   - section: spec/lifecycle.md#ownership-and-lifecycle
     quotes: ["A resource has one owning binding but may cover many source entities and have many users."]
     reason: "Design guidance for M3's ownership format (OWN-01)."
@@ -1973,10 +2002,10 @@ excluded:
     quotes: ["Duplicates are defined by source coverage and representation role"]
     reason: "Definition for M11's duplicate detection; OWN-10 tests it."
   - section: spec/lifecycle.md#binding-state
-    quotes: ["Runtime source attachment | The caller's stage for an in-memory binding | No"]
+    quotes: ["Runtime source attachment | The caller's stage attached to a binding with an attached source | No"]
     reason: "True by construction: a caller's stage cannot be saved in a .blend."
   - section: spec/lifecycle.md#binding-state
-    quotes: ["Runtime source stage | The stage a file-backed binding opened and reuses across refreshes | No"]
+    quotes: ["Runtime source stage | The source stage a binding with a file source opened and reuses across refreshes, and every binding's evaluation stage | No"]
     reason: "True by construction: a stage cannot be saved in a .blend."
   - section: spec/lifecycle.md#binding-state
     quotes: ["Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt"]
