@@ -6,7 +6,7 @@ mode (windowed undo is out of scope).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from _common import Probe
 
@@ -91,6 +91,7 @@ def _operator_push(global_undo: bool, undo_arg: bool | None) -> dict[str, Any]:
         bl_label = "Probe Sync"
         bl_options = {"REGISTER", "UNDO"}
 
+        @override
         def execute(self, context: bpy.types.Context | None) -> set[OperatorReturnItems]:
             bpy.data.objects.new("OpSync", None)
             return {"FINISHED"}

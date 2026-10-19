@@ -92,6 +92,8 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 ## Style
 
 - Follow PEP 8 (ruff, line length 120) and annotate every function signature.
+- Classes declare their typed attributes in the class body, above `__init__`.
+- Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
 - Prefer short docstrings plus inline comments over long docstrings.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.

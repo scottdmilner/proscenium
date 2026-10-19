@@ -11,3 +11,4 @@ wheels/
 
 # Local settings (see .env.example)
 .env
+.vscode/
