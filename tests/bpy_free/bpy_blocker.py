@@ -28,7 +28,7 @@ import pkgutil
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Sequence
@@ -80,6 +80,7 @@ def is_blender_module(name: str, module: object) -> bool:
 class _BlockBlender(importlib.abc.MetaPathFinder):
     """Import hook that raises for modules that would load from Blender, and ignores everything else."""
 
+    @override
     def find_spec(
         self, fullname: str, path: Sequence[str] | None, target: ModuleType | None = None
     ) -> ModuleSpec | None:

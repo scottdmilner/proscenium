@@ -61,6 +61,10 @@ known-third-party = ["bpy", "pxr"]
 python-version = "3.13"
 extra-paths = ["tools", "tools/feasibility", "tests"]
 
+[tool.ty.rules]
+missing-override-decorator = "error"  # every override is marked with typing.override
+possibly-missing-attribute = "error"
+
 [tool.pyright]
 # Pylance configuration
 extraPaths = ["tools", "tools/feasibility", "tests"]
