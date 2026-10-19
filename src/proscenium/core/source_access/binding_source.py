@@ -2,9 +2,22 @@
 
 from __future__ import annotations
 
-from pxr import Usd
+from typing import TYPE_CHECKING
+
+from pxr import Sdf, Usd
 
 from .sources import AttachedSource, FileSource, SourceUnavailable
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+
+def contributing_layers(stage: Usd.Stage) -> Iterator[Sdf.Layer]:
+    """The non-anonymous layers the stage composes under its load set.
+
+    A layer reached only through an unloaded payload doesn't contribute.
+    """
+    return (layer for layer in stage.GetUsedLayers() if not layer.anonymous)
 
 
 class BindingSource:
@@ -14,7 +27,8 @@ class BindingSource:
     one a caller attaches. The evaluation stage composes the source stage's root and session layers,
     matching its mask, muting, and interpolation, under the binding's own payload policy. When the
     binding opened the source stage itself, there are no caller's settings to protect, so the
-    evaluation stage is the source stage. Layers are evaluated as loaded. Runtime state only.
+    evaluation stage is the source stage. Layers are evaluated as loaded; only reload() rereads them.
+    Runtime state only.
     """
 
     source: FileSource | AttachedSource
@@ -48,6 +62,32 @@ class BindingSource:
             stage = self._evaluation_stage_for(self.source.stage)
         self._apply_payload_policy(stage)
         return stage
+
+    def dirty_layers(self) -> list[str]:
+        """Identifiers of the contributing layers with unsaved edits, for the source-state diagnostic."""
+        return [layer.identifier for layer in contributing_layers(self.acquire()) if layer.dirty]
+
+    def reload(self, layers: Iterable[str] | None = None) -> None:
+        """Reread contributing layers from disk, discarding the unsaved edits of dirty ones.
+
+        With layers, only those identifiers, each of which must be a contributing layer; otherwise
+        ValueError, and nothing is reloaded. Non-forced, so an unchanged clean layer stays as it is,
+        without notices; on Windows that misses a rewrite within the same second, as in USD itself.
+        Raises SourceUnavailable.
+        """
+        stage = self.acquire()
+        if layers is not None:
+            by_identifier = {layer.identifier: layer for layer in contributing_layers(stage)}
+            unknown = sorted(set(layers) - by_identifier.keys())
+            if unknown:
+                raise ValueError(f"Not contributing layers of the binding: {', '.join(unknown)}")
+            Sdf.Layer.ReloadLayers({by_identifier[identifier] for identifier in layers})
+            return
+        # A reload that changes composition can bring in a stale layer another tool holds.
+        reloaded: set[Sdf.Layer] = set()
+        while pending := set(contributing_layers(stage)) - reloaded:
+            Sdf.Layer.ReloadLayers(pending)
+            reloaded |= pending
 
     def _evaluation_stage_for(self, attached: Usd.Stage | None) -> Usd.Stage:
         """The evaluation stage for an attached stage: reused, or opened on its root and session layers."""

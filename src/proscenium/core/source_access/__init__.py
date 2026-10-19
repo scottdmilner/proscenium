@@ -3,7 +3,7 @@
 The compiled core receives a stage from here; it never opens one.
 """
 
-from .binding_source import BindingSource
+from .binding_source import BindingSource, contributing_layers
 from .sources import AttachedSource, FileSource, SourceUnavailable
 
 __all__ = [
@@ -11,4 +11,5 @@ __all__ = [
     "BindingSource",
     "FileSource",
     "SourceUnavailable",
+    "contributing_layers",
 ]
