@@ -14,7 +14,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-TOPICS = ["env", "exchange", "handlers", "undo", "inmemory", "layers", "disk_view", "packaging", "buffer_transfer"]
+TOPICS = [
+    "env",
+    "exchange",
+    "handlers",
+    "undo",
+    "inmemory",
+    "layers",
+    "disk_view",
+    "packaging",
+    "buffer_transfer",
+    "copies",
+]
 
 
 def main(argv: list[str]) -> int:

@@ -121,7 +121,23 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
 7. **Source-entity identifiers and the persistent selection schema (ICON-24).** The identifier is the entity's path in the composed stage, as the Phase B log describes. Tests: compatibility of source-entity identifiers and persisted selection with M2's fixtures and oracle (`tests/support/interaction_oracle.py`).
 8. **Runtime indexes,** keyed by persistent identifiers and guarded by a generation counter. They are rebuilt after file load, undo, and redo. Test: indexes survive save and reopen.
 9. **Reopening:** no automatic synchronization, an unavailable source, and a deleted destination.
-10. **Copied-binding detection and the disabled-pending-repair state,** with `F-OWNERSHIP-AMBIGUITY`.
+10. **Copied-binding detection and the disabled-pending-repair state,** with `F-OWNERSHIP-AMBIGUITY`. Its duplicate-collection case builds the deep copy's inferred state (D1), since Outliner > Duplicate Collection can't run in background mode.
+
+#### Phase D log
+
+- **D1, copy-route probe.** `tools/feasibility/probe_copies.py` tags a binding's scene, destination collection, and managed object with ID-property records. The scene and the collection point at each other, and the object points at the collection. A file-level index names the destination too. The probe runs the copy routes the spec names that background mode can drive, and checks the outcomes D2 builds on ([Copy routes](../feasibility/runtime-record.md#copy-routes-m3)).
+  - Linking a collection and duplicating a managed object are recorded too: linking brings another candidate with the same identity, and object duplication copies ownership tags.
+  - Every route that ran copies the identity, and the records survive save and reopen.
+  - The full-copy scene, append, and link copy both sides of the pair, and rewrite the copies' pointers to each other. So on those routes, the mutual-reference rule finds two pairs and can't decide. On the other routes, one pair remains.
+  - Duplicating the destination collection is covered only by `Collection.copy()`, a shallow copy whose shared objects keep tags naming the original collection.
+    - Outliner > Duplicate Collection, the deep copy, can't run in background mode.
+    - Its outcome is inferred from the full-copy route, not tested: the collection copy forms no new pair, and the object copies name it, so the tags and the records disagree.
+    - `F-OWNERSHIP-AMBIGUITY` builds that state for COPY-01 (D10).
+  - An ID pointer in a record makes its target a dependency of append and link, and holds a user. An unlinked destination stays in the file while a record points at it. Removing it clears every pointer to `None`. D4 weighs both when placing the records, and D9 handles a destination that is gone.
+  - A file-level index, mapping each binding identity to its destination by ID pointer, is on hosts none of the copy routes reach: a Text and an unlinked collection, each with a fake user.
+    - It named the original destination on every copy route, including those that copy both sides.
+    - Appending a host itself gives a second index, until the save drops the appended host, which has no users.
+    - The window manager can't host it: its ID properties aren't saved, and opening a file with `load_ui=False` keeps the session's record.
 
 ### Phase E — Close
 
