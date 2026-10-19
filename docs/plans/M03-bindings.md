@@ -149,6 +149,7 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
   - Left to later commits:
     - D4 places the index, and the records, so that a record and its destination refer to each other.
     - D10 decides whether detection restores a missing entry once the fallback has decided.
+- **SCHEMA-04 split, before D3** (with the user). SCHEMA-04 keeps preserving unreadable or unsupported pending-cleanup records, and refusing to overwrite them, which M3's record framework delivers. Its disposal half moves to SCHEMA-06, delivered by M5: never authorizing disposal, and refusing the operations that interpret those records. Nothing disposes of resources before M5. M5's Tests section names `F-SCHEMA-VERSIONS` for it.
 
 ### Phase E — Close
 

@@ -710,9 +710,15 @@ requirements:
         fixtures: [F-SCHEMA-VERSIONS]
         oracle: "A binding whose records fail migration, or are newer than supported, keeps its display and records, refuses refresh and lifecycle operations, and reports why."
       - id: SCHEMA-04
-        quote: "Unreadable or unsupported pending-cleanup records are preserved and never authorize disposal."
+        quote: "Unreadable or unsupported pending-cleanup records are preserved"
         fixtures: [F-SCHEMA-VERSIONS]
-        oracle: "Unreadable or unsupported pending-cleanup records are unchanged after load and save, and cleanup disposes of none of the resources they name."
+        oracle: "Unreadable or unsupported pending-cleanup records are unchanged after load and save, and the extension refuses to overwrite them."
+      - id: SCHEMA-06
+        quote: "and never authorize disposal. Disable operations that require interpreting those records and report why."
+        delivery: M5
+        fixtures: [F-SCHEMA-VERSIONS]
+        oracle: "With unreadable or unsupported pending-cleanup records, cleanup and every other operation that interprets them is refused with a diagnostic naming the records, and disposes of none of the resources they name."
+        note: "SCHEMA-04's disposal half: nothing disposes of resources before M5."
       - id: SCHEMA-05
         quote: "Without the extension installed, the saved display remains ordinary Blender content."
         fixtures: [F-OFFLINE]
