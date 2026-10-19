@@ -1,6 +1,6 @@
 # Runtime Feasibility Record (M1)
 
-Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate. Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
+Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate, plus later milestones' probes ([Buffer transfer](#buffer-transfer) for M1b, [Copy routes](#copy-routes-m3) for M3). Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
 
 ```sh
 uv run python tools/feasibility/run_all.py          # writes build/feasibility/<platform>-*.json
@@ -21,9 +21,9 @@ Findings describe observed behavior. Where a finding suggests a mechanism, the o
 
 | Platform | Status |
 |---|---|
-| macOS arm64 | **Go.** All 55 checks pass in all three runtimes (2026-10-09, including the M1b `buffer_transfer` probe). |
-| Windows x64 | **Go.** All 55 checks pass in all three runtimes. The [compiled Hydra bridge](#compiled-hydra-bridge) passes in both hosts. |
-| Linux x64 | **Go.** All 55 checks pass in all three runtimes. The [compiled Hydra bridge](#compiled-hydra-bridge-1) passes in both hosts. |
+| macOS arm64 | **Go.** All 108 checks pass in all three runtimes (2026-10-19, including the M1b `buffer_transfer` and M3 `copies` probes). |
+| Windows x64 | **Go.** All 108 checks pass in all three runtimes (2026-10-19, including M3's `copies` probe). The [compiled Hydra bridge](#compiled-hydra-bridge) passes in both hosts. |
+| Linux x64 | **Go.** All 108 checks pass in all three runtimes (2026-10-19, including M3's `copies` probe). The [compiled Hydra bridge](#compiled-hydra-bridge-1) passes in both hosts. |
 
 ## macOS arm64
 
@@ -174,6 +174,85 @@ Single timings for 1,000,000 points, one run each, not benchmarks:
 | binary | 0.27 ms | 31.7 ms | 0.23 ms |
 
 The attribute path costs about one memory copy. `vertices.co` is about 100 times slower on the same buffer.
+
+### Copy routes (M3)
+
+Added for M3 (`probe_copies.py`), as evidence for [Copied Bindings](../spec/source-access.md#copied-bindings). The probe's base file holds one binding. Three datablocks carry an ID-property record, and each record holds the binding identity (a string) and one ID pointer:
+- the scene, pointing at the destination collection;
+- the destination collection, pointing back at the scene;
+- the managed object in that collection, pointing at the destination.
+
+The base file also holds a **file-level index**. It is an ID-property record mapping the binding identity to its destination by ID pointer. The probe puts one on each of two candidate hosts outside the binding's datablocks:
+- a Text with a fake user;
+- an unlinked collection with a fake user.
+
+Nothing points at either host.
+
+Each route starts from the base file and copies the binding. The probe then records, saves, reopens, and records again:
+- every datablock whose record carries the identity, with its pointers;
+- every index host;
+- the scene/collection pairs whose records point at each other ("pairs" below; the base file has one);
+- tagged objects whose tag names a collection other than the one they are in.
+
+Checks hold what D2 builds on, on every route that ran:
+- the tagged datablocks by kind;
+- the pair count;
+- that the index still names only the original;
+- that the records are unchanged by the save and reopen.
+
+The facts are identical in all three runtimes.
+
+| Route | What the copy holds | Pairs |
+|---|---|---|
+| Full-copy scene (`scene.new(type='FULL_COPY')`) | Copies of the scene, the collection, and the object. Every pointer in a copy is rewritten to point at the copies. | 2 |
+| Linked-copy scene (`LINK_COPY`) | A new scene sharing the collection. Its record points at the shared collection, and that collection still points at the original scene. | 1 |
+| `Collection.copy()`, with the copy linked into the scene | A copy of the collection, sharing the original's objects. Its record still points at the original scene, and the shared object's tag names the original collection. | 1 |
+| Append collection (`wm.append`, and `libraries.load(link=False)`) | The collection, its object, and the scene its record points at. Pointers among the appended datablocks point at each other. | 2 |
+| Append scene (`wm.append`) | The scene, its collection, and the object, with pointers as in appending the collection. | 2 |
+| Record assigned in Python (`new[key] = old[key]`) | A copy of the group: changing the copy leaves the source unchanged. Its pointers are kept, so they point at the originals. | 1 |
+| Link collection (`libraries.load(link=True)`) | The linked collection, its object, and its scene, all from the library. Pointers among the linked datablocks point at each other. | 2 |
+| Duplicate the managed object (`object.duplicate`) | A duplicate object whose tag still points at the original destination. | 1 |
+
+- **Duplicating the destination collection is covered only in part.**
+  - `Collection.copy()` is a shallow copy: the copy shares the original's objects. It stands in for a shallow duplicate such as Outliner > Duplicate Linked, which was not run or compared with it.
+  - Outliner > Duplicate Collection, which by Blender's manual also duplicates the objects under the Duplicate Data preferences, was not run either. In background mode, in the wheel and in the binary, it fails with "No collection selected". It reads the outliner's selection from the outliner's tree, and Blender builds that tree only when it draws the outliner. Like other windowed behavior, it is untested ([Future Work](#future-work)).
+  - *Inference, not tested.* The full-copy route rewrites pointers among the datablocks copied together, and keeps pointers to the rest. If a deep duplicate behaves the same way, its collection copy would point at the original scene and form no new pair, while its object copies would name the collection copy. The objects' tags and the collections' records would then disagree.
+- **An ID pointer in a record makes its target a dependency of append and link.** Appending or linking the collection also brought in the scene its record points at. As a control, the same collection with no scene pointer brought in no scene, both appended and linked.
+- **Pointers in records hold users.**
+  - The destination has 1 user without records, and 5 with them: its scene link, plus the scene's record, the object's tag, and the two index entries.
+  - Once unlinked from the scene, it keeps 4 users and survives save and reopen, so a record pointer keeps an unlinked destination in the file.
+  - The scene's user count is 1 with or without the collection's pointer to it.
+- **Removing the destination clears the pointers.**
+  - After `bpy.data.collections.remove`, the scene's and object's pointers and both index entries hold `None`, before and after save and reopen.
+  - So the index can hold an entry with no destination, but not a pointer to a removed one.
+- **Names.** On every route, the original datablocks keep their names.
+  - Local copies get a `.001` suffix where a name clashes. The control appends `Dest` into a file without one, and it keeps its name.
+  - Linked datablocks keep their names and differ only by library.
+- **The index is never copied by the routes in the table.**
+  - On each of them, each host remains the only index of its kind, and still names the original destination, before and after save and reopen. That includes the routes that copy both sides of the pair.
+- **Appending the index host itself.**
+  - Appending the other file's Text or collection host brings in its binding, through the host's pointer, and gives a second index naming the appended destination.
+  - Each appended host has no fake user and no users, so the save drops it. After reopening, one index remains, naming the original.
+- **The window manager can't host the index.**
+  - Its ID properties aren't saved with the file.
+  - Opening another file with `load_ui=False` keeps the session's window manager, and the record with it. With `load_ui=True`, the opened file's window manager replaces it.
+- **For the canonical-candidate rule (D2).**
+  - On the routes that copy one side of the pair, exactly one pair still points at each other: the linked-copy scene, `Collection.copy()`, and the Python assignment.
+  - On the routes that copy both sides together, each copy is a pair of its own: the full-copy scene, append, and link. So ID pointers alone don't tell the original from the copy there.
+  - Only names and libraries differ on those routes, and ownership rules exclude display names as identifiers ([Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle)).
+  - The file-level index on a Text or an unlinked collection named the original pair on every route in the table, including those.
+
+Not probed:
+- a user deleting an index host, or clearing its fake user;
+- library overrides of a linked collection, a common production route that also copies ID properties;
+- other Duplicate Data preferences.
+
+Scope:
+- one binding with one managed object, and one index entry;
+- raw ID properties, not registered property groups;
+- the factory-default Duplicate Data preferences;
+- background mode only;
+- macOS, Windows, and Linux. The probe's facts are identical on all three, in every runtime ("Feasibility" workflow, [run 39330194131](https://github.com/scottdmilner/proscenium/actions/runs/39330194131), 2026-10-19).
 
 ## Compiled Hydra bridge — macOS arm64
 
@@ -699,6 +778,8 @@ measurements and distribution are recorded. On that evidence M1b adopted Hydra, 
 
 **Go.** All 55 checks pass in all three runtimes ("Feasibility" workflow, [run 38032882242](https://github.com/scottdmilner/proscenium/actions/runs/38032882242), `windows-latest`, 2026-10-10). Apart from paths and timings, every recorded fact matches macOS except those below.
 
+M3's `copies` probe ("Feasibility" workflow, [run 39330194131](https://github.com/scottdmilner/proscenium/actions/runs/39330194131), 2026-10-19): all 108 checks pass in all three runtimes, and the probe's facts are identical to macOS's. The other probes' facts from that run were not compared.
+
 | Item | Value |
 |---|---|
 | Runner | GitHub `windows-latest`, Windows Server 2025, AMD64 |
@@ -741,6 +822,8 @@ measurements and distribution are recorded. On that evidence M1b adopted Hydra, 
 ## Linux x64
 
 **Go.** All 55 checks pass in all three runtimes ("Feasibility" workflow, [run 38032882242](https://github.com/scottdmilner/proscenium/actions/runs/38032882242), `ubuntu-latest`, 2026-10-10). Apart from paths and timings, every recorded fact matches macOS except those below.
+
+M3's `copies` probe ("Feasibility" workflow, [run 39330194131](https://github.com/scottdmilner/proscenium/actions/runs/39330194131), 2026-10-19): all 108 checks pass in all three runtimes, and the probe's facts are identical to macOS's. The other probes' facts from that run were not compared.
 
 | Item | Value |
 |---|---|
