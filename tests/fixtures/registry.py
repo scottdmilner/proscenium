@@ -108,7 +108,7 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
         # Cases join once every row it lists has a test: SRC-03 and SID-07 need the binding records (Phase D).
         Fixture("F-REATTACH", "Release and reattachment", ("M3",), source_access.reattach),
-        Fixture("F-SCHEMA-VERSIONS", "Older, failed-migration, newer, and unreadable records", ("M3",)),
+        Fixture("F-SCHEMA-VERSIONS", "Older, failed-migration, newer, and unreadable records", ("M3", "M5")),
         Fixture("F-BINDING-STATE", "Binding state through handles", ("M3",)),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),

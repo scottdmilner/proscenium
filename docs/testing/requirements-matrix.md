@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-323 rows: 254 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2, M3.
+324 rows: 255 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2, M3.
 
 ## PROJECT.md
 
@@ -181,7 +181,8 @@ is filled in by its delivering milestone before implementation.
 | [REOPEN-08](../spec/lifecycle.md#reopening) | Image textures remain references to external files | behavior | M9 | 1 / M12 | `F-OFFLINE` | Set by M9. |
 | [SCHEMA-02](../spec/lifecycle.md#schema-versions) | Older supported schemas migrate on load. | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | Records at an older supported version load at the current version, keeping every field the older version held. |
 | [SCHEMA-03](../spec/lifecycle.md#schema-versions) | If migration fails or the schema is newer than the extension supports | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | A binding whose records fail migration, or are newer than supported, keeps its display and records, refuses refresh and lifecycle operations, and reports why. |
-| [SCHEMA-04](../spec/lifecycle.md#schema-versions) | Unreadable or unsupported pending-cleanup records are preserved and never authorize disposal. | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | Unreadable or unsupported pending-cleanup records are unchanged after load and save, and cleanup disposes of none of the resources they name. |
+| [SCHEMA-04](../spec/lifecycle.md#schema-versions) | Unreadable or unsupported pending-cleanup records are preserved | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | Unreadable or unsupported pending-cleanup records are unchanged after load and save, and the extension refuses to overwrite them. |
+| [SCHEMA-06](../spec/lifecycle.md#schema-versions) | and never authorize disposal. Disable operations that require interpreting those records and report why. | behavior | M5 | 1 / M12 | `F-SCHEMA-VERSIONS` | With unreadable or unsupported pending-cleanup records, cleanup and every other operation that interprets them is refused with a diagnostic naming the records, and disposes of none of the resources they name. *SCHEMA-04's disposal half: nothing disposes of resources before M5.* |
 | [SCHEMA-05](../spec/lifecycle.md#schema-versions) | Without the extension installed, the saved display remains ordinary Blender content. | behavior | M3 | 1 / M12 | `F-OFFLINE` | Opening F-OFFLINE's saved .blend without the extension installed shows its geometry, transforms, and materials as ordinary Blender data, and loading reports no errors. |
 ## spec/interaction.md
 
