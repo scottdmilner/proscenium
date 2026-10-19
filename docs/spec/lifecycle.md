@@ -91,6 +91,7 @@ Keep these distinct:
 | Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
 | Last attempt | Settings attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
+| Binding index | One entry per binding identity, naming its destination, held outside every binding's own datablocks ([Canonical Candidate](source-access.md#canonical-candidate)) | Yes |
 | Runtime source attachment | The caller's stage attached to a binding with an attached source | No |
 | Runtime source stage | The source stage a binding with a file source opened and reuses across refreshes, and every binding's evaluation stage | No; after a `.blend` is reopened, the next refresh opens it |
 | Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt |
