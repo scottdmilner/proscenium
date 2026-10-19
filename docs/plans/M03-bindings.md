@@ -18,7 +18,7 @@ M3 is the first milestone that ships product code. It delivers the matrix rows w
   - The root-layer identifier is informative: it is never used to find bindings.
   - Replacing the attached stage preserves stored source selections; they resolve against the next published generation.
   - Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller.
-- **Copied bindings: probe, then rule.** Phase D probes what Blender does to ID properties and ID pointers on each copy route (duplicate collection, full-copy and linked-copy scene, append from another `.blend`, a record copied through Python). The rule to settle from those results: the canonical candidate is the one whose binding record and destination still refer to each other; if more than one or none qualifies, all candidates are disabled pending repair.
+- **Copied bindings (with the user, 2026-10-19).** Phase D probed what Blender does to ID properties and ID pointers on each copy route (D1). The canonical candidate is the one a file-level binding index names, when its binding record and destination refer to each other. Without a usable index entry, it is the one candidate whose record and destination refer to each other. Otherwise all candidates are disabled pending repair. Linked bindings are not candidates.
 
 ## Phases
 
@@ -138,6 +138,17 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - It named the original destination on every copy route, including those that copy both sides.
     - Appending a host itself gives a second index, until the save drops the appended host, which has no users.
     - The window manager can't host it: its ID properties aren't saved, and opening a file with `load_ui=False` keeps the session's record.
+- **D2, the canonical-candidate rule** (with the user). [Canonical Candidate](../spec/source-access.md#canonical-candidate) adds a binding index to each `.blend`. It names each binding's destination and is held outside the bindings' own datablocks, which D1 found no copy route reaches. The index is persisted binding state ([Binding State](../spec/lifecycle.md#binding-state)).
+  - The rule:
+    - The candidate the index names is canonical, when its record and destination refer to each other.
+    - Without a usable entry, the one mutually referring candidate is canonical.
+    - Otherwise every candidate is disabled.
+  - So on the full-copy scene and append, the original stays enabled. A lost index degrades to mutual reference, not to disabling everything. Two indexes, or an index that disagrees with the records, disable every candidate rather than guessing.
+  - Linked bindings are not candidates: they are read-only library data whose identity belongs to their library.
+  - New rows: COPY-06, the index; COPY-07, its entry on creation; COPY-08, removal, delivered by M11; COPY-09 to COPY-11, the rule's three cases; COPY-12, linked bindings.
+  - Left to later commits:
+    - D4 places the index, and the records, so that a record and its destination refer to each other.
+    - D10 decides whether detection restores a missing entry once the fallback has decided.
 
 ### Phase E — Close
 

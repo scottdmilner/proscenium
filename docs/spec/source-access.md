@@ -56,11 +56,24 @@ The key is the reattachment contract because the root-layer identifier of an ano
 
 ## Copied Bindings
 
-Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest.
+Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest. The bindings in a `.blend` that share one binding identity are its **candidates**.
 
 - A binding whose identity is not unique is **disabled pending repair**: it keeps its display, does not refresh, and reports the ambiguity until the user makes it a new binding or detaches it.
 - A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled.
 - Copies are never automatically claimed, merged, or deleted.
+
+### Canonical Candidate
+
+Each `.blend` holds a **binding index**, with one entry per binding identity naming that binding's destination. The index is held outside every binding's own datablocks, and nothing in a binding refers to it, so copying a binding's datablocks does not copy the index.
+
+- Creating a binding adds its index entry. Removing a binding removes its entry.
+- A candidate is canonical when the index names its destination and its binding record and destination refer to each other.
+- If the index has no entry for the identity, or its entry names no destination, then the one candidate whose binding record and destination refer to each other is canonical.
+- Otherwise the rule cannot decide, and all candidates are disabled. This includes:
+  - more than one index naming the identity;
+  - an index naming a destination whose binding record does not refer back;
+  - with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none.
+- A binding linked from another `.blend` is not a candidate. It is library data, read-only in the linking file, and its identity belongs to its library, so it never makes a local binding's identity non-unique.
 
 ## Source Stages
 

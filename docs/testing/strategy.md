@@ -51,7 +51,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |
 | `F-RETIREMENT-FAILURE` | **Retirement failure:** the new display is active; obsolete resources remain tracked. |
-| `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities and missing resource tags. |
+| `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities on each copy route, a missing, cleared, or duplicated binding index, a linked binding, and missing resource tags. |
 | `F-UNMANAGED-USER` | **Unmanaged user of managed data:** refresh and removal preserve unrelated content. |
 | `F-DETACH-SHARED` | **Detach with shared instance content:** a later refresh cannot mutate the detached result. |
 | `F-DETACH-AS-IS` | **Detach surviving content as-is:** preserve ordinary Blender edits and damage without USD access or reconstruction; remove binding-specific metadata and controls, and prevent pending cleanup from deleting detached resources. |
