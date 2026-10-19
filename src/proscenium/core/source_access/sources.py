@@ -1,4 +1,4 @@
-"""A binding's source: a root-layer file it opens (source-access.md#source-identity)."""
+"""A binding's source: a file it opens, or a stage a caller attaches (source-access.md#source-identity)."""
 
 from __future__ import annotations
 
@@ -6,9 +6,11 @@ import os
 
 from pxr import Tf, Usd
 
+from .._core import StageHandle
+
 
 class SourceUnavailable(Exception):  # noqa: N818 (an expected outcome, not an error)
-    """The binding's source stage can't be had: its file won't open.
+    """The binding's source stage can't be had: its file won't open, or no stage is attached.
 
     Raised inside source access only; the synchronization API returns it as a result.
     """
@@ -43,3 +45,34 @@ class FileSource:
             except Tf.ErrorException as error:
                 raise SourceUnavailable(f"Can't open {self.root}") from error
         return self._stage
+
+
+class AttachedSource:
+    """A stage a caller attaches under a source key.
+
+    The key and root-layer identifier are binding configuration, saved with the binding's records
+    once they exist (M3 Phase D); until then they are held here. The attachment is runtime only.
+    """
+
+    key: str
+    root_layer_identifier: str | None  # of the stage last attached; informative, never used to find bindings
+    # Released at once, so it never keeps the attached stage alive (SRC-02). Unlike a weakref to the
+    # Usd.Stage wrapper, which can return an expired wrapper, stage() is None once the stage expires.
+    _attached: StageHandle | None
+
+    def __init__(self, key: str, root_layer_identifier: str | None = None) -> None:
+        self.key = key
+        self.root_layer_identifier = root_layer_identifier
+        self._attached = None
+
+    @property
+    def stage(self) -> Usd.Stage | None:
+        """The attached stage while it exists."""
+        return self._attached.stage() if self._attached is not None else None
+
+    def attach(self, stage: Usd.Stage) -> None:
+        """Make stage the source stage, and store its root-layer identifier."""
+        handle = StageHandle(stage)
+        handle.release()
+        self._attached = handle
+        self.root_layer_identifier = stage.GetRootLayer().identifier
