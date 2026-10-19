@@ -1,7 +1,8 @@
-"""A binding's source stage and evaluation stage (SRC-01, SRC-05).
+"""A binding's source stage and evaluation stage, for file and attached sources (SRC-01 to SRC-08).
 
-Rules that hold for every binding run over each kind of source (bindings.KINDS); the rest are
-about one kind: opening outside stage caches, for a file source.
+Rules that hold for every binding run over both kinds of source (bindings.KINDS); the rest are
+about one kind: opening outside stage caches for a file source, and matching the caller's
+settings for an attached one.
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ from pxr import Usd, UsdUtils
 
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from fixtures.source_access import DISK, caller_settings, read_values
-from proscenium.core.source_access import BindingSource, FileSource, SourceUnavailable
+from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
+from proscenium.core.source_access import AttachedSource, BindingSource, FileSource, SourceUnavailable
 from support.usd import open_fresh
 
 from .bindings import KINDS, binding
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 UNLOADED = {"payA": None, "payB": None}
+POLICIES = (Usd.Stage.LoadAll, Usd.Stage.LoadNone)
 
 
 def _scene(tmp_path: Path) -> tuple[Path, Usd.Stage]:
@@ -74,9 +76,12 @@ def test_session_layer_opinions_are_displayed(kind: str, tmp_path: Path) -> None
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_unavailable_source(kind: str, tmp_path: Path) -> None:
-    # A file that won't open.
-    assert kind == "file"
-    source = BindingSource(FileSource(tmp_path / "missing.usda"), Usd.Stage.LoadAll)
+    # A file that won't open, or no stage attached.
+    source = (
+        BindingSource(FileSource(tmp_path / "missing.usda"), Usd.Stage.LoadAll)
+        if kind == "file"
+        else BindingSource(AttachedSource("shot"), Usd.Stage.LoadAll)
+    )
     with pytest.raises(SourceUnavailable):
         source.acquire()
     assert source.evaluation_stage is None
@@ -144,3 +149,104 @@ def test_bindings_on_one_file_have_their_own_stages(tmp_path: Path) -> None:
     first, second = binding("file", root, caller).acquire(), binding("file", root, caller).acquire()
     assert first != second
     assert first.GetSessionLayer() != second.GetSessionLayer()
+
+
+# --- attached sources: an evaluation stage matched to the caller's ------------------------------
+
+
+def _expected(scene: source_access.PrivateStageScene, payload_policy: Usd.Stage.InitialLoadSet) -> dict:
+    # The caller's composed values, with payload content by the binding's policy: PayB is in the
+    # caller's mask but its payload isn't loaded by the caller.
+    loaded = 1.0 if payload_policy == Usd.Stage.LoadAll else None
+    return scene.caller_values | {"payA": loaded, "payB": loaded}
+
+
+def _stage_settings(stage: Usd.Stage) -> tuple[str, list[str], str]:
+    return str(stage.GetPopulationMask()), sorted(stage.GetMutedLayers()), str(stage.GetInterpolationType())
+
+
+def test_caller_settings(tmp_path: Path) -> None:
+    # F-PRIVATE-STAGE "caller-settings", under each payload policy.
+    with source_access.private_stage(tmp_path) as scene:
+        caller = scene.caller
+        for payload_policy in POLICIES:
+            evaluation = binding("attached", scene.root, caller, payload_policy).acquire()
+            # SRC-06: a separate stage composing the caller's own layers, in no cache, with its resolver context.
+            assert evaluation != caller
+            assert evaluation.GetRootLayer() == caller.GetRootLayer()
+            assert evaluation.GetSessionLayer() == caller.GetSessionLayer()
+            assert not UsdUtils.StageCache.Get().Contains(evaluation)
+            assert evaluation.GetPathResolverContext() == caller.GetPathResolverContext()
+            # SRC-05: the caller's composition, unsaved edit and session opinions included.
+            assert read_values(evaluation) == _expected(scene, payload_policy)
+            # SRC-07: mask, muting, and interpolation match; the held interpolation shows at time 5.
+            assert _stage_settings(evaluation) == _stage_settings(caller)
+            assert evaluation.GetPrimAtPath("/World").GetAttribute("animValue").Get(5) == scene.caller_anim_at_5
+            # SRC-04: the caller's stage and layers are as they were.
+            assert caller_settings(caller) == scene.settings
+            assert layer_contents(caller) == scene.layers
+
+
+def test_caller_settings_are_matched_at_each_acquisition(tmp_path: Path) -> None:
+    # SRC-07: the caller changes its settings between synchronizations.
+    with source_access.private_stage(tmp_path) as scene:
+        caller = scene.caller
+        source = binding("attached", scene.root, caller)
+        evaluation = source.acquire()
+        caller.SetPopulationMask(Usd.StagePopulationMask.All())
+        caller.UnmuteLayer(caller.GetMutedLayers()[0])
+        caller.SetInterpolationType(Usd.InterpolationTypeLinear)
+        settings = caller_settings(caller)
+        assert source.acquire() == evaluation  # reused
+        assert _stage_settings(evaluation) == _stage_settings(caller)
+        assert read_values(evaluation) == _expected(scene, Usd.Stage.LoadAll) | {"extra": 1.0, "outside": 1.0}
+        assert evaluation.GetPrimAtPath("/World").GetAttribute("animValue").Get(5) == 5.0
+        assert caller_settings(caller) == settings
+
+
+def test_payload_policies(tmp_path: Path) -> None:
+    # F-PRIVATE-STAGE "payload-policies" (SRC-08): load-all and load-none bindings side by side.
+    with source_access.private_stage(tmp_path) as scene:
+        caller = scene.caller
+        load_set = caller.GetLoadSet()
+        loading = binding("attached", scene.root, caller)
+        unloading = binding("attached", scene.root, caller, Usd.Stage.LoadNone)
+        loaded, unloaded = loading.acquire(), unloading.acquire()
+        loading.acquire()
+        assert loaded != unloaded
+        assert read_values(loaded) == _expected(scene, Usd.Stage.LoadAll)
+        assert read_values(unloaded) == _expected(scene, Usd.Stage.LoadNone)
+        assert caller.GetLoadSet() == load_set
+
+
+def test_a_caller_with_other_layers_gets_a_new_evaluation_stage(tmp_path: Path) -> None:
+    with source_access.private_stage(tmp_path) as scene:
+        source = binding("attached", scene.root, scene.caller)
+        first = source.acquire()
+        other = open_fresh(scene.root)  # the same root layer, but its own session layer
+        assert isinstance(source.source, AttachedSource)
+        source.source.attach(other)
+        second = source.acquire()
+        assert second != first
+        assert second.GetSessionLayer() == other.GetSessionLayer()
+
+
+def test_evaluation_stage_is_not_the_cached_caller(tmp_path: Path) -> None:
+    # SRC-06: with the caller cached and its cache context active, Open would return the caller itself.
+    with source_access.private_stage(tmp_path) as scene:
+        cache = UsdUtils.StageCache.Get()
+        cache_id = cache.Insert(scene.caller)
+        try:
+            with Usd.StageCacheContext(cache):
+                evaluation = binding("attached", scene.root, scene.caller).acquire()
+            assert evaluation != scene.caller
+            assert not cache.Contains(evaluation)
+        finally:
+            cache.Erase(cache_id)
+
+
+def test_attaching_stores_the_root_layer_identifier(tmp_path: Path) -> None:
+    root, caller = _scene(tmp_path)
+    source = binding("attached", root, caller).source
+    assert isinstance(source, AttachedSource)
+    assert source.root_layer_identifier == caller.GetRootLayer().identifier
