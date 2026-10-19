@@ -6,8 +6,8 @@ Phase 2 requirements. Phase goals are in [Delivery Phases](../PROJECT.md#phase-2
 
 Discover changes from:
 
-- File-backed manual refresh.
-- In-memory stage edits.
+- Manual refresh of a file source.
+- Edits to an attached stage.
 - Evaluation time-code changes.
 - Binding-setting changes.
 - Managed display damage.

@@ -7,12 +7,12 @@ and leaves everyone else's state alone:
 
 - dirty_layer (F-DIRTY-LAYER): contributing layers with unsaved in-process edits,
   a dirty layer that does not contribute, and a layer changed on disk.
-  File-Backed Refresh.
+  Layer State and Reloading.
 - private_stage (F-PRIVATE-STAGE): a caller's stage whose load set, mask, muting,
   edit target, interpolation, and variant selection all differ from the
-  defaults. In-Memory Sources.
+  defaults. Source Stages.
 - cached_stage (F-CACHED-STAGE): a stage for the same file sitting in a stage
-  cache with an active cache context. File-Backed Refresh.
+  cache with an active cache context. Source Stages, Layer State and Reloading.
 
 Each returns the values a correct binding would read, derived from how the scene
 is built. M1 provides the generators; M3, which owns these fixtures, adds the
@@ -153,7 +153,7 @@ def dirty_layer(dest: Path) -> Generator[DirtyLayerScene]:
 @dataclass
 class PrivateStageScene:
     root: Path
-    caller: Usd.Stage  # the caller's in-memory stage, with non-default settings
+    caller: Usd.Stage  # the caller's stage, with non-default settings
     settings: dict[str, object]  # caller_settings(caller) at build time; a binding must not change it
     layers: dict[str, str]  # layer_contents(caller) at build time; a binding must not author to them
     caller_values: dict[str, float | None]  # what the caller's stage composes
@@ -161,7 +161,7 @@ class PrivateStageScene:
 
 
 def caller_settings(stage: Usd.Stage) -> dict[str, object]:
-    """Stage-level state that In-Memory Sources forbids a binding to change."""
+    """Stage-level state that Source Stages forbids a binding to change in an attached stage."""
     return {
         "load_set": sorted(str(p) for p in stage.GetLoadSet()),
         "population_mask": str(stage.GetPopulationMask()),

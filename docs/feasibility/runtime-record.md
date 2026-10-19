@@ -88,7 +88,7 @@ Other datablock types and other kinds of change were not tested. Because held re
 
 ### In-memory source candidates
 
-Tested the design-note candidate from [In-Memory Sources](../spec/source-access.md#in-memory-sources): a private stage per binding over the caller's root and session layers. It was opened with `Usd.Stage.OpenMasked(root, session, resolverContext, mask, load)` under `BlockStageCaches`. The caller's settings were then reproduced with `MuteAndUnmuteLayers` and `SetInterpolationType`.
+Tested the design-note candidate from [Source Stages](../spec/source-access.md#source-stages): a private stage per binding over the caller's root and session layers. It was opened with `Usd.Stage.OpenMasked(root, session, resolverContext, mask, load)` under `BlockStageCaches`. The caller's settings were then reproduced with `MuteAndUnmuteLayers` and `SetInterpolationType`.
 
 All checks pass:
 - The private stage is distinct from the caller's.
@@ -123,7 +123,7 @@ Observations for M3:
 
 ### Private disk view
 
-The question is whether the on-disk state can be composed without touching shared layers ([File-Backed Refresh](../spec/source-access.md#file-backed-refresh)). The test scene had dirty edits in sublayer, reference, payload-nested, and absolute-path layers. All candidates left the shared layers untouched.
+The question is whether the on-disk state can be composed without touching shared layers ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)). The test scene had dirty edits in sublayer, reference, payload-nested, and absolute-path layers. All candidates left the shared layers untouched.
 
 | Candidate | Matches disk | Relative texture path resolves to | Notes |
 |---|---|---|---|
@@ -687,7 +687,7 @@ memory/performance regressions.
 
 `release()` is explicit. A production binding would call it when its source is
 released, to preserve the caller-release contract in
-[In-Memory Sources](../spec/source-access.md#in-memory-sources). The bridge's native
+[Source Stages](../spec/source-access.md#source-stages). The bridge's native
 objects and lazily queried scene indices are not persisted Blender state.
 
 Native loading holds on all three platforms for this module, and the prototype's correctness,
@@ -718,7 +718,7 @@ measurements and distribution are recorded. On that evidence M1b adopted Hydra, 
 - **A non-forced `Reload()` misses a rewrite within the same second,** in all three runtimes.
   - **Cause:** `SdfLayer::Reload` skips rereading when the layer's modification timestamp equals the stored one (`sdf/layer.cpp:1017-1023`, v26.03). On Windows, `ArchGetModificationTime` returns `_wstat64`'s whole-second `st_mtime` (`arch/fileSystem.cpp:186-197`, marked "this may need adjusting"); Linux and macOS use nanoseconds. OpenUSD `dev` has the same code.
   - **Observed** (second [run 38034363291](https://github.com/scottdmilner/proscenium/actions/runs/38034363291)): USD's timestamp for a layer had no sub-second part on Windows, and it did on macOS and Linux. An immediate second rewrite was missed, while a rewrite made 1.1 s later was seen.
-  - **For M3's [File-Backed Refresh](../spec/source-access.md#file-backed-refresh):** a refresh that relies on non-forced reloads can miss a save made within a second of the previous read on Windows. Forced reloads or another change test avoid it; M3 decides.
+  - **For M3's [Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading):** a refresh that relies on non-forced reloads can miss a save made within a second of the previous read on Windows. Forced reloads or another change test avoid it; M3 decides.
 - **Buffer transfer** (single runs, 1,000,000 points): attribute `position` 0.53 ms in the binary and 1.72 ms in the wheel; `vertices.co` 64.9 ms and 65.7 ms.
 
 ### Compiled Hydra bridge

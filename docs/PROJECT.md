@@ -17,7 +17,7 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 |---|---|
 | [spec/invariants.md](spec/invariants.md) | Cross-cutting guarantees every milestone must preserve |
 | [spec/pipeline.md](spec/pipeline.md) | Layer boundaries (snapshot, plan, application), synchronization transaction, diagnostics |
-| [spec/source-access.md](spec/source-access.md) | Bindings, source consistency and identity, copied bindings, in-memory sources, file-backed refresh |
+| [spec/source-access.md](spec/source-access.md) | Bindings, source consistency and identity, copied bindings, source stages, layer state and reloading |
 | [spec/lifecycle.md](spec/lifecycle.md) | Ownership, lifecycle operations, detach, undo and runtime state, persistence |
 | [spec/interaction.md](spec/interaction.md) | Source inspection, interaction contract, interaction testing |
 | [spec/interaction-contract.md](spec/interaction-contract.md) | Draft interaction contract: browsing universe, inspection metadata, picking, selection, Blender selection |
@@ -83,7 +83,7 @@ Preserve Phase 1 correctness while avoiding unnecessary work.
 - Preserve source selections where their source identities remain valid.
 - Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners.
 - Establish and meet representative performance targets for synchronization and the required interaction operations.
-- Support manual file-backed refresh and in-memory sources.
+- Support manual refresh of file sources and attached sources.
 
 See [Incremental Synchronization](spec/incremental.md) for detailed requirements.
 
@@ -134,7 +134,8 @@ Each entry links to the section that defines the term in full.
 | **Requested settings / last attempt** | The settings the user has asked for, and the record of the most recent synchronization attempt and its result. Both are kept separate from the published generation. See [Binding State](spec/lifecycle.md#binding-state). |
 | **Payload policy** | Load-all or load-no-payload. |
 | **Contributing layer** | Any layer that contributes opinions to the composed stage, whether through its layer stack or through composition arcs. |
-| **Caller's stage / private stage** | The stage a caller attaches to an in-memory binding, and the separate stage the binding opens over the same layers, which shares its opinions but not its stage settings. See [In-Memory Sources](spec/source-access.md#in-memory-sources). |
+| **File source / attached source** | A binding's source: a root-layer file the binding opens, named by its path, or a stage a caller attaches under a source key. See [Source Identity](spec/source-access.md#source-identity). |
+| **Source stage / evaluation stage** | The stage a binding's source is composed on, which is also its live stage, and the stage the binding evaluates, which composes the source stage's root and session layers, so it shares their opinions but not the source stage's settings. When the binding opened the source stage itself, they are the same stage. See [Source Stages](spec/source-access.md#source-stages). |
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |
 | **Materialize** | Turning display content that depends on managed shared resources or extension-specific mechanisms into standalone Blender data. |

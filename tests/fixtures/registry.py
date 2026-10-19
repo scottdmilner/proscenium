@@ -67,28 +67,27 @@ FIXTURES: dict[str, Fixture] = {
     for f in (
         Fixture(
             "F-DIRTY-LAYER",
-            "Dirty-layer conflict: disk changes and unsaved in-process changes coexist",
+            "Dirty layers: disk changes and unsaved in-process changes coexist",
             ("M3",),
             source_access.dirty_layer,
             (
-                # Refresh fails naming the dirty contributing layers, keeps their edits,
-                # and ignores the dirty layer that does not contribute.
-                Case("conflict", SYNC, FAILURE, ("FILE-02", "FILE-03", "FILE-06"), 1),
-                # With the edits gone, refresh of the reused stage shows the disk change.
-                Case("disk-change", SYNC, SUCCESS, ("FILE-01", "FILE-05", "FILE-07"), 1),
+                # The binding displays the layers as loaded, edits included, and names the dirty ones.
+                Case("as-loaded", SYNC, SUCCESS, ("LAYER-01", "LAYER-02"), 1),
+                # After a requested reload, the reused stage shows the disk content, edits discarded.
+                Case("reload", SYNC, SUCCESS, ("LAYER-03", "LAYER-04", "LAYER-05", "LAYER-06", "LAYER-07"), 1),
             ),
         ),
         Fixture(
             "F-PRIVATE-STAGE",
-            "Private-stage fidelity: caller stage settings differ from defaults",
+            "Evaluation-stage fidelity: attached stage settings differ from defaults",
             ("M3",),
             source_access.private_stage,
             (
                 # The private stage matches the caller's composed content and settings,
                 # and the caller's stage is unchanged.
-                Case("caller-settings", SYNC, SUCCESS, ("MEM-01", "MEM-02", "MEM-07", "MEM-08"), 2),
+                Case("caller-settings", SYNC, SUCCESS, ("SRC-04", "SRC-05", "SRC-06", "SRC-07"), 2),
                 # Load-all and load-none bindings on the caller's stage, side by side.
-                Case("payload-policies", SYNC, SUCCESS, ("MEM-04",), 2),
+                Case("payload-policies", SYNC, SUCCESS, ("SRC-08",), 2),
             ),
         ),
         Fixture(
@@ -98,14 +97,15 @@ FIXTURES: dict[str, Fixture] = {
             source_access.cached_stage,
             (
                 # The binding gets its own stage, not the cached one, and never caches it.
-                Case("ambient-cache", SYNC, SUCCESS, ("FILE-04", "ICON-34"), 1),
-                # Reloading a clean shared layer shows the disk change to the cached stage too.
-                Case("shared-reload", SYNC, SUCCESS, ("FILE-05", "FILE-07"), 1),
+                Case("ambient-cache", SYNC, SUCCESS, ("SRC-01", "ICON-34"), 1),
+                # A requested reload of a shared layer shows the disk change to the cached stage too;
+                # the binding's own session-layer opinions compose over the source, the ambient stage's don't.
+                Case("shared-reload", SYNC, SUCCESS, ("LAYER-06", "LAYER-07", "SRC-05"), 1),
             ),
         ),
         Fixture("F-MULTI-BINDING", "Independent bindings on one source", ("M3",)),
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
-        Fixture("F-REATTACH", "In-memory release and reattachment", ("M3",)),
+        Fixture("F-REATTACH", "Release and reattachment", ("M3",)),
         Fixture("F-SCHEMA-VERSIONS", "Older, failed-migration, newer, and unreadable records", ("M3",)),
         Fixture("F-BINDING-STATE", "Binding state through handles", ("M3",)),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),

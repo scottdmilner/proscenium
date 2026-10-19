@@ -271,7 +271,7 @@ Other changes:
 **Strong vs weak stage references.**
 
 - `UsdImagingStageSceneIndex` stores a **strong** `UsdStageRefPtr _stage` **[usd-v26.03 pxr/usdImaging/usdImaging/stageSceneIndex.h:154]**. Any retained Hydra chain therefore keeps the stage alive, independent of the bridge's own `stage_` member.
-- To honor the caller-release contract in `source-access.md#in-memory-sources`:
+- To honor the caller-release contract in `source-access.md#source-stages`:
   - Keep the bridge's own reference as `UsdStageWeakPtr`.
   - Provide `release()`, which calls `stageSceneIndex->SetStage(nullptr)` **[stageSceneIndex.h:72]** and drops the chain.
   - Or rebuild the chain per refresh from a weak pointer that is checked for expiry.
@@ -385,7 +385,7 @@ These are single runs on one machine, not benchmarks.
 
 A failure becomes a diagnostic plus a placeholder, never an exception thrown mid-traversal, so one bad prim does not abort the plan. Compute sizes with `size_t` or checked multiplication.
 
-**No sandboxing.** An in-process native module cannot be isolated. Running capture in a subprocess would lose access to in-memory and unsaved stages (`source-access.md#in-memory-sources`) and to the caller's stage identity. Signals (SIGSEGV, access violations) cannot be safely turned into exceptions. The milestone already accepts this: "a C++ core moves geometry validation to where a bug terminates Blender" **[M01b-evaluation-gate.md]**.
+**No sandboxing.** An in-process native module cannot be isolated. Running capture in a subprocess would lose access to in-memory and unsaved stages (`source-access.md#source-stages`) and to the caller's stage identity. Signals (SIGSEGV, access violations) cannot be safely turned into exceptions. The milestone already accepts this: "a C++ core moves geometry validation to where a bug terminates Blender" **[M01b-evaluation-gate.md]**.
 
 ---
 
