@@ -18,7 +18,7 @@ SCENES = Path(__file__).parent
 class Scene(Enum):
     """A static scene directory; each holds .usda layers with a comment on their purpose."""
 
-    SOURCE_ACCESS = "source_access"  # layers for F-DIRTY-LAYER, F-PRIVATE-STAGE, F-CACHED-STAGE
+    SOURCE_ACCESS = "source_access"  # layers for every generator in fixtures/source_access.py
     PRODUCTION_LIKE = "production_like"  # assets/ for the generated CI fixture
     INTERACTION = "interaction"  # one layer each for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
 

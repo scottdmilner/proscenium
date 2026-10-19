@@ -13,10 +13,13 @@ and leaves everyone else's state alone:
   defaults. Source Stages.
 - cached_stage (F-CACHED-STAGE): a stage for the same file sitting in a stage
   cache with an active cache context. Source Stages, Layer State and Reloading.
+- reattach (F-REATTACH): a caller's stage, another stage over the same root layer,
+  and a stage over a copy of the scene, whose root layer differs. Source Identity
+  and Source Stages.
 
 Each returns the values a correct binding would read, derived from how the scene
 is built. M1 provides the generators; M3, which owns these fixtures, adds the
-synchronization cases that run against them. All three copy Scene.SOURCE_ACCESS
+synchronization cases that run against them. Each copies Scene.SOURCE_ACCESS
 (see its root.usda) into the given directory.
 
 Each generator is a context manager: entering builds the fixture, and leaving
@@ -249,3 +252,30 @@ def cached_stage(dest: Path) -> Generator[CachedStageScene]:
             )
     finally:
         cache.Erase(cache_id)
+
+
+@dataclass
+class ReattachScene:
+    root: Path
+    caller: Usd.Stage  # the caller's stage, attached first
+    same_root: Usd.Stage  # another stage over caller's root layer object, with its own session layer
+    other_root: Usd.Stage  # a stage over a copy of the scene: same content, a different root-layer identifier
+    values: dict[str, float | None]  # what each of the three composes
+
+
+@contextmanager
+def reattach(dest: Path) -> Generator[ReattachScene]:
+    """F-REATTACH: stages to attach under a source key, release, and replace.
+
+    The tests release the caller's stage themselves, by dropping every reference to it.
+    Reopening a .blend with the source missing is the binding records' (M3 Phase D).
+    """
+    root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
+    other = copy_scene(Scene.SOURCE_ACCESS, dest / "copy") / "root.usda"
+    yield ReattachScene(
+        root=root,
+        caller=open_fresh(root),
+        same_root=open_fresh(root),
+        other_root=open_fresh(other),
+        values=dict(DISK),
+    )

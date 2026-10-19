@@ -54,7 +54,7 @@ tests/
 ├── tools/                    scripts for inspecting fixtures; not tests
 └── fixtures/                 bespoke USD fixtures
     ├── registry.py           the named contract fixtures
-    ├── source_access.py      generators for F-DIRTY-LAYER, F-PRIVATE-STAGE, F-CACHED-STAGE
+    ├── source_access.py      generators for F-DIRTY-LAYER, F-PRIVATE-STAGE, F-CACHED-STAGE, F-REATTACH
     ├── interaction.py        generators for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
@@ -98,6 +98,7 @@ Current tests:
 - `test_ci_fixture.py`: the CI fixture's inventory with Blender's `pxr`, under both payload policies.
 - `test_extension.py`: installing, enabling, and disabling the zip built by `tools/build_extension.py` in check mode (`sync=False`), which only reads `src/proscenium` and fails if its wheels or manifest are out of date with `uv.lock`, or its compiled core with its sources (run `tools/build_extension.py` to sync them). The installed copy's compiled core loads and matches the host's USD version, and the zip's manifest names this platform.
 - `test_stage_handle.py`: the compiled core's `StageHandle` keeps a stage alive until `release()`, then lets a stage its caller dropped expire, and never destroys one its caller still holds.
+- `test_attachments.py`: a binding becomes unattached once the caller drops its attached stage, and its evaluation stage lets go of the caller's layers.
 
 ### `support/`
 
@@ -123,7 +124,7 @@ Bespoke fixtures are the main correctness evidence ([acceptance.md](../docs/test
   ```
 
   Entering writes the fixture and builds any in-process state, such as open stages, unsaved edits, or cache entries. Leaving releases that state. The yielded object carries the values the fixture is built to produce. Tests compare against those, not against recorded output.
-- **`source_access.py`** has the generators for `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE` (owned by M3), all over `scenes/source_access/`. Each docstring states what state it sets up, and `bpy_free/test_source_access_fixtures.py` checks that the generator actually produces it.
+- **`source_access.py`** has the generators for `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, `F-CACHED-STAGE`, and `F-REATTACH` (owned by M3), all over `scenes/source_access/`. Each docstring states what state it sets up, and `bpy_free/test_source_access_fixtures.py` checks that the generator actually produces it.
 - **`interaction.py`** has the generators for `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP` over `scenes/interaction/`. Each yields the live stage and the results the scene is built to produce, written out by hand; `bpy_free/test_interaction_fixtures.py` checks that `support/interaction_oracle.py` derives the same results. `tools/show_interaction_fixtures.py` prints them (run it from the repository root as `uv run python tests/tools/show_interaction_fixtures.py`).
 - **`production_like.py`** is the smaller generated CI fixture: a deep organizational hierarchy, instanceable crate payloads with nested instanceable bolts, multi-material assets, and one non-instanced crate. `expected_inventory(params, load_all)` derives what each payload policy must compose. `bpy_free/test_production_like.py` checks that against USD, and also checks determinism and a pinned checksum. Change the checksum only deliberately, together with the generator or its assets.
 - **`scenes/`** holds static `.usda` layers, one directory per scene. Each layer has a header comment saying what it's for. Write static content as files here, not as Python strings.
