@@ -244,6 +244,27 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - dependents;
     - invalid and newer manifests refused, claiming nothing, and reported, and a newer one never overwritten.
 
+- **D6, published generation, last attempt, and pending cleanup** (as sketched with the user).
+  - **Records** (`proscenium/binding_state.py`), each at version 1:
+    - **Generation**, on the destination collection beside the manifest: the binding, the payload policy and time code it was produced with, and its source/display diagnostics. The published generation is this record and the manifest, plus M7's correspondence. It describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
+    - **Last attempt**, on the target scene under `attempt.<identifier>`: the payload policy and time code attempted, the result state, and the diagnostics. It's beside the configuration but under its own key, so it exists without a destination or a publication, and reading the configuration doesn't load it.
+    - Time codes are stored as their value, or `None` for the default time code, whose NaN value would break equality.
+    - Nothing writes these before M5's transaction, so M5 can refine their version 1 fields, and it adds source revision information and the diagnostics' other fields.
+  - **Pending cleanup is a contract, not a schema** (with the user). M5 chooses the mechanism and its schema; the contract it follows is the DECISIONS.md row "Pending-cleanup persistence contract", and PEND-06 notes it.
+    - The contract covers the evidence each item persists; separation from the generation and the attempt; no retained runtime references; resolved work removed; unreadable records preserved and authorizing nothing; and a home that no copy route copies and binding removal doesn't orphan.
+    - The binding index's Text is such a home, and a destination collection isn't.
+    - `F-SCHEMA-VERSIONS`' sample records keep standing in for pending-cleanup records until then, and M5's deliverables say it adds them.
+  - **The result types move** from `proscenium/synchronization.py` to `proscenium/results.py`, which the synchronization API imports, since the records store diagnostics and the API will write the records.
+    - `Diagnostic` turns a stored diagnostic's strings back into its enums, and its stored list of layers into a tuple.
+    - `records.write` stores tuples as lists.
+  - **Tests,** in `blender/`:
+    - each record through save and reopen, at a numeric and the default time code;
+    - writing each record leaving the configuration, the manifest, and the other record unchanged;
+    - a last attempt with the destination removed;
+    - the generation copied with its destination on a full-copy scene;
+    - newer and damaged generations refused and never overwritten;
+    - a diagnostic rejecting values it can't hold.
+
 ### Phase E — Close
 
 1. **Notes for M4 and M5.** M4 reviews identifiers and schemas against the finalized contract. M5 settles the pending-cleanup mechanism and the published generation's contents.

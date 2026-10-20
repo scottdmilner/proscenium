@@ -672,6 +672,7 @@ requirements:
         quote: "M3 defines the persistence contract; M5 chooses and validates the mechanism"
         kind: contract
         qualified_by: M5
+        note: "M3's contract is the DECISIONS.md row 'Pending-cleanup persistence contract'."
       - id: PEND-07
         quote: "removing configuration must not orphan pending work."
         delivery: M11

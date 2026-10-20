@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,6 +25,7 @@ from . import bindings
 from .bindings import BindingConfig, PayloadPolicy
 from .core.source_access import AttachedSource, FileSource, SourceKind, SourceRegistry, SourceUnavailable
 from .records import RecordRefused, Refused
+from .results import Category, Diagnostic, Result, ResultState, Severity
 
 if TYPE_CHECKING:
     import os
@@ -36,41 +36,6 @@ if TYPE_CHECKING:
 
 class BindingNotFound(LookupError):  # noqa: N818 (misuse, raised like KeyError)
     """No binding has this identifier: it was removed, its creation undone, or it never existed."""
-
-
-class ResultState(StrEnum):
-    SUCCESS = "success"
-    COMPLETED_WITH_ISSUES = "completed with issues"
-    FATAL_FAILURE = "fatal failure"
-
-
-class Category(StrEnum):
-    """Diagnostic categories source access reports (pipeline.md#diagnostics)."""
-
-    UNAVAILABLE_SOURCE = "unavailable source"
-    SOURCE_STATE = "source state"  # informational: it doesn't change the result state
-    UNSUPPORTED_RECORD = "unsupported record"  # the binding's configuration can't be read
-
-
-class Severity(StrEnum):
-    INFO = "info"
-    ERROR = "error"
-
-
-@dataclass(frozen=True, slots=True)
-class Diagnostic:
-    category: Category
-    severity: Severity
-    message: str
-    layers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
-
-
-@dataclass(frozen=True, slots=True)
-class Result:
-    """What an operation on a binding did. Expected failures are results, never exceptions."""
-
-    state: ResultState
-    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

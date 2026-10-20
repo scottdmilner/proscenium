@@ -153,13 +153,13 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
 def _unstructure(value: Any) -> Any:
     """value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
 
-    Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
+    Tuples become lists. Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
     """
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {f.name: _unstructure(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, Mapping):
         return {key: _unstructure(item) for key, item in value.items()}
-    if isinstance(value, list):
+    if isinstance(value, list | tuple):
         return [_unstructure(item) for item in value]
     return value
 
