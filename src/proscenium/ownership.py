@@ -50,12 +50,13 @@ class ManifestEntry:
     def __post_init__(self) -> None:
         if not isinstance(self.datablock, bpy.types.ID | None):
             raise TypeError("an entry's datablock is not one")
-        if not isinstance(self.covers, list) or not all(type(path) is str for path in self.covers):
-            raise TypeError("an entry covers a list of source-entity paths")
+        # The items in covers and uses aren't checked here, since a manifest can have thousands of
+        # entries. A bad path in covers is caught when it's resolved. A bad item in uses is caught by
+        # Manifest.__post_init__, which refuses any item that isn't another entry's resource identity.
+        if type(self.covers) is not list or type(self.uses) is not list:
+            raise TypeError("an entry covers a list of source-entity paths and uses a list of resources")
         if type(self.role) is not str or not self.role:
             raise ValueError("an entry has a representation role")
-        if not isinstance(self.uses, list) or not all(type(resource) is str for resource in self.uses):
-            raise TypeError("an entry uses a list of resource identities")
 
 
 @dataclass(frozen=True)

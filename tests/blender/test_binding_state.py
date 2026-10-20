@@ -138,9 +138,11 @@ def test_a_generation_that_cannot_be_read_is_refused_and_kept(
     result = binding_state.read_generation(destination)
     assert isinstance(result, Refused)
     assert result.refusal is refusal
-    with pytest.raises(RecordRefused):
-        binding_state.write_generation(destination, _generation(handle))
     assert destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict() == stored
+    if refusal is Refusal.NEWER:  # writing refuses what the version shows; the rest, writers read first
+        with pytest.raises(RecordRefused):
+            binding_state.write_generation(destination, _generation(handle))
+        assert destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict() == stored
 
 
 def test_a_diagnostic_rejects_values_it_cannot_hold() -> None:

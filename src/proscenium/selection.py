@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
 from . import records
-from .core.source_entities import entity_path
 from .records import Schema
 
 if TYPE_CHECKING:
@@ -26,7 +25,7 @@ SELECTION_KEY = "selection"
 
 class SelectionEntry(NamedTuple):
     binding_id: str
-    path: str  # a source-entity identifier (proscenium.core.source_entities)
+    path: str  # a source-entity identifier: make it with proscenium.core.source_entities.identifier
 
 
 @dataclass(frozen=True)
@@ -40,10 +39,10 @@ class PersistentSelection:
         active = None if self.active is None else SelectionEntry(*self.active)
         object.__setattr__(self, "entries", entries)
         object.__setattr__(self, "active", active)
-        for binding_id, path in entries:
-            if type(binding_id) is not str:
-                raise TypeError("an entry's binding identifier is a string")
-            entity_path(path)
+        # Paths are checked as identifiers where they're made and where they're resolved, not on each
+        # read: a damaged one then fails to resolve and is reported unresolved, as for a path that names nothing.
+        if not all(type(binding_id) is str and type(path) is str for binding_id, path in entries):
+            raise TypeError("an entry is a binding identifier and a path, both strings")
         if len(set(entries)) != len(entries):
             raise ValueError("an entry appears twice")
         if active is not None and active not in entries:
