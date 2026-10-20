@@ -116,6 +116,9 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
 2. **The canonical-candidate rule,** in Copied Bindings, the COPY rows, and the DECISIONS.md row "Copied bindings".
 3. **The versioned record framework.** ID-property records, validation, and migration hooks. Tests: loading older, failed-migration, and newer-schema records.
 4. **Binding configuration schema.**
+   - When the extension registers, it registers an empty `proscenium` property group on each datablock type that carries records. Blender's Custom Properties panel hides properties registered through the Python API unless Developer Extras is on, and doesn't filter by name.
+   - Records stay raw ID properties inside that group. A probe found that they can be written into it, survive save and reopen, and remain readable once the class is unregistered.
+   - The hiding holds only while the extension is enabled, so validation still covers hand-edited records.
 5. **Ownership metadata format (OWN-01).** It is representation-independent and keeps resource identity, ownership, source coverage, representation role, and usage separate.
 6. **Published-generation, last-attempt, and pending-cleanup schemas,** as far as M3 can define them. M5 fills in the published generation and chooses the pending-cleanup mechanism.
 7. **Source-entity identifiers and the persistent selection schema (ICON-24).** The identifier is the entity's path in the composed stage, as the Phase B log describes. Tests: compatibility of source-entity identifiers and persisted selection with M2's fixtures and oracle (`tests/support/interaction_oracle.py`).
@@ -150,6 +153,24 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - D4 places the index, and the records, so that a record and its destination refer to each other.
     - D10 decides whether detection restores a missing entry once the fallback has decided.
 - **SCHEMA-04 split, before D3** (with the user). SCHEMA-04 keeps preserving unreadable or unsupported pending-cleanup records, and refusing to overwrite them, which M3's record framework delivers. Its disposal half moves to SCHEMA-06, delivered by M5: never authorizing disposal, and refusing the operations that interpret those records. Nothing disposes of resources before M5. M5's Tests section names `F-SCHEMA-VERSIONS` for it.
+- **D3, the versioned record framework** (with the user, in one Blender-side module). Records exist only as ID properties and only Blender-side code reads or writes them, so the framework lives in `proscenium/records.py`, not in the bpy-free core.
+  - **Schemas:** a `Schema` names the frozen dataclass a current-version record loads as, and one migration, on plain values, from each version below it to the next. Every version from 1 migrates.
+  - **Typed records:** the code that uses a record reads typed fields that ty checks. Constructing the dataclass rejects missing and unknown fields. A record class checks a field's value in `__post_init__` where a hand-edited value would mislead, and that check's failure is a refusal too.
+  - **Loading:** `load` returns `Loaded` at the current version, or a `Refused` value saying why: newer, migration failed, invalid, or unreadable.
+    - Migrations run on a copy.
+    - Any exception, in a migration or in constructing the record, is a refusal, since stored data must never crash the extension.
+  - **Storage:** an ID's records are in one group, `id["proscenium"]`, one record per key.
+    - Reading never writes. A migrated record is stored at the current version only when the extension next writes it, so opening a file changes nothing, and a downgraded extension can still read it until then.
+    - `write` raises `RecordRefused`, changing nothing, over a stored record that `load` refuses, so the extension never destroys a record it can't read.
+    - Blender converts a whole record before storing it, so a value ID properties can't hold, such as an int over 32 bits or a name over 63 characters, raises and leaves the stored record unchanged. The int case is tested; the name case was an ad hoc check.
+  - **`F-SCHEMA-VERSIONS`** gets its generator: a three-version test schema stands in for the real schemas until they have older versions.
+    - Its cases join once every row it lists has a test. SCHEMA-03 needs synchronization to refuse a binding whose records are refused, which comes with D4, along with the "unsupported record" diagnostic.
+  - **Tests,** in `blender/`:
+    - each fixture record through `load`, each refusal's message, migrations on copies, and the schema's own checks;
+    - records with ID pointers through save and reopen;
+    - reading leaving the stored records and the file's dirty state unchanged;
+    - writing refused over every unreadable record;
+    - a failed Blender write leaving the record intact.
 
 ### Phase E — Close
 

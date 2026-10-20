@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import interaction, source_access
+from . import interaction, records, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -108,7 +108,14 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
         # Cases join once every row it lists has a test: SRC-03 and SID-07 need the binding records (Phase D).
         Fixture("F-REATTACH", "Release and reattachment", ("M3",), source_access.reattach),
-        Fixture("F-SCHEMA-VERSIONS", "Older, failed-migration, newer, and unreadable records", ("M3", "M5")),
+        # Cases join once every row it lists has a test: SCHEMA-03 needs synchronization to refuse a binding
+        # whose records are refused (D4).
+        Fixture(
+            "F-SCHEMA-VERSIONS",
+            "Older, failed-migration, newer, and unreadable records",
+            ("M3", "M5"),
+            records.schema_versions,
+        ),
         Fixture("F-BINDING-STATE", "Binding state through handles", ("M3",)),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
