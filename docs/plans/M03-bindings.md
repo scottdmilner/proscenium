@@ -265,6 +265,29 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - newer and damaged generations refused and never overwritten;
     - a diagnostic rejecting values it can't hold.
 
+- **D7, source-entity identifiers and the persistent selection (ICON-24)** (as sketched with the user).
+  - **Identifiers** (`proscenium/core/source_entities.py`, bpy-free, since M4's correspondence will produce them too):
+    - A source-entity identifier is the entity's composed-stage path string, as the Phase B log settles. `identifier()` and `entity_path()` convert between the two.
+    - A valid identifier is an absolute prim path in its own spelling: not the pseudo-root, a property, or a variant selection (which `Sdf.Path` counts as a prim path, so it's checked explicitly).
+  - **The persistent selection** (`proscenium/selection.py`) is a record on the scene: an ordered set of `SelectionEntry` values plus an optional active entry.
+    - `SelectionEntry` is a `NamedTuple` of a binding identifier and a path. ID properties store it as a two-string list, and it reads back as a tuple with names.
+    - The active entry must be one of the entries, and no entry appears twice.
+    - An entry whose binding is gone stays stored, like one whose path the generation doesn't display. Resolving entries and mirroring them into Blender's selection are M7's. Removing a binding's associations is detach's and removal's (M11).
+  - **Fixtures:** `F-REATTACH` gets its cases, now that SID-07 has a test. `F-BINDING-STATE` waits only on UNDO-07 (D8).
+  - **Tests:**
+    - in `bpy_free/`, compatibility with M2's contract on `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP`:
+      - every entity the oracle names (elements, floors, universe members, and kind-level targets at every level) round-trips;
+      - each element resolves to the oracle's prim, an instance proxy inside instance contents;
+      - copies of a prototype prim through different instances have their own identifiers;
+      - what isn't an entity is rejected;
+    - in `blender/`:
+      - a selection from two bindings with an active entry through save and reopen (ICON-24);
+      - entries stored as pairs of strings;
+      - `F-NESTED-SELECTION`'s targets stored exactly, so the oracle's expansion of them is unchanged;
+      - replacing the attached stage, with a confirmed different root layer too, leaving the selection (SID-07);
+      - an entry for a missing binding kept;
+      - invalid selections refused and kept.
+
 ### Phase E — Close
 
 1. **Notes for M4 and M5.** M4 reviews identifiers and schemas against the finalized contract. M5 settles the pending-cleanup mechanism and the published generation's contents.

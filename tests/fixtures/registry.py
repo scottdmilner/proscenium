@@ -122,8 +122,22 @@ FIXTURES: dict[str, Fixture] = {
             ),
         ),
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
-        # Cases join once every row it lists has a test: SRC-03 and SID-07 need the binding records (Phase D).
-        Fixture("F-REATTACH", "Release and reattachment", ("M3",), source_access.reattach),
+        Fixture(
+            "F-REATTACH",
+            "Release and reattachment",
+            ("M3",),
+            source_access.reattach,
+            (
+                # Attaching under a source key: exact keys, never by root layer, and confirmation for another root.
+                Case("key-contract", SYNC, SUCCESS, ("SID-03", "SID-04", "SID-05", "SID-06"), 2),
+                # The attached stage is the live stage, and replacing it leaves the persistent selection.
+                Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07"), 2),
+                # Once the caller drops its stage, the binding is unattached and its source unavailable.
+                Case("release", SYNC, FAILURE, ("SRC-02",), 2),
+                # After reopening, unavailable until attached again; undo and redo leave the attachment.
+                Case("reopen-and-undo", SYNC, FAILURE, ("SRC-03", "UNDO-06"), 2),
+            ),
+        ),
         Fixture(
             "F-SCHEMA-VERSIONS",
             "Older, failed-migration, newer, and unreadable records",
@@ -140,8 +154,7 @@ FIXTURES: dict[str, Fixture] = {
                 Case("unsupported-cleanup", Operation.CLEANUP, FAILURE, ("SCHEMA-04",), 1),
             ),
         ),
-        # Cases join once every row it lists has a test: ICON-24 needs the persistent selection (D7), and
-        # UNDO-07 the runtime indexes (D8).
+        # Cases join once every row it lists has a test: UNDO-07 needs the runtime indexes (D8).
         Fixture("F-BINDING-STATE", "Binding state through handles", ("M3", "M11"), source_access.binding_state),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
