@@ -51,17 +51,22 @@ def test_handles_are_equal_by_identifier(sync: Synchronization, tmp_path: Path) 
 
 
 @pytest.mark.parametrize("time_code", [Usd.TimeCode.Default(), 0, 12, 7.25], ids=["default", "0", "12", "7.25"])
-def test_synchronize_records_the_requested_time_code(
+def test_the_time_code_is_the_attempts_not_a_setting(
     sync: Synchronization, tmp_path: Path, time_code: Usd.TimeCode | float
 ) -> None:
-    # BIND-05: the default time code and numeric ones, a non-integer included, recorded exactly.
-    handle = sync.create_file_binding(_root(tmp_path))
-    assert handle.requested_settings().time_code is None
+    # API-02: the default time code and numeric ones are accepted, and none becomes a setting.
+    handle = sync.create_file_binding(_root(tmp_path), Usd.Stage.LoadNone)
+    before = handle.requested_settings()
     assert handle.synchronize(time_code) == Result(ResultState.SUCCESS)
-    requested = handle.requested_settings().time_code
-    assert requested is not None
-    assert requested == Usd.TimeCode(time_code)
-    assert requested.IsDefault() == isinstance(time_code, Usd.TimeCode)
+    assert handle.requested_settings() == before
+    stage = handle.live_stage()
+    assert stage is not None
+    assert read_values(stage) == DISK | {"payA": None, "payB": None}  # the attempt used the payload policy
+
+
+def test_a_time_code_that_isnt_one_is_misuse(sync: Synchronization, tmp_path: Path) -> None:
+    with pytest.raises(TypeError):
+        sync.create_file_binding(_root(tmp_path)).synchronize("frame 3")  # ty: ignore[invalid-argument-type]
 
 
 def test_set_settings_records_without_synchronizing(sync: Synchronization, tmp_path: Path) -> None:
@@ -72,7 +77,6 @@ def test_set_settings_records_without_synchronizing(sync: Synchronization, tmp_p
     assert stage is not None
     handle.set_settings(payload_policy=Usd.Stage.LoadNone)
     assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
-    assert handle.requested_settings().time_code == Usd.TimeCode(3)
     assert read_values(stage) == DISK  # not applied yet
     handle.synchronize(3)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}

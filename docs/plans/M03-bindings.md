@@ -172,6 +172,12 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - writing refused over every unreadable record;
     - a failed Blender write leaving the record intact.
 
+- **The time code is the attempt's, not a setting, before D4** (with the user). A synchronization's time code is derived at synchronization time, so the binding's configuration doesn't store it. Its requested settings are the payload policy, conversion, and purpose.
+  - The last attempt records the time code it used, as the published generation already does.
+  - API-02 now checks that synchronizing changes no setting and uses the requested ones.
+  - BIND-05, the attempt being made at exactly the given time code, moves to M5, where the last attempt first records it. M5's Tests section names `F-MULTI-BINDING` for it.
+  - `RequestedSettings` loses its time code, and synchronizing no longer records one.
+
 ### Phase E — Close
 
 1. **Notes for M4 and M5.** M4 reviews identifiers and schemas against the finalized contract. M5 settles the pending-cleanup mechanism and the published generation's contents.
