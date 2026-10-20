@@ -378,7 +378,7 @@ requirements:
         oracle: "For each copy route, the canonical candidate is the one the rule in Copied Bindings names, and it is the same on repeated detection and after save/reopen; where the rule cannot decide, every candidate is disabled."
       - id: COPY-04
         quote: "Copies are never automatically claimed, merged, or deleted."
-        oracle: "After detection, every candidate's binding record, ownership tags, and managed content are unchanged: nothing is claimed, merged, or deleted."
+        oracle: "After detection, every candidate's binding record, manifest, and managed content are unchanged: nothing is claimed, merged, or deleted."
       - id: COPY-05
         quote: "until the user makes it a new binding or detaches it."
         delivery: M11
@@ -502,6 +502,11 @@ requirements:
         kind: contract
         qualified_by: M3
         oracle: "M3's ownership metadata format (M3 plan, Phase D log), which records resource identity, ownership, source coverage, representation role, and usage as separate fields."
+      - id: OWN-16
+        quote: "A datablock is managed by the binding whose manifest names it."
+        delivery: M3
+        fixtures: [F-OWNERSHIP-AMBIGUITY]
+        oracle: "A datablock is managed exactly when one binding's manifest has an entry naming it: a duplicate of managed content (Object > Duplicate) is unmanaged, a datablock two manifests name is ambiguous, and after a full-copy scene each copy's content is managed by its own manifest."
       - id: OWN-04
         quote: "Renaming does not detach content."
       - id: OWN-05
@@ -559,7 +564,7 @@ requirements:
       - id: DET-01
         quote: "Detach operates on the surviving Blender content at the time of the operation, including Blender-side edits and existing damage."
       - id: DET-02
-        quote: "Remove the binding's ownership tags, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers."
+        quote: "Remove the binding's ownership metadata, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers."
       - id: DET-03
         quote: "Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies"
       - id: DET-04
@@ -687,7 +692,7 @@ requirements:
       - id: REOPEN-04
         quote: "An unavailable source must not erase the saved representation."
         fixtures: [F-OFFLINE]
-        oracle: "Reopening F-OFFLINE with its source moved away keeps every managed datablock of the saved display, with its ownership tags."
+        oracle: "Reopening F-OFFLINE with its source moved away keeps every managed datablock of the saved display, and the manifest entries that name them."
       - id: REOPEN-05
         quote: "Source unavailability must not automatically detach the binding."
         fixtures: [F-OFFLINE]

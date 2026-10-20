@@ -2,7 +2,9 @@
 
 A record is a nested ID-property group with a version under VERSION_KEY. Each ID that carries records holds
 them in one group, id_["proscenium"], one record per key. A schema names the dataclass a record
-loads as, and the migration from each older version to the next.
+loads as, and the migration from each older version to the next. A record's fields may hold
+dataclasses, in groups and lists too: writing stores them as groups, and the record's
+__post_init__ builds them again on load.
 
 Reading never writes: an older record migrates in memory and is stored at the current version
 only when the extension next writes it. A record that can't be read is a Refused value, never an
@@ -51,13 +53,13 @@ class Refusal(StrEnum):
     UNREADABLE = "unreadable"  # not a group, or no version
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Loaded[R]:
     record: R
     stored_version: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Refused:
     kind: str
     stored_version: int | None  # None when the record has no readable version
@@ -141,11 +143,25 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
     existing = stored(id_, key)
     if existing is not None and isinstance(result := load(schema, existing), Refused):
         raise RecordRefused(result)
-    value = {VERSION_KEY: schema.version} | {f.name: getattr(record, f.name) for f in dataclasses.fields(record)}
+    value = {VERSION_KEY: schema.version} | _unstructure(record)
     if namespace is None:
         id_[NAMESPACE] = {}
         namespace = id_[NAMESPACE]
     namespace[key] = value
+
+
+def _unstructure(value: Any) -> Any:
+    """value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
+
+    Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
+    """
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _unstructure(getattr(value, f.name)) for f in dataclasses.fields(value)}
+    if isinstance(value, Mapping):
+        return {key: _unstructure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_unstructure(item) for item in value]
+    return value
 
 
 def _copy(value: Any) -> Any:

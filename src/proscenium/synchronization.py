@@ -57,7 +57,7 @@ class Severity(StrEnum):
     ERROR = "error"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Diagnostic:
     category: Category
     severity: Severity
@@ -65,7 +65,7 @@ class Diagnostic:
     layers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Result:
     """What an operation on a binding did. Expected failures are results, never exceptions."""
 
@@ -73,14 +73,14 @@ class Result:
     diagnostics: tuple[Diagnostic, ...] = ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RequestedSettings:
     """The settings a binding's next synchronization uses (lifecycle.md#binding-state)."""
 
     payload_policy: Usd.Stage.InitialLoadSet
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class AttachResult:
     """What attaching a stage under a source key did."""
 
@@ -88,7 +88,7 @@ class AttachResult:
     unconfirmed: tuple[str, ...]  # bindings whose stored root-layer identifier differs; non-empty: nothing attached
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BindingHandle:
     """How callers reach a binding: its persistent identifier, never a datablock or cached state.
 
