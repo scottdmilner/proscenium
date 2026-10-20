@@ -22,6 +22,7 @@
 
 - Failure-injection tests at each transaction boundary, run against the stub application layer and rerun unchanged against the real application layer in M7.
 - `F-FAILED-SETTINGS`, `F-PUBLICATION-FAILURE`, `F-PREPARATION-CLEANUP-FAILURE`, and `F-RETIREMENT-FAILURE`.
+- `F-MULTI-BINDING`: synchronizing at the default time code and at numeric ones, a non-integer included, is attempted at exactly that time code, as the last attempt records (BIND-05).
 - `F-SCHEMA-VERSIONS`' unreadable and unsupported pending-cleanup records: cleanup and the other operations that interpret them refuse, report why, and dispose of nothing (SCHEMA-06).
 - Abort preparation, then fail disposal: assert the old generation is unchanged, prepared leftovers are inactive and persistently tracked, save/reopen preserves them, and explicit cleanup retry succeeds without USD access.
 - Undo: delete stub-created managed content, undo, and verify the M3 indexes are consistent again.

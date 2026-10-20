@@ -87,16 +87,16 @@ Keep these distinct:
 
 | State | Contents | Persisted |
 |---|---|---|
-| Binding configuration | Binding identity, source information, destination, target scene, and requested settings (time code, payload policy, conversion, purpose) | Yes |
+| Binding configuration | Binding identity, source information, destination, target scene, and requested settings (payload policy, conversion, purpose) | Yes |
 | Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
-| Last attempt | Settings attempted, result state, and diagnostics | Yes |
+| Last attempt | Settings and time code attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
 | Binding index | One entry per binding identity, naming its destination, held outside every binding's own datablocks ([Canonical Candidate](source-access.md#canonical-candidate)) | Yes |
 | Runtime source attachment | The caller's stage attached to a binding with an attached source | No |
 | Runtime source stage | The source stage a binding with a file source opened and reuses across refreshes, and every binding's evaluation stage | No; after a `.blend` is reopened, the next refresh opens it |
 | Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt |
 
-A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed. This applies equally to changed source paths, changed conversion settings, and undo restoring an older display.
+A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed. This applies equally to changed source paths, changed conversion settings, and undo restoring an older display.
 
 Source information is a file source's path, or an attached source's reattachment information (see [Source Identity](source-access.md#source-identity)).
 

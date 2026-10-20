@@ -263,7 +263,8 @@ requirements:
       - id: BIND-05
         quote: "Explicit evaluation time code, including the USD default time code."
         fixtures: [F-MULTI-BINDING]
-        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and records each exactly as the binding's requested time code."
+        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and the attempt is made at exactly that time code, as its last attempt records."
+        delivery: M5
       - id: BIND-06
         quote: "Coordinate-conversion and purpose/display settings."
         fixtures: [F-MULTI-BINDING]
@@ -294,11 +295,11 @@ requirements:
         fixtures: [F-BINDING-STATE]
         oracle: "A handle compares equal to one built from the same identifier, and stays usable across undo, redo, and save/reopen while its binding exists."
       - id: API-02
-        quote: "The time code becomes the binding's requested time code, and the attempt uses the binding's requested settings."
+        quote: "The time code is the attempt's, not a setting of the binding"
         fixtures: [F-BINDING-STATE]
-        oracle: "After synchronize(t) for any t, the default time code included, the binding's requested time code is t, and the attempt's settings equal the binding's requested settings."
+        oracle: "After synchronize(t) for any t, the default time code included, the binding's configuration is unchanged, and the attempt used the binding's requested settings, such as its payload policy."
       - id: API-03
-        quote: "The other requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
+        quote: "The requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
         fixtures: [F-BINDING-STATE]
         oracle: "set_settings changes the requested settings and nothing else: the published generation, last attempt, and live stage are unchanged, and no synchronization runs."
       - id: API-06
@@ -628,13 +629,13 @@ requirements:
         quote: "Published generation | Display resources, correspondence, ownership manifest"
         fixtures: [F-FAILED-SETTINGS]
       - id: STATE-03
-        quote: "Last attempt | Settings attempted, result state, and diagnostics"
+        quote: "Last attempt | Settings and time code attempted, result state, and diagnostics"
         fixtures: [F-FAILED-SETTINGS]
       - id: STATE-04
         quote: "Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
       - id: STATE-07
-        quote: "A binding can therefore report, for example: requested time 20 with load-none, displayed time 10 with load-all, last attempt failed."
+        quote: "A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed."
         delivery: M12
         fixtures: [F-FAILED-SETTINGS]
 

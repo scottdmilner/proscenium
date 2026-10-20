@@ -1,8 +1,9 @@
 """Synchronization keyed by binding identifier, behind the binding handle (source-access.md#synchronization-api).
 
-M3 implements source acquisition: a synchronization records the requested time code, acquires
-the binding's evaluation stage under its requested settings, and reports the source's state. M5
-adds evaluation, planning, application, and publication, and the guard against reentrant calls.
+M3 implements source acquisition: a synchronization acquires the binding's evaluation stage under
+its requested settings and reports the source's state. Its time code is the attempt's, not a
+setting of the binding. M5 adds evaluation at that time code, planning, application, and
+publication, and the guard against reentrant calls.
 Requested settings are runtime state here until the binding records exist (M3 Phase D).
 """
 
@@ -64,7 +65,6 @@ class Result:
 class RequestedSettings:
     """The settings a binding's next synchronization uses (lifecycle.md#binding-state)."""
 
-    time_code: Usd.TimeCode | None  # None until the first synchronize
     payload_policy: Usd.Stage.InitialLoadSet
 
 
@@ -109,7 +109,7 @@ class Synchronization:
     ) -> BindingHandle:
         binding_id = _new_identifier()
         self.sources.add_file(binding_id, root, payload_policy)
-        self._requested[binding_id] = RequestedSettings(None, payload_policy)
+        self._requested[binding_id] = RequestedSettings(payload_policy)
         return BindingHandle(binding_id)
 
     def create_attached_binding(
@@ -117,7 +117,7 @@ class Synchronization:
     ) -> BindingHandle:
         binding_id = _new_identifier()
         self.sources.add_attached(binding_id, key, payload_policy)
-        self._requested[binding_id] = RequestedSettings(None, payload_policy)
+        self._requested[binding_id] = RequestedSettings(payload_policy)
         return BindingHandle(binding_id)
 
     def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
@@ -139,9 +139,9 @@ class Synchronization:
             requested.payload_policy = payload_policy
 
     def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
-        """Synchronize at an explicit time code, which becomes the requested one; acquisition only (M3)."""
+        """Synchronize at an explicit time code; acquisition only (M3), so nothing is evaluated at it yet."""
         requested = self._known(binding_id)
-        requested.time_code = Usd.TimeCode(time_code)
+        Usd.TimeCode(time_code)  # a time code M5 can evaluate at, or a TypeError now
         source = self.sources.get(binding_id)
         source.payload_policy = requested.payload_policy
         try:
