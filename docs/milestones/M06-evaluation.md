@@ -19,6 +19,7 @@
 - Snapshot and plan assertions for the initial scope, including sharing, correspondence, and diagnostics.
 - Time-code and settings changes, including the USD default time code and coordinate conversion with different supplied unit scales and up-axis settings.
 - Determinism: identical snapshot, settings, and planning context yield identical plans.
+- Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to the binding configuration, as a version 2 migration.
 - Per-behavior dispatch: an unsupported behavior on a prim does not suppress its supported behaviors.
 - Expected transforms, visibility, and bounds come from the spec or from how the fixture is built (for example, UsdGeom computations), never from Hydra's own output. An untranslated Hydra prim type yields a placeholder and diagnostic.
 

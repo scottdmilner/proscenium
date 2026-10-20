@@ -178,6 +178,43 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
   - BIND-05, the attempt being made at exactly the given time code, moves to M5, where the last attempt first records it. M5's Tests section names `F-MULTI-BINDING` for it.
   - `RequestedSettings` loses its time code, and synchronizing no longer records one.
 
+- **D4, binding configuration** (as sketched with the user). A binding's records are in Blender data, read at every call. Its source stages and attachment stay runtime state, made from the records on first use.
+  - **Records** (`proscenium/bindings.py`), each at version 1:
+    - The configuration is on the target scene, under `binding.<identifier>`. The identifier is a UUID4 hex string.
+    - The configuration holds the source (a file path as given, so a `//` path is relative to the `.blend`; or a source key, with the root-layer identifier of the stage last attached), the destination, and the payload policy.
+    - The source kind and the payload policy are `StrEnum`s: `SourceKind`, in the core beside the source classes, and `PayloadPolicy`, which gives its `Usd.Stage.InitialLoadSet`. ID properties store them as their plain string values (one check), and the configuration converts them back when it loads; an unknown value is a refusal.
+    - The destination collection carries a tag that names the binding and points back at its scene, so a record and its destination refer to each other as the canonical-candidate rule requires.
+    - The binding index is a record on a Text named `.proscenium`, with a fake user, found by its record. Blender 5.2.2's datablock search menus leave out dot-prefixed names while the `show_hidden_ids` preference is off, its factory default (`id_search_allows_id`; checked in Blender's source and the preference's default, not in a drawn UI).
+    - Creating a binding makes its destination under the scene's collection, then writes the three records. It reads the index first, so an unreadable index or a second one changes nothing.
+    - Conversion and purpose settings are M6's: they join the configuration as version 2, and BIND-06 moves to M6, whose Tests section and the registry name `F-MULTI-BINDING`.
+  - **Synchronization API:** it moves to `proscenium/synchronization.py`, since creating, finding, and attaching bindings are Blender operations. Its tests move to `blender/`.
+    - Handles look a binding up in the scenes' records at every call. A handle whose record is gone, after undo of creation for example, raises `BindingNotFound`. D8 replaces the scan with an index.
+    - `set_settings` writes the payload policy and returns a `Result`.
+    - A binding whose configuration can't be read keeps it, and its synchronize, `set_settings`, and `reload` return a fatal-failure result with an `UNSUPPORTED_RECORD` diagnostic carrying the refusal's message.
+  - **The key contract reads the records.** The root-layer identifier is binding configuration, which undo restores, so a runtime copy would drift from it. `attach` finds the bindings with the key in the records, checks confirmation against their stored identifiers, attaches their runtime sources, and stores the new identifier.
+    - `SourceRegistry` keeps only runtime state: it loses `attach` and `AttachResult`, which moves to the synchronization API, and `AttachedSource` loses its identifier.
+  - **Registration:** the extension registers an empty `proscenium` property group on Scene, Collection, and Text, and a persistent `load_post` handler that drops runtime sources. So after reopening, a file binding has no live stage and an attached binding's source is unavailable until the caller attaches.
+  - **Relative paths:** creating a binding refuses a `//` path in a file that was never saved, since nothing anchors it. The runtime source resolves its path at each use, so after Save As to another folder, the next synchronization opens the file beside the new `.blend`.
+  - **Removal is M11's.** C8's runtime-only `remove` goes: removing a binding is M11's lifecycle operation, with its managed content, pending cleanup, and index entry (COPY-08). API-06 keeps the undo half, and its removal half becomes API-08, delivered by M11, whose Tests section names `F-BINDING-STATE` for it.
+  - **Fixtures:**
+    - `F-SCHEMA-VERSIONS` gains binding configurations that are newer, have no path, or have an unknown payload policy, and gets its cases, "older", "unsupported", and "unsupported-cleanup". A failed migration on a binding is checked only on the sample records until binding configuration has a version 2.
+    - `F-MULTI-BINDING` gets its cases now that every M3 row it lists has a test.
+    - `F-BINDING-STATE` gets its generator: a source for a file binding, and a caller's stage to attach under a key. The tests of the rows it lists use it. Its cases join once ICON-24 (D7) and UNDO-07 (D8) have tests.
+  - **Tests,** in `blender/`:
+    - the records on creation and their mutual references (COPY-07);
+    - a scene's bindings;
+    - save and reopen (STATE-01);
+    - a relative path, refused in an unsaved file and following Save As;
+    - an unreadable or second index stopping creation;
+    - handles across undo, redo, and reopening (API-01), and every method of a handle raising after undo of creation (API-06);
+    - reopening opening no source and leaving no live stage (REOPEN-02, ICON-33);
+    - an attached source unavailable after reopening until attached (SRC-03);
+    - unsupported configurations refusing and kept (SCHEMA-03);
+    - the key contract on records (SID-03 to SID-06), including the stored identifier after undo;
+    - a settings change leaving other bindings' configuration (BIND-10);
+    - UNDO-06 through a record change;
+    - the namespace registered, and records read the same registered or not.
+
 ### Phase E — Close
 
 1. **Notes for M4 and M5.** M4 reviews identifiers and schemas against the finalized contract. M5 settles the pending-cleanup mechanism and the published generation's contents.

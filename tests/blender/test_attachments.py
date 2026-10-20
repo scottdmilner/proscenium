@@ -1,7 +1,7 @@
 """Undo neither restores nor removes attachments of callers' stages (UNDO-06).
 
-The registry is Python state outside Blender data. The binding records that undo
-changes come with M3 Phase D, so here undo and redo change a scene property.
+The attachment is runtime state keyed by binding identity; the binding's records are Blender data
+that undo changes. Here undo and redo change a binding's requested settings.
 """
 
 from __future__ import annotations
@@ -9,37 +9,37 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
+import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium.core.source_access import SourceRegistry
+from proscenium import synchronization
+from proscenium.synchronization import Synchronization
 from support import undo
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
-def test_undo_and_redo_leave_attachments(tmp_path: Path) -> None:
+@pytest.fixture
+def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
+    fresh = Synchronization()
+    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
+    yield fresh
+
+
+def test_undo_and_redo_leave_attachments(sync: Synchronization, tmp_path: Path) -> None:
     undo.require_global_undo()
-    registry = SourceRegistry()
-    binding = registry.add_attached("a", "shot", Usd.Stage.LoadAll)
+    handle = sync.create_attached_binding(bpy.data.scenes[0], "shot")
     with source_access.reattach(tmp_path) as scene:
-        registry.attach("shot", scene.caller)
+        sync.attach("shot", scene.caller)
         undo.push("base")
-        _scene().frame_current = 7
+        handle.set_settings(payload_policy=Usd.Stage.LoadNone)
         undo.push("change")
         undo.undo()
-        assert _scene().frame_current != 7  # undone
-        assert registry.get("a") is binding  # found by binding identity
-        assert binding.live_stage == scene.caller
+        assert handle.requested_settings().payload_policy == Usd.Stage.LoadAll  # undone
+        assert handle.live_stage() == scene.caller  # found by binding identity
         undo.redo()
-        assert _scene().frame_current == 7
-        assert registry.get("a") is binding
-        assert binding.live_stage == scene.caller
-
-
-def _scene() -> bpy.types.Scene:
-    # Looked up after each undo step: a datablock reference doesn't survive one.
-    scene = bpy.context.scene
-    assert scene is not None
-    return scene
+        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
+        assert handle.live_stage() == scene.caller

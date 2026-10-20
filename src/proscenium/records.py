@@ -115,6 +115,12 @@ def stored(id_: bpy.types.ID, key: str) -> object | None:
     return _plain(namespace.get(key))
 
 
+def keys(id_: bpy.types.ID) -> list[str]:
+    """The keys of id_'s records; none if its namespace is missing or damaged."""
+    namespace = id_.get(NAMESPACE)
+    return list(namespace.keys()) if hasattr(namespace, "to_dict") else []
+
+
 def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -> Loaded[R] | Refused | None:
     """The record under key at the schema's current version, why it can't be read, or None if there is none."""
     value = stored(id_, key)
