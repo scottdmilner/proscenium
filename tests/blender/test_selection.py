@@ -102,8 +102,8 @@ def test_entries_for_a_binding_that_is_gone_stay_stored() -> None:
     [
         ([["B1", "/World"], ["B1", "/World"]], None, "an entry appears twice"),
         ([["B1", "/World"]], ["B1", "/Other"], "the active entry is not one of the entries"),
-        ([["B1", "World"]], None, "not an absolute prim path"),
         ([["B1", "/World", "extra"]], None, "TypeError"),
+        ([[7, 8]], None, "both strings"),  # ID properties can't hold a list mixing strings and ints
     ],
 )
 def test_a_selection_that_cannot_be_read_is_refused_and_kept(entries: object, active: object, problem: str) -> None:
@@ -113,6 +113,20 @@ def test_a_selection_that_cannot_be_read_is_refused_and_kept(entries: object, ac
     assert isinstance(result, Refused)
     assert result.refusal is Refusal.INVALID
     assert problem in result.message
+    assert _scene()[NAMESPACE][SELECTION_KEY].to_dict()["entries"] == entries
+
+
+def test_a_newer_selection_is_never_overwritten() -> None:
+    stored = {VERSION_KEY: 2, "entries": [["B1", "/World"]], "active": None}
+    _scene()[NAMESPACE] = {SELECTION_KEY: stored}
     with pytest.raises(RecordRefused):
         write_selection(_scene(), PersistentSelection((), None))
-    assert _scene()[NAMESPACE][SELECTION_KEY].to_dict()["entries"] == entries
+    assert _scene()[NAMESPACE][SELECTION_KEY].to_dict() == stored
+
+
+def test_a_damaged_path_loads_and_is_left_to_resolution() -> None:
+    # Paths aren't checked on each read: one that names no entity fails where it's resolved (M7),
+    # reported unresolved like any path the generation doesn't display.
+    selection = PersistentSelection((SelectionEntry("B1", "World"),), None)
+    write_selection(_scene(), selection)
+    assert read_selection(_scene()) == Loaded(selection, 1)

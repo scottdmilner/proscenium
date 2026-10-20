@@ -192,14 +192,26 @@ def test_reading_migrates_in_memory_and_changes_nothing(versions: fixture.Schema
     assert not bpy.data.is_dirty
 
 
-@pytest.mark.parametrize("name", UNSUPPORTED)
-def test_writing_never_replaces_a_record_that_cannot_be_read(versions: fixture.SchemaVersions, name: str) -> None:
-    # SCHEMA-03, SCHEMA-04: an unsupported record is preserved, even against the extension's own writes.
+@pytest.mark.parametrize("name", ["newer", "no-version", "not-a-group"])
+def test_writing_never_replaces_a_newer_or_unreadable_record(versions: fixture.SchemaVersions, name: str) -> None:
+    # SCHEMA-03, SCHEMA-04: what the stored version shows is refused without loading the record.
     _store_raw(versions)
     with pytest.raises(RecordRefused) as raised:
         write(_scene(), name, versions.schema, versions.loaded["v3"])
     assert raised.value.refused.refusal is versions.refused[name]
     assert _raw() == versions.stored
+
+
+@pytest.mark.parametrize("name", ["failed-migration", "invalid", "unknown-field"])
+def test_writing_relies_on_its_caller_to_have_read_a_supported_version(
+    versions: fixture.SchemaVersions, name: str
+) -> None:
+    # A damaged or failing record at a supported version takes loading to see. Writers read first and refuse
+    # on a refusal, which load gives here, so writing doesn't load it again.
+    _store_raw(versions)
+    assert isinstance(load(versions.schema, versions.stored[name]), Refused)
+    write(_scene(), name, versions.schema, versions.loaded["v3"])
+    assert read(_scene(), name, versions.schema) == Loaded(versions.loaded["v3"], 3)
 
 
 def test_writing_over_an_older_record_stores_the_current_version(versions: fixture.SchemaVersions) -> None:

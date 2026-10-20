@@ -288,6 +288,33 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
       - an entry for a missing binding kept;
       - invalid selections refused and kept.
 
+- **Record costs, after D7** (with the user). An audit of every dataclass in `src/`, by what its coercion and checks cost and whether a `NamedTuple` would serve better. The measurements below are from the bpy wheel, macOS, one run each.
+  - **Small records are cheap.** Reading one binding configuration through the framework takes 4.7 µs; the checks of the types made per call or per small record cost microseconds, so they're unchanged:
+    - `BindingConfig`, `DestinationTag`, `BindingIndex`;
+    - `Generation`, `LastAttempt`, `Diagnostic`;
+    - `Schema`, `Manifest`, and the result and handle types.
+  - **Large records paid for three things, now dropped:**
+    - **A second copy:** `read` copied `to_dict()`'s already-fresh output again for the migrations; `load`, given caller-owned data, still copies.
+    - **The write guard's full load:** it now refuses only what the stored version shows, an unreadable record (not a group, or no version) or a newer one, reading the version from the ID-property group without copying it. Every writer reads the record first and refuses on any refusal, so a damaged record or one whose migration fails is still never replaced by the extension; a writer that skipped the read could replace one. The pending-cleanup contract's DECISIONS.md row says the mechanism reads first.
+    - **Per-element checks:**
+      - The selection no longer parses each path on read; identifiers are checked where they're made (`identifier()`) and where M7 resolves them, so a damaged path fails to resolve and is reported unresolved, as a path that names nothing is.
+      - `ManifestEntry` no longer checks each covered path or used resource. A non-string used resource can't match an entry key, so `Manifest`'s missing-uses check refuses it. It keeps the datablock check, since a non-ID would become a claim key and mislead silently.
+  - **Results** on 10,000 entries:
+    - a manifest read, 37.8 ms to 17.9 ms;
+    - a manifest write over a stored one, 89.3 ms to 39.2 ms, mostly Blender's own conversion;
+    - a selection read, 45.8 ms to 4.4 ms;
+    - one configuration read, 4.7 µs to 3.5 µs.
+  - **NamedTuples:** only `SelectionEntry`.
+    - For a three-field type on Python 3.13, a `NamedTuple` builds in 145 ns against 270 ns for a slotted frozen dataclass, and compares and hashes 3–4 times faster, but reads a field 10 ns slower and takes 81 bytes against 65.
+    - The types made by the tens of thousands, `ManifestEntry` and `Claim`, would save 1–2 ms per 10,000 against reads of 18 ms and more.
+    - Record types must be dataclasses, since `Schema` builds them through `dataclasses.fields`, and the validating types need `__post_init__`.
+    - For value types, tuple semantics are wrong: a `Claim` would equal any three-tuple of its values, and `Loaded`, `Refused`, and `BindingHandle` would unpack and index.
+    - `SelectionEntry` is the spec's (binding, path) pair and is stored as one, so being a tuple is its point.
+  - **Tests:**
+    - Writing refuses a newer or unreadable record, and replaces a damaged or failing one that loading refuses, with the caller's read the guard.
+    - A newer selection is never overwritten.
+    - A damaged path loads and is left to resolution.
+
 ### Phase E — Close
 
 1. **Notes for M4 and M5.** M4 reviews identifiers and schemas against the finalized contract. M5 settles the pending-cleanup mechanism and the published generation's contents.
