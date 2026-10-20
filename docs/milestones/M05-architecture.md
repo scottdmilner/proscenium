@@ -7,7 +7,7 @@
 **Decisions and deliverables:**
 
 - Interfaces between evaluation, representation planning, and application, including the planning context. With M1b's C++ core, the display plan interface is the language boundary: the plan's types as seen from Python, large arrays exposed without copying, and conversion of C++ errors into Python exceptions and diagnostics before any Blender mutation.
-- Display-resource identifiers and representation roles, based on the M4 partitioning decision.
+- Display-resource identifiers and representation roles, based on the M4 partitioning decision. The manifest entry's role (M3's ownership format) becomes a `StrEnum` of these roles; it is stored as the same string, so no schema migration is needed, and an unknown role becomes a refusal.
 - A minimal display-plan envelope covering partitions, ownership entries, correspondence entries, and placeholder content.
 - Schema/behavior dispatch and dependency resolution. Display dispatch is over Hydra prim types, while source inspection still reads the USD stage.
 - The transaction implementation: the commit point, what publication switches, how prepared work is discarded, and the copy-on-write or rollback discipline that keeps published resources unchanged during preparation.

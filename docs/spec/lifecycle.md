@@ -20,6 +20,8 @@ A resource has one owning binding but may cover many source entities and have ma
 
 Use durable identifiers and ownership metadata, not Blender display names or object hierarchy. Keep binding identity, source identity, and display-resource identity distinct.
 
+Ownership is recorded in each binding's **manifest**, one entry per managed resource, never on the managed datablocks themselves. A datablock is managed by the binding whose manifest names it. Content no manifest names is unmanaged, so copying managed content never copies its ownership; content that more than one manifest names is ambiguous.
+
 Required behavior:
 
 - Renaming does not detach content.
@@ -50,7 +52,7 @@ Disposal failures may retain additional resources only as inactive, persistently
 
 Detach operates on the surviving Blender content at the time of the operation, including Blender-side edits and existing damage. It does not access USD, restore deleted content, or reconstruct the last published appearance. It does not require baking or materializing instances, modifiers, or Geometry Nodes.
 
-Remove the binding's ownership tags, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers. Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies that can function without those binding-specific mechanisms. Remove only metadata and controls belonging to this binding. Changes in appearance caused by removing binding-specific mechanisms are permitted and reported; restoring the synchronized appearance is not part of the contract.
+Remove the binding's ownership metadata, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers. Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies that can function without those binding-specific mechanisms. Remove only metadata and controls belonging to this binding. Changes in appearance caused by removing binding-specific mechanisms are permitted and reported; restoring the synchronized appearance is not part of the contract.
 
 Shared resources may remain shared. Resources still owned by another binding remain protected as resources used by unmanaged content under the ownership rules above. Later refresh or removal must not mutate or delete the detached result. Release this binding's surviving pending-cleanup resources intact as well, retaining their current inactive state and resolving their disposal tracking so a later retry cannot delete them.
 

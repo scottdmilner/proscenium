@@ -54,7 +54,7 @@ class PayloadPolicy(StrEnum):
         return cls.LOAD_ALL if load_set == Usd.Stage.LoadAll else cls.LOAD_NONE
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BindingConfig:
     """A binding's configuration: its source, its destination, and its requested settings."""
 
@@ -81,7 +81,7 @@ class BindingConfig:
             raise TypeError("the destination is not a collection")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class DestinationTag:
     """On a destination collection: the binding it belongs to, and that binding's target scene."""
 

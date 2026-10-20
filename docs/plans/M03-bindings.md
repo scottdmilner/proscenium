@@ -11,7 +11,7 @@ M3 is the first milestone that ships product code. It delivers the matrix rows w
 - **The source stage's anonymous layers are displayed.** A refresh shows the source's layers composed with the opinions in the source stage's session layer and the anonymous layers beneath it, so a future editor can show unsaved edits through the live stage without saving and reopening. Synchronization never authors them, a reload never rereads them, and they are not saved in the `.blend`.
 - **Layers are displayed as loaded, and reloaded only on request (2026-10-18).** Both kinds of binding display their source's layers as loaded in the process, dirty ones included, with an informational diagnostic naming the dirty layers. Synchronization never reloads. `handle.reload(layers=None)` rereads the binding's contributing layers (the non-anonymous layers its stage uses under its payload policy), or only the named ones; a dirty layer is reloaded too, discarding its edits, and saving them first is the caller's responsibility.
 - **Source acquisition is Python `pxr`:** opening the source stage, the evaluation stage, reloads, and runtime attachments. Every API it needs is in Python `pxr`, and Python stays the preference outside the core. The core receives a stage, takes its own reference, and releases it explicitly; it never keeps a released stage alive.
-- **Persistent state is versioned ID-property records:** namespaced nested ID-property dicts on the Scene (binding records, persistent selection) and on managed IDs (ownership tags), each with a `schema_version`. Python schema code reads, migrates, and validates them, so records stay readable without registered RNA.
+- **Persistent state is versioned ID-property records:** namespaced nested ID-property dicts on the Scene (binding configuration, persistent selection), on each destination collection (its tag and the binding's ownership manifest, D4 and D5), and on the binding index's Text, each with a schema version. Python schema code reads, migrates, and validates them, so records stay readable without registered RNA.
 - **Source key contract:**
   - The key is a caller-chosen string that names one attached source within a `.blend`. Several bindings may share it, and attaching a stage under a key attaches it to all of them (2026-10-16).
   - Reattachment requires an exact key match.
@@ -214,6 +214,35 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - a settings change leaving other bindings' configuration (BIND-10);
     - UNDO-06 through a record change;
     - the namespace registered, and records read the same registered or not.
+
+- **D5, the ownership metadata format (OWN-01)** (with the user). Each binding has a **manifest** (`proscenium/ownership.py`): a record on its destination collection, with one entry per managed resource, keyed by the resource's identity.
+  - **Fields:** an entry names the resource's datablock (an ID pointer, cleared when the datablock is deleted), the source entities it covers (composed-stage paths, possibly many), its representation role (a non-empty string until M5 defines the roles and makes it a `StrEnum`, stored as the same string, so with no migration; no manifest is written before M5), and the managed resources it uses. Its ownership is the binding whose manifest holds it. These are the five concepts OWN-01 keeps separate. Resource identities are opaque, and M5 chooses how they're made.
+  - **Nothing is stored on the managed datablocks.** A datablock is managed by the binding whose manifest names it, which the spec now says, as OWN-16 (M3, `F-OWNERSHIP-AMBIGUITY`). So a duplicate or appended copy of managed content is unmanaged with nothing to reconcile, and content two manifests name is ambiguous.
+  - **Why not tags as well:** ownership tags on every datablock as well as the manifest recorded ownership twice. On 10,000 objects (one ad hoc run, macOS):
+    - each record kind added about 1.1 MB to the `.blend`;
+    - writing or reading the whole manifest as raw ID properties took about 10 ms;
+    - reading it through the record framework took 32 ms.
+  - **Hot paths:** operations that run often, such as selection mapping, go through D8's runtime indexes built from the manifest, not through the records.
+  - **Usage:** each entry stores only the managed resources it uses. `dependents` inverts them. Unmanaged users aren't stored, since nothing persistent can track them; M7 reads them from Blender's user graph when an operation needs them (OWN-08).
+  - **Evidence:** `claims()` lists every datablock a manifest names, with each claim on it.
+    - It reads each destination once, though a linked-copy scene's two configurations both point at one.
+    - A manifest names a datablock at most once, so two claims on a datablock always come from two manifests: that's ambiguity.
+    - A claim names its manifest's destination as well as its binding, since a full-copy scene's copies share the binding identity.
+    - A manifest that can't be read claims nothing and is reported, so its content has no ownership evidence until it is repaired.
+    - `claims()` is file-wide by necessity: whether a datablock has one claim or several depends on every manifest that could name it, so a version limited to some bindings would call ambiguous content managed. It is what D8's runtime index of ownership is built from, once after a file load, undo, or redo and after each publication. Operations on one binding read its manifest with `binding_manifest()`, through its configuration's destination, and ask the index whether another manifest also names one of its datablocks.
+  - **Pointers are users** (one check each), which M5 and M7 must allow for:
+    - Content the user deletes in the interface (Object > Delete) stays in the file, still named and so still claimed, until a refresh or cleanup finds it linked nowhere. Only `bpy.data`'s `remove` clears the pointer.
+    - Blender's user graph lists the manifest among every managed datablock's users, so reading unmanaged users (OWN-08) has to discount it.
+  - **Spec wording:** the spec's "ownership tags" become "ownership metadata" in Detach As-Is (DET-02), and the oracles of COPY-04 and REOPEN-04 and the `F-OWNERSHIP-AMBIGUITY` description follow. DECISIONS.md has a row "Ownership metadata format".
+  - **Records:** `records.write` stores dataclasses nested in a record's fields as groups, since a manifest holds `ManifestEntry` values. It doesn't use `dataclasses.asdict`, which deep-copies ID pointers. ID properties can't hold a list mixing strings and ints.
+  - **For M5 and M7:** an entry's coverage overlaps the persisted correspondence M7 needs, which maps display objects to source entities. The paths are the bulk of each entry, so the two should be stored once.
+  - **Tests,** in `blender/`:
+    - a manifest through save and reopen;
+    - nothing stored on the managed datablocks;
+    - the claims (OWN-16): a duplicated object unmanaged; a datablock two manifests name with two claims, one from each; a manifest naming a datablock twice refused; each copy's content claimed by its own manifest after a full-copy scene; one claim each after a linked-copy scene; content deleted in the interface still claimed; and a removed datablock's entry claiming nothing;
+    - one binding's manifest, through a configuration that can't be read, and with its destination removed;
+    - dependents;
+    - invalid and newer manifests refused, claiming nothing, and reported, and a newer one never overwritten.
 
 ### Phase E — Close
 
