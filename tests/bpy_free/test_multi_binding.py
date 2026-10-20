@@ -86,7 +86,7 @@ def test_acquisition_leaves_the_source_unchanged(tmp_path: Path) -> None:
 
 
 def test_payload_policy_change_leaves_other_bindings(tmp_path: Path) -> None:
-    # BIND-10, for the payload policy; the other requested settings come with the synchronization API.
+    # BIND-10, for the stages; tests/blender/test_bindings.py checks the other bindings' configuration.
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
         changed, other = _file(root), _file(root)

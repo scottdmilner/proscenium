@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import os
+from enum import StrEnum
 
 from pxr import Tf, Usd
 
 from .._core import StageHandle
+
+
+class SourceKind(StrEnum):
+    """The two kinds of source a binding has: a FileSource or an AttachedSource."""
+
+    FILE = "file"
+    ATTACHED = "attached"
 
 
 class SourceUnavailable(Exception):  # noqa: N818 (an expected outcome, not an error)
@@ -50,19 +58,17 @@ class FileSource:
 class AttachedSource:
     """A stage a caller attaches under a source key.
 
-    The key and root-layer identifier are binding configuration, saved with the binding's records
-    once they exist (M3 Phase D); until then they are held here. The attachment is runtime only.
+    The attachment is runtime only. The key, and the root-layer identifier of the stage last
+    attached, are binding configuration, kept in the binding's records (proscenium.bindings).
     """
 
     key: str
-    root_layer_identifier: str | None  # of the stage last attached; informative, never used to find bindings
     # Released at once, so it never keeps the attached stage alive (SRC-02). Unlike a weakref to the
     # Usd.Stage wrapper, which can return an expired wrapper, stage() is None once the stage expires.
     _attached: StageHandle | None
 
-    def __init__(self, key: str, root_layer_identifier: str | None = None) -> None:
+    def __init__(self, key: str) -> None:
         self.key = key
-        self.root_layer_identifier = root_layer_identifier
         self._attached = None
 
     @property
@@ -71,8 +77,7 @@ class AttachedSource:
         return self._attached.stage() if self._attached is not None else None
 
     def attach(self, stage: Usd.Stage) -> None:
-        """Make stage the source stage, and store its root-layer identifier."""
+        """Make stage the source stage."""
         handle = StageHandle(stage)
         handle.release()
         self._attached = handle
-        self.root_layer_identifier = stage.GetRootLayer().identifier

@@ -1,14 +1,14 @@
-"""Every binding's source, by binding identifier, and attachment under source keys.
+"""Every binding's source, by binding identifier.
 
 Source stages, evaluation stages, and attachments are runtime state keyed by binding identity: they live in this
 module, not in Blender data, so they are never saved in the .blend and undo neither restores nor
 removes them. A file source's path, and an attached source's key and root-layer identifier, are
-binding configuration, which is saved in the .blend.
+binding configuration, which the binding's records keep (proscenium.bindings); attaching under a
+source key reads them there.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from .binding_source import BindingSource
@@ -18,14 +18,6 @@ if TYPE_CHECKING:
     import os
 
     from pxr import Usd
-
-
-@dataclass(frozen=True)
-class AttachResult:
-    """What attaching a stage under a source key did."""
-
-    attached: tuple[str, ...]  # binding identifiers now evaluating the stage; empty if refused or none has the key
-    unconfirmed: tuple[str, ...]  # bindings whose stored root-layer identifier differs; non-empty: nothing attached
 
 
 class SourceRegistry:
@@ -42,15 +34,12 @@ class SourceRegistry:
         """Register a binding with a file source; its source stage opens at the first acquisition."""
         return self._add(binding_id, BindingSource(FileSource(root), payload_policy))
 
-    def add_attached(
-        self,
-        binding_id: str,
-        key: str,
-        payload_policy: Usd.Stage.InitialLoadSet,
-        root_layer_identifier: str | None = None,
-    ) -> BindingSource:
+    def add_attached(self, binding_id: str, key: str, payload_policy: Usd.Stage.InitialLoadSet) -> BindingSource:
         """Register a binding with an attached source, unattached."""
-        return self._add(binding_id, BindingSource(AttachedSource(key, root_layer_identifier), payload_policy))
+        return self._add(binding_id, BindingSource(AttachedSource(key), payload_policy))
+
+    def __contains__(self, binding_id: str) -> bool:
+        return binding_id in self._bindings
 
     def get(self, binding_id: str) -> BindingSource:
         """The source of binding_id. Raises KeyError if there is none."""
@@ -58,30 +47,6 @@ class SourceRegistry:
 
     def remove(self, binding_id: str) -> None:
         del self._bindings[binding_id]
-
-    def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
-        """Attach stage to every binding whose attached source has this exact source key.
-
-        If any of those bindings stored a root-layer identifier other than stage's, the caller
-        must pass confirm=True. Otherwise no binding is changed, and the result lists the
-        bindings whose identifier differs.
-        """
-        identifier = stage.GetRootLayer().identifier
-        matching = {
-            binding_id: binding.source
-            for binding_id, binding in self._bindings.items()
-            if isinstance(binding.source, AttachedSource) and binding.source.key == key
-        }
-        unconfirmed = tuple(
-            binding_id
-            for binding_id, source in matching.items()
-            if source.root_layer_identifier not in (None, identifier)
-        )
-        if unconfirmed and not confirm:
-            return AttachResult(attached=(), unconfirmed=unconfirmed)
-        for source in matching.values():
-            source.attach(stage)
-        return AttachResult(attached=tuple(matching), unconfirmed=())
 
     def _add(self, binding_id: str, binding: BindingSource) -> BindingSource:
         """Raises ValueError if binding_id is registered."""

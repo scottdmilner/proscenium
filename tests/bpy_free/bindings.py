@@ -10,19 +10,19 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
-from proscenium.core.source_access import AttachedSource, BindingSource, FileSource
+from proscenium.core.source_access import AttachedSource, BindingSource, FileSource, SourceKind
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-KINDS = ("file", "attached")
+KINDS = tuple(SourceKind)
 
 
 def binding(
     kind: str, root: Path, caller: Usd.Stage, payload_policy: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll
 ) -> BindingSource:
-    """A binding on root: its own source stage for "file", caller's stage attached for "attached"."""
-    if kind == "file":
+    """A binding on root: its own source stage for a file source, caller's stage attached for an attached one."""
+    if kind == SourceKind.FILE:
         return BindingSource(FileSource(root), payload_policy)
     source = AttachedSource("shot")
     source.attach(caller)

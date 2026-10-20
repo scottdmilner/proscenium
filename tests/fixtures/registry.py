@@ -103,20 +103,46 @@ FIXTURES: dict[str, Fixture] = {
                 Case("shared-reload", SYNC, SUCCESS, ("LAYER-06", "LAYER-07", "SRC-05"), 1),
             ),
         ),
-        # Cases join once every row it lists has a test: BIND-06 needs the conversion and purpose settings.
-        Fixture("F-MULTI-BINDING", "Independent bindings on one source", ("M3", "M5"), source_access.multi_binding),
+        Fixture(
+            "F-MULTI-BINDING",
+            "Independent bindings on one source",
+            ("M3", "M5", "M6"),
+            source_access.multi_binding,
+            (
+                # Each root-layer format composes the same values.
+                Case("formats", SYNC, SUCCESS, ("BIND-02",), 1),
+                # The caller's unsaved edit shows in the binding with its stage attached, not from the file.
+                Case("attached-edit", SYNC, SUCCESS, ("BIND-03",), 2),
+                # Load-all and load-none bindings on one file, each by its own policy.
+                Case("payload-policies", SYNC, SUCCESS, ("BIND-04",), 1),
+                # Bindings on one source have their own stages, and a settings change stays with its binding.
+                Case("independent", SYNC, SUCCESS, ("BIND-07", "BIND-10"), 1),
+                # A default binding composes the whole stage, and acquisition changes no source layer.
+                Case("whole-stage", SYNC, SUCCESS, ("BIND-08", "BIND-09"), 1),
+            ),
+        ),
         Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
         # Cases join once every row it lists has a test: SRC-03 and SID-07 need the binding records (Phase D).
         Fixture("F-REATTACH", "Release and reattachment", ("M3",), source_access.reattach),
-        # Cases join once every row it lists has a test: SCHEMA-03 needs synchronization to refuse a binding
-        # whose records are refused (D4).
         Fixture(
             "F-SCHEMA-VERSIONS",
             "Older, failed-migration, newer, and unreadable records",
             ("M3", "M5"),
             records.schema_versions,
+            (
+                # Older sample records load at the current version; binding configuration has no older version yet.
+                Case("older", SYNC, SUCCESS, ("SCHEMA-02",), 1),
+                # A binding whose configuration is newer or damaged keeps it, refuses to synchronize, and says why.
+                # A failed migration is checked on sample records only, until binding configuration has a version 2.
+                Case("unsupported", SYNC, FAILURE, ("SCHEMA-03",), 1),
+                # Unreadable records are preserved and never overwritten; sample records stand in for
+                # pending-cleanup records until their schema (D6).
+                Case("unsupported-cleanup", Operation.CLEANUP, FAILURE, ("SCHEMA-04",), 1),
+            ),
         ),
-        Fixture("F-BINDING-STATE", "Binding state through handles", ("M3",)),
+        # Cases join once every row it lists has a test: ICON-24 needs the persistent selection (D7), and
+        # UNDO-07 the runtime indexes (D8).
+        Fixture("F-BINDING-STATE", "Binding state through handles", ("M3", "M11"), source_access.binding_state),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
         Fixture("F-PUBLICATION-FAILURE", "Publication failure", ("M5",)),

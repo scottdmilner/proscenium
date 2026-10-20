@@ -269,6 +269,7 @@ requirements:
         quote: "Coordinate-conversion and purpose/display settings."
         fixtures: [F-MULTI-BINDING]
         oracle: "Each binding keeps its own units, up-axis, and purpose settings: setting one binding's leaves the others' as they were."
+        delivery: M6
       - id: BIND-07
         quote: "Multiple independent bindings, including bindings using the same source."
         fixtures: [F-MULTI-BINDING]
@@ -305,7 +306,13 @@ requirements:
       - id: API-06
         quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used."
         fixtures: [F-BINDING-STATE]
-        oracle: "After a binding is removed, or its creation is undone, every method of a handle to it raises, as does an equal handle made afterwards."
+        oracle: "After a binding's creation is undone, every method of a handle to it raises, as does an equal handle made afterwards."
+      - id: API-08
+        quote: "or binding removal, raises when used."
+        delivery: M11
+        fixtures: [F-BINDING-STATE]
+        oracle: "After a binding is removed, every method of a handle to it raises, as does an equal handle made afterwards."
+        note: "API-06's removal half: removing a binding is M11's lifecycle operation."
       - id: API-07
         quote: "reload(layers=None) rereads the binding's source layers from disk on request"
         fixtures: [F-BINDING-STATE]

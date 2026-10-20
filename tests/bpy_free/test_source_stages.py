@@ -243,10 +243,3 @@ def test_evaluation_stage_is_not_the_cached_caller(tmp_path: Path) -> None:
             assert not cache.Contains(evaluation)
         finally:
             cache.Erase(cache_id)
-
-
-def test_attaching_stores_the_root_layer_identifier(tmp_path: Path) -> None:
-    root, caller = _scene(tmp_path)
-    source = binding("attached", root, caller).source
-    assert isinstance(source, AttachedSource)
-    assert source.root_layer_identifier == caller.GetRootLayer().identifier

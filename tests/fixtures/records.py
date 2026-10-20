@@ -9,7 +9,9 @@ they have older versions of their own:
   count has no version 3 meaning, so that migration rejects it.
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
-derived from the migrations above. D4 and D6 add binding-configuration and pending-cleanup records.
+derived from the migrations above. It also yields binding configurations (proscenium.bindings) a
+newer extension or damage could leave; binding configuration has no older version yet. D6 adds
+pending-cleanup records.
 """
 
 from __future__ import annotations
@@ -61,6 +63,8 @@ class SchemaVersions:
     stored: dict[str, object]  # record name -> the record as stored
     loaded: dict[str, Sample]  # the records that load -> each at version 3
     refused: dict[str, Refusal]  # the records that don't -> why
+    bindings: dict[str, object]  # binding configurations that can't be read, as stored
+    bindings_refused: dict[str, Refusal]  # each -> why
 
 
 @contextmanager
@@ -70,6 +74,15 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     The records are values, not files: tests store them in ID properties or load them directly.
     """
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
+    # A valid version 1 file-source configuration whose destination was removed (a cleared pointer).
+    binding = {
+        "source": "file",
+        "path": "//shot.usda",
+        "key": None,
+        "root_layer_identifier": None,
+        "destination": None,
+        "payload_policy": "load_all",
+    }
     yield SchemaVersions(
         schema=SAMPLE,
         stored={
@@ -96,4 +109,10 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "no-version": Refusal.UNREADABLE,
             "not-a-group": Refusal.UNREADABLE,
         },
+        bindings={
+            "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
+            "no-path": {VERSION_KEY: 1, **binding, "path": None},
+            "unknown-policy": {VERSION_KEY: 1, **binding, "payload_policy": "load_some"},
+        },
+        bindings_refused={"newer": Refusal.NEWER, "no-path": Refusal.INVALID, "unknown-policy": Refusal.INVALID},
     )

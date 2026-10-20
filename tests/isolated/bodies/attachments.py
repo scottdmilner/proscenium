@@ -13,7 +13,7 @@ from typing import Any
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium.core.source_access import SourceRegistry, SourceUnavailable
+from proscenium.core.source_access import AttachedSource, SourceRegistry, SourceUnavailable
 from support.usd import open_fresh
 
 # Expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
@@ -27,7 +27,8 @@ def caller_releases_its_stage(tmp_dir: str) -> dict[str, Any]:
     with source_access.reattach(Path(tmp_dir)) as scene:
         caller = open_fresh(scene.root)  # this body's own stage, so it holds the only reference
         session = caller.GetSessionLayer().identifier
-        registry.attach("shot", caller)
+        assert isinstance(binding.source, AttachedSource)
+        binding.source.attach(caller)
         evaluation = binding.acquire()
         result: dict[str, Any] = {"attached_before": binding.live_stage == caller}
         del evaluation, caller
