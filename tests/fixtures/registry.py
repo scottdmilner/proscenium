@@ -136,7 +136,7 @@ FIXTURES: dict[str, Fixture] = {
                 # A failed migration is checked on sample records only, until binding configuration has a version 2.
                 Case("unsupported", SYNC, FAILURE, ("SCHEMA-03",), 1),
                 # Unreadable records are preserved and never overwritten; sample records stand in for
-                # pending-cleanup records until their schema (D6).
+                # pending-cleanup records until M5 defines their schema.
                 Case("unsupported-cleanup", Operation.CLEANUP, FAILURE, ("SCHEMA-04",), 1),
             ),
         ),

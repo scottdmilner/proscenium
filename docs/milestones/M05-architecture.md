@@ -13,7 +13,7 @@
 - The transaction implementation: the commit point, what publication switches, how prepared work is discarded, and the copy-on-write or rollback discipline that keeps published resources unchanged during preparation.
 - Recording of the Binding State model during synchronization.
 - Retirement with pending-cleanup diagnostics for resources that could not be removed.
-- A decision and implementation for persistent cleanup tracking: evaluate a separate ledger and pending-cleanup state in existing ownership records, then record the chosen mechanism. Cover newly prepared and obsolete resources, failed pre-publication disposal, and safe explicit retry, preserving reused published resources.
+- A decision and implementation for persistent cleanup tracking: evaluate a separate ledger and pending-cleanup state in existing ownership records, then record the chosen mechanism and its schema, following M3's pending-cleanup persistence contract (DECISIONS.md), and add its unreadable and unsupported records to `F-SCHEMA-VERSIONS`. Cover newly prepared and obsolete resources, failed pre-publication disposal, and safe explicit retry, preserving reused published resources.
 - A stub application layer that consumes the plan envelope and creates trivial placeholder content, so failure safety can be tested before M7 exists.
 - Ownership-aware resource accounting.
 - A measurement of the synchronization undo step's memory cost.

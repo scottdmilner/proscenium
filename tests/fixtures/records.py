@@ -10,8 +10,8 @@ they have older versions of their own:
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
 derived from the migrations above. It also yields binding configurations (proscenium.bindings) a
-newer extension or damage could leave; binding configuration has no older version yet. D6 adds
-pending-cleanup records.
+newer extension or damage could leave; binding configuration has no older version yet. M5 adds
+pending-cleanup records once it defines their schema.
 """
 
 from __future__ import annotations
