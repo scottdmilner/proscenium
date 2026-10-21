@@ -118,18 +118,6 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> tuple[st
     return binding_id, config
 
 
-def find(binding_id: str) -> tuple[bpy.types.Scene, Loaded[BindingConfig] | Refused] | None:
-    """The scene holding binding_id's configuration, and the configuration or why it can't be read.
-
-    Copies sharing an identity are detected and repaired separately; this returns the first scene.
-    """
-    key = config_key(binding_id)
-    for scene in bpy.data.scenes:
-        if (result := records.read(scene, key, CONFIG)) is not None:
-            return scene, result
-    return None
-
-
 def update(scene: bpy.types.Scene, binding_id: str, config: BindingConfig) -> None:
     """Store a binding's changed configuration. Raises RecordRefused over one that can't be read."""
     records.write(scene, config_key(binding_id), CONFIG, config)

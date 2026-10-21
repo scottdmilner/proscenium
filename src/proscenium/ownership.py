@@ -24,18 +24,17 @@ unmanaged users has to discount (M7).
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import bpy
 
-from . import bindings, records
+from . import records
 from .records import Loaded, Refused, Schema
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Mapping, Sequence
 
 MANIFEST_KEY = "manifest"
 
@@ -123,9 +122,14 @@ class Claim:
     """A manifest entry naming a datablock: the evidence that a binding manages it (OWN-16).
 
     A manifest names a datablock at most once, so each claim on a datablock comes from a different
-    manifest, and two or more mean it is ambiguous (see claims()). A binding's copies share its
-    identity, so the destination says which manifest a claim comes from. Like the datablocks it
-    sits beside, it doesn't survive an operator call or undo.
+    manifest. One claim means the datablock is managed by that binding; two or more, that it is
+    ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
+    unmanaged. That judgment needs every manifest that could name the datablock, so the runtime
+    indexes (proscenium.indexes) index every binding's. Each destination's manifest counts once,
+    though several configurations can name it, as a linked-copy scene's do. A manifest that can't be
+    read claims nothing, so its content has no ownership evidence until it is repaired. A binding's
+    copies share its identity, so the destination says which manifest a claim comes from. Like the
+    datablocks it sits beside, it doesn't survive an operator call or undo.
     """
 
     binding_id: str  # the binding whose manifest holds the entry
@@ -149,53 +153,6 @@ def write_entries(
     writing only those (records.write_items). Raises as write_manifest does, and KeyError, changing nothing,
     for a resource identity too long for an ID-property key."""
     records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
-
-
-def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
-    """claims_from() over every binding's manifest, read from the records now.
-
-    Each manifest is read once, though several configurations can name its destination, as a
-    linked-copy scene's do. The runtime indexes (proscenium.indexes) keep this for the session;
-    reading it again here is for when they can't be used.
-    """
-    manifests = []
-    seen: set[bpy.types.Collection] = set()
-    for _scene, binding_id, config in bindings.all_bindings():
-        destination = None if isinstance(config, Refused) else config.record.destination
-        if destination is not None and destination not in seen:
-            seen.add(destination)
-            manifests.append((binding_id, destination, read_manifest(destination)))
-    return claims_from(manifests)
-
-
-def claims_from(
-    manifests: Iterable[tuple[str, bpy.types.Collection, Loaded[Manifest] | Refused | None]],
-) -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
-    """Every datablock the manifests name, with the claims on it, and the manifests that can't be read.
-
-    manifests gives each binding's destination and the manifest there; several bindings can name
-    one destination, as a linked-copy scene's configurations do, and it counts once. One claim means
-    the datablock is managed by that binding; two or more, from different manifests, that it is
-    ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
-    unmanaged. That judgment needs every manifest that could name the datablock, so it can't be made
-    from some bindings' manifests alone. A manifest that can't be read claims nothing, so its content
-    has no ownership evidence until it is repaired. Datablock references don't survive an operator
-    call or undo: use the result at once.
-    """
-    found: dict[bpy.types.ID, list[Claim]] = defaultdict(list)
-    unreadable: list[Refused] = []
-    seen: set[bpy.types.Collection] = set()
-    for binding_id, destination, manifest in manifests:
-        if destination in seen:
-            continue
-        seen.add(destination)
-        if isinstance(manifest, Refused):
-            unreadable.append(manifest)
-        elif manifest is not None:
-            for resource_id, entry in manifest.record.entries.items():
-                if entry.datablock is not None:
-                    found[entry.datablock].append(Claim(binding_id, destination, resource_id))
-    return dict(found), unreadable
 
 
 def dependents(manifest: Manifest) -> Mapping[str, set[str]]:

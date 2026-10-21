@@ -20,6 +20,7 @@ from proscenium.core.source_access import PayloadPolicy
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import Loaded, Refused
 from proscenium.synchronization import Synchronization
+from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
 
@@ -122,23 +123,32 @@ def _two_managed(sync: Synchronization, tmp_path: Path) -> tuple[list[str], list
     return ids, names
 
 
-def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> tuple[list[tuple[str, str]], list[object]]:
+def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> tuple[list[tuple[str, str]], list[str]]:
     """Every record read from here on, as (ID name, key), and every share of the ownership index built."""
     reads: list[tuple[str, str]] = []
-    shares: list[object] = []
-    read, claims_from = records.read, ownership.claims_from
+    read = records.read
 
     def counted_read(id_: bpy.types.ID, key: str, schema: object) -> object:
         reads.append((id_.name, key))
         return read(id_, key, schema)  # ty: ignore[invalid-argument-type]
 
-    def counted_share(manifests: list[object]) -> object:
-        shares.append(manifests)
-        return claims_from(manifests)  # ty: ignore[invalid-argument-type]
-
     monkeypatch.setattr(records, "read", counted_read)
-    monkeypatch.setattr(ownership, "claims_from", counted_share)
-    return reads, shares
+    return reads, _counted_shares(monkeypatch)
+
+
+def _counted_shares(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The destination of every share of the ownership index built from here on, by name."""
+    shares: list[str] = []
+    add_share = indexes._add_share  # noqa: SLF001 - the cost under test is how many shares are built
+
+    def counted(
+        state: object, index: object, claimant: str, destination: bpy.types.Collection, manifest: object
+    ) -> None:
+        shares.append(destination.name)
+        add_share(state, index, claimant, destination, manifest)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(indexes, "_add_share", counted)
+    return shares
 
 
 @pytest.mark.parametrize("lookup", ["resource", "manifest"])
@@ -203,6 +213,35 @@ def test_an_update_writes_and_indexes_only_what_changes(
     assert indexes.manifest(other) == ownership.read_manifest(destination)
     indexes.invalidate()
     assert in_place == _ownership_view(ids, names)
+
+
+@pytest.mark.parametrize("first_removed", ["Other", "Shot"])
+def test_a_datablock_claimed_twice_and_once_again(sync: Synchronization, tmp_path: Path, first_removed: str) -> None:
+    # Ambiguity is rare, so a datablock claimed once is held as its one claim, not a collection of them.
+    ids, names = _two_managed(sync, tmp_path)
+    handle, other = ids
+    a = bpy.data.objects["A"]
+    by_name = {
+        "Other": Claim(other, bpy.data.collections["Other"], "a"),
+        "Shot": Claim(handle, bpy.data.collections["Shot"], "x"),
+    }
+    indexes.update_manifest(handle, {"x": _entry(a)})
+    assert set(indexes.claims_on(a)) == set(by_name.values())
+    in_place = _ownership_view(ids, [*names, "x"])
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, [*names, "x"])
+    if first_removed == "Other":
+        indexes.update_manifest(other, {}, ["a"])
+    else:
+        indexes.update_manifest(handle, {}, ["x"])
+    [kept] = [claim for name, claim in by_name.items() if name != first_removed]
+    assert indexes.claims_on(a) == [kept]
+    state = indexes._state  # noqa: SLF001 - how a claim is held is what saves memory
+    assert state is not None and state.ownership is not None
+    assert state.ownership.claims[a.session_uid] == kept
+    in_place = _ownership_view(ids, [*names, "x"])
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, [*names, "x"])
 
 
 def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -272,8 +311,8 @@ def _copy_scene(kind: str) -> bpy.types.Scene:
 
 
 def _assert_ownership_agrees() -> None:
-    # The state's claims are ownership.claims(), read from the records now, for every object.
-    expected, _ = ownership.claims()
+    # The state's claims are the oracle's, read from the records now, for every object.
+    expected, _ = oracle.claims()
     for obj in bpy.data.objects:
         assert set(indexes.claims_on(obj)) == set(expected.get(obj, []))
 
@@ -281,7 +320,7 @@ def _assert_ownership_agrees() -> None:
 @pytest.mark.parametrize("kind", ["FULL_COPY", "LINK_COPY"])
 def test_a_scene_copy_made_after_the_state_was_built(sync: Synchronization, tmp_path: Path, kind: str) -> None:
     # No handler announces a new scene. The copy is a candidate of the binding's identity, its scene
-    # lists it, and its manifest counts as ownership.claims counts it.
+    # lists it, and its manifest counts as the oracle counts it.
     handle = _managed(sync, tmp_path)
     assert indexes.claims_on(bpy.data.objects["Managed"])  # the state, ownership included, is built
     copy = _copy_scene(kind)
@@ -324,14 +363,7 @@ def test_publications_replace_only_their_share(
     names = ["managed", "a", "b", "c"]
     assert _ownership_view(ids, names)  # the index is built
 
-    shares: list[object] = []
-    claims_from = ownership.claims_from
-
-    def counted(manifests: list[object]) -> object:
-        shares.append(manifests)
-        return claims_from(manifests)  # ty: ignore[invalid-argument-type]
-
-    monkeypatch.setattr(ownership, "claims_from", counted)
+    shares = _counted_shares(monkeypatch)
     indexes.set_manifest(handle.binding_id, _entries(bpy.data.objects["Managed"], b))  # the shared destination
     indexes.set_manifest(other.binding_id, _entries(b, c))  # b now claimed twice: ambiguous
     indexes.set_manifest(handle.binding_id, _entries(c))
