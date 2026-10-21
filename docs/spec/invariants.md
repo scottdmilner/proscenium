@@ -47,6 +47,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 - Each synchronization that publishes is exactly one undo step; a failed synchronization pushes none. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-02, UNDO-03)
 - Each lifecycle invocation that commits changes has one undo step, including partial progress; failures before commit have none. Undo/redo restores ownership and pending-cleanup tracking with content and binding state, subject to the global-undo/background-mode rules. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-08)
 - Reopening a `.blend` never synchronizes automatically. An unavailable source never erases the saved display or detaches the binding. → [Reopening](lifecycle.md#reopening) (REOPEN-02, REOPEN-04, REOPEN-05)
+- A binding whose destination is removed is kept, owns nothing, and fails to synchronize, without accessing its source, until it is removed. → [Removed Destination](lifecycle.md#removed-destination) (DEST-01, DEST-02, DEST-04)
 - Unreadable or newer persistent schemas disable refresh and lifecycle operations for that binding, but preserve its display. → [Schema Versions](lifecycle.md#schema-versions) (SCHEMA-03)
 
 ## Diagnostics and Support

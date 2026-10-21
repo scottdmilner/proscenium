@@ -713,6 +713,24 @@ requirements:
         delivery: M9
         fixtures: [F-OFFLINE]
 
+  - section: spec/lifecycle.md#removed-destination
+    delivery: M3
+    phase: 1
+    fixtures: [F-BINDING-STATE]
+    rows:
+      - id: DEST-01
+        quote: "A binding whose destination collection is removed keeps its configuration, last attempt, and binding-index entry, through save/reopen, until the binding itself is removed."
+        oracle: "With F-BINDING-STATE's destination removed, then save/reopen, the binding is still listed on its scene, its configuration equals the saved one except for its cleared destination, and its last attempt and binding-index entry are as saved."
+      - id: DEST-02
+        quote: "Synchronizing it is a fatal failure whose diagnostic names the binding and says its destination was removed."
+        oracle: "Synchronizing that binding returns a fatal failure with one removed-destination diagnostic naming the binding; no source stage is made for it, and no collection is created."
+      - id: DEST-03
+        quote: "Its requested settings can still be read and changed."
+        oracle: "That binding's requested settings read as saved, and set_settings changes them, writing its configuration."
+      - id: DEST-04
+        quote: "It owns nothing: its manifest was removed with the collection"
+        oracle: "That binding has no manifest and no resources, and the objects its destination held claim no owner."
+
   - section: spec/lifecycle.md#schema-versions
     delivery: M3
     phase: 1
@@ -2072,6 +2090,12 @@ excluded:
   - section: spec/lifecycle.md#reopening
     quotes: ["Refresh is explicit."]
     reason: "Restates REOPEN-02 and PH1-01."
+  - section: spec/lifecycle.md#removed-destination
+    quotes: ["Nothing detaches or removes it automatically."]
+    restates: [DEST-01]
+  - section: spec/lifecycle.md#removed-destination
+    quotes: ["M5 and M11 decide whether a publication or a repair may give such a binding a new destination."]
+    reason: "Scope note for M5 and M11."
   - section: spec/lifecycle.md#schema-versions
     quotes: ["Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions."]
     reason: "Design guidance for M3's schemas; SCHEMA-02 to SCHEMA-04 test versioning."
