@@ -21,13 +21,15 @@ The state holds datablock references, which Blender invalidates under it: undo r
 datablock the undone step changed, which a synchronization's managed content always is, and a file
 load frees every one. Those come with a rebuild. The user may also remove managed content at any
 time, which no handler announces, so every hit is checked before it's returned (a removed ID's
-reference raises when touched) and a failed check rebuilds. A manifest is checked whole when it's
-returned, since its entries name datablocks: a removed one's entry is reread from the record, where
-Blender has cleared it. Claims are keyed by each datablock's session_uid, which no other datablock
-in the session gets and an undo re-read keeps, not by its reference: a new datablock often takes a
-removed one's address. Only ID references are held, never the structs inside a datablock
-(modifiers, mesh elements, nodes): Blender invalidates a removed ID's Python reference but not
-those, and one held across undo silently reads freed memory.
+reference raises when touched). A removed datablock costs a reread of the one manifest that names
+it, where Blender has cleared its entry, and that destination's share of ownership is replaced; a
+removed scene or destination clears pointers in the configurations, so it rebuilds the state. A
+manifest is checked whole when it's returned, since its entries name datablocks. Claims are keyed
+by each datablock's session_uid, which no other datablock in the session gets and an undo re-read
+keeps, not by its reference: a new datablock often takes a removed one's address, and a removed
+one's claims, left until its share is next replaced, are never found. Only ID references are held,
+never the structs inside a datablock (modifiers, mesh elements, nodes): Blender invalidates a
+removed ID's Python reference but not those, and one held across undo silently reads freed memory.
 
 Other content brought in by append or link, and a destination collection duplicated on its own,
 aren't seen until the next load, undo, or redo; copied-binding detection scans the file itself.
@@ -42,13 +44,14 @@ import bpy
 
 from . import bindings, ownership, records
 from .core.source_access import SourceKind
-from .records import Loaded, Refused
+from .ownership import Claim, Manifest
+from .records import Loaded, RecordRefused, Refused
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Collection, Iterator, Mapping
 
     from .bindings import BindingConfig
-    from .ownership import Claim, Manifest
+    from .ownership import ManifestEntry
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
 _state: _State | None = None
@@ -78,11 +81,12 @@ class _Binding:
 
 @dataclass(slots=True)
 class _Share:
-    """What one destination's manifest adds to the ownership index, so a publication can replace it alone."""
+    """What one destination's manifest adds to the ownership index, so a publication can change it alone."""
 
     claimant: str  # the binding its claims name: the first found whose configuration names the destination
+    supplies: bool  # whether it supplies the claimant's resources: its lookups use its first candidate's manifest
     claims: dict[int, Claim]  # by datablock session_uid; a manifest names a datablock at most once
-    resources: list[tuple[str, str]]  # the keys it supplies in _Ownership.resources
+    entries: dict[str, int]  # resource identity -> its datablock's session_uid, for the entries naming one
 
 
 @dataclass(slots=True)
@@ -173,11 +177,13 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
 
 
 def set_config(binding_id: str, config: BindingConfig) -> None:
-    """Store a binding's changed configuration.
+    """Store a binding's changed configuration; an unchanged one writes nothing.
 
     Raises RecordRefused, changing nothing, over one that can't be read; KeyError if there's no such binding.
     """
     found = _existing(binding_id)
+    if config == found.config:
+        return
     bindings.update(found.scene, binding_id, config)
     if isinstance(found.config, Refused) or found.config.destination != config.destination:
         found.manifest = _UNREAD
@@ -194,7 +200,8 @@ def manifest(binding_id: str) -> Loaded[Manifest] | Refused | None:
     Refused if the configuration or the manifest can't be read; None if the binding has no
     destination (it was removed) or no manifest yet. Raises KeyError if no binding has this identifier.
     """
-    return _checked_manifest(_existing(binding_id))
+    found = _existing(binding_id)
+    return _checked_manifest(_current(), binding_id, found)
 
 
 def set_manifest(binding_id: str, manifest: Manifest) -> None:
@@ -204,21 +211,41 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
     binding; ValueError if it has no destination.
     """
     found = _existing(binding_id)
-    if isinstance(found.config, Refused) or found.config.destination is None:
-        raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
-    destination = found.config.destination
+    destination = _destination(binding_id, found)
     ownership.write_manifest(destination, manifest)
+    _replace_manifest(_current(), binding_id, destination, Loaded(manifest, ownership.MANIFEST.version))
+
+
+def update_manifest(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
+    """Change some of a binding's manifest entries, writing only those: changed adds or replaces entries by
+    resource identity, and removed deletes them. A binding with no manifest yet starts from an empty one,
+    and an empty update writes nothing. The cost is what changes, not the manifest (Manifest.updated).
+
+    Raises what set_manifest raises, and ValueError, TypeError, or KeyError (ownership.write_entries),
+    changing nothing, over an update that makes no manifest.
+    """
+    found = _existing(binding_id)
+    destination = _destination(binding_id, found)
     state = _current()
-    loaded = Loaded(manifest, ownership.MANIFEST.version)
-    for candidates in state.bindings.values():  # every configuration naming the destination, as a linked copy's does
-        for b in candidates:
-            if not isinstance(b.config, Refused) and b.config.destination == destination:
-                b.manifest = loaded
-    if (index := state.ownership) is not None:
-        uid = destination.session_uid
-        share = index.shares.get(uid)
-        _remove_share(index, uid)
-        _add_share(state, index, binding_id if share is None else share.claimant, destination, loaded)
+    # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
+    # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
+    current = _manifest_of(found)
+    if isinstance(current, Refused):
+        raise RecordRefused(current)
+    if not changed and not removed:
+        return
+    index = _ownership(state)
+    share = index.shares[destination.session_uid]
+    before = Manifest({}) if current is None else current.record
+    after = before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
+    ownership.write_entries(destination, after, changed.keys(), removed)
+    _give_manifest(state, destination, Loaded(after, ownership.MANIFEST.version))
+    keys = [*changed, *removed]
+    for resource_id in keys:
+        _remove_claim(index, share, resource_id)
+    for resource_id in changed:
+        if (datablock := after.entries[resource_id].datablock) is not None:
+            _add_claim(index, share, datablock, Claim(share.claimant, destination, resource_id))
 
 
 def claims_on(datablock: bpy.types.ID) -> list[Claim]:
@@ -235,8 +262,8 @@ def unreadable_manifests() -> list[Refused]:
     return _ask(lambda state: list(_ownership(state).unreadable.values()))
 
 
-# The state. Every lookup is a question _ask puts to it: a check that fails raises _Stale, and _ask
-# rebuilds the state and asks once more.
+# The state. Every lookup is a question _ask puts to it: a check that finds a scene or destination gone
+# raises _Stale, and _ask rebuilds the state and asks once more.
 
 
 class _Stale(Exception):  # noqa: N818
@@ -301,6 +328,12 @@ def _existing(binding_id: str) -> _Binding:
     return found
 
 
+def _destination(binding_id: str, binding: _Binding) -> bpy.types.Collection:
+    if isinstance(binding.config, Refused) or binding.config.destination is None:
+        raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
+    return binding.config.destination
+
+
 def _valid(binding_id: str, binding: _Binding) -> bool:
     """Whether the candidate's scene still exists and holds its configuration, and its destination still
     exists; removing a destination clears the configuration's pointer to it."""
@@ -322,16 +355,45 @@ def _manifest_of(binding: _Binding) -> Loaded[Manifest] | Refused | None:
     return binding.manifest
 
 
-def _checked_manifest(binding: _Binding) -> Loaded[Manifest] | Refused | None:
+def _checked_manifest(state: _State, binding_id: str, binding: _Binding) -> Loaded[Manifest] | Refused | None:
     """The binding's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
     found = _manifest_of(binding)
     if isinstance(found, Loaded) and not all(
         e.datablock is None or _alive(e.datablock) for e in found.record.entries.values()
     ):
-        binding.manifest = _UNREAD
-        _forget_ownership()
-        found = _manifest_of(binding)
+        assert not isinstance(binding.config, Refused) and binding.config.destination is not None
+        found = _reread(state, binding_id, binding.config.destination)
     return found
+
+
+def _reread(state: _State, binding_id: str, destination: bpy.types.Collection) -> Loaded[Manifest] | Refused | None:
+    """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
+    found = ownership.read_manifest(destination)
+    _replace_manifest(state, binding_id, destination, found)
+    return found
+
+
+def _replace_manifest(
+    state: _State, binding_id: str, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
+) -> None:
+    """Give the manifest to every configuration naming the destination, and replace the destination's share
+    of ownership, keeping its claimant (binding_id's, if it has no share yet)."""
+    _give_manifest(state, destination, manifest)
+    if (index := state.ownership) is not None:
+        uid = destination.session_uid
+        share = index.shares.get(uid)
+        _remove_share(index, uid)
+        _add_share(state, index, binding_id if share is None else share.claimant, destination, manifest)
+
+
+def _give_manifest(
+    state: _State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
+) -> None:
+    """Give the manifest to every configuration naming the destination, as a linked copy's does."""
+    for candidates in state.bindings.values():
+        for b in candidates:
+            if not isinstance(b.config, Refused) and b.config.destination == destination:
+                b.manifest = manifest
 
 
 def _forget_ownership() -> None:
@@ -352,7 +414,7 @@ def _ownership(state: _State) -> _Ownership:
                 if not isinstance(b.config, Refused) and b.config.destination is not None:
                     destination = b.config.destination
                     if destination.session_uid not in index.shares:
-                        _add_share(state, index, binding_id, destination, _checked_manifest(b))
+                        _add_share(state, index, binding_id, destination, _checked_manifest(state, binding_id, b))
         state.ownership = index
     return state.ownership
 
@@ -366,18 +428,11 @@ def _add_share(
 ) -> None:
     found, unreadable = ownership.claims_from([(claimant, destination, manifest)])
     uid = destination.session_uid
-    share = _Share(claimant, {}, [])
     # A binding's resources are those in the manifest of the candidate its lookups use, the first.
     first = state.bindings[claimant][0].config
-    supplies = not isinstance(first, Refused) and first.destination == destination
+    share = _Share(claimant, not isinstance(first, Refused) and first.destination == destination, {}, {})
     for datablock, (claim,) in found.items():
-        datablock_uid = datablock.session_uid
-        index.claims.setdefault(datablock_uid, []).append(claim)
-        share.claims[datablock_uid] = claim
-        if supplies:
-            key = (claimant, claim.resource_id)
-            index.resources[key] = datablock
-            share.resources.append(key)
+        _add_claim(index, share, datablock, claim)
     if unreadable:
         index.unreadable[uid] = unreadable[0]
     index.shares[uid] = share
@@ -386,15 +441,32 @@ def _add_share(
 def _remove_share(index: _Ownership, uid: int) -> None:
     if (share := index.shares.pop(uid, None)) is None:
         return
-    for datablock_uid, claim in share.claims.items():
-        remaining = [c for c in index.claims[datablock_uid] if c is not claim]
-        if remaining:
-            index.claims[datablock_uid] = remaining
-        else:
-            del index.claims[datablock_uid]
-    for key in share.resources:
-        del index.resources[key]
+    for resource_id in list(share.entries):
+        _remove_claim(index, share, resource_id)
     index.unreadable.pop(uid, None)
+
+
+def _add_claim(index: _Ownership, share: _Share, datablock: bpy.types.ID, claim: Claim) -> None:
+    datablock_uid = datablock.session_uid
+    index.claims.setdefault(datablock_uid, []).append(claim)
+    share.claims[datablock_uid] = claim
+    share.entries[claim.resource_id] = datablock_uid
+    if share.supplies:
+        index.resources[share.claimant, claim.resource_id] = datablock
+
+
+def _remove_claim(index: _Ownership, share: _Share, resource_id: str) -> None:
+    """Take out the claim of the share's entry for resource_id, if it names a datablock."""
+    if (datablock_uid := share.entries.pop(resource_id, None)) is None:
+        return
+    claim = share.claims.pop(datablock_uid)
+    remaining = [c for c in index.claims[datablock_uid] if c is not claim]
+    if remaining:
+        index.claims[datablock_uid] = remaining
+    else:
+        del index.claims[datablock_uid]
+    if share.supplies:
+        del index.resources[share.claimant, resource_id]
 
 
 def _checked_claims(state: _State, datablock: bpy.types.ID) -> list[Claim]:
@@ -405,9 +477,16 @@ def _checked_claims(state: _State, datablock: bpy.types.ID) -> list[Claim]:
 
 
 def _checked_resource(state: _State, binding_id: str, resource_id: str) -> bpy.types.ID | None:
-    datablock = _ownership(state).resources.get((binding_id, resource_id))
+    key = (binding_id, resource_id)
+    datablock = _ownership(state).resources.get(key)
     if datablock is not None and not _alive(datablock):
-        raise _Stale
+        # Removed: a binding's resources come from its first candidate's destination, whose manifest is reread.
+        first = _first(state, binding_id)
+        assert first is not None and not isinstance(first.config, Refused) and first.config.destination is not None
+        _reread(state, binding_id, first.config.destination)
+        datablock = _ownership(state).resources.get(key)
+        if datablock is not None and not _alive(datablock):
+            raise _Stale
     return datablock
 
 

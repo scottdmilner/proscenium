@@ -82,6 +82,29 @@ def test_set_settings_before_the_first_synchronization_opens_nothing(sync: Synch
     assert handle.live_stage() is None
 
 
+def test_an_unchanged_configuration_is_not_written(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Setting nothing, or attaching the stage a binding already stored, leaves Blender data alone.
+    caller = open_fresh(_root(tmp_path))
+    handle = sync.create_attached_binding(_scene(), "shot")
+    sync.attach("shot", caller)
+    written: list[str] = []
+    write = records.write
+
+    def counted(id_: bpy.types.ID, key: str, *args: object) -> None:
+        written.append(key)
+        write(id_, key, *args)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(records, "write", counted)
+    assert sync.attach("shot", caller).attached == (handle.binding_id,)
+    assert handle.set_settings() == Result(ResultState.SUCCESS)
+    assert handle.set_settings(payload_policy=Usd.Stage.LoadAll) == Result(ResultState.SUCCESS)  # the default
+    assert written == []
+    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    assert written == [bindings.config_key(handle.binding_id)]
+
+
 def test_unavailable_source_is_a_result(sync: Synchronization, tmp_path: Path) -> None:
     # A file that won't open, and a binding with nothing attached: fatal-failure results, not exceptions.
     for handle in (

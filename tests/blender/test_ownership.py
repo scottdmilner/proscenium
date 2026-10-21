@@ -6,18 +6,19 @@ content is made here, as M5's application layer will make it.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium import indexes, ownership
+from proscenium import indexes, ownership, records
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from proscenium.synchronization import BindingHandle, Synchronization
@@ -105,7 +106,7 @@ def test_content_two_manifests_name_is_ambiguous(sync: Synchronization, tmp_path
     shared = bpy.data.objects["First0"]
     manifest = ownership.read_manifest(bpy.data.collections["Second"])
     assert isinstance(manifest, Loaded)
-    entries = manifest.record.entries | {"stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
+    entries = {**manifest.record.entries, "stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
     ownership.write_manifest(bpy.data.collections["Second"], Manifest(entries))
     first_claim = Claim(first.binding_id, bpy.data.collections["First"], "a")
     assert _claims()[shared] == [first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen")]
@@ -116,7 +117,7 @@ def test_a_manifest_names_a_datablock_once(sync: Synchronization, tmp_path: Path
     _, manifest = _managed(sync, tmp_path)
     twice = manifest.entries["a"]
     with pytest.raises(ValueError, match="two entries name one datablock"):
-        Manifest(manifest.entries | {"again": twice})
+        Manifest({**manifest.entries, "again": twice})
 
 
 def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(sync: Synchronization, tmp_path: Path) -> None:
@@ -258,3 +259,57 @@ def test_a_newer_manifest_is_refused_and_kept(sync: Synchronization, tmp_path: P
     with pytest.raises(RecordRefused):
         ownership.write_manifest(destination, manifest)
     assert destination[NAMESPACE][ownership.MANIFEST_KEY].to_dict() == stored
+
+
+def _entry(datablock: bpy.types.ID, uses: list[str] | None = None) -> ManifestEntry:
+    return ManifestEntry(datablock, ["/World/Ref"], "prim", uses or [])
+
+
+# Updates to the manifest on _managed's destination, given its objects and a new one: (changed, removed), and
+# the error with its message.
+type _Update = Callable[[list[bpy.types.Object], bpy.types.Object], tuple[dict[str, Any], list[str]]]
+_UPDATES: dict[str, tuple[_Update, type[Exception], str]] = {
+    "removes a used resource": (lambda _, new: ({}, ["mesh"]), ValueError, "use resources the manifest doesn't have"),
+    "uses a missing resource": (
+        lambda _, new: ({"c": _entry(new, ["nowhere"])}, []),
+        ValueError,
+        "use resources the manifest doesn't have",
+    ),
+    "names a named datablock": (lambda objects, _: ({"c": _entry(objects[0])}, []), ValueError, "name one datablock"),
+    "names a datablock twice": (
+        lambda _, new: ({"c": _entry(new), "d": _entry(new)}, []),
+        ValueError,
+        "name one datablock",
+    ),
+    "changes and removes one": (lambda _, new: ({"a": _entry(new)}, ["a"]), ValueError, "both changes and removes"),
+    "removes a missing resource": (lambda _, new: ({}, ["nowhere"]), ValueError, "removes resources"),
+    "is not an entry": (
+        lambda _, new: ({"c": {"datablock": new, "covers": [], "role": "prim", "uses": []}}, []),
+        TypeError,
+        "not a ManifestEntry",
+    ),
+    "covers a non-path": (
+        lambda _, new: ({"c": ManifestEntry(new, [1], "prim", [])}, []),  # ty: ignore[invalid-argument-type]
+        TypeError,
+        "all strings",
+    ),
+    "has a key too long to store": (lambda _, new: ({"x" * 64: _entry(new)}, []), KeyError, "limited to 63"),
+}
+
+
+@pytest.mark.parametrize("update", _UPDATES)
+def test_an_update_that_makes_no_manifest_changes_nothing(sync: Synchronization, tmp_path: Path, update: str) -> None:
+    # Checked as a whole manifest is, before anything is written.
+    handle, manifest = _managed(sync, tmp_path)
+    destination = bpy.data.collections["Shot"]
+    objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
+    new = bpy.data.objects.new("New", None)
+    stored = records.stored(destination, ownership.MANIFEST_KEY)
+    claims = {obj: indexes.claims_on(obj) for obj in [*objects, new]}
+    make, error, message = _UPDATES[update]
+    changed, removed = make(objects, new)
+    with pytest.raises(error, match=message):
+        indexes.update_manifest(handle.binding_id, changed, removed)
+    assert records.stored(destination, ownership.MANIFEST_KEY) == stored
+    assert indexes.manifest(handle.binding_id) == Loaded(manifest, 1)
+    assert {obj: indexes.claims_on(obj) for obj in [*objects, new]} == claims

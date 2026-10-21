@@ -110,6 +110,139 @@ def test_a_removed_datablock_leaves_the_cached_manifest(sync: Synchronization, t
     assert found == ownership.read_manifest(bpy.data.collections["Shot"])
 
 
+def _two_managed(sync: Synchronization, tmp_path: Path) -> tuple[list[str], list[str]]:
+    """_managed's binding, and Other managing two objects, A and B; with the index built. Their identifiers,
+    and the resource identities to look up."""
+    handle = _managed(sync, tmp_path)
+    with source_access.binding_state(tmp_path) as scene:
+        other = sync.create_file_binding(_scene(), scene.root, name="Other")
+    indexes.set_manifest(other.binding_id, _entries(*(bpy.data.objects.new(name, None) for name in ("A", "B"))))
+    ids, names = [handle.binding_id, other.binding_id], ["managed", "a", "b"]
+    assert _ownership_view(ids, names)
+    return ids, names
+
+
+def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> tuple[list[tuple[str, str]], list[object]]:
+    """Every record read from here on, as (ID name, key), and every share of the ownership index built."""
+    reads: list[tuple[str, str]] = []
+    shares: list[object] = []
+    read, claims_from = records.read, ownership.claims_from
+
+    def counted_read(id_: bpy.types.ID, key: str, schema: object) -> object:
+        reads.append((id_.name, key))
+        return read(id_, key, schema)  # ty: ignore[invalid-argument-type]
+
+    def counted_share(manifests: list[object]) -> object:
+        shares.append(manifests)
+        return claims_from(manifests)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(records, "read", counted_read)
+    monkeypatch.setattr(ownership, "claims_from", counted_share)
+    return reads, shares
+
+
+@pytest.mark.parametrize("lookup", ["resource", "manifest"])
+def test_a_removed_datablock_rereads_only_its_manifest(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lookup: str
+) -> None:
+    # The cost of a removal doesn't grow with the rest of the file: the other binding's share and every
+    # configuration stay, and the result is what a rebuild from the records gives.
+    ids, names = _two_managed(sync, tmp_path)
+    other = ids[1]
+    rebuilds = indexes.rebuilds()
+    reads, shares = _counted_reads(monkeypatch)
+    bpy.data.objects.remove(bpy.data.objects["A"])
+    if lookup == "resource":
+        assert indexes.resource(other, "a") is None
+    else:
+        found = indexes.manifest(other)
+        assert isinstance(found, Loaded)
+        assert found.record.entries["a"].datablock is None
+    assert reads == [("Other", ownership.MANIFEST_KEY)]
+    assert indexes.rebuilds() == rebuilds
+    assert indexes.resource(other, "b") == bpy.data.objects["B"]
+    in_place = _ownership_view(ids, names)
+    assert reads == [("Other", ownership.MANIFEST_KEY)]  # the share replaced holds no removed datablock
+    assert len(shares) == 1  # Other's, replaced; the index isn't rebuilt
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, names)
+
+
+def _entry(datablock: bpy.types.ID, uses: list[str] | None = None) -> ManifestEntry:
+    return ManifestEntry(datablock, ["/World"], "prim", uses or [])
+
+
+def test_an_update_writes_and_indexes_only_what_changes(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Phase 2 refreshes change some resources; an update costs those, and its result is what a rebuild gives.
+    ids, names = _two_managed(sync, tmp_path)
+    other, destination = ids[1], bpy.data.collections["Other"]
+    a, b = bpy.data.objects["A"], bpy.data.objects["B"]
+    c, d = bpy.data.objects.new("C", None), bpy.data.objects.new("D", None)
+    # An entry stored but not in the state: a whole write would drop it, so its staying shows none happened.
+    destination[records.NAMESPACE][ownership.MANIFEST_KEY]["entries"]["marker"] = {
+        "datablock": None,
+        "covers": [],
+        "role": "marker",
+        "uses": [],
+    }
+    rebuilds = indexes.rebuilds()
+    reads, shares = _counted_reads(monkeypatch)
+    # b's datablock moves to c, and d uses c.
+    indexes.update_manifest(other, {"b": _entry(c), "c": _entry(b), "d": _entry(d, ["c"])}, ["a"])
+    names += ["c", "d"]
+    in_place = _ownership_view(ids, names)
+    assert (reads, shares, indexes.rebuilds()) == ([], [], rebuilds)  # nothing reread or rebuilt
+    assert [indexes.resource(other, r) for r in ("a", "b", "c", "d")] == [None, c, b, d]
+    assert indexes.claims_on(a) == []
+    assert indexes.claims_on(b) == [Claim(other, destination, "c")]
+    entries = destination[records.NAMESPACE][ownership.MANIFEST_KEY]["entries"]
+    assert "marker" in entries
+    del entries["marker"]
+    assert indexes.manifest(other) == ownership.read_manifest(destination)
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, names)
+
+
+def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A no-op refresh performs no Blender writes (incremental.md#affected-content).
+    handle = _managed(sync, tmp_path)
+
+    def no_writes(*_args: object) -> None:
+        raise AssertionError("a record was written")
+
+    monkeypatch.setattr(records, "write", no_writes)
+    monkeypatch.setattr(records, "write_items", no_writes)
+    indexes.update_manifest(handle.binding_id, {}, [])
+
+
+def test_an_update_to_a_binding_without_a_manifest(sync: Synchronization, tmp_path: Path) -> None:
+    with source_access.binding_state(tmp_path) as scene:
+        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+    assert indexes.manifest(handle.binding_id) is None
+    obj = bpy.data.objects.new("Managed", None)
+    indexes.update_manifest(handle.binding_id, {"a": _entry(obj)})
+    assert indexes.manifest(handle.binding_id) == Loaded(Manifest({"a": _entry(obj)}), 1)
+    assert indexes.manifest(handle.binding_id) == ownership.read_manifest(bpy.data.collections["Shot"])
+    assert indexes.resource(handle.binding_id, "a") == obj
+
+
+@pytest.mark.parametrize("removed", [["a"], []])
+def test_an_update_after_a_removal(sync: Synchronization, tmp_path: Path, removed: list[str]) -> None:
+    # The removed datablock's entry, which Blender cleared, is removed by the update or carried into its result.
+    ids, names = _two_managed(sync, tmp_path)
+    other = ids[1]
+    bpy.data.objects.remove(bpy.data.objects["A"])
+    replacement = bpy.data.objects.new("Replacement", None)
+    indexes.update_manifest(other, {"b": _entry(replacement)}, removed)
+    assert indexes.manifest(other) == ownership.read_manifest(bpy.data.collections["Other"])
+    in_place = _ownership_view(ids, names)
+    assert indexes.resource(other, "b") == replacement
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, names)
+
+
 def test_a_new_datablock_at_a_removed_ones_address_is_unmanaged(sync: Synchronization, tmp_path: Path) -> None:
     handle = _managed(sync, tmp_path)
     removed = bpy.data.objects["Managed"]
@@ -220,6 +353,7 @@ def test_a_publication_keeps_its_destinations_claimant(sync: Synchronization, tm
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     assert _ownership_view(ids, names)  # the index is built
     indexes.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
+    assert indexes.manifest(handle.binding_id) == indexes.manifest(other.binding_id)  # one destination, one record
     in_place = _ownership_view(ids, names)
     indexes.invalidate()
     assert in_place == _ownership_view(ids, names)
@@ -295,6 +429,27 @@ def test_writes_update_the_state_in_place(
     assert indexes.claims_on(added) == [Claim(handle.binding_id, bpy.data.collections["Shot"], "b")]
     assert indexes.manifest(handle.binding_id) == Loaded(Manifest(entries), 1)
     assert _config(handle).destination == bpy.data.collections["Shot"]
+
+
+def test_the_cached_manifest_cant_be_changed_through_a_caller(sync: Synchronization, tmp_path: Path) -> None:
+    # The state hands out the manifest it holds, so neither the lists a publisher gave it nor the manifest
+    # a lookup returns can change it.
+    handle = _managed(sync, tmp_path)
+    covers, uses = ["/World"], []
+    entries = {"a": ManifestEntry(bpy.data.objects["Managed"], covers, "prim", uses)}
+    indexes.set_manifest(handle.binding_id, Manifest(entries))
+    covers.append("/Elsewhere")
+    uses.append("a")
+    entries["b"] = ManifestEntry(bpy.data.objects.new("B", None), ["/World/B"], "prim", [])
+    found = indexes.manifest(handle.binding_id)
+    assert isinstance(found, Loaded)
+    assert found == ownership.read_manifest(bpy.data.collections["Shot"])
+    with pytest.raises(TypeError):
+        found.record.entries["c"] = entries["b"]  # ty: ignore[invalid-assignment] - the point: it's read-only
+    with pytest.raises(AttributeError):
+        found.record.entries["a"].covers.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
+    with pytest.raises(AttributeError):
+        found.record.entries["a"].uses.append("a")  # ty: ignore[unresolved-attribute]
 
 
 def _file_data() -> dict[tuple[str, str], object]:

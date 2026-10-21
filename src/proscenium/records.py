@@ -16,7 +16,7 @@ repairs it; writing itself refuses to replace one that is unreadable or newer.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 NAMESPACE = "proscenium"
 VERSION_KEY = "_schema_version"
+_STAGING_KEY = "_staging"  # write_items' scratch group, gone when it returns
 
 type Migration = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -181,6 +182,44 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
         id_[NAMESPACE] = {}
         namespace = id_[NAMESPACE]
     namespace[key] = value
+
+
+def write_items[R: DataclassInstance](
+    id_: bpy.types.ID,
+    key: str,
+    schema: Schema[R],
+    record: R,
+    field: str,
+    changed: Collection[str],
+    removed: Collection[str],
+) -> None:
+    """Store record, which differs from the stored one only in the items of its mapping field under changed
+    (added or replaced) and removed (deleted).
+
+    When the stored record is at the current version only those items are written, so the cost is what
+    changed; otherwise all of record is, as write() stores it. Raises as write() does, changing nothing,
+    including Blender's own error for a value or key ID properties can't hold.
+    """
+    if type(record) is not schema.record:
+        raise TypeError(f"{schema.kind}: expected a {schema.record.__name__}, not {type(record).__name__}")
+    namespace = id_.get(NAMESPACE)
+    existing = namespace.get(key) if hasattr(namespace, "to_dict") else None
+    group = None if existing is None or _version(schema, existing) != schema.version else existing.get(field)
+    if not hasattr(group, "to_dict"):  # none stored, or not at the current version: written whole
+        write(id_, key, schema, record)
+        return
+    assert namespace is not None and group is not None
+    items = getattr(record, field)
+    # Blender converts a whole group before storing it, so a value or key it can't hold fails here, having
+    # stored nothing; then each item is copied from the staged group, which can't fail.
+    namespace[_STAGING_KEY] = {k: _unstructure(items[k]) for k in changed}
+    staged = namespace[_STAGING_KEY]
+    for k in removed:
+        if k in group:
+            del group[k]
+    for k in changed:
+        group[k] = staged[k]
+    del namespace[_STAGING_KEY]
 
 
 def _unstructure(value: Any) -> Any:
