@@ -120,3 +120,18 @@ def test_multi_binding(tmp_path: Path) -> None:
         for path in scene.roots.values():
             assert read_values(open_fresh(path)) == scene.values
         assert read_values(scene.caller) == scene.values
+
+
+def test_offline(tmp_path: Path) -> None:
+    # The display covers prims its source composes, and moving the source away leaves nothing at root.
+    with source_access.offline(tmp_path) as scene:
+        stage = open_fresh(scene.root)
+        covered = {path for covers, _, _ in scene.display.entries.values() for path in covers}
+        assert all(stage.GetPrimAtPath(path) for path in covered)
+        uses = {use for _, _, used in scene.display.entries.values() for use in used}
+        assert uses <= scene.display.entries.keys()
+        del stage
+        scene.move_away()
+        assert not scene.root.exists()
+        assert not scene.root.parent.exists()
+        assert (tmp_path / "moved" / "root.usda").exists()

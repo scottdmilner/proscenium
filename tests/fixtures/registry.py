@@ -184,7 +184,21 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-DETACH-SHARED", "Detach with shared instance content", ("M11",)),
         Fixture("F-DETACH-AS-IS", "Detach surviving content as-is", ("M11",)),
         Fixture("F-LIFECYCLE-FAILURE", "Lifecycle failure and retry", ("M11",)),
-        Fixture("F-OFFLINE", "Unavailable source and assets", ("M3", "M9", "M12")),
+        Fixture(
+            "F-OFFLINE",
+            "Unavailable source and assets",
+            ("M3", "M7", "M9", "M12"),
+            source_access.offline,
+            (
+                # Reopened with the file source moved away: the synchronization after it fails, and the
+                # binding and its saved display are kept.
+                Case("moved-file", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
+                # Reopened with nothing attached under an attached binding's key, as after every reopening.
+                Case("unattached", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
+                # Opened without the extension, the saved display is ordinary Blender content.
+                Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),
+            ),
+        ),
         Fixture("F-NESTED-STRESS", "Nested instance plus shear plus appearance variation", ("M10",)),
         Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M13",)),
         Fixture("F-SAME-VALUES", "Same evaluated values at a different time (Phase 2)", ("M12", "M13")),

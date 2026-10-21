@@ -694,11 +694,11 @@ requirements:
       - id: REOPEN-04
         quote: "An unavailable source must not erase the saved representation."
         fixtures: [F-OFFLINE]
-        oracle: "Reopening F-OFFLINE with its source moved away keeps every managed datablock of the saved display, and the manifest entries that name them."
+        oracle: "Reopening F-OFFLINE with its source moved away or nothing attached keeps every managed datablock of the saved display, and the manifest entries that name them."
       - id: REOPEN-05
         quote: "Source unavailability must not automatically detach the binding."
         fixtures: [F-OFFLINE]
-        oracle: "Reopening F-OFFLINE with its source moved away keeps the binding's configuration and published generation; nothing is detached."
+        oracle: "Reopening F-OFFLINE with its source moved away or nothing attached keeps the binding's configuration and published generation; nothing is detached."
       - id: REOPEN-06
         quote: "Detached content remains detached."
         delivery: M11
@@ -706,7 +706,8 @@ requirements:
       - id: REOPEN-07
         quote: "The saved display remains usable without its USD source"
         fixtures: [F-OFFLINE]
-        oracle: "Reopening F-OFFLINE with its source moved away keeps the saved display's geometry, transforms, materials, and correspondence records unchanged."
+        oracle: "Reopening F-OFFLINE with its source moved away or nothing attached keeps the saved display's geometry, transforms, and materials unchanged."
+        note: "M7 adds the correspondence records to F-OFFLINE when it defines them."
       - id: REOPEN-08
         quote: "Image textures remain references to external files"
         delivery: M9

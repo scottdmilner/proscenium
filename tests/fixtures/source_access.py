@@ -21,6 +21,8 @@ and leaves everyone else's state alone:
 - binding_state (F-BINDING-STATE): a scene to make a file binding on, and a caller's
   stage to attach under a source key, for tests of bindings' records, handles,
   save/reopen, and undo. Binding State and Synchronization API.
+- offline (F-OFFLINE): a source to move away before reopening, and the saved display
+  a binding on it published. Reopening.
 
 Each returns the values a correct binding would read, derived from how the scene
 is built. M1 provides the generators; M3, which owns these fixtures, adds the
@@ -329,3 +331,60 @@ def binding_state(dest: Path) -> Generator[BindingStateScene]:
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest) / "root.usda"
     yield BindingStateScene(root=root, caller=open_fresh(root), key="shot", values=dict(DISK))
+
+
+@dataclass(frozen=True)
+class SavedDisplay:
+    """A binding's published display as plain data: nothing publishes until M5, so a test builds it in Blender.
+
+    An empty object for /World and, parented to it, a mesh object for /World/Ref with one material.
+    entries holds each resource identity's covers, role, and uses, as its manifest entry stores them.
+    """
+
+    parent_location: tuple[float, float, float]
+    location: tuple[float, float, float]  # the mesh object's, relative to its parent
+    vertices: tuple[tuple[float, float, float], ...]
+    faces: tuple[tuple[int, ...], ...]
+    material_color: tuple[float, float, float, float]
+    entries: dict[str, tuple[tuple[str, ...], str, tuple[str, ...]]]
+
+
+DISPLAY = SavedDisplay(
+    parent_location=(1.0, 2.0, 3.0),
+    location=(0.5, 0.0, -1.0),
+    vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
+    faces=((0, 1, 2, 3),),
+    material_color=(0.8, 0.2, 0.1, 1.0),
+    entries={
+        "world": (("/World",), "prim", ()),
+        "ref": (("/World/Ref",), "prim", ("ref-mesh",)),
+        "ref-mesh": (("/World/Ref",), "mesh", ("ref-material",)),
+        "ref-material": (("/World/Ref",), "material", ()),
+    },
+)
+
+
+@dataclass
+class OfflineScene:
+    root: Path  # a binding's source, until move_away
+    key: str  # an attached binding's source key
+    display: SavedDisplay
+
+    def open_caller(self) -> Usd.Stage:
+        """A caller's stage over root, to attach under key. Held, it keeps root's layers open after move_away."""
+        return open_fresh(self.root)
+
+    def move_away(self) -> None:
+        """Move the source's files to another directory, so root no longer exists."""
+        self.root.parent.rename(self.root.parent.with_name("moved"))
+
+
+@contextmanager
+def offline(dest: Path) -> Generator[OfflineScene]:
+    """F-OFFLINE: a source for one binding, and the display it published, to reopen with the source unavailable.
+
+    The source is in its own directory under dest, so moving it away leaves the .blend a test saves in dest.
+    M9 adds materials with image textures, whose files move away too.
+    """
+    root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
+    yield OfflineScene(root=root, key="shot", display=DISPLAY)
