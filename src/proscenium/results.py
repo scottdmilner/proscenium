@@ -16,11 +16,12 @@ class ResultState(StrEnum):
 
 
 class Category(StrEnum):
-    """Diagnostic categories source access reports (pipeline.md#diagnostics)."""
+    """Diagnostic categories synchronization reports so far (pipeline.md#diagnostics)."""
 
     UNAVAILABLE_SOURCE = "unavailable source"
     SOURCE_STATE = "source state"  # informational: it doesn't change the result state
     UNSUPPORTED_RECORD = "unsupported record"  # the binding's configuration can't be read
+    REMOVED_DESTINATION = "removed destination"  # fatal: the binding has nowhere to display (lifecycle.md)
 
 
 class Severity(StrEnum):
