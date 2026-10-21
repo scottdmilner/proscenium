@@ -3,7 +3,7 @@
 This state is a disposable write-through cache of the bindings' records: each binding's scene and
 decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
 claims and each binding's resources by identity. It holds every candidate of an identity (source-
-access.md#copied-bindings), so ownership counts a copy's manifest as ownership.claims does; a lookup
+access.md#copied-bindings), so ownership counts a copy's manifest as well (ownership.Claim); a lookup
 by identity uses the first candidate found, until copied-binding detection decides which is
 canonical. The extension's writes go through it, updating memory and writing the records at once,
 since the records are what's saved and what undo steps capture. So nothing is read back from the
@@ -91,9 +91,11 @@ class _Share:
 
 @dataclass(slots=True)
 class _Ownership:
-    """Every candidate's manifest, indexed: ownership.claims_from's result, kept per destination."""
+    """Every candidate's manifest, indexed: the claims on each datablock (ownership.Claim), kept per destination."""
 
-    claims: dict[int, list[Claim]]  # by datablock session_uid
+    # By datablock session_uid: one Claim, or a tuple of them for an ambiguous datablock, which is rare, so
+    # the common case costs no list (88 bytes each, a quarter of the index).
+    claims: dict[int, Claim | tuple[Claim, ...]]
     resources: dict[tuple[str, str], bpy.types.ID]  # (binding, resource identity) -> datablock
     unreadable: dict[int, Refused]  # by destination session_uid: manifests that can't be read
     shares: dict[int, _Share]  # by destination session_uid
@@ -249,7 +251,7 @@ def update_manifest(binding_id: str, changed: Mapping[str, ManifestEntry], remov
 
 
 def claims_on(datablock: bpy.types.ID) -> list[Claim]:
-    """The claims on datablock; none if it is unmanaged (ownership.claims_from says what they mean)."""
+    """The claims on datablock; none if it is unmanaged (ownership.Claim says what they mean)."""
     return _ask(lambda state: _checked_claims(state, datablock))
 
 
@@ -404,8 +406,8 @@ def _forget_ownership() -> None:
 def _ownership(state: _State) -> _Ownership:
     """The ownership index, built from every candidate's manifest if it isn't.
 
-    Each destination counts once, as ownership.claims_from counts it, with the first binding found
-    whose configuration names it as the claimant.
+    Each destination counts once, though several configurations can name it, with the first binding
+    found whose configuration names it as the claimant.
     """
     if state.ownership is None:
         index = _Ownership({}, {}, {}, {})
@@ -426,15 +428,16 @@ def _add_share(
     destination: bpy.types.Collection,
     manifest: Loaded[Manifest] | Refused | None,
 ) -> None:
-    found, unreadable = ownership.claims_from([(claimant, destination, manifest)])
     uid = destination.session_uid
     # A binding's resources are those in the manifest of the candidate its lookups use, the first.
     first = state.bindings[claimant][0].config
     share = _Share(claimant, not isinstance(first, Refused) and first.destination == destination, {}, {})
-    for datablock, (claim,) in found.items():
-        _add_claim(index, share, datablock, claim)
-    if unreadable:
-        index.unreadable[uid] = unreadable[0]
+    if isinstance(manifest, Refused):
+        index.unreadable[uid] = manifest  # claims nothing until it is repaired
+    elif manifest is not None:
+        for resource_id, entry in manifest.record.entries.items():
+            if entry.datablock is not None:
+                _add_claim(index, share, entry.datablock, Claim(claimant, destination, resource_id))
     index.shares[uid] = share
 
 
@@ -448,7 +451,10 @@ def _remove_share(index: _Ownership, uid: int) -> None:
 
 def _add_claim(index: _Ownership, share: _Share, datablock: bpy.types.ID, claim: Claim) -> None:
     datablock_uid = datablock.session_uid
-    index.claims.setdefault(datablock_uid, []).append(claim)
+    if (found := index.claims.get(datablock_uid)) is None:
+        index.claims[datablock_uid] = claim
+    else:
+        index.claims[datablock_uid] = (*_as_tuple(found), claim)
     share.claims[datablock_uid] = claim
     share.entries[claim.resource_id] = datablock_uid
     if share.supplies:
@@ -460,20 +466,25 @@ def _remove_claim(index: _Ownership, share: _Share, resource_id: str) -> None:
     if (datablock_uid := share.entries.pop(resource_id, None)) is None:
         return
     claim = share.claims.pop(datablock_uid)
-    remaining = [c for c in index.claims[datablock_uid] if c is not claim]
-    if remaining:
-        index.claims[datablock_uid] = remaining
-    else:
+    remaining = tuple(c for c in _as_tuple(index.claims[datablock_uid]) if c is not claim)
+    if not remaining:
         del index.claims[datablock_uid]
+    else:
+        index.claims[datablock_uid] = remaining[0] if len(remaining) == 1 else remaining
     if share.supplies:
         del index.resources[share.claimant, resource_id]
 
 
 def _checked_claims(state: _State, datablock: bpy.types.ID) -> list[Claim]:
-    found = _ownership(state).claims.get(datablock.session_uid, [])
-    if not all(_alive(claim.destination) for claim in found):
+    found = _ownership(state).claims.get(datablock.session_uid)
+    claims = [] if found is None else list(_as_tuple(found))
+    if not all(_alive(claim.destination) for claim in claims):
         raise _Stale
-    return list(found)
+    return claims
+
+
+def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
+    return claims if isinstance(claims, tuple) else (claims,)
 
 
 def _checked_resource(state: _State, binding_id: str, resource_id: str) -> bpy.types.ID | None:

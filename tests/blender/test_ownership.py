@@ -15,6 +15,7 @@ from fixtures import source_access
 from proscenium import indexes, ownership, records
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from support import ownership as oracle
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
@@ -47,8 +48,19 @@ def _managed(sync: Synchronization, tmp_path: Path, name: str = "Shot") -> tuple
     return handle, manifest
 
 
+def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
+    """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index;
+    the oracle, reading the records now, must agree."""
+    found = {id_: claims for id_ in bpy.data.user_map() if (claims := indexes.claims_on(id_))}
+    unreadable = indexes.unreadable_manifests()
+    expected, expected_unreadable = oracle.claims()
+    assert {id_: set(c) for id_, c in found.items()} == {id_: set(c) for id_, c in expected.items()}
+    assert unreadable == expected_unreadable
+    return found, unreadable
+
+
 def _claims() -> dict[bpy.types.ID, list[Claim]]:
-    found, unreadable = ownership.claims()
+    found, unreadable = _ownership()
     assert unreadable == []
     return found
 
@@ -107,7 +119,7 @@ def test_content_two_manifests_name_is_ambiguous(sync: Synchronization, tmp_path
     manifest = ownership.read_manifest(bpy.data.collections["Second"])
     assert isinstance(manifest, Loaded)
     entries = {**manifest.record.entries, "stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
-    ownership.write_manifest(bpy.data.collections["Second"], Manifest(entries))
+    indexes.set_manifest(second.binding_id, Manifest(entries))
     first_claim = Claim(first.binding_id, bpy.data.collections["First"], "a")
     assert _claims()[shared] == [first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen")]
 
@@ -153,7 +165,8 @@ def test_a_linked_copy_scene_shares_one_manifest(
         return read_manifest(destination)
 
     monkeypatch.setattr(ownership, "read_manifest", counted)
-    found = _claims()
+    indexes.invalidate()  # so the index is rebuilt from the records, reading what it reads
+    found = {obj: claims for obj in bpy.data.objects if (claims := indexes.claims_on(obj))}
     assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
         bpy.data.objects["Shot0"]: [Claim(handle.binding_id, shot, "a")],
@@ -241,7 +254,8 @@ def test_an_invalid_manifest_is_refused(
     assert isinstance(result, Refused)
     assert result.refusal is Refusal.INVALID
     assert problem in result.message
-    found, unreadable = ownership.claims()
+    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    found, unreadable = _ownership()
     assert found == {}
     assert unreadable == [result]
 
@@ -255,7 +269,8 @@ def test_a_newer_manifest_is_refused_and_kept(sync: Synchronization, tmp_path: P
     result = ownership.read_manifest(destination)
     assert isinstance(result, Refused)
     assert result.refusal is Refusal.NEWER
-    assert ownership.claims() == ({}, [result])
+    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    assert _ownership() == ({}, [result])
     with pytest.raises(RecordRefused):
         ownership.write_manifest(destination, manifest)
     assert destination[NAMESPACE][ownership.MANIFEST_KEY].to_dict() == stored

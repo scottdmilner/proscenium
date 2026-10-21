@@ -49,10 +49,10 @@ def _root(tmp_path: Path) -> Path:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = bindings.find(handle.binding_id)
-    assert found is not None
-    assert isinstance(found[1], Loaded)
-    return found[1].record
+    """The binding's configuration as its record stores it, read from the scenes, not the bindings' state."""
+    [config] = [c for _, binding_id, c in bindings.all_bindings() if binding_id == handle.binding_id]
+    assert isinstance(config, Loaded)
+    return config.record
 
 
 def _index() -> BindingIndex:
@@ -119,7 +119,6 @@ def test_records_survive_save_and_reopen(sync: Synchronization, tmp_path: Path) 
     f, a = bpy.data.collections["F"], bpy.data.collections["A"]
     assert _config(file_backed) == BindingConfig(SourceKind.FILE, str(root), None, None, f, PayloadPolicy.LOAD_NONE)
     assert _config(attached) == BindingConfig(SourceKind.ATTACHED, None, "shot", identifier, a, PayloadPolicy.LOAD_ALL)
-    assert bindings.find(file_backed.binding_id) is not None
     assert sync.bindings(_scene()) == [file_backed, attached]
     assert _destination_tag(f) == DestinationTag(file_backed.binding_id, _scene())
     assert _destination_tag(a) == DestinationTag(attached.binding_id, _scene())
