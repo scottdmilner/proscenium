@@ -421,10 +421,10 @@ requirements:
         fixtures: [F-CACHED-STAGE]
         oracle: "With the ambient stage cached in UsdUtils.StageCache and its cache context active, the binding's source stage is not the ambient stage and is in no stage cache, the same stage is returned on the next acquisition, two bindings on the file get different stages, and the ambient stage's settings and values equal ambient_values."
       - id: SRC-02
-        quote: "If the caller releases an attached stage, the binding becomes unattached."
+        quote: "The binding holds the attached stage until the caller releases it with release(key)"
         phase: 2
         fixtures: [F-REATTACH]
-        oracle: "Once the caller drops every reference to the attached stage, the stage expires and the binding reports itself unattached."
+        oracle: "After the caller drops every reference to the attached stage, the binding still has it as its live stage and its layers stay loaded, unsaved edits included; after release(key), every binding with the key is unattached, the stage expires, and its layers are freed. A binding whose creation is undone keeps its attachment, drops its evaluation stage, and is attached again after redo; release(key) releases it meanwhile."
       - id: SRC-03
         quote: "After a .blend is reopened, a binding with an attached source reports its source as unavailable until the caller attaches a stage."
         phase: 2
@@ -482,7 +482,7 @@ requirements:
         fixtures: [F-DIRTY-LAYER]
         oracle: "reload([sub]) rereads only sub.usda: ref, pay, and var_a keep their edits. Naming var_b, an anonymous layer, or an unknown identifier, alone or with sub, raises and leaves every layer as it was."
       - id: LAYER-06
-        quote: "Every stage that composes a reloaded layer sees its new content, including an attached stage. This is the only effect source access may have that other stages can observe."
+        quote: "Every stage that composes a reloaded layer sees its new content, including an attached stage. This is the only effect source access may have that other stages can observe"
         fixtures: [F-CACHED-STAGE, F-DIRTY-LAYER]
         oracle: "After a reload rereads a layer, another stage composing it (the caller's stage in F-DIRTY-LAYER, the ambient stage in F-CACHED-STAGE) composes its new content, and that stage's caller_settings are unchanged."
       - id: LAYER-07
@@ -1706,7 +1706,7 @@ excluded:
     quotes: ["Every binding has a source stage: the stage its source is composed on."]
     reason: "Definitions."
   - section: spec/source-access.md#source-stages
-    quotes: ["Replacing it follows the Source Identity rules.", "Refreshing an unattached binding produces a diagnostic and preserves the saved display."]
+    quotes: ["Replacing the stage follows the Source Identity rules.", "Refreshing an unattached binding produces a diagnostic and preserves the saved display."]
     restates: [SRC-03, SID-06]
   - section: spec/source-access.md#source-stages
     quotes: ["A reload the caller requests is the one change to its layers"]

@@ -15,6 +15,7 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
+from proscenium import bindings, indexes, records
 from proscenium.synchronization import (
     BindingHandle,
     BindingNotFound,
@@ -24,6 +25,7 @@ from proscenium.synchronization import (
     Severity,
     Synchronization,
 )
+from support import undo
 from support.usd import open_fresh
 
 
@@ -130,6 +132,83 @@ def test_attaching_under_a_key(sync: Synchronization, tmp_path: Path) -> None:
     assert sync.attach("shot", caller).attached == (handle.binding_id,)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     assert handle.live_stage() == caller
+
+
+def test_releasing_under_a_key(sync: Synchronization, tmp_path: Path) -> None:
+    # SRC-02: release(key) leaves every binding with the key unattached; others keep their stage.
+    caller = open_fresh(_root(tmp_path))
+    first, second = (sync.create_attached_binding(_scene(), "shot") for _ in range(2))
+    other = sync.create_attached_binding(_scene(), "other")
+    sync.attach("shot", caller)
+    sync.attach("other", caller)
+    for handle in (first, second, other):
+        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert sync.release("shot") == (first.binding_id, second.binding_id)
+    for handle in (first, second):
+        assert handle.live_stage() is None
+        assert [d.category for d in handle.synchronize(0).diagnostics] == [Category.UNAVAILABLE_SOURCE]
+    assert other.live_stage() == caller
+    assert sync.attach("shot", caller).attached == (first.binding_id, second.binding_id)  # attachable again
+    assert first.synchronize(0) == Result(ResultState.SUCCESS)
+
+
+def test_undoing_a_file_bindings_creation_drops_its_stage(sync: Synchronization, tmp_path: Path) -> None:
+    # The undo handler prunes at once; redo brings the binding back, and its next synchronization reopens.
+    undo.require_global_undo()
+    undo.push("base")
+    handle = sync.create_file_binding(_scene(), _root(tmp_path))
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    undo.push("create")
+    undo.undo()
+    assert handle.binding_id not in sync.sources
+    undo.redo()
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert handle.live_stage() is not None
+
+
+def test_undoing_an_attached_bindings_creation_keeps_its_attachment(sync: Synchronization, tmp_path: Path) -> None:
+    # UNDO-06: undo neither restores nor removes attachments. The binding's evaluation stage goes; the
+    # attachment stays for redo, and release(key) still releases it while the binding doesn't exist.
+    undo.require_global_undo()
+    caller = open_fresh(_root(tmp_path))
+    undo.push("base")
+    handle = sync.create_attached_binding(_scene(), "shot")
+    sync.attach("shot", caller)
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    source = sync.sources.get(handle.binding_id)
+    undo.push("create")
+    undo.undo()
+    assert source.evaluation_stage is None
+    assert source.live_stage == caller
+    undo.redo()
+    assert handle.live_stage() == caller
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    undo.undo()
+    assert sync.release("shot") == ()  # no binding with the key exists
+    assert source.live_stage is None
+
+
+def test_a_removed_scenes_file_binding_is_pruned(sync: Synchronization, tmp_path: Path) -> None:
+    # No handler announces the removal: the next call that uses sources compares them with the bindings.
+    scene = _scene()
+    other = bpy.data.scenes.new("Other")  # sorts first: _scene() would return it
+    removed = sync.create_file_binding(other, _root(tmp_path))
+    kept = sync.create_file_binding(scene, _root(tmp_path))
+    for handle in (removed, kept):
+        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    bpy.data.scenes.remove(other)
+    assert kept.synchronize(0) == Result(ResultState.SUCCESS)
+    assert removed.binding_id not in sync.sources
+    assert kept.binding_id in sync.sources
+
+
+def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(sync: Synchronization, tmp_path: Path) -> None:
+    handle = sync.create_file_binding(_scene(), _root(tmp_path))
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    _scene()[records.NAMESPACE][bindings.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+    indexes.invalidate()  # as a load, undo, or redo that restored this record would
+    assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, and pruned
+    assert handle.binding_id not in sync.sources
 
 
 def test_live_stage_through_the_handle(sync: Synchronization, tmp_path: Path) -> None:

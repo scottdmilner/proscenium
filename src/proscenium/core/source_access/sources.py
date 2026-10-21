@@ -7,8 +7,6 @@ from enum import StrEnum
 
 from pxr import Tf, Usd
 
-from .._core import StageHandle
-
 
 class SourceKind(StrEnum):
     """The two kinds of source a binding has: a FileSource or an AttachedSource."""
@@ -56,28 +54,32 @@ class FileSource:
 
 
 class AttachedSource:
-    """A stage a caller attaches under a source key.
+    """A stage a caller attaches under a source key, held until the caller releases it (SRC-02).
+
+    The binding's evaluation stage composes the attached stage's layers, so it keeps them alive in any
+    case, and USD sends no notice when a stage is destroyed: a binding that let go of a stage the
+    caller dropped would still hold its layers, unsaved edits included, until it next looked. So the
+    attachment holds the stage itself, and release() is the caller's way to free it.
 
     The attachment is runtime only. The key, and the root-layer identifier of the stage last
     attached, are binding configuration, kept in the binding's records (proscenium.bindings).
     """
 
     key: str
-    # Released at once, so it never keeps the attached stage alive (SRC-02). Unlike a weakref to the
-    # Usd.Stage wrapper, which can return an expired wrapper, stage() is None once the stage expires.
-    _attached: StageHandle | None
+    _stage: Usd.Stage | None
 
     def __init__(self, key: str) -> None:
         self.key = key
-        self._attached = None
+        self._stage = None
 
     @property
     def stage(self) -> Usd.Stage | None:
-        """The attached stage while it exists."""
-        return self._attached.stage() if self._attached is not None else None
+        """The attached stage, or None if none is attached."""
+        return self._stage
 
     def attach(self, stage: Usd.Stage) -> None:
-        """Make stage the source stage."""
-        handle = StageHandle(stage)
-        handle.release()
-        self._attached = handle
+        """Make stage the source stage, releasing any stage attached before."""
+        self._stage = stage
+
+    def release(self) -> None:
+        self._stage = None

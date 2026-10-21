@@ -32,7 +32,7 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used.
 - Exceptions report misuse only, such as a call made during another synchronization.
 
-Operations that span bindings are module functions: creating a binding, finding a scene's bindings, and attaching a stage under a source key ([Source Identity](#source-identity)).
+Operations that span bindings are module functions: creating a binding, finding a scene's bindings, and attaching a stage under a source key or releasing it ([Source Identity](#source-identity), [Source Stages](#source-stages)).
 
 Design note (suggested, settled by M3 and M5): the module, exact names, and the result's fields are settled with the implementation. The handle's methods delegate to functions keyed by binding identifier, which are what tests exercise.
 
@@ -82,7 +82,7 @@ Every binding has a **source stage**: the stage its source is composed on. A bin
 Requirements:
 
 - A binding with a file source opens its source stage outside every USD stage cache, at its first synchronization, including the first after a `.blend` is reopened, and keeps and reuses it across synchronizations. It never takes the stage from a stage cache, places it in one, or shares it with other bindings or tools.
-- If the caller releases an attached stage, the binding becomes unattached. Replacing it follows the [Source Identity](#source-identity) rules.
+- The binding holds the attached stage until the caller releases it with `release(key)`, which releases it from every binding with that key, or attaches another stage under the key; loading a `.blend` releases it too. The caller dropping its own references doesn't release it: until then the stage stays alive with its layers and their unsaved edits, which a stage opened on the same files sees. A released binding is unattached. A binding that no longer exists, as after undo of its creation, keeps its attachment until then, so redo brings it back attached, and `release(key)` still releases it; its other runtime stages are dropped. Replacing the stage follows the [Source Identity](#source-identity) rules.
 - After a `.blend` is reopened, a binding with an attached source reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
 - Do not author changes to an attached stage's layers or change its stage settings, including load state, population mask, layer muting, and edit target. A reload the caller requests is the one change to its layers ([Layer State and Reloading](#layer-state-and-reloading)).
 - Evaluate the source stage's composed content as the source stage presents it, including the opinions in its session layer and the anonymous layers beneath it, except that the binding's payload policy replaces the source stage's load rules.
@@ -107,7 +107,7 @@ Requirements:
 - Layers are reloaded only on request, through the binding's `reload` ([Synchronization API](#synchronization-api)). It rereads the contributing layers whose files changed since they were read, and every dirty one, which discards its unsaved edits. Saving edits first is the caller's responsibility.
 - The contributing layers are the non-anonymous layers the binding's evaluation stage composes under its payload policy. A layer reached only through an unloaded payload does not contribute, and anonymous layers are never reloaded.
 - `reload(layers)` rereads only the named layers, each of which must be a contributing layer of the binding. Naming any other layer is misuse: the call raises and reloads nothing.
-- Every stage that composes a reloaded layer sees its new content, including an attached stage. This is the only effect source access may have that other stages can observe.
+- Every stage that composes a reloaded layer sees its new content, including an attached stage. This is the only effect source access may have that other stages can observe, apart from holding an attached stage until the caller releases it ([Source Stages](#source-stages)).
 - After a reload, a binding's reused evaluation stage displays the same result as a stage newly opened from the same files with the same anonymous layers.
 
 Design note (settled by M3): reload uses USD's non-forced layer reload, which rereads a clean layer only when its file's modification time differs from the one USD stored when it read the layer, and always rereads a dirty one. USD stores whole seconds on Windows, so there a rewrite within the same second as the last read isn't reloaded. That is expected and matches USD's own behavior ([feasibility record](../feasibility/runtime-record.md#dirty-layers-and-fresh-stages)). A forced reload would notify every stage using each layer even when its file is unchanged.

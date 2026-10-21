@@ -29,6 +29,20 @@ def test_live_stage_is_the_attached_stage(tmp_path: Path) -> None:
         assert evaluation != scene.caller
 
 
+def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path) -> None:
+    # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
+    # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
+    with source_access.reattach(tmp_path) as scene:
+        source = SourceRegistry().add_attached("a", "shot", Usd.Stage.LoadAll)
+        source.attach(scene.caller)
+        evaluation = source.acquire()
+        source.attach(scene.caller)
+        assert source.evaluation_stage == evaluation
+        source.attach(scene.same_root)  # the same root layer, another session layer
+        assert source.evaluation_stage is None
+        assert source.live_stage == scene.same_root
+
+
 def test_every_binding_has_its_source_stage(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = SourceRegistry()

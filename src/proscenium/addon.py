@@ -38,6 +38,7 @@ def _data_changing(*_args: object) -> None:
 @persistent
 def _undone_or_redone(*_args: object) -> None:
     indexes.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
+    synchronization.SYNCHRONIZATION.prune()  # at once, so an undone binding's stages are freed without waiting
 
 
 def register() -> None:
