@@ -7,10 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import pytest
-
 from fixtures import source_access
-from proscenium.core.source_access import AttachedSource, FileSource, PayloadPolicy, SourceRegistry
+from proscenium.core.source_access import AttachedSource, PayloadPolicy, SourceRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,7 +18,7 @@ def test_live_stage_is_the_attached_stage(tmp_path: Path) -> None:
     # ICON-07: the live stage is the caller's attached stage, not the evaluation stage.
     with source_access.reattach(tmp_path) as scene:
         registry = SourceRegistry()
-        source = registry.add_attached("a", "shot")
+        source = registry.attached("a", "shot")
         assert isinstance(source.source, AttachedSource)
         source.source.attach(scene.caller)
         evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
@@ -32,7 +30,7 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path)
     # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
     # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
     with source_access.reattach(tmp_path) as scene:
-        source = SourceRegistry().add_attached("a", "shot")
+        source = SourceRegistry().attached("a", "shot")
         source.attach(scene.caller)
         evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
         source.attach(scene.caller)
@@ -40,18 +38,3 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path)
         source.attach(scene.same_root)  # the same root layer, another session layer
         assert source.evaluation_stage is None
         assert source.live_stage == scene.same_root
-
-
-def test_every_binding_has_its_source_stage(tmp_path: Path) -> None:
-    with source_access.reattach(tmp_path) as scene:
-        registry = SourceRegistry()
-        file_backed = registry.add_file("f", scene.root)
-        attached = registry.add_attached("m", "shot")
-        assert registry.get("f") is file_backed
-        assert isinstance(file_backed.source, FileSource)
-        assert registry.get("m") is attached
-        assert "f" in registry
-        registry.remove("f")
-        assert "f" not in registry
-        with pytest.raises(KeyError):
-            registry.get("f")

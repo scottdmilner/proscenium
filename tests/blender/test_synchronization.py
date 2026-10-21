@@ -107,7 +107,9 @@ def test_a_reload_after_attaching_opens_under_the_policy_requested_since(sync: S
     sync.attach("shot", caller)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
-    evaluation = sync.sources.get(handle.binding_id).evaluation_stage
+    source = sync.sources.get(handle.binding_id)
+    assert source is not None
+    evaluation = source.evaluation_stage
     assert evaluation is not None
     assert read_values(evaluation) == DISK | {"payA": None, "payB": None}
 
@@ -235,6 +237,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(sync: Synchr
     sync.attach("shot", caller)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     source = sync.sources.get(handle.binding_id)
+    assert source is not None
     undo.push("create")
     undo.undo()
     assert source.evaluation_stage is None

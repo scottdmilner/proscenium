@@ -25,8 +25,6 @@ from pxr import Usd
 from . import indexes
 from .bindings import BindingConfig
 from .core.source_access import (
-    AttachedSource,
-    FileSource,
     PayloadPolicy,
     SourceKind,
     SourceRegistry,
@@ -156,9 +154,7 @@ class Synchronization:
         """
         self._prune_if_rebuilt()
         # Through the sources, not the bindings: a binding that no longer exists keeps its attachment (prune()).
-        for _, source in self.sources.items():
-            if isinstance(source.source, AttachedSource) and source.source.key == key:
-                source.release()
+        self.sources.release(key)
         return tuple(binding_id for binding_id, _ in indexes.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
@@ -210,7 +206,7 @@ class Synchronization:
 
     def live_stage(self, binding_id: str) -> Usd.Stage | None:
         self._scene(binding_id)
-        return self.sources.get(binding_id).live_stage if binding_id in self.sources else None
+        return None if (source := self.sources.get(binding_id)) is None else source.live_stage
 
     def file_loaded(self) -> None:
         """Drop every runtime source: a loaded file's bindings start with no source stage or attachment."""
@@ -218,24 +214,10 @@ class Synchronization:
         self._pruned_at = None
 
     def prune(self) -> None:
-        """Let go of the stages of sources whose binding no longer exists, or can't be read.
-
-        A file source's stage is dropped with its source; reopening it costs one open. An attached
-        source keeps its attachment, since undo neither restores nor removes attachments (UNDO-06), so
-        a binding redo brings back is still attached, and drops only its evaluation stage; release(key)
-        still releases it. A binding whose configuration can't be read keeps its attachment and
-        evaluation stage, as a binding that exists does.
-        """
-        existing = set(indexes.binding_ids())
-        for binding_id, source in self.sources.items():
-            if binding_id in existing and not (
-                isinstance(source.source, FileSource) and isinstance(indexes.config(binding_id), Refused)
-            ):
-                continue
-            if isinstance(source.source, FileSource):
-                self.sources.remove(binding_id)
-            elif binding_id not in existing:
-                source.drop_evaluation_stage()
+        """Let go of the stages of sources whose binding no longer exists, or can't be read (SourceRegistry.prune)."""
+        existing = indexes.binding_ids()
+        unreadable = {binding_id for binding_id in existing if isinstance(indexes.config(binding_id), Refused)}
+        self.sources.prune(set(existing), unreadable)
         self._pruned_at = indexes.rebuilds()
 
     def _prune_if_rebuilt(self) -> None:
@@ -267,16 +249,11 @@ class Synchronization:
         elsewhere, and a source whose resolved file changed opens the new one.
         """
         self._prune_if_rebuilt()
-        root = bpy.path.abspath(config.path) if config.source is SourceKind.FILE and config.path is not None else None
-        if binding_id in self.sources:
-            source = self.sources.get(binding_id)
-            if not isinstance(source.source, FileSource) or source.source.root == root:
-                return source
-            self.sources.remove(binding_id)
-        if root is not None:
-            return self.sources.add_file(binding_id, root)
+        if config.source is SourceKind.FILE:
+            assert config.path is not None
+            return self.sources.file(binding_id, bpy.path.abspath(config.path))
         assert config.key is not None
-        return self.sources.add_attached(binding_id, config.key)
+        return self.sources.attached(binding_id, config.key)
 
 
 def _unavailable(error: SourceUnavailable) -> Result:

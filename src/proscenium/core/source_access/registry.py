@@ -1,21 +1,23 @@
-"""Every binding's source, by binding identifier.
+"""Every binding's source, by binding identifier, and when each is made, kept, and let go.
 
 Source stages, evaluation stages, and attachments are runtime state keyed by binding identity: they live in this
 module, not in Blender data, so they are never saved in the .blend and undo neither restores nor
-removes them. A file source's path, and an attached source's key and root-layer identifier, are
+removes them (UNDO-06). A file source's path, and an attached source's key and root-layer identifier, are
 binding configuration, which the binding's records keep (proscenium.bindings); attaching under a
-source key reads them there.
+source key reads them there. A source is made from its configuration on first use, and compared
+with the bindings that exist whenever they may have changed (prune).
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from .binding_source import BindingSource
 from .sources import AttachedSource, FileSource
 
 if TYPE_CHECKING:
-    import os
+    from collections.abc import Collection
 
 
 class SourceRegistry:
@@ -26,31 +28,55 @@ class SourceRegistry:
     def __init__(self) -> None:
         self._bindings = {}
 
-    def add_file(self, binding_id: str, root: str | os.PathLike[str]) -> BindingSource:
-        """Register a binding with a file source; its source stage opens at the first acquisition."""
-        return self._add(binding_id, BindingSource(FileSource(root)))
+    def file(self, binding_id: str, root: str | os.PathLike[str]) -> BindingSource:
+        """The binding's file source on root, made if it has none; its source stage opens at the first acquisition.
 
-    def add_attached(self, binding_id: str, key: str) -> BindingSource:
-        """Register a binding with an attached source, unattached."""
-        return self._add(binding_id, BindingSource(AttachedSource(key)))
+        A source on another root is replaced, as when a "//" path resolves elsewhere after the .blend is
+        saved elsewhere: the new file opens, and the old stage is let go.
+        """
+        found = self._bindings.get(binding_id)
+        if found is not None and isinstance(found.source, FileSource) and found.source.root == os.fspath(root):
+            return found
+        source = self._bindings[binding_id] = BindingSource(FileSource(root))
+        return source
 
-    def items(self) -> list[tuple[str, BindingSource]]:
-        """Every binding's identifier and source, as a list, so sources can be removed while going through it."""
-        return list(self._bindings.items())
+    def attached(self, binding_id: str, key: str) -> BindingSource:
+        """The binding's attached source, made unattached if it has none; an existing one keeps its attachment."""
+        found = self._bindings.get(binding_id)
+        if found is not None and isinstance(found.source, AttachedSource):
+            return found
+        source = self._bindings[binding_id] = BindingSource(AttachedSource(key))
+        return source
+
+    def get(self, binding_id: str) -> BindingSource | None:
+        """The binding's source, or None before its first use."""
+        return self._bindings.get(binding_id)
 
     def __contains__(self, binding_id: str) -> bool:
         return binding_id in self._bindings
 
-    def get(self, binding_id: str) -> BindingSource:
-        """The source of binding_id. Raises KeyError if there is none."""
-        return self._bindings[binding_id]
+    def release(self, key: str) -> None:
+        """Release the stage attached under key from every source with that key, which leaves them unattached.
 
-    def remove(self, binding_id: str) -> None:
-        del self._bindings[binding_id]
+        Whether or not their binding still exists: one that doesn't keeps its attachment (prune).
+        """
+        for source in self._bindings.values():
+            if isinstance(source.source, AttachedSource) and source.source.key == key:
+                source.release()
 
-    def _add(self, binding_id: str, binding: BindingSource) -> BindingSource:
-        """Raises ValueError if binding_id is registered."""
-        if binding_id in self._bindings:
-            raise ValueError(f"Binding {binding_id!r} is already registered")
-        self._bindings[binding_id] = binding
-        return binding
+    def prune(self, existing: Collection[str], unreadable: Collection[str]) -> None:
+        """Let go of the stages of sources whose binding no longer exists, or whose configuration can't be read.
+
+        existing holds the identifiers of the bindings that exist, and unreadable those of them whose
+        configuration can't be read. A file source's stage is dropped with its source; reopening it
+        costs one open. An attached source keeps its attachment, since undo neither restores nor removes
+        attachments (UNDO-06), so a binding redo brings back is still attached, and drops only its
+        evaluation stage; release(key) still releases it. A binding whose configuration can't be read
+        keeps its attachment and evaluation stage, as a binding that exists does.
+        """
+        for binding_id, source in list(self._bindings.items()):
+            if isinstance(source.source, FileSource):
+                if binding_id not in existing or binding_id in unreadable:
+                    del self._bindings[binding_id]
+            elif binding_id not in existing:
+                source.drop_evaluation_stage()
