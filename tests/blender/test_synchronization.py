@@ -227,6 +227,55 @@ def test_undoing_a_file_bindings_creation_drops_its_stage(sync: Synchronization,
     assert handle.live_stage() is not None
 
 
+def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
+    scans: list[int] = []
+    all_bindings = bindings.all_bindings
+
+    def counted() -> object:
+        scans.append(1)
+        return all_bindings()
+
+    monkeypatch.setattr(bindings, "all_bindings", counted)
+    return scans
+
+
+def test_an_undo_with_no_sources_rebuilds_nothing_in_its_handler(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Bindings exist, but none has been synchronized this session: nothing to prune.
+    undo.require_global_undo()
+    handle = sync.create_file_binding(_scene(), _root(tmp_path))
+    undo.push("base")
+    bpy.data.objects.new("Unrelated", None)
+    undo.push("edit")
+    scans = _counted_scans(monkeypatch)
+    undo.undo()
+    assert scans == []
+    assert handle.synchronize(0) == Result(ResultState.SUCCESS)  # the next call rebuilds the state, once
+    assert scans == [1]
+    undo.redo()  # now with a source: pruned at once
+    assert scans == [1, 1]
+
+
+def test_pruning_compares_the_scenes_once(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handles = [sync.create_file_binding(_scene(), _root(tmp_path / str(i)), name=f"B{i}") for i in range(3)]
+    for handle in handles:
+        handle.synchronize(0)
+    current, calls = indexes._current, []  # noqa: SLF001 - the cost under test is one comparison of the scenes
+
+    def counted() -> object:
+        calls.append(1)
+        return current()
+
+    monkeypatch.setattr(indexes, "_current", counted)
+    sync.prune()
+    assert len(calls) == 1
+    assert all(handle.binding_id in sync.sources for handle in handles)
+
+
 def test_undoing_an_attached_bindings_creation_keeps_its_attachment(sync: Synchronization, tmp_path: Path) -> None:
     # UNDO-06: undo neither restores nor removes attachments. The binding's evaluation stage goes; the
     # attachment stays for redo, and release(key) still releases it while the binding doesn't exist.

@@ -516,6 +516,24 @@ def test_the_bindings_attached_with_a_key(
     assert found[a.binding_id].destination is None  # the check found the removed destination; the state was rebuilt
 
 
+def test_every_bindings_configuration(sync: Synchronization, tmp_path: Path) -> None:
+    # As config() gives each: the first candidate's, or why it can't be read, checked.
+    readable = sync.create_attached_binding(_scene(), "shot", name="A")
+    unreadable = sync.create_attached_binding(_scene(), "shot", name="B")
+    _scene()[records.NAMESPACE][bindings.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    found = indexes.configs()
+    assert found == {
+        readable.binding_id: indexes.config(readable.binding_id),
+        unreadable.binding_id: found[unreadable.binding_id],
+    }
+    assert isinstance(found[unreadable.binding_id], Refused)
+    bpy.data.collections.remove(bpy.data.collections["A"])
+    config = indexes.configs()[readable.binding_id]
+    assert not isinstance(config, Refused)
+    assert config.destination is None  # the check found the removed destination; the state was rebuilt
+
+
 def test_a_configuration_record_removed_by_hand(sync: Synchronization, tmp_path: Path) -> None:
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(sync, tmp_path)

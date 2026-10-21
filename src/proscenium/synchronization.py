@@ -214,10 +214,14 @@ class Synchronization:
         self._pruned_at = None
 
     def prune(self) -> None:
-        """Let go of the stages of sources whose binding no longer exists, or can't be read (SourceRegistry.prune)."""
-        existing = indexes.binding_ids()
-        unreadable = {binding_id for binding_id in existing if isinstance(indexes.config(binding_id), Refused)}
-        self.sources.prune(set(existing), unreadable)
+        """Let go of the stages of sources whose binding no longer exists, or can't be read (SourceRegistry.prune).
+
+        With no sources, as before a session's first synchronization, there's nothing to compare, so the
+        bindings' state isn't rebuilt for it, in the undo and redo handler or anywhere else.
+        """
+        if self.sources:
+            configs = indexes.configs()
+            self.sources.prune(configs.keys(), {b for b, config in configs.items() if isinstance(config, Refused)})
         self._pruned_at = indexes.rebuilds()
 
     def _prune_if_rebuilt(self) -> None:
