@@ -9,24 +9,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
-import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium import synchronization
-from proscenium.synchronization import Synchronization
 from support import undo
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
+    from proscenium.synchronization import Synchronization
 
 
 def test_undo_and_redo_leave_attachments(sync: Synchronization, tmp_path: Path) -> None:

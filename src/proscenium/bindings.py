@@ -115,7 +115,7 @@ def config_key(binding_id: str) -> str:
     return CONFIG_PREFIX + binding_id
 
 
-def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
+def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> tuple[str, BindingConfig]:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
     Raises RecordRefused, changing nothing, if the binding index can't be read; ValueError if the
@@ -125,13 +125,14 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
     binding_id = new_identifier()
     destination = bpy.data.collections.new(name)
     scene.collection.children.link(destination)
-    records.write(scene, config_key(binding_id), CONFIG, dataclasses.replace(config, destination=destination))
+    config = dataclasses.replace(config, destination=destination)
+    records.write(scene, config_key(binding_id), CONFIG, config)
     records.write(destination, TAG_KEY, TAG, DestinationTag(binding_id, scene))
     if text is None:
         text = bpy.data.texts.new(INDEX_NAME)
         text.use_fake_user = True
     records.write(text, INDEX_KEY, INDEX, BindingIndex(index.destinations | {binding_id: destination}))
-    return binding_id
+    return binding_id, config
 
 
 def find(binding_id: str) -> tuple[bpy.types.Scene, Loaded[BindingConfig] | Refused] | None:

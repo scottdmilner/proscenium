@@ -5,10 +5,11 @@ its requested settings and reports the source's state. Its time code is the atte
 setting of the binding. M5 adds evaluation at that time code, planning, application, and
 publication, and the guard against reentrant calls.
 
-A binding's configuration is its records (proscenium.bindings), read at every call; its source
-stages and attachment are runtime state in a SourceRegistry, made from the configuration on first
-use. A binding whose configuration can't be read keeps everything it has and refuses the
-operations that need it, reporting why (lifecycle.md#schema-versions).
+A binding's configuration is its records (proscenium.bindings), held and written through the
+bindings' in-memory state (proscenium.indexes); its source stages and attachment are runtime state
+in a SourceRegistry, made from the configuration on first use. A binding whose configuration can't
+be read keeps everything it has and refuses the operations that need it, reporting why
+(lifecycle.md#schema-versions).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from typing import TYPE_CHECKING
 import bpy
 from pxr import Usd
 
-from . import bindings
+from . import indexes
 from .bindings import BindingConfig, PayloadPolicy
 from .core.source_access import AttachedSource, FileSource, SourceKind, SourceRegistry, SourceUnavailable
 from .records import RecordRefused, Refused
@@ -102,7 +103,7 @@ class Synchronization:
         if str(root).startswith("//") and not bpy.data.filepath:
             raise ValueError(f"{root} is relative to the .blend, which hasn't been saved")
         config = BindingConfig(SourceKind.FILE, str(root), None, None, None, PayloadPolicy.of(payload_policy))
-        return BindingHandle(bindings.create(scene, config, name or Path(root).stem))
+        return self._create(scene, config, name or Path(root).stem)
 
     def create_attached_binding(
         self,
@@ -114,11 +115,11 @@ class Synchronization:
     ) -> BindingHandle:
         """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
         config = BindingConfig(SourceKind.ATTACHED, None, key, None, None, PayloadPolicy.of(payload_policy))
-        return BindingHandle(bindings.create(scene, config, name or key))
+        return self._create(scene, config, name or key)
 
     def bindings(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene."""
-        return [BindingHandle(binding_id) for binding_id in bindings.scene_bindings(scene)]
+        return [BindingHandle(binding_id) for binding_id in indexes.binding_ids(scene)]
 
     def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
         """Attach stage to every binding whose attached source has this exact key (source-access.md#source-identity).
@@ -128,22 +129,16 @@ class Synchronization:
         whose configuration can't be read is never attached.
         """
         identifier = stage.GetRootLayer().identifier
-        matching = [
-            (scene, binding_id, config.record)
-            for scene, binding_id, config in bindings.all_bindings()
-            if not isinstance(config, Refused)
-            and config.record.source is SourceKind.ATTACHED
-            and config.record.key == key
-        ]
-        unconfirmed = tuple(b for _, b, c in matching if c.root_layer_identifier not in (None, identifier))
+        matching = list(indexes.attached_with_key(key))
+        unconfirmed = tuple(b for b, c in matching if c.root_layer_identifier not in (None, identifier))
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)
-        for scene, binding_id, config in matching:
+        for binding_id, config in matching:
             source = self._source(binding_id, config).source
             assert isinstance(source, AttachedSource)
             source.attach(stage)
-            bindings.update(scene, binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
-        return AttachResult(attached=tuple(b for _, b, _ in matching), unconfirmed=())
+            indexes.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
+        return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
         """Raises RecordRefused if the binding's configuration can't be read."""
@@ -154,13 +149,12 @@ class Synchronization:
 
     def set_settings(self, binding_id: str, *, payload_policy: Usd.Stage.InitialLoadSet | None = None) -> Result:
         """Record requested settings without synchronizing."""
-        scene = self._scene(binding_id)
         config = self._config(binding_id)
         if isinstance(config, Refused):
             return _unsupported(config)
         if payload_policy is not None:
             config = dataclasses.replace(config, payload_policy=PayloadPolicy.of(payload_policy))
-        bindings.update(scene, binding_id, config)
+        indexes.set_config(binding_id, config)
         return Result(ResultState.SUCCESS)
 
     def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
@@ -203,16 +197,18 @@ class Synchronization:
         """Drop every runtime source: a loaded file's bindings start with no source stage or attachment."""
         self.sources = SourceRegistry()
 
+    def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
+        return BindingHandle(indexes.create(scene, config, name))
+
     def _scene(self, binding_id: str) -> bpy.types.Scene:
-        if (found := bindings.find(binding_id)) is None:
+        if (scene := indexes.binding_scene(binding_id)) is None:
             raise BindingNotFound(binding_id)
-        return found[0]
+        return scene
 
     def _config(self, binding_id: str) -> BindingConfig | Refused:
-        if (found := bindings.find(binding_id)) is None:
+        if (config := indexes.config(binding_id)) is None:
             raise BindingNotFound(binding_id)
-        result = found[1]
-        return result if isinstance(result, Refused) else result.record
+        return config
 
     def _source(self, binding_id: str, config: BindingConfig) -> BindingSource:
         """The binding's runtime source, made from its configuration on first use.

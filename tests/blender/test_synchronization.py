@@ -7,7 +7,6 @@ Their records, save/reopen, undo, and the key contract are in test_bindings.py.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import bpy
 import pytest
@@ -16,7 +15,6 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium import synchronization
 from proscenium.synchronization import (
     BindingHandle,
     BindingNotFound,
@@ -27,17 +25,6 @@ from proscenium.synchronization import (
     Synchronization,
 )
 from support.usd import open_fresh
-
-if TYPE_CHECKING:
-    from collections.abc import Generator
-
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Generator[Synchronization]:
-    """A fresh process state, which handles use."""
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
 
 
 def _scene() -> bpy.types.Scene:

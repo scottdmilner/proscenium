@@ -13,28 +13,21 @@ import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium import binding_state, bindings, ownership, records, synchronization
+from proscenium import binding_state, bindings, ownership, records
 from proscenium.binding_state import Generation, LastAttempt
 from proscenium.bindings import PayloadPolicy
 from proscenium.ownership import Manifest, ManifestEntry
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from proscenium.results import Category, Diagnostic, ResultState, Severity
-from proscenium.synchronization import BindingHandle, Synchronization
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
+
+    from proscenium.synchronization import BindingHandle, Synchronization
 
 DIRTY = Diagnostic(Category.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda"))
 UNAVAILABLE = Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
-
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
 
 
 def _scene() -> bpy.types.Scene:

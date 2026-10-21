@@ -619,10 +619,10 @@ requirements:
         fixtures: [F-REATTACH]
         oracle: "Undoing and redoing a change to an attached binding leaves its stage attached, found by binding identity."
       - id: UNDO-07
-        quote: "Runtime code must not hold Blender datablock references across operator calls."
+        quote: "check each reference before returning it, so no lookup returns a removed datablock"
         delivery: M3
         fixtures: [F-BINDING-STATE]
-        oracle: "After undo, redo, file load, and deletion of managed content, lookups through runtime indexes return current datablocks or raise; none returns a removed one."
+        oracle: "After undo, redo, file load, and deletion of managed content, lookups through runtime indexes return current datablocks or nothing, never a removed one, including when a new datablock takes a removed one's address."
       - id: UNDO-08
         quote: "Detach, cleanup, and binding removal must support undo/redo"
         delivery: M11

@@ -122,7 +122,7 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
 5. **Ownership metadata format (OWN-01).** It is representation-independent and keeps resource identity, ownership, source coverage, representation role, and usage separate.
 6. **Published-generation, last-attempt, and pending-cleanup schemas,** as far as M3 can define them. M5 fills in the published generation and chooses the pending-cleanup mechanism.
 7. **Source-entity identifiers and the persistent selection schema (ICON-24).** The identifier is the entity's path in the composed stage, as the Phase B log describes. Tests: compatibility of source-entity identifiers and persisted selection with M2's fixtures and oracle (`tests/support/interaction_oracle.py`).
-8. **Runtime indexes,** keyed by persistent identifiers and guarded by a generation counter. They are rebuilt after file load, undo, and redo. Test: indexes survive save and reopen.
+8. **Runtime indexes:** disposable caches keyed by persistent and session identifiers, holding datablock references checked before each is returned. They are rebuilt after file load, undo, and redo. Test: indexes survive save and reopen.
 9. **Reopening:** no automatic synchronization, an unavailable source, and a deleted destination.
 10. **Copied-binding detection and the disabled-pending-repair state,** with `F-OWNERSHIP-AMBIGUITY`. Its duplicate-collection case builds the deep copy's inferred state (D1), since Outliner > Duplicate Collection can't run in background mode.
 
@@ -314,6 +314,49 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
     - Writing refuses a newer or unreadable record, and replaces a damaged or failing one that loading refuses, with the caller's read the guard.
     - A newer selection is never overwritten.
     - A damaged path loads and is left to resolution.
+
+- **D8, the bindings' in-memory state and runtime indexes (UNDO-07)** (with the user). `proscenium/indexes.py` holds each binding's scene and decoded configuration and, read when first needed, its decoded manifest, with every datablock's claims and each binding's resources by identity.
+  - **A write-through cache.** The state is a disposable cache of the records, rebuildable from them at any time. The records are written through so they're saved and so undo steps capture them, and are never read back after the extension's own writes.
+    - Writes don't wait for a save: every user operation pushes an undo step capturing Blender data, so a record behind the state would be restored on undo as something the user never saw.
+    - `set_config` and `set_manifest` update memory and write the record. A manifest write replaces only its destination's share of the ownership index: the index keeps, per destination, its claimant (the first binding found whose configuration names it, as `claims_from` picks), the claims it adds by datablock `session_uid`, and the resources it supplies. A destination change, which only repair makes, rebuilds the index from the manifests in memory. The selection, which M7 writes on every selection change, touches no index.
+    - The handle's calls are a dictionary lookup and a check, with no record decoded per call.
+  - **Every candidate.** The state holds every candidate of a binding identity, so a scene copy's binding is listed on its scene, and ownership counts its manifest as `ownership.claims()` does. A lookup by identity uses the first candidate found; D10's rule replaces that with the canonical candidate and disables the rest pending repair.
+  - **Rebuilt when Blender changes data behind it:** a file load, undo, or redo, whose handlers drop the state, before and after. Dropping it before means another extension's handler that runs ahead of ours reads the new data. The state needs those handlers, since a cached configuration would otherwise outlive an undo that reverted it, so using it without the extension registered raises `NotTracking`.
+    - Every write checks that before changing Blender data, so a refused write leaves the file as it was. Creation goes through `indexes.create()` for that: a binding made before the check would be in the file and found at the next load.
+    - In practice a configuration change survives that anyway: the record is on the scene, so undoing it re-reads the scene, whose dead reference the hit check catches.
+    - The handlers are what catch a binding undo or redo brings back: a binding missing from the state is a miss, and a miss doesn't rebuild. Disabling the undo handler fails the undo-and-redo-of-creation tests.
+  - **Scenes added or removed,** by a scene copy, a new scene, or an append, no handler announces. Every use compares the scenes' `session_uid`s with those the state was built from and rebuilds if they differ; no `session_uid` survives a file load (one check), so that also catches state built from the previous file. Each candidate is matched to a scene by `session_uid`, never by reference, as claims are. A listing checks every candidate it lists, as a lookup checks the one it returns.
+  - **The spec changed with it** (with the user): [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state) barred datablock references across operator calls everywhere, and asked for indexes keyed by persistent identifiers and guarded by a generation counter. Runtime indexes may now hold datablock references, checked before each is returned, keyed by persistent and session identifiers. Without references, no identifier finds a datablock short of scanning `bpy.data` on every hit. UNDO-07's oracle now reads "return current datablocks or nothing", since a failed check rebuilds and answers; DECISIONS.md row "Runtime indexes hold checked ID references".
+  - **Why references can't simply be held:** holding references to managed datablocks isn't safe either (one check each, bpy wheel). Undo re-reads every datablock the undone step changed, which a synchronization's managed content always is, and a reference held across it raises `ReferenceError`, as one held across a file load or a removal does.
+  - **Removals no handler announces are caught on each hit.** A removed ID's reference raises when touched; a binding's scene must still hold its configuration; and its destination must still exist, since removing it clears the configuration's pointer. A failed check rebuilds.
+    - A manifest is checked whole when returned, since every entry names a datablock: one naming a removed datablock is reread from the record, where Blender has cleared the pointer. That costs about 1.3 ms per 10,000 entries, a fraction of what a caller iterating the manifest does anyway.
+    - Claims are keyed by the datablock's `session_uid`, not its reference: a new datablock often takes a removed one's address (every time in 100 trials each of `objects.remove`, `batch_remove`, and `orphans_purge`, bpy wheel). In those trials a removed reference also compared unequal to the new datablock, so a reference key wasn't matched either, but that rests on how Blender invalidates references; `session_uid` is documented unique in the session. It also survives an undo re-read (one check), so claims stay valid across one.
+  - **Only ID references, never the structs inside a datablock:** a modifier held across undo of a step that changed its object read 0 where a fresh lookup read 1, from freed memory. A test pins that by address without reading it.
+  - **Moves out of other modules:**
+    - `ownership.binding_manifest()` becomes `indexes.manifest()`, cached.
+    - `ownership.claims()` is now `claims_from()` over given manifests, which the state uses, plus a scan of the records that reads each destination's manifest once, though a linked copy's configurations name it twice.
+    - `bindings.create()` returns the configuration it wrote, which `indexes.create()` records.
+    - `records.has()` checks a key without reading it.
+  - **Other content appended or linked, and a destination collection duplicated on its own,** add no scene, so they're seen at the next load, undo, or redo; D10's copy detection scans the file itself. `ownership.claims()` reads destinations from the configuration records too, so the two still agree.
+  - **Costs** (bpy wheel, 5 runs each): rebuilding from the records takes 21–35 ms per 10,000 managed resources, mostly reading manifests, and 4–5 ms for 1,000 bindings with no content. Rebuilding the ownership index from the manifests in memory takes 8–26 ms per 10,000 resources, which a publication no longer pays: publishing a manifest, its write included, took 48–71 ms for 10,000 resources, 4.2–4.6 ms for 1,000, and 0.4–0.5 ms for 100, whatever else the file holds. A whole `requested_settings()` call takes 1.6 µs with one scene and 2.4 µs with ten, most of it comparing the scenes, against 5.5 µs when each call read the record.
+  - **Tests:** every API test registers the extension through a shared `sync` fixture.
+    - `F-BINDING-STATE` gets its cases, "handles", "configuration", "reopen", "live-stage", "selection", and "indexes", with new tests on it for API-02, API-03, API-07, ICON-32, and reopening without synchronizing.
+    - `blender/test_indexes.py`:
+      - undo and redo of creation;
+      - undo of a change to managed content;
+      - undo reverting a cached configuration;
+      - removed managed content and a removed destination;
+      - a removed datablock's entry in the cached manifest, and a new datablock at its address;
+      - a full-copy and a linked-copy scene made after the state was built, with the state's claims equal to `ownership.claims()` for every object;
+      - a removed scene, and a new scene at its address;
+      - a configuration record removed by hand;
+      - another extension's redo handler running ahead of ours;
+      - publications replacing only their share, with a linked copy's shared destination and an ambiguous datablock, equal to a rebuild, and a destination two identities name keeping its first claimant;
+      - save and reopen;
+      - writes answered from memory with record reads made to fail;
+      - creation and writes refused without the extension, leaving every scene's, collection's, and text's records as they were;
+      - the struct hazard.
+    - **Mutation checks:** disabling the undo handler, rereading the manifest instead of updating memory, skipping the destination check, returning the cached manifest unchecked, checking tracking after `bindings.create()`, skipping the scene comparison, keeping one candidate per identity, emptying the pre handlers, listing without checking, leaving a replaced share's claims, rebuilding the index on each publication, taking the publisher as the claimant, and reading a shared destination's manifest twice in `ownership.claims()` each fail a test. Keying claims, and matching scenes, by reference passes, for the reason above: the tests pin the result, which this wheel gives either way.
 
 ### Phase E — Close
 
