@@ -220,11 +220,15 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
 def update_manifest(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
     """Change some of a binding's manifest entries, writing only those: changed adds or replaces entries by
     resource identity, and removed deletes them. A binding with no manifest yet starts from an empty one,
-    and an empty update writes nothing. The cost is what changes, not the manifest (Manifest.updated).
+    and an empty update writes nothing. What it writes and indexes is what changes; in memory it also
+    copies the manifest's entries and, with removals, scans their uses (Manifest.updated).
 
     Raises what set_manifest raises, and ValueError, TypeError, or KeyError (ownership.write_entries),
     changing nothing, over an update that makes no manifest.
     """
+    # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
+    # them disagreeing, and Manifest.updated tests it once per entry and per use.
+    removed = frozenset(removed)
     found = _existing(binding_id)
     destination = _destination(binding_id, found)
     state = _current()
