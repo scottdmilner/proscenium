@@ -12,7 +12,8 @@ users are read from Blender's user graph when an operation needs them, since not
 can track them.
 
 Reading a manifest reads every entry, so the operations that run often go through runtime indexes
-built from it, not through these functions.
+built from it, not through these functions. Writing one can write only the entries that change
+(write_entries), so an incremental refresh costs what it changes.
 
 A manifest's pointers are users of the datablocks they name. So managed content the user deletes
 in the interface (Object > Delete) stays in the file, still named and so still claimed, until a
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import bpy
@@ -33,7 +35,7 @@ from . import bindings, records
 from .records import Loaded, Refused, Schema
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
 MANIFEST_KEY = "manifest"
 
@@ -43,9 +45,9 @@ class ManifestEntry:
     """One managed resource."""
 
     datablock: bpy.types.ID | None  # None once the user deletes it: removing a datablock clears pointers to it
-    covers: list[str]  # the source entities it represents: composed-stage paths, possibly many
+    covers: Sequence[str]  # the source entities it represents: composed-stage paths, possibly many
     role: str  # why it exists; M5 defines the roles
-    uses: list[str]  # the resource identities of the managed resources it depends on
+    uses: Sequence[str]  # the resource identities of the managed resources it depends on
 
     def __post_init__(self) -> None:
         if not isinstance(self.datablock, bpy.types.ID | None):
@@ -53,25 +55,64 @@ class ManifestEntry:
         # The items in covers and uses aren't checked here, since a manifest can have thousands of
         # entries. A bad path in covers is caught when it's resolved. A bad item in uses is caught by
         # Manifest.__post_init__, which refuses any item that isn't another entry's resource identity.
-        if type(self.covers) is not list or type(self.uses) is not list:
+        if type(self.covers) not in (list, tuple) or type(self.uses) not in (list, tuple):
             raise TypeError("an entry covers a list of source-entity paths and uses a list of resources")
+        # Tuples, so the cache that hands entries out (proscenium.indexes) can't be changed through one.
+        object.__setattr__(self, "covers", tuple(self.covers))
+        object.__setattr__(self, "uses", tuple(self.uses))
         if type(self.role) is not str or not self.role:
             raise ValueError("an entry has a representation role")
 
 
 @dataclass(frozen=True)
 class Manifest:
-    entries: dict[str, ManifestEntry]  # resource identity -> its entry
+    """An immutable value: its entries are a read-only view of a dict nothing else holds."""
+
+    entries: Mapping[str, ManifestEntry]  # resource identity -> its entry
 
     def __post_init__(self) -> None:
         # A stored manifest's entries are plain groups; build them.
         entries = {key: e if isinstance(e, ManifestEntry) else ManifestEntry(**e) for key, e in self.entries.items()}
-        object.__setattr__(self, "entries", entries)
+        object.__setattr__(self, "entries", MappingProxyType(entries))
         if missing := {used for e in entries.values() for used in e.uses} - entries.keys():
             raise ValueError(f"entries use resources the manifest doesn't have: {sorted(missing)}")
         named = [e.datablock for e in entries.values() if e.datablock is not None]
         if len(set(named)) != len(named):
             raise ValueError("two entries name one datablock")
+
+    def updated(
+        self, changed: Mapping[str, ManifestEntry], removed: Collection[str], naming: Callable[[int], str | None]
+    ) -> Manifest:
+        """This manifest with changed's entries added or replaced and removed's deleted, checked as a whole one
+        is, at the cost of what changes and a scan of the uses.
+
+        naming gives the key of this manifest's entry naming a datablock, by session_uid, or None; the
+        ownership index has it. Raises ValueError or TypeError over an update that makes no manifest.
+        """
+        if not changed.keys().isdisjoint(removed):
+            raise ValueError("an update both changes and removes a resource")
+        if missing := set(removed) - self.entries.keys():
+            raise ValueError(f"removes resources the manifest doesn't have: {sorted(missing)}")
+        for entry in changed.values():
+            if type(entry) is not ManifestEntry:
+                raise TypeError("a changed entry is not a ManifestEntry")
+            # Checked here, unlike in a whole manifest, since only the changed entries are.
+            if not all(type(item) is str for item in (*entry.covers, *entry.uses)):
+                raise TypeError("an entry covers source-entity paths and uses resource identities, all strings")
+        entries = {key: e for key, e in self.entries.items() if key not in removed} | dict(changed)
+        used = {u for e in changed.values() for u in e.uses}
+        if removed:  # a scan, but of values in memory
+            used |= {u for e in entries.values() for u in e.uses if u in removed}
+        if missing := used - entries.keys():
+            raise ValueError(f"entries use resources the manifest doesn't have: {sorted(missing)}")
+        named = [e.datablock for e in changed.values() if e.datablock is not None]
+        if len(set(named)) != len(named) or any(
+            (key := naming(d.session_uid)) is not None and key not in changed and key not in removed for d in named
+        ):
+            raise ValueError("two entries name one datablock")
+        manifest = object.__new__(Manifest)  # checked above, so not again in __post_init__
+        object.__setattr__(manifest, "entries", MappingProxyType(entries))
+        return manifest
 
 
 MANIFEST = Schema("manifest", version=1, record=Manifest)
@@ -99,6 +140,15 @@ def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | Refus
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
     """Raises RecordRefused, changing nothing, over a stored manifest that can't be read."""
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
+
+
+def write_entries(
+    destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
+) -> None:
+    """Store manifest, which differs from the stored one only in the entries under changed and removed,
+    writing only those (records.write_items). Raises as write_manifest does, and KeyError, changing nothing,
+    for a resource identity too long for an ID-property key."""
+    records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
 
 
 def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:

@@ -26,6 +26,7 @@ from proscenium.records import (
     load,
     read,
     write,
+    write_items,
 )
 from support.blend import save_and_reopen
 
@@ -249,3 +250,65 @@ def test_a_missing_record_reads_as_none(versions: fixture.SchemaVersions) -> Non
     assert read(_scene(), "v3", versions.schema) is None
     _store_raw(versions)
     assert read(_scene(), "absent", versions.schema) is None
+
+
+# Writing some items of a record.
+
+
+@dataclass(frozen=True)
+class Keyed:
+    items: dict[str, dict[str, int]]
+
+
+def _rename_values(fields: dict[str, Any]) -> dict[str, Any]:
+    return {"items": fields.pop("values")}
+
+
+KEYED = Schema("keyed", version=2, record=Keyed, migrations={1: _rename_values})
+
+
+def _store_keyed(stored: dict[str, Any]) -> None:
+    _scene()[NAMESPACE] = {"keyed": stored}
+
+
+def test_writing_items_writes_only_those() -> None:
+    # "z" is stored but not in the record: a whole write would drop it, so its staying shows nothing else was written.
+    _store_keyed({VERSION_KEY: 2, "items": {"a": {"n": 1}, "b": {"n": 2}, "z": {"n": 9}}})
+    write_items(_scene(), "keyed", KEYED, Keyed({"a": {"n": 5}, "c": {"n": 3}}), "items", ["a", "c"], ["b"])
+    assert _raw() == {"keyed": {VERSION_KEY: 2, "items": {"a": {"n": 5}, "c": {"n": 3}, "z": {"n": 9}}}}
+
+
+def test_writing_items_of_an_older_or_missing_record_writes_it_whole() -> None:
+    _store_keyed({VERSION_KEY: 1, "values": {"a": {"n": 1}, "z": {"n": 9}}})
+    record = Keyed({"a": {"n": 5}})
+    write_items(_scene(), "keyed", KEYED, record, "items", ["a"], [])
+    assert _raw() == {"keyed": {VERSION_KEY: 2, "items": {"a": {"n": 5}}}}
+    del _scene()[NAMESPACE]
+    write_items(_scene(), "keyed", KEYED, record, "items", ["a"], [])
+    assert _raw() == {"keyed": {VERSION_KEY: 2, "items": {"a": {"n": 5}}}}
+
+
+def test_writing_items_never_replaces_a_newer_record() -> None:
+    _store_keyed({VERSION_KEY: 3, "items": {"a": {"n": 1}}})
+    before = _raw()
+    with pytest.raises(RecordRefused):
+        write_items(_scene(), "keyed", KEYED, Keyed({"a": {"n": 5}}), "items", ["a"], [])
+    assert _raw() == before
+
+
+@pytest.mark.parametrize(
+    ("items", "error"),
+    [
+        # Blender refuses these only as it converts each, after the items before them.
+        ({"a": {"n": 5}, "x" * 64: {"n": 1}}, KeyError),
+        ({"a": {"n": 5}, "b": {"n": 2**40}}, OverflowError),
+    ],
+)
+def test_writing_items_that_cannot_be_held_changes_nothing(
+    items: dict[str, dict[str, int]], error: type[Exception]
+) -> None:
+    _store_keyed({VERSION_KEY: 2, "items": {"a": {"n": 1}, "b": {"n": 2}}})
+    before = _raw()
+    with pytest.raises(error):
+        write_items(_scene(), "keyed", KEYED, Keyed(items), "items", list(items), [])
+    assert _raw() == before
