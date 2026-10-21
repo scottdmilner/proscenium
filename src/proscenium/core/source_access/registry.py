@@ -38,6 +38,10 @@ class SourceRegistry:
         """Register a binding with an attached source, unattached."""
         return self._add(binding_id, BindingSource(AttachedSource(key), payload_policy))
 
+    def items(self) -> list[tuple[str, BindingSource]]:
+        """Every binding's identifier and source, as a list, so sources can be removed while going through it."""
+        return list(self._bindings.items())
+
     def __contains__(self, binding_id: str) -> bool:
         return binding_id in self._bindings
 

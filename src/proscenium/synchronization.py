@@ -84,9 +84,11 @@ class Synchronization:
     """The process's bindings: their records in Blender data, and their runtime sources."""
 
     sources: SourceRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
+    _pruned_at: int | None  # indexes.rebuilds() when sources were last compared with the bindings
 
     def __init__(self) -> None:
         self.sources = SourceRegistry()
+        self._pruned_at = None
 
     def create_file_binding(
         self,
@@ -134,11 +136,22 @@ class Synchronization:
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)
         for binding_id, config in matching:
-            source = self._source(binding_id, config).source
-            assert isinstance(source, AttachedSource)
-            source.attach(stage)
+            self._source(binding_id, config).attach(stage)
             indexes.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
+
+    def release(self, key: str) -> tuple[str, ...]:
+        """Release the stage attached under key from every binding with that key, which leaves them unattached.
+
+        The bindings hold an attached stage, and the layers it composes, until this, another attach,
+        or a file load (source-access.md#source-stages). Returns the bindings with the key.
+        """
+        self._prune_if_rebuilt()
+        # Through the sources, not the bindings: a binding that no longer exists keeps its attachment (prune()).
+        for _, source in self.sources.items():
+            if isinstance(source.source, AttachedSource) and source.source.key == key:
+                source.release()
+        return tuple(binding_id for binding_id, _ in indexes.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
         """Raises RecordRefused if the binding's configuration can't be read."""
@@ -196,16 +209,47 @@ class Synchronization:
     def file_loaded(self) -> None:
         """Drop every runtime source: a loaded file's bindings start with no source stage or attachment."""
         self.sources = SourceRegistry()
+        self._pruned_at = None
+
+    def prune(self) -> None:
+        """Let go of the stages of sources whose binding no longer exists, or can't be read.
+
+        A file source's stage is dropped with its source; reopening it costs one open. An attached
+        source keeps its attachment, since undo neither restores nor removes attachments (UNDO-06), so
+        a binding redo brings back is still attached, and drops only its evaluation stage; release(key)
+        still releases it. A binding whose configuration can't be read keeps its attachment and
+        evaluation stage, as a binding that exists does.
+        """
+        existing = set(indexes.binding_ids())
+        for binding_id, source in self.sources.items():
+            if binding_id in existing and not (
+                isinstance(source.source, FileSource) and isinstance(indexes.config(binding_id), Refused)
+            ):
+                continue
+            if isinstance(source.source, FileSource):
+                self.sources.remove(binding_id)
+            elif binding_id not in existing:
+                source.drop_evaluation_stage()
+        self._pruned_at = indexes.rebuilds()
+
+    def _prune_if_rebuilt(self) -> None:
+        if self._pruned_at != indexes.rebuilds():
+            self.prune()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(indexes.create(scene, config, name))
 
+    # Every per-binding call goes through _scene or _config, and every use of a source through _source,
+    # so each compares the sources with the bindings when the bindings' state was rebuilt.
+
     def _scene(self, binding_id: str) -> bpy.types.Scene:
+        self._prune_if_rebuilt()
         if (scene := indexes.binding_scene(binding_id)) is None:
             raise BindingNotFound(binding_id)
         return scene
 
     def _config(self, binding_id: str) -> BindingConfig | Refused:
+        self._prune_if_rebuilt()
         if (config := indexes.config(binding_id)) is None:
             raise BindingNotFound(binding_id)
         return config
@@ -216,6 +260,7 @@ class Synchronization:
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved
         elsewhere, and a source whose resolved file changed opens the new one.
         """
+        self._prune_if_rebuilt()
         root = bpy.path.abspath(config.path) if config.source is SourceKind.FILE and config.path is not None else None
         if binding_id in self.sources:
             source = self.sources.get(binding_id)

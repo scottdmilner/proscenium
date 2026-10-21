@@ -1,4 +1,4 @@
-"""Isolated body: a binding becomes unattached once the caller releases its attached stage (SRC-02).
+"""Isolated body: a binding holds its attached stage until the caller releases it (SRC-02).
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_attachments.py.
 """
@@ -13,36 +13,47 @@ from typing import Any
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium.core.source_access import AttachedSource, SourceRegistry, SourceUnavailable
+from proscenium.core._core import StageHandle
+from proscenium.core.source_access import SourceRegistry, SourceUnavailable
 from support.usd import open_fresh
 
 # Expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
 EXPIRY_WAIT = 2.0
 
 
-def caller_releases_its_stage(tmp_dir: str) -> dict[str, Any]:
-    """Attach, acquire the evaluation stage, then drop every reference to the caller's stage."""
+def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
+    """Attach, acquire, drop every caller reference, then release the attachment."""
     registry = SourceRegistry()
     binding = registry.add_attached("a", "shot", Usd.Stage.LoadAll)
     with source_access.reattach(Path(tmp_dir)) as scene:
-        caller = open_fresh(scene.root)  # this body's own stage, so it holds the only reference
+        caller = open_fresh(scene.root)  # this body's own stage, so it holds the only caller reference
+        caller.SetEditTarget(caller.GetSessionLayer())
+        caller.DefinePrim("/Edited")  # an unsaved edit in a layer only this stage composes
         session = caller.GetSessionLayer().identifier
-        assert isinstance(binding.source, AttachedSource)
-        binding.source.attach(caller)
-        evaluation = binding.acquire()
-        result: dict[str, Any] = {"attached_before": binding.live_stage == caller}
-        del evaluation, caller
+        watch = StageHandle(caller)
+        watch.release()  # weak: says whether the stage still exists, without keeping it
+        binding.attach(caller)
+        binding.acquire()
+        del caller
+        gc.collect()
+        layer = Sdf.Layer.Find(session)
+        result: dict[str, Any] = {
+            "attached_after_drop": binding.live_stage is not None,
+            "edit_loaded_after_drop": layer is not None and layer.GetPrimAtPath("/Edited") is not None,
+        }
+        del layer
+        binding.release()
         deadline = time.monotonic() + EXPIRY_WAIT
-        while binding.live_stage is not None and time.monotonic() < deadline:
+        while watch.stage() is not None and time.monotonic() < deadline:
             gc.collect()
             time.sleep(0.01)
-        result["attached_after"] = binding.live_stage is not None
+        result["expired_after_release"] = watch.stage() is None
+        result["attached_after_release"] = binding.live_stage is not None
         try:
             binding.acquire()
             result["acquire"] = "acquired"
         except SourceUnavailable:
             result["acquire"] = "unavailable"
         gc.collect()
-        # The evaluation stage held the caller's session layer; dropping it lets the layer go too.
         result["session_layer_freed"] = not Sdf.Layer.Find(session)
     return result

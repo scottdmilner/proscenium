@@ -63,6 +63,27 @@ class BindingSource:
         self._apply_payload_policy(stage)
         return stage
 
+    def attach(self, stage: Usd.Stage) -> None:
+        """Attach stage to an attached source, letting go of an evaluation stage over another stage's layers."""
+        assert isinstance(self.source, AttachedSource)
+        self.source.attach(stage)
+        evaluation = self._evaluation_stage
+        if evaluation is not None and (
+            evaluation.GetRootLayer() != stage.GetRootLayer() or evaluation.GetSessionLayer() != stage.GetSessionLayer()
+        ):
+            self._evaluation_stage = None
+
+    def drop_evaluation_stage(self) -> None:
+        """Let go of an attached source's evaluation stage, keeping the attachment; the next acquisition reopens it."""
+        assert isinstance(self.source, AttachedSource)
+        self._evaluation_stage = None
+
+    def release(self) -> None:
+        """Let go of an attached source's stage and the evaluation stage over its layers: the binding is unattached."""
+        if isinstance(self.source, AttachedSource):
+            self.source.release()
+            self._evaluation_stage = None
+
     def dirty_layers(self) -> list[str]:
         """Identifiers of the contributing layers with unsaved edits, for the source-state diagnostic."""
         return [layer.identifier for layer in contributing_layers(self.acquire()) if layer.dirty]
@@ -92,8 +113,6 @@ class BindingSource:
     def _evaluation_stage_for(self, attached: Usd.Stage | None) -> Usd.Stage:
         """The evaluation stage for an attached stage: reused, or opened on its root and session layers."""
         if attached is None:
-            # Let go of the attached stage's layers too, so they can be freed with it.
-            self._evaluation_stage = None
             raise SourceUnavailable("No stage is attached")
         stage = self._evaluation_stage
         if (

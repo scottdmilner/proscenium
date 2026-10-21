@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
 _state: _State | None = None
+_rebuilds = 0  # how many times the state was dropped or rebuilt; see rebuilds()
 
 
 class NotTracking(RuntimeError):  # noqa: N818 (a precondition, raised like RuntimeError)
@@ -116,8 +117,16 @@ def stop() -> None:
 
 def invalidate() -> None:
     """Drop the state, after a file load, undo, or redo: the next use rebuilds it from the records."""
-    global _state
+    global _state, _rebuilds
     _state = None
+    _rebuilds += 1
+
+
+def rebuilds() -> int:
+    """A count that changes whenever the state is dropped or rebuilt from the records, as after a load,
+    undo, or redo, or when scenes are added or removed: what keeps runtime state keyed by binding
+    identity, such as the synchronization's sources, knows to compare its bindings with binding_ids()."""
+    return _rebuilds
 
 
 # Bindings.
@@ -243,12 +252,13 @@ def _ask[T](question: Callable[[_State], T]) -> T:
 
 
 def _current() -> _State:
-    global _state
+    global _state, _rebuilds
     if not _tracking:
         raise NotTracking("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
         _state = _State(scenes, _read_bindings())
+        _rebuilds += 1
     return _state
 
 
