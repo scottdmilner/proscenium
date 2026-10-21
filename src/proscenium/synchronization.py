@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     import os
     from collections.abc import Iterable
 
-    from .core.source_access import BindingSource
+    from .core.source_access import AttachedBindingSource, FileBindingSource
 
 
 class BindingNotFound(LookupError):  # noqa: N818 (misuse, raised like KeyError)
@@ -141,8 +141,9 @@ class Synchronization:
         unconfirmed = tuple(b for b, c in matching if c.root_layer_identifier not in (None, identifier))
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)
+        self._prune_if_rebuilt()
         for binding_id, config in matching:
-            self._source(binding_id, config).attach(stage)
+            self.sources.attached(binding_id, key).attach(stage)
             indexes.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
 
@@ -232,7 +233,9 @@ class Synchronization:
         return BindingHandle(indexes.create(scene, config, name))
 
     # Every per-binding call goes through _scene or _config, and every use of a source through _source,
-    # so each compares the sources with the bindings when the bindings' state was rebuilt.
+    # except attach and release, which reach sources by key and call _prune_if_rebuilt themselves; so each
+    # compares the sources with the bindings when the bindings' state was rebuilt. A new entry point that
+    # uses a source does one or the other, and this comment names it.
 
     def _scene(self, binding_id: str) -> bpy.types.Scene:
         self._prune_if_rebuilt()
@@ -246,7 +249,7 @@ class Synchronization:
             raise BindingNotFound(binding_id)
         return config
 
-    def _source(self, binding_id: str, config: BindingConfig) -> BindingSource:
+    def _source(self, binding_id: str, config: BindingConfig) -> FileBindingSource | AttachedBindingSource:
         """The binding's runtime source, made from its configuration on first use.
 
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved

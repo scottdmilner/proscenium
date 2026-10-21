@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from .binding_source import BindingSource
+from .binding_source import AttachedBindingSource, FileBindingSource
 from .sources import AttachedSource, FileSource
 
 if TYPE_CHECKING:
@@ -23,32 +23,32 @@ if TYPE_CHECKING:
 class SourceRegistry:
     """The sources of the process's bindings, by binding identifier."""
 
-    _bindings: dict[str, BindingSource]
+    _bindings: dict[str, FileBindingSource | AttachedBindingSource]
 
     def __init__(self) -> None:
         self._bindings = {}
 
-    def file(self, binding_id: str, root: str | os.PathLike[str]) -> BindingSource:
+    def file(self, binding_id: str, root: str | os.PathLike[str]) -> FileBindingSource:
         """The binding's file source on root, made if it has none; its source stage opens at the first acquisition.
 
         A source on another root is replaced, as when a "//" path resolves elsewhere after the .blend is
         saved elsewhere: the new file opens, and the old stage is let go.
         """
         found = self._bindings.get(binding_id)
-        if found is not None and isinstance(found.source, FileSource) and found.source.root == os.fspath(root):
+        if isinstance(found, FileBindingSource) and found.source.root == os.fspath(root):
             return found
-        source = self._bindings[binding_id] = BindingSource(FileSource(root))
+        source = self._bindings[binding_id] = FileBindingSource(FileSource(root))
         return source
 
-    def attached(self, binding_id: str, key: str) -> BindingSource:
+    def attached(self, binding_id: str, key: str) -> AttachedBindingSource:
         """The binding's attached source, made unattached if it has none; an existing one keeps its attachment."""
         found = self._bindings.get(binding_id)
-        if found is not None and isinstance(found.source, AttachedSource):
+        if isinstance(found, AttachedBindingSource):
             return found
-        source = self._bindings[binding_id] = BindingSource(AttachedSource(key))
+        source = self._bindings[binding_id] = AttachedBindingSource(AttachedSource(key))
         return source
 
-    def get(self, binding_id: str) -> BindingSource | None:
+    def get(self, binding_id: str) -> FileBindingSource | AttachedBindingSource | None:
         """The binding's source, or None before its first use."""
         return self._bindings.get(binding_id)
 
@@ -64,7 +64,7 @@ class SourceRegistry:
         Whether or not their binding still exists: one that doesn't keeps its attachment (prune).
         """
         for source in self._bindings.values():
-            if isinstance(source.source, AttachedSource) and source.source.key == key:
+            if isinstance(source, AttachedBindingSource) and source.source.key == key:
                 source.release()
 
     def prune(self, existing: Collection[str], unreadable: Collection[str]) -> None:
@@ -78,7 +78,7 @@ class SourceRegistry:
         keeps its attachment and evaluation stage, as a binding that exists does.
         """
         for binding_id, source in list(self._bindings.items()):
-            if isinstance(source.source, FileSource):
+            if isinstance(source, FileBindingSource):
                 if binding_id not in existing or binding_id in unreadable:
                     del self._bindings[binding_id]
             elif binding_id not in existing:

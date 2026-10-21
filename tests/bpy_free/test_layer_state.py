@@ -20,7 +20,7 @@ from pxr import Sdf, Tf, Usd
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import caller_settings, read_values, rewrite_on_disk
-from proscenium.core.source_access import BindingSource, FileSource, PayloadPolicy, dirty_layers
+from proscenium.core.source_access import FileBindingSource, FileSource, PayloadPolicy, dirty_layers
 from support.usd import open_fresh
 
 from .bindings import KINDS, binding
@@ -212,7 +212,7 @@ def test_shared_reload(tmp_path: Path) -> None:
     # F-CACHED-STAGE "shared-reload": a rewrite isn't shown until a reload, which the cached ambient stage
     # sees too, with its own settings unchanged.
     with source_access.cached_stage(tmp_path / "scene") as scene:
-        source = BindingSource(FileSource(scene.root))
+        source = FileBindingSource(FileSource(scene.root))
         source.acquire(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.ambient)
         rewrite_on_disk(scene.root.parent, "sub", 2.0)

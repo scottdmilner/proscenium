@@ -15,7 +15,14 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
-from proscenium.core.source_access import AttachedSource, BindingSource, FileSource, PayloadPolicy, SourceUnavailable
+from proscenium.core.source_access import (
+    AttachedBindingSource,
+    AttachedSource,
+    FileBindingSource,
+    FileSource,
+    PayloadPolicy,
+    SourceUnavailable,
+)
 from support.usd import open_fresh
 
 from .bindings import KINDS, binding
@@ -78,9 +85,9 @@ def test_session_layer_opinions_are_displayed(kind: str, tmp_path: Path) -> None
 def test_unavailable_source(kind: str, tmp_path: Path) -> None:
     # A file that won't open, or no stage attached.
     source = (
-        BindingSource(FileSource(tmp_path / "missing.usda"))
+        FileBindingSource(FileSource(tmp_path / "missing.usda"))
         if kind == "file"
-        else BindingSource(AttachedSource("shot"))
+        else AttachedBindingSource(AttachedSource("shot"))
     )
     with pytest.raises(SourceUnavailable):
         source.acquire(PayloadPolicy.LOAD_ALL)
@@ -142,7 +149,7 @@ def test_ambient_cache(tmp_path: Path) -> None:
     # cached, and the ambient stage's session-layer opinions aren't composed (SRC-05).
     with source_access.cached_stage(tmp_path) as scene:
         ambient_settings = caller_settings(scene.ambient)
-        stage = BindingSource(FileSource(scene.root)).acquire(PayloadPolicy.LOAD_ALL)
+        stage = FileBindingSource(FileSource(scene.root)).acquire(PayloadPolicy.LOAD_ALL)
         assert stage != scene.ambient
         assert not UsdUtils.StageCache.Get().Contains(stage)
         assert read_values(stage) == scene.disk_values
