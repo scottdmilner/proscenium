@@ -12,22 +12,15 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium import ownership, synchronization
+from proscenium import indexes, ownership
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
-from proscenium.synchronization import BindingHandle, Synchronization
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
+    from proscenium.synchronization import BindingHandle, Synchronization
 
 
 def _scene() -> bpy.types.Scene:
@@ -49,7 +42,7 @@ def _managed(sync: Synchronization, tmp_path: Path, name: str = "Shot") -> tuple
         "b": ManifestEntry(objects[1], ["/World/Pay"], "prim", ["mesh"]),
     }
     manifest = Manifest(entries)
-    ownership.write_manifest(destination, manifest)
+    indexes.set_manifest(handle.binding_id, manifest)  # the writer path: memory, then the record
     return handle, manifest
 
 
@@ -140,7 +133,9 @@ def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(sync: Synchr
             assert claim.destination == collection  # the copies share the binding identity, not the manifest
 
 
-def test_a_linked_copy_scene_shares_one_manifest(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_linked_copy_scene_shares_one_manifest(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Both scenes' configurations point at the one destination, which is read once: one claim each.
     handle, _ = _managed(sync, tmp_path)
     window = bpy.context.window
@@ -149,7 +144,16 @@ def test_a_linked_copy_scene_shares_one_manifest(sync: Synchronization, tmp_path
     bpy.ops.scene.new(type="LINK_COPY")
     assert len(bpy.data.scenes) == 2
     shot = bpy.data.collections["Shot"]
+    read: list[bpy.types.Collection] = []
+    read_manifest = ownership.read_manifest
+
+    def counted(destination: bpy.types.Collection) -> object:
+        read.append(destination)
+        return read_manifest(destination)
+
+    monkeypatch.setattr(ownership, "read_manifest", counted)
     found = _claims()
+    assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
         bpy.data.objects["Shot0"]: [Claim(handle.binding_id, shot, "a")],
         bpy.data.objects["Shot1"]: [Claim(handle.binding_id, shot, "b")],
@@ -186,19 +190,20 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(sync: Synchroni
 def test_a_bindings_own_manifest(sync: Synchronization, tmp_path: Path) -> None:
     first, manifest = _managed(sync, tmp_path, "First")
     second, _ = _managed(sync, tmp_path, "Second")
-    assert ownership.binding_manifest(first.binding_id) == Loaded(manifest, 1)
-    assert ownership.binding_manifest(second.binding_id) != ownership.binding_manifest(first.binding_id)
+    assert indexes.manifest(first.binding_id) == Loaded(manifest, 1)
+    assert indexes.manifest(second.binding_id) != indexes.manifest(first.binding_id)
     without = sync.create_attached_binding(_scene(), "shot")
-    assert ownership.binding_manifest(without.binding_id) is None  # nothing managed yet
+    assert indexes.manifest(without.binding_id) is None  # nothing managed yet
     with pytest.raises(KeyError):
-        ownership.binding_manifest("not-a-binding")
+        indexes.manifest("not-a-binding")
 
 
 def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchronization, tmp_path: Path) -> None:
     handle, _ = _managed(sync, tmp_path)
     config = _scene()[NAMESPACE]["binding." + handle.binding_id]
     config[VERSION_KEY] = 2
-    result = ownership.binding_manifest(handle.binding_id)
+    save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
+    result = indexes.manifest(handle.binding_id)
     assert isinstance(result, Refused)
     assert result.kind == "binding"
 
@@ -206,7 +211,7 @@ def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchr
 def test_a_removed_destination_has_no_manifest(sync: Synchronization, tmp_path: Path) -> None:
     handle, _ = _managed(sync, tmp_path)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
-    assert ownership.binding_manifest(handle.binding_id) is None
+    assert indexes.manifest(handle.binding_id) is None  # the configuration's pointer was cleared
 
 
 def test_dependents_invert_the_uses(sync: Synchronization, tmp_path: Path) -> None:

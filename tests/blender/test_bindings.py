@@ -17,7 +17,7 @@ from pxr import Sdf, Usd
 from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from proscenium import addon, bindings, records, synchronization
+from proscenium import addon, binding_state, bindings, indexes, records
 from proscenium.bindings import BindingConfig, BindingIndex, DestinationTag, PayloadPolicy
 from proscenium.core.source_access import SourceKind
 from proscenium.records import NAMESPACE, Loaded, RecordRefused
@@ -35,17 +35,8 @@ from support import undo
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
     from types import ModuleType
-
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
-    """A fresh process state, which handles and the extension's load handler use."""
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
 
 
 def _scene() -> bpy.types.Scene:
@@ -220,6 +211,29 @@ def test_handles_survive_undo_redo_and_reopen(sync: Synchronization, tmp_path: P
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
 
 
+def test_handles_on_f_binding_state(sync: Synchronization, tmp_path: Path) -> None:
+    # API-02, API-03, API-07, ICON-32: synchronizing changes no setting and reuses the binding's own source
+    # stage as its live stage; set_settings and reload record or reread without synchronizing.
+    with source_access.binding_state(tmp_path) as scene:
+        handle = sync.create_file_binding(_scene(), scene.root)
+        before = _config(handle)
+        assert handle.synchronize(Usd.TimeCode.Default()) == Result(ResultState.SUCCESS)
+        assert _config(handle) == before  # API-02
+        live = handle.live_stage()
+        assert live is not None and live != scene.caller
+        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert handle.live_stage() == live  # ICON-32: the same stage after a second refresh
+        assert handle.set_settings(payload_policy=Usd.Stage.LoadNone) == Result(ResultState.SUCCESS)
+        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone  # API-03
+        assert live.GetLoadSet()  # not applied: nothing synchronized
+        assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
+        assert handle.reload() == Result(ResultState.SUCCESS)
+        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone  # API-07
+        assert handle.live_stage() == live
+        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert not live.GetLoadSet()  # applied at the next synchronization
+
+
 def test_undoing_creation_makes_handles_raise(sync: Synchronization, tmp_path: Path) -> None:
     # API-06: the binding is gone, so every method of its handles raises, as does one made afterwards;
     # redo brings it back. On F-BINDING-STATE.
@@ -259,6 +273,20 @@ def test_reopening_synchronizes_nothing(sync: Synchronization, extension: Module
     assert handle.live_stage() is None
     assert not Sdf.Layer.Find(str(root))
     assert extension.addon.is_registered()
+
+
+def test_reopening_f_binding_state_synchronizes_nothing(
+    sync: Synchronization, extension: ModuleType, tmp_path: Path
+) -> None:
+    # REOPEN-02, ICON-33 on F-BINDING-STATE: no synchronization runs, so the binding has no source stage
+    # and no last attempt. Its caller's stage keeps the root layer open, so the registry is the evidence.
+    with source_access.binding_state(tmp_path) as scene:
+        handle = sync.create_file_binding(_scene(), scene.root)
+        handle.synchronize(0)
+        save_and_reopen(tmp_path / "reopen.blend")
+        assert handle.binding_id not in sync.sources
+        assert handle.live_stage() is None
+        assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
 
 
 def test_an_attached_source_is_unavailable_after_reopening(
@@ -405,14 +433,14 @@ def test_the_namespace_is_registered_so_the_panel_hides_it(extension: ModuleType
     assert NAMESPACE in runtime
 
 
-def test_records_stay_readable_with_the_extension_registered_or_not(sync: Synchronization, tmp_path: Path) -> None:
-    handle = sync.create_file_binding(_scene(), _root(tmp_path))  # written unregistered
+def test_records_stay_readable_with_the_extension_unregistered(sync: Synchronization, tmp_path: Path) -> None:
+    # The records are raw ID properties, readable without the namespace's registered class; the API is not,
+    # since its in-memory state needs the extension's handlers.
+    handle = sync.create_file_binding(_scene(), _root(tmp_path))
+    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
     expected = _config(handle)
-    addon.register()
-    try:
-        assert _config(handle) == expected
-        handle.set_settings(payload_policy=Usd.Stage.LoadNone)  # written registered
-        save_and_reopen(tmp_path / "registered.blend")
-    finally:
-        addon.unregister()
-    assert _config(handle) == replace(expected, payload_policy="load_none", destination=bpy.data.collections["root"])
+    addon.unregister()
+    save_and_reopen(tmp_path / "unregistered.blend")
+    assert _config(handle) == replace(expected, destination=bpy.data.collections["root"])
+    with pytest.raises(indexes.NotTracking):
+        handle.requested_settings()

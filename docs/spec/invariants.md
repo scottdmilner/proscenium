@@ -42,7 +42,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 
 ## Runtime State, Undo, and Persistence
 
-- Runtime code never holds Blender datablock references across operator calls, including in indexes, UI caches, callbacks, queued work, and retained plans. Runtime indexes are disposable caches keyed by persistent identifiers and guarded by a generation counter. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-07)
+- Runtime code never holds Blender datablock references across operator calls, including in UI caches, callbacks, queued work, and retained plans, except in runtime indexes. Those are disposable caches of Blender data, rebuilt after file load, undo, and redo, and keyed by persistent and session identifiers; they hold no data inside a datablock and check each datablock reference before returning it. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-07)
 - All persistent state lives in Blender data. Requested settings, the published generation, the last attempt, and pending cleanup are logically distinct. → [Binding State](lifecycle.md#binding-state) (STATE-01, STATE-02, STATE-03, STATE-04)
 - Each synchronization that publishes is exactly one undo step; a failed synchronization pushes none. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-02, UNDO-03)
 - Each lifecycle invocation that commits changes has one undo step, including partial progress; failures before commit have none. Undo/redo restores ownership and pending-cleanup tracking with content and binding state, subject to the global-undo/background-mode rules. → [Undo and Runtime State](lifecycle.md#undo-and-runtime-state) (UNDO-08)

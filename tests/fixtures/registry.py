@@ -154,8 +154,26 @@ FIXTURES: dict[str, Fixture] = {
                 Case("unsupported-cleanup", Operation.CLEANUP, FAILURE, ("SCHEMA-04",), 1),
             ),
         ),
-        # Cases join once every row it lists has a test: UNDO-07 needs the runtime indexes (D8).
-        Fixture("F-BINDING-STATE", "Binding state through handles", ("M3", "M11"), source_access.binding_state),
+        Fixture(
+            "F-BINDING-STATE",
+            "Binding state through handles",
+            ("M3", "M11"),
+            source_access.binding_state,
+            (
+                # Handles by identifier, across undo and reopening; settings change only through set_settings.
+                Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07"), 1),
+                # The configuration and the index entry creation writes, through save and reopen.
+                Case("configuration", SYNC, SUCCESS, ("STATE-01", "COPY-07"), 1),
+                # Reopening synchronizes nothing and leaves a file binding no live stage.
+                Case("reopen", SYNC, SUCCESS, ("REOPEN-02", "ICON-33"), 1),
+                # A file binding's live stage is the source stage it opened and reuses.
+                Case("live-stage", SYNC, SUCCESS, ("ICON-32",), 1),
+                # A persistent selection from two bindings through save and reopen.
+                Case("selection", SYNC, SUCCESS, ("ICON-24",), 1),
+                # Runtime indexes return current datablocks or nothing after undo, redo, load, and deletion.
+                Case("indexes", SYNC, SUCCESS, ("UNDO-07",), 1),
+            ),
+        ),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
         Fixture("F-PUBLICATION-FAILURE", "Publication failure", ("M5",)),

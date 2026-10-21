@@ -8,23 +8,15 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium import synchronization
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from proscenium.selection import SELECTION_KEY, PersistentSelection, SelectionEntry, read_selection, write_selection
-from proscenium.synchronization import Synchronization
 from support import interaction_oracle
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
     from pathlib import Path
 
-
-@pytest.fixture
-def sync(monkeypatch: pytest.MonkeyPatch) -> Iterator[Synchronization]:
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
-    yield fresh
+    from proscenium.synchronization import Synchronization
 
 
 def _scene() -> bpy.types.Scene:

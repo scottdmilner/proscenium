@@ -83,7 +83,7 @@ All blender-layer tests in a worker share one bpy-wheel process. The autouse `cl
 
 A test therefore always starts clean, even after a failing test. If the baseline assertion fires, something escaped the reset; fix the reset rather than the test. `test_state_reset.py` shows that each kind of leftover is detected and removed.
 
-The `extension` fixture registers the extension in-process from `src/` (not installed). It's unregistered afterwards even if the test doesn't do it.
+The `extension` fixture registers the extension in-process from `src/` (not installed). It's unregistered afterwards even if the test doesn't do it. The `sync` fixture gives a fresh `Synchronization`, which handles use, with the extension registered: the API's in-memory state (`proscenium.indexes`) needs the extension's load, undo, and redo handlers.
 
 ### `isolated/`
 

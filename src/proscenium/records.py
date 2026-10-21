@@ -141,6 +141,12 @@ def stored(id_: bpy.types.ID, key: str) -> object | None:
     return _plain(namespace.get(key))
 
 
+def has(id_: bpy.types.ID, key: str) -> bool:
+    """Whether id_ stores a record under key, without reading it."""
+    namespace = id_.get(NAMESPACE)
+    return hasattr(namespace, "to_dict") and key in namespace
+
+
 def keys(id_: bpy.types.ID) -> list[str]:
     """The keys of id_'s records; none if its namespace is missing or damaged."""
     namespace = id_.get(NAMESPACE)

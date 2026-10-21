@@ -33,7 +33,7 @@ from . import bindings, records
 from .records import Loaded, Refused, Schema
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
 MANIFEST_KEY = "manifest"
 
@@ -96,52 +96,49 @@ def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | Refus
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
-def binding_manifest(binding_id: str) -> Loaded[Manifest] | Refused | None:
-    """One binding's manifest, read through its configuration's destination, for operations on that binding.
-
-    Refused if the configuration or the manifest can't be read; None if the binding has no
-    destination (it was removed) or no manifest yet. Raises KeyError if no binding has this
-    identifier. Whether another manifest also names one of its datablocks is the file-wide
-    question claims() answers.
-    """
-    if (found := bindings.find(binding_id)) is None:
-        raise KeyError(binding_id)
-    config = found[1]
-    if isinstance(config, Refused):
-        return config
-    destination = config.record.destination
-    return None if destination is None else read_manifest(destination)
-
-
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
     """Raises RecordRefused, changing nothing, over a stored manifest that can't be read."""
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
 
 
 def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
-    """Every datablock a manifest names, with the claims on it, and the manifests that can't be read.
+    """claims_from() over every binding's manifest, read from the records now.
 
-    One claim means the datablock is managed by that binding; two or more, from different
-    manifests, that it is ambiguous: it is reported, never automatically claimed or deleted
-    (OWN-09); none, that it is unmanaged. That judgment needs every manifest that could name the
-    datablock, so this reads all of them and can't be limited to some bindings: it is what the
-    runtime index of ownership is built from, once after a file load, undo, or redo and after each
-    publication, not something to call per operation. For one binding's own resources, use
-    binding_manifest().
-
-    Each manifest is read once, though several binding configurations can point at its
-    destination, as a linked-copy scene's do. A manifest that can't be read claims nothing, so its
-    content has no ownership evidence until it is repaired. Datablock references don't survive an
-    operator call or undo: use the result at once.
+    Each manifest is read once, though several configurations can name its destination, as a
+    linked-copy scene's do. The runtime indexes (proscenium.indexes) keep this for the session;
+    reading it again here is for when they can't be used.
     """
-    destinations: dict[bpy.types.Collection, str] = {}  # each destination a configuration names -> its binding
+    manifests = []
+    seen: set[bpy.types.Collection] = set()
     for _scene, binding_id, config in bindings.all_bindings():
-        if not isinstance(config, Refused) and config.record.destination is not None:
-            destinations.setdefault(config.record.destination, binding_id)
+        destination = None if isinstance(config, Refused) else config.record.destination
+        if destination is not None and destination not in seen:
+            seen.add(destination)
+            manifests.append((binding_id, destination, read_manifest(destination)))
+    return claims_from(manifests)
+
+
+def claims_from(
+    manifests: Iterable[tuple[str, bpy.types.Collection, Loaded[Manifest] | Refused | None]],
+) -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
+    """Every datablock the manifests name, with the claims on it, and the manifests that can't be read.
+
+    manifests gives each binding's destination and the manifest there; several bindings can name
+    one destination, as a linked-copy scene's configurations do, and it counts once. One claim means
+    the datablock is managed by that binding; two or more, from different manifests, that it is
+    ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
+    unmanaged. That judgment needs every manifest that could name the datablock, so it can't be made
+    from some bindings' manifests alone. A manifest that can't be read claims nothing, so its content
+    has no ownership evidence until it is repaired. Datablock references don't survive an operator
+    call or undo: use the result at once.
+    """
     found: dict[bpy.types.ID, list[Claim]] = defaultdict(list)
     unreadable: list[Refused] = []
-    for destination, binding_id in destinations.items():
-        manifest = read_manifest(destination)
+    seen: set[bpy.types.Collection] = set()
+    for binding_id, destination, manifest in manifests:
+        if destination in seen:
+            continue
+        seen.add(destination)
         if isinstance(manifest, Refused):
             unreadable.append(manifest)
         elif manifest is not None:
