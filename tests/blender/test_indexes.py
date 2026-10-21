@@ -7,8 +7,9 @@ checks on each hit.
 
 from __future__ import annotations
 
+from collections.abc import Collection, Iterator
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import bpy
 import pytest
@@ -242,6 +243,50 @@ def test_a_datablock_claimed_twice_and_once_again(sync: Synchronization, tmp_pat
     in_place = _ownership_view(ids, [*names, "x"])
     indexes.invalidate()
     assert in_place == _ownership_view(ids, [*names, "x"])
+
+
+class _CountedRemovals(Collection[str]):
+    """A caller's removals, counting the membership tests made on them."""
+
+    items: list[str]
+    tests: int
+
+    def __init__(self, items: list[str]) -> None:
+        self.items = items
+        self.tests = 0
+
+    @override
+    def __contains__(self, item: object) -> bool:
+        self.tests += 1
+        return item in self.items
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.items)
+
+    @override
+    def __len__(self) -> int:
+        return len(self.items)
+
+
+def test_removals_are_tested_as_a_set(sync: Synchronization, tmp_path: Path) -> None:
+    # Each entry and each use is tested against the removals: a caller's list would make every test a search.
+    ids, names = _two_managed(sync, tmp_path)
+    other = ids[1]
+    current = indexes.manifest(other)
+    assert isinstance(current, Loaded)
+    direct = _CountedRemovals(["a"])
+    current.record.updated({}, direct, lambda _uid: None)
+    through_the_state = _CountedRemovals(["a", "a"])  # a duplicate, too
+    indexes.update_manifest(other, {}, through_the_state)
+    assert (direct.tests, through_the_state.tests) == (0, 0)
+    assert indexes.manifest(other) == ownership.read_manifest(bpy.data.collections["Other"])
+    # Iterated once: an iterator, which the type rules out, still reaches the record and the index alike.
+    indexes.update_manifest(other, {}, iter(["b"]))  # ty: ignore[invalid-argument-type]
+    assert indexes.manifest(other) == ownership.read_manifest(bpy.data.collections["Other"])
+    in_place = _ownership_view(ids, names)
+    indexes.invalidate()
+    assert in_place == _ownership_view(ids, names)
 
 
 def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

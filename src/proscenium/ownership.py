@@ -83,14 +83,16 @@ class Manifest:
         self, changed: Mapping[str, ManifestEntry], removed: Collection[str], naming: Callable[[int], str | None]
     ) -> Manifest:
         """This manifest with changed's entries added or replaced and removed's deleted, checked as a whole one
-        is, at the cost of what changes and a scan of the uses.
+        is. The checks cost what changes, plus, with removals, a scan of every entry's uses; building the
+        result copies the entries.
 
         naming gives the key of this manifest's entry naming a datablock, by session_uid, or None; the
         ownership index has it. Raises ValueError or TypeError over an update that makes no manifest.
         """
+        removed = frozenset(removed)  # tested once per entry and per use: a caller's list would make each a search
         if not changed.keys().isdisjoint(removed):
             raise ValueError("an update both changes and removes a resource")
-        if missing := set(removed) - self.entries.keys():
+        if missing := removed - self.entries.keys():
             raise ValueError(f"removes resources the manifest doesn't have: {sorted(missing)}")
         for entry in changed.values():
             if type(entry) is not ManifestEntry:
