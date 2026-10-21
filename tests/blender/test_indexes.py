@@ -20,7 +20,7 @@ from proscenium import addon, bindings, indexes, ownership, records
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import Loaded, Refused
-from proscenium.synchronization import Synchronization
+from proscenium.synchronization import BindingHandle, Synchronization
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -29,7 +29,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.bindings import BindingConfig
-    from proscenium.synchronization import BindingHandle
 
 
 def _scene() -> bpy.types.Scene:
@@ -346,6 +345,37 @@ def test_a_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
     assert indexes.manifest(handle.binding_id) is None
     assert indexes.claims_on(obj) == []  # the manifest went with its collection
     assert _config(handle).destination is None  # Blender cleared the pointer, and the state was rebuilt
+
+
+@pytest.mark.parametrize("asked", ["claims", "update"])
+def test_a_destination_removed_before_the_ownership_index_is_built(
+    sync: Synchronization, tmp_path: Path, asked: str
+) -> None:
+    # The state is built without the index; building it then finds the removed destination and rebuilds.
+    ids, _ = _two_managed(sync, tmp_path)
+    indexes.invalidate()
+    assert indexes.binding_ids() == ids
+    bpy.data.collections.remove(bpy.data.collections["Shot"])
+    if asked == "claims":
+        assert indexes.claims_on(bpy.data.objects["Managed"]) == []
+    else:
+        indexes.update_manifest(ids[1], {"c": _entry(bpy.data.objects.new("C", None))})
+        assert indexes.resource(ids[1], "c") == bpy.data.objects["C"]
+    assert [c.binding_id for c in indexes.claims_on(bpy.data.objects["A"])] == [ids[1]]
+
+
+def test_a_destination_change_after_another_bindings_destination_was_removed(
+    sync: Synchronization, tmp_path: Path
+) -> None:
+    # The change rebuilds the map of destinations from the configurations in memory, one of which names a
+    # removed collection; that binding's next check rebuilds the state.
+    ids, _ = _two_managed(sync, tmp_path)
+    handle = BindingHandle(ids[0])
+    bpy.data.collections.remove(bpy.data.collections["Other"])
+    repaired = bpy.data.collections.new("Repaired")
+    indexes.set_config(ids[0], replace(_config(handle), destination=repaired))
+    assert _config(handle).destination == repaired
+    assert _config(BindingHandle(ids[1])).destination is None
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(

@@ -103,6 +103,9 @@ class _Ownership:
 class _State:
     scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
     bindings: dict[str, list[_Binding]]  # by binding identifier: its candidates, in the order found
+    # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
+    # order found, so a write reaches them without going through every binding (_by_destination).
+    by_destination: dict[int, list[tuple[str, _Binding]]]
     ownership: _Ownership | None = None  # built when first asked for
 
 
@@ -178,7 +181,10 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
     """
     state = _current()
     binding_id, config = bindings.create(scene, config, name)
-    state.bindings[binding_id] = [_Binding(scene, scene.session_uid, config, None)]
+    made = _Binding(scene, scene.session_uid, config, None)
+    state.bindings[binding_id] = [made]
+    if config.destination is not None:  # last in the bindings, so last among those naming the destination
+        state.by_destination.setdefault(config.destination.session_uid, []).append((binding_id, made))
     return binding_id
 
 
@@ -191,10 +197,13 @@ def set_config(binding_id: str, config: BindingConfig) -> None:
     if config == found.config:
         return
     bindings.update(found.scene, binding_id, config)
-    if isinstance(found.config, Refused) or found.config.destination != config.destination:
-        found.manifest = _UNREAD
-        _forget_ownership()  # a destination changes only in repair: rebuilt whole
+    moved = isinstance(found.config, Refused) or found.config.destination != config.destination
     found.config = config
+    if moved:  # a destination changes only in repair: rebuilt whole, in the order a rebuild finds
+        found.manifest = _UNREAD
+        state = _current()
+        state.by_destination = _by_destination(state.bindings)
+        state.ownership = None
 
 
 # Manifests and ownership.
@@ -234,17 +243,15 @@ def update_manifest(binding_id: str, changed: Mapping[str, ManifestEntry], remov
     # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
     # them disagreeing, and Manifest.updated tests it once per entry and per use.
     removed = frozenset(removed)
-    found = _existing(binding_id)
-    destination = _destination(binding_id, found)
-    state = _current()
-    # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
-    # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
-    current = _manifest_of(found)
-    if isinstance(current, Refused):
-        raise RecordRefused(current)
+    found, destination, current = _to_update(binding_id)
     if not changed and not removed:
         return
-    index = _ownership(state)
+    # Built first through _ask, which rebuilds the state if any destination was removed; then looked up again.
+    _ask(_ownership)
+    found, destination, current = _to_update(binding_id)
+    state = _current()
+    index = state.ownership
+    assert index is not None
     share = index.shares[destination.session_uid]
     before = Manifest({}) if current is None else current.record
     after = before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
@@ -295,7 +302,8 @@ def _current() -> _State:
         raise NotTracking("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
-        _state = _State(scenes, _read_bindings())
+        found = _read_bindings()
+        _state = _State(scenes, found, _by_destination(found))
         _rebuilds += 1
     return _state
 
@@ -342,6 +350,18 @@ def _first(state: _State, binding_id: str) -> _Binding | None:
     if not _valid(binding_id, candidates[0]):
         raise _Stale
     return candidates[0]
+
+
+def _to_update(binding_id: str) -> tuple[_Binding, bpy.types.Collection, Loaded[Manifest] | None]:
+    """The binding, its destination, and its manifest, for update_manifest. Raises as update_manifest does."""
+    found = _existing(binding_id)
+    destination = _destination(binding_id, found)
+    # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
+    # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
+    current = _manifest_of(found)
+    if isinstance(current, Refused):
+        raise RecordRefused(current)
+    return found, destination, current
 
 
 def _existing(binding_id: str) -> _Binding:
@@ -412,15 +432,19 @@ def _give_manifest(
     state: _State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
 ) -> None:
     """Give the manifest to every configuration naming the destination, as a linked copy's does."""
-    for candidates in state.bindings.values():
+    for _, b in state.by_destination.get(destination.session_uid, ()):
+        b.manifest = manifest
+
+
+def _by_destination(candidates_by_id: dict[str, list[_Binding]]) -> dict[int, list[tuple[str, _Binding]]]:
+    """Every candidate naming a destination, by its session_uid, in the order found; a removed one is left out,
+    and the check of the candidates naming it rebuilds the state."""
+    found: dict[int, list[tuple[str, _Binding]]] = {}
+    for binding_id, candidates in candidates_by_id.items():
         for b in candidates:
-            if not isinstance(b.config, Refused) and b.config.destination == destination:
-                b.manifest = manifest
-
-
-def _forget_ownership() -> None:
-    if _state is not None:
-        _state.ownership = None
+            if not isinstance(b.config, Refused) and b.config.destination is not None and _alive(b.config.destination):
+                found.setdefault(b.config.destination.session_uid, []).append((binding_id, b))
+    return found
 
 
 def _ownership(state: _State) -> _Ownership:
@@ -431,12 +455,12 @@ def _ownership(state: _State) -> _Ownership:
     """
     if state.ownership is None:
         index = _Ownership({}, {}, {})
-        for binding_id, candidates in state.bindings.items():
-            for b in candidates:
-                if not isinstance(b.config, Refused) and b.config.destination is not None:
-                    destination = b.config.destination
-                    if destination.session_uid not in index.shares:
-                        _add_share(index, binding_id, destination, _checked_manifest(state, binding_id, b))
+        for named in state.by_destination.values():
+            binding_id, b = named[0]
+            assert not isinstance(b.config, Refused) and b.config.destination is not None
+            if not _alive(b.config.destination):
+                raise _Stale  # removed since the state was built: Blender cleared the configurations' pointers
+            _add_share(index, binding_id, b.config.destination, _checked_manifest(state, binding_id, b))
         state.ownership = index
     return state.ownership
 
