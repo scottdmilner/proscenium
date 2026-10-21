@@ -48,7 +48,7 @@ from .ownership import Claim, Manifest
 from .records import Loaded, RecordRefused, Refused
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterator, Mapping
+    from collections.abc import Callable, Collection, Mapping
 
     from .bindings import BindingConfig
     from .ownership import ManifestEntry
@@ -158,13 +158,12 @@ def config(binding_id: str) -> BindingConfig | Refused | None:
     return None if found is None else found.config
 
 
-def attached_with_key(key: str) -> Iterator[tuple[str, BindingConfig]]:
-    """The bindings whose configuration can be read and is an attached source with this exact key."""
-    for binding_id in binding_ids():
-        found = config(binding_id)
-        if found is not None and not isinstance(found, Refused):
-            if found.source is SourceKind.ATTACHED and found.key == key:
-                yield binding_id, found
+def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
+    """The bindings whose configuration can be read and is an attached source with this exact key.
+
+    One pass, checking each binding's first candidate, whose configuration config() gives.
+    """
+    return _ask(lambda state: _with_key(state, key))
 
 
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
@@ -304,14 +303,27 @@ def _read_bindings() -> dict[str, list[_Binding]]:
 
 
 def _listed(state: _State, scene: bpy.types.Scene | None) -> list[str]:
-    if not all(_valid(binding_id, b) for binding_id, candidates in state.bindings.items() for b in candidates):
-        raise _Stale
+    """Checks every candidate it lists: with a scene, only those on it, which are all that decide the answer."""
     uid = None if scene is None else scene.session_uid
-    return [
-        binding_id
-        for binding_id, candidates in state.bindings.items()
-        if uid is None or any(b.scene_uid == uid for b in candidates)
-    ]
+    listed = []
+    for binding_id, candidates in state.bindings.items():
+        here = candidates if uid is None else [b for b in candidates if b.scene_uid == uid]
+        if not all(_valid(binding_id, b) for b in here):
+            raise _Stale
+        if here:
+            listed.append(binding_id)
+    return listed
+
+
+def _with_key(state: _State, key: str) -> list[tuple[str, BindingConfig]]:
+    found = []
+    for binding_id, candidates in state.bindings.items():
+        if not _valid(binding_id, first := candidates[0]):
+            raise _Stale
+        config = first.config
+        if not isinstance(config, Refused) and config.source is SourceKind.ATTACHED and config.key == key:
+            found.append((binding_id, config))
+    return found
 
 
 def _first(state: _State, binding_id: str) -> _Binding | None:

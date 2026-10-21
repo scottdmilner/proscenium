@@ -405,6 +405,57 @@ def test_a_removed_scene(sync: Synchronization, tmp_path: Path) -> None:
     assert sync.bindings(new) == []
 
 
+def test_listing_a_scene_checks_only_its_bindings(sync: Synchronization, tmp_path: Path) -> None:
+    # A binding on another scene can't change the answer; one on the scene listed can.
+    other_scene = bpy.data.scenes.new("Other")
+    with source_access.binding_state(tmp_path) as scene:
+        elsewhere = sync.create_file_binding(other_scene, scene.root, name="Elsewhere")
+        here = sync.create_file_binding(_scene(), scene.root, name="Here")
+    assert sync.bindings(_scene()) == [here]
+    bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
+    rebuilds = indexes.rebuilds()
+    assert sync.bindings(_scene()) == [here]
+    assert indexes.rebuilds() == rebuilds  # not checked, so nothing found to rebuild
+    assert indexes.binding_ids() == [elsewhere.binding_id, here.binding_id]
+    assert indexes.rebuilds() > rebuilds  # listing every binding checks it
+    assert _config(elsewhere).destination is None
+    bpy.data.collections.remove(bpy.data.collections["Here"])
+    rebuilds = indexes.rebuilds()
+    assert sync.bindings(_scene()) == [here]
+    assert indexes.rebuilds() > rebuilds
+    assert _config(here).destination is None
+
+
+def test_the_bindings_attached_with_a_key(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # One pass over the state: the scenes are compared once, and each binding's configuration checked.
+    other_scene = bpy.data.scenes.new("Other")
+    a = sync.create_attached_binding(_scene(), "shot", name="A")
+    b = sync.create_attached_binding(other_scene, "shot", name="B")
+    sync.create_attached_binding(_scene(), "other", name="C")
+    unreadable = sync.create_attached_binding(_scene(), "shot", name="D")
+    with source_access.binding_state(tmp_path) as scene:
+        sync.create_file_binding(_scene(), scene.root, name="F")
+    _scene()[records.NAMESPACE][bindings.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    current, calls = indexes._current, []  # noqa: SLF001 - the cost under test is one comparison of the scenes
+
+    def counted() -> object:
+        calls.append(1)
+        return current()
+
+    monkeypatch.setattr(indexes, "_current", counted)
+    assert {(binding_id, config.key) for binding_id, config in indexes.attached_with_key("shot")} == {
+        (a.binding_id, "shot"),
+        (b.binding_id, "shot"),
+    }
+    assert len(calls) == 1
+    bpy.data.collections.remove(bpy.data.collections["A"])
+    found = dict(indexes.attached_with_key("shot"))
+    assert found[a.binding_id].destination is None  # the check found the removed destination; the state was rebuilt
+
+
 def test_a_configuration_record_removed_by_hand(sync: Synchronization, tmp_path: Path) -> None:
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(sync, tmp_path)
