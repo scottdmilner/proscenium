@@ -24,7 +24,7 @@ EXPIRY_WAIT = 2.0
 def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
     """Attach, acquire, drop every caller reference, then release the attachment."""
     registry = SourceRegistry()
-    binding = registry.add_attached("a", "shot")
+    binding = registry.attached("a", "shot")
     with source_access.reattach(Path(tmp_dir)) as scene:
         caller = open_fresh(scene.root)  # this body's own stage, so it holds the only caller reference
         caller.SetEditTarget(caller.GetSessionLayer())
