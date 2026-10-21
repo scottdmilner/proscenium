@@ -18,6 +18,7 @@ from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from proscenium import addon, binding_state, bindings, indexes, records
+from proscenium.binding_state import Generation, LastAttempt
 from proscenium.bindings import BindingConfig, BindingIndex, DestinationTag
 from proscenium.core.source_access import PayloadPolicy, SourceKind
 from proscenium.records import NAMESPACE, Loaded, RecordRefused
@@ -277,15 +278,21 @@ def test_reopening_synchronizes_nothing(sync: Synchronization, extension: Module
 def test_reopening_f_binding_state_synchronizes_nothing(
     sync: Synchronization, extension: ModuleType, tmp_path: Path
 ) -> None:
-    # REOPEN-02, ICON-33 on F-BINDING-STATE: no synchronization runs, so the binding has no source stage
-    # and no last attempt. Its caller's stage keeps the root layer open, so the registry is the evidence.
+    # REOPEN-02, ICON-33 on F-BINDING-STATE: no synchronization runs, so the binding has no source stage,
+    # and its published generation and last attempt are as saved. Nothing writes them before M5, so the
+    # test does. Its caller's stage keeps the root layer open, so the registry is the evidence.
     with source_access.binding_state(tmp_path) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root)
+        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
         handle.synchronize(0)
+        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, ())
+        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
+        binding_state.write_generation(bpy.data.collections["Shot"], generation)
+        binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         save_and_reopen(tmp_path / "reopen.blend")
         assert handle.binding_id not in sync.sources
         assert handle.live_stage() is None
-        assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
+        assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(generation, 1)
+        assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
 
 
 def test_an_attached_source_is_unavailable_after_reopening(

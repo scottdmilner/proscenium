@@ -21,6 +21,7 @@
 - The M5 failure-injection tests, rerun unchanged against the real application layer.
 - Application-time resource failures abort the transaction unless the plan authorized a fallback.
 - `F-UNMANAGED-USER`.
+- `F-OFFLINE`: correspondence records unchanged through reopening with the source unavailable (REOPEN-07).
 - The M4 interaction checks against the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 - End-to-end tests using M6-generated plans.
 
