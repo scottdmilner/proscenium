@@ -6,7 +6,7 @@ Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows
 of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle
 is filled in by its delivering milestone before implementation.
 
-326 rows: 257 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2, M3.
+330 rows: 261 behavior, 17 contract, 52 process; milestones started: M1, M1b, M2, M3.
 
 ## PROJECT.md
 
@@ -181,6 +181,10 @@ is filled in by its delivering milestone before implementation.
 | [REOPEN-06](../spec/lifecycle.md#reopening) | Detached content remains detached. | behavior | M11 | 1 / M12 | `F-DETACH-AS-IS` | Set by M11. |
 | [REOPEN-07](../spec/lifecycle.md#reopening) | The saved display remains usable without its USD source | behavior | M3 | 1 / M12 | `F-OFFLINE` | Reopening F-OFFLINE with its source moved away or nothing attached keeps the saved display's geometry, transforms, and materials unchanged. *M7 adds the correspondence records to F-OFFLINE when it defines them.* |
 | [REOPEN-08](../spec/lifecycle.md#reopening) | Image textures remain references to external files | behavior | M9 | 1 / M12 | `F-OFFLINE` | Set by M9. |
+| [DEST-01](../spec/lifecycle.md#removed-destination) | A binding whose destination collection is removed keeps its configuration, last attempt, and binding-index entry, through save/reopen, until the binding itself is removed. | behavior | M3 | 1 / M12 | `F-BINDING-STATE` | With F-BINDING-STATE's destination removed, then save/reopen, the binding is still listed on its scene, its configuration equals the saved one except for its cleared destination, and its last attempt and binding-index entry are as saved. |
+| [DEST-02](../spec/lifecycle.md#removed-destination) | Synchronizing it is a fatal failure whose diagnostic names the binding and says its destination was removed. | behavior | M3 | 1 / M12 | `F-BINDING-STATE` | Synchronizing that binding returns a fatal failure with one removed-destination diagnostic naming the binding; no source stage is made for it, and no collection is created. |
+| [DEST-03](../spec/lifecycle.md#removed-destination) | Its requested settings can still be read and changed. | behavior | M3 | 1 / M12 | `F-BINDING-STATE` | That binding's requested settings read as saved, and set_settings changes them, writing its configuration. |
+| [DEST-04](../spec/lifecycle.md#removed-destination) | It owns nothing: its manifest was removed with the collection | behavior | M3 | 1 / M12 | `F-BINDING-STATE` | That binding has no manifest and no resources, and the objects its destination held claim no owner. |
 | [SCHEMA-02](../spec/lifecycle.md#schema-versions) | Older supported schemas migrate on load. | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | Records at an older supported version load at the current version, keeping every field the older version held. |
 | [SCHEMA-03](../spec/lifecycle.md#schema-versions) | If migration fails or the schema is newer than the extension supports | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | A binding whose records fail migration, or are newer than supported, keeps its display and records, refuses refresh and lifecycle operations, and reports why. |
 | [SCHEMA-04](../spec/lifecycle.md#schema-versions) | Unreadable or unsupported pending-cleanup records are preserved | behavior | M3 | 1 / M12 | `F-SCHEMA-VERSIONS` | Unreadable or unsupported pending-cleanup records are unchanged after load and save, and the extension refuses to overwrite them. |

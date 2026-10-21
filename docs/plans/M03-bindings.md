@@ -2,7 +2,7 @@
 
 How M3 will settle its contracts and deliver tested source access, the binding model, and versioned persistence schemas, and the order of work. Requirements are in the [M3 milestone](../milestones/M03-bindings.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M2 plan](M02-contracts.md).
 
-M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), API-01 to API-03, API-06, CONS-03, SID-03 to SID-07, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01, MEM-02, and MEM-04 to MEM-08), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-02, -04, -05, -07), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
+M3 is the first milestone that ships product code. It delivers the matrix rows whose `delivery` is M3: the Bindings and Source Access rows (BIND-02 to BIND-10), API-01 to API-03, API-06, CONS-03, SID-03 to SID-07, COPY-01 to COPY-04, the In-Memory Sources rows (MEM-01, MEM-02, and MEM-04 to MEM-08), the File-Backed Refresh rows (FILE-01 to FILE-07), OWN-01, UNDO-06, UNDO-07, STATE-01, the Reopening rows (REOPEN-02, -04, -05, -07), the Removed Destination rows (DEST-01 to DEST-04), the Schema Versions rows (SCHEMA-02 to SCHEMA-05), ICON-07, ICON-24, and AFIX-04.
 
 ## Settled with the user (2026-10-15 to 2026-10-18)
 
@@ -378,6 +378,7 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
   - **Its cases:** "moved-file", with the file source moved away after a synchronization opened it, and "unattached", with nothing attached under the key, as after every reopening. In each, the binding is still listed, and its configuration, manifest, generation, and displayed content (`support.blend.collection_content`) equal what was saved, after reopening and again after a synchronization, which fails for the unavailable source (REOPEN-04, REOPEN-05, REOPEN-07). "no-extension" opens the saved file in the wheel and the binary without the extension imported: it loads with no error report, which would raise, and shows the same content (SCHEMA-05, `isolated/test_offline.py`).
   - **REOPEN-02's records:** the `F-BINDING-STATE` reopening test also writes a generation and a last attempt before saving, since nothing else writes them before M5, and finds both as saved.
   - **Mutation checks:** a failed synchronization emptying the manifest, and the load handler deleting each destination's generation, each fail a test.
+  - **A removed destination** (with the user): [Removed Destination](../spec/lifecycle.md#removed-destination) and the DECISIONS.md row "Removed destination". The binding is kept until it is removed, owns nothing, and fails to synchronize. Its diagnostic has its own fatal category, since the result state is derived from the diagnostics, and an invalid-data diagnostic alone makes a synchronization completed with issues. Nothing makes it a new destination, which would be published beside leftovers no ownership evidence connects to it. Binding removal is M11's, so in M3 such a binding stays listed.
 
 ### Phase E — Close
 

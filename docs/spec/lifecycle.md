@@ -123,6 +123,16 @@ The saved display remains usable without its USD source: geometry, transforms, t
 
 Serialization of arbitrary unsaved in-memory USD edits is not guaranteed in Phases 1 or 2.
 
+### Removed Destination
+
+A binding whose destination collection is removed keeps its configuration, last attempt, and binding-index entry, through save/reopen, until the binding itself is removed. Nothing detaches or removes it automatically.
+
+- Synchronizing it is a fatal failure whose diagnostic names the binding and says its destination was removed. It fails before accessing the source, and creates no destination.
+- Its requested settings can still be read and changed.
+- It owns nothing: its manifest was removed with the collection, so content left from its display is unmanaged.
+
+**Design note:** M5 and M11 decide whether a publication or a repair may give such a binding a new destination.
+
 ### Schema Versions
 
 Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions.

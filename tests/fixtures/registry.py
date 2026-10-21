@@ -172,6 +172,9 @@ FIXTURES: dict[str, Fixture] = {
                 Case("selection", SYNC, SUCCESS, ("ICON-24",), 1),
                 # Runtime indexes return current datablocks or nothing after undo, redo, load, and deletion.
                 Case("indexes", SYNC, SUCCESS, ("UNDO-07",), 1),
+                # A removed destination, through save and reopen: the binding is kept, owns nothing, and fails
+                # to synchronize.
+                Case("removed-destination", SYNC, FAILURE, ("DEST-01", "DEST-02", "DEST-03", "DEST-04"), 1),
             ),
         ),
         Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
