@@ -17,8 +17,6 @@ from .sources import AttachedSource, FileSource
 if TYPE_CHECKING:
     import os
 
-    from pxr import Usd
-
 
 class SourceRegistry:
     """The sources of the process's bindings, by binding identifier."""
@@ -28,15 +26,13 @@ class SourceRegistry:
     def __init__(self) -> None:
         self._bindings = {}
 
-    def add_file(
-        self, binding_id: str, root: str | os.PathLike[str], payload_policy: Usd.Stage.InitialLoadSet
-    ) -> BindingSource:
+    def add_file(self, binding_id: str, root: str | os.PathLike[str]) -> BindingSource:
         """Register a binding with a file source; its source stage opens at the first acquisition."""
-        return self._add(binding_id, BindingSource(FileSource(root), payload_policy))
+        return self._add(binding_id, BindingSource(FileSource(root)))
 
-    def add_attached(self, binding_id: str, key: str, payload_policy: Usd.Stage.InitialLoadSet) -> BindingSource:
+    def add_attached(self, binding_id: str, key: str) -> BindingSource:
         """Register a binding with an attached source, unattached."""
-        return self._add(binding_id, BindingSource(AttachedSource(key), payload_policy))
+        return self._add(binding_id, BindingSource(AttachedSource(key)))
 
     def items(self) -> list[tuple[str, BindingSource]]:
         """Every binding's identifier and source, as a list, so sources can be removed while going through it."""

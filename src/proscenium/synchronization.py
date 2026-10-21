@@ -23,8 +23,16 @@ import bpy
 from pxr import Usd
 
 from . import indexes
-from .bindings import BindingConfig, PayloadPolicy
-from .core.source_access import AttachedSource, FileSource, SourceKind, SourceRegistry, SourceUnavailable
+from .bindings import BindingConfig
+from .core.source_access import (
+    AttachedSource,
+    FileSource,
+    PayloadPolicy,
+    SourceKind,
+    SourceRegistry,
+    SourceUnavailable,
+    dirty_layers,
+)
 from .records import RecordRefused, Refused
 from .results import Category, Diagnostic, Result, ResultState, Severity
 
@@ -43,7 +51,7 @@ class BindingNotFound(LookupError):  # noqa: N818 (misuse, raised like KeyError)
 class RequestedSettings:
     """The settings a binding's next synchronization uses (lifecycle.md#binding-state)."""
 
-    payload_policy: Usd.Stage.InitialLoadSet
+    payload_policy: PayloadPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +75,7 @@ class BindingHandle:
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
         return SYNCHRONIZATION.synchronize(self.binding_id, time_code)
 
-    def set_settings(self, *, payload_policy: Usd.Stage.InitialLoadSet | None = None) -> Result:
+    def set_settings(self, *, payload_policy: PayloadPolicy | None = None) -> Result:
         return SYNCHRONIZATION.set_settings(self.binding_id, payload_policy=payload_policy)
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
@@ -95,7 +103,7 @@ class Synchronization:
         scene: bpy.types.Scene,
         root: str | os.PathLike[str],
         *,
-        payload_policy: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll,
+        payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
         name: str | None = None,
     ) -> BindingHandle:
         """A binding on scene whose source is the file root, with a new destination named name (or root's stem).
@@ -104,7 +112,7 @@ class Synchronization:
         """
         if str(root).startswith("//") and not bpy.data.filepath:
             raise ValueError(f"{root} is relative to the .blend, which hasn't been saved")
-        config = BindingConfig(SourceKind.FILE, str(root), None, None, None, PayloadPolicy.of(payload_policy))
+        config = BindingConfig(SourceKind.FILE, str(root), None, None, None, payload_policy)
         return self._create(scene, config, name or Path(root).stem)
 
     def create_attached_binding(
@@ -112,11 +120,11 @@ class Synchronization:
         scene: bpy.types.Scene,
         key: str,
         *,
-        payload_policy: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll,
+        payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
         name: str | None = None,
     ) -> BindingHandle:
         """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
-        config = BindingConfig(SourceKind.ATTACHED, None, key, None, None, PayloadPolicy.of(payload_policy))
+        config = BindingConfig(SourceKind.ATTACHED, None, key, None, None, payload_policy)
         return self._create(scene, config, name or key)
 
     def bindings(self, scene: bpy.types.Scene) -> list[BindingHandle]:
@@ -158,15 +166,15 @@ class Synchronization:
         config = self._config(binding_id)
         if isinstance(config, Refused):
             raise RecordRefused(config)
-        return RequestedSettings(config.payload_policy.load_set)
+        return RequestedSettings(config.payload_policy)
 
-    def set_settings(self, binding_id: str, *, payload_policy: Usd.Stage.InitialLoadSet | None = None) -> Result:
+    def set_settings(self, binding_id: str, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing."""
         config = self._config(binding_id)
         if isinstance(config, Refused):
             return _unsupported(config)
         if payload_policy is not None:
-            config = dataclasses.replace(config, payload_policy=PayloadPolicy.of(payload_policy))
+            config = dataclasses.replace(config, payload_policy=payload_policy)
         indexes.set_config(binding_id, config)
         return Result(ResultState.SUCCESS)
 
@@ -176,10 +184,8 @@ class Synchronization:
         config = self._config(binding_id)
         if isinstance(config, Refused):
             return _unsupported(config)
-        source = self._source(binding_id, config)
-        source.payload_policy = config.payload_policy.load_set
         try:
-            dirty = source.dirty_layers()  # acquires the evaluation stage
+            dirty = dirty_layers(self._source(binding_id, config).acquire(config.payload_policy))
         except SourceUnavailable as error:
             return _unavailable(error)
         diagnostics = ()
@@ -197,7 +203,7 @@ class Synchronization:
         if isinstance(config, Refused):
             return _unsupported(config)
         try:
-            self._source(binding_id, config).reload(layers)
+            self._source(binding_id, config).reload(config.payload_policy, layers)
         except SourceUnavailable as error:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
@@ -268,9 +274,9 @@ class Synchronization:
                 return source
             self.sources.remove(binding_id)
         if root is not None:
-            return self.sources.add_file(binding_id, root, config.payload_policy.load_set)
+            return self.sources.add_file(binding_id, root)
         assert config.key is not None
-        return self.sources.add_attached(binding_id, config.key, config.payload_policy.load_set)
+        return self.sources.add_attached(binding_id, config.key)
 
 
 def _unavailable(error: SourceUnavailable) -> Result:

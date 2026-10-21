@@ -10,11 +10,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from pxr import Sdf, Usd
+from pxr import Sdf
 
 from fixtures import source_access
 from proscenium.core._core import StageHandle
-from proscenium.core.source_access import SourceRegistry, SourceUnavailable
+from proscenium.core.source_access import PayloadPolicy, SourceRegistry, SourceUnavailable
 from support.usd import open_fresh
 
 # Expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
@@ -24,7 +24,7 @@ EXPIRY_WAIT = 2.0
 def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
     """Attach, acquire, drop every caller reference, then release the attachment."""
     registry = SourceRegistry()
-    binding = registry.add_attached("a", "shot", Usd.Stage.LoadAll)
+    binding = registry.add_attached("a", "shot")
     with source_access.reattach(Path(tmp_dir)) as scene:
         caller = open_fresh(scene.root)  # this body's own stage, so it holds the only caller reference
         caller.SetEditTarget(caller.GetSessionLayer())
@@ -33,7 +33,7 @@ def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
         watch = StageHandle(caller)
         watch.release()  # weak: says whether the stage still exists, without keeping it
         binding.attach(caller)
-        binding.acquire()
+        binding.acquire(PayloadPolicy.LOAD_ALL)
         del caller
         gc.collect()
         layer = Sdf.Layer.Find(session)
@@ -50,7 +50,7 @@ def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
         result["expired_after_release"] = watch.stage() is None
         result["attached_after_release"] = binding.live_stage is not None
         try:
-            binding.acquire()
+            binding.acquire(PayloadPolicy.LOAD_ALL)
             result["acquire"] = "acquired"
         except SourceUnavailable:
             result["acquire"] = "unavailable"

@@ -15,7 +15,7 @@ from pxr import Usd
 from fixtures import source_access
 from proscenium import binding_state, bindings, ownership, records
 from proscenium.binding_state import Generation, LastAttempt
-from proscenium.bindings import PayloadPolicy
+from proscenium.core.source_access import PayloadPolicy
 from proscenium.ownership import Manifest, ManifestEntry
 from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from proscenium.results import Category, Diagnostic, ResultState, Severity

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from pxr import Usd
 
 from . import records
-from .bindings import PayloadPolicy
+from .core.source_access import PayloadPolicy
 from .records import Schema
 from .results import Diagnostic, ResultState
 

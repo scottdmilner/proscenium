@@ -9,9 +9,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
-from pxr import Usd
 
 from fixtures import source_access
+from proscenium.core.source_access import PayloadPolicy
 from support import undo
 
 if TYPE_CHECKING:
@@ -26,11 +26,11 @@ def test_undo_and_redo_leave_attachments(sync: Synchronization, tmp_path: Path) 
     with source_access.reattach(tmp_path) as scene:
         sync.attach("shot", scene.caller)
         undo.push("base")
-        handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+        handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         undo.push("change")
         undo.undo()
-        assert handle.requested_settings().payload_policy == Usd.Stage.LoadAll  # undone
+        assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_ALL  # undone
         assert handle.live_stage() == scene.caller  # found by binding identity
         undo.redo()
-        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
+        assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
         assert handle.live_stage() == scene.caller

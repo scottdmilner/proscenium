@@ -16,7 +16,7 @@ from pxr import Usd
 
 from fixtures import source_access
 from proscenium import addon, bindings, indexes, ownership, records
-from proscenium.bindings import PayloadPolicy
+from proscenium.core.source_access import PayloadPolicy
 from proscenium.ownership import Claim, Manifest, ManifestEntry
 from proscenium.records import Loaded, Refused
 from proscenium.synchronization import Synchronization
@@ -84,7 +84,7 @@ def test_undo_reverts_a_cached_configuration(sync: Synchronization, tmp_path: Pa
     undo.require_global_undo()
     handle = _managed(sync, tmp_path)
     undo.push("base")
-    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert _config(handle).payload_policy is PayloadPolicy.LOAD_NONE
     undo.push("settings")
     undo.undo()
@@ -476,7 +476,7 @@ def test_writes_need_the_extension_registered(sync: Synchronization, tmp_path: P
     addon.unregister()
     before = _file_data()
     with pytest.raises(indexes.NotTracking):
-        handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+        handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     with pytest.raises(indexes.NotTracking):
         sync.attach("shot", Usd.Stage.CreateInMemory(), confirm=True)
     with pytest.raises(indexes.NotTracking):

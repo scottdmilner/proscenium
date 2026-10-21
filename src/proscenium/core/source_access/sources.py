@@ -15,6 +15,22 @@ class SourceKind(StrEnum):
     ATTACHED = "attached"
 
 
+class PayloadPolicy(StrEnum):
+    """A binding's payload policy: every payload loaded, or none (source-access.md#source-scope).
+
+    The one type for it, from the synchronization API to the binding's configuration, which stores
+    its string value; USD's own Usd.Stage.InitialLoadSet appears only where a stage is opened.
+    """
+
+    LOAD_ALL = "load_all"
+    LOAD_NONE = "load_none"
+
+    @property
+    def load_set(self) -> Usd.Stage.InitialLoadSet:
+        """The initial load set to open a stage with."""
+        return Usd.Stage.LoadAll if self is PayloadPolicy.LOAD_ALL else Usd.Stage.LoadNone
+
+
 class SourceUnavailable(Exception):  # noqa: N818 (an expected outcome, not an error)
     """The binding's source stage can't be had: its file won't open, or no stage is attached.
 
@@ -41,13 +57,13 @@ class FileSource:
         """The source stage, or None before the first acquisition."""
         return self._stage
 
-    def open(self, payload_policy: Usd.Stage.InitialLoadSet) -> Usd.Stage:
+    def open(self, payload_policy: PayloadPolicy) -> Usd.Stage:
         """The source stage, opening it under payload_policy if it isn't open. Raises SourceUnavailable."""
         if self._stage is None:
             try:
                 # Inside an active cache context, a plain Open can return another tool's cached stage.
                 with Usd.StageCacheContext(Usd.BlockStageCaches):
-                    self._stage = Usd.Stage.Open(self.root, payload_policy)
+                    self._stage = Usd.Stage.Open(self.root, payload_policy.load_set)
             except Tf.ErrorException as error:
                 raise SourceUnavailable(f"Can't open {self.root}") from error
         return self._stage

@@ -16,6 +16,7 @@ from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
 from proscenium import bindings, indexes, records
+from proscenium.core.source_access import PayloadPolicy
 from proscenium.synchronization import (
     BindingHandle,
     BindingNotFound,
@@ -49,7 +50,7 @@ def test_the_time_code_is_the_attempts_not_a_setting(
     sync: Synchronization, tmp_path: Path, time_code: Usd.TimeCode | float
 ) -> None:
     # API-02: the default time code and numeric ones are accepted, and none becomes a setting.
-    handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=Usd.Stage.LoadNone)
+    handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     before = handle.requested_settings()
     assert handle.synchronize(time_code) == Result(ResultState.SUCCESS)
     assert handle.requested_settings() == before
@@ -69,16 +70,51 @@ def test_set_settings_records_without_synchronizing(sync: Synchronization, tmp_p
     handle.synchronize(3)
     stage = handle.live_stage()
     assert stage is not None
-    assert handle.set_settings(payload_policy=Usd.Stage.LoadNone) == Result(ResultState.SUCCESS)
-    assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
+    assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result(ResultState.SUCCESS)
+    assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert read_values(stage) == DISK  # not applied yet
     handle.synchronize(3)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}
 
 
+def test_a_reload_keeps_the_synchronized_payload_policy(sync: Synchronization, tmp_path: Path) -> None:
+    # Neither set_settings nor reload synchronizes, so the live stage keeps the policy it was synchronized with.
+    handle = sync.create_file_binding(_scene(), _root(tmp_path))
+    handle.synchronize(0)
+    stage = handle.live_stage()
+    assert stage is not None
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
+    assert handle.reload() == Result(ResultState.SUCCESS)
+    assert read_values(stage) == DISK
+    handle.synchronize(0)
+    assert read_values(stage) == DISK | {"payA": None, "payB": None}
+
+
+def test_a_reload_before_any_synchronization_opens_under_the_requested_policy(
+    sync: Synchronization, tmp_path: Path
+) -> None:
+    handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
+    assert handle.reload() == Result(ResultState.SUCCESS)
+    stage = handle.live_stage()
+    assert stage is not None
+    assert read_values(stage) == DISK | {"payA": None, "payB": None}
+
+
+def test_a_reload_after_attaching_opens_under_the_policy_requested_since(sync: Synchronization, tmp_path: Path) -> None:
+    # Attaching makes the binding's source before any evaluation stage; the policy comes from the configuration.
+    caller = open_fresh(_root(tmp_path))
+    handle = sync.create_attached_binding(_scene(), "shot")
+    sync.attach("shot", caller)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
+    assert handle.reload() == Result(ResultState.SUCCESS)
+    evaluation = sync.sources.get(handle.binding_id).evaluation_stage
+    assert evaluation is not None
+    assert read_values(evaluation) == DISK | {"payA": None, "payB": None}
+
+
 def test_set_settings_before_the_first_synchronization_opens_nothing(sync: Synchronization, tmp_path: Path) -> None:
     handle = sync.create_file_binding(_scene(), _root(tmp_path))
-    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.live_stage() is None
 
 
@@ -99,9 +135,9 @@ def test_an_unchanged_configuration_is_not_written(
     monkeypatch.setattr(records, "write", counted)
     assert sync.attach("shot", caller).attached == (handle.binding_id,)
     assert handle.set_settings() == Result(ResultState.SUCCESS)
-    assert handle.set_settings(payload_policy=Usd.Stage.LoadAll) == Result(ResultState.SUCCESS)  # the default
+    assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result(ResultState.SUCCESS)  # the default
     assert written == []
-    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert written == [bindings.config_key(handle.binding_id)]
 
 
@@ -251,7 +287,7 @@ def test_a_handle_to_no_binding_raises(sync: Synchronization) -> None:
     handle = BindingHandle("not-a-binding")
     calls = [
         lambda: handle.synchronize(0),
-        lambda: handle.set_settings(payload_policy=Usd.Stage.LoadNone),
+        lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
         handle.reload,
         handle.requested_settings,
         handle.live_stage,
