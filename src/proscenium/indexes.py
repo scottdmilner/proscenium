@@ -2,7 +2,7 @@
 
 This state is a disposable write-through cache of the bindings' records: each binding's scene and
 decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
-claims and each binding's resources by identity. It holds every candidate of an identity (source-
+claims. It holds every candidate of an identity (source-
 access.md#copied-bindings), so ownership counts a copy's manifest as well (ownership.Claim); a lookup
 by identity uses the first candidate found, until copied-binding detection decides which is
 canonical. The extension's writes go through it, updating memory and writing the records at once,
@@ -84,7 +84,6 @@ class _Share:
     """What one destination's manifest adds to the ownership index, so a publication can change it alone."""
 
     claimant: str  # the binding its claims name: the first found whose configuration names the destination
-    supplies: bool  # whether it supplies the claimant's resources: its lookups use its first candidate's manifest
     claims: dict[int, Claim]  # by datablock session_uid; a manifest names a datablock at most once
     entries: dict[str, int]  # resource identity -> its datablock's session_uid, for the entries naming one
 
@@ -96,7 +95,6 @@ class _Ownership:
     # By datablock session_uid: one Claim, or a tuple of them for an ambiguous datablock, which is rare, so
     # the common case costs no list (88 bytes each, a quarter of the index).
     claims: dict[int, Claim | tuple[Claim, ...]]
-    resources: dict[tuple[str, str], bpy.types.ID]  # (binding, resource identity) -> datablock
     unreadable: dict[int, Refused]  # by destination session_uid: manifests that can't be read
     shares: dict[int, _Share]  # by destination session_uid
 
@@ -259,7 +257,8 @@ def claims_on(datablock: bpy.types.ID) -> list[Claim]:
 
 
 def resource(binding_id: str, resource_id: str) -> bpy.types.ID | None:
-    """The datablock of a binding's resource, as its manifest names it."""
+    """The datablock of a binding's resource, as its manifest names it; None if it names none, or the binding
+    has no destination or manifest. Reads only that binding's manifest, not the ownership index."""
     return _ask(lambda state: _checked_resource(state, binding_id, resource_id))
 
 
@@ -401,7 +400,7 @@ def _replace_manifest(
         uid = destination.session_uid
         share = index.shares.get(uid)
         _remove_share(index, uid)
-        _add_share(state, index, binding_id if share is None else share.claimant, destination, manifest)
+        _add_share(index, binding_id if share is None else share.claimant, destination, manifest)
 
 
 def _give_manifest(
@@ -426,28 +425,22 @@ def _ownership(state: _State) -> _Ownership:
     found whose configuration names it as the claimant.
     """
     if state.ownership is None:
-        index = _Ownership({}, {}, {}, {})
+        index = _Ownership({}, {}, {})
         for binding_id, candidates in state.bindings.items():
             for b in candidates:
                 if not isinstance(b.config, Refused) and b.config.destination is not None:
                     destination = b.config.destination
                     if destination.session_uid not in index.shares:
-                        _add_share(state, index, binding_id, destination, _checked_manifest(state, binding_id, b))
+                        _add_share(index, binding_id, destination, _checked_manifest(state, binding_id, b))
         state.ownership = index
     return state.ownership
 
 
 def _add_share(
-    state: _State,
-    index: _Ownership,
-    claimant: str,
-    destination: bpy.types.Collection,
-    manifest: Loaded[Manifest] | Refused | None,
+    index: _Ownership, claimant: str, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
 ) -> None:
     uid = destination.session_uid
-    # A binding's resources are those in the manifest of the candidate its lookups use, the first.
-    first = state.bindings[claimant][0].config
-    share = _Share(claimant, not isinstance(first, Refused) and first.destination == destination, {}, {})
+    share = _Share(claimant, {}, {})
     if isinstance(manifest, Refused):
         index.unreadable[uid] = manifest  # claims nothing until it is repaired
     elif manifest is not None:
@@ -473,8 +466,6 @@ def _add_claim(index: _Ownership, share: _Share, datablock: bpy.types.ID, claim:
         index.claims[datablock_uid] = (*_as_tuple(found), claim)
     share.claims[datablock_uid] = claim
     share.entries[claim.resource_id] = datablock_uid
-    if share.supplies:
-        index.resources[share.claimant, claim.resource_id] = datablock
 
 
 def _remove_claim(index: _Ownership, share: _Share, resource_id: str) -> None:
@@ -487,8 +478,6 @@ def _remove_claim(index: _Ownership, share: _Share, resource_id: str) -> None:
         del index.claims[datablock_uid]
     else:
         index.claims[datablock_uid] = remaining[0] if len(remaining) == 1 else remaining
-    if share.supplies:
-        del index.resources[share.claimant, resource_id]
 
 
 def _checked_claims(state: _State, datablock: bpy.types.ID) -> list[Claim]:
@@ -504,17 +493,22 @@ def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
 
 
 def _checked_resource(state: _State, binding_id: str, resource_id: str) -> bpy.types.ID | None:
-    key = (binding_id, resource_id)
-    datablock = _ownership(state).resources.get(key)
+    """Through the manifest of the binding's first candidate, checked as every lookup by identity is."""
+    if (first := _first(state, binding_id)) is None:
+        return None
+    datablock = _named(_manifest_of(first), resource_id)
     if datablock is not None and not _alive(datablock):
-        # Removed: a binding's resources come from its first candidate's destination, whose manifest is reread.
-        first = _first(state, binding_id)
-        assert first is not None and not isinstance(first.config, Refused) and first.config.destination is not None
-        _reread(state, binding_id, first.config.destination)
-        datablock = _ownership(state).resources.get(key)
+        # Removed: its manifest is reread, where Blender has cleared the entry, and its share replaced.
+        assert not isinstance(first.config, Refused) and first.config.destination is not None
+        datablock = _named(_reread(state, binding_id, first.config.destination), resource_id)
         if datablock is not None and not _alive(datablock):
             raise _Stale
     return datablock
+
+
+def _named(manifest: Loaded[Manifest] | Refused | None, resource_id: str) -> bpy.types.ID | None:
+    entry = manifest.record.entries.get(resource_id) if isinstance(manifest, Loaded) else None
+    return None if entry is None else entry.datablock
 
 
 def _alive(id_: bpy.types.ID) -> bool:
