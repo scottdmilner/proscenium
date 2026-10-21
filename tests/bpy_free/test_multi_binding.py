@@ -12,7 +12,13 @@ from pxr import Sdf, Usd
 
 from fixtures import source_access
 from fixtures.source_access import ROOT_FORMATS, caller_settings, read_values, rewrite_on_disk
-from proscenium.core.source_access import AttachedSource, BindingSource, FileSource, PayloadPolicy
+from proscenium.core.source_access import (
+    AttachedBindingSource,
+    AttachedSource,
+    FileBindingSource,
+    FileSource,
+    PayloadPolicy,
+)
 from support.usd import open_fresh
 
 if TYPE_CHECKING:
@@ -21,14 +27,14 @@ if TYPE_CHECKING:
 UNLOADED = {"payA": None, "payB": None}
 
 
-def _file(root: Path) -> BindingSource:
-    return BindingSource(FileSource(root))
+def _file(root: Path) -> FileBindingSource:
+    return FileBindingSource(FileSource(root))
 
 
-def _attached(caller: Usd.Stage) -> BindingSource:
+def _attached(caller: Usd.Stage) -> AttachedBindingSource:
     source = AttachedSource("shot")
     source.attach(caller)
-    return BindingSource(source)
+    return AttachedBindingSource(source)
 
 
 def _set_root_value(stage: Usd.Stage, layer: Sdf.Layer, value: float) -> None:
