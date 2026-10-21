@@ -684,6 +684,7 @@ requirements:
     rows:
       - id: REOPEN-01
         quote: "Restore metadata, pending-cleanup tracking, and indexes. Do not automatically retry cleanup."
+        delivery: M5
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, pending-cleanup tracking, and runtime indexes equal their values before saving, and the leftovers remain: no cleanup ran."
       - id: REOPEN-02
