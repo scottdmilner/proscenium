@@ -142,11 +142,9 @@ def _counted_shares(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     shares: list[str] = []
     add_share = indexes._add_share  # noqa: SLF001 - the cost under test is how many shares are built
 
-    def counted(
-        state: object, index: object, claimant: str, destination: bpy.types.Collection, manifest: object
-    ) -> None:
+    def counted(index: object, claimant: str, destination: bpy.types.Collection, manifest: object) -> None:
         shares.append(destination.name)
-        add_share(state, index, claimant, destination, manifest)  # ty: ignore[invalid-argument-type]
+        add_share(index, claimant, destination, manifest)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(indexes, "_add_share", counted)
     return shares
@@ -344,8 +342,22 @@ def test_a_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
     obj = bpy.data.objects["Managed"]
     assert indexes.claims_on(obj)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
+    assert indexes.resource(handle.binding_id, "a") is None  # though the object it named remains
+    assert indexes.manifest(handle.binding_id) is None
     assert indexes.claims_on(obj) == []  # the manifest went with its collection
     assert _config(handle).destination is None  # Blender cleared the pointer, and the state was rebuilt
+
+
+def test_a_resource_is_read_through_its_bindings_manifest_alone(
+    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # resource() doesn't build the ownership index, which reads every binding's manifest.
+    ids, _ = _two_managed(sync, tmp_path)
+    indexes.invalidate()
+    reads, shares = _counted_reads(monkeypatch)
+    assert indexes.resource(ids[1], "a") == bpy.data.objects["A"]
+    assert [read for read in reads if read[1] == ownership.MANIFEST_KEY] == [("Other", ownership.MANIFEST_KEY)]
+    assert shares == []
 
 
 def _copy_scene(kind: str) -> bpy.types.Scene:
@@ -431,6 +443,9 @@ def test_a_publication_keeps_its_destinations_claimant(sync: Synchronization, tm
     assert _ownership_view(ids, names)  # the index is built
     indexes.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
     assert indexes.manifest(handle.binding_id) == indexes.manifest(other.binding_id)  # one destination, one record
+    # Each identity's resources are what its manifest names, though the claims name the first.
+    assert indexes.resource(handle.binding_id, "a") == indexes.resource(other.binding_id, "a") == bpy.data.objects["A"]
+    assert [c.binding_id for c in indexes.claims_on(bpy.data.objects["A"])] == [handle.binding_id]
     in_place = _ownership_view(ids, names)
     indexes.invalidate()
     assert in_place == _ownership_view(ids, names)
