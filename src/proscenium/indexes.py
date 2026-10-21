@@ -156,12 +156,19 @@ def config(binding_id: str) -> BindingConfig | Refused | None:
     return None if found is None else found.config
 
 
-def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
-    """The bindings whose configuration can be read and is an attached source with this exact key.
+def configs() -> dict[str, BindingConfig | Refused]:
+    """Every binding's configuration, or why it can't be read, as config() gives each: one pass over the
+    bindings, checking each one's first candidate."""
+    return _ask(_configs)
 
-    One pass, checking each binding's first candidate, whose configuration config() gives.
-    """
-    return _ask(lambda state: _with_key(state, key))
+
+def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
+    """The bindings whose configuration can be read and is an attached source with this exact key."""
+    return [
+        (binding_id, config)
+        for binding_id, config in configs().items()
+        if not isinstance(config, Refused) and config.source is SourceKind.ATTACHED and config.key == key
+    ]
 
 
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
@@ -318,14 +325,12 @@ def _listed(state: _State, scene: bpy.types.Scene | None) -> list[str]:
     return listed
 
 
-def _with_key(state: _State, key: str) -> list[tuple[str, BindingConfig]]:
-    found = []
+def _configs(state: _State) -> dict[str, BindingConfig | Refused]:
+    found: dict[str, BindingConfig | Refused] = {}
     for binding_id, candidates in state.bindings.items():
         if not _valid(binding_id, first := candidates[0]):
             raise _Stale
-        config = first.config
-        if not isinstance(config, Refused) and config.source is SourceKind.ATTACHED and config.key == key:
-            found.append((binding_id, config))
+        found[binding_id] = first.config
     return found
 
 

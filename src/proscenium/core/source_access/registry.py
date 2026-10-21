@@ -55,6 +55,9 @@ class SourceRegistry:
     def __contains__(self, binding_id: str) -> bool:
         return binding_id in self._bindings
 
+    def __len__(self) -> int:
+        return len(self._bindings)
+
     def release(self, key: str) -> None:
         """Release the stage attached under key from every source with that key, which leaves them unattached.
 
