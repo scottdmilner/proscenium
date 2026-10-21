@@ -181,6 +181,8 @@ class Synchronization:
         config = self._config(binding_id)
         if isinstance(config, Refused):
             return _unsupported(config)
+        if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
+            return _removed_destination(binding_id)
         try:
             dirty = dirty_layers(self._source(binding_id, config).acquire(config.payload_policy))
         except SourceUnavailable as error:
@@ -265,6 +267,11 @@ class Synchronization:
 
 def _unavailable(error: SourceUnavailable) -> Result:
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),))
+
+
+def _removed_destination(binding_id: str) -> Result:
+    message = f"The destination collection of binding {binding_id} was removed"
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.REMOVED_DESTINATION, Severity.ERROR, message),))
 
 
 def _unsupported(refused: Refused) -> Result:

@@ -1,8 +1,9 @@
-"""Reopening a .blend with its bindings' sources unavailable (lifecycle.md#reopening), on F-OFFLINE.
+"""Reopening a .blend whose bindings' sources are unavailable, or whose destination was removed (lifecycle.md).
 
-Nothing publishes until M5, so each test builds the saved display the fixture describes and records it
-as a publication would, in the manifest and the generation, then saves, makes the source unavailable,
-and reopens. Each checks after reopening and again after a synchronization, which fails.
+F-OFFLINE (lifecycle.md#reopening): nothing publishes until M5, so each test builds the saved display the
+fixture describes and records it as a publication would, in the manifest and the generation, then saves,
+makes the source unavailable, and reopens. Each checks after reopening and again after a synchronization,
+which fails. F-BINDING-STATE's removed destination (lifecycle.md#removed-destination) goes through the same.
 """
 
 from __future__ import annotations
@@ -15,9 +16,12 @@ import bpy
 from pxr import Sdf
 
 from fixtures import source_access
-from proscenium import binding_state, indexes
-from proscenium.records import Refused
-from proscenium.synchronization import BindingHandle, Category, ResultState, Synchronization
+from proscenium import binding_state, bindings, indexes, records
+from proscenium.binding_state import LastAttempt
+from proscenium.core.source_access import PayloadPolicy
+from proscenium.ownership import Manifest, ManifestEntry
+from proscenium.records import Loaded, Refused
+from proscenium.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 
@@ -25,6 +29,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
+    from proscenium.bindings import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:
@@ -106,3 +111,62 @@ def test_unattached_source(sync: Synchronization, tmp_path: Path) -> None:
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
         _check_kept(sync, handle, saved, Category.UNAVAILABLE_SOURCE)
+
+
+# A removed destination.
+
+
+def _index_entry(binding_id: str) -> tuple[bool, bpy.types.Collection | None]:
+    [text] = bindings.index_texts()
+    index = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+    assert isinstance(index, Loaded)
+    return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
+
+
+def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
+    # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
+    assert sync.bindings(_scene()) == [handle]
+    config = indexes.config(handle.binding_id)
+    assert config is not None and not isinstance(config, Refused)
+    assert config == saved
+    assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
+    assert _index_entry(handle.binding_id) == (True, None)
+    # DEST-04: no manifest, no resources, and the object it displayed claims no owner.
+    assert indexes.manifest(handle.binding_id) is None
+    assert indexes.resource(handle.binding_id, "a") is None
+    assert indexes.claims_on(bpy.data.objects["Managed"]) == []
+    # DEST-02: a fatal failure, with no source made for it and no destination created.
+    collections = set(bpy.data.collections.keys())
+    result = handle.synchronize(0)
+    assert result.state is ResultState.FATAL_FAILURE
+    assert [d.category for d in result.diagnostics] == [Category.REMOVED_DESTINATION]
+    assert handle.binding_id in result.diagnostics[0].message
+    assert handle.binding_id not in sync.sources
+    assert set(bpy.data.collections.keys()) == collections
+
+
+def test_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
+    # F-BINDING-STATE "removed-destination": the destination held a managed object that something else
+    # also uses, so the object outlives it. Checked once it's removed, and again after save and reopen.
+    with source_access.binding_state(tmp_path) as scene:
+        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+        obj = bpy.data.objects.new("Managed", None)
+        bpy.data.collections["Shot"].objects.link(obj)
+        _scene().collection.objects.link(obj)
+        indexes.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
+        binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
+        assert indexes.claims_on(obj) != []
+        before = indexes.config(handle.binding_id)
+        assert before is not None and not isinstance(before, Refused)
+        bpy.data.collections.remove(bpy.data.collections["Shot"])
+        config = replace(before, destination=None)
+        _check_removed(sync, handle, config, attempt)
+        save_and_reopen(tmp_path / "removed.blend")
+        _check_removed(sync, handle, config, attempt)
+        # DEST-03: its requested settings read as saved, and a change is written to its configuration.
+        assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_ALL)
+        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
+        [(_, binding_id, stored)] = bindings.all_bindings()
+        assert binding_id == handle.binding_id and isinstance(stored, Loaded)
+        assert stored.record == replace(config, payload_policy=PayloadPolicy.LOAD_NONE)
