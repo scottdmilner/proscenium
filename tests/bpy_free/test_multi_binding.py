@@ -12,7 +12,7 @@ from pxr import Sdf, Usd
 
 from fixtures import source_access
 from fixtures.source_access import ROOT_FORMATS, caller_settings, read_values, rewrite_on_disk
-from proscenium.core.source_access import AttachedSource, BindingSource, FileSource
+from proscenium.core.source_access import AttachedSource, BindingSource, FileSource, PayloadPolicy
 from support.usd import open_fresh
 
 if TYPE_CHECKING:
@@ -21,14 +21,14 @@ if TYPE_CHECKING:
 UNLOADED = {"payA": None, "payB": None}
 
 
-def _file(root: Path, payload_policy: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll) -> BindingSource:
-    return BindingSource(FileSource(root), payload_policy)
+def _file(root: Path) -> BindingSource:
+    return BindingSource(FileSource(root))
 
 
-def _attached(caller: Usd.Stage, payload_policy: Usd.Stage.InitialLoadSet = Usd.Stage.LoadAll) -> BindingSource:
+def _attached(caller: Usd.Stage) -> BindingSource:
     source = AttachedSource("shot")
     source.attach(caller)
-    return BindingSource(source, payload_policy)
+    return BindingSource(source)
 
 
 def _set_root_value(stage: Usd.Stage, layer: Sdf.Layer, value: float) -> None:
@@ -40,15 +40,15 @@ def test_root_layer_formats(tmp_path: Path) -> None:
     # BIND-02
     with source_access.multi_binding(tmp_path) as scene:
         for extension in ROOT_FORMATS:
-            assert read_values(_file(scene.roots[extension]).acquire()) == scene.values
+            assert read_values(_file(scene.roots[extension]).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
 
 
 def test_bindings_on_one_file_have_their_own_stages(tmp_path: Path) -> None:
     # BIND-07: two bindings with the same file source, and one with a stage over that file attached.
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
-        stages = [_file(root).acquire() for _ in range(2)]
-        stages.append(_attached(scene.caller).acquire())
+        stages = [_file(root).acquire(PayloadPolicy.LOAD_ALL) for _ in range(2)]
+        stages.append(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
         assert all(a != b for i, a in enumerate(stages) for b in stages[i + 1 :])
         assert scene.caller not in stages
 
@@ -57,15 +57,15 @@ def test_payload_policies_on_one_file(tmp_path: Path) -> None:
     # BIND-04
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
-        assert read_values(_file(root).acquire()) == scene.values
-        assert read_values(_file(root, Usd.Stage.LoadNone).acquire()) == scene.values | UNLOADED
-        assert read_values(_attached(scene.caller, Usd.Stage.LoadNone).acquire()) == scene.values | UNLOADED
+        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
+        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_NONE)) == scene.values | UNLOADED
+        assert read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_NONE)) == scene.values | UNLOADED
 
 
 def test_default_scope_is_the_whole_stage(tmp_path: Path) -> None:
     # BIND-08: every prim a stage opened on the files composes, payload contents included.
     with source_access.multi_binding(tmp_path) as scene:
-        stage = _file(scene.roots[".usda"]).acquire()
+        stage = _file(scene.roots[".usda"]).acquire(PayloadPolicy.LOAD_ALL)
         assert stage.GetPopulationMask() == Usd.StagePopulationMask.All()
         opened = open_fresh(scene.roots[".usda"])  # held: a traversal of an expired stage raises
         expected = {prim.GetPath() for prim in opened.TraverseAll()}
@@ -76,11 +76,11 @@ def test_acquisition_leaves_the_source_unchanged(tmp_path: Path) -> None:
     # BIND-09: no layer dirtied or rewritten, and the authored variant selection ("a") is composed.
     with source_access.multi_binding(tmp_path) as scene:
         files = {path: path.read_bytes() for path in tmp_path.iterdir()}
-        for payload_policy in (Usd.Stage.LoadAll, Usd.Stage.LoadNone):
+        for payload_policy in PayloadPolicy:
             for root in scene.roots.values():
-                stage = _file(root, payload_policy).acquire()
+                stage = _file(root).acquire(payload_policy)
                 assert (read_values(stage)["varA"], read_values(stage)["varB"]) == (1.0, None)
-            _attached(scene.caller, payload_policy).acquire()
+            _attached(scene.caller).acquire(payload_policy)
         assert [layer.identifier for layer in Sdf.Layer.GetLoadedLayers() if layer.dirty and not layer.anonymous] == []
         assert {path: path.read_bytes() for path in tmp_path.iterdir()} == files
 
@@ -91,13 +91,12 @@ def test_payload_policy_change_leaves_other_bindings(tmp_path: Path) -> None:
         root = scene.roots[".usda"]
         changed, other = _file(root), _file(root)
         attached = _attached(scene.caller)
-        stages = [binding.acquire() for binding in (changed, other, attached)]
+        stages = [binding.acquire(PayloadPolicy.LOAD_ALL) for binding in (changed, other, attached)]
         load_set = scene.caller.GetLoadSet()
-        changed.payload_policy = Usd.Stage.LoadNone
-        assert [binding.acquire() for binding in (changed, other, attached)] == stages
+        assert changed.acquire(PayloadPolicy.LOAD_NONE) == stages[0]
+        assert [binding.acquire(PayloadPolicy.LOAD_ALL) for binding in (other, attached)] == stages[1:]
         assert read_values(stages[0]) == scene.values | UNLOADED
         assert read_values(stages[1]) == read_values(stages[2]) == scene.values
-        assert (other.payload_policy, attached.payload_policy) == (Usd.Stage.LoadAll, Usd.Stage.LoadAll)
         assert scene.caller.GetLoadSet() == load_set
 
 
@@ -108,11 +107,11 @@ def test_callers_unsaved_edit(tmp_path: Path) -> None:
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
         _set_root_value(scene.caller, scene.caller.GetRootLayer(), 6.0)
-        assert read_values(_attached(scene.caller).acquire())["root"] == 6.0
+        assert read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
         on_disk = Sdf.Layer.OpenAsAnonymous(str(root))
         assert on_disk.GetAttributeAtPath("/World.rootValue").default == 1.0
-        assert read_values(_file(root).acquire())["root"] == 6.0
-        assert read_values(_file(scene.roots[".usdc"]).acquire())["root"] == 1.0
+        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
+        assert read_values(_file(scene.roots[".usdc"]).acquire(PayloadPolicy.LOAD_ALL))["root"] == 1.0
         assert scene.caller.GetRootLayer().dirty
 
 
@@ -121,13 +120,13 @@ def test_a_reload_reaches_the_attached_binding(tmp_path: Path) -> None:
     # the caller see the disk change, and the caller's settings are as they were. Until then, none of them does.
     with source_access.multi_binding(tmp_path) as scene:
         file_source, attached = _file(scene.roots[".usda"]), _attached(scene.caller)
-        file_source.acquire()
-        evaluation = attached.acquire()
+        file_source.acquire(PayloadPolicy.LOAD_ALL)
+        evaluation = attached.acquire(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.caller)
         rewrite_on_disk(tmp_path, "sub", 2.0)
-        assert read_values(attached.acquire())["sub"] == 1.0
-        file_source.reload()
-        assert read_values(attached.acquire())["sub"] == 2.0
+        assert read_values(attached.acquire(PayloadPolicy.LOAD_ALL))["sub"] == 1.0
+        file_source.reload(PayloadPolicy.LOAD_ALL)
+        assert read_values(attached.acquire(PayloadPolicy.LOAD_ALL))["sub"] == 2.0
         assert attached.evaluation_stage == evaluation
         assert read_values(scene.caller)["sub"] == 2.0
         assert caller_settings(scene.caller) == settings
@@ -139,6 +138,6 @@ def test_callers_stage_state_stays_with_the_caller(tmp_path: Path) -> None:
     with source_access.multi_binding(tmp_path) as scene:
         scene.caller.MuteLayer(str(tmp_path / "extra.usda"))
         _set_root_value(scene.caller, scene.caller.GetSessionLayer(), 5.0)
-        attached = read_values(_attached(scene.caller).acquire())
+        attached = read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
         assert (attached["extra"], attached["root"]) == (None, 5.0)
-        assert read_values(_file(scene.roots[".usda"]).acquire()) == scene.values
+        assert read_values(_file(scene.roots[".usda"]).acquire(PayloadPolicy.LOAD_ALL)) == scene.values

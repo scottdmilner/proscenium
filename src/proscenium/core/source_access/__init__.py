@@ -3,16 +3,18 @@
 The compiled core receives a stage from here; it never opens one.
 """
 
-from .binding_source import BindingSource, contributing_layers
+from .binding_source import BindingSource, contributing_layers, dirty_layers
 from .registry import SourceRegistry
-from .sources import AttachedSource, FileSource, SourceKind, SourceUnavailable
+from .sources import AttachedSource, FileSource, PayloadPolicy, SourceKind, SourceUnavailable
 
 __all__ = [
     "AttachedSource",
     "BindingSource",
     "FileSource",
+    "PayloadPolicy",
     "SourceKind",
     "SourceRegistry",
     "SourceUnavailable",
     "contributing_layers",
+    "dirty_layers",
 ]

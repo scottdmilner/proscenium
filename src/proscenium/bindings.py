@@ -18,14 +18,12 @@ from __future__ import annotations
 import dataclasses
 import uuid
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 import bpy
-from pxr import Usd
 
 from . import records
-from .core.source_access import SourceKind
+from .core.source_access import PayloadPolicy, SourceKind
 from .records import RecordRefused, Refused, Schema
 
 if TYPE_CHECKING:
@@ -37,21 +35,6 @@ CONFIG_PREFIX = "binding."
 TAG_KEY = "destination"
 INDEX_KEY = "index"
 INDEX_NAME = ".proscenium"
-
-
-class PayloadPolicy(StrEnum):
-    """A binding's payload policy, as its configuration stores it."""
-
-    LOAD_ALL = "load_all"
-    LOAD_NONE = "load_none"
-
-    @property
-    def load_set(self) -> Usd.Stage.InitialLoadSet:
-        return Usd.Stage.LoadAll if self is PayloadPolicy.LOAD_ALL else Usd.Stage.LoadNone
-
-    @classmethod
-    def of(cls, load_set: Usd.Stage.InitialLoadSet) -> PayloadPolicy:
-        return cls.LOAD_ALL if load_set == Usd.Stage.LoadAll else cls.LOAD_NONE
 
 
 @dataclass(frozen=True, slots=True)

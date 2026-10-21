@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd
 
-from .sources import AttachedSource, FileSource, SourceUnavailable
+from .sources import AttachedSource, FileSource, PayloadPolicy, SourceUnavailable
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -20,6 +20,11 @@ def contributing_layers(stage: Usd.Stage) -> Iterator[Sdf.Layer]:
     return (layer for layer in stage.GetUsedLayers() if not layer.anonymous)
 
 
+def dirty_layers(stage: Usd.Stage) -> list[str]:
+    """Identifiers of the stage's contributing layers with unsaved edits, for the source-state diagnostic."""
+    return [layer.identifier for layer in contributing_layers(stage) if layer.dirty]
+
+
 class BindingSource:
     """A binding's source, and the evaluation stage it keeps and reuses across acquisitions.
 
@@ -28,19 +33,18 @@ class BindingSource:
     matching its mask, muting, and interpolation, under the binding's own payload policy. When the
     binding opened the source stage itself, there are no caller's settings to protect, so the
     evaluation stage is the source stage. Layers are evaluated as loaded; only reload() rereads them.
-    Runtime state only.
+    The requested payload policy is the binding configuration's, passed at each acquisition; this
+    holds only the one the evaluation stage has. Runtime state only.
     """
 
     source: FileSource | AttachedSource
-    payload_policy: Usd.Stage.InitialLoadSet  # requested; a change applies at the next acquisition
     _evaluation_stage: Usd.Stage | None
-    _applied_payload_policy: Usd.Stage.InitialLoadSet  # the one the evaluation stage's load set follows
+    _payload_policy: PayloadPolicy | None  # the evaluation stage's: opened under it, or loaded or unloaded to it
 
-    def __init__(self, source: FileSource | AttachedSource, payload_policy: Usd.Stage.InitialLoadSet) -> None:
+    def __init__(self, source: FileSource | AttachedSource) -> None:
         self.source = source
-        self.payload_policy = payload_policy
         self._evaluation_stage = None
-        self._applied_payload_policy = payload_policy
+        self._payload_policy = None
 
     @property
     def evaluation_stage(self) -> Usd.Stage | None:
@@ -52,15 +56,19 @@ class BindingSource:
         """The source stage, which callers inspect and browse (the binding's live stage)."""
         return self.source.stage
 
-    def acquire(self) -> Usd.Stage:
-        """The evaluation stage, matched to the source stage. Raises SourceUnavailable."""
-        if isinstance(self.source, FileSource):
-            if self.source.stage is None:
-                self._applied_payload_policy = self.payload_policy  # opened under it
-            stage = self._evaluation_stage = self.source.open(self.payload_policy)
-        else:
-            stage = self._evaluation_stage_for(self.source.stage)
-        self._apply_payload_policy(stage)
+    def acquire(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+        """The evaluation stage, matched to the source stage, its payloads loaded or unloaded to payload_policy.
+
+        Raises SourceUnavailable.
+        """
+        stage = self._matched(payload_policy)
+        if self._payload_policy != payload_policy:
+            # A reused stage: never reopened, so the session layer's opinions stay.
+            if payload_policy is PayloadPolicy.LOAD_ALL:
+                stage.Load()
+            else:
+                stage.Unload()
+            self._payload_policy = payload_policy
         return stage
 
     def attach(self, stage: Usd.Stage) -> None:
@@ -84,19 +92,17 @@ class BindingSource:
             self.source.release()
             self._evaluation_stage = None
 
-    def dirty_layers(self) -> list[str]:
-        """Identifiers of the contributing layers with unsaved edits, for the source-state diagnostic."""
-        return [layer.identifier for layer in contributing_layers(self.acquire()) if layer.dirty]
-
-    def reload(self, layers: Iterable[str] | None = None) -> None:
+    def reload(self, payload_policy: PayloadPolicy, layers: Iterable[str] | None = None) -> None:
         """Reread contributing layers from disk, discarding the unsaved edits of dirty ones.
 
+        The contributing layers are the evaluation stage's under the payload policy it has, which a
+        reload leaves alone, since it doesn't synchronize; payload_policy opens one only if there is none.
         With layers, only those identifiers, each of which must be a contributing layer; otherwise
         ValueError, and nothing is reloaded. Non-forced, so an unchanged clean layer stays as it is,
         without notices; on Windows that misses a rewrite within the same second, as in USD itself.
         Raises SourceUnavailable.
         """
-        stage = self.acquire()
+        stage = self._matched(payload_policy)
         if layers is not None:
             by_identifier = {layer.identifier: layer for layer in contributing_layers(stage)}
             unknown = sorted(set(layers) - by_identifier.keys())
@@ -110,7 +116,16 @@ class BindingSource:
             Sdf.Layer.ReloadLayers(pending)
             reloaded |= pending
 
-    def _evaluation_stage_for(self, attached: Usd.Stage | None) -> Usd.Stage:
+    def _matched(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+        """The evaluation stage, matched to the source stage: reused, or opened under payload_policy."""
+        if isinstance(self.source, FileSource):
+            if self.source.stage is None:
+                self._payload_policy = payload_policy  # opened under it
+            stage = self._evaluation_stage = self.source.open(payload_policy)
+            return stage
+        return self._evaluation_stage_for(self.source.stage, payload_policy)
+
+    def _evaluation_stage_for(self, attached: Usd.Stage | None, payload_policy: PayloadPolicy) -> Usd.Stage:
         """The evaluation stage for an attached stage: reused, or opened on its root and session layers."""
         if attached is None:
             raise SourceUnavailable("No stage is attached")
@@ -127,9 +142,9 @@ class BindingSource:
                     attached.GetSessionLayer(),
                     attached.GetPathResolverContext(),
                     attached.GetPopulationMask(),
-                    self.payload_policy,
+                    payload_policy.load_set,
                 )
-            self._applied_payload_policy = self.payload_policy
+            self._payload_policy = payload_policy
         elif stage.GetPopulationMask() != attached.GetPopulationMask():
             # Reused: the caller may have changed its mask since the last acquisition.
             stage.SetPopulationMask(attached.GetPopulationMask())
@@ -140,13 +155,3 @@ class BindingSource:
             stage.MuteAndUnmuteLayers(sorted(wanted - muted), sorted(muted - wanted))
         stage.SetInterpolationType(attached.GetInterpolationType())
         return stage
-
-    def _apply_payload_policy(self, stage: Usd.Stage) -> None:
-        """Load or unload every payload on the reused stage to match a changed payload policy."""
-        if self._applied_payload_policy == self.payload_policy:
-            return
-        if self.payload_policy == Usd.Stage.LoadAll:
-            stage.Load()
-        else:
-            stage.Unload()
-        self._applied_payload_policy = self.payload_policy

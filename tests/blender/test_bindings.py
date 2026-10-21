@@ -18,8 +18,8 @@ from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from proscenium import addon, binding_state, bindings, indexes, records
-from proscenium.bindings import BindingConfig, BindingIndex, DestinationTag, PayloadPolicy
-from proscenium.core.source_access import SourceKind
+from proscenium.bindings import BindingConfig, BindingIndex, DestinationTag
+from proscenium.core.source_access import PayloadPolicy, SourceKind
 from proscenium.records import NAMESPACE, Loaded, RecordRefused
 from proscenium.synchronization import (
     AttachResult,
@@ -88,7 +88,7 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(sync: Synchr
 
 def test_the_enums_are_stored_as_their_values(sync: Synchronization, tmp_path: Path) -> None:
     # ID properties hold plain strings, and loading gives the enum members back.
-    handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=Usd.Stage.LoadNone)
+    handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     stored = records.stored(_scene(), bindings.config_key(handle.binding_id))
     assert isinstance(stored, dict)
     assert [(stored[f], type(stored[f])) for f in ("source", "payload_policy")] == [("file", str), ("load_none", str)]
@@ -111,7 +111,7 @@ def test_records_survive_save_and_reopen(sync: Synchronization, tmp_path: Path) 
     # STATE-01: identity, source information, destination, target scene, and requested settings; on F-BINDING-STATE.
     with source_access.binding_state(tmp_path) as scene:
         root = scene.root
-        file_backed = sync.create_file_binding(_scene(), root, payload_policy=Usd.Stage.LoadNone, name="F")
+        file_backed = sync.create_file_binding(_scene(), root, payload_policy=PayloadPolicy.LOAD_NONE, name="F")
         attached = sync.create_attached_binding(_scene(), scene.key, name="A")
         sync.attach(scene.key, scene.caller)
         identifier = scene.caller.GetRootLayer().identifier
@@ -185,7 +185,7 @@ def test_settings_change_only_their_binding(sync: Synchronization, tmp_path: Pat
         attached = sync.create_attached_binding(_scene(), "shot")
         sync.attach("shot", scene.caller)
         before = [_config(h) for h in (other, attached)]
-        changed.set_settings(payload_policy=Usd.Stage.LoadNone)
+        changed.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         assert [_config(h) for h in (other, attached)] == before
         assert _config(changed).payload_policy == "load_none"
 
@@ -199,15 +199,15 @@ def test_handles_survive_undo_redo_and_reopen(sync: Synchronization, tmp_path: P
     with source_access.binding_state(tmp_path) as scene:
         handle = sync.create_file_binding(_scene(), scene.root)
     undo.push("base")
-    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     undo.push("change")
     undo.undo()
-    assert handle.requested_settings().payload_policy == Usd.Stage.LoadAll
+    assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_ALL
     undo.redo()
-    assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
+    assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     save_and_reopen(tmp_path / "handles.blend")
     assert BindingHandle(handle.binding_id) == handle
-    assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone
+    assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
 
 
@@ -223,12 +223,12 @@ def test_handles_on_f_binding_state(sync: Synchronization, tmp_path: Path) -> No
         assert live is not None and live != scene.caller
         assert handle.synchronize(3) == Result(ResultState.SUCCESS)
         assert handle.live_stage() == live  # ICON-32: the same stage after a second refresh
-        assert handle.set_settings(payload_policy=Usd.Stage.LoadNone) == Result(ResultState.SUCCESS)
-        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone  # API-03
+        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result(ResultState.SUCCESS)
+        assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
         assert live.GetLoadSet()  # not applied: nothing synchronized
         assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
         assert handle.reload() == Result(ResultState.SUCCESS)
-        assert handle.requested_settings().payload_policy == Usd.Stage.LoadNone  # API-07
+        assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
         assert handle.synchronize(3) == Result(ResultState.SUCCESS)
         assert not live.GetLoadSet()  # applied at the next synchronization
@@ -246,7 +246,7 @@ def test_undoing_creation_makes_handles_raise(sync: Synchronization, tmp_path: P
     for each in (handle, BindingHandle(handle.binding_id)):
         calls = [
             lambda h=each: h.synchronize(0),
-            lambda h=each: h.set_settings(payload_policy=Usd.Stage.LoadNone),
+            lambda h=each: h.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
             each.reload,
             each.requested_settings,
             each.live_stage,
@@ -315,7 +315,11 @@ def test_an_unsupported_configuration_is_kept_and_refuses(sync: Synchronization,
         stored = versions.bindings[name]
         handle = BindingHandle(bindings.new_identifier())
         _scene()[NAMESPACE] = {bindings.config_key(handle.binding_id): stored}
-        for result in (handle.synchronize(0), handle.set_settings(payload_policy=Usd.Stage.LoadNone), handle.reload()):
+        for result in (
+            handle.synchronize(0),
+            handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
+            handle.reload(),
+        ):
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
             assert (diagnostic.category, diagnostic.severity) == (Category.UNSUPPORTED_RECORD, Severity.ERROR)
@@ -437,7 +441,7 @@ def test_records_stay_readable_with_the_extension_unregistered(sync: Synchroniza
     # The records are raw ID properties, readable without the namespace's registered class; the API is not,
     # since its in-memory state needs the extension's handlers.
     handle = sync.create_file_binding(_scene(), _root(tmp_path))
-    handle.set_settings(payload_policy=Usd.Stage.LoadNone)
+    handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     expected = _config(handle)
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
