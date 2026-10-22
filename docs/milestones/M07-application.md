@@ -12,6 +12,7 @@
 - Partition-level replacement from the start, following the M4 partitioning decision, even though Phase 1 rebuilds everything.
 - Basic reconciliation: each synchronization builds a fresh set of partitions, publishes it, and retires the previous result, deleting only obsolete resources that are safe to remove under the ownership and external-usage rules.
 - The source inspector, and the agreed browsing, selection, and highlighting behavior from the finalized interaction contract.
+- A binding panel that lists a scene's bindings once per draw, measured against M4's interaction budgets: a listing costs about 1 µs per candidate it checks ([M3 plan](../plans/M03-bindings.md), D8).
 - The inspection layer of the [interaction contract](../spec/interaction-contract.md#two-layers-and-the-live-stage): a C++ library that maps picked prims to selection targets by kind on the live stage, independent of the compiled core and of Blender, which the core calls and exposes through its bindings. It reads the live stage M3 defines for each binding.
 
 **Tests:**
