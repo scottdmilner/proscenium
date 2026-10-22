@@ -31,7 +31,6 @@
 - `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`.
 - Copied-binding detection from `F-OWNERSHIP-AMBIGUITY`.
 - Loading older, failed-migration, and newer-schema records (`F-SCHEMA-VERSIONS`).
-- A source change during evaluation (`F-SOURCE-CHANGE`).
 - Binding handles, configuration, the live stage, and persistent selection through save/reopen and undo (`F-BINDING-STATE`), and reopening with the source unavailable (`F-OFFLINE`).
 - Compatibility tests for source-entity identifiers and persisted selection state against M2's draft contract.
 

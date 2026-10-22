@@ -333,6 +333,7 @@ requirements:
         delivery: M5
       - id: CONS-03
         quote: "Where a source change during evaluation can be detected, the attempt is discarded before publication."
+        delivery: M5
         fixtures: [F-SOURCE-CHANGE]
         oracle: "When the fixture changes a contributing layer while the binding evaluates, the attempt fails before publication with a diagnostic naming the layer, and the published generation is unchanged."
 
