@@ -26,6 +26,7 @@
 - Provisional performance budgets, and measurements of initial construction, refresh, interaction, and resource costs against them. Interaction costs are defined in [Interaction Testing](../spec/interaction.md#interaction-testing).
 - Answers to every [M2 feasibility question](../plans/M02-contracts.md#feasibility-questions-for-m4) and the finalized interaction contract, including a compatibility review and any required updates to M3's identifiers and persistence schemas before M5 begins.
 - For the chosen representation, a record of what a real viewport pick is assumed to supply, as an accepted risk.
+- The first ownership lookup after an undo at ALab scale, measured against the interaction budgets. Every undo or redo drops M3's bindings' state, and rebuilding its ownership index reads every manifest: 21–35 ms per 10,000 resources ([M3 plan](../plans/M03-bindings.md), D8). If that's over budget, a revision token in each manifest record could let an undo reread only the manifests whose token changed ([M3 plan](../plans/M03-bindings.md), Phase E).
 - A partitioning decision record:
   - The partition unit, such as one per model or per prototype.
   - What a partition owns.

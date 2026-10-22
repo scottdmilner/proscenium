@@ -400,6 +400,7 @@ All of this goes in a bpy-free source-access package. Tests are synchronization 
 #### Phase E log
 
 - **E1, CONS-03 is M5's** (with the user). Discarding an attempt when a source changes during evaluation needs evaluation, which M5 adds; M3 only acquires sources. The row, and `F-SOURCE-CHANGE` with it, move to M5, whose Tests section names the fixture.
+- **E2, notes for later milestones,** in their milestone files, which are what each milestone reads first: M4 measures the first ownership lookup after an undo at ALab scale; M5 publishes and cleans up through the bindings' state, keeps new source entry points behind the rebuild comparison, measures the cached manifests' memory, and, with M11, decides whether a binding whose destination was removed may get a new one; M7 measures a panel's listing; M11's repair starts from `copied_bindings()`, moves a destination's tag and index entry with it, and looks for copies before acting on them; M14 measures manifest updates by entry. The options for each stay in item 1 above.
 
 ## Working agreements
 

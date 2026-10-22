@@ -8,6 +8,7 @@
 
 - A validated in-memory-stage integration interface.
 - Incremental application, including repair of damaged content in individual partitions without a full rebuild.
+- Manifest updates by entry, measured with the refresh measurements: an update copies the manifest's entries and, with removals, scans every entry's uses ([M3 plan](../plans/M03-bindings.md), D8). If that's over budget, a count of each resource's users and a persistent map in place of the copied entries would make an update cost only what it changes.
 
 **Tests:**
 
