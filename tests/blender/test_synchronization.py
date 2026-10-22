@@ -19,7 +19,7 @@ from proscenium import runtime
 from proscenium.api.synchronization import (
     BindingHandle,
     BindingNotFoundError,
-    Category,
+    DiagnosticCategory,
     Result,
     ResultState,
     Severity,
@@ -154,7 +154,7 @@ def test_unavailable_source_is_a_result(sync: Synchronization, tmp_path: Path) -
         for result in (handle.synchronize(0), handle.reload()):
             assert result.state == ResultState.FATAL_FAILURE
             assert [(d.category, d.severity) for d in result.diagnostics] == [
-                (Category.UNAVAILABLE_SOURCE, Severity.ERROR)
+                (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
             ]
 
 
@@ -164,7 +164,7 @@ def test_dirty_layers_are_reported_as_source_state(sync: Synchronization, tmp_pa
         result = sync.create_file_binding(_scene(), scene.root).synchronize(0)
         assert result.state == ResultState.SUCCESS
         [diagnostic] = result.diagnostics
-        assert (diagnostic.category, diagnostic.severity) == (Category.SOURCE_STATE, Severity.INFO)
+        assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.SOURCE_STATE, Severity.INFO)
         assert {Path(layer) for layer in diagnostic.layers} == set(scene.dirty_contributing.values())
 
 
@@ -209,7 +209,7 @@ def test_releasing_under_a_key(sync: Synchronization, tmp_path: Path) -> None:
     assert sync.release("shot") == (first.binding_id, second.binding_id)
     for handle in (first, second):
         assert handle.live_stage() is None
-        assert [d.category for d in handle.synchronize(0).diagnostics] == [Category.UNAVAILABLE_SOURCE]
+        assert [d.category for d in handle.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
     assert other.live_stage() == caller
     assert sync.attach("shot", caller).attached == (first.binding_id, second.binding_id)  # attachable again
     assert first.synchronize(0) == Result(ResultState.SUCCESS)

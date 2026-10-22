@@ -14,7 +14,13 @@ import pytest
 
 from fixtures import copies
 from proscenium import runtime
-from proscenium.api.synchronization import BindingDisabledError, BindingHandle, Category, ResultState, Synchronization
+from proscenium.api.synchronization import (
+    BindingDisabledError,
+    BindingHandle,
+    DiagnosticCategory,
+    ResultState,
+    Synchronization,
+)
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
@@ -92,7 +98,7 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
             assert sync.bindings(bpy.data.scenes[name]) == [handle]
         for refused in (result, handle.reload(), handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)):
             assert refused.state is ResultState.FATAL_FAILURE
-            assert [d.category for d in refused.diagnostics] == [Category.COPIED_BINDING]
+            assert [d.category for d in refused.diagnostics] == [DiagnosticCategory.COPIED_BINDING]
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )

@@ -17,7 +17,13 @@ from pxr import Sdf
 
 from fixtures import source_access
 from proscenium import runtime
-from proscenium.api.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
+from proscenium.api.synchronization import (
+    BindingHandle,
+    DiagnosticCategory,
+    RequestedSettings,
+    ResultState,
+    Synchronization,
+)
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, records
 from proscenium.persistence.binding_state import LastAttempt
@@ -75,7 +81,9 @@ def _publish(handle: BindingHandle, display: SavedDisplay) -> dict[str, object]:
     return saved
 
 
-def _check_kept(sync: Synchronization, handle: BindingHandle, saved: dict[str, object], category: Category) -> None:
+def _check_kept(
+    sync: Synchronization, handle: BindingHandle, saved: dict[str, object], category: DiagnosticCategory
+) -> None:
     # REOPEN-04, REOPEN-05, REOPEN-07: the binding is listed with its records, and the display unchanged,
     # after reopening and after a synchronization that fails for the unavailable source.
     assert sync.bindings(_scene()) == [handle]
@@ -98,7 +106,7 @@ def test_moved_file_source(sync: Synchronization, tmp_path: Path) -> None:
         gc.collect()
         assert not Sdf.Layer.Find(str(scene.root))
         assert not scene.root.exists()
-        _check_kept(sync, handle, saved, Category.UNAVAILABLE_SOURCE)
+        _check_kept(sync, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
 
 
 def test_unattached_source(sync: Synchronization, tmp_path: Path) -> None:
@@ -111,7 +119,7 @@ def test_unattached_source(sync: Synchronization, tmp_path: Path) -> None:
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
-        _check_kept(sync, handle, saved, Category.UNAVAILABLE_SOURCE)
+        _check_kept(sync, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
 
 
 # A removed destination.
@@ -140,7 +148,7 @@ def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingC
     collections = set(bpy.data.collections.keys())
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
-    assert [d.category for d in result.diagnostics] == [Category.REMOVED_DESTINATION]
+    assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
     assert handle.binding_id not in sync.stages
     assert set(bpy.data.collections.keys()) == collections

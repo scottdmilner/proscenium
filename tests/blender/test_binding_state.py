@@ -13,7 +13,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium.core.results import Category, Diagnostic, ResultState, Severity
+from proscenium.core.results import Diagnostic, DiagnosticCategory, ResultState, Severity
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, manifests, records
 from proscenium.persistence.binding_state import Generation, LastAttempt
@@ -33,8 +33,10 @@ if TYPE_CHECKING:
 
     from proscenium.api.synchronization import BindingHandle, Synchronization
 
-DIRTY = Diagnostic(Category.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda"))
-UNAVAILABLE = Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
+DIRTY = Diagnostic(
+    DiagnosticCategory.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda")
+)
+UNAVAILABLE = Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
 
 
 def _scene() -> bpy.types.Scene:
@@ -146,7 +148,7 @@ def test_a_generation_that_cannot_be_read_is_refused_and_kept(
 
 
 def test_a_diagnostic_rejects_values_it_cannot_hold() -> None:
-    with pytest.raises(ValueError, match="not a valid Category"):
+    with pytest.raises(ValueError, match="not a valid DiagnosticCategory"):
         Diagnostic("nonsense", Severity.INFO, "m")  # ty: ignore[invalid-argument-type]
     with pytest.raises(TypeError, match="message and layers are strings"):
-        Diagnostic(Category.SOURCE_STATE, Severity.INFO, "m", (1,))  # ty: ignore[invalid-argument-type]
+        Diagnostic(DiagnosticCategory.SOURCE_STATE, Severity.INFO, "m", (1,))  # ty: ignore[invalid-argument-type]

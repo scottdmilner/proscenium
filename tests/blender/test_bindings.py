@@ -22,7 +22,7 @@ from proscenium.api.synchronization import (
     AttachResult,
     BindingHandle,
     BindingNotFoundError,
-    Category,
+    DiagnosticCategory,
     Result,
     ResultState,
     Severity,
@@ -307,7 +307,7 @@ def test_an_attached_source_is_unavailable_after_reopening(
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
-        assert [d.category for d in result.diagnostics] == [Category.UNAVAILABLE_SOURCE]
+        assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
         assert sync.attach("shot", scene.caller).attached == (handle.binding_id,)
         assert handle.synchronize(0) == Result(ResultState.SUCCESS)
 
@@ -329,7 +329,7 @@ def test_an_unsupported_configuration_is_kept_and_refuses(sync: Synchronization,
         ):
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
-            assert (diagnostic.category, diagnostic.severity) == (Category.UNSUPPORTED_RECORD, Severity.ERROR)
+            assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR)
             refused = records.load(binding_records.CONFIG, stored)
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]

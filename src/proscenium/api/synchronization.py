@@ -25,7 +25,7 @@ import bpy
 from pxr import Usd
 
 from .. import runtime
-from ..core.results import Category, Diagnostic, Result, ResultState, Severity
+from ..core.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
 from ..core.source_access import (
     PayloadPolicy,
     SourceKind,
@@ -203,7 +203,7 @@ class Synchronization:
         diagnostics = ()
         if dirty:
             message = "Displaying layers with unsaved in-process edits"
-            diagnostics = (Diagnostic(Category.SOURCE_STATE, Severity.INFO, message, tuple(sorted(dirty))),)
+            diagnostics = (Diagnostic(DiagnosticCategory.SOURCE_STATE, Severity.INFO, message, tuple(sorted(dirty))),)
         return Result(ResultState.SUCCESS, diagnostics)
 
     def reload(self, binding_id: str, layers: Iterable[str] | None = None) -> Result:
@@ -281,12 +281,16 @@ class Synchronization:
 
 
 def _unavailable(error: SourceUnavailableError) -> Result:
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),))
+    return Result(
+        ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),)
+    )
 
 
 def _removed_destination(binding_id: str) -> Result:
     message = f"The destination collection of binding {binding_id} was removed"
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.REMOVED_DESTINATION, Severity.ERROR, message),))
+    return Result(
+        ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.REMOVED_DESTINATION, Severity.ERROR, message),)
+    )
 
 
 def _refused(refused: RefusedRecord | CopiedBinding) -> Result:
@@ -294,11 +298,11 @@ def _refused(refused: RefusedRecord | CopiedBinding) -> Result:
         return _unsupported(refused)
     named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in refused.candidates)
     message = f"Binding {refused.binding_id} has copies and no canonical candidate ({refused.reason}): {named}"
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.COPIED_BINDING, Severity.ERROR, message),))
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
 
 
 def _unsupported(refused: RefusedRecord) -> Result:
-    diagnostic = Diagnostic(Category.UNSUPPORTED_RECORD, Severity.ERROR, refused.message)
+    diagnostic = Diagnostic(DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR, refused.message)
     return Result(ResultState.FATAL_FAILURE, (diagnostic,))
 
 
