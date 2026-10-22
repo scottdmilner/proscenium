@@ -98,6 +98,12 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Follow PEP 8 (ruff, line length 120) and annotate every function signature.
 - Classes declare their typed attributes in the class body, above `__init__`.
 - Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
+- Names:
+  - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_kind`, `candidate` for one record or copy of a binding identity.
+  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source tiers are tiers, never layers.
+  - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
+  - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
+  - Verbs by tier, eg. `persistence` reads and writes records (`read_*`, `write_*`); `runtime` names a lookup by what it returns (`config(binding_id)`) and a write-through by `set_*`; `api` uses the spec's verbs.
 - Prefer short docstrings plus inline comments over long docstrings.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.

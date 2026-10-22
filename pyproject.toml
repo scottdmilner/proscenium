@@ -48,7 +48,7 @@ src = ["src", "tools", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true
-select = ["E", "W", "F", "I", "ANN", "B", "UP", "TC"]
+select = ["E", "W", "F", "I", "ANN", "B", "UP", "TC", "N818"]
 ignore = [
     "ANN401", # Any is the honest type for untyped pxr/bpy objects
 ]

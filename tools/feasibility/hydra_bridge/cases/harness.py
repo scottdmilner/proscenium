@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 SCENES = Path(__file__).resolve().parent
 
 
-class CheckFailed(AssertionError):
+class CheckFailedError(AssertionError):
     pass
 
 
@@ -32,7 +32,7 @@ class Case:
 
     def check(self, name: str, condition: bool, detail: object = None) -> None:
         if not condition:
-            raise CheckFailed(name if detail is None else f"{name}: {detail}")
+            raise CheckFailedError(name if detail is None else f"{name}: {detail}")
         self.checks.append(name)
 
     def known_gap(self, name: str, reproduced: bool, detail: object = None) -> None:
@@ -45,7 +45,7 @@ class Case:
         shutil.copy(SCENES / scene, copy)
         stage = Usd.Stage.Open(str(copy))
         if not stage:
-            raise CheckFailed(f"could not open {scene}")
+            raise CheckFailedError(f"could not open {scene}")
         return stage
 
     def collection(self) -> bpy.types.Collection:
@@ -62,7 +62,7 @@ class Case:
         sources = [o["source"] for o in plan.objects]
         repeated = sorted({s for s in sources if sources.count(s) > 1})
         if repeated:
-            raise CheckFailed(f"apply_plan needs one object per source; repeated: {repeated}")
+            raise CheckFailedError(f"apply_plan needs one object per source; repeated: {repeated}")
         return dict(zip(sources, objects, strict=True))
 
 
