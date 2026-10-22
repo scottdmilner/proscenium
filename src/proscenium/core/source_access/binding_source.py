@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, override
 
 from pxr import Sdf, Usd
 
-from .sources import AttachedSource, FileSource, PayloadPolicy, SourceUnavailable
+from .sources import AttachedSource, FileSource, PayloadPolicy, SourceUnavailableError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -60,7 +60,7 @@ class BindingSource[S: (FileSource, AttachedSource)](ABC):
     def acquire(self, payload_policy: PayloadPolicy) -> Usd.Stage:
         """The evaluation stage, matched to the source stage, its payloads loaded or unloaded to payload_policy.
 
-        Raises SourceUnavailable.
+        Raises SourceUnavailableError.
         """
         stage = self._matched(payload_policy)
         if self._payload_policy != payload_policy:
@@ -80,7 +80,7 @@ class BindingSource[S: (FileSource, AttachedSource)](ABC):
         With layers, only those identifiers, each of which must be a contributing layer; otherwise
         ValueError, and nothing is reloaded. Non-forced, so an unchanged clean layer stays as it is,
         without notices; on Windows that misses a rewrite within the same second, as in USD itself.
-        Raises SourceUnavailable.
+        Raises SourceUnavailableError.
         """
         stage = self._matched(payload_policy)
         if layers is not None:
@@ -138,7 +138,7 @@ class AttachedBindingSource(BindingSource[AttachedSource]):
         """Reused, or opened on the attached stage's root and session layers."""
         attached = self.source.stage
         if attached is None:
-            raise SourceUnavailable("No stage is attached")
+            raise SourceUnavailableError("No stage is attached")
         stage = self._evaluation_stage
         if (
             stage is None

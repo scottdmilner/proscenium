@@ -56,7 +56,7 @@ _state: State | None = None
 _rebuilds = 0  # how many times the state was dropped or rebuilt; see rebuilds()
 
 
-class NotTracking(RuntimeError):  # noqa: N818 (a precondition, raised like RuntimeError)
+class NotRegisteredError(RuntimeError):  # a precondition, raised like RuntimeError
     """The bindings' state was used without the extension registered, whose handlers keep it current."""
 
 
@@ -142,7 +142,7 @@ def query[T](question: Callable[[State], T]) -> T:
 def current_state() -> State:
     global _state, _rebuilds
     if not _tracking:
-        raise NotTracking("the extension isn't registered, so the bindings' state can't be kept current")
+        raise NotRegisteredError("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
         found = _read_bindings()

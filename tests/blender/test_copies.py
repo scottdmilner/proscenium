@@ -14,7 +14,7 @@ import pytest
 
 from fixtures import copies
 from proscenium import runtime
-from proscenium.api.synchronization import BindingHandle, Category, Disabled, ResultState, Synchronization
+from proscenium.api.synchronization import BindingDisabledError, BindingHandle, Category, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import bindings, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
@@ -97,7 +97,7 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
         assert handle.binding_id not in sync.sources
-        with pytest.raises(Disabled):
+        with pytest.raises(BindingDisabledError):
             handle.requested_settings()
         assert handle.live_stage() is None
     return reported

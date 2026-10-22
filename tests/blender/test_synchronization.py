@@ -18,7 +18,7 @@ from fixtures.source_access import DISK, read_values
 from proscenium import runtime
 from proscenium.api.synchronization import (
     BindingHandle,
-    BindingNotFound,
+    BindingNotFoundError,
     Category,
     Result,
     ResultState,
@@ -347,5 +347,5 @@ def test_a_handle_to_no_binding_raises(sync: Synchronization) -> None:
         handle.live_stage,
     ]
     for call in calls:
-        with pytest.raises(BindingNotFound):
+        with pytest.raises(BindingNotFoundError):
             call()

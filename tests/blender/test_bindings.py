@@ -21,7 +21,7 @@ from proscenium import addon, runtime
 from proscenium.api.synchronization import (
     AttachResult,
     BindingHandle,
-    BindingNotFound,
+    BindingNotFoundError,
     Category,
     Result,
     ResultState,
@@ -253,7 +253,7 @@ def test_undoing_creation_makes_handles_raise(sync: Synchronization, tmp_path: P
             each.live_stage,
         ]
         for call in calls:
-            with pytest.raises(BindingNotFound):
+            with pytest.raises(BindingNotFoundError):
                 call()
     undo.redo()
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
@@ -453,5 +453,5 @@ def test_records_stay_readable_with_the_extension_unregistered(sync: Synchroniza
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
     assert _config(handle) == replace(expected, destination=bpy.data.collections["root"])
-    with pytest.raises(runtime.NotTracking):
+    with pytest.raises(runtime.NotRegisteredError):
         handle.requested_settings()

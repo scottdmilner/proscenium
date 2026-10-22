@@ -21,7 +21,7 @@ from proscenium.core.source_access import (
     FileBindingSource,
     FileSource,
     PayloadPolicy,
-    SourceUnavailable,
+    SourceUnavailableError,
 )
 from support.usd import open_fresh
 
@@ -89,7 +89,7 @@ def test_unavailable_source(kind: str, tmp_path: Path) -> None:
         if kind == "file"
         else AttachedBindingSource(AttachedSource("shot"))
     )
-    with pytest.raises(SourceUnavailable):
+    with pytest.raises(SourceUnavailableError):
         source.acquire(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage is None
     assert source.live_stage is None

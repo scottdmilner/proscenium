@@ -1,7 +1,7 @@
 """Lookups by binding identity, creation, and configuration writes, through the bindings' state.
 
 The state is proscenium.runtime.state's. A lookup by identity uses the identity's canonical
-candidate, and raises Disabled for one with none (source-access.md#copied-bindings). Every candidate
+candidate, and raises BindingDisabledError for one with none (source-access.md#copied-bindings). Every candidate
 a lookup decides on is checked before it answers.
 """
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 _UNIQUE = Decision(0, Reason.UNIQUE)
 
 
-class Disabled(LookupError):  # noqa: N818 (raised like KeyError, for an identity whose candidates are all disabled)
+class BindingDisabledError(LookupError):  # raised like KeyError, for an identity with every candidate disabled
     """A lookup by a binding identity the canonical-candidate rule can't decide: every candidate is disabled
     pending repair (source-access.md#copied-bindings)."""
 
@@ -47,7 +47,7 @@ def binding_ids(scene: bpy.types.Scene | None = None) -> list[str]:
 def binding_scene(binding_id: str) -> bpy.types.Scene | None:
     """The scene holding a binding's configuration, or None if no binding has this identifier.
 
-    Every lookup by identity, here and below, raises Disabled for a binding with no canonical candidate.
+    Every lookup by identity, here and below, raises BindingDisabledError for a binding with no canonical candidate.
     """
     found = state.query(lambda s: canonical(s, binding_id))
     return None if found is None else found.scene
@@ -83,7 +83,7 @@ def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
     """Make a binding with bindings.create, and record it; it has no manifest yet. Returns its identifier.
 
-    Raises NotTracking before changing anything, and what bindings.create raises.
+    Raises NotRegisteredError before changing anything, and what bindings.create raises.
     """
     current = state.current_state()
     binding_id, config = bindings.create(scene, config, name)
@@ -116,14 +116,14 @@ def set_config(binding_id: str, config: BindingConfig) -> None:
 
 def canonical(current: State, binding_id: str) -> Binding | None:
     """The binding's canonical candidate, every candidate checked (see state.valid), or None if no binding has this
-    identifier. Raises Disabled if it has none."""
+    identifier. Raises BindingDisabledError if it has none."""
     found = current.bindings.get(binding_id)
     if found is None:
         return None
     _check_candidates(current, binding_id, found)
     identity = current.identities[binding_id]
     if (index := identity.decision.canonical) is None:
-        raise Disabled(candidates.report(binding_id, identity, [(b.scene, b.config) for b in found]))
+        raise BindingDisabledError(candidates.report(binding_id, identity, [(b.scene, b.config) for b in found]))
     return found[index]  # a record: copies are never mutual, so with records the rule picks one
 
 
@@ -169,7 +169,7 @@ def _configs(current: State) -> dict[str, BindingConfig | Refused | CopiedBindin
     for binding_id in current.bindings:
         try:
             candidate = canonical(current, binding_id)
-        except Disabled as disabled:
+        except BindingDisabledError as disabled:
             found[binding_id] = disabled.report
         else:
             assert candidate is not None

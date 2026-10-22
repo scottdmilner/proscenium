@@ -30,12 +30,12 @@ from ..core.source_access import (
     PayloadPolicy,
     SourceKind,
     SourceRegistry,
-    SourceUnavailable,
+    SourceUnavailableError,
     dirty_layers,
 )
 from ..persistence.bindings import BindingConfig
 from ..persistence.records import RecordRefused, Refused
-from ..runtime import Disabled
+from ..runtime import BindingDisabledError
 from ..runtime.candidates import CopiedBinding
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from ..core.source_access import AttachedBindingSource, FileBindingSource
 
 
-class BindingNotFound(LookupError):  # noqa: N818 (misuse, raised like KeyError)
+class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
     """No binding has this identifier: it was removed, its creation undone, or it never existed."""
 
 
@@ -68,7 +68,7 @@ class AttachResult:
 class BindingHandle:
     """How callers reach a binding: its persistent identifier, never a datablock or cached state.
 
-    Each method looks the binding up when it is called, and raises BindingNotFound once the
+    Each method looks the binding up when it is called, and raises BindingNotFoundError once the
     binding is gone. Two handles are equal when their identifiers are.
     """
 
@@ -168,13 +168,13 @@ class Synchronization:
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
-        """Raises RecordRefused if the binding's configuration can't be read, and Disabled if it has copies and
-        no canonical candidate."""
+        """Raises RecordRefused if the binding's configuration can't be read, and BindingDisabledError if it has
+        copies and no canonical candidate."""
         config = self._config(binding_id)
         if isinstance(config, Refused):
             raise RecordRefused(config)
         if isinstance(config, CopiedBinding):
-            raise Disabled(config)
+            raise BindingDisabledError(config)
         return RequestedSettings(config.payload_policy)
 
     def set_settings(self, binding_id: str, *, payload_policy: PayloadPolicy | None = None) -> Result:
@@ -198,7 +198,7 @@ class Synchronization:
             return _removed_destination(binding_id)
         try:
             dirty = dirty_layers(self._source(binding_id, config).acquire(config.payload_policy))
-        except SourceUnavailable as error:
+        except SourceUnavailableError as error:
             return _unavailable(error)
         diagnostics = ()
         if dirty:
@@ -216,7 +216,7 @@ class Synchronization:
             return _refused(config)
         try:
             self._source(binding_id, config).reload(config.payload_policy, layers)
-        except SourceUnavailable as error:
+        except SourceUnavailableError as error:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
 
@@ -260,10 +260,10 @@ class Synchronization:
         self._prune_if_rebuilt()
         try:
             config = runtime.config(binding_id)
-        except Disabled as disabled:
+        except BindingDisabledError as disabled:
             return disabled.report
         if config is None:
-            raise BindingNotFound(binding_id)
+            raise BindingNotFoundError(binding_id)
         return config
 
     def _source(self, binding_id: str, config: BindingConfig) -> FileBindingSource | AttachedBindingSource:
@@ -280,7 +280,7 @@ class Synchronization:
         return self.sources.attached(binding_id, config.key)
 
 
-def _unavailable(error: SourceUnavailable) -> Result:
+def _unavailable(error: SourceUnavailableError) -> Result:
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),))
 
 

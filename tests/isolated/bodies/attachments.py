@@ -14,7 +14,7 @@ from pxr import Sdf
 
 from fixtures import source_access
 from proscenium.core._core import StageHandle
-from proscenium.core.source_access import PayloadPolicy, SourceRegistry, SourceUnavailable
+from proscenium.core.source_access import PayloadPolicy, SourceRegistry, SourceUnavailableError
 from support.usd import open_fresh
 
 # Expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
@@ -52,7 +52,7 @@ def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
         try:
             binding.acquire(PayloadPolicy.LOAD_ALL)
             result["acquire"] = "acquired"
-        except SourceUnavailable:
+        except SourceUnavailableError:
             result["acquire"] = "unavailable"
         gc.collect()
         result["session_layer_freed"] = not Sdf.Layer.Find(session)

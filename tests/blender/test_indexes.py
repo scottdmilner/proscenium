@@ -677,9 +677,9 @@ def test_creation_needs_the_extension_registered(tmp_path: Path) -> None:
     # comes first: a binding made anyway would be in the file, and found at the next load.
     with source_access.binding_state(tmp_path) as scene:
         before = _file_data()
-        with pytest.raises(runtime.NotTracking):
+        with pytest.raises(runtime.NotRegisteredError):
             Synchronization().create_file_binding(_scene(), scene.root)
-        with pytest.raises(runtime.NotTracking):
+        with pytest.raises(runtime.NotRegisteredError):
             Synchronization().create_attached_binding(_scene(), "shot")
     assert _file_data() == before
 
@@ -689,11 +689,11 @@ def test_writes_need_the_extension_registered(sync: Synchronization, tmp_path: P
     sync.create_attached_binding(_scene(), "shot")
     addon.unregister()
     before = _file_data()
-    with pytest.raises(runtime.NotTracking):
+    with pytest.raises(runtime.NotRegisteredError):
         handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    with pytest.raises(runtime.NotTracking):
+    with pytest.raises(runtime.NotRegisteredError):
         sync.attach("shot", Usd.Stage.CreateInMemory(), confirm=True)
-    with pytest.raises(runtime.NotTracking):
+    with pytest.raises(runtime.NotRegisteredError):
         runtime.set_manifest(handle.binding_id, Manifest({}))
     assert _file_data() == before
 
