@@ -28,6 +28,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
     - `proscenium/runtime/`: disposable in-memory state built from the records.
     - `proscenium/persistence/`: versioned records in ID properties.
   - `proscenium/addon.py` registers the extension and its handlers, and may import any tier.
+  - Every directory has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
