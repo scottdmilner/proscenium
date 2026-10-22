@@ -16,9 +16,9 @@ from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
 from proscenium.core.source_access import (
-    AttachedBindingSource,
+    AttachedBindingStages,
     AttachedSource,
-    FileBindingSource,
+    FileBindingStages,
     FileSource,
     PayloadPolicy,
     SourceUnavailableError,
@@ -85,9 +85,9 @@ def test_session_layer_opinions_are_displayed(kind: str, tmp_path: Path) -> None
 def test_unavailable_source(kind: str, tmp_path: Path) -> None:
     # A file that won't open, or no stage attached.
     source = (
-        FileBindingSource(FileSource(tmp_path / "missing.usda"))
+        FileBindingStages(FileSource(tmp_path / "missing.usda"))
         if kind == "file"
-        else AttachedBindingSource(AttachedSource("shot"))
+        else AttachedBindingStages(AttachedSource("shot"))
     )
     with pytest.raises(SourceUnavailableError):
         source.acquire(PayloadPolicy.LOAD_ALL)
@@ -149,7 +149,7 @@ def test_ambient_cache(tmp_path: Path) -> None:
     # cached, and the ambient stage's session-layer opinions aren't composed (SRC-05).
     with source_access.cached_stage(tmp_path) as scene:
         ambient_settings = caller_settings(scene.ambient)
-        stage = FileBindingSource(FileSource(scene.root)).acquire(PayloadPolicy.LOAD_ALL)
+        stage = FileBindingStages(FileSource(scene.root)).acquire(PayloadPolicy.LOAD_ALL)
         assert stage != scene.ambient
         assert not UsdUtils.StageCache.Get().Contains(stage)
         assert read_values(stage) == scene.disk_values

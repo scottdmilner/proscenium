@@ -3,19 +3,19 @@
 The compiled core receives a stage from here; it never opens one.
 """
 
-from .binding_source import AttachedBindingSource, BindingSource, FileBindingSource, contributing_layers, dirty_layers
-from .registry import SourceRegistry
+from .binding_stages import AttachedBindingStages, BindingStages, FileBindingStages, contributing_layers, dirty_layers
 from .sources import AttachedSource, FileSource, PayloadPolicy, SourceKind, SourceUnavailableError
+from .stage_registry import StageRegistry
 
 __all__ = [
-    "AttachedBindingSource",
+    "AttachedBindingStages",
     "AttachedSource",
-    "BindingSource",
-    "FileBindingSource",
+    "BindingStages",
+    "FileBindingStages",
     "FileSource",
     "PayloadPolicy",
     "SourceKind",
-    "SourceRegistry",
+    "StageRegistry",
     "SourceUnavailableError",
     "contributing_layers",
     "dirty_layers",

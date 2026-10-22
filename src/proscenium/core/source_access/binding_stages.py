@@ -1,4 +1,4 @@
-"""A binding's source, and the stage the binding evaluates (source-access.md#source-stages)."""
+"""A binding's stages: its source stage and the stage it evaluates (source-access.md#source-stages)."""
 
 from __future__ import annotations
 
@@ -26,8 +26,9 @@ def dirty_layers(stage: Usd.Stage) -> list[str]:
     return [layer.identifier for layer in contributing_layers(stage) if layer.dirty]
 
 
-class BindingSource[S: (FileSource, AttachedSource)](ABC):
-    """A binding's source, and the evaluation stage it keeps and reuses across acquisitions.
+class BindingStages[S: (FileSource, AttachedSource)](ABC):
+    """A binding's stages: its source, whose stage is the source stage, and the evaluation stage it keeps and
+    reuses across acquisitions.
 
     The source stage is the stage the source is composed on: the one a file source opens, or the
     one a caller attaches. The evaluation stage composes the source stage's root and session layers,
@@ -101,7 +102,7 @@ class BindingSource[S: (FileSource, AttachedSource)](ABC):
         """The evaluation stage, matched to the source stage: reused, or opened under payload_policy."""
 
 
-class FileBindingSource(BindingSource[FileSource]):
+class FileBindingStages(BindingStages[FileSource]):
     """A binding on a file: its evaluation stage is the source stage it opens itself."""
 
     @override
@@ -112,7 +113,7 @@ class FileBindingSource(BindingSource[FileSource]):
         return stage
 
 
-class AttachedBindingSource(BindingSource[AttachedSource]):
+class AttachedBindingStages(BindingStages[AttachedSource]):
     """A binding on a stage a caller attaches: its evaluation stage composes that stage's layers."""
 
     def attach(self, stage: Usd.Stage) -> None:

@@ -142,7 +142,7 @@ def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingC
     assert result.state is ResultState.FATAL_FAILURE
     assert [d.category for d in result.diagnostics] == [Category.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
-    assert handle.binding_id not in sync.sources
+    assert handle.binding_id not in sync.stages
     assert set(bpy.data.collections.keys()) == collections
 
 

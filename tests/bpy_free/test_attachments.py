@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
-from proscenium.core.source_access import AttachedSource, PayloadPolicy, SourceRegistry
+from proscenium.core.source_access import AttachedSource, PayloadPolicy, StageRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 def test_live_stage_is_the_attached_stage(tmp_path: Path) -> None:
     # ICON-07: the live stage is the caller's attached stage, not the evaluation stage.
     with source_access.reattach(tmp_path) as scene:
-        registry = SourceRegistry()
-        source = registry.attached("a", "shot")
-        assert isinstance(source.source, AttachedSource)
-        source.source.attach(scene.caller)
-        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
-        assert source.live_stage == scene.caller
+        registry = StageRegistry()
+        stages = registry.attached("a", "shot")
+        assert isinstance(stages.source, AttachedSource)
+        stages.source.attach(scene.caller)
+        evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
+        assert stages.live_stage == scene.caller
         assert evaluation != scene.caller
 
 
@@ -30,11 +30,11 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path)
     # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
     # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
     with source_access.reattach(tmp_path) as scene:
-        source = SourceRegistry().attached("a", "shot")
-        source.attach(scene.caller)
-        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
-        source.attach(scene.caller)
-        assert source.evaluation_stage == evaluation
-        source.attach(scene.same_root)  # the same root layer, another session layer
-        assert source.evaluation_stage is None
-        assert source.live_stage == scene.same_root
+        stages = StageRegistry().attached("a", "shot")
+        stages.attach(scene.caller)
+        evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.attach(scene.caller)
+        assert stages.evaluation_stage == evaluation
+        stages.attach(scene.same_root)  # the same root layer, another session layer
+        assert stages.evaluation_stage is None
+        assert stages.live_stage == scene.same_root

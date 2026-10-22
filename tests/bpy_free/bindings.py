@@ -8,9 +8,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from proscenium.core.source_access import (
-    AttachedBindingSource,
+    AttachedBindingStages,
     AttachedSource,
-    FileBindingSource,
+    FileBindingStages,
     FileSource,
     SourceKind,
 )
@@ -23,10 +23,10 @@ if TYPE_CHECKING:
 KINDS = tuple(SourceKind)
 
 
-def binding(kind: str, root: Path, caller: Usd.Stage) -> FileBindingSource | AttachedBindingSource:
+def binding(kind: str, root: Path, caller: Usd.Stage) -> FileBindingStages | AttachedBindingStages:
     """A binding on root: its own source stage for a file source, caller's stage attached for an attached one."""
     if kind == SourceKind.FILE:
-        return FileBindingSource(FileSource(root))
+        return FileBindingStages(FileSource(root))
     source = AttachedSource("shot")
     source.attach(caller)
-    return AttachedBindingSource(source)
+    return AttachedBindingStages(source)

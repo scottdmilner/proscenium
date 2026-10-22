@@ -116,7 +116,7 @@ def invalidate() -> None:
 def rebuilds() -> int:
     """A count that changes whenever the state is dropped or rebuilt from the records, as after a load,
     undo, or redo, or when scenes are added or removed: what keeps runtime state keyed by binding
-    identity, such as the synchronization's sources, knows to compare its bindings with binding_ids()."""
+    identity, such as the bindings' stages, knows to compare its bindings with binding_ids()."""
     return _rebuilds
 
 

@@ -6,8 +6,8 @@ setting of the binding. M5 adds evaluation at that time code, planning, applicat
 publication, and the guard against reentrant calls.
 
 A binding's configuration is its records (proscenium.persistence.bindings), held and written through the
-bindings' in-memory state (proscenium.runtime); its source stages and attachment are runtime state
-in a SourceRegistry, made from the configuration on first use. A binding whose configuration can't
+bindings' in-memory state (proscenium.runtime); its stages and attachment are runtime state
+in a StageRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
 (lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
 disabled pending repair; a handle reaches a binding's canonical candidate, and copied_bindings()
@@ -29,8 +29,8 @@ from ..core.results import Category, Diagnostic, Result, ResultState, Severity
 from ..core.source_access import (
     PayloadPolicy,
     SourceKind,
-    SourceRegistry,
     SourceUnavailableError,
+    StageRegistry,
     dirty_layers,
 )
 from ..persistence.bindings import BindingConfig
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     import os
     from collections.abc import Iterable
 
-    from ..core.source_access import AttachedBindingSource, FileBindingSource
+    from ..core.source_access import AttachedBindingStages, FileBindingStages
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
@@ -91,13 +91,13 @@ class BindingHandle:
 
 
 class Synchronization:
-    """The process's bindings: their records in Blender data, and their runtime sources."""
+    """The process's bindings: their records in Blender data, and their runtime stages."""
 
-    sources: SourceRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
-    _pruned_at: int | None  # runtime.rebuilds() when sources were last compared with the bindings
+    stages: StageRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
+    _pruned_at: int | None  # runtime.rebuilds() when the stages were last compared with the bindings
 
     def __init__(self) -> None:
-        self.sources = SourceRegistry()
+        self.stages = StageRegistry()
         self._pruned_at = None
 
     def create_file_binding(
@@ -152,7 +152,7 @@ class Synchronization:
             return AttachResult(attached=(), unconfirmed=unconfirmed)
         self._prune_if_rebuilt()
         for binding_id, config in matching:
-            self.sources.attached(binding_id, key).attach(stage)
+            self.stages.attached(binding_id, key).attach(stage)
             runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
 
@@ -163,8 +163,8 @@ class Synchronization:
         or a file load (source-access.md#source-stages). Returns the bindings with the key.
         """
         self._prune_if_rebuilt()
-        # Through the sources, not the bindings: a binding that no longer exists keeps its attachment (prune()).
-        self.sources.release(key)
+        # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune()).
+        self.stages.release(key)
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
@@ -197,7 +197,7 @@ class Synchronization:
         if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
             return _removed_destination(binding_id)
         try:
-            dirty = dirty_layers(self._source(binding_id, config).acquire(config.payload_policy))
+            dirty = dirty_layers(self._stages(binding_id, config).acquire(config.payload_policy))
         except SourceUnavailableError as error:
             return _unavailable(error)
         diagnostics = ()
@@ -215,7 +215,7 @@ class Synchronization:
         if not isinstance(config, BindingConfig):
             return _refused(config)
         try:
-            self._source(binding_id, config).reload(config.payload_policy, layers)
+            self._stages(binding_id, config).reload(config.payload_policy, layers)
         except SourceUnavailableError as error:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
@@ -224,23 +224,23 @@ class Synchronization:
         """None before the first synchronization, and for a binding with copies and no canonical candidate."""
         if isinstance(self._config(binding_id), CopiedBinding):
             return None
-        return None if (source := self.sources.get(binding_id)) is None else source.live_stage
+        return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
     def file_loaded(self) -> None:
-        """Drop every runtime source: a loaded file's bindings start with no source stage or attachment."""
-        self.sources = SourceRegistry()
+        """Drop every binding's stages: a loaded file's bindings start with no source stage or attachment."""
+        self.stages = StageRegistry()
         self._pruned_at = None
 
     def prune(self) -> None:
-        """Let go of the stages of sources whose binding no longer exists, or can't be read (SourceRegistry.prune).
+        """Let go of the stages of bindings that no longer exist, or can't synchronize (StageRegistry.prune).
 
-        With no sources, as before a session's first synchronization, there's nothing to compare, so the
+        With no stages, as before a session's first synchronization, there's nothing to compare, so the
         bindings' state isn't rebuilt for it, in the undo and redo handler or anywhere else.
         """
-        if self.sources:
+        if self.stages:
             configs = runtime.configs()
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
-            self.sources.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
+            self.stages.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
         self._pruned_at = runtime.rebuilds()
 
     def _prune_if_rebuilt(self) -> None:
@@ -250,10 +250,10 @@ class Synchronization:
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(runtime.create(scene, config, name))
 
-    # Every per-binding call goes through _config, and every use of a source through _source,
-    # except attach and release, which reach sources by key and call _prune_if_rebuilt themselves; so each
-    # compares the sources with the bindings when the bindings' state was rebuilt. A new entry point that
-    # uses a source does one or the other, and this comment names it.
+    # Every per-binding call goes through _config, and every use of a binding's stages through _stages,
+    # except attach and release, which reach stages by key and call _prune_if_rebuilt themselves; so each
+    # compares the stages with the bindings when the bindings' state was rebuilt. A new entry point that
+    # uses a binding's stages does one or the other, and this comment names it.
 
     def _config(self, binding_id: str) -> BindingConfig | Refused | CopiedBinding:
         """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
@@ -266,18 +266,18 @@ class Synchronization:
             raise BindingNotFoundError(binding_id)
         return config
 
-    def _source(self, binding_id: str, config: BindingConfig) -> FileBindingSource | AttachedBindingSource:
-        """The binding's runtime source, made from its configuration on first use.
+    def _stages(self, binding_id: str, config: BindingConfig) -> FileBindingStages | AttachedBindingStages:
+        """The binding's stages, made from its configuration on first use.
 
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved
-        elsewhere, and a source whose resolved file changed opens the new one.
+        elsewhere, and stages whose resolved file changed open the new one.
         """
         self._prune_if_rebuilt()
         if config.source is SourceKind.FILE:
             assert config.path is not None
-            return self.sources.file(binding_id, bpy.path.abspath(config.path))
+            return self.stages.file(binding_id, bpy.path.abspath(config.path))
         assert config.key is not None
-        return self.sources.attached(binding_id, config.key)
+        return self.stages.attached(binding_id, config.key)
 
 
 def _unavailable(error: SourceUnavailableError) -> Result:

@@ -14,7 +14,7 @@ from pxr import Sdf
 
 from fixtures import source_access
 from proscenium.core._core import StageHandle
-from proscenium.core.source_access import PayloadPolicy, SourceRegistry, SourceUnavailableError
+from proscenium.core.source_access import PayloadPolicy, SourceUnavailableError, StageRegistry
 from support.usd import open_fresh
 
 # Expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
@@ -23,7 +23,7 @@ EXPIRY_WAIT = 2.0
 
 def caller_drops_then_releases(tmp_dir: str) -> dict[str, Any]:
     """Attach, acquire, drop every caller reference, then release the attachment."""
-    registry = SourceRegistry()
+    registry = StageRegistry()
     binding = registry.attached("a", "shot")
     with source_access.reattach(Path(tmp_dir)) as scene:
         caller = open_fresh(scene.root)  # this body's own stage, so it holds the only caller reference

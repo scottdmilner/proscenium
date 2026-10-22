@@ -96,7 +96,7 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
-        assert handle.binding_id not in sync.sources
+        assert handle.binding_id not in sync.stages
         with pytest.raises(BindingDisabledError):
             handle.requested_settings()
         assert handle.live_stage() is None
@@ -198,5 +198,5 @@ def test_attaching_skips_a_disabled_binding(sync: Synchronization, tmp_path: Pat
         assert sync.copied_bindings()[0].disabled
         caller = open_fresh(scene.root)
         assert sync.attach("shot", caller).attached == ()
-        assert handle.binding_id not in sync.sources
+        assert handle.binding_id not in sync.stages
         assert handle.synchronize(0).state is ResultState.FATAL_FAILURE

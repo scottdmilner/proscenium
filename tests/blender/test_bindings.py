@@ -290,7 +290,7 @@ def test_reopening_f_binding_state_synchronizes_nothing(
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         save_and_reopen(tmp_path / "reopen.blend")
-        assert handle.binding_id not in sync.sources
+        assert handle.binding_id not in sync.stages
         assert handle.live_stage() is None
         assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(generation, 1)
         assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)

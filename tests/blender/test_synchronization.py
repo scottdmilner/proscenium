@@ -109,7 +109,7 @@ def test_a_reload_after_attaching_opens_under_the_policy_requested_since(sync: S
     sync.attach("shot", caller)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
-    source = sync.sources.get(handle.binding_id)
+    source = sync.stages.get(handle.binding_id)
     assert source is not None
     evaluation = source.evaluation_stage
     assert evaluation is not None
@@ -223,7 +223,7 @@ def test_undoing_a_file_bindings_creation_drops_its_stage(sync: Synchronization,
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     undo.push("create")
     undo.undo()
-    assert handle.binding_id not in sync.sources
+    assert handle.binding_id not in sync.stages
     undo.redo()
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     assert handle.live_stage() is not None
@@ -275,7 +275,7 @@ def test_pruning_compares_the_scenes_once(
     monkeypatch.setattr(state, "current_state", counted)
     sync.prune()
     assert len(calls) == 1
-    assert all(handle.binding_id in sync.sources for handle in handles)
+    assert all(handle.binding_id in sync.stages for handle in handles)
 
 
 def test_undoing_an_attached_bindings_creation_keeps_its_attachment(sync: Synchronization, tmp_path: Path) -> None:
@@ -287,7 +287,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(sync: Synchr
     handle = sync.create_attached_binding(_scene(), "shot")
     sync.attach("shot", caller)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    source = sync.sources.get(handle.binding_id)
+    source = sync.stages.get(handle.binding_id)
     assert source is not None
     undo.push("create")
     undo.undo()
@@ -311,8 +311,8 @@ def test_a_removed_scenes_file_binding_is_pruned(sync: Synchronization, tmp_path
         assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     bpy.data.scenes.remove(other)
     assert kept.synchronize(0) == Result(ResultState.SUCCESS)
-    assert removed.binding_id not in sync.sources
-    assert kept.binding_id in sync.sources
+    assert removed.binding_id not in sync.stages
+    assert kept.binding_id in sync.stages
 
 
 def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(sync: Synchronization, tmp_path: Path) -> None:
@@ -321,7 +321,7 @@ def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(sync: Synchro
     _scene()[records.NAMESPACE][bindings.config_key(handle.binding_id)][records.VERSION_KEY] = 99
     runtime.invalidate()  # as a load, undo, or redo that restored this record would
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, and pruned
-    assert handle.binding_id not in sync.sources
+    assert handle.binding_id not in sync.stages
 
 
 def test_live_stage_through_the_handle(sync: Synchronization, tmp_path: Path) -> None:
