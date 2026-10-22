@@ -122,7 +122,7 @@ FIXTURES: dict[str, Fixture] = {
                 Case("whole-stage", SYNC, SUCCESS, ("BIND-08", "BIND-09"), 1),
             ),
         ),
-        Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M3",)),
+        Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M5",)),
         Fixture(
             "F-REATTACH",
             "Release and reattachment",
