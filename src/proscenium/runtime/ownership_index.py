@@ -22,7 +22,7 @@ from ..persistence import manifests
 from ..persistence.manifests import Manifest
 from ..persistence.records import Loaded, RecordRefused, Refused
 from . import binding_configs, state
-from .state import Binding, StaleError, Unread
+from .state import Candidate, StaleError, Unread
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -146,7 +146,7 @@ def unreadable_manifests() -> list[Refused]:
     return state.query(lambda s: list(_ownership(s).unreadable.values()))
 
 
-def _to_update(binding_id: str) -> tuple[Binding, bpy.types.Collection, Loaded[Manifest] | None]:
+def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
     """The binding, its destination, and its manifest, for update_manifest. Raises as update_manifest does."""
     found = binding_configs.existing(binding_id)
     destination = _destination(binding_id, found)
@@ -158,13 +158,13 @@ def _to_update(binding_id: str) -> tuple[Binding, bpy.types.Collection, Loaded[M
     return found, destination, current
 
 
-def _destination(binding_id: str, binding: Binding) -> bpy.types.Collection:
+def _destination(binding_id: str, binding: Candidate) -> bpy.types.Collection:
     if isinstance(binding.config, Refused) or binding.config.destination is None:
         raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
     return binding.config.destination
 
 
-def _manifest_of(binding: Binding) -> Loaded[Manifest] | Refused | None:
+def _manifest_of(binding: Candidate) -> Loaded[Manifest] | Refused | None:
     """The binding's manifest, read through its destination the first time."""
     if isinstance(binding.config, Refused):
         return binding.config
@@ -174,7 +174,7 @@ def _manifest_of(binding: Binding) -> Loaded[Manifest] | Refused | None:
     return binding.manifest
 
 
-def _checked_manifest(current: State, binding_id: str, binding: Binding) -> Loaded[Manifest] | Refused | None:
+def _checked_manifest(current: State, binding_id: str, binding: Candidate) -> Loaded[Manifest] | Refused | None:
     """The binding's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
     found = _manifest_of(binding)
     if isinstance(found, Loaded) and not all(
@@ -229,7 +229,7 @@ def _ownership(current: State) -> OwnershipIndex:
                 raise StaleError  # removed since the state was built: Blender cleared the configurations' pointers
             _add_share(index, binding_id, b.config.destination, _checked_manifest(current, binding_id, b))
         for binding_id, identity in current.identities.items():  # tagged collections no record names
-            for copy in identity.copies:
+            for copy in identity.tagged_copies:
                 if not state.alive(copy):
                     raise StaleError
                 _add_share(index, binding_id, copy, manifests.read_manifest(copy))

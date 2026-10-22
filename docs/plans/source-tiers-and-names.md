@@ -31,7 +31,7 @@ src/proscenium/
     state.py                   the state, tracking, rebuilding, and the checks of held references
     binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
     ownership_index.py         Claim, each destination's claims, manifest lookups and writes
-    copied_bindings.py         copied-binding detection from the records
+    copy_detection.py          copied-binding detection from the records
   persistence/
     __init__.py
     records.py                 the versioned-record framework
@@ -49,7 +49,7 @@ src/proscenium/
       stage_registry.py        StageRegistry
 ```
 
-Module names are unique across the tiers, and named for the spec section they implement where there is one: `copied_bindings.py` for [Copied Bindings](../spec/source-access.md#copied-bindings), `canonical_candidate.py` for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`.
+Module names are unique across the tiers, and named for the spec section they implement where there is one, as `canonical_candidate.py` is for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`, and `copy_detection.py`, beside `copied_bindings()`.
 
 ## Conventions
 
@@ -75,7 +75,7 @@ These go in AGENTS.md's Style section:
 | `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |
 | `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `DecisionReason`, `UNREADABLE_INDEX_ENTRY` | |
-| `candidates.Identity`, `Found`, `find()` | `IdentityCandidates`, `CopyDetection`, `detect()` | |
+| `candidates`, `candidates.Identity`, `Found`, `find()` | `copy_detection`, `IdentityCandidates`, `CopyDetection`, `detect()` | |
 | `Identity.copies` | `IdentityCandidates.tagged_copies` | |
 | `_Share`, `_Ownership`, `_State`, `_Stale` | `DestinationClaims`, `OwnershipIndex`, `State`, `StaleError` | |
 | `indexes.find_copies()` | `refresh_if_tags_changed()` | It drops the state when tags changed, and returns nothing |
@@ -112,7 +112,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 4. **`runtime/indexes.py` split** into `state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
 5. **Exceptions end in `Error`.**
 6. **Binding stages:** `binding_source.py` and `registry.py` renamed, and their classes, attributes, and `prune`'s parameter.
-7. **Copied bindings:** `candidates.py` and `core/copies.py` renamed, and their types and functions, and `_Binding`.
+7. **Copied bindings:** `runtime/candidates.py` renamed `copy_detection.py` and `core/copies.py` `canonical_candidate.py`, with their types and functions, and `state.Binding` renamed `Candidate`.
 8. **Records:** the refusal names, `Schema`'s fields, and the binding records' module and functions.
 9. **Runtime names:** the state's public functions (`find_copies`, `rebuilds`, `update_manifest`).
 10. **`DiagnosticCategory`.**
@@ -125,3 +125,4 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 
 - **Plan (with the user, 2026-10-21).** The tiers, conventions, renames, and semantics above, with the spec changes they need.
 - **The runtime split (commit 4).** `binding_configs.py`, not `configs.py`: the package exports `configs()`, which would replace a submodule of that name. The modules call each other's helpers through the module, so the tests that patch `current_state` and `_add_share` patch them in one place.
+- **Copied bindings (commit 7).** `copy_detection.py`, not `copied_bindings.py`, for the reason `binding_configs.py` is: the package exports `copied_bindings()`. It is named for the `CopyDetection` it returns.

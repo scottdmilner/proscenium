@@ -4,7 +4,7 @@ This state is a disposable write-through cache of the bindings' records: each bi
 decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
 claims (proscenium.runtime.ownership_index). It holds every candidate of an identity (source-
 access.md#copied-bindings), and the canonical-candidate rule's decision on them
-(proscenium.runtime.candidates); lookups by identity are proscenium.runtime.binding_configs'. The extension's
+(proscenium.runtime.copy_detection); lookups by identity are proscenium.runtime.binding_configs'. The extension's
 writes go through it, updating memory and writing the records at once, since the records are what's
 saved and what undo steps capture. So nothing is read back from the records after the extension's own
 writes.
@@ -41,7 +41,7 @@ import bpy
 
 from ..persistence import bindings, records
 from ..persistence.records import Refused
-from . import candidates
+from . import copy_detection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -72,7 +72,7 @@ UNREAD = Unread()
 
 
 @dataclass(slots=True)
-class Binding:
+class Candidate:
     """One candidate of a binding identity: a scene's configuration record for it."""
 
     scene: bpy.types.Scene
@@ -84,11 +84,13 @@ class Binding:
 @dataclass(slots=True)
 class State:
     scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
-    bindings: dict[str, list[Binding]]  # by binding identifier: its candidates, in the order found
+    bindings: dict[str, list[Candidate]]  # by binding identifier: its candidates, in the order found
     # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
     # order found, so a write reaches them without going through every binding (_by_destination).
-    by_destination: dict[int, list[tuple[str, Binding]]]
-    identities: dict[str, candidates.Identity]  # by binding identifier: its candidates, as the rule reads them
+    by_destination: dict[int, list[tuple[str, Candidate]]]
+    identities: dict[
+        str, copy_detection.IdentityCandidates
+    ]  # by binding identifier: its candidates, as the rule reads them
     tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (find_copies)
     ownership: OwnershipIndex | None = None  # built when first asked for
 
@@ -146,13 +148,13 @@ def current_state() -> State:
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
         found = _read_bindings()
-        copies = candidates.find({b: [(c.scene, c.config) for c in cs] for b, cs in found.items()})
-        _state = State(scenes, found, _by_destination(found), copies.identities, copies.tagged)
+        detected = copy_detection.detect({b: [(c.scene, c.config) for c in cs] for b, cs in found.items()})
+        _state = State(scenes, found, _by_destination(found), detected.identities, detected.tagged)
         _rebuilds += 1
     return _state
 
 
-def valid(binding_id: str, binding: Binding) -> bool:
+def valid(binding_id: str, binding: Candidate) -> bool:
     """Whether the candidate's scene still exists and holds its configuration, and its destination still
     exists; removing a destination clears the configuration's pointer to it."""
     destination = None if isinstance(binding.config, Refused) else binding.config.destination
@@ -175,18 +177,18 @@ def _scene_uids() -> tuple[int, ...]:
     return tuple(scene.session_uid for scene in bpy.data.scenes)
 
 
-def _read_bindings() -> dict[str, list[Binding]]:
-    found: dict[str, list[Binding]] = {}
+def _read_bindings() -> dict[str, list[Candidate]]:
+    found: dict[str, list[Candidate]] = {}
     for scene, binding_id, result in bindings.all_bindings():
         config = result if isinstance(result, Refused) else result.record
-        found.setdefault(binding_id, []).append(Binding(scene, scene.session_uid, config))
+        found.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
     return found
 
 
-def _by_destination(candidates_by_id: dict[str, list[Binding]]) -> dict[int, list[tuple[str, Binding]]]:
+def _by_destination(candidates_by_id: dict[str, list[Candidate]]) -> dict[int, list[tuple[str, Candidate]]]:
     """Every candidate naming a destination, by its session_uid, in the order found; a removed one is left out,
     and the check of the candidates naming it rebuilds the state."""
-    found: dict[int, list[tuple[str, Binding]]] = {}
+    found: dict[int, list[tuple[str, Candidate]]] = {}
     for binding_id, found_for_id in candidates_by_id.items():
         for b in found_for_id:
             if not isinstance(b.config, Refused) and b.config.destination is not None and alive(b.config.destination):

@@ -16,24 +16,24 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-class Unreadable:
-    """The type of UNREADABLE."""
+class UnreadableIndexEntry:
+    """The type of UNREADABLE_INDEX_ENTRY."""
 
     @override
     def __repr__(self) -> str:
-        return "UNREADABLE"
+        return "UNREADABLE_INDEX_ENTRY"
 
 
-UNREADABLE: Final = Unreadable()  # an index entry from a binding index that can't be read
+UNREADABLE_INDEX_ENTRY: Final = UnreadableIndexEntry()  # an index entry from a binding index that can't be read
 
 
 @dataclass(frozen=True, slots=True)
-class Candidate:
+class CandidateEvidence:
     destination: int | None  # the session_uid of the collection its record names, or of the tagged collection
     mutual: bool  # its binding record names the destination, and the destination's tag points back at its scene
 
 
-class Reason(StrEnum):
+class DecisionReason(StrEnum):
     """Why the rule chose what it did."""
 
     UNIQUE = "unique"  # one candidate, and at most one index naming it: the identity is unique
@@ -47,31 +47,37 @@ class Reason(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class Decision:
+class CanonicalDecision:
     canonical: int | None  # the canonical candidate's position in the candidates, or None: all are disabled
-    reason: Reason
+    reason: DecisionReason
 
 
-def decide(candidates: Sequence[Candidate], entries: Sequence[int | None | Unreadable]) -> Decision:
+def decide(
+    candidates: Sequence[CandidateEvidence], entries: Sequence[int | None | UnreadableIndexEntry]
+) -> CanonicalDecision:
     """The canonical candidate of one identity.
 
     entries has one item per binding index in the file that names the identity: the destination its entry
-    names, None for an entry naming no destination, or UNREADABLE for an index that can't be read, which
+    names, None for an entry naming no destination, or UNREADABLE_INDEX_ENTRY for an index that can't be read, which
     might name it. An identity with one candidate and at most one such index is unique, whatever its
     candidate's references, so a binding whose destination was removed stays enabled
     (lifecycle.md#removed-destination); otherwise the rule decides, or every candidate is disabled.
     """
     if len(candidates) <= 1 and len(entries) <= 1:
-        return Decision(0 if candidates else None, Reason.UNIQUE)
+        return CanonicalDecision(0 if candidates else None, DecisionReason.UNIQUE)
     if len(entries) > 1:
-        return Decision(None, Reason.SEVERAL_INDEXES)
+        return CanonicalDecision(None, DecisionReason.SEVERAL_INDEXES)
     entry = entries[0] if entries else None
-    if isinstance(entry, Unreadable):
-        return Decision(None, Reason.UNREADABLE_INDEX)
+    if isinstance(entry, UnreadableIndexEntry):
+        return CanonicalDecision(None, DecisionReason.UNREADABLE_INDEX)
     if entry is not None:
         named = [i for i, c in enumerate(candidates) if c.destination == entry and c.mutual]
-        return Decision(named[0], Reason.INDEXED) if named else Decision(None, Reason.INDEX_DISAGREES)
+        return (
+            CanonicalDecision(named[0], DecisionReason.INDEXED)
+            if named
+            else CanonicalDecision(None, DecisionReason.INDEX_DISAGREES)
+        )
     mutual = [i for i, c in enumerate(candidates) if c.mutual]
     if len(mutual) == 1:
-        return Decision(mutual[0], Reason.MUTUAL)
-    return Decision(None, Reason.SEVERAL_MUTUAL if mutual else Reason.NONE_MUTUAL)
+        return CanonicalDecision(mutual[0], DecisionReason.MUTUAL)
+    return CanonicalDecision(None, DecisionReason.SEVERAL_MUTUAL if mutual else DecisionReason.NONE_MUTUAL)

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
-    from proscenium.runtime.candidates import CopiedBinding
+    from proscenium.runtime.copy_detection import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:
@@ -64,7 +64,7 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
     """What the API reports for the binding, against the outcome; returns the report."""
     result = handle.synchronize(0)  # looks for copies first (COPY-18)
     reported = sync.copied_bindings()
-    if outcome.reason is copies.Reason.UNIQUE:
+    if outcome.reason is copies.DecisionReason.UNIQUE:
         assert reported == []  # COPY-14: nothing to report for a unique identity
         assert result.state is ResultState.SUCCESS
         assert sync.bindings(_scene()) == [handle]

@@ -36,7 +36,7 @@ from ..core.source_access import (
 from ..persistence.bindings import BindingConfig
 from ..persistence.records import RecordRefused, Refused
 from ..runtime import BindingDisabledError
-from ..runtime.candidates import CopiedBinding
+from ..runtime.copy_detection import CopiedBinding
 
 if TYPE_CHECKING:
     import os
