@@ -21,7 +21,7 @@ def _rusage(pid: int) -> list[int] | None:
 
 
 def footprint(pid: int) -> int | None:
-    """macOS physical footprint (Activity Monitor's Memory column) of a process, in bytes; None elsewhere."""
+    """A process's physical footprint on macOS (Activity Monitor's Memory column), in bytes; None elsewhere."""
     if sys.platform != "darwin":
         return None
     words = _rusage(pid)
@@ -74,7 +74,8 @@ def heap_in_use() -> int | None:
     """Bytes this process has allocated through malloc and not freed; None where it can't be read.
 
     Unlike resident memory or the footprint, it drops as soon as memory is freed, even when the allocator
-    keeps the pages: the difference between the two is the allocator's retention."""
+    keeps the pages: the difference between the two is the allocator's retention.
+    """
     try:
         if sys.platform == "darwin":
             stats = _MallocStatistics()

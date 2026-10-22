@@ -83,6 +83,8 @@ class Candidate:
 
 @dataclass(slots=True)
 class State:
+    """The bindings' state, built from the records (the module docstring says how it's kept)."""
+
     scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
     bindings: dict[str, list[Candidate]]  # by binding identifier: its candidates, in the order found
     # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
@@ -103,6 +105,7 @@ def start() -> None:
 
 
 def stop() -> None:
+    """The extension unregistered its handlers: the state can't be used until start()."""
     global _tracking
     _tracking = False
     invalidate()
@@ -116,15 +119,19 @@ def invalidate() -> None:
 
 
 def rebuild_count() -> int:
-    """A count that changes whenever the state is dropped or rebuilt from the records, as after a load,
-    undo, or redo, or when scenes are added or removed: what keeps runtime state keyed by binding
-    identity, such as the bindings' stages, knows to compare its bindings with binding_ids()."""
+    """A count that changes whenever the state is dropped or rebuilt from the records.
+
+    It changes after a load, undo, or redo, and when scenes are added or removed, so runtime state keyed by binding
+    identity, such as the bindings' stages, knows to compare its bindings with binding_ids().
+    """
     return _rebuilds
 
 
 def refresh_if_tags_changed() -> None:
-    """Rebuild the state if the local collections' destination tags changed since it was built, as duplicating
-    a collection on its own changes them, which no handler announces. Checks every collection's records."""
+    """Rebuild the state if the local collections' destination tags changed since it was built.
+
+    Duplicating a collection on its own changes them, which no handler announces. Checks every collection's records.
+    """
     if _state is not None and binding_records.tagged_uids() != _state.tagged:
         invalidate()
 
@@ -134,6 +141,7 @@ def refresh_if_tags_changed() -> None:
 
 
 def query[T](question: Callable[[State], T]) -> T:
+    """The answer to question; if a reference it reaches is gone, the state is rebuilt and asked once more."""
     try:
         return question(current_state())
     except StaleError:
@@ -142,6 +150,10 @@ def query[T](question: Callable[[State], T]) -> T:
 
 
 def current_state() -> State:
+    """The state, rebuilt from the records if it was dropped or the scenes changed.
+
+    Raises NotRegisteredError if the extension isn't registered.
+    """
     global _state, _rebuilds
     if not _tracking:
         raise NotRegisteredError("the extension isn't registered, so the bindings' state can't be kept current")
@@ -155,8 +167,10 @@ def current_state() -> State:
 
 
 def valid(binding_id: str, binding: Candidate) -> bool:
-    """Whether the candidate's scene still exists and holds its configuration, and its destination still
-    exists; removing a destination clears the configuration's pointer to it."""
+    """Whether the candidate's scene still exists and holds its configuration, and its destination still exists.
+
+    Removing a destination clears the configuration's pointer to it.
+    """
     destination = None if isinstance(binding.config, RefusedRecord) else binding.config.destination
     return (
         alive(binding.scene)
@@ -166,6 +180,7 @@ def valid(binding_id: str, binding: Candidate) -> bool:
 
 
 def alive(id_: bpy.types.ID) -> bool:
+    """Whether the ID still exists: touching a removed one's reference raises."""
     try:
         id_.name  # noqa: B018 - touching a removed ID's reference raises
     except ReferenceError:
@@ -186,8 +201,10 @@ def _read_bindings() -> dict[str, list[Candidate]]:
 
 
 def _by_destination(candidates_by_id: dict[str, list[Candidate]]) -> dict[int, list[tuple[str, Candidate]]]:
-    """Every candidate naming a destination, by its session_uid, in the order found; a removed one is left out,
-    and the check of the candidates naming it rebuilds the state."""
+    """Every candidate naming a destination, by its session_uid, in the order found.
+
+    A removed destination's candidates are left out, and checking them rebuilds the state.
+    """
     found: dict[int, list[tuple[str, Candidate]]] = {}
     for binding_id, found_for_id in candidates_by_id.items():
         for b in found_for_id:

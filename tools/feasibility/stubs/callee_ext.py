@@ -1,5 +1,7 @@
-"""Stands in for extension code in probe_exchange: a separately loaded module
-that imports pxr itself and inspects a stage handed over by caller code."""
+"""Stands in for extension code in probe_exchange.
+
+A separately loaded module that imports pxr itself and inspects a stage handed over by caller code.
+"""
 
 from typing import Any
 

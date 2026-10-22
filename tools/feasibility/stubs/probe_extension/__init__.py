@@ -1,5 +1,6 @@
-"""Throwaway extension for probe_packaging: records register/unregister calls
-and inspects a stage handed over by caller code after installation.
+"""Throwaway extension for probe_packaging.
+
+It records register/unregister calls and inspects a stage handed over by caller code after installation.
 
 probe_packaging copies stubs/callee_ext.py into the source dir as
 stage_inspect.py before building, so both exchange checks share one inspector.

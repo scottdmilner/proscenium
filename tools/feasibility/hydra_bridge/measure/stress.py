@@ -140,8 +140,10 @@ def prim_count(path: Path, count: int) -> dict[str, Any]:
 
 
 def instancing(path: Path, clusters: int, leaves: int = 10, side: int = 32) -> dict[str, Any]:
-    """Nested native instances: instanceable clusters of instanceable leaves, each leaf a grid mesh. Half the
-    clusters bind a different material at their instance root, which splits Hydra's instancers."""
+    """Nested native instances: instanceable clusters of instanceable leaves, each leaf a grid mesh.
+
+    Half the clusters bind a different material at their instance root, which splits Hydra's instancers.
+    """
     parameters = {
         "clusters": clusters,
         "leaves per cluster": leaves,
@@ -208,7 +210,7 @@ STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
 
 
 def generate(name: str, directory: Path) -> tuple[Path, dict[str, Any]]:
-    """Writes the scene (replacing an earlier one) and checks that it composes; returns its path and parameters."""
+    """Write the scene, replacing an earlier one, and check that it composes; returns its path and parameters."""
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{name}.usdc"
     path.unlink(missing_ok=True)

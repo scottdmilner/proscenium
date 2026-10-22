@@ -80,18 +80,23 @@ class BindingHandle:
     binding_id: str
 
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
+        """Synchronize at an explicit time code (Bindings.synchronize)."""
         return BINDINGS.synchronize(self.binding_id, time_code)
 
     def set_settings(self, *, payload_policy: PayloadPolicy | None = None) -> Result:
+        """Record requested settings without synchronizing (Bindings.set_settings)."""
         return BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
+        """Reread the binding's source layers on request (Bindings.reload)."""
         return BINDINGS.reload(self.binding_id, layers)
 
     def requested_settings(self) -> RequestedSettings:
+        """The settings the binding's next synchronization uses (Bindings.requested_settings)."""
         return BINDINGS.requested_settings(self.binding_id)
 
     def live_stage(self) -> Usd.Stage | None:
+        """The binding's live stage, which callers inspect (Bindings.live_stage)."""
         return BINDINGS.live_stage(self.binding_id)
 
 
@@ -135,8 +140,11 @@ class Bindings:
         return self._create(scene, config, name or key)
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
-        """The bindings whose target scene is scene: whose canonical candidate is on it, or, for a binding with
-        copies and no canonical candidate, which has a candidate on it."""
+        """The bindings whose target scene is scene.
+
+        Those whose canonical candidate is on it, and each binding with copies and no canonical candidate that has a
+        candidate on it.
+        """
         return [BindingHandle(binding_id) for binding_id in runtime.binding_ids(scene)]
 
     def copied(self) -> list[CopiedBinding]:
@@ -173,8 +181,11 @@ class Bindings:
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
-        """Raises RefusedRecordError if the binding's configuration can't be read, and BindingDisabledError if it has
-        copies and no canonical candidate."""
+        """The settings the binding's next synchronization uses.
+
+        Raises RefusedRecordError if the binding's configuration can't be read, and BindingDisabledError if it has
+        copies and no canonical candidate.
+        """
         config = self._config(binding_id)
         if isinstance(config, RefusedRecord):
             raise RefusedRecordError(config)

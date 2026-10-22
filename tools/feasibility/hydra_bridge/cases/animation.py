@@ -75,8 +75,10 @@ def kind(locator: str) -> str:
 
 
 def contributing(stage: Usd.Stage, path: str) -> dict[str, list[Usd.Attribute]]:
-    """Direct USD: per kind, the authored attributes a prim's value depends on, ancestors' and the skeleton
-    animation's included."""
+    """Direct USD: per kind, the authored attributes a prim's value depends on.
+
+    Ancestors' and the skeleton animation's are included.
+    """
     prim = stage.GetPrimAtPath(path)
     result: dict[str, list[Usd.Attribute]] = defaultdict(list)
     ancestor = prim

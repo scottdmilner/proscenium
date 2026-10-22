@@ -238,8 +238,11 @@ def run(case: Case) -> None:
 
 
 def _record(record: Any) -> Any:
-    """A snapshot record for comparison. Hydra fills an instancer's `matrix` with identity in one graph and
-    leaves it out in another; planning treats both as identity, so they compare equal here."""
+    """A snapshot record for comparison.
+
+    Hydra fills an instancer's `matrix` with identity in one graph and leaves it out in another; planning treats both as
+    identity, so they compare equal here.
+    """
     result = normalized(record)
     if result is not None and result.get("matrix") is None:
         result["matrix"] = IDENTITY

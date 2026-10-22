@@ -1,5 +1,7 @@
-"""F-OWNERSHIP-AMBIGUITY: copied bindings on each copy route, and binding indexes lost, cleared, duplicated,
-disagreeing, or unreadable (source-access.md#copied-bindings, source-access.md#canonical-candidate).
+"""F-OWNERSHIP-AMBIGUITY: copied bindings, and the binding indexes the canonical-candidate rule reads.
+
+Copied bindings on each copy route, and binding indexes lost, cleared, duplicated, disagreeing, or unreadable
+(source-access.md#copied-bindings, source-access.md#canonical-candidate).
 
 The routes are Blender operations, and the generator runs without bpy, so it gives a binding's source and,
 for each route, the outcome the canonical-candidate rule gives what that route leaves, derived from the

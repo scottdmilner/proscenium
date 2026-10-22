@@ -28,8 +28,10 @@ _UNIQUE = CanonicalDecision(0, DecisionReason.UNIQUE)
 
 
 class BindingDisabledError(LookupError):  # raised like KeyError, for an identity with every candidate disabled
-    """A write to a binding identity the canonical-candidate rule can't decide: every candidate is disabled
-    pending repair (source-access.md#copied-bindings)."""
+    """A write to a binding identity the canonical-candidate rule can't decide.
+
+    Every candidate is disabled pending repair (source-access.md#copied-bindings).
+    """
 
     report: CopiedBinding
 
@@ -39,8 +41,10 @@ class BindingDisabledError(LookupError):  # raised like KeyError, for an identit
 
 
 def binding_ids(scene: bpy.types.Scene | None = None) -> list[str]:
-    """The bindings, in the order they were found or made; with scene, those whose canonical candidate is on it,
-    or, for a binding with none, those with a candidate on it. Every candidate is checked.
+    """The bindings, in the order they were found or made.
+
+    With scene, those whose canonical candidate is on it, or, for a binding with none, those with a candidate on it.
+    Every candidate is checked.
     """
     return state.query(lambda s: _listed(s, scene))
 
@@ -62,8 +66,10 @@ def config(binding_id: str) -> BindingConfig | RefusedRecord | CopiedBinding | N
 
 
 def configs() -> dict[str, BindingConfig | RefusedRecord | CopiedBinding]:
-    """Every binding's configuration or why it can't be read, as config() gives it: one pass over the bindings,
-    checking each one's candidates."""
+    """Every binding's configuration or why it can't be read, as config() gives it.
+
+    One pass over the bindings, checking each one's candidates.
+    """
     return state.query(_configs)
 
 
@@ -73,8 +79,10 @@ def copied_bindings() -> list[CopiedBinding]:
 
 
 def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
-    """The bindings whose configuration can be read and is an attached source with this exact key; one with copies
-    and no canonical candidate isn't one of them."""
+    """The bindings whose readable configuration is an attached source with this exact key.
+
+    One with copies and no canonical candidate isn't one of them.
+    """
     return [
         (binding_id, config)
         for binding_id, config in configs().items()
@@ -120,8 +128,10 @@ def set_config(binding_id: str, config: BindingConfig) -> None:
 
 
 def canonical(current: State, binding_id: str) -> Candidate | CopiedBinding | None:
-    """The binding's canonical candidate, every candidate checked (see state.valid), its report if it has none, or
-    None if no binding has this identifier."""
+    """The binding's canonical candidate, its report if it has none, or None if there's no such binding.
+
+    Every candidate is checked (see state.valid).
+    """
     found = current.bindings.get(binding_id)
     if found is None:
         return None
@@ -133,25 +143,32 @@ def canonical(current: State, binding_id: str) -> Candidate | CopiedBinding | No
 
 
 def existing(binding_id: str) -> Candidate | CopiedBinding:
-    """The binding's canonical candidate, or its report if it has none. Raises KeyError if no binding has this
-    identifier."""
+    """The binding's canonical candidate, or its report if it has none.
+
+    Raises KeyError if no binding has this identifier.
+    """
     if (found := state.query(lambda s: canonical(s, binding_id))) is None:
         raise KeyError(binding_id)
     return found
 
 
 def writable(binding_id: str) -> Candidate:
-    """The binding's canonical candidate, for a write. Raises KeyError if no binding has this identifier, and
-    BindingDisabledError if it has no canonical candidate."""
+    """The binding's canonical candidate, for a write.
+
+    Raises KeyError if no binding has this identifier, and BindingDisabledError if it has no canonical candidate.
+    """
     if isinstance(found := existing(binding_id), CopiedBinding):
         raise BindingDisabledError(found)
     return found
 
 
 def restore_entry(binding_id: str, found: Candidate) -> None:
-    """After a write to the canonical candidate's records: restore its index entry if the index has none for it
-    and its record and destination refer to each other (source-access.md#canonical-candidate). Detection
-    writes nothing; a file with two indexes, or one that can't be read, is left as it is."""
+    """Restore the canonical candidate's missing index entry, after a write to its records.
+
+    Only if the index has none for it and its record and destination refer to each other
+    (source-access.md#canonical-candidate). Detection writes nothing; a file with two indexes, or one that can't be
+    read, is left as it is.
+    """
     identity = state.current_state().identities[binding_id]
     if identity.entries or isinstance(found.config, RefusedRecord) or found.config.destination is None:
         return

@@ -10,6 +10,8 @@ from enum import StrEnum
 
 
 class ResultState(StrEnum):
+    """How an operation ended: its result's state."""
+
     SUCCESS = "success"
     COMPLETED_WITH_ISSUES = "completed with issues"
     FATAL_FAILURE = "fatal failure"
@@ -26,6 +28,8 @@ class DiagnosticCategory(StrEnum):
 
 
 class Severity(StrEnum):
+    """How serious a diagnostic is."""
+
     INFO = "info"
     ERROR = "error"
 

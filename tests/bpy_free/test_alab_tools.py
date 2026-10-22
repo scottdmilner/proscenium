@@ -30,7 +30,7 @@ def _tree(root: Path, files: dict[str, str]) -> Path:
 
 
 def _pin(root: Path) -> dict[str, tuple[str, str]]:
-    """subtree -> (digest, file count)"""
+    """Each subtree's digest and file count, by subtree."""
     text = alab_checksums.subtrees(alab_checksums.manifest(root))
     return {name: (digest, count) for digest, count, name in (line.split("  ") for line in text.splitlines())}
 

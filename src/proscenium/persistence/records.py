@@ -34,6 +34,8 @@ type Migration = Callable[[dict[str, Any]], dict[str, Any]]
 
 @dataclass(frozen=True)
 class Schema[R: DataclassInstance]:
+    """How one kind of record is stored: its name, current version, type, and migrations."""
+
     name: str  # names the record in messages, e.g. "binding"
     version: int  # the current version
     record_type: type[R]  # the dataclass a current-version record loads as; it may check its fields
@@ -49,6 +51,8 @@ class Schema[R: DataclassInstance]:
 
 
 class RefusalReason(StrEnum):
+    """Why a stored record can't be read."""
+
     NEWER = "newer than supported"
     MIGRATION_FAILED = "migration failed"
     INVALID = "invalid"  # at the current version, but its fields don't make a record
@@ -57,12 +61,16 @@ class RefusalReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Loaded[R]:
+    """A record read from storage, and the version it was stored at."""
+
     record: R
     stored_version: int
 
 
 @dataclass(frozen=True, slots=True)
 class RefusedRecord:
+    """A stored record that can't be read, and why."""
+
     kind: str
     stored_version: int | None  # None when the record has no readable version
     refusal: RefusalReason
@@ -195,8 +203,9 @@ def write_items[R: DataclassInstance](
     changed: Collection[str],
     removed: Collection[str],
 ) -> None:
-    """Store record, which differs from the stored one only in the items of its mapping field under changed
-    (added or replaced) and removed (deleted).
+    """Store record, writing only the items of its mapping field under changed and removed.
+
+    record differs from the stored one only in those items: changed are added or replaced, and removed deleted.
 
     When the stored record is at the current version only those items are written, so the cost is what
     changed; otherwise all of record is, as write() stores it. Raises as write() does, changing nothing,
@@ -225,7 +234,7 @@ def write_items[R: DataclassInstance](
 
 
 def _unstructure(value: Any) -> Any:
-    """value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
+    """The value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
 
     Tuples become lists. Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
     """

@@ -113,8 +113,10 @@ def test_a_removed_datablock_leaves_the_cached_manifest(bindings: Bindings, tmp_
 
 
 def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[str], list[str]]:
-    """_managed's binding, and Other managing two objects, A and B; with the index built. Their identifiers,
-    and the resource identities to look up."""
+    """_managed's binding, and Other managing two objects, A and B, with the index built.
+
+    Returns their identifiers, and the resource identities to look up.
+    """
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
         other = bindings.create_file_binding(_scene(), scene.root, name="Other")
@@ -381,8 +383,10 @@ def test_a_destination_change_after_another_bindings_destination_was_removed(
 
 
 def _move_destination(binding_id: str, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
-    """What a repair moves with a binding's destination, so the old one isn't left as a copy: its tag, and the
-    index entry. The configuration is the caller's."""
+    """What a repair moves with a binding's destination, so the old one isn't left as a copy.
+
+    Its tag and the index entry; the configuration is the caller's.
+    """
     tag = records.read(old, binding_records.TAG_KEY, binding_records.TAG)
     assert isinstance(tag, Loaded)
     records.write(new, binding_records.TAG_KEY, binding_records.TAG, tag.record)

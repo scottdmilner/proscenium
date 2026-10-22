@@ -98,4 +98,5 @@ class AttachedSource:
         self._stage = stage
 
     def release(self) -> None:
+        """Let go of the attached stage, leaving the source unattached."""
         self._stage = None

@@ -83,9 +83,10 @@ class Manifest:
     def updated(
         self, changed: Mapping[str, ManifestEntry], removed: Collection[str], naming: Callable[[int], str | None]
     ) -> Manifest:
-        """This manifest with changed's entries added or replaced and removed's deleted, checked as a whole one
-        is. The checks cost what changes, plus, with removals, a scan of every entry's uses; building the
-        result copies the entries.
+        """This manifest with changed's entries added or replaced and removed's deleted.
+
+        It is checked as a whole one is. The checks cost what changes, plus, with removals, a scan of every entry's
+        uses; building the result copies the entries.
 
         naming gives the key of this manifest's entry naming a datablock, by session_uid, or None; the
         ownership index has it. Raises ValueError or TypeError over an update that makes no manifest.
@@ -121,20 +122,26 @@ MANIFEST = Schema("manifest", version=1, record_type=Manifest)
 
 
 def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | RefusedRecord | None:
+    """The destination's manifest, why it can't be read, or None if it has none."""
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
-    """Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read."""
+    """Store the destination's manifest whole.
+
+    Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read.
+    """
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
 
 
 def write_entries(
     destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
 ) -> None:
-    """Store manifest, which differs from the stored one only in the entries under changed and removed,
-    writing only those (records.write_items). Raises as write_manifest does, and KeyError, changing nothing,
-    for a resource identity too long for an ID-property key."""
+    """Store manifest, writing only the entries under changed and removed.
+
+    manifest differs from the stored one only in those entries (records.write_items). Raises as write_manifest does, and
+    KeyError, changing nothing, for a resource identity too long for an ID-property key.
+    """
     records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
 
 

@@ -40,7 +40,7 @@ class Case:
         self.check(f"known gap: {name}", reproduced, detail)
 
     def open(self, scene: str) -> Usd.Stage:
-        """Opens a copy of a scene from this directory, so edits never reach the repository."""
+        """Open a copy of a scene from this directory, so edits never reach the repository."""
         copy = self.tmp / scene
         shutil.copy(SCENES / scene, copy)
         stage = Usd.Stage.Open(str(copy))
@@ -56,8 +56,11 @@ class Case:
         return collection
 
     def apply_plan(self, plan: Any) -> dict[str, bpy.types.Object]:
-        """Applies the plan; returns its objects by USD source. Raises if a source has several objects (a prim
-        shown in both destinations with different materials): use apply.apply then."""
+        """Apply the plan, returning its objects by USD source.
+
+        Raises if a source has several objects (a prim shown in both destinations with different materials): use
+        apply.apply then.
+        """
         objects = self.apply.apply(plan, self.collection())
         sources = [o["source"] for o in plan.objects]
         repeated = sorted({s for s in sources if sources.count(s) > 1})

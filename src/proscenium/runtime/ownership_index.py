@@ -100,10 +100,11 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
 
 
 def set_manifest_entries(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
-    """Change some of a binding's manifest entries, writing only those: changed adds or replaces entries by
-    resource identity, and removed deletes them. A binding with no manifest yet starts from an empty one,
-    and an empty update writes nothing. What it writes and indexes is what changes; in memory it also
-    copies the manifest's entries and, with removals, scans their uses (Manifest.updated).
+    """Change some of a binding's manifest entries, writing only those.
+
+    changed adds or replaces entries by resource identity, and removed deletes them. A binding with no manifest yet
+    starts from an empty one, and an empty update writes nothing. What it writes and indexes is what changes; in memory
+    it also copies the manifest's entries and, with removals, scans their uses (Manifest.updated).
 
     Raises what set_manifest raises, and ValueError, TypeError, or KeyError (manifests.write_entries),
     changing nothing, over an update that makes no manifest.
@@ -140,13 +141,16 @@ def claims_on(datablock: bpy.types.ID) -> list[Claim]:
 
 
 def resource(binding_id: str, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
-    """The datablock of a binding's resource, as its manifest names it; the binding's report if it has no
-    canonical candidate; None if it names none, or the binding has no destination or manifest. Reads only that
-    binding's manifest, not the ownership index."""
+    """The datablock of a binding's resource, as its manifest names it.
+
+    The binding's report if it has no canonical candidate; None if the manifest names none, or the binding has no
+    destination or manifest. Reads only that binding's manifest, not the ownership index.
+    """
     return state.query(lambda s: _checked_resource(s, binding_id, resource_id))
 
 
 def unreadable_manifests() -> list[RefusedRecord]:
+    """Every manifest that can't be read, once per destination."""
     return state.query(lambda s: list(_ownership(s).unreadable.values()))
 
 
@@ -204,8 +208,10 @@ def _replace_manifest(
     destination: bpy.types.Collection,
     manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
-    """Give the manifest to every configuration naming the destination, and replace the destination's share
-    of ownership, keeping its claimant (binding_id's, if it has no share yet)."""
+    """Give the manifest to every configuration naming the destination, and replace its share of ownership.
+
+    The share keeps its claimant (binding_id's, if it has no share yet).
+    """
     _cache_manifest(current, destination, manifest)
     if (index := current.ownership) is not None:
         uid = destination.session_uid

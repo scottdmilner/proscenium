@@ -41,8 +41,10 @@ class StageRegistry:
         return stages
 
     def attached(self, binding_id: str, key: str) -> AttachedBindingStages:
-        """The binding's stages on an attached source, made unattached if it has none; existing ones keep their
-        attachment."""
+        """The binding's stages on an attached source, made unattached if it has none.
+
+        Existing ones keep their attachment.
+        """
         found = self._stages.get(binding_id)
         if isinstance(found, AttachedBindingStages):
             return found

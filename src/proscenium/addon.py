@@ -44,6 +44,7 @@ def _undone_or_redone(*_args: object) -> None:
 
 
 def register() -> None:
+    """Register the record types, and the handlers that keep the bindings' state current."""
     global _registered
     for cls in CLASSES:
         bpy.utils.register_class(cls)
@@ -59,6 +60,7 @@ def register() -> None:
 
 
 def unregister() -> None:
+    """Remove what register() added, and stop the bindings' state."""
     global _registered
     runtime.stop()
     bpy.app.handlers.load_post.remove(_file_loaded)
@@ -74,4 +76,5 @@ def unregister() -> None:
 
 
 def is_registered() -> bool:
+    """Whether register() has run without a matching unregister()."""
     return _registered

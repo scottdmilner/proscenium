@@ -25,8 +25,10 @@ def run(route: str, tmp_path: Path) -> None:
 
 
 def records_by_name() -> dict[tuple[str, str], Any]:
-    """Every scene's, collection's, object's, and text's records, with ID pointers as names, and each collection's
-    objects: what detection must leave as it was."""
+    """Every scene's, collection's, object's, and text's records, with ID pointers as names.
+
+    Also each collection's objects: what detection must leave as it was.
+    """
     found: dict[tuple[str, str], Any] = {}
     for kind, ids in (("scene", bpy.data.scenes), ("collection", bpy.data.collections), ("text", bpy.data.texts)):
         for id_ in ids:
@@ -79,8 +81,10 @@ def _copy_collection(_: Path) -> bpy.types.Collection:
 
 
 def _deep_copy_collection(tmp_path: Path) -> None:
-    """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1): the objects copied, and
-    the copy's manifest naming the copies, its tag the original's."""
+    """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1).
+
+    The objects copied, and the copy's manifest naming the copies, its tag the original's.
+    """
     copy = _copy_collection(tmp_path)
     copies = {}
     for obj in list(copy.objects):

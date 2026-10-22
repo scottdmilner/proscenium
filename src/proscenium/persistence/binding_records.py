@@ -78,6 +78,8 @@ class DestinationTag:
 
 @dataclass(frozen=True)
 class BindingIndex:
+    """The file's binding index: each binding's destination, which the canonical-candidate rule reads."""
+
     destinations: dict[str, bpy.types.Collection | None]  # binding identifier -> its destination
 
     def __post_init__(self) -> None:
@@ -91,10 +93,12 @@ INDEX = Schema("binding index", version=1, record_type=BindingIndex)
 
 
 def new_identifier() -> str:
+    """A new, random binding identifier."""
     return uuid.uuid4().hex
 
 
 def config_key(binding_id: str) -> str:
+    """The ID-property key of a binding's configuration record on its scene."""
     return CONFIG_PREFIX + binding_id
 
 
@@ -154,8 +158,10 @@ def index_texts() -> list[bpy.types.Text]:
 
 
 def read_tags() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | RefusedRecord]]:
-    """Every local collection with a destination tag, and the tag or why it can't be read: each binding's
-    destination, and every copy of one (source-access.md#copied-bindings)."""
+    """Every local collection with a destination tag, and the tag or why it can't be read.
+
+    These are each binding's destination, and every copy of one (source-access.md#copied-bindings).
+    """
     for collection in bpy.data.collections:
         if _tagged(collection):
             tag = records.read(collection, TAG_KEY, TAG)

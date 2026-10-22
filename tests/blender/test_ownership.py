@@ -58,8 +58,10 @@ def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[Bi
 
 
 def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
-    """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index;
-    the oracle, reading the records now, must agree."""
+    """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index.
+
+    The oracle, reading the records now, must agree.
+    """
     found = {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.claims_on(id_))}
     unreadable = runtime.unreadable_manifests()
     expected, expected_unreadable = oracle.claims()

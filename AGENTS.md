@@ -105,7 +105,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
   - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
   - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
   - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
-- Prefer short docstrings plus inline comments over long docstrings.
+- Prefer short docstrings plus inline comments over long docstrings. Docstrings follow pep257 (ruff's D rules): a one-line summary ending in a period or question mark, then a blank line before any more. Public objects in `src/` and `tools/` have one; tests and `tools/feasibility/` need one only where it adds something.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.
 - Evidence docs (feasibility records, decision rows) claim only what a check actually tested.

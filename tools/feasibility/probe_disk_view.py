@@ -109,8 +109,10 @@ def _relocated(root: Path, dest: Path, symlink: bool) -> Any:
 
 
 def _anonymous_view(root: Path) -> Any:
-    """Re-read every layer from disk as an anonymous layer, rewiring layer asset
-    paths to the anonymous copies and other asset paths to absolute disk paths."""
+    """Re-read every layer from disk as an anonymous layer.
+
+    Layer asset paths are rewired to the anonymous copies, and other asset paths to absolute disk paths.
+    """
     from pxr import Ar, Sdf, UsdUtils
 
     resolver = Ar.GetResolver()

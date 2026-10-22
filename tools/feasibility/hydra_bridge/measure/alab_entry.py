@@ -45,7 +45,7 @@ def untranslated(prim: Usd.Prim) -> bool:
 
 
 def write(entry: Path, out: Path) -> dict[str, Any]:
-    """Writes the layer; returns what it deactivated and what remains inside prototypes."""
+    """Write the layer, returning what it deactivated and what remains inside prototypes."""
     stage = Usd.Stage.Open(str(entry), Usd.Stage.LoadAll)
     deactivated: list[Usd.Prim] = []
     iterator = iter(Usd.PrimRange(stage.GetPseudoRoot()))

@@ -77,9 +77,12 @@ def purpose(stage: Usd.Stage, source: str) -> str:
 
 
 def placeholder_bounds(stage: Usd.Stage, source: str, time: float) -> tuple[Any, Any] | None:
-    """A placeholder's usable bounds: the authored extent, else USD's computed extent for a point-based prim
-    that isn't drawn as a mesh (curves, points). Point instancers and volumes get none without an authored
-    extent, since computing theirs means evaluating prototypes or reading field files."""
+    """A placeholder's usable bounds.
+
+    The authored extent, else USD's computed extent for a point-based prim that isn't drawn as a mesh (curves, points).
+    Point instancers and volumes get none without an authored extent, since computing theirs means evaluating prototypes
+    or reading field files.
+    """
     prim = stage.GetPrimAtPath(source)
     boundable = UsdGeom.Boundable(prim)
     extent = boundable.GetExtentAttr()

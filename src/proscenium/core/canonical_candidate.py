@@ -29,6 +29,8 @@ UNREADABLE_INDEX_ENTRY: Final = UnreadableIndexEntry()  # an index entry from a 
 
 @dataclass(frozen=True, slots=True)
 class CandidateEvidence:
+    """What the rule reads about one candidate of a binding identity."""
+
     destination: int | None  # the session_uid of the collection its record names, or of the tagged collection
     mutual: bool  # its binding record names the destination, and the destination's tag points back at its scene
 
@@ -48,6 +50,8 @@ class DecisionReason(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CanonicalDecision:
+    """The rule's decision on an identity's candidates, and why."""
+
     canonical: int | None  # the canonical candidate's position in the candidates, or None: all are disabled
     reason: DecisionReason
 

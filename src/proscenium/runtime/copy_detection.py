@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class CandidateReport:
+    """One candidate of a copied binding, by scene and destination name, and whether it is canonical."""
+
     scene: str | None  # the scene holding its binding record; None for a tagged collection no record names
     destination: str | None  # the collection its record names, or the tagged collection; None once removed
     canonical: bool
@@ -73,6 +75,8 @@ class IdentityCandidates:
 
 @dataclass(frozen=True, slots=True)
 class CopyDetection:
+    """What detection found: every identity's candidates, and the tagged collections."""
+
     identities: dict[
         str, IdentityCandidates
     ]  # by binding identifier, every identity with a record or a tagged collection
@@ -158,8 +162,10 @@ def _destination(config: BindingConfig | RefusedRecord) -> bpy.types.Collection 
 
 
 def _named(config: BindingConfig | RefusedRecord, binding_id: str, scene: bpy.types.Scene, tags: Tags) -> int | None:
-    """The session_uid of the destination a record names: for one that can't be read, the collection whose tag
-    points back at its scene."""
+    """The session_uid of the destination a record names.
+
+    For one that can't be read, the collection whose tag points back at its scene.
+    """
     if isinstance(config, RefusedRecord):
         return next((uid for uid, (_, tag) in tags.items() if _points_back(tag, binding_id, scene)), None)
     return None if config.destination is None else config.destination.session_uid

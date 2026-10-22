@@ -48,10 +48,20 @@ src = ["src", "tools", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true
-select = ["E", "W", "F", "I", "ANN", "B", "UP", "TC", "PERF", "N818"]
+select = ["E", "W", "F", "I", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415"]
 ignore = [
     "ANN401", # Any is the honest type for untyped pxr/bpy objects
+    "D105", "D107", # a magic method or __init__ is described by its class
+    "D401", # a docstring says what a function gives ("The binding's stages ..."), as its name does
+    "D400", # D415 instead: a summary can be a question, as a probe's is
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D101", "D102", "D103"] # a test's name says what it checks
+"tools/feasibility/**/*.py" = ["D101", "D102", "D103"] # M1's evidence code, kept as it was measured
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
 
 [tool.ruff.lint.isort]
 known-first-party = ["proscenium"]

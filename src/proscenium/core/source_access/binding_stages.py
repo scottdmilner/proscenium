@@ -27,16 +27,15 @@ def dirty_layers(stage: Usd.Stage) -> list[str]:
 
 
 class BindingStages[S: (FileSource, AttachedSource)](ABC):
-    """A binding's stages: its source, whose stage is the source stage, and the evaluation stage it keeps and
-    reuses across acquisitions.
+    """A binding's stages: its source, whose stage is the source stage, and its evaluation stage.
 
-    The source stage is the stage the source is composed on: the one a file source opens, or the
-    one a caller attaches. The evaluation stage composes the source stage's root and session layers,
-    matching its mask, muting, and interpolation, under the binding's own payload policy. When the
-    binding opened the source stage itself, there are no caller's settings to protect, so the
-    evaluation stage is the source stage. Layers are evaluated as loaded; only reload() rereads them.
-    The requested payload policy is the binding configuration's, passed at each acquisition; this
-    holds only the one the evaluation stage has. Runtime state only. One subclass for each kind of source.
+    The source stage is the stage the source is composed on: the one a file source opens, or the one a caller attaches.
+    The evaluation stage, kept and reused across acquisitions, composes the source stage's root and session layers,
+    matching its mask, muting, and interpolation, under the binding's own payload policy. When the binding opened the
+    source stage itself, there are no caller's settings to protect, so the evaluation stage is the source stage. Layers
+    are evaluated as loaded; only reload() rereads them. The requested payload policy is the binding configuration's,
+    passed at each acquisition; this holds only the one the evaluation stage has. Runtime state only. One subclass for
+    each kind of source.
     """
 
     source: S

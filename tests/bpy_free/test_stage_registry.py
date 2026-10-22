@@ -53,8 +53,10 @@ def test_an_attached_source_keeps_its_attachment(tmp_path: Path) -> None:
 
 
 def _pruned(tmp_path: Path, existing: set[str], unreadable: set[str]) -> dict[str, tuple[bool, bool, bool]]:
-    """For a file source "f" and an attached source "m", both acquired: after prune, whether each is still
-    registered, still has its evaluation stage, and, for "m", is still attached."""
+    """For a file source "f" and an attached source "m", both acquired: their state after prune.
+
+    Whether each is still registered, still has its evaluation stage, and, for "m", is still attached.
+    """
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
         registry.file("f", scene.root).acquire(PayloadPolicy.LOAD_ALL)
