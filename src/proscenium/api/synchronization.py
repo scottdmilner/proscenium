@@ -94,7 +94,7 @@ class Synchronization:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
     stages: StageRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
-    _pruned_at: int | None  # runtime.rebuilds() when the stages were last compared with the bindings
+    _pruned_at: int | None  # runtime.rebuild_count() when the stages were last compared with the bindings
 
     def __init__(self) -> None:
         self.stages = StageRegistry()
@@ -190,7 +190,7 @@ class Synchronization:
     def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code; acquisition only (M3), so nothing is evaluated at it yet."""
         Usd.TimeCode(time_code)  # a time code M5 can evaluate at, or a TypeError now
-        runtime.find_copies()  # a collection duplicated on its own since the state was built is a copy
+        runtime.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
         config = self._config(binding_id)
         if not isinstance(config, BindingConfig):
             return _refused(config)
@@ -241,10 +241,10 @@ class Synchronization:
             configs = runtime.configs()
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
             self.stages.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
-        self._pruned_at = runtime.rebuilds()
+        self._pruned_at = runtime.rebuild_count()
 
     def _prune_if_rebuilt(self) -> None:
-        if self._pruned_at != runtime.rebuilds():
+        if self._pruned_at != runtime.rebuild_count():
             self.prune()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:

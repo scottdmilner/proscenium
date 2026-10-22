@@ -28,8 +28,8 @@ the structs inside a datablock (modifiers, mesh elements, nodes): Blender invali
 Python reference but not those, and one held across undo silently reads freed memory.
 
 Other content brought in by append or link, and a destination collection duplicated on its own,
-add no scene, so they're seen at the next load, undo, or redo, or when find_copies() finds the
-collections' tags changed, as a synchronization asks it to first.
+add no scene, so they're seen at the next load, undo, or redo, or when refresh_if_tags_changed()
+finds the collections' tags changed, as a synchronization asks it to first.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ if TYPE_CHECKING:
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
 _state: State | None = None
-_rebuilds = 0  # how many times the state was dropped or rebuilt; see rebuilds()
+_rebuilds = 0  # how many times the state was dropped or rebuilt; see rebuild_count()
 
 
 class NotRegisteredError(RuntimeError):  # a precondition, raised like RuntimeError
@@ -91,7 +91,7 @@ class State:
     identities: dict[
         str, copy_detection.IdentityCandidates
     ]  # by binding identifier: its candidates, as the rule reads them
-    tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (find_copies)
+    tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (refresh_if_tags_changed)
     ownership: OwnershipIndex | None = None  # built when first asked for
 
 
@@ -115,14 +115,14 @@ def invalidate() -> None:
     _rebuilds += 1
 
 
-def rebuilds() -> int:
+def rebuild_count() -> int:
     """A count that changes whenever the state is dropped or rebuilt from the records, as after a load,
     undo, or redo, or when scenes are added or removed: what keeps runtime state keyed by binding
     identity, such as the bindings' stages, knows to compare its bindings with binding_ids()."""
     return _rebuilds
 
 
-def find_copies() -> None:
+def refresh_if_tags_changed() -> None:
     """Rebuild the state if the local collections' destination tags changed since it was built, as duplicating
     a collection on its own changes them, which no handler announces. Checks every collection's records."""
     if _state is not None and binding_records.tagged_uids() != _state.tagged:

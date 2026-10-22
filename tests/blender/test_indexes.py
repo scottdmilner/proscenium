@@ -159,7 +159,7 @@ def test_a_removed_datablock_rereads_only_its_manifest(
     # configuration stay, and the result is what a rebuild from the records gives.
     ids, names = _two_managed(sync, tmp_path)
     other = ids[1]
-    rebuilds = runtime.rebuilds()
+    rebuilds = runtime.rebuild_count()
     reads, shares = _counted_reads(monkeypatch)
     bpy.data.objects.remove(bpy.data.objects["A"])
     if lookup == "resource":
@@ -169,7 +169,7 @@ def test_a_removed_datablock_rereads_only_its_manifest(
         assert isinstance(found, Loaded)
         assert found.record.entries["a"].datablock is None
     assert reads == [("Other", manifests.MANIFEST_KEY)]
-    assert runtime.rebuilds() == rebuilds
+    assert runtime.rebuild_count() == rebuilds
     assert runtime.resource(other, "b") == bpy.data.objects["B"]
     in_place = _ownership_view(ids, names)
     assert reads == [("Other", manifests.MANIFEST_KEY)]  # the share replaced holds no removed datablock
@@ -197,13 +197,13 @@ def test_an_update_writes_and_indexes_only_what_changes(
         "role": "marker",
         "uses": [],
     }
-    rebuilds = runtime.rebuilds()
+    rebuilds = runtime.rebuild_count()
     reads, shares = _counted_reads(monkeypatch)
     # b's datablock moves to c, and d uses c.
-    runtime.update_manifest(other, {"b": _entry(c), "c": _entry(b), "d": _entry(d, ["c"])}, ["a"])
+    runtime.set_manifest_entries(other, {"b": _entry(c), "c": _entry(b), "d": _entry(d, ["c"])}, ["a"])
     names += ["c", "d"]
     in_place = _ownership_view(ids, names)
-    assert (reads, shares, runtime.rebuilds()) == ([], [], rebuilds)  # nothing reread or rebuilt
+    assert (reads, shares, runtime.rebuild_count()) == ([], [], rebuilds)  # nothing reread or rebuilt
     assert [runtime.resource(other, r) for r in ("a", "b", "c", "d")] == [None, c, b, d]
     assert runtime.claims_on(a) == []
     assert runtime.claims_on(b) == [Claim(other, destination, "c")]
@@ -225,15 +225,15 @@ def test_a_datablock_claimed_twice_and_once_again(sync: Synchronization, tmp_pat
         "Other": Claim(other, bpy.data.collections["Other"], "a"),
         "Shot": Claim(handle, bpy.data.collections["Shot"], "x"),
     }
-    runtime.update_manifest(handle, {"x": _entry(a)})
+    runtime.set_manifest_entries(handle, {"x": _entry(a)})
     assert set(runtime.claims_on(a)) == set(by_name.values())
     in_place = _ownership_view(ids, [*names, "x"])
     runtime.invalidate()
     assert in_place == _ownership_view(ids, [*names, "x"])
     if first_removed == "Other":
-        runtime.update_manifest(other, {}, ["a"])
+        runtime.set_manifest_entries(other, {}, ["a"])
     else:
-        runtime.update_manifest(handle, {}, ["x"])
+        runtime.set_manifest_entries(handle, {}, ["x"])
     [kept] = [claim for name, claim in by_name.items() if name != first_removed]
     assert runtime.claims_on(a) == [kept]
     found = state._state  # noqa: SLF001 - how a claim is held is what saves memory
@@ -277,11 +277,11 @@ def test_removals_are_tested_as_a_set(sync: Synchronization, tmp_path: Path) -> 
     direct = _CountedRemovals(["a"])
     current.record.updated({}, direct, lambda _uid: None)
     through_the_state = _CountedRemovals(["a", "a"])  # a duplicate, too
-    runtime.update_manifest(other, {}, through_the_state)
+    runtime.set_manifest_entries(other, {}, through_the_state)
     assert (direct.tests, through_the_state.tests) == (0, 0)
     assert runtime.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
     # Iterated once: an iterator, which the type rules out, still reaches the record and the index alike.
-    runtime.update_manifest(other, {}, iter(["b"]))  # ty: ignore[invalid-argument-type]
+    runtime.set_manifest_entries(other, {}, iter(["b"]))  # ty: ignore[invalid-argument-type]
     assert runtime.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
     in_place = _ownership_view(ids, names)
     runtime.invalidate()
@@ -297,7 +297,7 @@ def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, m
 
     monkeypatch.setattr(records, "write", no_writes)
     monkeypatch.setattr(records, "write_items", no_writes)
-    runtime.update_manifest(handle.binding_id, {}, [])
+    runtime.set_manifest_entries(handle.binding_id, {}, [])
 
 
 def test_an_update_to_a_binding_without_a_manifest(sync: Synchronization, tmp_path: Path) -> None:
@@ -305,7 +305,7 @@ def test_an_update_to_a_binding_without_a_manifest(sync: Synchronization, tmp_pa
         handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
     assert runtime.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
-    runtime.update_manifest(handle.binding_id, {"a": _entry(obj)})
+    runtime.set_manifest_entries(handle.binding_id, {"a": _entry(obj)})
     assert runtime.manifest(handle.binding_id) == Loaded(Manifest({"a": _entry(obj)}), 1)
     assert runtime.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
     assert runtime.resource(handle.binding_id, "a") == obj
@@ -318,7 +318,7 @@ def test_an_update_after_a_removal(sync: Synchronization, tmp_path: Path, remove
     other = ids[1]
     bpy.data.objects.remove(bpy.data.objects["A"])
     replacement = bpy.data.objects.new("Replacement", None)
-    runtime.update_manifest(other, {"b": _entry(replacement)}, removed)
+    runtime.set_manifest_entries(other, {"b": _entry(replacement)}, removed)
     assert runtime.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
     in_place = _ownership_view(ids, names)
     assert runtime.resource(other, "b") == replacement
@@ -361,7 +361,7 @@ def test_a_destination_removed_before_the_ownership_index_is_built(
     if asked == "claims":
         assert runtime.claims_on(bpy.data.objects["Managed"]) == []
     else:
-        runtime.update_manifest(ids[1], {"c": _entry(bpy.data.objects.new("C", None))})
+        runtime.set_manifest_entries(ids[1], {"c": _entry(bpy.data.objects.new("C", None))})
         assert runtime.resource(ids[1], "c") == bpy.data.objects["C"]
     assert [c.binding_id for c in runtime.claims_on(bpy.data.objects["A"])] == [ids[1]]
 
@@ -526,16 +526,16 @@ def test_listing_a_scene_checks_only_its_bindings(sync: Synchronization, tmp_pat
         here = sync.create_file_binding(_scene(), scene.root, name="Here")
     assert sync.bindings(_scene()) == [here]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
-    rebuilds = runtime.rebuilds()
+    rebuilds = runtime.rebuild_count()
     assert sync.bindings(_scene()) == [here]
-    assert runtime.rebuilds() == rebuilds  # not checked, so nothing found to rebuild
+    assert runtime.rebuild_count() == rebuilds  # not checked, so nothing found to rebuild
     assert runtime.binding_ids() == [elsewhere.binding_id, here.binding_id]
-    assert runtime.rebuilds() > rebuilds  # listing every binding checks it
+    assert runtime.rebuild_count() > rebuilds  # listing every binding checks it
     assert _config(elsewhere).destination is None
     bpy.data.collections.remove(bpy.data.collections["Here"])
-    rebuilds = runtime.rebuilds()
+    rebuilds = runtime.rebuild_count()
     assert sync.bindings(_scene()) == [here]
-    assert runtime.rebuilds() > rebuilds
+    assert runtime.rebuild_count() > rebuilds
     assert _config(here).destination is None
 
 

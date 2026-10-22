@@ -16,8 +16,16 @@ from .binding_configs import (
     create,
     set_config,
 )
-from .ownership_index import Claim, claims_on, manifest, resource, set_manifest, unreadable_manifests, update_manifest
-from .state import NotRegisteredError, find_copies, invalidate, rebuilds, start, stop
+from .ownership_index import (
+    Claim,
+    claims_on,
+    manifest,
+    resource,
+    set_manifest,
+    set_manifest_entries,
+    unreadable_manifests,
+)
+from .state import NotRegisteredError, invalidate, rebuild_count, refresh_if_tags_changed, start, stop
 
 __all__ = [
     "Claim",
@@ -31,15 +39,15 @@ __all__ = [
     "configs",
     "copied_bindings",
     "create",
-    "find_copies",
+    "refresh_if_tags_changed",
     "invalidate",
     "manifest",
-    "rebuilds",
+    "rebuild_count",
     "resource",
     "set_config",
     "set_manifest",
     "start",
     "stop",
     "unreadable_manifests",
-    "update_manifest",
+    "set_manifest_entries",
 ]

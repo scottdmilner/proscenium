@@ -96,7 +96,7 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
     binding_configs.restore_entry(binding_id, found)
 
 
-def update_manifest(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
+def set_manifest_entries(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
     """Change some of a binding's manifest entries, writing only those: changed adds or replaces entries by
     resource identity, and removed deletes them. A binding with no manifest yet starts from an empty one,
     and an empty update writes nothing. What it writes and indexes is what changes; in memory it also
@@ -147,7 +147,7 @@ def unreadable_manifests() -> list[RefusedRecord]:
 
 
 def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
-    """The binding, its destination, and its manifest, for update_manifest. Raises as update_manifest does."""
+    """The binding, its destination, and its manifest, for set_manifest_entries. Raises as set_manifest_entries does."""
     found = binding_configs.existing(binding_id)
     destination = _destination(binding_id, found)
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,

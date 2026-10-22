@@ -333,7 +333,7 @@ def test_an_update_that_makes_no_manifest_changes_nothing(sync: Synchronization,
     make, error, message = _UPDATES[update]
     changed, removed = make(objects, new)
     with pytest.raises(error, match=message):
-        runtime.update_manifest(handle.binding_id, changed, removed)
+        runtime.set_manifest_entries(handle.binding_id, changed, removed)
     assert records.stored(destination, manifests.MANIFEST_KEY) == stored
     assert runtime.manifest(handle.binding_id) == Loaded(manifest, 1)
     assert {obj: runtime.claims_on(obj) for obj in [*objects, new]} == claims
