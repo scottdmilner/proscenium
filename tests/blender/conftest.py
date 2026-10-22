@@ -52,7 +52,7 @@ def extension() -> Generator[ModuleType]:
 @pytest.fixture
 def sync(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generator[Synchronization]:
     """A fresh synchronization state, which handles use, with the extension registered: its handlers
-    keep the bindings' in-memory state current (proscenium.runtime.indexes)."""
+    keep the bindings' in-memory state current (proscenium.runtime)."""
     fresh = Synchronization()
     monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
     yield fresh

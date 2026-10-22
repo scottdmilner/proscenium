@@ -17,7 +17,7 @@ from pxr import Sdf, Usd
 from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from proscenium import addon
+from proscenium import addon, runtime
 from proscenium.api.synchronization import (
     AttachResult,
     BindingHandle,
@@ -33,7 +33,6 @@ from proscenium.persistence import binding_state, bindings, records
 from proscenium.persistence.binding_state import Generation, LastAttempt
 from proscenium.persistence.bindings import BindingConfig, BindingIndex, DestinationTag
 from proscenium.persistence.records import NAMESPACE, Loaded, RecordRefused
-from proscenium.runtime import indexes
 from support import undo
 from support.blend import save_and_reopen
 
@@ -454,5 +453,5 @@ def test_records_stay_readable_with_the_extension_unregistered(sync: Synchroniza
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
     assert _config(handle) == replace(expected, destination=bpy.data.collections["root"])
-    with pytest.raises(indexes.NotTracking):
+    with pytest.raises(runtime.NotTracking):
         handle.requested_settings()

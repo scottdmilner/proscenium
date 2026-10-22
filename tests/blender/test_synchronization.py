@@ -15,6 +15,7 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
+from proscenium import runtime
 from proscenium.api.synchronization import (
     BindingHandle,
     BindingNotFound,
@@ -26,7 +27,7 @@ from proscenium.api.synchronization import (
 )
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import bindings, records
-from proscenium.runtime import indexes
+from proscenium.runtime import state
 from support import undo
 from support.usd import open_fresh
 
@@ -265,13 +266,13 @@ def test_pruning_compares_the_scenes_once(
     handles = [sync.create_file_binding(_scene(), _root(tmp_path / str(i)), name=f"B{i}") for i in range(3)]
     for handle in handles:
         handle.synchronize(0)
-    current, calls = indexes._current, []  # noqa: SLF001 - the cost under test is one comparison of the scenes
+    current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
 
     def counted() -> object:
         calls.append(1)
         return current()
 
-    monkeypatch.setattr(indexes, "_current", counted)
+    monkeypatch.setattr(state, "current_state", counted)
     sync.prune()
     assert len(calls) == 1
     assert all(handle.binding_id in sync.sources for handle in handles)
@@ -318,7 +319,7 @@ def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(sync: Synchro
     handle = sync.create_file_binding(_scene(), _root(tmp_path))
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     _scene()[records.NAMESPACE][bindings.config_key(handle.binding_id)][records.VERSION_KEY] = 99
-    indexes.invalidate()  # as a load, undo, or redo that restored this record would
+    runtime.invalidate()  # as a load, undo, or redo that restored this record would
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, and pruned
     assert handle.binding_id not in sync.sources
 

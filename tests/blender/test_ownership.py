@@ -12,10 +12,11 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.persistence import ownership, records
-from proscenium.persistence.ownership import Claim, Manifest, ManifestEntry
+from proscenium import runtime
+from proscenium.persistence import manifests, records
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
-from proscenium.runtime import indexes
+from proscenium.runtime import Claim
 from support import ownership as oracle
 from support.blend import save_and_reopen
 
@@ -45,15 +46,15 @@ def _managed(sync: Synchronization, tmp_path: Path, name: str = "Shot") -> tuple
         "b": ManifestEntry(objects[1], ["/World/Pay"], "prim", ["mesh"]),
     }
     manifest = Manifest(entries)
-    indexes.set_manifest(handle.binding_id, manifest)  # the writer path: memory, then the record
+    runtime.set_manifest(handle.binding_id, manifest)  # the writer path: memory, then the record
     return handle, manifest
 
 
 def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
     """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index;
     the oracle, reading the records now, must agree."""
-    found = {id_: claims for id_ in bpy.data.user_map() if (claims := indexes.claims_on(id_))}
-    unreadable = indexes.unreadable_manifests()
+    found = {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.claims_on(id_))}
+    unreadable = runtime.unreadable_manifests()
     expected, expected_unreadable = oracle.claims()
     assert {id_: set(c) for id_, c in found.items()} == {id_: set(c) for id_, c in expected.items()}
     assert unreadable == expected_unreadable
@@ -78,7 +79,7 @@ def test_a_manifest_survives_save_and_reopen(sync: Synchronization, tmp_path: Pa
             "b": ManifestEntry(b, ["/World/Pay"], "prim", ["mesh"]),
         }
     )
-    assert ownership.read_manifest(bpy.data.collections["Shot"]) == Loaded(expected, 1)
+    assert manifests.read_manifest(bpy.data.collections["Shot"]) == Loaded(expected, 1)
 
 
 def test_nothing_is_stored_on_the_managed_datablocks(sync: Synchronization, tmp_path: Path) -> None:
@@ -117,10 +118,10 @@ def test_content_two_manifests_name_is_ambiguous(sync: Synchronization, tmp_path
     first, _ = _managed(sync, tmp_path, "First")
     second, _ = _managed(sync, tmp_path, "Second")
     shared = bpy.data.objects["First0"]
-    manifest = ownership.read_manifest(bpy.data.collections["Second"])
+    manifest = manifests.read_manifest(bpy.data.collections["Second"])
     assert isinstance(manifest, Loaded)
     entries = {**manifest.record.entries, "stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
-    indexes.set_manifest(second.binding_id, Manifest(entries))
+    runtime.set_manifest(second.binding_id, Manifest(entries))
     first_claim = Claim(first.binding_id, bpy.data.collections["First"], "a")
     assert _claims()[shared] == [first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen")]
 
@@ -159,15 +160,15 @@ def test_a_linked_copy_scene_shares_one_manifest(
     assert len(bpy.data.scenes) == 2
     shot = bpy.data.collections["Shot"]
     read: list[bpy.types.Collection] = []
-    read_manifest = ownership.read_manifest
+    read_manifest = manifests.read_manifest
 
     def counted(destination: bpy.types.Collection) -> object:
         read.append(destination)
         return read_manifest(destination)
 
-    monkeypatch.setattr(ownership, "read_manifest", counted)
-    indexes.invalidate()  # so the index is rebuilt from the records, reading what it reads
-    found = {obj: claims for obj in bpy.data.objects if (claims := indexes.claims_on(obj))}
+    monkeypatch.setattr(manifests, "read_manifest", counted)
+    runtime.invalidate()  # so the index is rebuilt from the records, reading what it reads
+    found = {obj: claims for obj in bpy.data.objects if (claims := runtime.claims_on(obj))}
     assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
         bpy.data.objects["Shot0"]: [Claim(handle.binding_id, shot, "a")],
@@ -196,7 +197,7 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(sync: Synchroni
     # Removing it from bpy.data clears every pointer to it.
     _managed(sync, tmp_path)
     bpy.data.objects.remove(bpy.data.objects["Shot0"])
-    manifest = ownership.read_manifest(bpy.data.collections["Shot"])
+    manifest = manifests.read_manifest(bpy.data.collections["Shot"])
     assert isinstance(manifest, Loaded)
     assert manifest.record.entries["a"].datablock is None
     assert len(_claims()) == 2
@@ -205,12 +206,12 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(sync: Synchroni
 def test_a_bindings_own_manifest(sync: Synchronization, tmp_path: Path) -> None:
     first, manifest = _managed(sync, tmp_path, "First")
     second, _ = _managed(sync, tmp_path, "Second")
-    assert indexes.manifest(first.binding_id) == Loaded(manifest, 1)
-    assert indexes.manifest(second.binding_id) != indexes.manifest(first.binding_id)
+    assert runtime.manifest(first.binding_id) == Loaded(manifest, 1)
+    assert runtime.manifest(second.binding_id) != runtime.manifest(first.binding_id)
     without = sync.create_attached_binding(_scene(), "shot")
-    assert indexes.manifest(without.binding_id) is None  # nothing managed yet
+    assert runtime.manifest(without.binding_id) is None  # nothing managed yet
     with pytest.raises(KeyError):
-        indexes.manifest("not-a-binding")
+        runtime.manifest("not-a-binding")
 
 
 def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchronization, tmp_path: Path) -> None:
@@ -218,7 +219,7 @@ def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchr
     config = _scene()[NAMESPACE]["binding." + handle.binding_id]
     config[VERSION_KEY] = 2
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
-    result = indexes.manifest(handle.binding_id)
+    result = runtime.manifest(handle.binding_id)
     assert isinstance(result, Refused)
     assert result.kind == "binding"
 
@@ -226,12 +227,12 @@ def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchr
 def test_a_removed_destination_has_no_manifest(sync: Synchronization, tmp_path: Path) -> None:
     handle, _ = _managed(sync, tmp_path)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
-    assert indexes.manifest(handle.binding_id) is None  # the configuration's pointer was cleared
+    assert runtime.manifest(handle.binding_id) is None  # the configuration's pointer was cleared
 
 
 def test_dependents_invert_the_uses(sync: Synchronization, tmp_path: Path) -> None:
     _, manifest = _managed(sync, tmp_path)
-    assert ownership.dependents(manifest) == {"mesh": {"a", "b"}, "a": set(), "b": set()}
+    assert manifests.dependents(manifest) == {"mesh": {"a", "b"}, "a": set(), "b": set()}
 
 
 @pytest.mark.parametrize(
@@ -248,14 +249,14 @@ def test_an_invalid_manifest_is_refused(
 ) -> None:
     _managed(sync, tmp_path)
     destination = bpy.data.collections["Shot"]
-    stored = destination[NAMESPACE][ownership.MANIFEST_KEY].to_dict()
+    stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     stored["entries"]["a"] |= change
-    destination[NAMESPACE][ownership.MANIFEST_KEY] = stored
-    result = ownership.read_manifest(destination)
+    destination[NAMESPACE][manifests.MANIFEST_KEY] = stored
+    result = manifests.read_manifest(destination)
     assert isinstance(result, Refused)
     assert result.refusal is Refusal.INVALID
     assert problem in result.message
-    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     found, unreadable = _ownership()
     assert found == {}
     assert unreadable == [result]
@@ -265,16 +266,16 @@ def test_a_newer_manifest_is_refused_and_kept(sync: Synchronization, tmp_path: P
     # It claims nothing and is reported, and writing doesn't replace it.
     _, manifest = _managed(sync, tmp_path)
     destination = bpy.data.collections["Shot"]
-    destination[NAMESPACE][ownership.MANIFEST_KEY][VERSION_KEY] = 2
-    stored = destination[NAMESPACE][ownership.MANIFEST_KEY].to_dict()
-    result = ownership.read_manifest(destination)
+    destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
+    stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
+    result = manifests.read_manifest(destination)
     assert isinstance(result, Refused)
     assert result.refusal is Refusal.NEWER
-    indexes.invalidate()  # the record changed behind the state, as a load or undo changes it
+    runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     assert _ownership() == ({}, [result])
     with pytest.raises(RecordRefused):
-        ownership.write_manifest(destination, manifest)
-    assert destination[NAMESPACE][ownership.MANIFEST_KEY].to_dict() == stored
+        manifests.write_manifest(destination, manifest)
+    assert destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict() == stored
 
 
 def _entry(datablock: bpy.types.ID, uses: list[str] | None = None) -> ManifestEntry:
@@ -320,12 +321,12 @@ def test_an_update_that_makes_no_manifest_changes_nothing(sync: Synchronization,
     destination = bpy.data.collections["Shot"]
     objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
     new = bpy.data.objects.new("New", None)
-    stored = records.stored(destination, ownership.MANIFEST_KEY)
-    claims = {obj: indexes.claims_on(obj) for obj in [*objects, new]}
+    stored = records.stored(destination, manifests.MANIFEST_KEY)
+    claims = {obj: runtime.claims_on(obj) for obj in [*objects, new]}
     make, error, message = _UPDATES[update]
     changed, removed = make(objects, new)
     with pytest.raises(error, match=message):
-        indexes.update_manifest(handle.binding_id, changed, removed)
-    assert records.stored(destination, ownership.MANIFEST_KEY) == stored
-    assert indexes.manifest(handle.binding_id) == Loaded(manifest, 1)
-    assert {obj: indexes.claims_on(obj) for obj in [*objects, new]} == claims
+        runtime.update_manifest(handle.binding_id, changed, removed)
+    assert records.stored(destination, manifests.MANIFEST_KEY) == stored
+    assert runtime.manifest(handle.binding_id) == Loaded(manifest, 1)
+    assert {obj: runtime.claims_on(obj) for obj in [*objects, new]} == claims

@@ -16,13 +16,13 @@ import bpy
 from pxr import Sdf
 
 from fixtures import source_access
+from proscenium import runtime
 from proscenium.api.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_state, bindings, records
 from proscenium.persistence.binding_state import LastAttempt
-from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded, Refused
-from proscenium.runtime import indexes
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 
@@ -38,17 +38,17 @@ def _scene() -> bpy.types.Scene:
 
 
 def _destination(handle: BindingHandle) -> bpy.types.Collection:
-    config = indexes.config(handle.binding_id)
+    config = runtime.config(handle.binding_id)
     assert config is not None and not isinstance(config, Refused) and config.destination is not None
     return config.destination
 
 
 def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
-    config = indexes.config(handle.binding_id)
+    config = runtime.config(handle.binding_id)
     assert config is not None and not isinstance(config, Refused)
     destination = _destination(handle)
-    manifest = indexes.manifest(handle.binding_id)
+    manifest = runtime.manifest(handle.binding_id)
     assert manifest is not None and not isinstance(manifest, Refused)
     entries = {
         key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses)
@@ -127,15 +127,15 @@ def _index_entry(binding_id: str) -> tuple[bool, bpy.types.Collection | None]:
 def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
     # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
     assert sync.bindings(_scene()) == [handle]
-    config = indexes.config(handle.binding_id)
+    config = runtime.config(handle.binding_id)
     assert config is not None and not isinstance(config, Refused)
     assert config == saved
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
     assert _index_entry(handle.binding_id) == (True, None)
     # DEST-04: no manifest, no resources, and the object it displayed claims no owner.
-    assert indexes.manifest(handle.binding_id) is None
-    assert indexes.resource(handle.binding_id, "a") is None
-    assert indexes.claims_on(bpy.data.objects["Managed"]) == []
+    assert runtime.manifest(handle.binding_id) is None
+    assert runtime.resource(handle.binding_id, "a") is None
+    assert runtime.claims_on(bpy.data.objects["Managed"]) == []
     # DEST-02: a fatal failure, with no source made for it and no destination created.
     collections = set(bpy.data.collections.keys())
     result = handle.synchronize(0)
@@ -154,11 +154,11 @@ def test_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
         obj = bpy.data.objects.new("Managed", None)
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)
-        indexes.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+        runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
-        assert indexes.claims_on(obj) != []
-        before = indexes.config(handle.binding_id)
+        assert runtime.claims_on(obj) != []
+        before = runtime.config(handle.binding_id)
         assert before is not None and not isinstance(before, Refused)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)

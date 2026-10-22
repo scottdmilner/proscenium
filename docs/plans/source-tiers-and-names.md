@@ -29,7 +29,7 @@ src/proscenium/
   runtime/
     __init__.py                the public lookups and writes
     state.py                   the state, tracking, rebuilding, and the checks of held references
-    configs.py                 lookups by binding identity, creation, configuration writes, index-entry restoration
+    binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
     ownership_index.py         Claim, each destination's claims, manifest lookups and writes
     copied_bindings.py         copied-binding detection from the records
   persistence/
@@ -49,7 +49,7 @@ src/proscenium/
       stage_registry.py        StageRegistry
 ```
 
-Module names are unique across the tiers, and named for the spec section they implement where there is one: `copied_bindings.py` for [Copied Bindings](../spec/source-access.md#copied-bindings), `canonical_candidate.py` for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore; its `__init__` is its public surface.
+Module names are unique across the tiers, and named for the spec section they implement where there is one: `copied_bindings.py` for [Copied Bindings](../spec/source-access.md#copied-bindings), `canonical_candidate.py` for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`.
 
 ## Conventions
 
@@ -72,16 +72,17 @@ These go in AGENTS.md's Style section:
 | `SourceRegistry`, `Synchronization.sources` | `StageRegistry`, `Bindings.stages` | |
 | `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(existing, inactive)` | The second set also holds disabled bindings |
 | `BindingConfig.source`, `.key` | `.source_kind`, `.source_key` | `source_key` is the spec's term; see [Stored field names](#stored-field-names) |
-| `indexes._Binding` | `Candidate` | It is one candidate of a binding identity |
+| `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |
 | `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `DecisionReason`, `UNREADABLE_INDEX_ENTRY` | |
 | `candidates.Identity`, `Found`, `find()` | `IdentityCandidates`, `CopyDetection`, `detect()` | |
 | `Identity.copies` | `IdentityCandidates.tagged_copies` | |
-| `_Share`, `_Ownership` | `DestinationClaims`, `OwnershipIndex` | |
+| `_Share`, `_Ownership`, `_State`, `_Stale` | `DestinationClaims`, `OwnershipIndex`, `State`, `StaleError` | |
 | `indexes.find_copies()` | `refresh_if_tags_changed()` | It drops the state when tags changed, and returns nothing |
 | `indexes.rebuilds()` | `rebuild_count()` | |
 | `indexes.update_manifest()` | `set_manifest_entries()` | A write-through, like `set_manifest` |
-| `_ask`, `_current`, `_give_manifest`, `_named` | `query`, `current_state`, `cache_manifest`, `datablock_of` | |
+| `_ask`, `_current`, `_alive`, `_valid`, `_canonical`, `_existing`, `_restore_entry` | `query`, `current_state`, `alive`, `valid`, `canonical`, `existing`, `restore_entry` | Shared by the modules of `runtime/` |
+| `_give_manifest`, `_named` | `_cache_manifest`, `_datablock_of` | |
 | `Category` | `DiagnosticCategory` | |
 | `Refusal`, `Refused`, `RecordRefused` | `RefusalReason`, `RefusedRecord`, `RefusedRecordError` | A reason, a value, and an exception |
 | `Schema.kind`, `Schema.record` | `Schema.name`, `Schema.record_type` | `record` is a type |
@@ -103,17 +104,17 @@ The Synchronization API's design note in [source-access.md](../spec/source-acces
 
 ## Commits
 
-Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docstrings, docs, and tests that name what it moves or renames. Files move with `git mv`, and a file moves in a commit of its own before its content changes.
+Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docstrings, docs, and tests that name what it moves or renames. Files move with `git mv`, before their content changes.
 
 1. This plan.
 2. **Moves into the tiers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `api/`. AGENTS.md's Layout section describes the tiers.
 3. **The import-direction test.**
-4. **`runtime/indexes.py` split** into `state.py`, `configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`.
+4. **`runtime/indexes.py` split** into `state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
 5. **Exceptions end in `Error`.**
 6. **Binding stages:** `binding_source.py` and `registry.py` renamed, and their classes, attributes, and `prune`'s parameter.
 7. **Copied bindings:** `candidates.py` and `core/copies.py` renamed, and their types and functions, and `_Binding`.
 8. **Records:** the refusal names, `Schema`'s fields, and the binding records' module and functions.
-9. **Runtime names:** the ownership index's types and the state's functions.
+9. **Runtime names:** the state's public functions (`find_copies`, `rebuilds`, `update_manifest`).
 10. **`DiagnosticCategory`.**
 11. **A disabled binding reported in band** by runtime lookups.
 12. **The API:** `api/synchronization.py` to `api/bindings.py`, its class, instance, and methods, with the spec, matrix, and DECISIONS.md changes above.
@@ -123,3 +124,4 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 ## Decision log
 
 - **Plan (with the user, 2026-10-21).** The tiers, conventions, renames, and semantics above, with the spec changes they need.
+- **The runtime split (commit 4).** `binding_configs.py`, not `configs.py`: the package exports `configs()`, which would replace a submodule of that name. The modules call each other's helpers through the module, so the tests that patch `current_state` and `_add_share` patch them in one place.

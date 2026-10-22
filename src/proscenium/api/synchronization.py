@@ -6,7 +6,7 @@ setting of the binding. M5 adds evaluation at that time code, planning, applicat
 publication, and the guard against reentrant calls.
 
 A binding's configuration is its records (proscenium.persistence.bindings), held and written through the
-bindings' in-memory state (proscenium.runtime.indexes); its source stages and attachment are runtime state
+bindings' in-memory state (proscenium.runtime); its source stages and attachment are runtime state
 in a SourceRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
 (lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 import bpy
 from pxr import Usd
 
+from .. import runtime
 from ..core.results import Category, Diagnostic, Result, ResultState, Severity
 from ..core.source_access import (
     PayloadPolicy,
@@ -34,9 +35,8 @@ from ..core.source_access import (
 )
 from ..persistence.bindings import BindingConfig
 from ..persistence.records import RecordRefused, Refused
-from ..runtime import indexes
+from ..runtime import Disabled
 from ..runtime.candidates import CopiedBinding
-from ..runtime.indexes import Disabled
 
 if TYPE_CHECKING:
     import os
@@ -94,7 +94,7 @@ class Synchronization:
     """The process's bindings: their records in Blender data, and their runtime sources."""
 
     sources: SourceRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
-    _pruned_at: int | None  # indexes.rebuilds() when sources were last compared with the bindings
+    _pruned_at: int | None  # runtime.rebuilds() when sources were last compared with the bindings
 
     def __init__(self) -> None:
         self.sources = SourceRegistry()
@@ -132,11 +132,11 @@ class Synchronization:
     def bindings(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene: whose canonical candidate is on it, or, for a binding with
         copies and no canonical candidate, which has a candidate on it."""
-        return [BindingHandle(binding_id) for binding_id in indexes.binding_ids(scene)]
+        return [BindingHandle(binding_id) for binding_id in runtime.binding_ids(scene)]
 
     def copied_bindings(self) -> list[CopiedBinding]:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
-        return indexes.copied_bindings()
+        return runtime.copied_bindings()
 
     def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
         """Attach stage to every binding whose attached source has this exact key (source-access.md#source-identity).
@@ -146,14 +146,14 @@ class Synchronization:
         whose configuration can't be read is never attached.
         """
         identifier = stage.GetRootLayer().identifier
-        matching = list(indexes.attached_with_key(key))
+        matching = list(runtime.attached_with_key(key))
         unconfirmed = tuple(b for b, c in matching if c.root_layer_identifier not in (None, identifier))
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)
         self._prune_if_rebuilt()
         for binding_id, config in matching:
             self.sources.attached(binding_id, key).attach(stage)
-            indexes.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
+            runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
 
     def release(self, key: str) -> tuple[str, ...]:
@@ -165,7 +165,7 @@ class Synchronization:
         self._prune_if_rebuilt()
         # Through the sources, not the bindings: a binding that no longer exists keeps its attachment (prune()).
         self.sources.release(key)
-        return tuple(binding_id for binding_id, _ in indexes.attached_with_key(key))
+        return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
         """Raises RecordRefused if the binding's configuration can't be read, and Disabled if it has copies and
@@ -184,13 +184,13 @@ class Synchronization:
             return _refused(config)
         if payload_policy is not None:
             config = dataclasses.replace(config, payload_policy=payload_policy)
-        indexes.set_config(binding_id, config)
+        runtime.set_config(binding_id, config)
         return Result(ResultState.SUCCESS)
 
     def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code; acquisition only (M3), so nothing is evaluated at it yet."""
         Usd.TimeCode(time_code)  # a time code M5 can evaluate at, or a TypeError now
-        indexes.find_copies()  # a collection duplicated on its own since the state was built is a copy
+        runtime.find_copies()  # a collection duplicated on its own since the state was built is a copy
         config = self._config(binding_id)
         if not isinstance(config, BindingConfig):
             return _refused(config)
@@ -238,17 +238,17 @@ class Synchronization:
         bindings' state isn't rebuilt for it, in the undo and redo handler or anywhere else.
         """
         if self.sources:
-            configs = indexes.configs()
+            configs = runtime.configs()
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
             self.sources.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
-        self._pruned_at = indexes.rebuilds()
+        self._pruned_at = runtime.rebuilds()
 
     def _prune_if_rebuilt(self) -> None:
-        if self._pruned_at != indexes.rebuilds():
+        if self._pruned_at != runtime.rebuilds():
             self.prune()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
-        return BindingHandle(indexes.create(scene, config, name))
+        return BindingHandle(runtime.create(scene, config, name))
 
     # Every per-binding call goes through _config, and every use of a source through _source,
     # except attach and release, which reach sources by key and call _prune_if_rebuilt themselves; so each
@@ -259,7 +259,7 @@ class Synchronization:
         """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
         self._prune_if_rebuilt()
         try:
-            config = indexes.config(binding_id)
+            config = runtime.config(binding_id)
         except Disabled as disabled:
             return disabled.report
         if config is None:

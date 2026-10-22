@@ -13,12 +13,12 @@ import bpy
 import pytest
 
 from fixtures import copies
+from proscenium import runtime
 from proscenium.api.synchronization import BindingHandle, Category, Disabled, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import bindings, records
-from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
-from proscenium.runtime import indexes
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -40,7 +40,7 @@ def _published(sync: Synchronization, root: Path) -> BindingHandle:
     handle = sync.create_file_binding(_scene(), root, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
-    indexes.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+    runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
     return handle
 
 
@@ -57,7 +57,7 @@ def _assert_ownership_agrees() -> None:
     # collection's that no record names, so content a copy names is ambiguous (OWN-16).
     expected, _ = oracle.claims()
     for obj in bpy.data.objects:
-        assert set(indexes.claims_on(obj)) == set(expected.get(obj, []))
+        assert set(runtime.claims_on(obj)) == set(expected.get(obj, []))
 
 
 def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> list[CopiedBinding]:
@@ -82,7 +82,7 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
         assert [c.canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
         assert (report.candidates[0].scene, report.candidates[0].destination) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
-        assert indexes.binding_scene(handle.binding_id) == _scene()
+        assert runtime.binding_scene(handle.binding_id) == _scene()
         for name in scenes:
             assert sync.bindings(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
     else:
@@ -114,7 +114,7 @@ def test_route(sync: Synchronization, tmp_path: Path, route: str) -> None:
         _assert_ownership_agrees()
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content.
         assert routes.records_by_name() == before
-        indexes.invalidate()
+        runtime.invalidate()
         assert sync.copied_bindings() == reported  # COPY-03: the same once the state is rebuilt
         if expected.index_untouched:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
@@ -135,7 +135,7 @@ def test_a_full_copy_scenes_content_is_its_own(sync: Synchronization, tmp_path: 
         handle.synchronize(0)
         for name in ("Shot", "Shot.001"):
             [obj] = bpy.data.collections[name].objects
-            assert [(c.binding_id, c.destination.name) for c in indexes.claims_on(obj)] == [(handle.binding_id, name)]
+            assert [(c.binding_id, c.destination.name) for c in runtime.claims_on(obj)] == [(handle.binding_id, name)]
 
 
 def test_a_duplicated_object_is_unmanaged(sync: Synchronization, tmp_path: Path) -> None:
@@ -145,8 +145,8 @@ def test_a_duplicated_object_is_unmanaged(sync: Synchronization, tmp_path: Path)
         routes.run("duplicated-object", tmp_path)
         handle.synchronize(0)
         [copy] = (obj for obj in bpy.data.objects if obj.name != "Managed")
-        assert indexes.claims_on(copy) == []
-        assert len(indexes.claims_on(bpy.data.objects["Managed"])) == 1
+        assert runtime.claims_on(copy) == []
+        assert len(runtime.claims_on(bpy.data.objects["Managed"])) == 1
 
 
 def test_a_copy_is_found_at_the_next_synchronization(sync: Synchronization, tmp_path: Path) -> None:
@@ -171,7 +171,7 @@ def test_a_write_restores_a_lost_index_entry(sync: Synchronization, tmp_path: Pa
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(sync, scene.root)
         bpy.data.texts.remove(bpy.data.texts[bindings.INDEX_NAME])
-        indexes.invalidate()
+        runtime.invalidate()
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert sync.bindings(_scene()) == [handle]
         assert bindings.index_texts() == []

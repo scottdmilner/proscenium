@@ -15,9 +15,9 @@ from pxr import Usd
 from fixtures import source_access
 from proscenium.core.results import Category, Diagnostic, ResultState, Severity
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import binding_state, bindings, ownership, records
+from proscenium.persistence import binding_state, bindings, manifests, records
 from proscenium.persistence.binding_state import Generation, LastAttempt
-from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from support.blend import save_and_reopen
 
@@ -69,12 +69,12 @@ def test_the_records_are_kept_apart(sync: Synchronization, tmp_path: Path) -> No
     # Writing one leaves the configuration, the manifest, and the other unchanged.
     handle = _binding(sync, tmp_path)
     destination = bpy.data.collections["Shot"]
-    ownership.write_manifest(destination, Manifest({"a": ManifestEntry(None, [], "prim", [])}))
+    manifests.write_manifest(destination, Manifest({"a": ManifestEntry(None, [], "prim", [])}))
 
     def stored() -> list[object]:
         return [
             records.stored(_scene(), bindings.config_key(handle.binding_id)),
-            records.stored(destination, ownership.MANIFEST_KEY),
+            records.stored(destination, manifests.MANIFEST_KEY),
             records.stored(destination, binding_state.GENERATION_KEY),
             records.stored(_scene(), binding_state.ATTEMPT_PREFIX + handle.binding_id),
         ]

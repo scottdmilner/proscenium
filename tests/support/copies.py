@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.persistence import bindings, ownership, records
-from proscenium.persistence.ownership import Manifest
+from proscenium.persistence import bindings, manifests, records
+from proscenium.persistence.manifests import Manifest
 from proscenium.persistence.records import Loaded
 
 if TYPE_CHECKING:
@@ -85,13 +85,13 @@ def _deep_copy_collection(tmp_path: Path) -> None:
         copies[obj] = obj.copy()
         copy.objects.unlink(obj)
         copy.objects.link(copies[obj])
-    manifest = ownership.read_manifest(copy)
+    manifest = manifests.read_manifest(copy)
     assert isinstance(manifest, Loaded)
     entries = {
         key: type(entry)(copies.get(entry.datablock, entry.datablock), entry.covers, entry.role, entry.uses)
         for key, entry in manifest.record.entries.items()
     }
-    ownership.write_manifest(copy, Manifest(entries))
+    manifests.write_manifest(copy, Manifest(entries))
 
 
 def _copy_scene(kind: str) -> Callable[[Path], None]:

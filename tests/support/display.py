@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING
 
 import bpy
 
+from proscenium import runtime
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_state
 from proscenium.persistence.binding_state import Generation
-from proscenium.persistence.ownership import Manifest, ManifestEntry
-from proscenium.runtime import indexes
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
@@ -36,7 +36,7 @@ def publish_by_hand(binding_id: str, destination: bpy.types.Collection, display:
         destination.objects.link(each)
     datablocks = {"world": parent, "ref": obj, "ref-mesh": mesh, "ref-material": material}
     entries = {key: ManifestEntry(datablocks[key], *entry) for key, entry in display.entries.items()}
-    indexes.set_manifest(binding_id, Manifest(entries))
+    runtime.set_manifest(binding_id, Manifest(entries))
     binding_state.write_generation(destination, Generation(binding_id, PayloadPolicy.LOAD_ALL, 0.0, ()))
     view_layer = bpy.context.view_layer
     assert view_layer is not None

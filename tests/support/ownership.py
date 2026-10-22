@@ -1,7 +1,7 @@
 """An oracle for the ownership index: every datablock's claims, read from the records now.
 
 See lifecycle.md#ownership-and-lifecycle. The extension has one path to ownership, its runtime
-index (proscenium.runtime.indexes). This one shares none of its code past reading the records, so a test
+index (proscenium.runtime). This one shares none of its code past reading the records, so a test
 can compare the two: for every binding found in the scenes, in order, the first whose configuration
 names a destination claims each datablock that destination's manifest names; then each tagged
 collection no configuration names, as a copied destination is, claims for the binding its tag names.
@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.persistence import bindings, ownership
-from proscenium.persistence.ownership import Claim
+from proscenium.persistence import bindings, manifests
 from proscenium.persistence.records import Loaded, Refused
+from proscenium.runtime import Claim
 
 if TYPE_CHECKING:
     import bpy
@@ -28,7 +28,7 @@ def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
 
     def claim(binding_id: str, destination: bpy.types.Collection) -> None:
         seen.add(destination)
-        manifest = ownership.read_manifest(destination)
+        manifest = manifests.read_manifest(destination)
         if isinstance(manifest, Refused):
             unreadable.append(manifest)
         elif manifest is not None:
