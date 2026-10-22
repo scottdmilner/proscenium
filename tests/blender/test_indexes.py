@@ -20,6 +20,7 @@ from proscenium import addon, runtime
 from proscenium.api.synchronization import BindingHandle, Synchronization
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, manifests, records
+from proscenium.persistence.binding_records import BindingConfig
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded, RefusedRecord
 from proscenium.runtime import Claim, ownership_index, state
@@ -29,8 +30,6 @@ from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from proscenium.persistence.binding_records import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:
@@ -49,7 +48,7 @@ def _managed(sync: Synchronization, tmp_path: Path) -> BindingHandle:
 
 def _config(handle: BindingHandle) -> BindingConfig:
     config = runtime.config(handle.binding_id)
-    assert config is not None and not isinstance(config, RefusedRecord)
+    assert isinstance(config, BindingConfig)
     return config
 
 

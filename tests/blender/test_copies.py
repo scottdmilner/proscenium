@@ -106,6 +106,16 @@ def _check(sync: Synchronization, handle: BindingHandle, outcome: Outcome) -> li
         with pytest.raises(BindingDisabledError):
             handle.requested_settings()
         assert handle.live_stage() is None
+        # The runtime's lookups return the report in band, and its writes raise.
+        binding_id = handle.binding_id
+        lookups = (runtime.config, runtime.binding_scene, runtime.manifest, lambda b: runtime.resource(b, "a"))
+        assert [lookup(binding_id) for lookup in lookups] == [report] * len(lookups)
+        for write in (
+            lambda: runtime.set_manifest(binding_id, Manifest({})),
+            lambda: runtime.set_manifest_entries(binding_id, {}, ["a"]),
+        ):
+            with pytest.raises(BindingDisabledError):
+                write()
     return reported
 
 

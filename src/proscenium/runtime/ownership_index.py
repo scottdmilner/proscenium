@@ -22,6 +22,7 @@ from ..persistence import manifests
 from ..persistence.manifests import Manifest
 from ..persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
+from .copy_detection import CopiedBinding
 from .state import Candidate, StaleError, Unread
 
 if TYPE_CHECKING:
@@ -73,13 +74,15 @@ class OwnershipIndex:
     shares: dict[int, DestinationClaims]  # by destination session_uid
 
 
-def manifest(binding_id: str) -> Loaded[Manifest] | RefusedRecord | None:
+def manifest(binding_id: str) -> Loaded[Manifest] | RefusedRecord | CopiedBinding | None:
     """A binding's manifest, read through its configuration's destination when first asked for.
 
-    RefusedRecord if the configuration or the manifest can't be read; None if the binding has no
-    destination (it was removed) or no manifest yet. Raises KeyError if no binding has this identifier.
+    RefusedRecord if the configuration or the manifest can't be read; the binding's report if it has no
+    canonical candidate; None if the binding has no destination (it was removed) or no manifest yet. Raises
+    KeyError if no binding has this identifier.
     """
-    found = binding_configs.existing(binding_id)
+    if isinstance(found := binding_configs.existing(binding_id), CopiedBinding):
+        return found
     return _checked_manifest(state.current_state(), binding_id, found)
 
 
@@ -87,9 +90,9 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
     """Store a binding's manifest on its destination, replacing only that destination's share of ownership.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
-    binding; ValueError if it has no destination.
+    binding; BindingDisabledError if it has no canonical candidate; ValueError if it has no destination.
     """
-    found = binding_configs.existing(binding_id)
+    found = binding_configs.writable(binding_id)
     destination = _destination(binding_id, found)
     manifests.write_manifest(destination, manifest)
     _replace_manifest(state.current_state(), binding_id, destination, Loaded(manifest, manifests.MANIFEST.version))
@@ -136,9 +139,10 @@ def claims_on(datablock: bpy.types.ID) -> list[Claim]:
     return state.query(lambda s: _checked_claims(s, datablock))
 
 
-def resource(binding_id: str, resource_id: str) -> bpy.types.ID | None:
-    """The datablock of a binding's resource, as its manifest names it; None if it names none, or the binding
-    has no destination or manifest. Reads only that binding's manifest, not the ownership index."""
+def resource(binding_id: str, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
+    """The datablock of a binding's resource, as its manifest names it; the binding's report if it has no
+    canonical candidate; None if it names none, or the binding has no destination or manifest. Reads only that
+    binding's manifest, not the ownership index."""
     return state.query(lambda s: _checked_resource(s, binding_id, resource_id))
 
 
@@ -148,7 +152,7 @@ def unreadable_manifests() -> list[RefusedRecord]:
 
 def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
     """The binding, its destination, and its manifest, for set_manifest_entries. Raises as set_manifest_entries does."""
-    found = binding_configs.existing(binding_id)
+    found = binding_configs.writable(binding_id)
     destination = _destination(binding_id, found)
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
     # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
@@ -301,10 +305,10 @@ def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
     return claims if isinstance(claims, tuple) else (claims,)
 
 
-def _checked_resource(current: State, binding_id: str, resource_id: str) -> bpy.types.ID | None:
+def _checked_resource(current: State, binding_id: str, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
     """Through the manifest of the binding's canonical candidate, checked as every lookup by identity is."""
-    if (first := binding_configs.canonical(current, binding_id)) is None:
-        return None
+    if not isinstance(first := binding_configs.canonical(current, binding_id), Candidate):
+        return first
     datablock = _datablock_of(_manifest_of(first), resource_id)
     if datablock is not None and not state.alive(datablock):
         # Removed: its manifest is reread, where Blender has cleared the entry, and its share replaced.

@@ -1,7 +1,8 @@
 """Lookups by binding identity, creation, and configuration writes, through the bindings' state.
 
 The state is proscenium.runtime.state's. A lookup by identity uses the identity's canonical
-candidate, and raises BindingDisabledError for one with none (source-access.md#copied-bindings). Every candidate
+candidate, and for one with none returns its CopiedBinding report, in band, as an unreadable configuration
+is returned (source-access.md#copied-bindings); a write to it raises BindingDisabledError. Every candidate
 a lookup decides on is checked before it answers.
 """
 
@@ -15,19 +16,19 @@ from ..persistence import binding_records, records
 from ..persistence.binding_records import BindingConfig
 from ..persistence.records import RefusedRecord, RefusedRecordError
 from . import copy_detection, state
+from .copy_detection import CopiedBinding
 from .state import Candidate, StaleError
 
 if TYPE_CHECKING:
     import bpy
 
-    from .copy_detection import CopiedBinding
     from .state import State
 
 _UNIQUE = CanonicalDecision(0, DecisionReason.UNIQUE)
 
 
 class BindingDisabledError(LookupError):  # raised like KeyError, for an identity with every candidate disabled
-    """A lookup by a binding identity the canonical-candidate rule can't decide: every candidate is disabled
+    """A write to a binding identity the canonical-candidate rule can't decide: every candidate is disabled
     pending repair (source-access.md#copied-bindings)."""
 
     report: CopiedBinding
@@ -44,24 +45,25 @@ def binding_ids(scene: bpy.types.Scene | None = None) -> list[str]:
     return state.query(lambda s: _listed(s, scene))
 
 
-def binding_scene(binding_id: str) -> bpy.types.Scene | None:
+def binding_scene(binding_id: str) -> bpy.types.Scene | CopiedBinding | None:
     """The scene holding a binding's configuration, or None if no binding has this identifier.
 
-    Every lookup by identity, here and below, raises BindingDisabledError for a binding with no canonical candidate.
+    Every lookup by identity, here and below, returns a binding's CopiedBinding report if it has no canonical
+    candidate.
     """
     found = state.query(lambda s: canonical(s, binding_id))
-    return None if found is None else found.scene
+    return found.scene if isinstance(found, Candidate) else found
 
 
-def config(binding_id: str) -> BindingConfig | RefusedRecord | None:
+def config(binding_id: str) -> BindingConfig | RefusedRecord | CopiedBinding | None:
     """A binding's configuration, why it can't be read, or None if no binding has this identifier."""
     found = state.query(lambda s: canonical(s, binding_id))
-    return None if found is None else found.config
+    return found.config if isinstance(found, Candidate) else found
 
 
 def configs() -> dict[str, BindingConfig | RefusedRecord | CopiedBinding]:
-    """Every binding's configuration, why it can't be read, or, for one with no canonical candidate, its
-    candidates: one pass over the bindings, checking each one's candidates."""
+    """Every binding's configuration or why it can't be read, as config() gives it: one pass over the bindings,
+    checking each one's candidates."""
     return state.query(_configs)
 
 
@@ -102,9 +104,10 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
 def set_config(binding_id: str, config: BindingConfig) -> None:
     """Store a binding's changed configuration; an unchanged one writes nothing.
 
-    Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding.
+    Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
+    BindingDisabledError if it has no canonical candidate.
     """
-    found = existing(binding_id)
+    found = writable(binding_id)
     if config == found.config:
         return
     binding_records.write_config(found.scene, binding_id, config)
@@ -116,23 +119,32 @@ def set_config(binding_id: str, config: BindingConfig) -> None:
     restore_entry(binding_id, found)
 
 
-def canonical(current: State, binding_id: str) -> Candidate | None:
-    """The binding's canonical candidate, every candidate checked (see state.valid), or None if no binding has this
-    identifier. Raises BindingDisabledError if it has none."""
+def canonical(current: State, binding_id: str) -> Candidate | CopiedBinding | None:
+    """The binding's canonical candidate, every candidate checked (see state.valid), its report if it has none, or
+    None if no binding has this identifier."""
     found = current.bindings.get(binding_id)
     if found is None:
         return None
     _check_candidates(current, binding_id, found)
     identity = current.identities[binding_id]
     if (index := identity.decision.canonical) is None:
-        raise BindingDisabledError(copy_detection.report(binding_id, identity, [(b.scene, b.config) for b in found]))
+        return copy_detection.report(binding_id, identity, [(b.scene, b.config) for b in found])
     return found[index]  # a record: copies are never mutual, so with records the rule picks one
 
 
-def existing(binding_id: str) -> Candidate:
-    """The binding's canonical candidate, for a write. Raises KeyError if no binding has this identifier."""
+def existing(binding_id: str) -> Candidate | CopiedBinding:
+    """The binding's canonical candidate, or its report if it has none. Raises KeyError if no binding has this
+    identifier."""
     if (found := state.query(lambda s: canonical(s, binding_id))) is None:
         raise KeyError(binding_id)
+    return found
+
+
+def writable(binding_id: str) -> Candidate:
+    """The binding's canonical candidate, for a write. Raises KeyError if no binding has this identifier, and
+    BindingDisabledError if it has no canonical candidate."""
+    if isinstance(found := existing(binding_id), CopiedBinding):
+        raise BindingDisabledError(found)
     return found
 
 
@@ -169,13 +181,9 @@ def _listed(current: State, scene: bpy.types.Scene | None) -> list[str]:
 def _configs(current: State) -> dict[str, BindingConfig | RefusedRecord | CopiedBinding]:
     found: dict[str, BindingConfig | RefusedRecord | CopiedBinding] = {}
     for binding_id in current.bindings:
-        try:
-            candidate = canonical(current, binding_id)
-        except BindingDisabledError as disabled:
-            found[binding_id] = disabled.report
-        else:
-            assert candidate is not None
-            found[binding_id] = candidate.config
+        candidate = canonical(current, binding_id)
+        assert candidate is not None
+        found[binding_id] = candidate.config if isinstance(candidate, Candidate) else candidate
     return found
 
 

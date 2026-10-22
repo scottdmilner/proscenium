@@ -258,10 +258,7 @@ class Synchronization:
     def _config(self, binding_id: str) -> BindingConfig | RefusedRecord | CopiedBinding:
         """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
         self._prune_if_rebuilt()
-        try:
-            config = runtime.config(binding_id)
-        except BindingDisabledError as disabled:
-            return disabled.report
+        config = runtime.config(binding_id)
         if config is None:
             raise BindingNotFoundError(binding_id)
         return config

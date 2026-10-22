@@ -26,9 +26,10 @@ from proscenium.api.synchronization import (
 )
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, records
+from proscenium.persistence.binding_records import BindingConfig
 from proscenium.persistence.binding_state import LastAttempt
 from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import Loaded, RefusedRecord
+from proscenium.persistence.records import Loaded
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.persistence.binding_records import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:
@@ -45,23 +45,23 @@ def _scene() -> bpy.types.Scene:
 
 def _destination(handle: BindingHandle) -> bpy.types.Collection:
     config = runtime.config(handle.binding_id)
-    assert config is not None and not isinstance(config, RefusedRecord) and config.destination is not None
+    assert isinstance(config, BindingConfig) and config.destination is not None
     return config.destination
 
 
 def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
     config = runtime.config(handle.binding_id)
-    assert config is not None and not isinstance(config, RefusedRecord)
+    assert isinstance(config, BindingConfig)
     destination = _destination(handle)
     manifest = runtime.manifest(handle.binding_id)
-    assert manifest is not None and not isinstance(manifest, RefusedRecord)
+    assert isinstance(manifest, Loaded)
     entries = {
         key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses)
         for key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(destination)
-    assert generation is not None and not isinstance(generation, RefusedRecord)
+    assert isinstance(generation, Loaded)
     return {
         "config": replace(config, destination=None),
         "destination": destination.name,
@@ -136,7 +136,7 @@ def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingC
     # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
     assert sync.bindings(_scene()) == [handle]
     config = runtime.config(handle.binding_id)
-    assert config is not None and not isinstance(config, RefusedRecord)
+    assert isinstance(config, BindingConfig)
     assert config == saved
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
     assert _index_entry(handle.binding_id) == (True, None)
@@ -167,7 +167,7 @@ def test_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         assert runtime.claims_on(obj) != []
         before = runtime.config(handle.binding_id)
-        assert before is not None and not isinstance(before, RefusedRecord)
+        assert isinstance(before, BindingConfig)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)
         _check_removed(sync, handle, config, attempt)
