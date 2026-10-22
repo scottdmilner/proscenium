@@ -52,7 +52,7 @@ def _root(tmp_path: Path) -> Path:
 
 def _config(handle: BindingHandle) -> BindingConfig:
     """The binding's configuration as its record stores it, read from the scenes, not the bindings' state."""
-    [config] = [c for _, binding_id, c in binding_records.config_records() if binding_id == handle.binding_id]
+    [config] = [c for _, binding_id, c in binding_records.read_configs() if binding_id == handle.binding_id]
     assert isinstance(config, Loaded)
     return config.record
 

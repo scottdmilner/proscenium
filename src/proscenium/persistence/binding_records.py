@@ -125,7 +125,7 @@ def scene_bindings(scene: bpy.types.Scene) -> list[str]:
     return [key.removeprefix(CONFIG_PREFIX) for key in records.keys(scene) if key.startswith(CONFIG_PREFIX)]
 
 
-def config_records() -> Iterator[tuple[bpy.types.Scene, str, Loaded[BindingConfig] | RefusedRecord]]:
+def read_configs() -> Iterator[tuple[bpy.types.Scene, str, Loaded[BindingConfig] | RefusedRecord]]:
     """Every binding record in the file: its scene, identifier, and configuration or why it can't be read.
 
     Linked scenes are left out: library data is read-only here, and its bindings belong to its library
@@ -153,7 +153,7 @@ def index_texts() -> list[bpy.types.Text]:
     return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
 
 
-def tagged_collections() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | RefusedRecord]]:
+def read_tags() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | RefusedRecord]]:
     """Every local collection with a destination tag, and the tag or why it can't be read: each binding's
     destination, and every copy of one (source-access.md#copied-bindings)."""
     for collection in bpy.data.collections:
@@ -164,7 +164,7 @@ def tagged_collections() -> Iterator[tuple[bpy.types.Collection, Loaded[Destinat
 
 
 def tagged_uids() -> frozenset[int]:
-    """The session_uids of the collections tagged_collections gives, without reading their tags."""
+    """The session_uids of the collections read_tags gives, without reading their tags."""
     return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
 
 

@@ -36,11 +36,11 @@ def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, resource_id))
 
-    for _scene, binding_id, config in binding_records.config_records():
+    for _scene, binding_id, config in binding_records.read_configs():
         destination = config.record.destination if isinstance(config, Loaded) else None
         if destination is not None and destination not in seen:  # a linked-copy scene's shared one is read once
             claim(binding_id, destination)
-    for collection, tag in binding_records.tagged_collections():
+    for collection, tag in binding_records.read_tags():
         if isinstance(tag, Loaded) and collection not in seen:
             claim(tag.record.binding_id, collection)
     return found, unreadable

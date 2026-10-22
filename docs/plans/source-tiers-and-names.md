@@ -59,7 +59,7 @@ These go in AGENTS.md's Style section:
 - **Spec terms keep their meaning.** *Generation* is a published generation, *layer* a USD layer or a pipeline layer, *synchronization* one attempt, and *claim* and *candidate* what the spec defines. None names anything else.
 - **Exceptions end in `Error`**, so they aren't mistaken for values (ruff's N818, without `noqa`).
 - **A type names its domain:** `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
-- **Verbs by tier:** `persistence` reads and writes records (`read_*`, `write_*`); `runtime` names a lookup by what it returns (`config(binding_id)`) and a write-through by `set_*`; `api` uses the spec's verbs.
+- **A function is named for its effect.** One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
 
 ## Renames
 
@@ -86,7 +86,7 @@ These go in AGENTS.md's Style section:
 | `Category` | `DiagnosticCategory` | |
 | `Refusal`, `Refused`, `RecordRefused` | `RefusalReason`, `RefusedRecord`, `RefusedRecordError` | A reason, a value, and an exception |
 | `Schema.kind`, `Schema.record` | `Schema.name`, `Schema.record_type` | `record` is a type |
-| `bindings.update()`, `all_bindings()` | `binding_records.write_config()`, `config_records()` | |
+| `bindings.update()`, `all_bindings()`, `tagged_collections()` | `binding_records.write_config()`, `read_configs()`, `read_tags()` | They write and read records |
 | `BindingNotFound`, `Disabled`, `NotTracking`, `SourceUnavailable`, `_Stale` | `BindingNotFoundError`, `BindingDisabledError`, `NotRegisteredError`, `SourceUnavailableError`, `StaleError` | |
 
 ### Stored field names
@@ -127,3 +127,4 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 - **The runtime split (commit 4).** `binding_configs.py`, not `configs.py`: the package exports `configs()`, which would replace a submodule of that name. The modules call each other's helpers through the module, so the tests that patch `current_state` and `_add_share` patch them in one place.
 - **Copied bindings (commit 7).** `copy_detection.py`, not `copied_bindings.py`, for the reason `binding_configs.py` is: the package exports `copied_bindings()`. It is named for the `CopyDetection` it returns.
 - **The API (commit 12).** The blender tests' `sync` fixture is `bindings`, for the `Bindings` it gives, so *synchronization* names only an attempt in the tests too. The spec section keeps its name, Synchronization API.
+- **Reads in persistence (after commit 14).** The binding records' functions that decode records are `read_configs()` and `read_tags()`. `scene_bindings()`, `index_texts()`, and `tagged_uids()` find where records are without decoding them, so they keep names for what they return.

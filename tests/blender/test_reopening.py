@@ -176,6 +176,6 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         # DEST-03: its requested settings read as saved, and a change is written to its configuration.
         assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_ALL)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-        [(_, binding_id, stored)] = binding_records.config_records()
+        [(_, binding_id, stored)] = binding_records.read_configs()
         assert binding_id == handle.binding_id and isinstance(stored, Loaded)
         assert stored.record == replace(config, payload_policy=PayloadPolicy.LOAD_NONE)

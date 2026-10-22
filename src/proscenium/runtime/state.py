@@ -179,7 +179,7 @@ def _scene_uids() -> tuple[int, ...]:
 
 def _read_bindings() -> dict[str, list[Candidate]]:
     found: dict[str, list[Candidate]] = {}
-    for scene, binding_id, result in binding_records.config_records():
+    for scene, binding_id, result in binding_records.read_configs():
         config = result if isinstance(result, RefusedRecord) else result.record
         found.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
     return found

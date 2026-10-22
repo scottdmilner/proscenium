@@ -83,7 +83,7 @@ def detect(
     records_by_id: Mapping[str, Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]]],
 ) -> CopyDetection:
     """Every identity's candidates and decision, given each identity's binding records in the order found."""
-    tags: Tags = {collection.session_uid: (collection, tag) for collection, tag in binding_records.tagged_collections()}
+    tags: Tags = {collection.session_uid: (collection, tag) for collection, tag in binding_records.read_tags()}
     indexes: list[Mapping[str, bpy.types.Collection | None] | UnreadableIndexEntry] = []
     for text in binding_records.index_texts():
         index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)

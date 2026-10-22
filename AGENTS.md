@@ -103,7 +103,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
   - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source tiers are tiers, never layers.
   - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
   - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
-  - Verbs by tier, eg. `persistence` reads and writes records (`read_*`, `write_*`); `runtime` names a lookup by what it returns (`config(binding_id)`) and a write-through by `set_*`; `api` uses the spec's verbs.
+  - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
 - Prefer short docstrings plus inline comments over long docstrings.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.

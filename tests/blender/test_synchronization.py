@@ -232,13 +232,13 @@ def test_undoing_a_file_bindings_creation_drops_its_stage(bindings: Bindings, tm
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
     scans: list[int] = []
-    config_records = binding_records.config_records
+    read_configs = binding_records.read_configs
 
     def counted() -> object:
         scans.append(1)
-        return config_records()
+        return read_configs()
 
-    monkeypatch.setattr(binding_records, "config_records", counted)
+    monkeypatch.setattr(binding_records, "read_configs", counted)
     return scans
 
 
