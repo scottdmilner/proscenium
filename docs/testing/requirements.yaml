@@ -372,7 +372,7 @@ requirements:
         oracle: "Each copy route F-OWNERSHIP-AMBIGUITY builds (duplicate collection, full-copy and linked-copy scene, append from another .blend, a record copied through Python) leaves candidates sharing one binding identity, and detection finds every candidate."
       - id: COPY-02
         quote: "A binding whose identity is not unique is disabled pending repair"
-        oracle: "Each candidate the rule does not keep canonical (every candidate, when it cannot decide) is disabled pending repair: its display and records are unchanged, refresh is refused with a diagnostic naming the ambiguity, and the state survives save/reopen."
+        oracle: "Each candidate the rule does not keep canonical (every candidate, when it cannot decide) is disabled pending repair: its display and records are unchanged, it is reported as not canonical, refresh of a binding with no canonical candidate is refused with a diagnostic naming the ambiguity, and the state survives save/reopen."
       - id: COPY-03
         quote: "A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled."
         oracle: "For each copy route, the canonical candidate is the one the rule in Copied Bindings names, and it is the same on repeated detection and after save/reopen; where the rule cannot decide, every candidate is disabled."
@@ -382,6 +382,24 @@ requirements:
       - id: COPY-05
         quote: "until the user makes it a new binding or detaches it."
         delivery: M11
+      - id: COPY-13
+        quote: "each scene's binding record for it, and each destination collection tagged with it that no binding record names"
+        oracle: "On each copy route F-OWNERSHIP-AMBIGUITY builds, the reported candidates are the scenes holding a binding record for the identity, in the order found, then the tagged collections no record names: two after a collection copy or a scene copy, three after a record copy."
+      - id: COPY-14
+        quote: "A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it."
+        oracle: "A binding with one candidate is unique and enabled, with its destination removed or the index unreadable; one candidate that two indexes name is disabled; nothing is reported for a unique identity."
+      - id: COPY-15
+        quote: "A binding's handle reaches its canonical candidate."
+        oracle: "On each route where the rule decides, the handle's lookups reach the original, its scene lists it and the copy's scene doesn't; where it can't, each scene with a candidate lists the binding; copied_bindings() reports every candidate, and which is canonical or that none is."
+      - id: COPY-16
+        quote: "A binding with no canonical candidate refuses synchronization, reloading, and settings changes with a fatal diagnostic naming its candidates, before accessing its source."
+        oracle: "For a binding the rule can't decide, synchronize, reload, and set_settings return a fatal failure with one copied-binding diagnostic naming its candidates' scenes and destinations, no source stage is made for it, and requested_settings raises."
+      - id: COPY-17
+        quote: "Whether a candidate is disabled is derived from the records whenever they are read, never stored"
+        oracle: "Detection leaves every record in the file as it was, and gives the same report after the state is rebuilt and after save/reopen, apart from an appended index host, which the save drops."
+      - id: COPY-18
+        quote: "Detection runs when a .blend is loaded, after undo and redo, when scenes are added or removed, and before each synchronization."
+        oracle: "A collection copied by script after the bindings' state was built is reported at the next synchronization, which, for the canonical candidate, succeeds."
 
   - section: spec/source-access.md#canonical-candidate
     delivery: M3
@@ -406,7 +424,10 @@ requirements:
         oracle: "With the index host deleted, or the index entry naming no destination, the canonical candidate on each route F-OWNERSHIP-AMBIGUITY builds is the one candidate whose record and destination refer to each other; where there are two or none, every candidate is disabled pending repair."
       - id: COPY-11
         quote: "Otherwise the rule cannot decide, and all candidates are disabled."
-        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), or an index naming a destination whose record does not refer back, every candidate is disabled pending repair."
+        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), an index naming a destination whose record does not refer back, or an index that can't be read beside a full-copy scene, every candidate is disabled pending repair."
+      - id: COPY-19
+        quote: "A write to the canonical candidate's binding records restores its missing index entry"
+        oracle: "With the index's Text removed, set_settings on the binding writes a new index whose entry names its destination, and the next full-copy scene leaves the original canonical; an entry naming no destination is kept, and detection alone writes no index."
       - id: COPY-12
         quote: "A binding linked from another .blend is not a candidate."
         oracle: "Linking a collection holding a binding with a local binding's identity leaves the local binding canonical and enabled, and the linked binding is not reported as a candidate."
@@ -1721,6 +1742,7 @@ excluded:
       - "more than one index naming the identity;"
       - "an index naming a destination whose binding record does not refer back;"
       - "with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none."
+      - "a binding index that can't be read, for an identity with two or more candidates;"
     restates: [COPY-11]
   - section: spec/source-access.md#source-stages
     quotes: ["Every binding has a source stage: the stage its source is composed on."]

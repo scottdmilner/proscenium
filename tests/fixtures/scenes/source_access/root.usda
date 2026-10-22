@@ -1,9 +1,9 @@
 #usda 1.0
 # Root layer of the scene shared by the source-access fixtures (tests/fixtures/source_access.py):
-# F-DIRTY-LAYER, F-CACHED-STAGE, F-PRIVATE-STAGE, F-REATTACH, F-MULTI-BINDING, F-BINDING-STATE, and
-# F-OFFLINE. Each contributing layer authors one value, reached through a different arc: this root,
-# two sublayers, a reference, a payload used by two prims, and the selected variant of a variant set
-# (the other variant's layer does not contribute).
+# F-DIRTY-LAYER, F-CACHED-STAGE, F-PRIVATE-STAGE, F-REATTACH, F-MULTI-BINDING, F-BINDING-STATE,
+# F-OFFLINE, and F-OWNERSHIP-AMBIGUITY. Each contributing layer authors one value, reached through a
+# different arc: this root, two sublayers, a reference, a payload used by two prims, and the selected
+# variant of a variant set (the other variant's layer does not contribute).
 # Every value is 1 on disk; generators change values in memory or on disk, so each view of the
 # scene (disk, in-process, a caller's stage settings) composes distinguishable values.
 (

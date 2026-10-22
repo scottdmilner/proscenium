@@ -22,6 +22,7 @@ class Category(StrEnum):
     SOURCE_STATE = "source state"  # informational: it doesn't change the result state
     UNSUPPORTED_RECORD = "unsupported record"  # the binding's configuration can't be read
     REMOVED_DESTINATION = "removed destination"  # fatal: the binding has nowhere to display (lifecycle.md)
+    COPIED_BINDING = "copied binding"  # fatal: the binding has copies and no canonical candidate (source-access.md)
 
 
 class Severity(StrEnum):
