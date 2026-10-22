@@ -12,8 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import proscenium
-from proscenium.api import synchronization
-from proscenium.api.synchronization import Synchronization
+from proscenium.api.bindings import Bindings
 
 from . import state as blender_state
 
@@ -50,9 +49,9 @@ def extension() -> Generator[ModuleType]:
 
 
 @pytest.fixture
-def sync(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generator[Synchronization]:
-    """A fresh synchronization state, which handles use, with the extension registered: its handlers
+def bindings(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generator[Bindings]:
+    """The process's bindings, fresh, which handles use, with the extension registered: its handlers
     keep the bindings' in-memory state current (proscenium.runtime)."""
-    fresh = Synchronization()
-    monkeypatch.setattr(synchronization, "SYNCHRONIZATION", fresh)
+    fresh = Bindings()
+    monkeypatch.setattr("proscenium.api.bindings.BINDINGS", fresh)
     yield fresh

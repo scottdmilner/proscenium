@@ -126,3 +126,4 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 - **Plan (with the user, 2026-10-21).** The tiers, conventions, renames, and semantics above, with the spec changes they need.
 - **The runtime split (commit 4).** `binding_configs.py`, not `configs.py`: the package exports `configs()`, which would replace a submodule of that name. The modules call each other's helpers through the module, so the tests that patch `current_state` and `_add_share` patch them in one place.
 - **Copied bindings (commit 7).** `copy_detection.py`, not `copied_bindings.py`, for the reason `binding_configs.py` is: the package exports `copied_bindings()`. It is named for the `CopyDetection` it returns.
+- **The API (commit 12).** The blender tests' `sync` fixture is `bindings`, for the `Bindings` it gives, so *synchronization* names only an attempt in the tests too. The spec section keeps its name, Synchronization API.

@@ -4,7 +4,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 from . import runtime
-from .api import synchronization
+from .api import bindings
 from .persistence import records
 
 
@@ -26,7 +26,7 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    synchronization.SYNCHRONIZATION.file_loaded()
+    bindings.BINDINGS.on_file_loaded()
     runtime.invalidate()
 
 
@@ -40,7 +40,7 @@ def _data_changing(*_args: object) -> None:
 @persistent
 def _undone_or_redone(*_args: object) -> None:
     runtime.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
-    synchronization.SYNCHRONIZATION.prune()  # at once, so an undone binding's stages are freed without waiting
+    bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
 
 
 def register() -> None:

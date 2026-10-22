@@ -31,17 +31,17 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.api.synchronization import BindingHandle, Synchronization
+    from proscenium.api.bindings import BindingHandle, Bindings
 
 
 def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
 
 
-def _managed(sync: Synchronization, tmp_path: Path, name: str = "Shot") -> tuple[BindingHandle, Manifest]:
+def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[BindingHandle, Manifest]:
     """A binding whose destination holds two managed objects sharing a managed mesh, and its manifest."""
     with source_access.binding_state(tmp_path / name) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root, name=name)
+        handle = bindings.create_file_binding(_scene(), scene.root, name=name)
     destination = bpy.data.collections[name]
     mesh = bpy.data.meshes.new(f"{name}Mesh")
     objects = [bpy.data.objects.new(f"{name}{i}", mesh) for i in range(2)]
@@ -74,9 +74,9 @@ def _claims() -> dict[bpy.types.ID, list[Claim]]:
     return found
 
 
-def test_a_manifest_survives_save_and_reopen(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_manifest_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-01: identity (the key), datablock, coverage, role, and uses, each its own field.
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     save_and_reopen(tmp_path / "manifest.blend")
     mesh, a, b = bpy.data.meshes["ShotMesh"], bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]
     expected = Manifest(
@@ -89,15 +89,15 @@ def test_a_manifest_survives_save_and_reopen(sync: Synchronization, tmp_path: Pa
     assert manifests.read_manifest(bpy.data.collections["Shot"]) == Loaded(expected, 1)
 
 
-def test_nothing_is_stored_on_the_managed_datablocks(sync: Synchronization, tmp_path: Path) -> None:
-    _managed(sync, tmp_path)
+def test_nothing_is_stored_on_the_managed_datablocks(bindings: Bindings, tmp_path: Path) -> None:
+    _managed(bindings, tmp_path)
     for datablock in (bpy.data.meshes["ShotMesh"], bpy.data.objects["Shot0"]):
         assert NAMESPACE not in datablock
 
 
-def test_the_manifest_names_what_is_managed(sync: Synchronization, tmp_path: Path) -> None:
+def test_the_manifest_names_what_is_managed(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16: one claim each, from the binding whose manifest names it.
-    handle, _ = _managed(sync, tmp_path)
+    handle, _ = _managed(bindings, tmp_path)
     shot = bpy.data.collections["Shot"]
     assert _claims() == {
         bpy.data.meshes["ShotMesh"]: [Claim(handle.binding_id, shot, "mesh")],
@@ -106,9 +106,9 @@ def test_the_manifest_names_what_is_managed(sync: Synchronization, tmp_path: Pat
     }
 
 
-def test_a_duplicate_of_managed_content_is_unmanaged(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_duplicate_of_managed_content_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16: Object > Duplicate copies the object, and no manifest names the copy.
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     view_layer = bpy.context.view_layer
     assert view_layer is not None
     original = bpy.data.objects["Shot0"]
@@ -121,9 +121,9 @@ def test_a_duplicate_of_managed_content_is_unmanaged(sync: Synchronization, tmp_
     assert original in found
 
 
-def test_content_two_manifests_name_is_ambiguous(sync: Synchronization, tmp_path: Path) -> None:
-    first, _ = _managed(sync, tmp_path, "First")
-    second, _ = _managed(sync, tmp_path, "Second")
+def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: Path) -> None:
+    first, _ = _managed(bindings, tmp_path, "First")
+    second, _ = _managed(bindings, tmp_path, "Second")
     shared = bpy.data.objects["First0"]
     manifest = manifests.read_manifest(bpy.data.collections["Second"])
     assert isinstance(manifest, Loaded)
@@ -133,17 +133,17 @@ def test_content_two_manifests_name_is_ambiguous(sync: Synchronization, tmp_path
     assert _claims()[shared] == [first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen")]
 
 
-def test_a_manifest_names_a_datablock_once(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_manifest_names_a_datablock_once(bindings: Bindings, tmp_path: Path) -> None:
     # So two claims on a datablock always come from two manifests.
-    _, manifest = _managed(sync, tmp_path)
+    _, manifest = _managed(bindings, tmp_path)
     twice = manifest.entries["a"]
     with pytest.raises(ValueError, match="two entries name one datablock"):
         Manifest({**manifest.entries, "again": twice})
 
 
-def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(sync: Synchronization, tmp_path: Path) -> None:
+def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
     # The copied manifest's pointers are rewritten to the copied datablocks (runtime-record.md#copy-routes-m3).
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     window = bpy.context.window
     assert window is not None
     window.scene = _scene()
@@ -156,10 +156,10 @@ def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(sync: Synchr
 
 
 def test_a_linked_copy_scene_shares_one_manifest(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Both scenes' configurations point at the one destination, which is read once: one claim each.
-    handle, _ = _managed(sync, tmp_path)
+    handle, _ = _managed(bindings, tmp_path)
     window = bpy.context.window
     assert window is not None
     window.scene = _scene()
@@ -183,10 +183,10 @@ def test_a_linked_copy_scene_shares_one_manifest(
     }
 
 
-def test_deleting_in_the_interface_keeps_the_content_claimed(sync: Synchronization, tmp_path: Path) -> None:
+def test_deleting_in_the_interface_keeps_the_content_claimed(bindings: Bindings, tmp_path: Path) -> None:
     # The manifest's pointer is a user, so Object > Delete unlinks the object but leaves it in the file,
     # still named, until a refresh or cleanup finds it linked nowhere.
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     obj = bpy.data.objects["Shot0"]
     users = obj.users
     view_layer = bpy.context.view_layer
@@ -200,9 +200,9 @@ def test_deleting_in_the_interface_keeps_the_content_claimed(sync: Synchronizati
     assert obj in _claims()
 
 
-def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(bindings: Bindings, tmp_path: Path) -> None:
     # Removing it from bpy.data clears every pointer to it.
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     bpy.data.objects.remove(bpy.data.objects["Shot0"])
     manifest = manifests.read_manifest(bpy.data.collections["Shot"])
     assert isinstance(manifest, Loaded)
@@ -210,19 +210,19 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(sync: Synchroni
     assert len(_claims()) == 2
 
 
-def test_a_bindings_own_manifest(sync: Synchronization, tmp_path: Path) -> None:
-    first, manifest = _managed(sync, tmp_path, "First")
-    second, _ = _managed(sync, tmp_path, "Second")
+def test_a_bindings_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
+    first, manifest = _managed(bindings, tmp_path, "First")
+    second, _ = _managed(bindings, tmp_path, "Second")
     assert runtime.manifest(first.binding_id) == Loaded(manifest, 1)
     assert runtime.manifest(second.binding_id) != runtime.manifest(first.binding_id)
-    without = sync.create_attached_binding(_scene(), "shot")
+    without = bindings.create_attached_binding(_scene(), "shot")
     assert runtime.manifest(without.binding_id) is None  # nothing managed yet
     with pytest.raises(KeyError):
         runtime.manifest("not-a-binding")
 
 
-def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchronization, tmp_path: Path) -> None:
-    handle, _ = _managed(sync, tmp_path)
+def test_a_bindings_manifest_through_a_configuration_it_cannot_read(bindings: Bindings, tmp_path: Path) -> None:
+    handle, _ = _managed(bindings, tmp_path)
     config = _scene()[NAMESPACE]["binding." + handle.binding_id]
     config[VERSION_KEY] = 2
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
@@ -231,14 +231,14 @@ def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchr
     assert result.kind == "binding"
 
 
-def test_a_removed_destination_has_no_manifest(sync: Synchronization, tmp_path: Path) -> None:
-    handle, _ = _managed(sync, tmp_path)
+def test_a_removed_destination_has_no_manifest(bindings: Bindings, tmp_path: Path) -> None:
+    handle, _ = _managed(bindings, tmp_path)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
     assert runtime.manifest(handle.binding_id) is None  # the configuration's pointer was cleared
 
 
-def test_dependents_invert_the_uses(sync: Synchronization, tmp_path: Path) -> None:
-    _, manifest = _managed(sync, tmp_path)
+def test_dependents_invert_the_uses(bindings: Bindings, tmp_path: Path) -> None:
+    _, manifest = _managed(bindings, tmp_path)
     assert manifests.dependents(manifest) == {"mesh": {"a", "b"}, "a": set(), "b": set()}
 
 
@@ -252,9 +252,9 @@ def test_dependents_invert_the_uses(sync: Synchronization, tmp_path: Path) -> No
     ],
 )
 def test_an_invalid_manifest_is_refused(
-    sync: Synchronization, tmp_path: Path, change: dict[str, object], problem: str
+    bindings: Bindings, tmp_path: Path, change: dict[str, object], problem: str
 ) -> None:
-    _managed(sync, tmp_path)
+    _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     stored["entries"]["a"] |= change
@@ -269,9 +269,9 @@ def test_an_invalid_manifest_is_refused(
     assert unreadable == [result]
 
 
-def test_a_newer_manifest_is_refused_and_kept(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path) -> None:
     # It claims nothing and is reported, and writing doesn't replace it.
-    _, manifest = _managed(sync, tmp_path)
+    _, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
@@ -322,9 +322,9 @@ _UPDATES: dict[str, tuple[_Update, type[Exception], str]] = {
 
 
 @pytest.mark.parametrize("update", _UPDATES)
-def test_an_update_that_makes_no_manifest_changes_nothing(sync: Synchronization, tmp_path: Path, update: str) -> None:
+def test_an_update_that_makes_no_manifest_changes_nothing(bindings: Bindings, tmp_path: Path, update: str) -> None:
     # Checked as a whole manifest is, before anything is written.
-    handle, manifest = _managed(sync, tmp_path)
+    handle, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
     new = bpy.data.objects.new("New", None)

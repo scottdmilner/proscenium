@@ -18,12 +18,12 @@ def publish_and_save(tmp_dir: str, path: str) -> dict[str, Any]:
     """With the extension registered from source: a binding on F-OFFLINE, its display published by hand, saved."""
     import proscenium
     from fixtures import source_access
-    from proscenium.api.synchronization import Synchronization
+    from proscenium.api.bindings import Bindings
     from support.display import publish_by_hand
 
     proscenium.register()
     with source_access.offline(Path(tmp_dir)) as scene:
-        handle = Synchronization().create_file_binding(bpy.data.scenes["Scene"], scene.root, name="Shot")
+        handle = Bindings().create_file_binding(bpy.data.scenes["Scene"], scene.root, name="Shot")
         destination = bpy.data.collections["Shot"]
         publish_by_hand(handle.binding_id, destination, scene.display)
         bpy.ops.wm.save_as_mainfile(filepath=path, check_existing=False)

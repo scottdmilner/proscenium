@@ -17,7 +17,7 @@
 - A stub application layer that consumes the plan envelope and creates trivial placeholder content, so failure safety can be tested before M7 exists.
 - Ownership-aware resource accounting.
 - A measurement of the synchronization undo step's memory cost.
-- Publication and cleanup through M3's bindings' state ([M3 plan](../plans/M03-bindings.md), D8): a publication writes its manifest whole, and cleanup removes content through the state, or publishes the manifest without a datablock before removing it, so a removal costs what it removes rather than a reread of its manifest. A new entry point that uses a binding's stages compares the runtime stages with the bindings after a rebuild of the state, as `proscenium/api/synchronization.py` describes.
+- Publication and cleanup through M3's bindings' state ([M3 plan](../plans/M03-bindings.md), D8): a publication writes its manifest whole, and cleanup removes content through the state, or publishes the manifest without a datablock before removing it, so a removal costs what it removes rather than a reread of its manifest. A new entry point that uses a binding's stages compares the runtime stages with the bindings after a rebuild of the state, as `proscenium/api/bindings.py` describes.
 - A measurement of the cached manifests' memory with M4's representation and realistic source coverage, against its budget: about 5 MB per 10,000 entries covering three paths each in M3. The M3 plan's Phase E lists ways to hold less.
 - Whether a publication may give a binding whose destination was removed a new destination ([Removed Destination](../spec/lifecycle.md#removed-destination)), decided with M11.
 

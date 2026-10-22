@@ -17,7 +17,7 @@ from pxr import Usd
 
 from fixtures import source_access
 from proscenium import addon, runtime
-from proscenium.api.synchronization import BindingHandle, Synchronization
+from proscenium.api.bindings import BindingHandle, Bindings
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, manifests, records
 from proscenium.persistence.binding_records import BindingConfig
@@ -36,10 +36,10 @@ def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
 
 
-def _managed(sync: Synchronization, tmp_path: Path) -> BindingHandle:
+def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     """A binding on F-BINDING-STATE whose destination holds one managed object, resource "a"."""
     with source_access.binding_state(tmp_path) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
@@ -52,11 +52,11 @@ def _config(handle: BindingHandle) -> BindingConfig:
     return config
 
 
-def test_undo_and_redo_of_creation(sync: Synchronization, tmp_path: Path) -> None:
+def test_undo_and_redo_of_creation(bindings: Bindings, tmp_path: Path) -> None:
     # UNDO-07: after undo the binding isn't found; after redo, its scene is the current one.
     undo.require_global_undo()
     undo.push("base")
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.binding_scene(handle.binding_id) == _scene()
     undo.push("create")
     undo.undo()
@@ -67,10 +67,10 @@ def test_undo_and_redo_of_creation(sync: Synchronization, tmp_path: Path) -> Non
     assert runtime.resource(handle.binding_id, "a") == bpy.data.objects["Managed"]
 
 
-def test_undo_of_a_change_to_managed_content(sync: Synchronization, tmp_path: Path) -> None:
+def test_undo_of_a_change_to_managed_content(bindings: Bindings, tmp_path: Path) -> None:
     # Undo re-reads what the step changed, as a synchronization changes managed content.
     undo.require_global_undo()
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.resource(handle.binding_id, "a") == bpy.data.objects["Managed"]
     undo.push("base")
     bpy.data.objects["Managed"].location.x = 5.0
@@ -81,10 +81,10 @@ def test_undo_of_a_change_to_managed_content(sync: Synchronization, tmp_path: Pa
     assert runtime.claims_on(current) == [Claim(handle.binding_id, bpy.data.collections["Shot"], "a")]
 
 
-def test_undo_reverts_a_cached_configuration(sync: Synchronization, tmp_path: Path) -> None:
+def test_undo_reverts_a_cached_configuration(bindings: Bindings, tmp_path: Path) -> None:
     # The state caches the decoded configuration; undo restores the record, and the handler drops the cache.
     undo.require_global_undo()
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     undo.push("base")
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert _config(handle).payload_policy is PayloadPolicy.LOAD_NONE
@@ -93,17 +93,17 @@ def test_undo_reverts_a_cached_configuration(sync: Synchronization, tmp_path: Pa
     assert _config(handle).payload_policy is PayloadPolicy.LOAD_ALL
 
 
-def test_removed_managed_content(sync: Synchronization, tmp_path: Path) -> None:
+def test_removed_managed_content(bindings: Bindings, tmp_path: Path) -> None:
     # No handler announces it: the check on the hit does.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.resource(handle.binding_id, "a") is not None
     bpy.data.objects.remove(bpy.data.objects["Managed"])
     assert runtime.resource(handle.binding_id, "a") is None
 
 
-def test_a_removed_datablock_leaves_the_cached_manifest(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_removed_datablock_leaves_the_cached_manifest(bindings: Bindings, tmp_path: Path) -> None:
     # The manifest in memory names the datablock; after the removal it shows what the record does.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.manifest(handle.binding_id) is not None
     bpy.data.objects.remove(bpy.data.objects["Managed"])
     found = runtime.manifest(handle.binding_id)
@@ -112,12 +112,12 @@ def test_a_removed_datablock_leaves_the_cached_manifest(sync: Synchronization, t
     assert found == manifests.read_manifest(bpy.data.collections["Shot"])
 
 
-def _two_managed(sync: Synchronization, tmp_path: Path) -> tuple[list[str], list[str]]:
+def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[str], list[str]]:
     """_managed's binding, and Other managing two objects, A and B; with the index built. Their identifiers,
     and the resource identities to look up."""
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = sync.create_file_binding(_scene(), scene.root, name="Other")
+        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
     runtime.set_manifest(other.binding_id, _entries(*(bpy.data.objects.new(name, None) for name in ("A", "B"))))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a", "b"]
     assert _ownership_view(ids, names)
@@ -152,11 +152,11 @@ def _counted_shares(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 @pytest.mark.parametrize("lookup", ["resource", "manifest"])
 def test_a_removed_datablock_rereads_only_its_manifest(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lookup: str
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lookup: str
 ) -> None:
     # The cost of a removal doesn't grow with the rest of the file: the other binding's share and every
     # configuration stay, and the result is what a rebuild from the records gives.
-    ids, names = _two_managed(sync, tmp_path)
+    ids, names = _two_managed(bindings, tmp_path)
     other = ids[1]
     rebuilds = runtime.rebuild_count()
     reads, shares = _counted_reads(monkeypatch)
@@ -182,10 +182,10 @@ def _entry(datablock: bpy.types.ID, uses: list[str] | None = None) -> ManifestEn
 
 
 def test_an_update_writes_and_indexes_only_what_changes(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Phase 2 refreshes change some resources; an update costs those, and its result is what a rebuild gives.
-    ids, names = _two_managed(sync, tmp_path)
+    ids, names = _two_managed(bindings, tmp_path)
     other, destination = ids[1], bpy.data.collections["Other"]
     a, b = bpy.data.objects["A"], bpy.data.objects["B"]
     c, d = bpy.data.objects.new("C", None), bpy.data.objects.new("D", None)
@@ -215,9 +215,9 @@ def test_an_update_writes_and_indexes_only_what_changes(
 
 
 @pytest.mark.parametrize("first_removed", ["Other", "Shot"])
-def test_a_datablock_claimed_twice_and_once_again(sync: Synchronization, tmp_path: Path, first_removed: str) -> None:
+def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: Path, first_removed: str) -> None:
     # Ambiguity is rare, so a datablock claimed once is held as its one claim, not a collection of them.
-    ids, names = _two_managed(sync, tmp_path)
+    ids, names = _two_managed(bindings, tmp_path)
     handle, other = ids
     a = bpy.data.objects["A"]
     by_name = {
@@ -267,9 +267,9 @@ class _CountedRemovals(Collection[str]):
         return len(self.items)
 
 
-def test_removals_are_tested_as_a_set(sync: Synchronization, tmp_path: Path) -> None:
+def test_removals_are_tested_as_a_set(bindings: Bindings, tmp_path: Path) -> None:
     # Each entry and each use is tested against the removals: a caller's list would make every test a search.
-    ids, names = _two_managed(sync, tmp_path)
+    ids, names = _two_managed(bindings, tmp_path)
     other = ids[1]
     current = runtime.manifest(other)
     assert isinstance(current, Loaded)
@@ -287,9 +287,9 @@ def test_removals_are_tested_as_a_set(sync: Synchronization, tmp_path: Path) -> 
     assert in_place == _ownership_view(ids, names)
 
 
-def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A no-op refresh performs no Blender writes (incremental.md#affected-content).
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
 
     def no_writes(*_args: object) -> None:
         raise AssertionError("a record was written")
@@ -299,9 +299,9 @@ def test_an_empty_update_writes_nothing(sync: Synchronization, tmp_path: Path, m
     runtime.set_manifest_entries(handle.binding_id, {}, [])
 
 
-def test_an_update_to_a_binding_without_a_manifest(sync: Synchronization, tmp_path: Path) -> None:
+def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
     assert runtime.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     runtime.set_manifest_entries(handle.binding_id, {"a": _entry(obj)})
@@ -311,9 +311,9 @@ def test_an_update_to_a_binding_without_a_manifest(sync: Synchronization, tmp_pa
 
 
 @pytest.mark.parametrize("removed", [["a"], []])
-def test_an_update_after_a_removal(sync: Synchronization, tmp_path: Path, removed: list[str]) -> None:
+def test_an_update_after_a_removal(bindings: Bindings, tmp_path: Path, removed: list[str]) -> None:
     # The removed datablock's entry, which Blender cleared, is removed by the update or carried into its result.
-    ids, names = _two_managed(sync, tmp_path)
+    ids, names = _two_managed(bindings, tmp_path)
     other = ids[1]
     bpy.data.objects.remove(bpy.data.objects["A"])
     replacement = bpy.data.objects.new("Replacement", None)
@@ -325,8 +325,8 @@ def test_an_update_after_a_removal(sync: Synchronization, tmp_path: Path, remove
     assert in_place == _ownership_view(ids, names)
 
 
-def test_a_new_datablock_at_a_removed_ones_address_is_unmanaged(sync: Synchronization, tmp_path: Path) -> None:
-    handle = _managed(sync, tmp_path)
+def test_a_new_datablock_at_a_removed_ones_address_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
+    handle = _managed(bindings, tmp_path)
     removed = bpy.data.objects["Managed"]
     assert runtime.claims_on(removed) == [Claim(handle.binding_id, bpy.data.collections["Shot"], "a")]
     address = removed.as_pointer()
@@ -337,8 +337,8 @@ def test_a_new_datablock_at_a_removed_ones_address_is_unmanaged(sync: Synchroniz
     assert runtime.claims_on(new) == []
 
 
-def test_a_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
-    handle = _managed(sync, tmp_path)
+def test_a_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
+    handle = _managed(bindings, tmp_path)
     obj = bpy.data.objects["Managed"]
     assert runtime.claims_on(obj)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
@@ -350,10 +350,10 @@ def test_a_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("asked", ["claims", "update"])
 def test_a_destination_removed_before_the_ownership_index_is_built(
-    sync: Synchronization, tmp_path: Path, asked: str
+    bindings: Bindings, tmp_path: Path, asked: str
 ) -> None:
     # The state is built without the index; building it then finds the removed destination and rebuilds.
-    ids, _ = _two_managed(sync, tmp_path)
+    ids, _ = _two_managed(bindings, tmp_path)
     runtime.invalidate()
     assert runtime.binding_ids() == ids
     bpy.data.collections.remove(bpy.data.collections["Shot"])
@@ -366,11 +366,11 @@ def test_a_destination_removed_before_the_ownership_index_is_built(
 
 
 def test_a_destination_change_after_another_bindings_destination_was_removed(
-    sync: Synchronization, tmp_path: Path
+    bindings: Bindings, tmp_path: Path
 ) -> None:
     # The change rebuilds the map of destinations from the configurations in memory, one of which names a
     # removed collection; that binding's next check rebuilds the state.
-    ids, _ = _two_managed(sync, tmp_path)
+    ids, _ = _two_managed(bindings, tmp_path)
     handle = BindingHandle(ids[0])
     bpy.data.collections.remove(bpy.data.collections["Other"])
     repaired = bpy.data.collections.new("Repaired")
@@ -395,10 +395,10 @@ def _move_destination(binding_id: str, old: bpy.types.Collection, new: bpy.types
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # resource() doesn't build the ownership index, which reads every binding's manifest.
-    ids, _ = _two_managed(sync, tmp_path)
+    ids, _ = _two_managed(bindings, tmp_path)
     runtime.invalidate()
     reads, shares = _counted_reads(monkeypatch)
     assert runtime.resource(ids[1], "a") == bpy.data.objects["A"]
@@ -421,16 +421,16 @@ def _assert_ownership_agrees() -> None:
 
 
 @pytest.mark.parametrize("kind", ["FULL_COPY", "LINK_COPY"])
-def test_a_scene_copy_made_after_the_state_was_built(sync: Synchronization, tmp_path: Path, kind: str) -> None:
+def test_a_scene_copy_made_after_the_state_was_built(bindings: Bindings, tmp_path: Path, kind: str) -> None:
     # No handler announces a new scene. The copy is a candidate of the binding's identity, which the
     # index names the original's destination, so the original stays canonical and the copy is reported,
     # not listed on its scene (source-access.md#copied-bindings); its manifest counts as the oracle counts it.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.claims_on(bpy.data.objects["Managed"])  # the state, ownership included, is built
     copy = _copy_scene(kind)
-    assert sync.bindings(copy) == []
-    assert sync.bindings(_scene()) == [handle]
-    [copied] = sync.copied_bindings()
+    assert bindings.in_scene(copy) == []
+    assert bindings.in_scene(_scene()) == [handle]
+    [copied] = bindings.copied()
     assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
     assert runtime.binding_scene(handle.binding_id) == _scene()  # lookups use the canonical candidate
     _assert_ownership_agrees()
@@ -456,13 +456,13 @@ def _entries(*objects: bpy.types.Object) -> Manifest:
 
 
 def test_publications_replace_only_their_share(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A publication replaces its destination's share of the index in place; the result is what a rebuild
     # from the records gives, including for a destination a linked copy shares.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = sync.create_file_binding(_scene(), scene.root, name="Other")
+        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
     a, b, c = (bpy.data.objects.new(name, None) for name in ("A", "B", "C"))
     runtime.set_manifest(other.binding_id, _entries(a))
     _copy_scene("LINK_COPY")
@@ -482,13 +482,13 @@ def test_publications_replace_only_their_share(
     _assert_ownership_agrees()
 
 
-def test_a_publication_keeps_its_destinations_claimant(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_path: Path) -> None:
     # Two identities whose configurations name one destination, as damage leaves them: a publication through
     # the second keeps the claimant a rebuild finds, the first. The second's own destination is removed, so
     # it has no copy there and stays unique.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = sync.create_file_binding(_scene(), scene.root, name="Other")
+        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
     bpy.data.collections.remove(bpy.data.collections["Other"])
     runtime.set_config(other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"]))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
@@ -503,10 +503,10 @@ def test_a_publication_keeps_its_destinations_claimant(sync: Synchronization, tm
     assert in_place == _ownership_view(ids, names)
 
 
-def test_a_removed_scene(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_removed_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        handle = sync.create_file_binding(other, scene.root)
+        handle = bindings.create_file_binding(other, scene.root)
     assert runtime.binding_ids() == [handle.binding_id]
     address = other.as_pointer()
     bpy.data.scenes.remove(other)
@@ -514,41 +514,39 @@ def test_a_removed_scene(sync: Synchronization, tmp_path: Path) -> None:
     # A new scene in the freed memory doesn't pick up the removed one's bindings.
     new = next((s for s in (bpy.data.scenes.new("New") for _ in range(100)) if s.as_pointer() == address), None)
     assert new is not None, "no new scene took the removed one's address"
-    assert sync.bindings(new) == []
+    assert bindings.in_scene(new) == []
 
 
-def test_listing_a_scene_checks_only_its_bindings(sync: Synchronization, tmp_path: Path) -> None:
+def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: Path) -> None:
     # A binding on another scene can't change the answer; one on the scene listed can.
     other_scene = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        elsewhere = sync.create_file_binding(other_scene, scene.root, name="Elsewhere")
-        here = sync.create_file_binding(_scene(), scene.root, name="Here")
-    assert sync.bindings(_scene()) == [here]
+        elsewhere = bindings.create_file_binding(other_scene, scene.root, name="Elsewhere")
+        here = bindings.create_file_binding(_scene(), scene.root, name="Here")
+    assert bindings.in_scene(_scene()) == [here]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
     rebuilds = runtime.rebuild_count()
-    assert sync.bindings(_scene()) == [here]
+    assert bindings.in_scene(_scene()) == [here]
     assert runtime.rebuild_count() == rebuilds  # not checked, so nothing found to rebuild
     assert runtime.binding_ids() == [elsewhere.binding_id, here.binding_id]
     assert runtime.rebuild_count() > rebuilds  # listing every binding checks it
     assert _config(elsewhere).destination is None
     bpy.data.collections.remove(bpy.data.collections["Here"])
     rebuilds = runtime.rebuild_count()
-    assert sync.bindings(_scene()) == [here]
+    assert bindings.in_scene(_scene()) == [here]
     assert runtime.rebuild_count() > rebuilds
     assert _config(here).destination is None
 
 
-def test_the_bindings_attached_with_a_key(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_bindings_attached_with_a_key(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # One pass over the state: the scenes are compared once, and each binding's configuration checked.
     other_scene = bpy.data.scenes.new("Other")
-    a = sync.create_attached_binding(_scene(), "shot", name="A")
-    b = sync.create_attached_binding(other_scene, "shot", name="B")
-    sync.create_attached_binding(_scene(), "other", name="C")
-    unreadable = sync.create_attached_binding(_scene(), "shot", name="D")
+    a = bindings.create_attached_binding(_scene(), "shot", name="A")
+    b = bindings.create_attached_binding(other_scene, "shot", name="B")
+    bindings.create_attached_binding(_scene(), "other", name="C")
+    unreadable = bindings.create_attached_binding(_scene(), "shot", name="D")
     with source_access.binding_state(tmp_path) as scene:
-        sync.create_file_binding(_scene(), scene.root, name="F")
+        bindings.create_file_binding(_scene(), scene.root, name="F")
     _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
@@ -568,10 +566,10 @@ def test_the_bindings_attached_with_a_key(
     assert found[a.binding_id].destination is None  # the check found the removed destination; the state was rebuilt
 
 
-def test_every_bindings_configuration(sync: Synchronization, tmp_path: Path) -> None:
+def test_every_bindings_configuration(bindings: Bindings, tmp_path: Path) -> None:
     # As config() gives each: the first candidate's, or why it can't be read, checked.
-    readable = sync.create_attached_binding(_scene(), "shot", name="A")
-    unreadable = sync.create_attached_binding(_scene(), "shot", name="B")
+    readable = bindings.create_attached_binding(_scene(), "shot", name="A")
+    unreadable = bindings.create_attached_binding(_scene(), "shot", name="B")
     _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     found = runtime.configs()
@@ -586,19 +584,19 @@ def test_every_bindings_configuration(sync: Synchronization, tmp_path: Path) -> 
     assert config.destination is None  # the check found the removed destination; the state was rebuilt
 
 
-def test_a_configuration_record_removed_by_hand(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Path) -> None:
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     assert runtime.binding_ids(_scene()) == [handle.binding_id]
     del _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)]
     assert runtime.binding_ids(_scene()) == []
 
 
-def test_a_handler_ahead_of_the_extensions(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_handler_ahead_of_the_extensions(bindings: Bindings, tmp_path: Path) -> None:
     # Another extension's redo_post handler, running before the extension's, reads the redone data.
     undo.require_global_undo()
     undo.push("base")
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     undo.push("create")
     undo.undo()
     assert runtime.binding_ids() == []
@@ -615,19 +613,17 @@ def test_a_handler_ahead_of_the_extensions(sync: Synchronization, tmp_path: Path
     assert seen == [[handle.binding_id]]
 
 
-def test_after_save_and_reopen(sync: Synchronization, tmp_path: Path) -> None:
-    handle = _managed(sync, tmp_path)
+def test_after_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
+    handle = _managed(bindings, tmp_path)
     assert runtime.binding_scene(handle.binding_id) == _scene()
     save_and_reopen(tmp_path / "indexes.blend")
     assert runtime.binding_scene(handle.binding_id) == _scene()
     assert runtime.resource(handle.binding_id, "a") == bpy.data.objects["Managed"]
 
 
-def test_writes_update_the_state_in_place(
-    sync: Synchronization, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_writes_update_the_state_in_place(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A manifest written through the state is answered from memory: no record is read back.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     added = bpy.data.objects.new("Added", None)
     entries = {
         "a": ManifestEntry(bpy.data.objects["Managed"], ["/World"], "prim", []),
@@ -644,10 +640,10 @@ def test_writes_update_the_state_in_place(
     assert _config(handle).destination == bpy.data.collections["Shot"]
 
 
-def test_the_cached_manifest_cant_be_changed_through_a_caller(sync: Synchronization, tmp_path: Path) -> None:
+def test_the_cached_manifest_cant_be_changed_through_a_caller(bindings: Bindings, tmp_path: Path) -> None:
     # The state hands out the manifest it holds, so neither the lists a publisher gave it nor the manifest
     # a lookup returns can change it.
-    handle = _managed(sync, tmp_path)
+    handle = _managed(bindings, tmp_path)
     covers, uses = ["/World"], []
     entries = {"a": ManifestEntry(bpy.data.objects["Managed"], covers, "prim", uses)}
     runtime.set_manifest(handle.binding_id, Manifest(entries))
@@ -677,21 +673,21 @@ def test_creation_needs_the_extension_registered(tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         before = _file_data()
         with pytest.raises(runtime.NotRegisteredError):
-            Synchronization().create_file_binding(_scene(), scene.root)
+            Bindings().create_file_binding(_scene(), scene.root)
         with pytest.raises(runtime.NotRegisteredError):
-            Synchronization().create_attached_binding(_scene(), "shot")
+            Bindings().create_attached_binding(_scene(), "shot")
     assert _file_data() == before
 
 
-def test_writes_need_the_extension_registered(sync: Synchronization, tmp_path: Path) -> None:
-    handle = _managed(sync, tmp_path)
-    sync.create_attached_binding(_scene(), "shot")
+def test_writes_need_the_extension_registered(bindings: Bindings, tmp_path: Path) -> None:
+    handle = _managed(bindings, tmp_path)
+    bindings.create_attached_binding(_scene(), "shot")
     addon.unregister()
     before = _file_data()
     with pytest.raises(runtime.NotRegisteredError):
         handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     with pytest.raises(runtime.NotRegisteredError):
-        sync.attach("shot", Usd.Stage.CreateInMemory(), confirm=True)
+        bindings.attach("shot", Usd.Stage.CreateInMemory(), confirm=True)
     with pytest.raises(runtime.NotRegisteredError):
         runtime.set_manifest(handle.binding_id, Manifest({}))
     assert _file_data() == before

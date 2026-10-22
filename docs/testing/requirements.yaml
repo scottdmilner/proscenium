@@ -391,7 +391,7 @@ requirements:
         oracle: "A binding with one candidate is unique and enabled, with its destination removed or the index unreadable; one candidate that two indexes name is disabled; nothing is reported for a unique identity."
       - id: COPY-15
         quote: "A binding's handle reaches its canonical candidate."
-        oracle: "On each route where the rule decides, the handle's lookups reach the original, its scene lists it and the copy's scene doesn't; where it can't, each scene with a candidate lists the binding; copied_bindings() reports every candidate, and which is canonical or that none is."
+        oracle: "On each route where the rule decides, the handle's lookups reach the original, its scene lists it and the copy's scene doesn't; where it can't, each scene with a candidate lists the binding; copied() reports every candidate, and which is canonical or that none is."
       - id: COPY-16
         quote: "A binding with no canonical candidate refuses synchronization, reloading, and settings changes with a fatal diagnostic naming its candidates, before accessing its source."
         oracle: "For a binding the rule can't decide, synchronize, reload, and set_settings return a fatal failure with one copied-binding diagnostic naming its candidates' scenes and destinations, no source stage is made for it, and requested_settings raises."
@@ -1958,13 +1958,13 @@ excluded:
     quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
     restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.api.synchronization."]
+    quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.api.bindings."]
     reason: "Design record of M3's API, and a note for M5."
   - section: spec/source-access.md#synchronization-api
     quotes: ["Each method looks the binding up when it is called, and two handles are equal when their identifiers are."]
     restates: [API-01]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Operations that span bindings belong to the process's synchronization, not to a handle"]
+    quotes: ["Operations that span bindings belong to the process's bindings, not to a handle"]
     reason: "Design guidance for M3's API; SID-03 tests attaching under a key, and COPY-15 the report of copied bindings."
   - section: spec/source-access.md#source-consistency
     quotes: ["The caller must not mutate an attached stage or its contributing layers during a synchronization."]

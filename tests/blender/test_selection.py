@@ -29,18 +29,18 @@ from support.blend import save_and_reopen
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.synchronization import Synchronization
+    from proscenium.api.bindings import Bindings
 
 
 def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
 
 
-def test_a_selection_from_two_bindings_survives_save_and_reopen(sync: Synchronization, tmp_path: Path) -> None:
+def test_a_selection_from_two_bindings_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
     # ICON-24 on F-BINDING-STATE: the same entries, in order, and the same active entry.
     with source_access.binding_state(tmp_path) as scene:
-        first = sync.create_file_binding(_scene(), scene.root)
-        second = sync.create_attached_binding(_scene(), scene.key)
+        first = bindings.create_file_binding(_scene(), scene.root)
+        second = bindings.create_attached_binding(_scene(), scene.key)
     entries = (
         SelectionEntry(second.binding_id, "/World/Ref"),
         SelectionEntry(first.binding_id, "/World/PayA"),
@@ -83,16 +83,16 @@ def test_the_oracles_targets_are_stored_exactly(tmp_path: Path) -> None:
         assert [generation.beneath(e.path) for e in loaded.record.entries] == [generation.beneath(t) for t in targets]
 
 
-def test_replacing_the_attached_stage_leaves_the_selection(sync: Synchronization, tmp_path: Path) -> None:
+def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, tmp_path: Path) -> None:
     # SID-07 on F-REATTACH: the entries are stored apart from the attachment, so replacing the stage,
     # even with a confirmed different root layer, leaves them; they resolve against the next generation.
-    handle = sync.create_attached_binding(_scene(), "shot")
+    handle = bindings.create_attached_binding(_scene(), "shot")
     selection = PersistentSelection((SelectionEntry(handle.binding_id, "/World/Ref"),), None)
     write_selection(_scene(), selection)
     with source_access.reattach(tmp_path) as scene:
-        sync.attach("shot", scene.caller)
-        sync.attach("shot", scene.same_root)
-        sync.attach("shot", scene.other_root, confirm=True)
+        bindings.attach("shot", scene.caller)
+        bindings.attach("shot", scene.same_root)
+        bindings.attach("shot", scene.other_root, confirm=True)
         assert read_selection(_scene()) == Loaded(selection, 1)
 
 

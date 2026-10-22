@@ -1,4 +1,4 @@
-"""Synchronization keyed by binding identifier, behind the binding handle (source-access.md#synchronization-api).
+"""The process's bindings, and the handle callers reach one through (source-access.md#synchronization-api).
 
 M3 implements source acquisition: a synchronization acquires the binding's evaluation stage under
 its requested settings and reports the source's state. Its time code is the attempt's, not a
@@ -10,8 +10,13 @@ bindings' in-memory state (proscenium.runtime); its stages and attachment are ru
 in a StageRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
 (lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
-disabled pending repair; a handle reaches a binding's canonical candidate, and copied_bindings()
-reports the others (source-access.md#copied-bindings).
+disabled pending repair; a handle reaches a binding's canonical candidate, and copied() reports the
+others (source-access.md#copied-bindings).
+
+A refusal is reported one way for each kind of call. An operation (synchronize, set_settings, reload)
+returns a result whose diagnostic says why. The query requested_settings raises: RefusedRecordError
+for a configuration that can't be read, and BindingDisabledError for a disabled binding. Every call keyed
+by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
 """
 
 from __future__ import annotations
@@ -75,22 +80,22 @@ class BindingHandle:
     binding_id: str
 
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
-        return SYNCHRONIZATION.synchronize(self.binding_id, time_code)
+        return BINDINGS.synchronize(self.binding_id, time_code)
 
     def set_settings(self, *, payload_policy: PayloadPolicy | None = None) -> Result:
-        return SYNCHRONIZATION.set_settings(self.binding_id, payload_policy=payload_policy)
+        return BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
-        return SYNCHRONIZATION.reload(self.binding_id, layers)
+        return BINDINGS.reload(self.binding_id, layers)
 
     def requested_settings(self) -> RequestedSettings:
-        return SYNCHRONIZATION.requested_settings(self.binding_id)
+        return BINDINGS.requested_settings(self.binding_id)
 
     def live_stage(self) -> Usd.Stage | None:
-        return SYNCHRONIZATION.live_stage(self.binding_id)
+        return BINDINGS.live_stage(self.binding_id)
 
 
-class Synchronization:
+class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
     stages: StageRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
@@ -129,12 +134,12 @@ class Synchronization:
         config = BindingConfig(SourceKind.ATTACHED, None, key, None, None, payload_policy)
         return self._create(scene, config, name or key)
 
-    def bindings(self, scene: bpy.types.Scene) -> list[BindingHandle]:
+    def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene: whose canonical candidate is on it, or, for a binding with
         copies and no canonical candidate, which has a candidate on it."""
         return [BindingHandle(binding_id) for binding_id in runtime.binding_ids(scene)]
 
-    def copied_bindings(self) -> list[CopiedBinding]:
+    def copied(self) -> list[CopiedBinding]:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
         return runtime.copied_bindings()
 
@@ -163,7 +168,7 @@ class Synchronization:
         or a file load (source-access.md#source-stages). Returns the bindings with the key.
         """
         self._prune_if_rebuilt()
-        # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune()).
+        # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune_stages()).
         self.stages.release(key)
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
@@ -226,12 +231,12 @@ class Synchronization:
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
-    def file_loaded(self) -> None:
+    def on_file_loaded(self) -> None:
         """Drop every binding's stages: a loaded file's bindings start with no source stage or attachment."""
         self.stages = StageRegistry()
         self._pruned_at = None
 
-    def prune(self) -> None:
+    def prune_stages(self) -> None:
         """Let go of the stages of bindings that no longer exist, or can't synchronize (StageRegistry.prune).
 
         With no stages, as before a session's first synchronization, there's nothing to compare, so the
@@ -245,7 +250,7 @@ class Synchronization:
 
     def _prune_if_rebuilt(self) -> None:
         if self._pruned_at != runtime.rebuild_count():
-            self.prune()
+            self.prune_stages()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(runtime.create(scene, config, name))
@@ -303,4 +308,4 @@ def _unsupported(refused: RefusedRecord) -> Result:
     return Result(ResultState.FATAL_FAILURE, (diagnostic,))
 
 
-SYNCHRONIZATION = Synchronization()  # the process's bindings, which handles use
+BINDINGS = Bindings()  # the process's bindings, which handles use

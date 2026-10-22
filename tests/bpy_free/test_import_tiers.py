@@ -71,5 +71,5 @@ def test_every_module_is_in_a_tier_or_at_the_top() -> None:
 
 def test_a_wrong_way_import_is_found() -> None:
     # Guards the tests above: the API module, read as if it were in persistence, imports above that tier.
-    api = PACKAGE / "api" / "synchronization.py"
+    api = PACKAGE / "api" / "bindings.py"
     assert any("imports proscenium.runtime" in v for v in _violations(api, "persistence"))
