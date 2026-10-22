@@ -12,9 +12,10 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium import indexes, ownership, records
-from proscenium.ownership import Claim, Manifest, ManifestEntry
-from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.persistence import ownership, records
+from proscenium.persistence.ownership import Claim, Manifest, ManifestEntry
+from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.runtime import indexes
 from support import ownership as oracle
 from support.blend import save_and_reopen
 
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.synchronization import BindingHandle, Synchronization
+    from proscenium.api.synchronization import BindingHandle, Synchronization
 
 
 def _scene() -> bpy.types.Scene:

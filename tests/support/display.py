@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium import binding_state, indexes
-from proscenium.binding_state import Generation
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
+from proscenium.persistence import binding_state
+from proscenium.persistence.binding_state import Generation
+from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.runtime import indexes
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay

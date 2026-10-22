@@ -3,7 +3,7 @@
 This state is a disposable write-through cache of the bindings' records: each binding's scene and
 decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
 claims. It holds every candidate of an identity (source-access.md#copied-bindings), and the
-canonical-candidate rule's decision on them (proscenium.candidates). A lookup by identity uses the
+canonical-candidate rule's decision on them (proscenium.runtime.candidates). A lookup by identity uses the
 canonical candidate, and raises Disabled for an identity with none. Ownership counts every
 candidate's manifest, a tagged collection's that no record names included (ownership.Claim), so
 copied content is ambiguous rather than any one binding's. The extension's writes go through it,
@@ -44,18 +44,19 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from . import bindings, candidates, ownership, records
-from .bindings import BindingConfig
-from .core.copies import Candidate, Decision, Reason
-from .core.source_access import SourceKind
-from .ownership import Claim, Manifest
-from .records import Loaded, RecordRefused, Refused
+from ..core.copies import Candidate, Decision, Reason
+from ..core.source_access import SourceKind
+from ..persistence import bindings, ownership, records
+from ..persistence.bindings import BindingConfig
+from ..persistence.ownership import Claim, Manifest
+from ..persistence.records import Loaded, RecordRefused, Refused
+from . import candidates
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping
 
+    from ..persistence.ownership import ManifestEntry
     from .candidates import CopiedBinding
-    from .ownership import ManifestEntry
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
 _state: _State | None = None

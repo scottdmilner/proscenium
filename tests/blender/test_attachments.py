@@ -17,7 +17,7 @@ from support import undo
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.synchronization import Synchronization
+    from proscenium.api.synchronization import Synchronization
 
 
 def test_undo_and_redo_leave_attachments(sync: Synchronization, tmp_path: Path) -> None:

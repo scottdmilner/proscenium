@@ -13,11 +13,12 @@ import bpy
 import pytest
 
 from fixtures import copies
-from proscenium import bindings, indexes, records
+from proscenium.api.synchronization import BindingHandle, Category, Disabled, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
-from proscenium.records import Loaded
-from proscenium.synchronization import BindingHandle, Category, Disabled, ResultState, Synchronization
+from proscenium.persistence import bindings, records
+from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.records import Loaded
+from proscenium.runtime import indexes
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
-    from proscenium.candidates import CopiedBinding
+    from proscenium.runtime.candidates import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:

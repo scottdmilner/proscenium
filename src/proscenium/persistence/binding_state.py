@@ -1,7 +1,7 @@
 """A binding's published generation and last attempt (lifecycle.md#binding-state).
 
 The published generation is what the display was produced with: the generation record and the
-ownership manifest beside it on the destination collection (proscenium.ownership), and the
+ownership manifest beside it on the destination collection (proscenium.persistence.ownership), and the
 correspondence M7 adds. It describes the destination's content, so it travels with the destination
 on copy routes, as the manifest does.
 
@@ -21,10 +21,10 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
+from ..core.results import Diagnostic, ResultState
+from ..core.source_access import PayloadPolicy
 from . import records
-from .core.source_access import PayloadPolicy
 from .records import Schema
-from .results import Diagnostic, ResultState
 
 if TYPE_CHECKING:
     import bpy

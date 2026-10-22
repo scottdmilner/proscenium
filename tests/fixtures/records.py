@@ -9,7 +9,7 @@ they have older versions of their own:
   count has no version 3 meaning, so that migration rejects it.
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
-derived from the migrations above. It also yields binding configurations (proscenium.bindings) a
+derived from the migrations above. It also yields binding configurations (proscenium.persistence.bindings) a
 newer extension or damage could leave; binding configuration has no older version yet. M5 adds
 pending-cleanup records once it defines their schema.
 """
@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from proscenium.records import VERSION_KEY, Refusal, Schema
+from proscenium.persistence.records import VERSION_KEY, Refusal, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Generator

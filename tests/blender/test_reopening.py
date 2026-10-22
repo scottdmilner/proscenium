@@ -16,12 +16,13 @@ import bpy
 from pxr import Sdf
 
 from fixtures import source_access
-from proscenium import binding_state, bindings, indexes, records
-from proscenium.binding_state import LastAttempt
+from proscenium.api.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
-from proscenium.records import Loaded, Refused
-from proscenium.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
+from proscenium.persistence import binding_state, bindings, records
+from proscenium.persistence.binding_state import LastAttempt
+from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.records import Loaded, Refused
+from proscenium.runtime import indexes
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.bindings import BindingConfig
+    from proscenium.persistence.bindings import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:

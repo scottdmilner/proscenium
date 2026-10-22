@@ -5,8 +5,8 @@ its requested settings and reports the source's state. Its time code is the atte
 setting of the binding. M5 adds evaluation at that time code, planning, application, and
 publication, and the guard against reentrant calls.
 
-A binding's configuration is its records (proscenium.bindings), held and written through the
-bindings' in-memory state (proscenium.indexes); its source stages and attachment are runtime state
+A binding's configuration is its records (proscenium.persistence.bindings), held and written through the
+bindings' in-memory state (proscenium.runtime.indexes); its source stages and attachment are runtime state
 in a SourceRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
 (lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
@@ -24,25 +24,25 @@ from typing import TYPE_CHECKING
 import bpy
 from pxr import Usd
 
-from . import indexes
-from .bindings import BindingConfig
-from .candidates import CopiedBinding
-from .core.source_access import (
+from ..core.results import Category, Diagnostic, Result, ResultState, Severity
+from ..core.source_access import (
     PayloadPolicy,
     SourceKind,
     SourceRegistry,
     SourceUnavailable,
     dirty_layers,
 )
-from .indexes import Disabled
-from .records import RecordRefused, Refused
-from .results import Category, Diagnostic, Result, ResultState, Severity
+from ..persistence.bindings import BindingConfig
+from ..persistence.records import RecordRefused, Refused
+from ..runtime import indexes
+from ..runtime.candidates import CopiedBinding
+from ..runtime.indexes import Disabled
 
 if TYPE_CHECKING:
     import os
     from collections.abc import Iterable
 
-    from .core.source_access import AttachedBindingSource, FileBindingSource
+    from ..core.source_access import AttachedBindingSource, FileBindingSource
 
 
 class BindingNotFound(LookupError):  # noqa: N818 (misuse, raised like KeyError)

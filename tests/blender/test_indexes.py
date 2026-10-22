@@ -16,11 +16,13 @@ import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium import addon, bindings, indexes, ownership, records
+from proscenium import addon
+from proscenium.api.synchronization import BindingHandle, Synchronization
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Claim, Manifest, ManifestEntry
-from proscenium.records import Loaded, Refused
-from proscenium.synchronization import BindingHandle, Synchronization
+from proscenium.persistence import bindings, ownership, records
+from proscenium.persistence.ownership import Claim, Manifest, ManifestEntry
+from proscenium.persistence.records import Loaded, Refused
+from proscenium.runtime import indexes
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -28,7 +30,7 @@ from support.blend import save_and_reopen
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.bindings import BindingConfig
+    from proscenium.persistence.bindings import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:

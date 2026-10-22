@@ -15,7 +15,7 @@ import bpy
 import pytest
 
 from fixtures import records as fixture
-from proscenium.records import (
+from proscenium.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
     Loaded,

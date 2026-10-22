@@ -23,7 +23,11 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/__init__.py` and `proscenium/core/` must import without `bpy`.
   - `proscenium/core/` also holds the compiled core's C++ source. See [Compiled core](#compiled-core).
-  - Blender-facing code goes in modules such as `proscenium/addon.py`.
+  - Blender-facing code is in three tiers, each importing only the tiers below it and `core/` ([plan](docs/plans/source-tiers-and-names.md#tiers)):
+    - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
+    - `proscenium/runtime/`: disposable in-memory state built from the records.
+    - `proscenium/persistence/`: versioned records in ID properties.
+  - `proscenium/addon.py` registers the extension and its handlers, and may import any tier.
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.

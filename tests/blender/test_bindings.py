@@ -17,12 +17,8 @@ from pxr import Sdf, Usd
 from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from proscenium import addon, binding_state, bindings, indexes, records
-from proscenium.binding_state import Generation, LastAttempt
-from proscenium.bindings import BindingConfig, BindingIndex, DestinationTag
-from proscenium.core.source_access import PayloadPolicy, SourceKind
-from proscenium.records import NAMESPACE, Loaded, RecordRefused
-from proscenium.synchronization import (
+from proscenium import addon
+from proscenium.api.synchronization import (
     AttachResult,
     BindingHandle,
     BindingNotFound,
@@ -32,6 +28,12 @@ from proscenium.synchronization import (
     Severity,
     Synchronization,
 )
+from proscenium.core.source_access import PayloadPolicy, SourceKind
+from proscenium.persistence import binding_state, bindings, records
+from proscenium.persistence.binding_state import Generation, LastAttempt
+from proscenium.persistence.bindings import BindingConfig, BindingIndex, DestinationTag
+from proscenium.persistence.records import NAMESPACE, Loaded, RecordRefused
+from proscenium.runtime import indexes
 from support import undo
 from support.blend import save_and_reopen
 

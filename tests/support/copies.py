@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium import bindings, ownership, records
-from proscenium.ownership import Manifest
-from proscenium.records import Loaded
+from proscenium.persistence import bindings, ownership, records
+from proscenium.persistence.ownership import Manifest
+from proscenium.persistence.records import Loaded
 
 if TYPE_CHECKING:
     from collections.abc import Callable

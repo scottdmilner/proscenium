@@ -13,17 +13,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from . import bindings, records
-from .core.copies import UNREADABLE, Candidate, Reason, Unreadable, decide
-from .records import Loaded, Refused
+from ..core.copies import UNREADABLE, Candidate, Reason, Unreadable, decide
+from ..persistence import bindings, records
+from ..persistence.records import Loaded, Refused
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     import bpy
 
-    from .bindings import BindingConfig, DestinationTag
-    from .core.copies import Decision
+    from ..core.copies import Decision
+    from ..persistence.bindings import BindingConfig, DestinationTag
 
     Entry = int | None | Unreadable
     Tags = Mapping[int, tuple[bpy.types.Collection, Loaded[DestinationTag] | Refused]]

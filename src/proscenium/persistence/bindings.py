@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING
 
 import bpy
 
+from ..core.source_access import PayloadPolicy, SourceKind
 from . import records
-from .core.source_access import PayloadPolicy, SourceKind
 from .records import RecordRefused, Refused, Schema
 
 if TYPE_CHECKING:

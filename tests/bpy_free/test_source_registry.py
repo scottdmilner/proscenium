@@ -1,6 +1,6 @@
 """When a binding's runtime source is made, kept, and let go (source-access.md#source-stages; UNDO-06, SRC-02).
 
-The registry is runtime state keyed by binding identity: proscenium.synchronization says which
+The registry is runtime state keyed by binding identity: proscenium.api.synchronization says which
 bindings exist and which can't be read; tests/blender/test_synchronization.py runs these rules
 through undo, redo, and removed scenes.
 """

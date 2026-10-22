@@ -15,9 +15,7 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium import bindings, indexes, records
-from proscenium.core.source_access import PayloadPolicy
-from proscenium.synchronization import (
+from proscenium.api.synchronization import (
     BindingHandle,
     BindingNotFound,
     Category,
@@ -26,6 +24,9 @@ from proscenium.synchronization import (
     Severity,
     Synchronization,
 )
+from proscenium.core.source_access import PayloadPolicy
+from proscenium.persistence import bindings, records
+from proscenium.runtime import indexes
 from support import undo
 from support.usd import open_fresh
 

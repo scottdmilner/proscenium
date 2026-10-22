@@ -8,15 +8,21 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
-from proscenium.selection import SELECTION_KEY, PersistentSelection, SelectionEntry, read_selection, write_selection
+from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.persistence.selection import (
+    SELECTION_KEY,
+    PersistentSelection,
+    SelectionEntry,
+    read_selection,
+    write_selection,
+)
 from support import interaction_oracle
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.synchronization import Synchronization
+    from proscenium.api.synchronization import Synchronization
 
 
 def _scene() -> bpy.types.Scene:

@@ -56,7 +56,7 @@ class ManifestEntry:
         # Manifest.__post_init__, which refuses any item that isn't another entry's resource identity.
         if type(self.covers) not in (list, tuple) or type(self.uses) not in (list, tuple):
             raise TypeError("an entry covers a list of source-entity paths and uses a list of resources")
-        # Tuples, so the cache that hands entries out (proscenium.indexes) can't be changed through one.
+        # Tuples, so the cache that hands entries out (proscenium.runtime.indexes) can't be changed through one.
         object.__setattr__(self, "covers", tuple(self.covers))
         object.__setattr__(self, "uses", tuple(self.uses))
         if type(self.role) is not str or not self.role:
@@ -127,7 +127,7 @@ class Claim:
     manifest. One claim means the datablock is managed by that binding; two or more, that it is
     ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
     unmanaged. That judgment needs every manifest that could name the datablock, so the runtime
-    indexes (proscenium.indexes) index every binding's. Each destination's manifest counts once,
+    indexes (proscenium.runtime.indexes) index every binding's. Each destination's manifest counts once,
     though several configurations can name it, as a linked-copy scene's do. A manifest that can't be
     read claims nothing, so its content has no ownership evidence until it is repaired. A binding's
     copies share its identity, so the destination says which manifest a claim comes from. Like the

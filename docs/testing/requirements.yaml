@@ -1958,7 +1958,7 @@ excluded:
     quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
     restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.synchronization."]
+    quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.api.synchronization."]
     reason: "Design record of M3's API, and a note for M5."
   - section: spec/source-access.md#synchronization-api
     quotes: ["Each method looks the binding up when it is called, and two handles are equal when their identifiers are."]

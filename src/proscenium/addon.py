@@ -3,7 +3,9 @@
 import bpy
 from bpy.app.handlers import persistent
 
-from . import indexes, records, synchronization
+from .api import synchronization
+from .persistence import records
+from .runtime import indexes
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):

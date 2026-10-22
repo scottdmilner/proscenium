@@ -13,18 +13,18 @@ import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium import binding_state, bindings, ownership, records
-from proscenium.binding_state import Generation, LastAttempt
+from proscenium.core.results import Category, Diagnostic, ResultState, Severity
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
-from proscenium.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
-from proscenium.results import Category, Diagnostic, ResultState, Severity
+from proscenium.persistence import binding_state, bindings, ownership, records
+from proscenium.persistence.binding_state import Generation, LastAttempt
+from proscenium.persistence.ownership import Manifest, ManifestEntry
+from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.synchronization import BindingHandle, Synchronization
+    from proscenium.api.synchronization import BindingHandle, Synchronization
 
 DIRTY = Diagnostic(Category.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda"))
 UNAVAILABLE = Diagnostic(Category.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
