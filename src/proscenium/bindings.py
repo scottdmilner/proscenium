@@ -111,10 +111,7 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> tuple[st
     config = dataclasses.replace(config, destination=destination)
     records.write(scene, config_key(binding_id), CONFIG, config)
     records.write(destination, TAG_KEY, TAG, DestinationTag(binding_id, scene))
-    if text is None:
-        text = bpy.data.texts.new(INDEX_NAME)
-        text.use_fake_user = True
-    records.write(text, INDEX_KEY, INDEX, BindingIndex(index.destinations | {binding_id: destination}))
+    _write_entry(text, index, binding_id, destination)
     return binding_id, config
 
 
@@ -129,8 +126,14 @@ def scene_bindings(scene: bpy.types.Scene) -> list[str]:
 
 
 def all_bindings() -> Iterator[tuple[bpy.types.Scene, str, Loaded[BindingConfig] | Refused]]:
-    """Every binding in the file: its scene, identifier, and configuration or why it can't be read."""
+    """Every binding record in the file: its scene, identifier, and configuration or why it can't be read.
+
+    Linked scenes are left out: library data is read-only here, and its bindings belong to its library
+    (source-access.md#canonical-candidate).
+    """
     for scene in bpy.data.scenes:
+        if scene.library is not None:
+            continue
         for binding_id in scene_bindings(scene):
             result = records.read(scene, config_key(binding_id), CONFIG)
             assert result is not None
@@ -144,8 +147,35 @@ def index_texts() -> list[bpy.types.Text]:
     how the canonical-candidate rule tells an original binding from its copies. A second one comes
     from appending the index Text from another .blend. With two, the rule can't decide, so
     every binding sharing an identity is disabled pending repair (source-access.md#canonical-candidate).
+    A linked Text's index belongs to its library, so it is left out.
     """
-    return [text for text in bpy.data.texts if records.stored(text, INDEX_KEY) is not None]
+    texts = bpy.data.texts
+    return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
+
+
+def tagged_collections() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | Refused]]:
+    """Every local collection with a destination tag, and the tag or why it can't be read: each binding's
+    destination, and every copy of one (source-access.md#copied-bindings)."""
+    for collection in bpy.data.collections:
+        if _tagged(collection):
+            tag = records.read(collection, TAG_KEY, TAG)
+            assert tag is not None  # _tagged found the record
+            yield collection, tag
+
+
+def tagged_uids() -> frozenset[int]:
+    """The session_uids of the collections tagged_collections gives, without reading their tags."""
+    return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
+
+
+def restore_entry(binding_id: str, destination: bpy.types.Collection) -> None:
+    """Add a binding's missing index entry, making the index's Text if the file has none.
+
+    Raises as create does, writing nothing; an entry the index has, even one naming no destination, is kept.
+    """
+    text, index = _index()
+    if binding_id not in index.destinations:
+        _write_entry(text, index, binding_id, destination)
 
 
 def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
@@ -165,3 +195,17 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
         raise RecordRefused(result)
     assert result is not None  # index_texts found the record
     return texts[0], result.record
+
+
+def _write_entry(
+    text: bpy.types.Text | None, index: BindingIndex, binding_id: str, destination: bpy.types.Collection
+) -> None:
+    """Write the index with binding_id's entry naming destination, on a new Text if there is none."""
+    if text is None:
+        text = bpy.data.texts.new(INDEX_NAME)
+        text.use_fake_user = True
+    records.write(text, INDEX_KEY, INDEX, BindingIndex(index.destinations | {binding_id: destination}))
+
+
+def _tagged(collection: bpy.types.Collection) -> bool:
+    return collection.library is None and records.has(collection, TAG_KEY)

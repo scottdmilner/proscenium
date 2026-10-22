@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import interaction, records, source_access
+from . import copies, interaction, records, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -60,6 +60,7 @@ class Fixture:
 
 
 SYNC, SUCCESS, FAILURE = Operation.SYNCHRONIZE, Outcome.SUCCESS, Outcome.FAILURE
+COPY_ROUTE_ROWS = ("COPY-01", "COPY-02", "COPY-03", "COPY-04", "COPY-06", "COPY-09", "COPY-13", "COPY-15", "COPY-17")
 
 
 FIXTURES: dict[str, Fixture] = {
@@ -182,7 +183,38 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-PUBLICATION-FAILURE", "Publication failure", ("M5",)),
         Fixture("F-PREPARATION-CLEANUP-FAILURE", "Preparation and disposal both fail", ("M5",)),
         Fixture("F-RETIREMENT-FAILURE", "Retirement failure", ("M5",)),
-        Fixture("F-OWNERSHIP-AMBIGUITY", "Ownership ambiguity", ("M3", "M11")),
+        Fixture(
+            "F-OWNERSHIP-AMBIGUITY",
+            "Ownership ambiguity",
+            ("M3", "M11"),
+            copies.ownership_ambiguity,
+            (
+                # Each copy route leaves the original canonical, and its copies reported and disabled; detection
+                # finds every candidate, the same after a rebuild and after save and reopen, and changes nothing.
+                *(
+                    Case(route, SYNC, SUCCESS, COPY_ROUTE_ROWS, 1)
+                    for route in ("collection-copy", "deep-collection-copy", "linked-copy-scene", "append")
+                ),
+                Case("full-copy-scene", SYNC, SUCCESS, (*COPY_ROUTE_ROWS, "OWN-16"), 1),
+                Case("record-copy", SYNC, SUCCESS, COPY_ROUTE_ROWS, 1),
+                # A collection copied after the bindings' state was built is found at the next synchronization.
+                Case("found-at-synchronization", SYNC, SUCCESS, ("COPY-18",), 1),
+                # The index lost or cleared: the one candidate referring both ways is canonical, or none is.
+                Case("index-lost", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-04", "COPY-10", "COPY-16"), 1),
+                Case("index-lost-linked-copy", SYNC, SUCCESS, ("COPY-03", "COPY-10", "COPY-15"), 1),
+                Case("entry-cleared", SYNC, SUCCESS, ("COPY-03", "COPY-10"), 1),
+                Case("none-mutual", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-10", "COPY-16"), 1),
+                # Indexes the rule can't use: every candidate is disabled.
+                Case("two-indexes", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-14", "COPY-17"), 1),
+                Case("index-disagrees", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-16"), 1),
+                Case("unreadable-index", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-14"), 1),
+                # A write to the canonical candidate restores its lost index entry; detection writes none.
+                Case("restored-entry", SYNC, SUCCESS, ("COPY-19",), 1),
+                # Not copies: a linked binding is library data; an object duplicated has no manifest naming it.
+                Case("linked-binding", SYNC, SUCCESS, ("COPY-12", "COPY-14"), 1),
+                Case("duplicated-object", SYNC, SUCCESS, ("OWN-16",), 1),
+            ),
+        ),
         Fixture("F-UNMANAGED-USER", "Unmanaged user of managed data", ("M7",)),
         Fixture("F-DETACH-SHARED", "Detach with shared instance content", ("M11",)),
         Fixture("F-DETACH-AS-IS", "Detach surviving content as-is", ("M11",)),

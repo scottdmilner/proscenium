@@ -373,9 +373,24 @@ def test_a_destination_change_after_another_bindings_destination_was_removed(
     handle = BindingHandle(ids[0])
     bpy.data.collections.remove(bpy.data.collections["Other"])
     repaired = bpy.data.collections.new("Repaired")
+    _move_destination(ids[0], bpy.data.collections["Shot"], repaired)
     indexes.set_config(ids[0], replace(_config(handle), destination=repaired))
     assert _config(handle).destination == repaired
     assert _config(BindingHandle(ids[1])).destination is None
+
+
+def _move_destination(binding_id: str, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
+    """What a repair moves with a binding's destination, so the old one isn't left as a copy: its tag, and the
+    index entry. The configuration is the caller's."""
+    tag = records.read(old, bindings.TAG_KEY, bindings.TAG)
+    assert isinstance(tag, Loaded)
+    records.write(new, bindings.TAG_KEY, bindings.TAG, tag.record)
+    del old[records.NAMESPACE][bindings.TAG_KEY]
+    [text] = bindings.index_texts()
+    index = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+    assert isinstance(index, Loaded)
+    destinations = index.record.destinations | {binding_id: new}
+    records.write(text, bindings.INDEX_KEY, bindings.INDEX, bindings.BindingIndex(destinations))
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(
@@ -406,13 +421,17 @@ def _assert_ownership_agrees() -> None:
 
 @pytest.mark.parametrize("kind", ["FULL_COPY", "LINK_COPY"])
 def test_a_scene_copy_made_after_the_state_was_built(sync: Synchronization, tmp_path: Path, kind: str) -> None:
-    # No handler announces a new scene. The copy is a candidate of the binding's identity, its scene
-    # lists it, and its manifest counts as the oracle counts it.
+    # No handler announces a new scene. The copy is a candidate of the binding's identity, which the
+    # index names the original's destination, so the original stays canonical and the copy is reported,
+    # not listed on its scene (source-access.md#copied-bindings); its manifest counts as the oracle counts it.
     handle = _managed(sync, tmp_path)
     assert indexes.claims_on(bpy.data.objects["Managed"])  # the state, ownership included, is built
     copy = _copy_scene(kind)
-    assert sync.bindings(copy) == [handle]
-    assert indexes.binding_scene(handle.binding_id) == _scene()  # lookups use the first candidate found
+    assert sync.bindings(copy) == []
+    assert sync.bindings(_scene()) == [handle]
+    [copied] = sync.copied_bindings()
+    assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
+    assert indexes.binding_scene(handle.binding_id) == _scene()  # lookups use the canonical candidate
     _assert_ownership_agrees()
     if kind == "FULL_COPY":
         (copied,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
@@ -464,10 +483,12 @@ def test_publications_replace_only_their_share(
 
 def test_a_publication_keeps_its_destinations_claimant(sync: Synchronization, tmp_path: Path) -> None:
     # Two identities whose configurations name one destination, as damage leaves them: a publication through
-    # the second keeps the claimant a rebuild finds, the first.
+    # the second keeps the claimant a rebuild finds, the first. The second's own destination is removed, so
+    # it has no copy there and stays unique.
     handle = _managed(sync, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
         other = sync.create_file_binding(_scene(), scene.root, name="Other")
+    bpy.data.collections.remove(bpy.data.collections["Other"])
     indexes.set_config(other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"]))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     assert _ownership_view(ids, names)  # the index is built
@@ -560,7 +581,7 @@ def test_every_bindings_configuration(sync: Synchronization, tmp_path: Path) -> 
     assert isinstance(found[unreadable.binding_id], Refused)
     bpy.data.collections.remove(bpy.data.collections["A"])
     config = indexes.configs()[readable.binding_id]
-    assert not isinstance(config, Refused)
+    assert isinstance(config, bindings.BindingConfig)
     assert config.destination is None  # the check found the removed destination; the state was rebuilt
 
 

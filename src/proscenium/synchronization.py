@@ -9,7 +9,9 @@ A binding's configuration is its records (proscenium.bindings), held and written
 bindings' in-memory state (proscenium.indexes); its source stages and attachment are runtime state
 in a SourceRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
-(lifecycle.md#schema-versions).
+(lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
+disabled pending repair; a handle reaches a binding's canonical candidate, and copied_bindings()
+reports the others (source-access.md#copied-bindings).
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from pxr import Usd
 
 from . import indexes
 from .bindings import BindingConfig
+from .candidates import CopiedBinding
 from .core.source_access import (
     PayloadPolicy,
     SourceKind,
@@ -31,6 +34,7 @@ from .core.source_access import (
     SourceUnavailable,
     dirty_layers,
 )
+from .indexes import Disabled
 from .records import RecordRefused, Refused
 from .results import Category, Diagnostic, Result, ResultState, Severity
 
@@ -126,8 +130,13 @@ class Synchronization:
         return self._create(scene, config, name or key)
 
     def bindings(self, scene: bpy.types.Scene) -> list[BindingHandle]:
-        """The bindings whose target scene is scene."""
+        """The bindings whose target scene is scene: whose canonical candidate is on it, or, for a binding with
+        copies and no canonical candidate, which has a candidate on it."""
         return [BindingHandle(binding_id) for binding_id in indexes.binding_ids(scene)]
+
+    def copied_bindings(self) -> list[CopiedBinding]:
+        """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
+        return indexes.copied_bindings()
 
     def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
         """Attach stage to every binding whose attached source has this exact key (source-access.md#source-identity).
@@ -159,17 +168,20 @@ class Synchronization:
         return tuple(binding_id for binding_id, _ in indexes.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
-        """Raises RecordRefused if the binding's configuration can't be read."""
+        """Raises RecordRefused if the binding's configuration can't be read, and Disabled if it has copies and
+        no canonical candidate."""
         config = self._config(binding_id)
         if isinstance(config, Refused):
             raise RecordRefused(config)
+        if isinstance(config, CopiedBinding):
+            raise Disabled(config)
         return RequestedSettings(config.payload_policy)
 
     def set_settings(self, binding_id: str, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing."""
         config = self._config(binding_id)
-        if isinstance(config, Refused):
-            return _unsupported(config)
+        if not isinstance(config, BindingConfig):
+            return _refused(config)
         if payload_policy is not None:
             config = dataclasses.replace(config, payload_policy=payload_policy)
         indexes.set_config(binding_id, config)
@@ -178,9 +190,10 @@ class Synchronization:
     def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code; acquisition only (M3), so nothing is evaluated at it yet."""
         Usd.TimeCode(time_code)  # a time code M5 can evaluate at, or a TypeError now
+        indexes.find_copies()  # a collection duplicated on its own since the state was built is a copy
         config = self._config(binding_id)
-        if isinstance(config, Refused):
-            return _unsupported(config)
+        if not isinstance(config, BindingConfig):
+            return _refused(config)
         if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
             return _removed_destination(binding_id)
         try:
@@ -199,8 +212,8 @@ class Synchronization:
         Raises ValueError, and reloads nothing, if layers names one that isn't a contributing layer.
         """
         config = self._config(binding_id)
-        if isinstance(config, Refused):
-            return _unsupported(config)
+        if not isinstance(config, BindingConfig):
+            return _refused(config)
         try:
             self._source(binding_id, config).reload(config.payload_policy, layers)
         except SourceUnavailable as error:
@@ -208,7 +221,9 @@ class Synchronization:
         return Result(ResultState.SUCCESS)
 
     def live_stage(self, binding_id: str) -> Usd.Stage | None:
-        self._scene(binding_id)
+        """None before the first synchronization, and for a binding with copies and no canonical candidate."""
+        if isinstance(self._config(binding_id), CopiedBinding):
+            return None
         return None if (source := self.sources.get(binding_id)) is None else source.live_stage
 
     def file_loaded(self) -> None:
@@ -224,7 +239,8 @@ class Synchronization:
         """
         if self.sources:
             configs = indexes.configs()
-            self.sources.prune(configs.keys(), {b for b, config in configs.items() if isinstance(config, Refused)})
+            # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
+            self.sources.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
         self._pruned_at = indexes.rebuilds()
 
     def _prune_if_rebuilt(self) -> None:
@@ -234,20 +250,19 @@ class Synchronization:
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(indexes.create(scene, config, name))
 
-    # Every per-binding call goes through _scene or _config, and every use of a source through _source,
+    # Every per-binding call goes through _config, and every use of a source through _source,
     # except attach and release, which reach sources by key and call _prune_if_rebuilt themselves; so each
     # compares the sources with the bindings when the bindings' state was rebuilt. A new entry point that
     # uses a source does one or the other, and this comment names it.
 
-    def _scene(self, binding_id: str) -> bpy.types.Scene:
+    def _config(self, binding_id: str) -> BindingConfig | Refused | CopiedBinding:
+        """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
         self._prune_if_rebuilt()
-        if (scene := indexes.binding_scene(binding_id)) is None:
-            raise BindingNotFound(binding_id)
-        return scene
-
-    def _config(self, binding_id: str) -> BindingConfig | Refused:
-        self._prune_if_rebuilt()
-        if (config := indexes.config(binding_id)) is None:
+        try:
+            config = indexes.config(binding_id)
+        except Disabled as disabled:
+            return disabled.report
+        if config is None:
             raise BindingNotFound(binding_id)
         return config
 
@@ -272,6 +287,14 @@ def _unavailable(error: SourceUnavailable) -> Result:
 def _removed_destination(binding_id: str) -> Result:
     message = f"The destination collection of binding {binding_id} was removed"
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.REMOVED_DESTINATION, Severity.ERROR, message),))
+
+
+def _refused(refused: Refused | CopiedBinding) -> Result:
+    if isinstance(refused, Refused):
+        return _unsupported(refused)
+    named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in refused.candidates)
+    message = f"Binding {refused.binding_id} has copies and no canonical candidate ({refused.reason}): {named}"
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.COPIED_BINDING, Severity.ERROR, message),))
 
 
 def _unsupported(refused: Refused) -> Result:

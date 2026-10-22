@@ -56,11 +56,15 @@ The key is the reattachment contract because the root-layer identifier of an ano
 
 ## Copied Bindings
 
-Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest. The bindings in a `.blend` that share one binding identity are its **candidates**.
+Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest. The bindings in a `.blend` that share one binding identity are its **candidates**: each scene's binding record for it, and each destination collection tagged with it that no binding record names, as a collection duplicated on its own is. A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it.
 
 - A binding whose identity is not unique is **disabled pending repair**: it keeps its display, does not refresh, and reports the ambiguity until the user makes it a new binding or detaches it.
 - A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled.
 - Copies are never automatically claimed, merged, or deleted.
+- A binding's handle reaches its canonical candidate. A scene lists the bindings whose canonical candidate is on it and, for a binding with none, those with a candidate on it. Every candidate of an identity that isn't unique is reported, with which one is canonical, or that none is.
+- A binding with no canonical candidate refuses synchronization, reloading, and settings changes with a fatal diagnostic naming its candidates, before accessing its source.
+- Whether a candidate is disabled is derived from the records whenever they are read, never stored, so it survives save/reopen and no copy carries it. Detection writes nothing.
+- Detection runs when a `.blend` is loaded, after undo and redo, when scenes are added or removed, and before each synchronization.
 
 ### Canonical Candidate
 
@@ -71,8 +75,10 @@ Each `.blend` holds a **binding index**, with one entry per binding identity nam
 - If the index has no entry for the identity, or its entry names no destination, then the one candidate whose binding record and destination refer to each other is canonical.
 - Otherwise the rule cannot decide, and all candidates are disabled. This includes:
   - more than one index naming the identity;
+  - a binding index that can't be read, for an identity with two or more candidates;
   - an index naming a destination whose binding record does not refer back;
   - with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none.
+- A write to the canonical candidate's binding records restores its missing index entry, when its record and destination refer to each other. An entry naming no destination is kept.
 - A binding linked from another `.blend` is not a candidate. It is library data, read-only in the linking file, and its identity belongs to its library, so it never makes a local binding's identity non-unique.
 
 ## Source Stages
