@@ -19,9 +19,9 @@ from proscenium.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
     Loaded,
-    RecordRefused,
-    Refusal,
-    Refused,
+    RefusalReason,
+    RefusedRecord,
+    RefusedRecordError,
     Schema,
     load,
     read,
@@ -65,9 +65,9 @@ def _raw() -> dict[str, Any]:
     return _scene()[NAMESPACE].to_dict()
 
 
-def _refused(schema: Schema[Any], stored: object) -> Refused:
+def _refused(schema: Schema[Any], stored: object) -> RefusedRecord:
     result = load(schema, stored)
-    assert isinstance(result, Refused)
+    assert isinstance(result, RefusedRecord)
     return result
 
 
@@ -118,16 +118,16 @@ def test_loading_never_changes_the_stored_record(versions: fixture.SchemaVersion
 
 
 def test_a_migration_whose_result_is_not_a_record_failed() -> None:
-    schema = Schema("s", version=2, record=Single, migrations={1: lambda f: {}})
+    schema = Schema("s", version=2, record_type=Single, migrations={1: lambda f: {}})
     result = _refused(schema, {VERSION_KEY: 1, "a": 1})
-    assert result.refusal is Refusal.MIGRATION_FAILED
+    assert result.refusal is RefusalReason.MIGRATION_FAILED
     assert "TypeError" in result.message  # the dataclass's missing field
 
 
 def test_a_migration_that_raises_anything_failed() -> None:
-    schema = Schema("s", version=2, record=Single, migrations={1: lambda f: f["missing"]})
+    schema = Schema("s", version=2, record_type=Single, migrations={1: lambda f: f["missing"]})
     result = _refused(schema, {VERSION_KEY: 1, "a": 1})
-    assert result.refusal is Refusal.MIGRATION_FAILED
+    assert result.refusal is RefusalReason.MIGRATION_FAILED
     assert "KeyError" in result.message
 
 
@@ -136,11 +136,11 @@ def test_a_migration_that_raises_anything_failed() -> None:
     [
         ({"version": 3, "migrations": {1: lambda f: f}}, ValueError, "needs one migration from each version below 3"),
         ({"version": 1, "migrations": {0: lambda f: f}}, ValueError, "needs one migration from each version below 1"),
-        ({"version": 1, "record": dict}, TypeError, "the record type must be a dataclass"),
+        ({"version": 1, "record_type": dict}, TypeError, "the record type must be a dataclass"),
     ],
 )
 def test_schema_definition_is_checked(kwargs: dict[str, Any], error: type[Exception], match: str) -> None:
-    params: dict[str, Any] = {"record": Single, **kwargs}
+    params: dict[str, Any] = {"record_type": Single, **kwargs}
     with pytest.raises(error, match=match):
         Schema("s", **params)
 
@@ -148,7 +148,7 @@ def test_schema_definition_is_checked(kwargs: dict[str, Any], error: type[Except
 def test_the_version_key_is_reserved() -> None:
     versioned = make_dataclass("Versioned", [(VERSION_KEY, int)], frozen=True)
     with pytest.raises(ValueError, match=f"{VERSION_KEY!r} is reserved"):
-        Schema("s", version=1, record=versioned)  # ty: ignore[invalid-argument-type] - made at runtime
+        Schema("s", version=1, record_type=versioned)  # ty: ignore[invalid-argument-type] - made at runtime
 
 
 # Storage in ID properties.
@@ -161,7 +161,7 @@ class Pointers:
     items: list[dict[str, int]]
 
 
-POINTERS = Schema("pointers", version=1, record=Pointers)
+POINTERS = Schema("pointers", version=1, record_type=Pointers)
 
 
 def test_a_record_with_pointers_survives_save_and_reopen(tmp_path: Path) -> None:
@@ -187,7 +187,7 @@ def test_reading_migrates_in_memory_and_changes_nothing(versions: fixture.Schema
         assert read(_scene(), name, versions.schema) == Loaded(expected, _version(versions.stored[name]))
     for name, refusal in versions.refused.items():
         result = read(_scene(), name, versions.schema)
-        assert isinstance(result, Refused)
+        assert isinstance(result, RefusedRecord)
         assert result.refusal is refusal
     assert _raw() == versions.stored
     assert not bpy.data.is_dirty
@@ -197,7 +197,7 @@ def test_reading_migrates_in_memory_and_changes_nothing(versions: fixture.Schema
 def test_writing_never_replaces_a_newer_or_unreadable_record(versions: fixture.SchemaVersions, name: str) -> None:
     # SCHEMA-03, SCHEMA-04: what the stored version shows is refused without loading the record.
     _store_raw(versions)
-    with pytest.raises(RecordRefused) as raised:
+    with pytest.raises(RefusedRecordError) as raised:
         write(_scene(), name, versions.schema, versions.loaded["v3"])
     assert raised.value.refused.refusal is versions.refused[name]
     assert _raw() == versions.stored
@@ -210,7 +210,7 @@ def test_writing_relies_on_its_caller_to_have_read_a_supported_version(
     # A damaged or failing record at a supported version takes loading to see. Writers read first and refuse
     # on a refusal, which load gives here, so writing doesn't load it again.
     _store_raw(versions)
-    assert isinstance(load(versions.schema, versions.stored[name]), Refused)
+    assert isinstance(load(versions.schema, versions.stored[name]), RefusedRecord)
     write(_scene(), name, versions.schema, versions.loaded["v3"])
     assert read(_scene(), name, versions.schema) == Loaded(versions.loaded["v3"], 3)
 
@@ -225,15 +225,15 @@ def test_writing_over_an_older_record_stores_the_current_version(versions: fixtu
 
 def test_a_damaged_namespace_makes_every_record_unreadable(versions: fixture.SchemaVersions) -> None:
     _scene()[NAMESPACE] = "damaged"
-    assert isinstance(read(_scene(), "v3", versions.schema), Refused)
-    with pytest.raises(RecordRefused):
+    assert isinstance(read(_scene(), "v3", versions.schema), RefusedRecord)
+    with pytest.raises(RefusedRecordError):
         write(_scene(), "v3", versions.schema, versions.loaded["v3"])
     assert _scene()[NAMESPACE] == "damaged"
 
 
 def test_a_value_id_properties_cannot_hold_changes_nothing() -> None:
     # Blender converts the whole record before storing it, so a failed write leaves the old one.
-    schema = Schema("s", version=1, record=Single)
+    schema = Schema("s", version=1, record_type=Single)
     write(_scene(), "s", schema, Single(1))
     before = _raw()
     with pytest.raises(OverflowError):
@@ -264,7 +264,7 @@ def _rename_values(fields: dict[str, Any]) -> dict[str, Any]:
     return {"items": fields.pop("values")}
 
 
-KEYED = Schema("keyed", version=2, record=Keyed, migrations={1: _rename_values})
+KEYED = Schema("keyed", version=2, record_type=Keyed, migrations={1: _rename_values})
 
 
 def _store_keyed(stored: dict[str, Any]) -> None:
@@ -291,7 +291,7 @@ def test_writing_items_of_an_older_or_missing_record_writes_it_whole() -> None:
 def test_writing_items_never_replaces_a_newer_record() -> None:
     _store_keyed({VERSION_KEY: 3, "items": {"a": {"n": 1}}})
     before = _raw()
-    with pytest.raises(RecordRefused):
+    with pytest.raises(RefusedRecordError):
         write_items(_scene(), "keyed", KEYED, Keyed({"a": {"n": 5}}), "items", ["a"], [])
     assert _raw() == before
 

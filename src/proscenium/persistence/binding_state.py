@@ -29,7 +29,7 @@ from .records import Schema
 if TYPE_CHECKING:
     import bpy
 
-    from .records import Loaded, Refused
+    from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"
 ATTEMPT_PREFIX = "attempt."
@@ -81,23 +81,23 @@ class LastAttempt:
         object.__setattr__(self, "result", ResultState(self.result))
 
 
-GENERATION = Schema("generation", version=1, record=Generation)
-ATTEMPT = Schema("last attempt", version=1, record=LastAttempt)
+GENERATION = Schema("generation", version=1, record_type=Generation)
+ATTEMPT = Schema("last attempt", version=1, record_type=LastAttempt)
 
 
-def read_generation(destination: bpy.types.Collection) -> Loaded[Generation] | Refused | None:
+def read_generation(destination: bpy.types.Collection) -> Loaded[Generation] | RefusedRecord | None:
     return records.read(destination, GENERATION_KEY, GENERATION)
 
 
 def write_generation(destination: bpy.types.Collection, generation: Generation) -> None:
-    """Raises RecordRefused, changing nothing, over a stored generation that can't be read."""
+    """Raises RefusedRecordError, changing nothing, over a stored generation that can't be read."""
     records.write(destination, GENERATION_KEY, GENERATION, generation)
 
 
-def read_last_attempt(scene: bpy.types.Scene, binding_id: str) -> Loaded[LastAttempt] | Refused | None:
+def read_last_attempt(scene: bpy.types.Scene, binding_id: str) -> Loaded[LastAttempt] | RefusedRecord | None:
     return records.read(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT)
 
 
 def write_last_attempt(scene: bpy.types.Scene, binding_id: str, attempt: LastAttempt) -> None:
-    """Raises RecordRefused, changing nothing, over a stored last attempt that can't be read."""
+    """Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read."""
     records.write(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT, attempt)

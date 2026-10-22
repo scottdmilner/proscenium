@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 from ..persistence import manifests
 from ..persistence.manifests import Manifest
-from ..persistence.records import Loaded, RecordRefused, Refused
+from ..persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
 from .state import Candidate, StaleError, Unread
 
@@ -69,14 +69,14 @@ class OwnershipIndex:
     # By datablock session_uid: one Claim, or a tuple of them for an ambiguous datablock, which is rare, so
     # the common case costs no list (88 bytes each, a quarter of the index).
     claims: dict[int, Claim | tuple[Claim, ...]]
-    unreadable: dict[int, Refused]  # by destination session_uid: manifests that can't be read
+    unreadable: dict[int, RefusedRecord]  # by destination session_uid: manifests that can't be read
     shares: dict[int, DestinationClaims]  # by destination session_uid
 
 
-def manifest(binding_id: str) -> Loaded[Manifest] | Refused | None:
+def manifest(binding_id: str) -> Loaded[Manifest] | RefusedRecord | None:
     """A binding's manifest, read through its configuration's destination when first asked for.
 
-    Refused if the configuration or the manifest can't be read; None if the binding has no
+    RefusedRecord if the configuration or the manifest can't be read; None if the binding has no
     destination (it was removed) or no manifest yet. Raises KeyError if no binding has this identifier.
     """
     found = binding_configs.existing(binding_id)
@@ -86,7 +86,7 @@ def manifest(binding_id: str) -> Loaded[Manifest] | Refused | None:
 def set_manifest(binding_id: str, manifest: Manifest) -> None:
     """Store a binding's manifest on its destination, replacing only that destination's share of ownership.
 
-    Raises RecordRefused, changing nothing, over one that can't be read; KeyError if there's no such
+    Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
     binding; ValueError if it has no destination.
     """
     found = binding_configs.existing(binding_id)
@@ -142,7 +142,7 @@ def resource(binding_id: str, resource_id: str) -> bpy.types.ID | None:
     return state.query(lambda s: _checked_resource(s, binding_id, resource_id))
 
 
-def unreadable_manifests() -> list[Refused]:
+def unreadable_manifests() -> list[RefusedRecord]:
     return state.query(lambda s: list(_ownership(s).unreadable.values()))
 
 
@@ -153,20 +153,20 @@ def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
     # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
     current = _manifest_of(found)
-    if isinstance(current, Refused):
-        raise RecordRefused(current)
+    if isinstance(current, RefusedRecord):
+        raise RefusedRecordError(current)
     return found, destination, current
 
 
 def _destination(binding_id: str, binding: Candidate) -> bpy.types.Collection:
-    if isinstance(binding.config, Refused) or binding.config.destination is None:
+    if isinstance(binding.config, RefusedRecord) or binding.config.destination is None:
         raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
     return binding.config.destination
 
 
-def _manifest_of(binding: Candidate) -> Loaded[Manifest] | Refused | None:
+def _manifest_of(binding: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
     """The binding's manifest, read through its destination the first time."""
-    if isinstance(binding.config, Refused):
+    if isinstance(binding.config, RefusedRecord):
         return binding.config
     if isinstance(binding.manifest, Unread):
         destination = binding.config.destination
@@ -174,18 +174,20 @@ def _manifest_of(binding: Candidate) -> Loaded[Manifest] | Refused | None:
     return binding.manifest
 
 
-def _checked_manifest(current: State, binding_id: str, binding: Candidate) -> Loaded[Manifest] | Refused | None:
+def _checked_manifest(current: State, binding_id: str, binding: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
     """The binding's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
     found = _manifest_of(binding)
     if isinstance(found, Loaded) and not all(
         e.datablock is None or state.alive(e.datablock) for e in found.record.entries.values()
     ):
-        assert not isinstance(binding.config, Refused) and binding.config.destination is not None
+        assert not isinstance(binding.config, RefusedRecord) and binding.config.destination is not None
         found = _reread(current, binding_id, binding.config.destination)
     return found
 
 
-def _reread(current: State, binding_id: str, destination: bpy.types.Collection) -> Loaded[Manifest] | Refused | None:
+def _reread(
+    current: State, binding_id: str, destination: bpy.types.Collection
+) -> Loaded[Manifest] | RefusedRecord | None:
     """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
     found = manifests.read_manifest(destination)
     _replace_manifest(current, binding_id, destination, found)
@@ -193,7 +195,10 @@ def _reread(current: State, binding_id: str, destination: bpy.types.Collection) 
 
 
 def _replace_manifest(
-    current: State, binding_id: str, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
+    current: State,
+    binding_id: str,
+    destination: bpy.types.Collection,
+    manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
     """Give the manifest to every configuration naming the destination, and replace the destination's share
     of ownership, keeping its claimant (binding_id's, if it has no share yet)."""
@@ -206,7 +211,7 @@ def _replace_manifest(
 
 
 def _cache_manifest(
-    current: State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | Refused | None
+    current: State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | RefusedRecord | None
 ) -> None:
     """Give the manifest to every configuration naming the destination, as a linked copy's does."""
     for _, b in current.by_destination.get(destination.session_uid, ()):
@@ -224,7 +229,7 @@ def _ownership(current: State) -> OwnershipIndex:
         index = OwnershipIndex({}, {}, {})
         for named in current.by_destination.values():
             binding_id, b = named[0]
-            assert not isinstance(b.config, Refused) and b.config.destination is not None
+            assert not isinstance(b.config, RefusedRecord) and b.config.destination is not None
             if not state.alive(b.config.destination):
                 raise StaleError  # removed since the state was built: Blender cleared the configurations' pointers
             _add_share(index, binding_id, b.config.destination, _checked_manifest(current, binding_id, b))
@@ -241,11 +246,11 @@ def _add_share(
     index: OwnershipIndex,
     claimant: str,
     destination: bpy.types.Collection,
-    manifest: Loaded[Manifest] | Refused | None,
+    manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
     uid = destination.session_uid
     share = DestinationClaims(claimant, {}, {})
-    if isinstance(manifest, Refused):
+    if isinstance(manifest, RefusedRecord):
         index.unreadable[uid] = manifest  # claims nothing until it is repaired
     elif manifest is not None:
         for resource_id, entry in manifest.record.entries.items():
@@ -303,13 +308,13 @@ def _checked_resource(current: State, binding_id: str, resource_id: str) -> bpy.
     datablock = _datablock_of(_manifest_of(first), resource_id)
     if datablock is not None and not state.alive(datablock):
         # Removed: its manifest is reread, where Blender has cleared the entry, and its share replaced.
-        assert not isinstance(first.config, Refused) and first.config.destination is not None
+        assert not isinstance(first.config, RefusedRecord) and first.config.destination is not None
         datablock = _datablock_of(_reread(current, binding_id, first.config.destination), resource_id)
         if datablock is not None and not state.alive(datablock):
             raise StaleError
     return datablock
 
 
-def _datablock_of(manifest: Loaded[Manifest] | Refused | None, resource_id: str) -> bpy.types.ID | None:
+def _datablock_of(manifest: Loaded[Manifest] | RefusedRecord | None, resource_id: str) -> bpy.types.ID | None:
     entry = manifest.record.entries.get(resource_id) if isinstance(manifest, Loaded) else None
     return None if entry is None else entry.datablock

@@ -29,10 +29,10 @@ from proscenium.api.synchronization import (
     Synchronization,
 )
 from proscenium.core.source_access import PayloadPolicy, SourceKind
-from proscenium.persistence import binding_state, bindings, records
+from proscenium.persistence import binding_records, binding_state, records
+from proscenium.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
 from proscenium.persistence.binding_state import Generation, LastAttempt
-from proscenium.persistence.bindings import BindingConfig, BindingIndex, DestinationTag
-from proscenium.persistence.records import NAMESPACE, Loaded, RecordRefused
+from proscenium.persistence.records import NAMESPACE, Loaded, RefusedRecordError
 from support import undo
 from support.blend import save_and_reopen
 
@@ -52,20 +52,20 @@ def _root(tmp_path: Path) -> Path:
 
 def _config(handle: BindingHandle) -> BindingConfig:
     """The binding's configuration as its record stores it, read from the scenes, not the bindings' state."""
-    [config] = [c for _, binding_id, c in bindings.all_bindings() if binding_id == handle.binding_id]
+    [config] = [c for _, binding_id, c in binding_records.config_records() if binding_id == handle.binding_id]
     assert isinstance(config, Loaded)
     return config.record
 
 
 def _index() -> BindingIndex:
-    [text] = bindings.index_texts()
-    result = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+    [text] = binding_records.index_texts()
+    result = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(result, Loaded)
     return result.record
 
 
 def _destination_tag(collection: bpy.types.Collection) -> DestinationTag:
-    result = records.read(collection, bindings.TAG_KEY, bindings.TAG)
+    result = records.read(collection, binding_records.TAG_KEY, binding_records.TAG)
     assert isinstance(result, Loaded)
     return result.record
 
@@ -83,7 +83,7 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(sync: Synchr
     assert destination.name in _scene().collection.children
     assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
-    [text] = bindings.index_texts()
+    [text] = binding_records.index_texts()
     assert text.name == ".proscenium"
     assert text.use_fake_user
 
@@ -91,7 +91,7 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(sync: Synchr
 def test_the_enums_are_stored_as_their_values(sync: Synchronization, tmp_path: Path) -> None:
     # ID properties hold plain strings, and loading gives the enum members back.
     handle = sync.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
-    stored = records.stored(_scene(), bindings.config_key(handle.binding_id))
+    stored = records.stored(_scene(), binding_records.config_key(handle.binding_id))
     assert isinstance(stored, dict)
     assert [(stored[f], type(stored[f])) for f in ("source", "payload_policy")] == [("file", str), ("load_none", str)]
     config = _config(handle)
@@ -156,10 +156,10 @@ def test_a_relative_path_needs_a_saved_blend(sync: Synchronization) -> None:
 
 def test_an_unreadable_index_stops_creation_before_any_change(sync: Synchronization, tmp_path: Path) -> None:
     sync.create_file_binding(_scene(), _root(tmp_path))
-    [text] = bindings.index_texts()
-    text[NAMESPACE][bindings.INDEX_KEY] = {records.VERSION_KEY: 99}
+    [text] = binding_records.index_texts()
+    text[NAMESPACE][binding_records.INDEX_KEY] = {records.VERSION_KEY: 99}
     collections = len(bpy.data.collections)
-    with pytest.raises(RecordRefused):
+    with pytest.raises(RefusedRecordError):
         sync.create_file_binding(_scene(), _root(tmp_path / "other"))
     assert len(bpy.data.collections) == collections
     assert len(sync.bindings(_scene())) == 1
@@ -168,9 +168,9 @@ def test_an_unreadable_index_stops_creation_before_any_change(sync: Synchronizat
 def test_two_indexes_stop_creation(sync: Synchronization, tmp_path: Path) -> None:
     # Copies the canonical-candidate rule can't decide between; repairing them is not creation's job.
     sync.create_file_binding(_scene(), _root(tmp_path))
-    [text] = bindings.index_texts()
+    [text] = binding_records.index_texts()
     text.copy()  # ID.copy copies the ID properties, the index record with them
-    assert len(bindings.index_texts()) == 2
+    assert len(binding_records.index_texts()) == 2
     collections = len(bpy.data.collections)
     with pytest.raises(ValueError, match="2 binding indexes"):
         sync.create_file_binding(_scene(), _root(tmp_path / "other"))
@@ -320,8 +320,8 @@ def test_an_unsupported_configuration_is_kept_and_refuses(sync: Synchronization,
     # SCHEMA-03: F-SCHEMA-VERSIONS' binding configurations, as another extension version or damage left them.
     with record_fixtures.schema_versions(tmp_path) as versions:
         stored = versions.bindings[name]
-        handle = BindingHandle(bindings.new_identifier())
-        _scene()[NAMESPACE] = {bindings.config_key(handle.binding_id): stored}
+        handle = BindingHandle(binding_records.new_identifier())
+        _scene()[NAMESPACE] = {binding_records.config_key(handle.binding_id): stored}
         for result in (
             handle.synchronize(0),
             handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
@@ -330,14 +330,14 @@ def test_an_unsupported_configuration_is_kept_and_refuses(sync: Synchronization,
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
             assert (diagnostic.category, diagnostic.severity) == (Category.UNSUPPORTED_RECORD, Severity.ERROR)
-            refused = records.load(bindings.CONFIG, stored)
-            assert isinstance(refused, records.Refused)
+            refused = records.load(binding_records.CONFIG, stored)
+            assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
             assert diagnostic.message == refused.message
-        with pytest.raises(RecordRefused):
+        with pytest.raises(RefusedRecordError):
             handle.requested_settings()
         assert sync.bindings(_scene()) == [handle]
-        assert records.stored(_scene(), bindings.config_key(handle.binding_id)) == stored
+        assert records.stored(_scene(), binding_records.config_key(handle.binding_id)) == stored
 
 
 # The source key contract (source-access.md#source-identity).
@@ -429,7 +429,7 @@ def _with_key(stored: object, key: str) -> dict[str, object]:
 def test_attach_skips_a_configuration_it_cannot_read(sync: Synchronization, tmp_path: Path) -> None:
     with record_fixtures.schema_versions(tmp_path) as versions:
         unreadable = _with_key(versions.bindings["newer"], "shot")
-        _scene()[NAMESPACE] = {bindings.config_key(bindings.new_identifier()): unreadable}
+        _scene()[NAMESPACE] = {binding_records.config_key(binding_records.new_identifier()): unreadable}
         with source_access.reattach(tmp_path / "caller") as scene:
             assert sync.attach("shot", scene.caller) == AttachResult(attached=(), unconfirmed=())
 

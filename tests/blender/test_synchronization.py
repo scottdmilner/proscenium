@@ -26,7 +26,7 @@ from proscenium.api.synchronization import (
     Synchronization,
 )
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import bindings, records
+from proscenium.persistence import binding_records, records
 from proscenium.runtime import state
 from support import undo
 from support.usd import open_fresh
@@ -142,7 +142,7 @@ def test_an_unchanged_configuration_is_not_written(
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result(ResultState.SUCCESS)  # the default
     assert written == []
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    assert written == [bindings.config_key(handle.binding_id)]
+    assert written == [binding_records.config_key(handle.binding_id)]
 
 
 def test_unavailable_source_is_a_result(sync: Synchronization, tmp_path: Path) -> None:
@@ -232,13 +232,13 @@ def test_undoing_a_file_bindings_creation_drops_its_stage(sync: Synchronization,
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
     scans: list[int] = []
-    all_bindings = bindings.all_bindings
+    config_records = binding_records.config_records
 
     def counted() -> object:
         scans.append(1)
-        return all_bindings()
+        return config_records()
 
-    monkeypatch.setattr(bindings, "all_bindings", counted)
+    monkeypatch.setattr(binding_records, "config_records", counted)
     return scans
 
 
@@ -318,7 +318,7 @@ def test_a_removed_scenes_file_binding_is_pruned(sync: Synchronization, tmp_path
 def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(sync: Synchronization, tmp_path: Path) -> None:
     handle = sync.create_file_binding(_scene(), _root(tmp_path))
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    _scene()[records.NAMESPACE][bindings.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+    _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
     runtime.invalidate()  # as a load, undo, or redo that restored this record would
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, and pruned
     assert handle.binding_id not in sync.stages

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.persistence import bindings, manifests, records
+from proscenium.persistence import binding_records, manifests, records
 from proscenium.persistence.manifests import Manifest
 from proscenium.persistence.records import Loaded
 
@@ -57,16 +57,18 @@ def _shot() -> bpy.types.Collection:
 
 
 def _index_text() -> bpy.types.Text:
-    [text] = bindings.index_texts()
+    [text] = binding_records.index_texts()
     return text
 
 
 def _write_entries(change: Callable[[dict[str, bpy.types.Collection | None]], None]) -> None:
-    index = records.read(_index_text(), bindings.INDEX_KEY, bindings.INDEX)
+    index = records.read(_index_text(), binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     destinations = dict(index.record.destinations)
     change(destinations)
-    records.write(_index_text(), bindings.INDEX_KEY, bindings.INDEX, bindings.BindingIndex(destinations))
+    records.write(
+        _index_text(), binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations)
+    )
 
 
 def _copy_collection(_: Path) -> bpy.types.Collection:
@@ -132,7 +134,7 @@ def _link(tmp_path: Path) -> None:
 
 def _append_index(tmp_path: Path) -> None:
     """A user appends the other file's index Text; its entry's pointer brings the destination, and its scene."""
-    _load(tmp_path, "texts", bindings.INDEX_NAME, link=False)
+    _load(tmp_path, "texts", binding_records.INDEX_NAME, link=False)
 
 
 def _copy_records(_: Path) -> None:
@@ -149,7 +151,7 @@ def _lose_index(_: Path) -> None:
 
 
 def _remove_tag(_: Path) -> None:
-    del _shot()[records.NAMESPACE][bindings.TAG_KEY]
+    del _shot()[records.NAMESPACE][binding_records.TAG_KEY]
 
 
 def _clear_entries(_: Path) -> None:
@@ -162,7 +164,7 @@ def _disagree(tmp_path: Path) -> None:
 
 
 def _unreadable_index(_: Path) -> None:
-    _index_text()[records.NAMESPACE][bindings.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
+    _index_text()[records.NAMESPACE][binding_records.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
 
 
 def _duplicate_object(_: Path) -> None:

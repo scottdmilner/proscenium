@@ -3,7 +3,7 @@
 Source stages, evaluation stages, and attachments are runtime state keyed by binding identity: they live in this
 module, not in Blender data, so they are never saved in the .blend and undo neither restores nor
 removes them (UNDO-06). A file source's path, and an attached source's key and root-layer identifier, are
-binding configuration, which the binding's records keep (proscenium.persistence.bindings); attaching under a
+binding configuration, which the binding's records keep (proscenium.persistence.binding_records); attaching under a
 source key reads them there. A binding's stages are made from its configuration on first use, and compared
 with the bindings that exist whenever they may have changed (prune).
 """

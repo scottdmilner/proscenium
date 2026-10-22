@@ -24,7 +24,7 @@ import bpy
 
 from ..core.source_access import PayloadPolicy, SourceKind
 from . import records
-from .records import RecordRefused, Refused, Schema
+from .records import RefusedRecord, RefusedRecordError, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -85,9 +85,9 @@ class BindingIndex:
             raise TypeError("an index entry names something other than a collection")
 
 
-CONFIG = Schema("binding", version=1, record=BindingConfig)
-TAG = Schema("destination tag", version=1, record=DestinationTag)
-INDEX = Schema("binding index", version=1, record=BindingIndex)
+CONFIG = Schema("binding", version=1, record_type=BindingConfig)
+TAG = Schema("destination tag", version=1, record_type=DestinationTag)
+INDEX = Schema("binding index", version=1, record_type=BindingIndex)
 
 
 def new_identifier() -> str:
@@ -101,7 +101,7 @@ def config_key(binding_id: str) -> str:
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> tuple[str, BindingConfig]:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
-    Raises RecordRefused, changing nothing, if the binding index can't be read; ValueError if the
+    Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the
     file has more than one.
     """
     text, index = _index()  # first, so a failure changes nothing
@@ -115,8 +115,8 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> tuple[st
     return binding_id, config
 
 
-def update(scene: bpy.types.Scene, binding_id: str, config: BindingConfig) -> None:
-    """Store a binding's changed configuration. Raises RecordRefused over one that can't be read."""
+def write_config(scene: bpy.types.Scene, binding_id: str, config: BindingConfig) -> None:
+    """Store a binding's changed configuration. Raises RefusedRecordError over one that can't be read."""
     records.write(scene, config_key(binding_id), CONFIG, config)
 
 
@@ -125,7 +125,7 @@ def scene_bindings(scene: bpy.types.Scene) -> list[str]:
     return [key.removeprefix(CONFIG_PREFIX) for key in records.keys(scene) if key.startswith(CONFIG_PREFIX)]
 
 
-def all_bindings() -> Iterator[tuple[bpy.types.Scene, str, Loaded[BindingConfig] | Refused]]:
+def config_records() -> Iterator[tuple[bpy.types.Scene, str, Loaded[BindingConfig] | RefusedRecord]]:
     """Every binding record in the file: its scene, identifier, and configuration or why it can't be read.
 
     Linked scenes are left out: library data is read-only here, and its bindings belong to its library
@@ -153,7 +153,7 @@ def index_texts() -> list[bpy.types.Text]:
     return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
 
 
-def tagged_collections() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | Refused]]:
+def tagged_collections() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | RefusedRecord]]:
     """Every local collection with a destination tag, and the tag or why it can't be read: each binding's
     destination, and every copy of one (source-access.md#copied-bindings)."""
     for collection in bpy.data.collections:
@@ -182,7 +182,7 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
     """The file's binding index, and the Text holding it, for a change to the index.
 
     A file without one has an empty index and no Text yet; the caller creates the Text when it
-    writes. Raises ValueError if the file has more than one index, and RecordRefused if the index
+    writes. Raises ValueError if the file has more than one index, and RefusedRecordError if the index
     can't be read: writing over either would destroy evidence the canonical-candidate rule reads.
     """
     texts = index_texts()
@@ -191,8 +191,8 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
     if not texts:
         return None, BindingIndex({})
     result = records.read(texts[0], INDEX_KEY, INDEX)
-    if isinstance(result, Refused):
-        raise RecordRefused(result)
+    if isinstance(result, RefusedRecord):
+        raise RefusedRecordError(result)
     assert result is not None  # index_texts found the record
     return texts[0], result.record
 

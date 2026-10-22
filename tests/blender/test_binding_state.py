@@ -15,10 +15,17 @@ from pxr import Usd
 from fixtures import source_access
 from proscenium.core.results import Category, Diagnostic, ResultState, Severity
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import binding_state, bindings, manifests, records
+from proscenium.persistence import binding_records, binding_state, manifests, records
 from proscenium.persistence.binding_state import Generation, LastAttempt
 from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.persistence.records import (
+    NAMESPACE,
+    VERSION_KEY,
+    Loaded,
+    RefusalReason,
+    RefusedRecord,
+    RefusedRecordError,
+)
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
@@ -73,7 +80,7 @@ def test_the_records_are_kept_apart(sync: Synchronization, tmp_path: Path) -> No
 
     def stored() -> list[object]:
         return [
-            records.stored(_scene(), bindings.config_key(handle.binding_id)),
+            records.stored(_scene(), binding_records.config_key(handle.binding_id)),
             records.stored(destination, manifests.MANIFEST_KEY),
             records.stored(destination, binding_state.GENERATION_KEY),
             records.stored(_scene(), binding_state.ATTEMPT_PREFIX + handle.binding_id),
@@ -111,17 +118,17 @@ def test_a_full_copy_copies_the_generation_with_its_destination(sync: Synchroniz
 @pytest.mark.parametrize(
     ("change", "refusal"),
     [
-        ({VERSION_KEY: 2}, Refusal.NEWER),
-        ({"payload_policy": "load_some"}, Refusal.INVALID),
-        ({"time_code": "twelve"}, Refusal.INVALID),
+        ({VERSION_KEY: 2}, RefusalReason.NEWER),
+        ({"payload_policy": "load_some"}, RefusalReason.INVALID),
+        ({"time_code": "twelve"}, RefusalReason.INVALID),
         (
             {"diagnostics": [{"category": "nonsense", "severity": "info", "message": "m", "layers": []}]},
-            Refusal.INVALID,
+            RefusalReason.INVALID,
         ),
     ],
 )
 def test_a_generation_that_cannot_be_read_is_refused_and_kept(
-    sync: Synchronization, tmp_path: Path, change: dict[str, object], refusal: Refusal
+    sync: Synchronization, tmp_path: Path, change: dict[str, object], refusal: RefusalReason
 ) -> None:
     handle = _binding(sync, tmp_path)
     destination = bpy.data.collections["Shot"]
@@ -129,11 +136,11 @@ def test_a_generation_that_cannot_be_read_is_refused_and_kept(
     stored = destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict() | change
     destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
     result = binding_state.read_generation(destination)
-    assert isinstance(result, Refused)
+    assert isinstance(result, RefusedRecord)
     assert result.refusal is refusal
     assert destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict() == stored
-    if refusal is Refusal.NEWER:  # writing refuses what the version shows; the rest, writers read first
-        with pytest.raises(RecordRefused):
+    if refusal is RefusalReason.NEWER:  # writing refuses what the version shows; the rest, writers read first
+        with pytest.raises(RefusedRecordError):
             binding_state.write_generation(destination, _generation(handle))
         assert destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict() == stored
 

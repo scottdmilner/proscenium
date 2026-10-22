@@ -11,9 +11,9 @@ from typing import TYPE_CHECKING
 
 from ..core.canonical_candidate import CandidateEvidence, CanonicalDecision, DecisionReason
 from ..core.source_access import SourceKind
-from ..persistence import bindings, records
-from ..persistence.bindings import BindingConfig
-from ..persistence.records import RecordRefused, Refused
+from ..persistence import binding_records, records
+from ..persistence.binding_records import BindingConfig
+from ..persistence.records import RefusedRecord, RefusedRecordError
 from . import copy_detection, state
 from .state import Candidate, StaleError
 
@@ -53,13 +53,13 @@ def binding_scene(binding_id: str) -> bpy.types.Scene | None:
     return None if found is None else found.scene
 
 
-def config(binding_id: str) -> BindingConfig | Refused | None:
+def config(binding_id: str) -> BindingConfig | RefusedRecord | None:
     """A binding's configuration, why it can't be read, or None if no binding has this identifier."""
     found = state.query(lambda s: canonical(s, binding_id))
     return None if found is None else found.config
 
 
-def configs() -> dict[str, BindingConfig | Refused | CopiedBinding]:
+def configs() -> dict[str, BindingConfig | RefusedRecord | CopiedBinding]:
     """Every binding's configuration, why it can't be read, or, for one with no canonical candidate, its
     candidates: one pass over the bindings, checking each one's candidates."""
     return state.query(_configs)
@@ -81,12 +81,12 @@ def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
 
 
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
-    """Make a binding with bindings.create, and record it; it has no manifest yet. Returns its identifier.
+    """Make a binding with binding_records.create, and record it; it has no manifest yet. Returns its identifier.
 
-    Raises NotRegisteredError before changing anything, and what bindings.create raises.
+    Raises NotRegisteredError before changing anything, and what binding_records.create raises.
     """
     current = state.current_state()
-    binding_id, config = bindings.create(scene, config, name)
+    binding_id, config = binding_records.create(scene, config, name)
     made = Candidate(scene, scene.session_uid, config, None)
     current.bindings[binding_id] = [made]
     assert config.destination is not None
@@ -102,13 +102,13 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> str:
 def set_config(binding_id: str, config: BindingConfig) -> None:
     """Store a binding's changed configuration; an unchanged one writes nothing.
 
-    Raises RecordRefused, changing nothing, over one that can't be read; KeyError if there's no such binding.
+    Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding.
     """
     found = existing(binding_id)
     if config == found.config:
         return
-    bindings.update(found.scene, binding_id, config)
-    moved = isinstance(found.config, Refused) or found.config.destination != config.destination
+    binding_records.write_config(found.scene, binding_id, config)
+    moved = isinstance(found.config, RefusedRecord) or found.config.destination != config.destination
     found.config = config
     if moved:  # a destination changes only in repair: rebuilt whole, in the order a rebuild finds
         state.invalidate()
@@ -141,13 +141,13 @@ def restore_entry(binding_id: str, found: Candidate) -> None:
     and its record and destination refer to each other (source-access.md#canonical-candidate). Detection
     writes nothing; a file with two indexes, or one that can't be read, is left as it is."""
     identity = state.current_state().identities[binding_id]
-    if identity.entries or isinstance(found.config, Refused) or found.config.destination is None:
+    if identity.entries or isinstance(found.config, RefusedRecord) or found.config.destination is None:
         return
     if not copy_detection.refers_back(binding_id, found.scene, found.config):
         return
     try:
-        bindings.restore_entry(binding_id, found.config.destination)
-    except (ValueError, RecordRefused):
+        binding_records.restore_entry(binding_id, found.config.destination)
+    except (ValueError, RefusedRecordError):
         return
     identity.restored(found.config.destination)
 
@@ -166,8 +166,8 @@ def _listed(current: State, scene: bpy.types.Scene | None) -> list[str]:
     return listed
 
 
-def _configs(current: State) -> dict[str, BindingConfig | Refused | CopiedBinding]:
-    found: dict[str, BindingConfig | Refused | CopiedBinding] = {}
+def _configs(current: State) -> dict[str, BindingConfig | RefusedRecord | CopiedBinding]:
+    found: dict[str, BindingConfig | RefusedRecord | CopiedBinding] = {}
     for binding_id in current.bindings:
         try:
             candidate = canonical(current, binding_id)
@@ -193,6 +193,6 @@ def _check_candidates(current: State, binding_id: str, found: list[Candidate]) -
     """Raise StaleError if any candidate of the identity is gone: the rule's decision may have been different."""
     copies = current.identities[binding_id].tagged_copies
     if not all(state.valid(binding_id, b) for b in found) or not all(
-        state.alive(c) and records.has(c, bindings.TAG_KEY) for c in copies
+        state.alive(c) and records.has(c, binding_records.TAG_KEY) for c in copies
     ):
         raise StaleError

@@ -16,7 +16,7 @@ from fixtures import copies
 from proscenium import runtime
 from proscenium.api.synchronization import BindingDisabledError, BindingHandle, Category, ResultState, Synchronization
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import bindings, records
+from proscenium.persistence import binding_records, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
 from support import copies as routes
@@ -45,8 +45,8 @@ def _published(sync: Synchronization, root: Path) -> BindingHandle:
 
 
 def _index_entry() -> bpy.types.Collection | None:
-    [text] = bindings.index_texts()
-    index = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+    [text] = binding_records.index_texts()
+    index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     [destination] = index.record.destinations.values()
     return destination
@@ -170,11 +170,11 @@ def test_a_write_restores_a_lost_index_entry(sync: Synchronization, tmp_path: Pa
     # the next write to the binding's records does, so a later full copy leaves the original canonical.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(sync, scene.root)
-        bpy.data.texts.remove(bpy.data.texts[bindings.INDEX_NAME])
+        bpy.data.texts.remove(bpy.data.texts[binding_records.INDEX_NAME])
         runtime.invalidate()
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert sync.bindings(_scene()) == [handle]
-        assert bindings.index_texts() == []
+        assert binding_records.index_texts() == []
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
         assert _index_entry() == bpy.data.collections["Shot"]
         routes.run("full-copy-scene", tmp_path)

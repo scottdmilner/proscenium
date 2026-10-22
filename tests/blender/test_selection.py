@@ -8,7 +8,14 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.persistence.records import (
+    NAMESPACE,
+    VERSION_KEY,
+    Loaded,
+    RefusalReason,
+    RefusedRecord,
+    RefusedRecordError,
+)
 from proscenium.persistence.selection import (
     SELECTION_KEY,
     PersistentSelection,
@@ -108,8 +115,8 @@ def test_a_selection_that_cannot_be_read_is_refused_and_kept(entries: object, ac
     stored = {VERSION_KEY: 1, "entries": entries, "active": active}
     _scene()[NAMESPACE] = {SELECTION_KEY: stored}
     result = read_selection(_scene())
-    assert isinstance(result, Refused)
-    assert result.refusal is Refusal.INVALID
+    assert isinstance(result, RefusedRecord)
+    assert result.refusal is RefusalReason.INVALID
     assert problem in result.message
     assert _scene()[NAMESPACE][SELECTION_KEY].to_dict()["entries"] == entries
 
@@ -117,7 +124,7 @@ def test_a_selection_that_cannot_be_read_is_refused_and_kept(entries: object, ac
 def test_a_newer_selection_is_never_overwritten() -> None:
     stored = {VERSION_KEY: 2, "entries": [["B1", "/World"]], "active": None}
     _scene()[NAMESPACE] = {SELECTION_KEY: stored}
-    with pytest.raises(RecordRefused):
+    with pytest.raises(RefusedRecordError):
         write_selection(_scene(), PersistentSelection((), None))
     assert _scene()[NAMESPACE][SELECTION_KEY].to_dict() == stored
 

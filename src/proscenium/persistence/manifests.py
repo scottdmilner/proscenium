@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from . import records
-from .records import Loaded, Refused, Schema
+from .records import Loaded, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
@@ -117,15 +117,15 @@ class Manifest:
         return manifest
 
 
-MANIFEST = Schema("manifest", version=1, record=Manifest)
+MANIFEST = Schema("manifest", version=1, record_type=Manifest)
 
 
-def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | Refused | None:
+def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | RefusedRecord | None:
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
-    """Raises RecordRefused, changing nothing, over a stored manifest that can't be read."""
+    """Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read."""
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
 
 

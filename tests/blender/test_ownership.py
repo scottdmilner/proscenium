@@ -15,7 +15,14 @@ from fixtures import source_access
 from proscenium import runtime
 from proscenium.persistence import manifests, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import NAMESPACE, VERSION_KEY, Loaded, RecordRefused, Refusal, Refused
+from proscenium.persistence.records import (
+    NAMESPACE,
+    VERSION_KEY,
+    Loaded,
+    RefusalReason,
+    RefusedRecord,
+    RefusedRecordError,
+)
 from proscenium.runtime import Claim
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -50,7 +57,7 @@ def _managed(sync: Synchronization, tmp_path: Path, name: str = "Shot") -> tuple
     return handle, manifest
 
 
-def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[Refused]]:
+def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
     """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index;
     the oracle, reading the records now, must agree."""
     found = {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.claims_on(id_))}
@@ -220,7 +227,7 @@ def test_a_bindings_manifest_through_a_configuration_it_cannot_read(sync: Synchr
     config[VERSION_KEY] = 2
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
     result = runtime.manifest(handle.binding_id)
-    assert isinstance(result, Refused)
+    assert isinstance(result, RefusedRecord)
     assert result.kind == "binding"
 
 
@@ -253,8 +260,8 @@ def test_an_invalid_manifest_is_refused(
     stored["entries"]["a"] |= change
     destination[NAMESPACE][manifests.MANIFEST_KEY] = stored
     result = manifests.read_manifest(destination)
-    assert isinstance(result, Refused)
-    assert result.refusal is Refusal.INVALID
+    assert isinstance(result, RefusedRecord)
+    assert result.refusal is RefusalReason.INVALID
     assert problem in result.message
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     found, unreadable = _ownership()
@@ -269,11 +276,11 @@ def test_a_newer_manifest_is_refused_and_kept(sync: Synchronization, tmp_path: P
     destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     result = manifests.read_manifest(destination)
-    assert isinstance(result, Refused)
-    assert result.refusal is Refusal.NEWER
+    assert isinstance(result, RefusedRecord)
+    assert result.refusal is RefusalReason.NEWER
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     assert _ownership() == ({}, [result])
-    with pytest.raises(RecordRefused):
+    with pytest.raises(RefusedRecordError):
         manifests.write_manifest(destination, manifest)
     assert destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict() == stored
 

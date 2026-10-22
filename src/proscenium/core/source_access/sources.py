@@ -78,7 +78,7 @@ class AttachedSource:
     attachment holds the stage itself, and release() is the caller's way to free it.
 
     The attachment is runtime only. The key, and the root-layer identifier of the stage last
-    attached, are binding configuration, kept in the binding's records (proscenium.persistence.bindings).
+    attached, are binding configuration, kept in the binding's records (proscenium.persistence.binding_records).
     """
 
     key: str

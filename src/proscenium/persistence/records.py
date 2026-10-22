@@ -7,7 +7,7 @@ dataclasses, in groups and lists too: writing stores them as groups, and the rec
 __post_init__ builds them again on load.
 
 Reading never writes: an older record migrates in memory and is stored at the current version
-only when the extension next writes it. A record that can't be read is a Refused value, never an
+only when the extension next writes it. A record that can't be read is a RefusedRecord value, never an
 exception, so its binding can keep its display and report why. Writers read a record before
 writing it and refuse on any refusal, so a newer, damaged, or failed record survives until the user
 repairs it; writing itself refuses to replace one that is unreadable or newer.
@@ -34,21 +34,21 @@ type Migration = Callable[[dict[str, Any]], dict[str, Any]]
 
 @dataclass(frozen=True)
 class Schema[R: DataclassInstance]:
-    kind: str  # names the record in messages, e.g. "binding"
+    name: str  # names the record in messages, e.g. "binding"
     version: int  # the current version
-    record: type[R]  # the dataclass a current-version record loads as; it may check its fields
+    record_type: type[R]  # the dataclass a current-version record loads as; it may check its fields
     migrations: Mapping[int, Migration] = dataclasses.field(default_factory=dict)  # n -> n + 1, on plain values
 
     def __post_init__(self) -> None:
-        if not dataclasses.is_dataclass(self.record):
-            raise TypeError(f"{self.kind}: the record type must be a dataclass")
+        if not dataclasses.is_dataclass(self.record_type):
+            raise TypeError(f"{self.name}: the record type must be a dataclass")
         if set(self.migrations) != set(range(1, self.version)):
-            raise ValueError(f"{self.kind}: needs one migration from each version below {self.version}")
-        if VERSION_KEY in {f.name for f in dataclasses.fields(self.record)}:
-            raise ValueError(f"{self.kind}: {VERSION_KEY!r} is reserved")
+            raise ValueError(f"{self.name}: needs one migration from each version below {self.version}")
+        if VERSION_KEY in {f.name for f in dataclasses.fields(self.record_type)}:
+            raise ValueError(f"{self.name}: {VERSION_KEY!r} is reserved")
 
 
-class Refusal(StrEnum):
+class RefusalReason(StrEnum):
     NEWER = "newer than supported"
     MIGRATION_FAILED = "migration failed"
     INVALID = "invalid"  # at the current version, but its fields don't make a record
@@ -62,24 +62,24 @@ class Loaded[R]:
 
 
 @dataclass(frozen=True, slots=True)
-class Refused:
+class RefusedRecord:
     kind: str
     stored_version: int | None  # None when the record has no readable version
-    refusal: Refusal
+    refusal: RefusalReason
     message: str  # names the record, the versions, and the problem
 
 
-class RecordRefused(Exception):  # noqa: N818 (named for the Refused value it carries)
+class RefusedRecordError(Exception):
     """Writing would replace a stored record the extension can't read."""
 
-    refused: Refused
+    refused: RefusedRecord
 
-    def __init__(self, refused: Refused) -> None:
+    def __init__(self, refused: RefusedRecord) -> None:
         super().__init__(refused.message)
         self.refused = refused
 
 
-def load[R: DataclassInstance](schema: Schema[R], stored: object) -> Loaded[R] | Refused:
+def load[R: DataclassInstance](schema: Schema[R], stored: object) -> Loaded[R] | RefusedRecord:
     """The stored record, as plain values, loaded at the schema's current version, or why it can't be.
 
     stored is left unchanged: migrations run on a copy.
@@ -87,9 +87,9 @@ def load[R: DataclassInstance](schema: Schema[R], stored: object) -> Loaded[R] |
     return _load(schema, stored, copy=True)
 
 
-def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool) -> Loaded[R] | Refused:
+def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool) -> Loaded[R] | RefusedRecord:
     version = _version(schema, stored)
-    if isinstance(version, Refused):
+    if isinstance(version, RefusedRecord):
         return version
     assert isinstance(stored, Mapping)
     fields = {key: value for key, value in stored.items() if key != VERSION_KEY}
@@ -102,34 +102,34 @@ def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool
             fields = schema.migrations[step](fields)
         except Exception as exc:  # noqa: BLE001
             return _refuse(
-                schema, Refusal.MIGRATION_FAILED, version, f"from version {step}: {type(exc).__name__}: {exc}"
+                schema, RefusalReason.MIGRATION_FAILED, version, f"from version {step}: {type(exc).__name__}: {exc}"
             )
     try:
-        record = schema.record(**fields)
+        record = schema.record_type(**fields)
     except Exception as exc:  # noqa: BLE001
-        refusal = Refusal.INVALID if version == schema.version else Refusal.MIGRATION_FAILED
+        refusal = RefusalReason.INVALID if version == schema.version else RefusalReason.MIGRATION_FAILED
         return _refuse(schema, refusal, version, f"{type(exc).__name__}: {exc}")
     return Loaded(record, version)
 
 
-def _version(schema: Schema[Any], stored: object) -> int | Refused:
+def _version(schema: Schema[Any], stored: object) -> int | RefusedRecord:
     """The stored record's version, or why it's unreadable or newer than supported.
 
     stored is a plain group or a stored ID-property group, so a write can check one without copying it.
     """
     if not isinstance(stored, Mapping) and not hasattr(stored, "to_dict"):
-        return _refuse(schema, Refusal.UNREADABLE, None, f"stored as {type(stored).__name__}, not a group")
+        return _refuse(schema, RefusalReason.UNREADABLE, None, f"stored as {type(stored).__name__}, not a group")
     version = stored.get(VERSION_KEY)  # ty: ignore[unresolved-attribute] - a Mapping or an IDPropertyGroup
     if type(version) is not int or version < 1:
-        return _refuse(schema, Refusal.UNREADABLE, None, f"no {VERSION_KEY} of 1 or more")
+        return _refuse(schema, RefusalReason.UNREADABLE, None, f"no {VERSION_KEY} of 1 or more")
     if version > schema.version:
-        return _refuse(schema, Refusal.NEWER, version, f"this extension reads up to version {schema.version}")
+        return _refuse(schema, RefusalReason.NEWER, version, f"this extension reads up to version {schema.version}")
     return version
 
 
-def _refuse(schema: Schema[Any], refusal: Refusal, version: int | None, detail: str) -> Refused:
+def _refuse(schema: Schema[Any], refusal: RefusalReason, version: int | None, detail: str) -> RefusedRecord:
     at = "" if version is None else f" version {version}"
-    return Refused(schema.kind, version, refusal, f"{schema.kind} record{at}: {refusal}: {detail}")
+    return RefusedRecord(schema.name, version, refusal, f"{schema.name} record{at}: {refusal}: {detail}")
 
 
 def stored(id_: bpy.types.ID, key: str) -> object | None:
@@ -154,7 +154,7 @@ def keys(id_: bpy.types.ID) -> list[str]:
     return list(namespace.keys()) if hasattr(namespace, "to_dict") else []
 
 
-def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -> Loaded[R] | Refused | None:
+def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -> Loaded[R] | RefusedRecord | None:
     """The record under key at the schema's current version, why it can't be read, or None if there is none."""
     value = stored(id_, key)  # already a copy, which the migrations may change
     return None if value is None else _load(schema, value, copy=False)
@@ -163,20 +163,22 @@ def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -
 def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], record: R) -> None:
     """Store record under key at the current version.
 
-    Raises RecordRefused, changing nothing, if the stored record is unreadable (not a group, or no
+    Raises RefusedRecordError, changing nothing, if the stored record is unreadable (not a group, or no
     version) or newer than supported: what can be told without loading it. A record at a supported
     version that fails to load, damaged or failing migration, isn't caught here. Every writer reads
     the record first and refuses on any refusal, so loading it again on each write would only cost
     time. A value ID properties can't hold raises Blender's own error, which also changes nothing.
     """
-    if type(record) is not schema.record:
-        raise TypeError(f"{schema.kind}: expected a {schema.record.__name__}, not {type(record).__name__}")
+    if type(record) is not schema.record_type:
+        raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
     namespace = id_.get(NAMESPACE)
     if namespace is not None and not hasattr(namespace, "to_dict"):
-        raise RecordRefused(Refused(schema.kind, None, Refusal.UNREADABLE, f"{NAMESPACE} is not a group"))
+        raise RefusedRecordError(
+            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
+        )
     existing = None if namespace is None else namespace.get(key)
-    if existing is not None and isinstance(result := _version(schema, existing), Refused):
-        raise RecordRefused(result)
+    if existing is not None and isinstance(result := _version(schema, existing), RefusedRecord):
+        raise RefusedRecordError(result)
     value = {VERSION_KEY: schema.version} | _unstructure(record)
     if namespace is None:
         id_[NAMESPACE] = {}
@@ -200,8 +202,8 @@ def write_items[R: DataclassInstance](
     changed; otherwise all of record is, as write() stores it. Raises as write() does, changing nothing,
     including Blender's own error for a value or key ID properties can't hold.
     """
-    if type(record) is not schema.record:
-        raise TypeError(f"{schema.kind}: expected a {schema.record.__name__}, not {type(record).__name__}")
+    if type(record) is not schema.record_type:
+        raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
     namespace = id_.get(NAMESPACE)
     existing = namespace.get(key) if hasattr(namespace, "to_dict") else None
     group = None if existing is None or _version(schema, existing) != schema.version else existing.get(field)

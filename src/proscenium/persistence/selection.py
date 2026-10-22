@@ -18,7 +18,7 @@ from .records import Schema
 if TYPE_CHECKING:
     import bpy
 
-    from .records import Loaded, Refused
+    from .records import Loaded, RefusedRecord
 
 SELECTION_KEY = "selection"
 
@@ -49,13 +49,13 @@ class PersistentSelection:
             raise ValueError("the active entry is not one of the entries")
 
 
-SELECTION = Schema("selection", version=1, record=PersistentSelection)
+SELECTION = Schema("selection", version=1, record_type=PersistentSelection)
 
 
-def read_selection(scene: bpy.types.Scene) -> Loaded[PersistentSelection] | Refused | None:
+def read_selection(scene: bpy.types.Scene) -> Loaded[PersistentSelection] | RefusedRecord | None:
     return records.read(scene, SELECTION_KEY, SELECTION)
 
 
 def write_selection(scene: bpy.types.Scene, selection: PersistentSelection) -> None:
-    """Raises RecordRefused, changing nothing, over a stored selection that can't be read."""
+    """Raises RefusedRecordError, changing nothing, over a stored selection that can't be read."""
     records.write(scene, SELECTION_KEY, SELECTION, selection)

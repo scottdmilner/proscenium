@@ -39,14 +39,14 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..persistence import bindings, records
-from ..persistence.records import Refused
+from ..persistence import binding_records, records
+from ..persistence.records import RefusedRecord
 from . import copy_detection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..persistence.bindings import BindingConfig
+    from ..persistence.binding_records import BindingConfig
     from ..persistence.manifests import Manifest
     from ..persistence.records import Loaded
     from .ownership_index import OwnershipIndex
@@ -77,8 +77,8 @@ class Candidate:
 
     scene: bpy.types.Scene
     scene_uid: int  # compared instead of the reference: a new scene can take a removed one's address
-    config: BindingConfig | Refused
-    manifest: Loaded[Manifest] | Refused | None | Unread = UNREAD
+    config: BindingConfig | RefusedRecord
+    manifest: Loaded[Manifest] | RefusedRecord | None | Unread = UNREAD
 
 
 @dataclass(slots=True)
@@ -125,7 +125,7 @@ def rebuilds() -> int:
 def find_copies() -> None:
     """Rebuild the state if the local collections' destination tags changed since it was built, as duplicating
     a collection on its own changes them, which no handler announces. Checks every collection's records."""
-    if _state is not None and bindings.tagged_uids() != _state.tagged:
+    if _state is not None and binding_records.tagged_uids() != _state.tagged:
         invalidate()
 
 
@@ -157,10 +157,10 @@ def current_state() -> State:
 def valid(binding_id: str, binding: Candidate) -> bool:
     """Whether the candidate's scene still exists and holds its configuration, and its destination still
     exists; removing a destination clears the configuration's pointer to it."""
-    destination = None if isinstance(binding.config, Refused) else binding.config.destination
+    destination = None if isinstance(binding.config, RefusedRecord) else binding.config.destination
     return (
         alive(binding.scene)
-        and records.has(binding.scene, bindings.config_key(binding_id))
+        and records.has(binding.scene, binding_records.config_key(binding_id))
         and (destination is None or alive(destination))
     )
 
@@ -179,8 +179,8 @@ def _scene_uids() -> tuple[int, ...]:
 
 def _read_bindings() -> dict[str, list[Candidate]]:
     found: dict[str, list[Candidate]] = {}
-    for scene, binding_id, result in bindings.all_bindings():
-        config = result if isinstance(result, Refused) else result.record
+    for scene, binding_id, result in binding_records.config_records():
+        config = result if isinstance(result, RefusedRecord) else result.record
         found.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
     return found
 
@@ -191,6 +191,10 @@ def _by_destination(candidates_by_id: dict[str, list[Candidate]]) -> dict[int, l
     found: dict[int, list[tuple[str, Candidate]]] = {}
     for binding_id, found_for_id in candidates_by_id.items():
         for b in found_for_id:
-            if not isinstance(b.config, Refused) and b.config.destination is not None and alive(b.config.destination):
+            if (
+                not isinstance(b.config, RefusedRecord)
+                and b.config.destination is not None
+                and alive(b.config.destination)
+            ):
                 found.setdefault(b.config.destination.session_uid, []).append((binding_id, b))
     return found

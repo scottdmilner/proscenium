@@ -19,9 +19,9 @@ from fixtures import source_access
 from proscenium import addon, runtime
 from proscenium.api.synchronization import BindingHandle, Synchronization
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import bindings, manifests, records
+from proscenium.persistence import binding_records, manifests, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import Loaded, Refused
+from proscenium.persistence.records import Loaded, RefusedRecord
 from proscenium.runtime import Claim, ownership_index, state
 from support import ownership as oracle
 from support import undo
@@ -30,7 +30,7 @@ from support.blend import save_and_reopen
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.persistence.bindings import BindingConfig
+    from proscenium.persistence.binding_records import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:
@@ -49,7 +49,7 @@ def _managed(sync: Synchronization, tmp_path: Path) -> BindingHandle:
 
 def _config(handle: BindingHandle) -> BindingConfig:
     config = runtime.config(handle.binding_id)
-    assert config is not None and not isinstance(config, Refused)
+    assert config is not None and not isinstance(config, RefusedRecord)
     return config
 
 
@@ -384,15 +384,15 @@ def test_a_destination_change_after_another_bindings_destination_was_removed(
 def _move_destination(binding_id: str, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
     """What a repair moves with a binding's destination, so the old one isn't left as a copy: its tag, and the
     index entry. The configuration is the caller's."""
-    tag = records.read(old, bindings.TAG_KEY, bindings.TAG)
+    tag = records.read(old, binding_records.TAG_KEY, binding_records.TAG)
     assert isinstance(tag, Loaded)
-    records.write(new, bindings.TAG_KEY, bindings.TAG, tag.record)
-    del old[records.NAMESPACE][bindings.TAG_KEY]
-    [text] = bindings.index_texts()
-    index = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+    records.write(new, binding_records.TAG_KEY, binding_records.TAG, tag.record)
+    del old[records.NAMESPACE][binding_records.TAG_KEY]
+    [text] = binding_records.index_texts()
+    index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     destinations = index.record.destinations | {binding_id: new}
-    records.write(text, bindings.INDEX_KEY, bindings.INDEX, bindings.BindingIndex(destinations))
+    records.write(text, binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations))
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(
@@ -550,7 +550,7 @@ def test_the_bindings_attached_with_a_key(
     unreadable = sync.create_attached_binding(_scene(), "shot", name="D")
     with source_access.binding_state(tmp_path) as scene:
         sync.create_file_binding(_scene(), scene.root, name="F")
-    _scene()[records.NAMESPACE][bindings.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
 
@@ -573,17 +573,17 @@ def test_every_bindings_configuration(sync: Synchronization, tmp_path: Path) -> 
     # As config() gives each: the first candidate's, or why it can't be read, checked.
     readable = sync.create_attached_binding(_scene(), "shot", name="A")
     unreadable = sync.create_attached_binding(_scene(), "shot", name="B")
-    _scene()[records.NAMESPACE][bindings.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     found = runtime.configs()
     assert found == {
         readable.binding_id: runtime.config(readable.binding_id),
         unreadable.binding_id: found[unreadable.binding_id],
     }
-    assert isinstance(found[unreadable.binding_id], Refused)
+    assert isinstance(found[unreadable.binding_id], RefusedRecord)
     bpy.data.collections.remove(bpy.data.collections["A"])
     config = runtime.configs()[readable.binding_id]
-    assert isinstance(config, bindings.BindingConfig)
+    assert isinstance(config, binding_records.BindingConfig)
     assert config.destination is None  # the check found the removed destination; the state was rebuilt
 
 
@@ -591,7 +591,7 @@ def test_a_configuration_record_removed_by_hand(sync: Synchronization, tmp_path:
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(sync, tmp_path)
     assert runtime.binding_ids(_scene()) == [handle.binding_id]
-    del _scene()[records.NAMESPACE][bindings.config_key(handle.binding_id)]
+    del _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)]
     assert runtime.binding_ids(_scene()) == []
 
 

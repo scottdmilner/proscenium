@@ -5,7 +5,7 @@ its requested settings and reports the source's state. Its time code is the atte
 setting of the binding. M5 adds evaluation at that time code, planning, application, and
 publication, and the guard against reentrant calls.
 
-A binding's configuration is its records (proscenium.persistence.bindings), held and written through the
+A binding's configuration is its records (proscenium.persistence.binding_records), held and written through the
 bindings' in-memory state (proscenium.runtime); its stages and attachment are runtime state
 in a StageRegistry, made from the configuration on first use. A binding whose configuration can't
 be read keeps everything it has and refuses the operations that need it, reporting why
@@ -33,8 +33,8 @@ from ..core.source_access import (
     StageRegistry,
     dirty_layers,
 )
-from ..persistence.bindings import BindingConfig
-from ..persistence.records import RecordRefused, Refused
+from ..persistence.binding_records import BindingConfig
+from ..persistence.records import RefusedRecord, RefusedRecordError
 from ..runtime import BindingDisabledError
 from ..runtime.copy_detection import CopiedBinding
 
@@ -168,11 +168,11 @@ class Synchronization:
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
     def requested_settings(self, binding_id: str) -> RequestedSettings:
-        """Raises RecordRefused if the binding's configuration can't be read, and BindingDisabledError if it has
+        """Raises RefusedRecordError if the binding's configuration can't be read, and BindingDisabledError if it has
         copies and no canonical candidate."""
         config = self._config(binding_id)
-        if isinstance(config, Refused):
-            raise RecordRefused(config)
+        if isinstance(config, RefusedRecord):
+            raise RefusedRecordError(config)
         if isinstance(config, CopiedBinding):
             raise BindingDisabledError(config)
         return RequestedSettings(config.payload_policy)
@@ -255,7 +255,7 @@ class Synchronization:
     # compares the stages with the bindings when the bindings' state was rebuilt. A new entry point that
     # uses a binding's stages does one or the other, and this comment names it.
 
-    def _config(self, binding_id: str) -> BindingConfig | Refused | CopiedBinding:
+    def _config(self, binding_id: str) -> BindingConfig | RefusedRecord | CopiedBinding:
         """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
         self._prune_if_rebuilt()
         try:
@@ -289,15 +289,15 @@ def _removed_destination(binding_id: str) -> Result:
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.REMOVED_DESTINATION, Severity.ERROR, message),))
 
 
-def _refused(refused: Refused | CopiedBinding) -> Result:
-    if isinstance(refused, Refused):
+def _refused(refused: RefusedRecord | CopiedBinding) -> Result:
+    if isinstance(refused, RefusedRecord):
         return _unsupported(refused)
     named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in refused.candidates)
     message = f"Binding {refused.binding_id} has copies and no canonical candidate ({refused.reason}): {named}"
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(Category.COPIED_BINDING, Severity.ERROR, message),))
 
 
-def _unsupported(refused: Refused) -> Result:
+def _unsupported(refused: RefusedRecord) -> Result:
     diagnostic = Diagnostic(Category.UNSUPPORTED_RECORD, Severity.ERROR, refused.message)
     return Result(ResultState.FATAL_FAILURE, (diagnostic,))
 
