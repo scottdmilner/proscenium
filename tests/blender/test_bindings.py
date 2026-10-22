@@ -93,10 +93,13 @@ def test_the_enums_are_stored_as_their_values(bindings: Bindings, tmp_path: Path
     handle = bindings.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     stored = records.stored(_scene(), binding_records.config_key(handle.binding_id))
     assert isinstance(stored, dict)
-    assert [(stored[f], type(stored[f])) for f in ("source", "payload_policy")] == [("file", str), ("load_none", str)]
+    assert [(stored[f], type(stored[f])) for f in ("source_kind", "payload_policy")] == [
+        ("file", str),
+        ("load_none", str),
+    ]
     config = _config(handle)
-    assert (config.source, config.payload_policy) == (SourceKind.FILE, PayloadPolicy.LOAD_NONE)
-    assert type(config.source) is SourceKind
+    assert (config.source_kind, config.payload_policy) == (SourceKind.FILE, PayloadPolicy.LOAD_NONE)
+    assert type(config.source_kind) is SourceKind
     assert type(config.payload_policy) is PayloadPolicy
 
 
@@ -315,7 +318,7 @@ def test_an_attached_source_is_unavailable_after_reopening(
 # A configuration that can't be read.
 
 
-@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy"])
+@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names"])
 def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tmp_path: Path, name: str) -> None:
     # SCHEMA-03: F-SCHEMA-VERSIONS' binding configurations, as another extension version or damage left them.
     with record_fixtures.schema_versions(tmp_path) as versions:
@@ -425,7 +428,7 @@ def test_attach_never_reaches_a_file_binding(bindings: Bindings, tmp_path: Path)
 def _with_key(stored: object, key: str) -> dict[str, object]:
     """A stored attached-source configuration with this key."""
     assert isinstance(stored, dict)
-    return stored | {"source": "attached", "path": None, "key": key}
+    return stored | {"source_kind": "attached", "path": None, "source_key": key}
 
 
 def test_attach_skips_a_configuration_it_cannot_read(bindings: Bindings, tmp_path: Path) -> None:

@@ -556,7 +556,7 @@ def test_the_bindings_attached_with_a_key(bindings: Bindings, tmp_path: Path, mo
         return current()
 
     monkeypatch.setattr(state, "current_state", counted)
-    assert {(binding_id, config.key) for binding_id, config in runtime.attached_with_key("shot")} == {
+    assert {(binding_id, config.source_key) for binding_id, config in runtime.attached_with_key("shot")} == {
         (a.binding_id, "shot"),
         (b.binding_id, "shot"),
     }

@@ -275,11 +275,11 @@ class Bindings:
         elsewhere, and stages whose resolved file changed open the new one.
         """
         self._prune_if_rebuilt()
-        if config.source is SourceKind.FILE:
+        if config.source_kind is SourceKind.FILE:
             assert config.path is not None
             return self.stages.file(binding_id, bpy.path.abspath(config.path))
-        assert config.key is not None
-        return self.stages.attached(binding_id, config.key)
+        assert config.source_key is not None
+        return self.stages.attached(binding_id, config.source_key)
 
 
 def _unavailable(error: SourceUnavailableError) -> Result:

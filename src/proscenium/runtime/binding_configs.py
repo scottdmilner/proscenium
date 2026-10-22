@@ -78,7 +78,7 @@ def attached_with_key(key: str) -> list[tuple[str, BindingConfig]]:
     return [
         (binding_id, config)
         for binding_id, config in configs().items()
-        if isinstance(config, BindingConfig) and config.source is SourceKind.ATTACHED and config.key == key
+        if isinstance(config, BindingConfig) and config.source_kind is SourceKind.ATTACHED and config.source_key == key
     ]
 
 

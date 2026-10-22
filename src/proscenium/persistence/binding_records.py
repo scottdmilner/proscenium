@@ -41,22 +41,22 @@ INDEX_NAME = ".proscenium"
 class BindingConfig:
     """A binding's configuration: its source, its destination, and its requested settings."""
 
-    source: SourceKind
+    source_kind: SourceKind
     path: str | None  # a file source's root-layer path, as given: a "//" path is relative to the .blend
-    key: str | None  # an attached source's source key
+    source_key: str | None  # an attached source's source key
     root_layer_identifier: str | None  # of the stage last attached; informative only
     destination: bpy.types.Collection | None  # None once the destination is removed
     payload_policy: PayloadPolicy
 
     def __post_init__(self) -> None:
         # A record stores the enums' values as plain strings. One that isn't a member raises ValueError.
-        object.__setattr__(self, "source", SourceKind(self.source))
+        object.__setattr__(self, "source_kind", SourceKind(self.source_kind))
         object.__setattr__(self, "payload_policy", PayloadPolicy(self.payload_policy))
-        if self.source is SourceKind.FILE:
-            if type(self.path) is not str or self.key is not None or self.root_layer_identifier is not None:
+        if self.source_kind is SourceKind.FILE:
+            if type(self.path) is not str or self.source_key is not None or self.root_layer_identifier is not None:
                 raise ValueError("a file source has a path, and no key or root-layer identifier")
         else:
-            if self.path is not None or type(self.key) is not str or not self.key:
+            if self.path is not None or type(self.source_key) is not str or not self.source_key:
                 raise ValueError("an attached source has a key, and no path")
             if not isinstance(self.root_layer_identifier, str | None):
                 raise TypeError("the root-layer identifier is not a string")

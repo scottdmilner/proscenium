@@ -76,9 +76,9 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
     # A valid version 1 file-source configuration whose destination was removed (a cleared pointer).
     binding = {
-        "source": "file",
+        "source_kind": "file",
         "path": "//shot.usda",
-        "key": None,
+        "source_key": None,
         "root_layer_identifier": None,
         "destination": None,
         "payload_policy": "load_all",
@@ -113,10 +113,18 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
             "no-path": {VERSION_KEY: 1, **binding, "path": None},
             "unknown-policy": {VERSION_KEY: 1, **binding, "payload_policy": "load_some"},
+            # Version 1 under the field names it had before source_kind and source_key: never released, so refused.
+            "old-field-names": {
+                VERSION_KEY: 1,
+                **{k: v for k, v in binding.items() if k not in ("source_kind", "source_key")},
+                "source": "file",
+                "key": None,
+            },
         },
         bindings_refused={
             "newer": RefusalReason.NEWER,
             "no-path": RefusalReason.INVALID,
             "unknown-policy": RefusalReason.INVALID,
+            "old-field-names": RefusalReason.INVALID,
         },
     )
