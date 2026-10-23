@@ -15,10 +15,10 @@ import pytest
 from fixtures import copies
 from proscenium import runtime
 from proscenium.api.bindings import (
-    BindingDisabledError,
     BindingHandle,
     Bindings,
     DiagnosticCategory,
+    DisabledBindingError,
     ResultState,
 )
 from proscenium.core.source_access import PayloadPolicy
@@ -103,18 +103,18 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
         assert handle.binding_id not in bindings.stages
-        with pytest.raises(BindingDisabledError):
+        with pytest.raises(DisabledBindingError):
             handle.requested_settings()
         assert handle.live_stage() is None
-        # The runtime's lookups return the report in band, and its writes raise.
+        # The runtime's lookups return DisabledBinding in band, and its writes raise.
         binding_id = handle.binding_id
         lookups = (runtime.config, runtime.binding_scene, runtime.manifest, lambda b: runtime.resource(b, "a"))
-        assert [lookup(binding_id) for lookup in lookups] == [report] * len(lookups)
+        assert [lookup(binding_id) for lookup in lookups] == [runtime.DisabledBinding(report)] * len(lookups)
         for write in (
             lambda: runtime.set_manifest(binding_id, Manifest({})),
             lambda: runtime.set_manifest_entries(binding_id, {}, ["a"]),
         ):
-            with pytest.raises(BindingDisabledError):
+            with pytest.raises(DisabledBindingError):
                 write()
     return reported
 

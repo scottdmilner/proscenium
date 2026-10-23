@@ -22,7 +22,7 @@ from ..persistence import manifests
 from ..persistence.manifests import Manifest
 from ..persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
-from .copy_detection import CopiedBinding
+from .binding_configs import DisabledBinding
 from .state import Candidate, StaleError, Unread
 
 if TYPE_CHECKING:
@@ -75,14 +75,14 @@ class OwnershipIndex:
     shares: dict[int, DestinationClaims]  # by destination session_uid
 
 
-def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | CopiedBinding | None:
+def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | DisabledBinding | None:
     """A binding's manifest, read through its configuration's destination when first asked for.
 
-    RefusedRecord if the configuration or the manifest can't be read; the binding's report if it has no
+    RefusedRecord if the configuration or the manifest can't be read; DisabledBinding if it has no
     canonical candidate; None if the binding has no destination (it was removed) or no manifest yet. Raises
     KeyError if no binding has this identifier.
     """
-    if isinstance(candidate := binding_configs.existing(binding_id), CopiedBinding):
+    if isinstance(candidate := binding_configs.existing(binding_id), DisabledBinding):
         return candidate
     return _checked_manifest(state.current_state(), binding_id, candidate)
 
@@ -91,7 +91,7 @@ def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     """Store a binding's manifest on its destination, replacing only that destination's share of ownership.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
-    binding; BindingDisabledError if it has no canonical candidate; ValueError if it has no destination.
+    binding; DisabledBindingError if it has no canonical candidate; ValueError if it has no destination.
     """
     candidate = binding_configs.writable(binding_id)
     destination = _destination(binding_id, candidate)
@@ -137,10 +137,10 @@ def claims_on(datablock: bpy.types.ID) -> list[Claim]:
     return state.query(lambda s: _checked_claims(s, datablock))
 
 
-def resource(binding_id: BindingId, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
+def resource(binding_id: BindingId, resource_id: str) -> bpy.types.ID | DisabledBinding | None:
     """The datablock of a binding's resource, as its manifest names it.
 
-    The binding's report if it has no canonical candidate; None if the manifest names none, or the binding has no
+    DisabledBinding if the binding has no canonical candidate; None if the manifest names none, or the binding has no
     destination or manifest. Reads only that binding's manifest, not the ownership index.
     """
     return state.query(lambda s: _checked_resource(s, binding_id, resource_id))
@@ -319,7 +319,7 @@ def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
     return claims if isinstance(claims, tuple) else (claims,)
 
 
-def _checked_resource(current: State, binding_id: BindingId, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
+def _checked_resource(current: State, binding_id: BindingId, resource_id: str) -> bpy.types.ID | DisabledBinding | None:
     """Through the manifest of the binding's canonical candidate, checked as every lookup by identity is."""
     if not isinstance(candidate := binding_configs.canonical(current, binding_id), Candidate):
         return candidate

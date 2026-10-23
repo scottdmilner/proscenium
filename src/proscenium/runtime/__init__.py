@@ -6,7 +6,8 @@ identity are proscenium.runtime.binding_configs', and ownership is proscenium.ru
 """
 
 from .binding_configs import (
-    BindingDisabledError,
+    DisabledBinding,
+    DisabledBindingError,
     attached_with_key,
     binding_ids,
     binding_scene,
@@ -29,7 +30,8 @@ from .state import NotRegisteredError, invalidate, rebuild_count, refresh_if_tag
 
 __all__ = [
     "Claim",
-    "BindingDisabledError",
+    "DisabledBindingError",
+    "DisabledBinding",
     "NotRegisteredError",
     "attached_with_key",
     "binding_ids",

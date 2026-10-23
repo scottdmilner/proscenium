@@ -16,7 +16,7 @@ Each kind of call reports a refusal one way:
 
 - An operation (synchronize, set_settings, reload) returns a result whose diagnostic says why.
 - The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
-  BindingDisabledError for a disabled binding.
+  DisabledBindingError for a disabled binding.
 - A call keyed by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
 """
 
@@ -41,8 +41,7 @@ from ..core.source_access import (
 )
 from ..persistence.binding_records import BindingConfig
 from ..persistence.records import RefusedRecord, RefusedRecordError
-from ..runtime import BindingDisabledError
-from ..runtime.copy_detection import CopiedBinding
+from ..runtime import DisabledBinding, DisabledBindingError
 
 if TYPE_CHECKING:
     import os
@@ -50,6 +49,7 @@ if TYPE_CHECKING:
 
     from ..core.binding_ids import BindingId
     from ..core.source_access import AttachedBindingStages, FileBindingStages
+    from ..runtime.copy_detection import CopiedBinding
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
@@ -194,14 +194,14 @@ class Bindings:
     def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
 
-        Raises RefusedRecordError if the binding's configuration can't be read, and BindingDisabledError if it has
+        Raises RefusedRecordError if the binding's configuration can't be read, and DisabledBindingError if it has
         copies and no canonical candidate.
         """
         config = self._config(binding_id)
         if isinstance(config, RefusedRecord):
             raise RefusedRecordError(config)
-        if isinstance(config, CopiedBinding):
-            raise BindingDisabledError(config)
+        if isinstance(config, DisabledBinding):
+            raise DisabledBindingError(config)
         return RequestedSettings(config.payload_policy)
 
     def set_settings(self, binding_id: BindingId, *, payload_policy: PayloadPolicy | None = None) -> Result:
@@ -249,7 +249,7 @@ class Bindings:
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """None before the first synchronization, and for a binding with copies and no canonical candidate."""
-        if isinstance(self._config(binding_id), CopiedBinding):
+        if isinstance(self._config(binding_id), DisabledBinding):
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
@@ -282,8 +282,8 @@ class Bindings:
     # compares the stages with the bindings when the bindings' state was rebuilt. A new entry point that
     # uses a binding's stages does one or the other, and this comment names it.
 
-    def _config(self, binding_id: BindingId) -> BindingConfig | RefusedRecord | CopiedBinding:
-        """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
+    def _config(self, binding_id: BindingId) -> BindingConfig | RefusedRecord | DisabledBinding:
+        """The canonical candidate's configuration, why it can't be read, or DisabledBinding if it has none."""
         self._prune_if_rebuilt()
         config = runtime.config(binding_id)
         if config is None:
@@ -317,11 +317,12 @@ def _removed_destination(binding_id: BindingId) -> Result:
     )
 
 
-def _refused(refused: RefusedRecord | CopiedBinding) -> Result:
+def _refused(refused: RefusedRecord | DisabledBinding) -> Result:
     if isinstance(refused, RefusedRecord):
         return _unsupported(refused)
-    named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in refused.candidates)
-    message = f"Binding {refused.binding_id} has copies and no canonical candidate ({refused.reason}): {named}"
+    report = refused.report
+    named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in report.candidates)
+    message = f"Binding {report.binding_id} has copies and no canonical candidate ({report.reason}): {named}"
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
 
 
