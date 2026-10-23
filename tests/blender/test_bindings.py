@@ -79,7 +79,7 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(bindings: Bi
         handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
     config = _config(handle)
     destination = bpy.data.collections["Shot"]
-    assert config == BindingConfig(SourceKind.FILE, str(scene.root), None, None, destination, PayloadPolicy.LOAD_ALL)
+    assert config == BindingConfig.file(str(scene.root), PayloadPolicy.LOAD_ALL, destination=destination)
     assert destination.name in _scene().collection.children
     assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
@@ -122,8 +122,10 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path) -> 
         identifier = scene.caller.GetRootLayer().identifier
     save_and_reopen(tmp_path / "bindings.blend")
     f, a = bpy.data.collections["F"], bpy.data.collections["A"]
-    assert _config(file_backed) == BindingConfig(SourceKind.FILE, str(root), None, None, f, PayloadPolicy.LOAD_NONE)
-    assert _config(attached) == BindingConfig(SourceKind.ATTACHED, None, "shot", identifier, a, PayloadPolicy.LOAD_ALL)
+    assert _config(file_backed) == BindingConfig.file(str(root), PayloadPolicy.LOAD_NONE, destination=f)
+    assert _config(attached) == BindingConfig.attached(
+        "shot", PayloadPolicy.LOAD_ALL, root_layer_identifier=identifier, destination=a
+    )
     assert bindings.in_scene(_scene()) == [file_backed, attached]
     assert _destination_tag(f) == DestinationTag(file_backed.binding_id, _scene())
     assert _destination_tag(a) == DestinationTag(attached.binding_id, _scene())
@@ -351,16 +353,8 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
         stored = versions.bindings[name]
         binding_id = binding_records.new_identifier()
         _scene()[NAMESPACE] = {binding_records.config_key(binding_id): stored}
-        config = BindingConfig(
-            source_kind=SourceKind.FILE,
-            path="//shot.usda",
-            source_key=None,
-            root_layer_identifier=None,
-            destination=None,
-            payload_policy=PayloadPolicy.LOAD_ALL,
-        )
         with pytest.raises(RefusedRecordError):
-            runtime.set_config(binding_id, config)
+            runtime.set_config(binding_id, BindingConfig.file("//shot.usda", PayloadPolicy.LOAD_ALL))
         assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
 
 

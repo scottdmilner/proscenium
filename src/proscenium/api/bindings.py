@@ -129,7 +129,7 @@ class Bindings:
         """
         if str(root).startswith("//") and not bpy.data.filepath:
             raise ValueError(f"{root} is relative to the .blend, which hasn't been saved")
-        config = BindingConfig(SourceKind.FILE, str(root), None, None, None, payload_policy)
+        config = BindingConfig.file(str(root), payload_policy)
         return self._create(scene, config, name or Path(root).stem)
 
     def create_attached_binding(
@@ -141,7 +141,7 @@ class Bindings:
         name: str | None = None,
     ) -> BindingHandle:
         """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
-        config = BindingConfig(SourceKind.ATTACHED, None, key, None, None, payload_policy)
+        config = BindingConfig.attached(key, payload_policy)
         return self._create(scene, config, name or key)
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
@@ -272,6 +272,7 @@ class Bindings:
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved
         elsewhere, and stages whose resolved file changed open the new one.
         """
+        # BindingConfig checks that a file source has a path and an attached source a key.
         if config.source_kind is SourceKind.FILE:
             assert config.path is not None
             return self.stages.file(binding_id, bpy.path.abspath(config.path))

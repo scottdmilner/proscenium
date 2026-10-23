@@ -49,6 +49,25 @@ class BindingConfig:
     destination: bpy.types.Collection | None  # None once the destination is removed
     payload_policy: PayloadPolicy
 
+    @classmethod
+    def file(
+        cls, path: str, payload_policy: PayloadPolicy, *, destination: bpy.types.Collection | None = None
+    ) -> BindingConfig:
+        """A file source's configuration: its root-layer path, as given."""
+        return cls(SourceKind.FILE, path, None, None, destination, payload_policy)
+
+    @classmethod
+    def attached(
+        cls,
+        key: str,
+        payload_policy: PayloadPolicy,
+        *,
+        root_layer_identifier: str | None = None,
+        destination: bpy.types.Collection | None = None,
+    ) -> BindingConfig:
+        """An attached source's configuration: its source key, and the root-layer identifier last attached."""
+        return cls(SourceKind.ATTACHED, None, key, root_layer_identifier, destination, payload_policy)
+
     def __post_init__(self) -> None:
         # A record stores the enums' values as plain strings. One that isn't a member raises ValueError.
         object.__setattr__(self, "source_kind", SourceKind(self.source_kind))
