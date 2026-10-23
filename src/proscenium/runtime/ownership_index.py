@@ -16,7 +16,7 @@ next replaced, are never found.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ..persistence import manifests
 from ..persistence.manifests import Manifest
@@ -115,27 +115,21 @@ def set_manifest_entries(
     # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
     # them disagreeing, and Manifest.updated tests it once per entry and per use.
     removed = frozenset(removed)
-    candidate, destination, stored = _to_update(binding_id)
     if not changed and not removed:
+        state.query(lambda s: _update_target(s, binding_id, indexed=False))  # raises as any update does
         return
-    # Built first through query(), which rebuilds the state if any destination was removed; then looked up again.
-    state.query(_ownership)
-    candidate, destination, stored = _to_update(binding_id)
-    current = state.current_state()
-    index = current.ownership
-    assert index is not None
-    share = index.shares[destination.session_uid]
-    before = Manifest({}) if stored is None else stored.record
-    after = before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
+    target = state.query(lambda s: _update_target(s, binding_id, indexed=True))
+    index, share, destination = target.current.ownership, target.share, target.destination
+    assert index is not None and share is not None
+    after = target.before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
     manifests.write_entries(destination, after, changed.keys(), removed)
-    current.cache_manifest(destination, Loaded(after, manifests.MANIFEST.version))
-    keys = [*changed, *removed]
-    for resource_id in keys:
+    target.current.cache_manifest(destination, Loaded(after, manifests.MANIFEST.version))
+    for resource_id in [*changed, *removed]:
         _remove_claim(index, share, resource_id)
     for resource_id in changed:
         if (datablock := after.entries[resource_id].datablock) is not None:
             _add_claim(index, share, datablock, Claim(share.claimant, destination, resource_id))
-    binding_configs.restore_entry(binding_id, candidate)
+    binding_configs.restore_entry(binding_id, target.candidate)
 
 
 def claims_on(datablock: bpy.types.ID) -> list[Claim]:
@@ -157,16 +151,32 @@ def unreadable_manifests() -> list[RefusedRecord]:
     return state.query(lambda s: list(_ownership(s).unreadable.values()))
 
 
-def _to_update(binding_id: BindingId) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
-    """The binding, its destination, and its manifest, for set_manifest_entries. Raises as set_manifest_entries does."""
-    candidate = binding_configs.writable(binding_id)
+class _UpdateTarget(NamedTuple):
+    """What set_manifest_entries changes, all from one state."""
+
+    current: State
+    candidate: Candidate  # the binding's canonical record
+    destination: bpy.types.Collection
+    before: Manifest  # its stored manifest, or an empty one if it has none yet
+    share: DestinationClaims | None  # the destination's claims in the ownership index, if indexed
+
+
+def _update_target(current: State, binding_id: BindingId, *, indexed: bool) -> _UpdateTarget:
+    """The binding's record, destination, and manifest, and with indexed its claims; raises as set_manifest does.
+
+    A question for state.query, so all of them come from the same state: building the ownership index can find a
+    removed destination, which rebuilds the state and asks again.
+    """
+    candidate = binding_configs.writable_in(current, binding_id)
     destination = _destination(binding_id, candidate)
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
     # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
     stored = _manifest_of(candidate)
     if isinstance(stored, RefusedRecord):
         raise RefusedRecordError(stored)
-    return candidate, destination, stored
+    share = _ownership(current).shares[destination.session_uid] if indexed else None
+    before = Manifest({}) if stored is None else stored.record
+    return _UpdateTarget(current, candidate, destination, before, share)
 
 
 def _destination(binding_id: BindingId, candidate: Candidate) -> bpy.types.Collection:

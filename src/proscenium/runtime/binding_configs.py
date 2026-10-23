@@ -148,7 +148,14 @@ def writable(binding_id: BindingId) -> Candidate:
 
     Raises KeyError if no binding has this identifier, and BindingDisabledError if it has no canonical candidate.
     """
-    if isinstance(candidate := existing(binding_id), CopiedBinding):
+    return state.query(lambda s: writable_in(s, binding_id))
+
+
+def writable_in(current: State, binding_id: BindingId) -> Candidate:
+    """writable(), as a question for state.query: the binding's canonical candidate in current."""
+    if (candidate := canonical(current, binding_id)) is None:
+        raise KeyError(binding_id)
+    if isinstance(candidate, CopiedBinding):
         raise BindingDisabledError(candidate)
     return candidate
 
