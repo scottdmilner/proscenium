@@ -224,7 +224,7 @@ def test_undoing_a_file_bindings_creation_drops_its_stage(bindings: Bindings, tm
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     undo.push("create")
     undo.undo()
-    assert handle.binding_id not in bindings.stages
+    assert handle.binding_id not in bindings.stages._registry  # noqa: SLF001 - unpruned: the undo handler pruned
     undo.redo()
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     assert handle.live_stage() is not None
@@ -274,7 +274,7 @@ def test_pruning_compares_the_scenes_once(bindings: Bindings, tmp_path: Path, mo
     monkeypatch.setattr(state, "current_state", counted)
     bindings.prune_stages()
     assert len(calls) == 1
-    assert all(handle.binding_id in bindings.stages for handle in handles)
+    assert all(bindings.stages.get(handle.binding_id) is not None for handle in handles)
 
 
 def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
@@ -310,8 +310,8 @@ def test_a_removed_scenes_file_binding_is_pruned(bindings: Bindings, tmp_path: P
         assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     bpy.data.scenes.remove(other)
     assert kept.synchronize(0) == Result(ResultState.SUCCESS)
-    assert removed.binding_id not in bindings.stages
-    assert kept.binding_id in bindings.stages
+    assert removed.binding_id not in bindings.stages._registry  # noqa: SLF001 - unpruned: kept's synchronize pruned
+    assert bindings.stages.get(kept.binding_id) is not None
 
 
 def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(bindings: Bindings, tmp_path: Path) -> None:
@@ -319,8 +319,8 @@ def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(bindings: Bin
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
     runtime.invalidate()  # as a load, undo, or redo that restored this record would
-    assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, and pruned
-    assert handle.binding_id not in bindings.stages
+    assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, without using the stages
+    assert handle.live_stage() is None  # the next use of the stages pruned its file's
 
 
 def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:

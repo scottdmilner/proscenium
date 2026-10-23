@@ -151,7 +151,7 @@ def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConf
     assert result.state is ResultState.FATAL_FAILURE
     assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
-    assert handle.binding_id not in bindings.stages
+    assert bindings.stages.get(handle.binding_id) is None
     assert set(bpy.data.collections.keys()) == collections
 
 

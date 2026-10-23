@@ -4,8 +4,8 @@ A synchronization acquires the binding's evaluation stage under its requested se
 state; nothing is evaluated, planned, applied, or published yet.
 
 A binding's configuration is its records (proscenium.persistence.binding_records), held and written through the
-bindings' in-memory state (proscenium.runtime). Its stages and attachment are runtime state in a StageRegistry,
-made from the configuration on first use.
+bindings' in-memory state (proscenium.runtime). Its stages and attachment are runtime state, never saved, in
+Bindings.stages (proscenium.runtime.CurrentStages), made from the configuration on first use.
 
 A binding refuses the operations that need its configuration when the configuration can't be read
 (lifecycle.md#schema-versions), or when the binding has copies and no canonical candidate, which disables it
@@ -36,12 +36,11 @@ from ..core.source_access import (
     PayloadPolicy,
     SourceKind,
     SourceUnavailableError,
-    StageRegistry,
     dirty_layers,
 )
 from ..persistence.binding_records import BindingConfig
 from ..persistence.records import RefusedRecord, RefusedRecordError
-from ..runtime import DisabledBinding, DisabledBindingError
+from ..runtime import CurrentStages, DisabledBinding, DisabledBindingError
 
 if TYPE_CHECKING:
     import os
@@ -111,12 +110,10 @@ class BindingHandle:
 class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
-    stages: StageRegistry  # runtime: dropped when a file is loaded (proscenium.addon)
-    _pruned_at: int | None  # runtime.rebuild_count() when the stages were last compared with the bindings
+    stages: CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
 
     def __init__(self) -> None:
-        self.stages = StageRegistry()
-        self._pruned_at = None
+        self.stages = CurrentStages()
 
     def create_file_binding(
         self,
@@ -174,7 +171,6 @@ class Bindings:
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)  # before any change, so none is made
 
-        self._prune_if_rebuilt()
         for binding_id, config in matching:
             self.stages.attached(binding_id, key).attach(stage)
             runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
@@ -186,7 +182,6 @@ class Bindings:
         The bindings hold an attached stage, and the layers it composes, until this, another attach,
         or a file load (source-access.md#source-stages). Returns the bindings with the key.
         """
-        self._prune_if_rebuilt()
         # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune_stages()).
         self.stages.release(key)
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
@@ -254,37 +249,18 @@ class Bindings:
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
     def drop_all_stages(self) -> None:
-        """Drop every binding's stages, leaving each binding with no source stage or attachment."""
-        self.stages = StageRegistry()
-        self._pruned_at = None
+        """Drop every binding's stages, leaving each with no source stage or attachment (CurrentStages.clear)."""
+        self.stages.clear()
 
     def prune_stages(self) -> None:
-        """Drop the stages of bindings that no longer exist or can't synchronize, using StageRegistry.prune.
-
-        With no stages, as before a session's first synchronization, it reads no configurations, so calling it
-        (as the undo and redo handler does) never rebuilds the bindings' state.
-        """
-        if self.stages:
-            # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
-            configs = runtime.configs()
-            self.stages.prune({binding_id: isinstance(config, BindingConfig) for binding_id, config in configs.items()})
-        self._pruned_at = runtime.rebuild_count()
-
-    def _prune_if_rebuilt(self) -> None:
-        if self._pruned_at != runtime.rebuild_count():
-            self.prune_stages()
+        """Drop the stages of bindings that no longer exist or can't synchronize (CurrentStages.prune)."""
+        self.stages.prune()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(runtime.create(scene, config, name))
 
-    # Every per-binding call goes through _config, and every use of a binding's stages through _stages,
-    # except attach and release, which reach stages by key and call _prune_if_rebuilt themselves; so each
-    # compares the stages with the bindings when the bindings' state was rebuilt. A new entry point that
-    # uses a binding's stages does one or the other, and this comment names it.
-
     def _config(self, binding_id: BindingId) -> BindingConfig | RefusedRecord | DisabledBinding:
         """The canonical candidate's configuration, why it can't be read, or DisabledBinding if it has none."""
-        self._prune_if_rebuilt()
         config = runtime.config(binding_id)
         if config is None:
             raise BindingNotFoundError(binding_id)
@@ -296,7 +272,6 @@ class Bindings:
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved
         elsewhere, and stages whose resolved file changed open the new one.
         """
-        self._prune_if_rebuilt()
         if config.source_kind is SourceKind.FILE:
             assert config.path is not None
             return self.stages.file(binding_id, bpy.path.abspath(config.path))

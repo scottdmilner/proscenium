@@ -17,6 +17,7 @@ from .binding_configs import (
     create,
     set_config,
 )
+from .current_stages import CurrentStages
 from .ownership_index import (
     Claim,
     claims_on,
@@ -30,6 +31,7 @@ from .state import NotRegisteredError, invalidate, rebuild_count, refresh_if_tag
 
 __all__ = [
     "Claim",
+    "CurrentStages",
     "DisabledBindingError",
     "DisabledBinding",
     "NotRegisteredError",

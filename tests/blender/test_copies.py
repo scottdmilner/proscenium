@@ -102,7 +102,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
-        assert handle.binding_id not in bindings.stages
+        assert bindings.stages.get(handle.binding_id) is None
         with pytest.raises(DisabledBindingError):
             handle.requested_settings()
         assert handle.live_stage() is None
@@ -214,5 +214,5 @@ def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) 
         assert bindings.copied()[0].disabled
         caller = open_fresh(scene.root)
         assert bindings.attach("shot", caller).attached == ()
-        assert handle.binding_id not in bindings.stages
+        assert bindings.stages.get(handle.binding_id) is None
         assert handle.synchronize(0).state is ResultState.FATAL_FAILURE
