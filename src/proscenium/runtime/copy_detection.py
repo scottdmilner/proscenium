@@ -95,8 +95,8 @@ def detect(
     # points back at its scene is its destination, not a copy: the binding is unreadable, not copied.
     named = {
         (binding_id, uid)
-        for binding_id, found in records_by_id.items()
-        for scene, config in found
+        for binding_id, scene_records in records_by_id.items()
+        for scene, config in scene_records
         if (uid := _named(config, binding_id, scene, tags)) is not None
     }
     copies: dict[BindingId, list[bpy.types.Collection]] = {}
@@ -105,10 +105,10 @@ def detect(
             copies.setdefault(tag.record.binding_id, []).append(collection)
     identities = {}
     for binding_id in [*records_by_id, *(b for b in copies if b not in records_by_id)]:
-        found = records_by_id.get(binding_id, ())
+        scene_records = records_by_id.get(binding_id, ())
         candidates = [
             CandidateEvidence(_named(config, binding_id, scene, tags), _refers_back(binding_id, scene, config, tags))
-            for scene, config in found
+            for scene, config in scene_records
         ]
         candidates += [CandidateEvidence(c.session_uid, mutual=False) for c in copies.get(binding_id, ())]
         entries = [
@@ -125,16 +125,16 @@ def detect(
 def report(
     binding_id: BindingId,
     identity: IdentityCandidates,
-    found: Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]],
+    scene_records: Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]],
 ) -> CopiedBinding:
     """The identity's candidates by name, for reporting: names aren't identities, and may change."""
     canonical = identity.decision.canonical
     reports = [
         CandidateReport(scene.name, None if (d := _destination(config)) is None else d.name, i == canonical)
-        for i, (scene, config) in enumerate(found)
+        for i, (scene, config) in enumerate(scene_records)
     ]
     reports += [
-        CandidateReport(None, c.name, len(found) + i == canonical) for i, c in enumerate(identity.tagged_copies)
+        CandidateReport(None, c.name, len(scene_records) + i == canonical) for i, c in enumerate(identity.tagged_copies)
     ]
     return CopiedBinding(binding_id, identity.decision.reason, tuple(reports))
 
@@ -150,8 +150,8 @@ def _refers_back(
     binding_id: BindingId, scene: bpy.types.Scene, config: BindingConfig | RefusedRecord, tags: Tags
 ) -> bool:
     destination = _destination(config)
-    found = None if destination is None else tags.get(destination.session_uid)
-    return found is not None and _points_back(found[1], binding_id, scene)
+    tagged = None if destination is None else tags.get(destination.session_uid)
+    return tagged is not None and _points_back(tagged[1], binding_id, scene)
 
 
 def _points_back(

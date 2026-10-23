@@ -168,8 +168,9 @@ class Bindings:
         """
         identifier = stage.GetRootLayer().identifier
         matching = list(runtime.attached_with_key(key))
-        # find existing bindings with the same key but different layer identifier
-        unconfirmed = tuple(bId for bId, cfg in matching if cfg.root_layer_identifier not in (None, identifier))
+        unconfirmed = tuple(
+            binding_id for binding_id, config in matching if config.root_layer_identifier not in (None, identifier)
+        )
         if unconfirmed and not confirm:
             return AttachResult(attached=(), unconfirmed=unconfirmed)  # before any change, so none is made
 
@@ -177,7 +178,7 @@ class Bindings:
         for binding_id, config in matching:
             self.stages.attached(binding_id, key).attach(stage)
             runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
-        return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
+        return AttachResult(attached=tuple(binding_id for binding_id, _ in matching), unconfirmed=())
 
     def release(self, key: str) -> tuple[BindingId, ...]:
         """Release the stage attached under key from every binding with that key, which leaves them unattached.
@@ -265,7 +266,8 @@ class Bindings:
         """
         if self.stages:
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
-            self.stages.prune({b: isinstance(c, BindingConfig) for b, c in runtime.configs().items()})
+            configs = runtime.configs()
+            self.stages.prune({binding_id: isinstance(config, BindingConfig) for binding_id, config in configs.items()})
         self._pruned_at = runtime.rebuild_count()
 
     def _prune_if_rebuilt(self) -> None:

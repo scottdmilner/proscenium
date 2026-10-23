@@ -82,9 +82,9 @@ def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | Copied
     canonical candidate; None if the binding has no destination (it was removed) or no manifest yet. Raises
     KeyError if no binding has this identifier.
     """
-    if isinstance(found := binding_configs.existing(binding_id), CopiedBinding):
-        return found
-    return _checked_manifest(state.current_state(), binding_id, found)
+    if isinstance(candidate := binding_configs.existing(binding_id), CopiedBinding):
+        return candidate
+    return _checked_manifest(state.current_state(), binding_id, candidate)
 
 
 def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
@@ -93,11 +93,11 @@ def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
     binding; BindingDisabledError if it has no canonical candidate; ValueError if it has no destination.
     """
-    found = binding_configs.writable(binding_id)
-    destination = _destination(binding_id, found)
+    candidate = binding_configs.writable(binding_id)
+    destination = _destination(binding_id, candidate)
     manifests.write_manifest(destination, manifest)
     _replace_manifest(state.current_state(), binding_id, destination, Loaded(manifest, manifests.MANIFEST.version))
-    binding_configs.restore_entry(binding_id, found)
+    binding_configs.restore_entry(binding_id, candidate)
 
 
 def set_manifest_entries(
@@ -115,27 +115,27 @@ def set_manifest_entries(
     # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
     # them disagreeing, and Manifest.updated tests it once per entry and per use.
     removed = frozenset(removed)
-    found, destination, current = _to_update(binding_id)
+    candidate, destination, stored = _to_update(binding_id)
     if not changed and not removed:
         return
     # Built first through query(), which rebuilds the state if any destination was removed; then looked up again.
     state.query(_ownership)
-    found, destination, current = _to_update(binding_id)
-    now = state.current_state()
-    index = now.ownership
+    candidate, destination, stored = _to_update(binding_id)
+    current = state.current_state()
+    index = current.ownership
     assert index is not None
     share = index.shares[destination.session_uid]
-    before = Manifest({}) if current is None else current.record
+    before = Manifest({}) if stored is None else stored.record
     after = before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
     manifests.write_entries(destination, after, changed.keys(), removed)
-    _cache_manifest(now, destination, Loaded(after, manifests.MANIFEST.version))
+    _cache_manifest(current, destination, Loaded(after, manifests.MANIFEST.version))
     keys = [*changed, *removed]
     for resource_id in keys:
         _remove_claim(index, share, resource_id)
     for resource_id in changed:
         if (datablock := after.entries[resource_id].datablock) is not None:
             _add_claim(index, share, datablock, Claim(share.claimant, destination, resource_id))
-    binding_configs.restore_entry(binding_id, found)
+    binding_configs.restore_entry(binding_id, candidate)
 
 
 def claims_on(datablock: bpy.types.ID) -> list[Claim]:
@@ -159,52 +159,52 @@ def unreadable_manifests() -> list[RefusedRecord]:
 
 def _to_update(binding_id: BindingId) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
     """The binding, its destination, and its manifest, for set_manifest_entries. Raises as set_manifest_entries does."""
-    found = binding_configs.writable(binding_id)
-    destination = _destination(binding_id, found)
+    candidate = binding_configs.writable(binding_id)
+    destination = _destination(binding_id, candidate)
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
     # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
-    current = _manifest_of(found)
-    if isinstance(current, RefusedRecord):
-        raise RefusedRecordError(current)
-    return found, destination, current
+    stored = _manifest_of(candidate)
+    if isinstance(stored, RefusedRecord):
+        raise RefusedRecordError(stored)
+    return candidate, destination, stored
 
 
-def _destination(binding_id: BindingId, binding: Candidate) -> bpy.types.Collection:
-    if isinstance(binding.config, RefusedRecord) or binding.config.destination is None:
+def _destination(binding_id: BindingId, candidate: Candidate) -> bpy.types.Collection:
+    if isinstance(candidate.config, RefusedRecord) or candidate.config.destination is None:
         raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
-    return binding.config.destination
+    return candidate.config.destination
 
 
-def _manifest_of(binding: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
-    """The binding's manifest, read through its destination the first time."""
-    if isinstance(binding.config, RefusedRecord):
-        return binding.config
-    if isinstance(binding.manifest, Unread):
-        destination = binding.config.destination
-        binding.manifest = None if destination is None else manifests.read_manifest(destination)
-    return binding.manifest
+def _manifest_of(candidate: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
+    """The candidate's manifest, read through its destination the first time."""
+    if isinstance(candidate.config, RefusedRecord):
+        return candidate.config
+    if isinstance(candidate.manifest, Unread):
+        destination = candidate.config.destination
+        candidate.manifest = None if destination is None else manifests.read_manifest(destination)
+    return candidate.manifest
 
 
 def _checked_manifest(
-    current: State, binding_id: BindingId, binding: Candidate
+    current: State, binding_id: BindingId, candidate: Candidate
 ) -> Loaded[Manifest] | RefusedRecord | None:
-    """The binding's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
-    found = _manifest_of(binding)
-    if isinstance(found, Loaded) and not all(
-        e.datablock is None or state.alive(e.datablock) for e in found.record.entries.values()
+    """The candidate's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
+    manifest = _manifest_of(candidate)
+    if isinstance(manifest, Loaded) and not all(
+        e.datablock is None or state.alive(e.datablock) for e in manifest.record.entries.values()
     ):
-        assert not isinstance(binding.config, RefusedRecord) and binding.config.destination is not None
-        found = _reread(current, binding_id, binding.config.destination)
-    return found
+        assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
+        manifest = _reread(current, binding_id, candidate.config.destination)
+    return manifest
 
 
 def _reread(
     current: State, binding_id: BindingId, destination: bpy.types.Collection
 ) -> Loaded[Manifest] | RefusedRecord | None:
     """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
-    found = manifests.read_manifest(destination)
-    _replace_manifest(current, binding_id, destination, found)
-    return found
+    manifest = manifests.read_manifest(destination)
+    _replace_manifest(current, binding_id, destination, manifest)
+    return manifest
 
 
 def _replace_manifest(
@@ -229,8 +229,8 @@ def _cache_manifest(
     current: State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | RefusedRecord | None
 ) -> None:
     """Give the manifest to every configuration naming the destination, as a linked copy's does."""
-    for _, b in current.by_destination.get(destination.session_uid, ()):
-        b.manifest = manifest
+    for _, candidate in current.by_destination.get(destination.session_uid, ()):
+        candidate.manifest = manifest
 
 
 def _ownership(current: State) -> OwnershipIndex:
@@ -242,12 +242,13 @@ def _ownership(current: State) -> OwnershipIndex:
     """
     if current.ownership is None:
         index = OwnershipIndex({}, {}, {})
-        for named in current.by_destination.values():
-            binding_id, b = named[0]
-            assert not isinstance(b.config, RefusedRecord) and b.config.destination is not None
-            if not state.alive(b.config.destination):
+        for naming in current.by_destination.values():
+            binding_id, candidate = naming[0]
+            assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
+            if not state.alive(candidate.config.destination):
                 raise StaleError  # removed since the state was built: Blender cleared the configurations' pointers
-            _add_share(index, binding_id, b.config.destination, _checked_manifest(current, binding_id, b))
+            destination = candidate.config.destination
+            _add_share(index, binding_id, destination, _checked_manifest(current, binding_id, candidate))
         for binding_id, identity in current.identities.items():  # tagged collections no record names
             for copy in identity.tagged_copies:
                 if not state.alive(copy):
@@ -284,10 +285,10 @@ def _remove_share(index: OwnershipIndex, uid: int) -> None:
 
 def _add_claim(index: OwnershipIndex, share: DestinationClaims, datablock: bpy.types.ID, claim: Claim) -> None:
     datablock_uid = datablock.session_uid
-    if (found := index.claims.get(datablock_uid)) is None:
+    if (existing := index.claims.get(datablock_uid)) is None:
         index.claims[datablock_uid] = claim
     else:
-        index.claims[datablock_uid] = (*_as_tuple(found), claim)
+        index.claims[datablock_uid] = (*_as_tuple(existing), claim)
     share.claims[datablock_uid] = claim
     share.entries[claim.resource_id] = datablock_uid
 
@@ -305,8 +306,8 @@ def _remove_claim(index: OwnershipIndex, share: DestinationClaims, resource_id: 
 
 
 def _checked_claims(current: State, datablock: bpy.types.ID) -> list[Claim]:
-    found = _ownership(current).claims.get(datablock.session_uid)
-    claims = [] if found is None else list(_as_tuple(found))
+    indexed = _ownership(current).claims.get(datablock.session_uid)
+    claims = [] if indexed is None else list(_as_tuple(indexed))
     if not all(state.alive(claim.destination) for claim in claims):
         raise StaleError
     return claims
@@ -318,13 +319,13 @@ def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
 
 def _checked_resource(current: State, binding_id: BindingId, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
     """Through the manifest of the binding's canonical candidate, checked as every lookup by identity is."""
-    if not isinstance(first := binding_configs.canonical(current, binding_id), Candidate):
-        return first
-    datablock = _datablock_of(_manifest_of(first), resource_id)
+    if not isinstance(candidate := binding_configs.canonical(current, binding_id), Candidate):
+        return candidate
+    datablock = _datablock_of(_manifest_of(candidate), resource_id)
     if datablock is not None and not state.alive(datablock):
         # Removed: its manifest is reread, where Blender has cleared the entry, and its share replaced.
-        assert not isinstance(first.config, RefusedRecord) and first.config.destination is not None
-        datablock = _datablock_of(_reread(current, binding_id, first.config.destination), resource_id)
+        assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
+        datablock = _datablock_of(_reread(current, binding_id, candidate.config.destination), resource_id)
         if datablock is not None and not state.alive(datablock):
             raise StaleError
     return datablock

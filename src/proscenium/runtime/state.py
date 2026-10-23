@@ -87,7 +87,7 @@ class State:
     """The bindings' state, built from the records (the module docstring says how it's kept)."""
 
     scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
-    bindings: dict[BindingId, list[Candidate]]  # its candidates, in the order found
+    candidates: dict[BindingId, list[Candidate]]  # each identity's records, in the order found
     # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
     # order found, so a write reaches them without going through every binding (_by_destination).
     by_destination: dict[int, list[tuple[BindingId, Candidate]]]
@@ -158,22 +158,22 @@ def current_state() -> State:
         raise NotRegisteredError("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
-        found = _read_bindings()
-        detected = copy_detection.detect({b: [(c.scene, c.config) for c in cs] for b, cs in found.items()})
-        _state = State(scenes, found, _by_destination(found), detected.identities, detected.tagged)
+        candidates = _read_candidates()
+        detected = copy_detection.detect({b: [(c.scene, c.config) for c in cs] for b, cs in candidates.items()})
+        _state = State(scenes, candidates, _by_destination(candidates), detected.identities, detected.tagged)
         _rebuilds += 1
     return _state
 
 
-def valid(binding_id: BindingId, binding: Candidate) -> bool:
+def valid(binding_id: BindingId, candidate: Candidate) -> bool:
     """Whether the candidate's scene still exists and holds its configuration, and its destination still exists.
 
     Removing a destination clears the configuration's pointer to it.
     """
-    destination = None if isinstance(binding.config, RefusedRecord) else binding.config.destination
+    destination = None if isinstance(candidate.config, RefusedRecord) else candidate.config.destination
     return (
-        alive(binding.scene)
-        and records.has(binding.scene, binding_records.config_key(binding_id))
+        alive(candidate.scene)
+        and records.has(candidate.scene, binding_records.config_key(binding_id))
         and (destination is None or alive(destination))
     )
 
@@ -191,12 +191,12 @@ def _scene_uids() -> tuple[int, ...]:
     return tuple(scene.session_uid for scene in bpy.data.scenes)
 
 
-def _read_bindings() -> dict[BindingId, list[Candidate]]:
-    found: dict[BindingId, list[Candidate]] = {}
+def _read_candidates() -> dict[BindingId, list[Candidate]]:
+    candidates: dict[BindingId, list[Candidate]] = {}
     for scene, binding_id, result in binding_records.read_configs():
         config = result if isinstance(result, RefusedRecord) else result.record
-        found.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
-    return found
+        candidates.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
+    return candidates
 
 
 def _by_destination(candidates_by_id: dict[BindingId, list[Candidate]]) -> dict[int, list[tuple[BindingId, Candidate]]]:
@@ -204,13 +204,10 @@ def _by_destination(candidates_by_id: dict[BindingId, list[Candidate]]) -> dict[
 
     A removed destination's candidates are left out, and checking them rebuilds the state.
     """
-    found: dict[int, list[tuple[BindingId, Candidate]]] = {}
-    for binding_id, found_for_id in candidates_by_id.items():
-        for b in found_for_id:
-            if (
-                not isinstance(b.config, RefusedRecord)
-                and b.config.destination is not None
-                and alive(b.config.destination)
-            ):
-                found.setdefault(b.config.destination.session_uid, []).append((binding_id, b))
-    return found
+    by_uid: dict[int, list[tuple[BindingId, Candidate]]] = {}
+    for binding_id, candidates in candidates_by_id.items():
+        for candidate in candidates:
+            config = candidate.config
+            if not isinstance(config, RefusedRecord) and config.destination is not None and alive(config.destination):
+                by_uid.setdefault(config.destination.session_uid, []).append((binding_id, candidate))
+    return by_uid
