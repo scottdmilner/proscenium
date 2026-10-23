@@ -48,7 +48,7 @@ src = ["src", "tools", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true
-select = ["E", "W", "F", "I", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415"]
+select = ["E", "W", "F", "I", "A", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415"]
 ignore = [
     "ANN401", # Any is the honest type for untyped pxr/bpy objects
     "D105", "D107", # a magic method or __init__ is described by its class

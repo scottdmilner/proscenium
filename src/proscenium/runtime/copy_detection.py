@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     import bpy
 
+    from ..core.binding_ids import BindingId
     from ..core.canonical_candidate import CanonicalDecision
     from ..persistence.binding_records import BindingConfig, DestinationTag
 
@@ -48,7 +49,7 @@ class CandidateReport:
 class CopiedBinding:
     """A binding identity that isn't unique: its candidates, and why the rule chose its canonical one, or none."""
 
-    binding_id: str
+    binding_id: BindingId
     reason: DecisionReason
     candidates: tuple[CandidateReport, ...]
 
@@ -77,18 +78,16 @@ class IdentityCandidates:
 class CopyDetection:
     """What detection found: every identity's candidates, and the tagged collections."""
 
-    identities: dict[
-        str, IdentityCandidates
-    ]  # by binding identifier, every identity with a record or a tagged collection
+    identities: dict[BindingId, IdentityCandidates]  # every identity with a record or a tagged collection
     tagged: frozenset[int]  # the session_uids of the local tagged collections (binding_records.tagged_uids)
 
 
 def detect(
-    records_by_id: Mapping[str, Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]]],
+    records_by_id: Mapping[BindingId, Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]]],
 ) -> CopyDetection:
     """Every identity's candidates and decision, given each identity's binding records in the order found."""
     tags: Tags = {collection.session_uid: (collection, tag) for collection, tag in binding_records.read_tags()}
-    indexes: list[Mapping[str, bpy.types.Collection | None] | UnreadableIndexEntry] = []
+    indexes: list[Mapping[BindingId, bpy.types.Collection | None] | UnreadableIndexEntry] = []
     for text in binding_records.index_texts():
         index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
         indexes.append(index.record.destinations if isinstance(index, Loaded) else UNREADABLE_INDEX_ENTRY)
@@ -100,7 +99,7 @@ def detect(
         for scene, config in found
         if (uid := _named(config, binding_id, scene, tags)) is not None
     }
-    copies: dict[str, list[bpy.types.Collection]] = {}
+    copies: dict[BindingId, list[bpy.types.Collection]] = {}
     for uid, (collection, tag) in tags.items():
         if isinstance(tag, Loaded) and (tag.record.binding_id, uid) not in named:
             copies.setdefault(tag.record.binding_id, []).append(collection)
@@ -124,7 +123,7 @@ def detect(
 
 
 def report(
-    binding_id: str,
+    binding_id: BindingId,
     identity: IdentityCandidates,
     found: Sequence[tuple[bpy.types.Scene, BindingConfig | RefusedRecord]],
 ) -> CopiedBinding:
@@ -140,20 +139,24 @@ def report(
     return CopiedBinding(binding_id, identity.decision.reason, tuple(reports))
 
 
-def refers_back(binding_id: str, scene: bpy.types.Scene, config: BindingConfig) -> bool:
+def refers_back(binding_id: BindingId, scene: bpy.types.Scene, config: BindingConfig) -> bool:
     """Whether config's destination is tagged with binding_id and points back at scene."""
     destination = config.destination
     tag = None if destination is None else records.read(destination, binding_records.TAG_KEY, binding_records.TAG)
     return _points_back(tag, binding_id, scene)
 
 
-def _refers_back(binding_id: str, scene: bpy.types.Scene, config: BindingConfig | RefusedRecord, tags: Tags) -> bool:
+def _refers_back(
+    binding_id: BindingId, scene: bpy.types.Scene, config: BindingConfig | RefusedRecord, tags: Tags
+) -> bool:
     destination = _destination(config)
     found = None if destination is None else tags.get(destination.session_uid)
     return found is not None and _points_back(found[1], binding_id, scene)
 
 
-def _points_back(tag: Loaded[DestinationTag] | RefusedRecord | None, binding_id: str, scene: bpy.types.Scene) -> bool:
+def _points_back(
+    tag: Loaded[DestinationTag] | RefusedRecord | None, binding_id: BindingId, scene: bpy.types.Scene
+) -> bool:
     return isinstance(tag, Loaded) and tag.record.binding_id == binding_id and tag.record.scene == scene
 
 
@@ -161,7 +164,9 @@ def _destination(config: BindingConfig | RefusedRecord) -> bpy.types.Collection 
     return None if isinstance(config, RefusedRecord) else config.destination
 
 
-def _named(config: BindingConfig | RefusedRecord, binding_id: str, scene: bpy.types.Scene, tags: Tags) -> int | None:
+def _named(
+    config: BindingConfig | RefusedRecord, binding_id: BindingId, scene: bpy.types.Scene, tags: Tags
+) -> int | None:
     """The session_uid of the destination a record names.
 
     For one that can't be read, the collection whose tag points back at its scene.
@@ -171,7 +176,9 @@ def _named(config: BindingConfig | RefusedRecord, binding_id: str, scene: bpy.ty
     return None if config.destination is None else config.destination.session_uid
 
 
-def _entry(index: Mapping[str, bpy.types.Collection | None] | UnreadableIndexEntry, binding_id: str) -> Entry:
+def _entry(
+    index: Mapping[BindingId, bpy.types.Collection | None] | UnreadableIndexEntry, binding_id: BindingId
+) -> Entry:
     if isinstance(index, UnreadableIndexEntry):
         return index
     return None if (destination := index[binding_id]) is None else destination.session_uid

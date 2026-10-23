@@ -19,6 +19,8 @@ from proscenium.runtime import Claim
 if TYPE_CHECKING:
     import bpy
 
+    from proscenium.core.binding_ids import BindingId
+
 
 def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
     """Every datablock a manifest names, with its claims in the order found, and the manifests that can't be read."""
@@ -26,7 +28,7 @@ def claims() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
     unreadable: list[RefusedRecord] = []
     seen: set[bpy.types.Collection] = set()
 
-    def claim(binding_id: str, destination: bpy.types.Collection) -> None:
+    def claim(binding_id: BindingId, destination: bpy.types.Collection) -> None:
         seen.add(destination)
         manifest = manifests.read_manifest(destination)
         if isinstance(manifest, RefusedRecord):

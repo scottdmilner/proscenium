@@ -25,6 +25,7 @@ from proscenium.api.bindings import (
     ResultState,
     Severity,
 )
+from proscenium.core.binding_ids import BindingId
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, records
 from proscenium.runtime import state
@@ -336,7 +337,7 @@ def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> No
 
 
 def test_a_handle_to_no_binding_raises(bindings: Bindings) -> None:
-    handle = BindingHandle("not-a-binding")
+    handle = BindingHandle(BindingId("not-a-binding"))
     calls = [
         lambda: handle.synchronize(0),
         lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),

@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
+    from proscenium.core.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -125,7 +126,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
 # A removed destination.
 
 
-def _index_entry(binding_id: str) -> tuple[bool, bpy.types.Collection | None]:
+def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
     [text] = binding_records.index_texts()
     index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)

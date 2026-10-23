@@ -11,23 +11,26 @@ import shutil
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
+from proscenium.core.binding_ids import BindingId
 from proscenium.core.source_access import AttachedSource, FileSource, PayloadPolicy, StageRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+F, M = BindingId("f"), BindingId("m")  # a file binding and an attached one
+
 
 def test_a_bindings_stages_are_made_once_and_reused(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        assert registry.get("f") is None
-        file_backed, attached = registry.file("f", scene.root), registry.attached("m", "shot")
+        assert registry.get(F) is None
+        file_backed, attached = registry.file(F, scene.root), registry.attached(M, "shot")
         assert isinstance(file_backed.source, FileSource)
         assert isinstance(attached.source, AttachedSource)
-        assert (registry.file("f", scene.root), registry.attached("m", "shot")) == (file_backed, attached)
-        assert (registry.get("f"), registry.get("m")) == (file_backed, attached)
-        assert "f" in registry
-        assert "other" not in registry
+        assert (registry.file(F, scene.root), registry.attached(M, "shot")) == (file_backed, attached)
+        assert (registry.get(F), registry.get(M)) == (file_backed, attached)
+        assert F in registry
+        assert BindingId("other") not in registry
 
 
 def test_stages_on_another_root_are_replaced(tmp_path: Path) -> None:
@@ -36,36 +39,36 @@ def test_stages_on_another_root_are_replaced(tmp_path: Path) -> None:
         moved = tmp_path / "moved"
         shutil.copytree(scene.root.parent, moved)
         registry = StageRegistry()
-        first = registry.file("f", scene.root)
+        first = registry.file(F, scene.root)
         first.acquire(PayloadPolicy.LOAD_ALL)
-        second = registry.file("f", moved / scene.root.name)
+        second = registry.file(F, moved / scene.root.name)
         assert second is not first
         assert second.evaluation_stage is None  # the new file opens at its first acquisition
-        assert registry.get("f") is second
+        assert registry.get(F) is second
 
 
 def test_an_attached_source_keeps_its_attachment(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        stages = registry.attached("m", "shot")
+        stages = registry.attached(M, "shot")
         stages.attach(scene.caller)
-        assert registry.attached("m", "shot").live_stage == scene.caller
+        assert registry.attached(M, "shot").live_stage == scene.caller
 
 
-def _pruned(tmp_path: Path, existing: set[str], unreadable: set[str]) -> dict[str, tuple[bool, bool, bool]]:
-    """For a file source "f" and an attached source "m", both acquired: their state after prune.
+def _pruned(tmp_path: Path, synchronizable: dict[BindingId, bool]) -> dict[BindingId, tuple[bool, bool, bool]]:
+    """For a file source F and an attached source M, both acquired: their state after prune.
 
-    Whether each is still registered, still has its evaluation stage, and, for "m", is still attached.
+    Whether each is still registered, still has its evaluation stage, and, for M, is still attached.
     """
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        registry.file("f", scene.root).acquire(PayloadPolicy.LOAD_ALL)
-        attached = registry.attached("m", "shot")
+        registry.file(F, scene.root).acquire(PayloadPolicy.LOAD_ALL)
+        attached = registry.attached(M, "shot")
         attached.attach(scene.caller)
         attached.acquire(PayloadPolicy.LOAD_ALL)
-        registry.prune(existing, unreadable)
+        registry.prune(synchronizable)
         found = {}
-        for binding_id in ("f", "m"):
+        for binding_id in (F, M):
             stages = registry.get(binding_id)
             found[binding_id] = (
                 stages is not None,
@@ -76,31 +79,31 @@ def _pruned(tmp_path: Path, existing: set[str], unreadable: set[str]) -> dict[st
 
 
 def test_prune_keeps_the_stages_of_existing_bindings(tmp_path: Path) -> None:
-    assert _pruned(tmp_path, {"f", "m"}, set()) == {"f": (True, True, True), "m": (True, True, True)}
+    assert _pruned(tmp_path, {F: True, M: True}) == {F: (True, True, True), M: (True, True, True)}
 
 
 def test_prune_drops_a_file_source_whose_binding_is_gone_or_unreadable(tmp_path: Path) -> None:
-    assert _pruned(tmp_path, {"m"}, set())["f"] == (False, False, False)
-    assert _pruned(tmp_path, {"f", "m"}, {"f"})["f"] == (False, False, False)
+    assert _pruned(tmp_path, {M: True})[F] == (False, False, False)
+    assert _pruned(tmp_path, {F: False, M: True})[F] == (False, False, False)
 
 
 def test_prune_keeps_a_gone_attached_bindings_attachment(tmp_path: Path) -> None:
     # UNDO-06: undo removes no attachment, so redo finds the binding attached; its evaluation stage goes.
-    assert _pruned(tmp_path, {"f"}, set())["m"] == (True, False, True)
+    assert _pruned(tmp_path, {F: True})[M] == (True, False, True)
     # One whose configuration can't be read keeps everything, as an existing binding does.
-    assert _pruned(tmp_path, {"f", "m"}, {"m"})["m"] == (True, True, True)
+    assert _pruned(tmp_path, {F: True, M: False})[M] == (True, True, True)
 
 
 def test_release_reaches_every_binding_with_the_key(tmp_path: Path) -> None:
     # SRC-02: stages whose binding is gone included, since they keep their attachment.
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        with_key = [registry.attached(binding_id, "shot") for binding_id in ("a", "b")]
-        other = registry.attached("c", "other")
+        with_key = [registry.attached(binding_id, "shot") for binding_id in (BindingId("a"), BindingId("b"))]
+        other = registry.attached(BindingId("c"), "other")
         for stages in (*with_key, other):
             stages.attach(scene.caller)
             stages.acquire(PayloadPolicy.LOAD_ALL)
-        registry.prune({"b", "c"}, set())  # "a" is gone
+        registry.prune({BindingId("b"): True, BindingId("c"): True})  # "a" is gone
         registry.release("shot")
         assert [(s.live_stage, s.evaluation_stage) for s in with_key] == [(None, None), (None, None)]
         assert other.live_stage == scene.caller

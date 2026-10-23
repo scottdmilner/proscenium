@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from proscenium.core.binding_ids import BindingId
+
 
 def run(route: str, tmp_path: Path) -> None:
     ROUTES[route](tmp_path)
@@ -63,7 +65,7 @@ def _index_text() -> bpy.types.Text:
     return text
 
 
-def _write_entries(change: Callable[[dict[str, bpy.types.Collection | None]], None]) -> None:
+def _write_entries(change: Callable[[dict[BindingId, bpy.types.Collection | None]], None]) -> None:
     index = records.read(_index_text(), binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     destinations = dict(index.record.destinations)

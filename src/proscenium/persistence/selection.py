@@ -18,6 +18,7 @@ from .records import Schema
 if TYPE_CHECKING:
     import bpy
 
+    from ..core.binding_ids import BindingId
     from .records import Loaded, RefusedRecord
 
 SELECTION_KEY = "selection"
@@ -26,7 +27,7 @@ SELECTION_KEY = "selection"
 class SelectionEntry(NamedTuple):
     """One selected source entity: its binding, and its source-entity identifier."""
 
-    binding_id: str
+    binding_id: BindingId
     path: str  # a source-entity identifier: make it with proscenium.core.source_entities.identifier
 
 

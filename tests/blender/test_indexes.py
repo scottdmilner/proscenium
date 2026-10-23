@@ -31,6 +31,8 @@ from support.blend import save_and_reopen
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from proscenium.core.binding_ids import BindingId
+
 
 def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
@@ -112,7 +114,7 @@ def test_a_removed_datablock_leaves_the_cached_manifest(bindings: Bindings, tmp_
     assert found == manifests.read_manifest(bpy.data.collections["Shot"])
 
 
-def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[str], list[str]]:
+def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], list[str]]:
     """_managed's binding, and Other managing two objects, A and B, with the index built.
 
     Returns their identifiers, and the resource identities to look up.
@@ -144,7 +146,7 @@ def _counted_shares(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     shares: list[str] = []
     add_share = ownership_index._add_share  # noqa: SLF001 - the cost under test is how many shares are built
 
-    def counted(index: object, claimant: str, destination: bpy.types.Collection, manifest: object) -> None:
+    def counted(index: object, claimant: BindingId, destination: bpy.types.Collection, manifest: object) -> None:
         shares.append(destination.name)
         add_share(index, claimant, destination, manifest)  # ty: ignore[invalid-argument-type]
 
@@ -382,7 +384,7 @@ def test_a_destination_change_after_another_bindings_destination_was_removed(
     assert _config(BindingHandle(ids[1])).destination is None
 
 
-def _move_destination(binding_id: str, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
+def _move_destination(binding_id: BindingId, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
     """What a repair moves with a binding's destination, so the old one isn't left as a copy.
 
     Its tag and the index entry; the configuration is the caller's.
@@ -445,7 +447,7 @@ def test_a_scene_copy_made_after_the_state_was_built(bindings: Bindings, tmp_pat
         assert len(runtime.claims_on(bpy.data.objects["Managed"])) == 1
 
 
-def _ownership_view(binding_ids: list[str], resource_ids: list[str]) -> object:
+def _ownership_view(binding_ids: list[BindingId], resource_ids: list[str]) -> object:
     """What the ownership index answers, by name: every object's claims, the resources, the unreadable manifests."""
     claims = {
         obj.name: {(c.binding_id, c.destination.name, c.resource_id) for c in runtime.claims_on(obj)}
@@ -604,7 +606,7 @@ def test_a_handler_ahead_of_the_extensions(bindings: Bindings, tmp_path: Path) -
     undo.push("create")
     undo.undo()
     assert runtime.binding_ids() == []
-    seen: list[list[str]] = []
+    seen: list[list[BindingId]] = []
 
     def ahead(*_args: object) -> None:
         seen.append(runtime.binding_ids())

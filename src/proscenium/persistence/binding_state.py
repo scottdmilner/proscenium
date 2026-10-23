@@ -29,6 +29,7 @@ from .records import Schema
 if TYPE_CHECKING:
     import bpy
 
+    from ..core.binding_ids import BindingId
     from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"
@@ -58,7 +59,7 @@ def _settle(record: Any) -> None:
 class Generation:
     """What a binding's published display was produced with."""
 
-    binding_id: str
+    binding_id: BindingId
     payload_policy: PayloadPolicy
     time_code: float | None  # see stored_time
     diagnostics: tuple[Diagnostic, ...]  # its source/display diagnostics
@@ -100,12 +101,12 @@ def write_generation(destination: bpy.types.Collection, generation: Generation) 
     records.write(destination, GENERATION_KEY, GENERATION, generation)
 
 
-def read_last_attempt(scene: bpy.types.Scene, binding_id: str) -> Loaded[LastAttempt] | RefusedRecord | None:
+def read_last_attempt(scene: bpy.types.Scene, binding_id: BindingId) -> Loaded[LastAttempt] | RefusedRecord | None:
     """The binding's last attempt on scene, why it can't be read, or None if it has none."""
     return records.read(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT)
 
 
-def write_last_attempt(scene: bpy.types.Scene, binding_id: str, attempt: LastAttempt) -> None:
+def write_last_attempt(scene: bpy.types.Scene, binding_id: BindingId, attempt: LastAttempt) -> None:
     """Store the binding's last attempt on scene.
 
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.

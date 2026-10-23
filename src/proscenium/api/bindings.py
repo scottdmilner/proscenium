@@ -1,22 +1,23 @@
 """The process's bindings, and the handle callers reach one through (source-access.md#synchronization-api).
 
-M3 implements source acquisition: a synchronization acquires the binding's evaluation stage under
-its requested settings and reports the source's state. Its time code is the attempt's, not a
-setting of the binding. M5 adds evaluation at that time code, planning, application, and
-publication, and the guard against reentrant calls.
+A synchronization acquires the binding's evaluation stage under its requested settings and reports the source's
+state; nothing is evaluated, planned, applied, or published yet.
 
 A binding's configuration is its records (proscenium.persistence.binding_records), held and written through the
-bindings' in-memory state (proscenium.runtime); its stages and attachment are runtime state
-in a StageRegistry, made from the configuration on first use. A binding whose configuration can't
-be read keeps everything it has and refuses the operations that need it, reporting why
-(lifecycle.md#schema-versions). So does a binding with copies and no canonical candidate, which is
-disabled pending repair; a handle reaches a binding's canonical candidate, and copied() reports the
-others (source-access.md#copied-bindings).
+bindings' in-memory state (proscenium.runtime). Its stages and attachment are runtime state in a StageRegistry,
+made from the configuration on first use.
 
-A refusal is reported one way for each kind of call. An operation (synchronize, set_settings, reload)
-returns a result whose diagnostic says why. The query requested_settings raises: RefusedRecordError
-for a configuration that can't be read, and BindingDisabledError for a disabled binding. Every call keyed
-by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
+A binding refuses the operations that need its configuration when the configuration can't be read
+(lifecycle.md#schema-versions), or when the binding has copies and no canonical candidate, which disables it
+pending repair (source-access.md#copied-bindings). Either way it keeps everything it has. A handle reaches a
+binding's canonical candidate, and copied() reports the others.
+
+Each kind of call reports a refusal one way:
+
+- An operation (synchronize, set_settings, reload) returns a result whose diagnostic says why.
+- The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
+  BindingDisabledError for a disabled binding.
+- A call keyed by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     import os
     from collections.abc import Iterable
 
+    from ..core.binding_ids import BindingId
     from ..core.source_access import AttachedBindingStages, FileBindingStages
 
 
@@ -63,10 +65,16 @@ class RequestedSettings:
 
 @dataclass(frozen=True, slots=True)
 class AttachResult:
-    """What attaching a stage under a source key did."""
+    """What attach(key, stage) did: attached the stage, or refused.
 
-    attached: tuple[str, ...]  # binding identifiers now evaluating the stage; empty if refused or none has the key
-    unconfirmed: tuple[str, ...]  # bindings whose stored root-layer identifier differs; non-empty: nothing attached
+    Refused when a binding with the key stored a different root-layer identifier and confirm wasn't passed:
+    unconfirmed lists those bindings, and attached is empty. Otherwise unconfirmed is empty, and attached lists
+    every binding the stage is now attached to: those with the key whose configuration can be read and isn't
+    disabled, so none if no such binding has the key.
+    """
+
+    attached: tuple[BindingId, ...]  # the bindings the stage is now attached to
+    unconfirmed: tuple[BindingId, ...]  # the bindings whose stored root-layer identifier differs from the stage's
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,7 +85,7 @@ class BindingHandle:
     binding is gone. Two handles are equal when their identifiers are.
     """
 
-    binding_id: str
+    binding_id: BindingId
 
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code (Bindings.synchronize)."""
@@ -160,16 +168,18 @@ class Bindings:
         """
         identifier = stage.GetRootLayer().identifier
         matching = list(runtime.attached_with_key(key))
-        unconfirmed = tuple(b for b, c in matching if c.root_layer_identifier not in (None, identifier))
+        # find existing bindings with the same key but different layer identifier
+        unconfirmed = tuple(bId for bId, cfg in matching if cfg.root_layer_identifier not in (None, identifier))
         if unconfirmed and not confirm:
-            return AttachResult(attached=(), unconfirmed=unconfirmed)
+            return AttachResult(attached=(), unconfirmed=unconfirmed)  # before any change, so none is made
+
         self._prune_if_rebuilt()
         for binding_id, config in matching:
             self.stages.attached(binding_id, key).attach(stage)
             runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         return AttachResult(attached=tuple(b for b, _ in matching), unconfirmed=())
 
-    def release(self, key: str) -> tuple[str, ...]:
+    def release(self, key: str) -> tuple[BindingId, ...]:
         """Release the stage attached under key from every binding with that key, which leaves them unattached.
 
         The bindings hold an attached stage, and the layers it composes, until this, another attach,
@@ -180,7 +190,7 @@ class Bindings:
         self.stages.release(key)
         return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
 
-    def requested_settings(self, binding_id: str) -> RequestedSettings:
+    def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
 
         Raises RefusedRecordError if the binding's configuration can't be read, and BindingDisabledError if it has
@@ -193,7 +203,7 @@ class Bindings:
             raise BindingDisabledError(config)
         return RequestedSettings(config.payload_policy)
 
-    def set_settings(self, binding_id: str, *, payload_policy: PayloadPolicy | None = None) -> Result:
+    def set_settings(self, binding_id: BindingId, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing."""
         config = self._config(binding_id)
         if not isinstance(config, BindingConfig):
@@ -203,9 +213,9 @@ class Bindings:
         runtime.set_config(binding_id, config)
         return Result(ResultState.SUCCESS)
 
-    def synchronize(self, binding_id: str, time_code: Usd.TimeCode | float) -> Result:
-        """Synchronize at an explicit time code; acquisition only (M3), so nothing is evaluated at it yet."""
-        Usd.TimeCode(time_code)  # a time code M5 can evaluate at, or a TypeError now
+    def synchronize(self, binding_id: BindingId, time_code: Usd.TimeCode | float) -> Result:
+        """Synchronize at an explicit time code; acquisition only, so nothing is evaluated at it yet."""
+        Usd.TimeCode(time_code)  # a time code evaluation can use, or a TypeError now
         runtime.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
         config = self._config(binding_id)
         if not isinstance(config, BindingConfig):
@@ -222,7 +232,7 @@ class Bindings:
             diagnostics = (Diagnostic(DiagnosticCategory.SOURCE_STATE, Severity.INFO, message, tuple(sorted(dirty))),)
         return Result(ResultState.SUCCESS, diagnostics)
 
-    def reload(self, binding_id: str, layers: Iterable[str] | None = None) -> Result:
+    def reload(self, binding_id: BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
 
         Raises ValueError, and reloads nothing, if layers names one that isn't a contributing layer.
@@ -236,27 +246,26 @@ class Bindings:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
 
-    def live_stage(self, binding_id: str) -> Usd.Stage | None:
+    def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """None before the first synchronization, and for a binding with copies and no canonical candidate."""
         if isinstance(self._config(binding_id), CopiedBinding):
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
-    def on_file_loaded(self) -> None:
-        """Drop every binding's stages: a loaded file's bindings start with no source stage or attachment."""
+    def drop_all_stages(self) -> None:
+        """Drop every binding's stages, leaving each binding with no source stage or attachment."""
         self.stages = StageRegistry()
         self._pruned_at = None
 
     def prune_stages(self) -> None:
-        """Let go of the stages of bindings that no longer exist, or can't synchronize (StageRegistry.prune).
+        """Drop the stages of bindings that no longer exist or can't synchronize, using StageRegistry.prune.
 
-        With no stages, as before a session's first synchronization, there's nothing to compare, so the
-        bindings' state isn't rebuilt for it, in the undo and redo handler or anywhere else.
+        With no stages, as before a session's first synchronization, it reads no configurations, so calling it
+        (as the undo and redo handler does) never rebuilds the bindings' state.
         """
         if self.stages:
-            configs = runtime.configs()
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
-            self.stages.prune(configs.keys(), {b for b, c in configs.items() if not isinstance(c, BindingConfig)})
+            self.stages.prune({b: isinstance(c, BindingConfig) for b, c in runtime.configs().items()})
         self._pruned_at = runtime.rebuild_count()
 
     def _prune_if_rebuilt(self) -> None:
@@ -271,7 +280,7 @@ class Bindings:
     # compares the stages with the bindings when the bindings' state was rebuilt. A new entry point that
     # uses a binding's stages does one or the other, and this comment names it.
 
-    def _config(self, binding_id: str) -> BindingConfig | RefusedRecord | CopiedBinding:
+    def _config(self, binding_id: BindingId) -> BindingConfig | RefusedRecord | CopiedBinding:
         """The canonical candidate's configuration, why it can't be read, or, with none, the binding's candidates."""
         self._prune_if_rebuilt()
         config = runtime.config(binding_id)
@@ -279,7 +288,7 @@ class Bindings:
             raise BindingNotFoundError(binding_id)
         return config
 
-    def _stages(self, binding_id: str, config: BindingConfig) -> FileBindingStages | AttachedBindingStages:
+    def _stages(self, binding_id: BindingId, config: BindingConfig) -> FileBindingStages | AttachedBindingStages:
         """The binding's stages, made from its configuration on first use.
 
         A file source's path is resolved each time: a "//" path follows the .blend when it is saved
@@ -299,7 +308,7 @@ def _unavailable(error: SourceUnavailableError) -> Result:
     )
 
 
-def _removed_destination(binding_id: str) -> Result:
+def _removed_destination(binding_id: BindingId) -> Result:
     message = f"The destination collection of binding {binding_id} was removed"
     return Result(
         ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.REMOVED_DESTINATION, Severity.ERROR, message),)

@@ -18,9 +18,10 @@ from proscenium.persistence.manifests import Manifest, ManifestEntry
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
+    from proscenium.core.binding_ids import BindingId
 
 
-def publish_by_hand(binding_id: str, destination: bpy.types.Collection, display: SavedDisplay) -> None:
+def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, display: SavedDisplay) -> None:
     """Build display in destination, write the manifest and generation naming it, and update world matrices."""
     parent = bpy.data.objects.new("World", None)
     parent.location = display.parent_location

@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     import bpy
 
+    from ..core.binding_ids import BindingId
     from ..persistence.manifests import ManifestEntry
     from .state import State
 
@@ -49,7 +50,7 @@ class Claim:
     sits beside, it doesn't survive an operator call or undo.
     """
 
-    binding_id: str  # the binding whose manifest holds the entry
+    binding_id: BindingId  # the binding whose manifest holds the entry
     destination: bpy.types.Collection  # the collection holding that manifest
     resource_id: str  # the entry's key in that manifest
 
@@ -58,7 +59,7 @@ class Claim:
 class DestinationClaims:
     """What one destination's manifest adds to the ownership index, so a publication can change it alone."""
 
-    claimant: str  # the binding its claims name: the first found whose configuration names the destination
+    claimant: BindingId  # the binding its claims name: the first found whose configuration names the destination
     claims: dict[int, Claim]  # by datablock session_uid; a manifest names a datablock at most once
     entries: dict[str, int]  # resource identity -> its datablock's session_uid, for the entries naming one
 
@@ -74,7 +75,7 @@ class OwnershipIndex:
     shares: dict[int, DestinationClaims]  # by destination session_uid
 
 
-def manifest(binding_id: str) -> Loaded[Manifest] | RefusedRecord | CopiedBinding | None:
+def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | CopiedBinding | None:
     """A binding's manifest, read through its configuration's destination when first asked for.
 
     RefusedRecord if the configuration or the manifest can't be read; the binding's report if it has no
@@ -86,7 +87,7 @@ def manifest(binding_id: str) -> Loaded[Manifest] | RefusedRecord | CopiedBindin
     return _checked_manifest(state.current_state(), binding_id, found)
 
 
-def set_manifest(binding_id: str, manifest: Manifest) -> None:
+def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     """Store a binding's manifest on its destination, replacing only that destination's share of ownership.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
@@ -99,7 +100,9 @@ def set_manifest(binding_id: str, manifest: Manifest) -> None:
     binding_configs.restore_entry(binding_id, found)
 
 
-def set_manifest_entries(binding_id: str, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()) -> None:
+def set_manifest_entries(
+    binding_id: BindingId, changed: Mapping[str, ManifestEntry], removed: Collection[str] = ()
+) -> None:
     """Change some of a binding's manifest entries, writing only those.
 
     changed adds or replaces entries by resource identity, and removed deletes them. A binding with no manifest yet
@@ -140,7 +143,7 @@ def claims_on(datablock: bpy.types.ID) -> list[Claim]:
     return state.query(lambda s: _checked_claims(s, datablock))
 
 
-def resource(binding_id: str, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
+def resource(binding_id: BindingId, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
     """The datablock of a binding's resource, as its manifest names it.
 
     The binding's report if it has no canonical candidate; None if the manifest names none, or the binding has no
@@ -154,7 +157,7 @@ def unreadable_manifests() -> list[RefusedRecord]:
     return state.query(lambda s: list(_ownership(s).unreadable.values()))
 
 
-def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
+def _to_update(binding_id: BindingId) -> tuple[Candidate, bpy.types.Collection, Loaded[Manifest] | None]:
     """The binding, its destination, and its manifest, for set_manifest_entries. Raises as set_manifest_entries does."""
     found = binding_configs.writable(binding_id)
     destination = _destination(binding_id, found)
@@ -166,7 +169,7 @@ def _to_update(binding_id: str) -> tuple[Candidate, bpy.types.Collection, Loaded
     return found, destination, current
 
 
-def _destination(binding_id: str, binding: Candidate) -> bpy.types.Collection:
+def _destination(binding_id: BindingId, binding: Candidate) -> bpy.types.Collection:
     if isinstance(binding.config, RefusedRecord) or binding.config.destination is None:
         raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
     return binding.config.destination
@@ -182,7 +185,9 @@ def _manifest_of(binding: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
     return binding.manifest
 
 
-def _checked_manifest(current: State, binding_id: str, binding: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
+def _checked_manifest(
+    current: State, binding_id: BindingId, binding: Candidate
+) -> Loaded[Manifest] | RefusedRecord | None:
     """The binding's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
     found = _manifest_of(binding)
     if isinstance(found, Loaded) and not all(
@@ -194,7 +199,7 @@ def _checked_manifest(current: State, binding_id: str, binding: Candidate) -> Lo
 
 
 def _reread(
-    current: State, binding_id: str, destination: bpy.types.Collection
+    current: State, binding_id: BindingId, destination: bpy.types.Collection
 ) -> Loaded[Manifest] | RefusedRecord | None:
     """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
     found = manifests.read_manifest(destination)
@@ -204,7 +209,7 @@ def _reread(
 
 def _replace_manifest(
     current: State,
-    binding_id: str,
+    binding_id: BindingId,
     destination: bpy.types.Collection,
     manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
@@ -254,7 +259,7 @@ def _ownership(current: State) -> OwnershipIndex:
 
 def _add_share(
     index: OwnershipIndex,
-    claimant: str,
+    claimant: BindingId,
     destination: bpy.types.Collection,
     manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
@@ -311,7 +316,7 @@ def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
     return claims if isinstance(claims, tuple) else (claims,)
 
 
-def _checked_resource(current: State, binding_id: str, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
+def _checked_resource(current: State, binding_id: BindingId, resource_id: str) -> bpy.types.ID | CopiedBinding | None:
     """Through the manifest of the binding's canonical candidate, checked as every lookup by identity is."""
     if not isinstance(first := binding_configs.canonical(current, binding_id), Candidate):
         return first

@@ -13,6 +13,7 @@ import pytest
 
 from fixtures import source_access
 from proscenium import runtime
+from proscenium.core.binding_ids import BindingId
 from proscenium.persistence import manifests, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import (
@@ -220,7 +221,7 @@ def test_a_bindings_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
     without = bindings.create_attached_binding(_scene(), "shot")
     assert runtime.manifest(without.binding_id) is None  # nothing managed yet
     with pytest.raises(KeyError):
-        runtime.manifest("not-a-binding")
+        runtime.manifest(BindingId("not-a-binding"))
 
 
 def test_a_bindings_manifest_through_a_configuration_it_cannot_read(bindings: Bindings, tmp_path: Path) -> None:

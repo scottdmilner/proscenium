@@ -8,6 +8,7 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
+from proscenium.core.binding_ids import BindingId
 from proscenium.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
@@ -53,7 +54,7 @@ def test_a_selection_from_two_bindings_survives_save_and_reopen(bindings: Bindin
 
 
 def test_stored_entries_are_pairs_of_strings() -> None:
-    entry = SelectionEntry("B1", "/World")
+    entry = SelectionEntry(BindingId("B1"), "/World")
     write_selection(_scene(), PersistentSelection((entry,), None))
     assert _scene()[NAMESPACE][SELECTION_KEY].to_dict()["entries"] == [["B1", "/World"]]
     loaded = read_selection(_scene())
@@ -74,7 +75,7 @@ def test_the_oracles_targets_are_stored_exactly(tmp_path: Path) -> None:
                 for level in interaction_oracle.levels()
             }
         )
-        selection = PersistentSelection(tuple(SelectionEntry("B1", t) for t in targets), None)
+        selection = PersistentSelection(tuple(SelectionEntry(BindingId("B1"), t) for t in targets), None)
         write_selection(_scene(), selection)
         save_and_reopen(tmp_path / "selection.blend")
         loaded = read_selection(_scene())
@@ -97,7 +98,7 @@ def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, t
 
 
 def test_entries_for_a_binding_that_is_gone_stay_stored() -> None:
-    selection = PersistentSelection((SelectionEntry("not-a-binding", "/World"),), None)
+    selection = PersistentSelection((SelectionEntry(BindingId("not-a-binding"), "/World"),), None)
     write_selection(_scene(), selection)
     assert read_selection(_scene()) == Loaded(selection, 1)
 
@@ -132,6 +133,6 @@ def test_a_newer_selection_is_never_overwritten() -> None:
 def test_a_damaged_path_loads_and_is_left_to_resolution() -> None:
     # Paths aren't checked on each read: one that names no entity fails where it's resolved (M7),
     # reported unresolved like any path the generation doesn't display.
-    selection = PersistentSelection((SelectionEntry("B1", "World"),), None)
+    selection = PersistentSelection((SelectionEntry(BindingId("B1"), "World"),), None)
     write_selection(_scene(), selection)
     assert read_selection(_scene()) == Loaded(selection, 1)

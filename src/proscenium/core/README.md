@@ -10,6 +10,7 @@ The compiled core reads Hydra scene indices ([DECISIONS.md](../../../docs/DECISI
 |---|---|
 | `__init__.py` | The package. It imports `pxr.Usd` first, which loads Blender's `usd_ms` and the converters the compiled module's arguments need. |
 | `source_access/` | The stages a binding reads its source from ([Source Access](../../../docs/spec/source-access.md)). |
+| `binding_ids.py` | `BindingId`, a binding's persistent identifier: a `NewType` of `str`, so the checker tells it from other strings. Every tier uses it. |
 | `canonical_candidate.py` | The canonical-candidate rule, as a pure function of what Blender data says about each candidate and each binding index ([Canonical Candidate](../../../docs/spec/source-access.md#canonical-candidate)). `proscenium.runtime.copy_detection` reads that evidence from the records. |
 | `results.py` | What operations on a binding report: `Result`, `ResultState`, `Diagnostic`, `DiagnosticCategory`, and `Severity` ([Diagnostics](../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. |
 | `source_entities.py` | Source-entity identifiers: an entity's path in the composed stage, with the instance context its instance-proxy path carries. |

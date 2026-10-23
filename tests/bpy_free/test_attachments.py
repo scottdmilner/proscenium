@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
+from proscenium.core.binding_ids import BindingId
 from proscenium.core.source_access import AttachedSource, PayloadPolicy, StageRegistry
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ def test_live_stage_is_the_attached_stage(tmp_path: Path) -> None:
     # ICON-07: the live stage is the caller's attached stage, not the evaluation stage.
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        stages = registry.attached("a", "shot")
+        stages = registry.attached(BindingId("a"), "shot")
         assert isinstance(stages.source, AttachedSource)
         stages.source.attach(scene.caller)
         evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
@@ -30,7 +31,7 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path)
     # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
     # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
     with source_access.reattach(tmp_path) as scene:
-        stages = StageRegistry().attached("a", "shot")
+        stages = StageRegistry().attached(BindingId("a"), "shot")
         stages.attach(scene.caller)
         evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
         stages.attach(scene.caller)

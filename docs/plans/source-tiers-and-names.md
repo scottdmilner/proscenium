@@ -67,10 +67,10 @@ These go in AGENTS.md's Style section:
 |---|---|---|
 | `Synchronization`, `SYNCHRONIZATION`, `proscenium.synchronization` | `Bindings`, `BINDINGS`, `proscenium.api.bindings` | It is the file's bindings and their runtime stages; a synchronization is one attempt |
 | `Synchronization.bindings(scene)`, `.copied_bindings()` | `Bindings.in_scene(scene)`, `.copied()` | |
-| `Synchronization.file_loaded()`, `.prune()` | `.on_file_loaded()`, `.prune_stages()` | |
+| `Synchronization.file_loaded()`, `.prune()` | `.drop_all_stages()`, `.prune_stages()` | |
 | `BindingSource`, `FileBindingSource`, `AttachedBindingSource` | `BindingStages`, `FileBindingStages`, `AttachedBindingStages` | It holds a binding's source stage and evaluation stage; its `source` is the source |
 | `SourceRegistry`, `Synchronization.sources` | `StageRegistry`, `Bindings.stages` | |
-| `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(existing, inactive)` | The second set also holds disabled bindings |
+| `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(synchronizable)` | One mapping of every binding that exists to whether it can synchronize, disabled ones included |
 | `BindingConfig.source`, `.key` | `.source_kind`, `.source_key` | `source_key` is the spec's term; see [Stored field names](#stored-field-names) |
 | `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |

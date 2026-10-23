@@ -26,7 +26,7 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    bindings.BINDINGS.on_file_loaded()
+    bindings.BINDINGS.drop_all_stages()
     runtime.invalidate()
 
 

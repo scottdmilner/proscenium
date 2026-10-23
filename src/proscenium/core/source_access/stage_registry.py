@@ -17,18 +17,20 @@ from .binding_stages import AttachedBindingStages, FileBindingStages
 from .sources import AttachedSource, FileSource
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Mapping
+
+    from ..binding_ids import BindingId
 
 
 class StageRegistry:
     """The stages of the process's bindings, by binding identifier."""
 
-    _stages: dict[str, FileBindingStages | AttachedBindingStages]
+    _stages: dict[BindingId, FileBindingStages | AttachedBindingStages]
 
     def __init__(self) -> None:
         self._stages = {}
 
-    def file(self, binding_id: str, root: str | os.PathLike[str]) -> FileBindingStages:
+    def file(self, binding_id: BindingId, root: str | os.PathLike[str]) -> FileBindingStages:
         """The binding's stages on the file root, made if it has none; its source stage opens at the first acquisition.
 
         Stages on another root are replaced, as when a "//" path resolves elsewhere after the .blend is
@@ -40,7 +42,7 @@ class StageRegistry:
         stages = self._stages[binding_id] = FileBindingStages(FileSource(root))
         return stages
 
-    def attached(self, binding_id: str, key: str) -> AttachedBindingStages:
+    def attached(self, binding_id: BindingId, key: str) -> AttachedBindingStages:
         """The binding's stages on an attached source, made unattached if it has none.
 
         Existing ones keep their attachment.
@@ -51,11 +53,11 @@ class StageRegistry:
         stages = self._stages[binding_id] = AttachedBindingStages(AttachedSource(key))
         return stages
 
-    def get(self, binding_id: str) -> FileBindingStages | AttachedBindingStages | None:
+    def get(self, binding_id: BindingId) -> FileBindingStages | AttachedBindingStages | None:
         """The binding's stages, or None before their first use."""
         return self._stages.get(binding_id)
 
-    def __contains__(self, binding_id: str) -> bool:
+    def __contains__(self, binding_id: BindingId) -> bool:
         return binding_id in self._stages
 
     def __len__(self) -> int:
@@ -70,20 +72,18 @@ class StageRegistry:
             if isinstance(stages, AttachedBindingStages) and stages.source.key == key:
                 stages.release()
 
-    def prune(self, existing: Collection[str], inactive: Collection[str]) -> None:
-        """Let go of the stages of bindings that no longer exist, or can't synchronize.
+    def prune(self, synchronizable: Mapping[BindingId, bool]) -> None:
+        """Drop the stages of bindings that are gone, and of file bindings that can't synchronize.
 
-        existing holds the identifiers of the bindings that exist, and inactive those of them that can't
-        synchronize: their configuration can't be read, or they have copies and no canonical candidate. A
-        file source's stage is dropped with its binding's stages; reopening it costs one open. An attached
-        source keeps its attachment, since undo neither restores nor removes attachments (UNDO-06), so a
-        binding redo brings back is still attached, and drops only its evaluation stage; release(key)
-        still releases it. An inactive binding keeps its attachment and evaluation stage, as a binding
-        that exists does.
+        synchronizable maps every binding that exists to whether it can synchronize: one can't when its
+        configuration can't be read, or it has copies and no canonical candidate. An attached binding that
+        is gone loses only its evaluation stage; its attachment stays until release(key).
         """
         for binding_id, stages in list(self._stages.items()):
             if isinstance(stages, FileBindingStages):
-                if binding_id not in existing or binding_id in inactive:
-                    del self._stages[binding_id]
-            elif binding_id not in existing:
+                if not synchronizable.get(binding_id, False):
+                    del self._stages[binding_id]  # reopening its file costs one open
+            elif binding_id not in synchronizable:
+                # Undo neither restores nor removes attachments (UNDO-06), so redo brings the binding back
+                # attached; release(key) still releases it.
                 stages.drop_evaluation_stage()
