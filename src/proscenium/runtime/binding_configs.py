@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..core.canonical_candidate import CandidateEvidence, CanonicalDecision, DecisionReason
+from ..core.canonical_candidate import DecisionReason
 from ..core.source_access import SourceKind
 from ..persistence import binding_records, records
 from ..persistence.binding_records import BindingConfig
@@ -25,8 +25,6 @@ if TYPE_CHECKING:
     from ..core.binding_ids import BindingId
     from .copy_detection import IdentityCandidates
     from .state import State
-
-_UNIQUE = CanonicalDecision(0, DecisionReason.UNIQUE)
 
 
 class BindingDisabledError(LookupError):  # raised like KeyError, for an identity with every candidate disabled
@@ -99,14 +97,7 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingI
     """
     current = state.current_state()
     binding_id, config = binding_records.create(scene, config, name)
-    made = Candidate(scene, scene.session_uid, config, None)
-    assert config.destination is not None
-    uid = config.destination.session_uid
-    current.by_destination.setdefault(uid, []).append((binding_id, made))  # last, as among the bindings
-    current.identities[binding_id] = copy_detection.IdentityCandidates(
-        [made], [], [CandidateEvidence(uid, mutual=True)], [uid], _UNIQUE
-    )
-    current.tagged |= {uid}
+    current.add_binding(binding_id, Candidate(scene, scene.session_uid, config, None))
     return binding_id
 
 

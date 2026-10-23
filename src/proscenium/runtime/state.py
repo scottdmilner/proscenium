@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
+from ..core.canonical_candidate import CandidateEvidence, CanonicalDecision, DecisionReason
 from ..persistence import binding_records, records
 from ..persistence.records import RefusedRecord
 from . import copy_detection
@@ -56,6 +57,7 @@ if TYPE_CHECKING:
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
 _state: State | None = None
 _rebuilds = 0  # how many times the state was dropped or rebuilt; see rebuild_count()
+_UNIQUE = CanonicalDecision(0, DecisionReason.UNIQUE)
 
 
 class NotRegisteredError(RuntimeError):  # a precondition, raised like RuntimeError
@@ -95,6 +97,23 @@ class State:
     by_destination: dict[int, list[tuple[BindingId, Candidate]]]
     tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (refresh_if_tags_changed)
     ownership: OwnershipIndex | None = None  # built when first asked for
+
+    def add_binding(self, binding_id: BindingId, record: Candidate) -> None:
+        """Add a binding just made: its one record, whose destination's tag and index entry name it, so it's unique."""
+        assert not isinstance(record.config, RefusedRecord) and record.config.destination is not None
+        uid = record.config.destination.session_uid
+        self.identities[binding_id] = copy_detection.IdentityCandidates(
+            [record], [], [CandidateEvidence(uid, mutual=True)], [uid], _UNIQUE
+        )
+        self.by_destination.setdefault(uid, []).append((binding_id, record))  # last, where a rebuild finds it
+        self.tagged |= {uid}
+
+    def cache_manifest(
+        self, destination: bpy.types.Collection, manifest: Loaded[Manifest] | RefusedRecord | None
+    ) -> None:
+        """Give the destination's manifest to every record naming it, as a linked copy's records do."""
+        for _, record in self.by_destination.get(destination.session_uid, ()):
+            record.manifest = manifest
 
 
 def start() -> None:

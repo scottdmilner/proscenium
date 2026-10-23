@@ -128,7 +128,7 @@ def set_manifest_entries(
     before = Manifest({}) if stored is None else stored.record
     after = before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
     manifests.write_entries(destination, after, changed.keys(), removed)
-    _cache_manifest(current, destination, Loaded(after, manifests.MANIFEST.version))
+    current.cache_manifest(destination, Loaded(after, manifests.MANIFEST.version))
     keys = [*changed, *removed]
     for resource_id in keys:
         _remove_claim(index, share, resource_id)
@@ -217,20 +217,12 @@ def _replace_manifest(
 
     The share keeps its claimant (binding_id's, if it has no share yet).
     """
-    _cache_manifest(current, destination, manifest)
+    current.cache_manifest(destination, manifest)
     if (index := current.ownership) is not None:
         uid = destination.session_uid
         share = index.shares.get(uid)
         _remove_share(index, uid)
         _add_share(index, binding_id if share is None else share.claimant, destination, manifest)
-
-
-def _cache_manifest(
-    current: State, destination: bpy.types.Collection, manifest: Loaded[Manifest] | RefusedRecord | None
-) -> None:
-    """Give the manifest to every configuration naming the destination, as a linked copy's does."""
-    for _, candidate in current.by_destination.get(destination.session_uid, ()):
-        candidate.manifest = manifest
 
 
 def _ownership(current: State) -> OwnershipIndex:
