@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING, NamedTuple, override
 
 from pxr import Sdf, Usd
 
@@ -24,6 +24,13 @@ def contributing_layers(stage: Usd.Stage) -> Iterator[Sdf.Layer]:
 def dirty_layers(stage: Usd.Stage) -> list[str]:
     """Identifiers of the stage's contributing layers with unsaved edits, for the source-state diagnostic."""
     return [layer.identifier for layer in contributing_layers(stage) if layer.dirty]
+
+
+class MatchedStage(NamedTuple):
+    """An evaluation stage matched to the source stage, and whether it was just opened."""
+
+    stage: Usd.Stage
+    opened: bool  # opened under the payload policy asked for, rather than reused
 
 
 class BindingStages[S: (FileSource, AttachedSource)](ABC):
@@ -63,7 +70,7 @@ class BindingStages[S: (FileSource, AttachedSource)](ABC):
 
         Raises SourceUnavailableError.
         """
-        stage = self._matched_evaluation_stage(payload_policy)
+        stage = self._current_evaluation_stage(payload_policy)
         if self._payload_policy != payload_policy:
             # A reused stage: never reopened, so the session layer's opinions stay.
             if payload_policy is PayloadPolicy.LOAD_ALL:
@@ -83,7 +90,7 @@ class BindingStages[S: (FileSource, AttachedSource)](ABC):
         without notices; on Windows that misses a rewrite within the same second, as in USD itself.
         Raises SourceUnavailableError.
         """
-        stage = self._matched_evaluation_stage(payload_policy)
+        stage = self._current_evaluation_stage(payload_policy)
         if layers is not None:
             by_identifier = {layer.identifier: layer for layer in contributing_layers(stage)}
             unknown = sorted(set(layers) - by_identifier.keys())
@@ -97,20 +104,29 @@ class BindingStages[S: (FileSource, AttachedSource)](ABC):
             Sdf.Layer.ReloadLayers(pending)
             reloaded |= pending
 
+    def _current_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+        """The evaluation stage, matched to the source stage and kept; one just opened is under payload_policy."""
+        stage, opened = self._match_evaluation_stage(payload_policy)
+        self._evaluation_stage = stage
+        if opened:
+            self._payload_policy = payload_policy
+        return stage
+
     @abstractmethod
-    def _matched_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
-        """The evaluation stage, matched to the source stage: reused, or opened under payload_policy."""
+    def _match_evaluation_stage(self, payload_policy: PayloadPolicy) -> MatchedStage:
+        """The evaluation stage matched to the source stage: the one held, or one opened under payload_policy.
+
+        Raises SourceUnavailableError.
+        """
 
 
 class FileBindingStages(BindingStages[FileSource]):
     """A binding on a file: its evaluation stage is the source stage it opens itself."""
 
     @override
-    def _matched_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
-        if self.source.stage is None:
-            self._payload_policy = payload_policy  # opened under it
-        stage = self._evaluation_stage = self.source.open(payload_policy)
-        return stage
+    def _match_evaluation_stage(self, payload_policy: PayloadPolicy) -> MatchedStage:
+        opened = self.source.stage is None
+        return MatchedStage(self.source.open(payload_policy), opened)
 
 
 class AttachedBindingStages(BindingStages[AttachedSource]):
@@ -135,27 +151,27 @@ class AttachedBindingStages(BindingStages[AttachedSource]):
         self._evaluation_stage = None
 
     @override
-    def _matched_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+    def _match_evaluation_stage(self, payload_policy: PayloadPolicy) -> MatchedStage:
         """Reused, or opened on the attached stage's root and session layers."""
         attached = self.source.stage
         if attached is None:
             raise SourceUnavailableError("No stage is attached")
         stage = self._evaluation_stage
-        if (
+        opened = (
             stage is None
             or stage.GetRootLayer() != attached.GetRootLayer()
             or stage.GetSessionLayer() != attached.GetSessionLayer()
-        ):
+        )
+        if opened:
             # Inside an active cache context, Open can return the attached stage itself (runtime-record.md).
             with Usd.StageCacheContext(Usd.BlockStageCaches):
-                stage = self._evaluation_stage = Usd.Stage.OpenMasked(
+                stage = Usd.Stage.OpenMasked(
                     attached.GetRootLayer(),
                     attached.GetSessionLayer(),
                     attached.GetPathResolverContext(),
                     attached.GetPopulationMask(),
                     payload_policy.load_set,
                 )
-            self._payload_policy = payload_policy
         elif stage.GetPopulationMask() != attached.GetPopulationMask():
             # Reused: the caller may have changed its mask since the last acquisition.
             stage.SetPopulationMask(attached.GetPopulationMask())
@@ -165,4 +181,4 @@ class AttachedBindingStages(BindingStages[AttachedSource]):
         if muted != wanted:
             stage.MuteAndUnmuteLayers(sorted(wanted - muted), sorted(muted - wanted))
         stage.SetInterpolationType(attached.GetInterpolationType())
-        return stage
+        return MatchedStage(stage, opened)
