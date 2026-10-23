@@ -7,12 +7,14 @@ in proscenium.addon and is imported only on register.
 
 
 def register() -> None:
+    """Register the extension: its record types and its handlers (proscenium.addon)."""
     from . import addon
 
     addon.register()
 
 
 def unregister() -> None:
+    """Unregister what register() registered."""
     from . import addon
 
     addon.unregister()

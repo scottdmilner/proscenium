@@ -16,12 +16,20 @@ import bpy
 from pxr import Sdf
 
 from fixtures import source_access
-from proscenium import binding_state, bindings, indexes, records
-from proscenium.binding_state import LastAttempt
+from proscenium import runtime
+from proscenium.api.bindings import (
+    BindingHandle,
+    Bindings,
+    DiagnosticCategory,
+    RequestedSettings,
+    ResultState,
+)
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
-from proscenium.records import Loaded, Refused
-from proscenium.synchronization import BindingHandle, Category, RequestedSettings, ResultState, Synchronization
+from proscenium.persistence import binding_records, binding_state, records
+from proscenium.persistence.binding_records import BindingConfig
+from proscenium.persistence.binding_state import LastAttempt
+from proscenium.persistence.manifests import Manifest, ManifestEntry
+from proscenium.persistence.records import Loaded
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 
@@ -29,7 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.bindings import BindingConfig
+    from proscenium.core.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -37,24 +45,24 @@ def _scene() -> bpy.types.Scene:
 
 
 def _destination(handle: BindingHandle) -> bpy.types.Collection:
-    config = indexes.config(handle.binding_id)
-    assert config is not None and not isinstance(config, Refused) and config.destination is not None
+    config = runtime.config(handle.binding_id)
+    assert isinstance(config, BindingConfig) and config.destination is not None
     return config.destination
 
 
 def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
-    config = indexes.config(handle.binding_id)
-    assert config is not None and not isinstance(config, Refused)
+    config = runtime.config(handle.binding_id)
+    assert isinstance(config, BindingConfig)
     destination = _destination(handle)
-    manifest = indexes.manifest(handle.binding_id)
-    assert manifest is not None and not isinstance(manifest, Refused)
+    manifest = runtime.manifest(handle.binding_id)
+    assert isinstance(manifest, Loaded)
     entries = {
         key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses)
         for key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(destination)
-    assert generation is not None and not isinstance(generation, Refused)
+    assert isinstance(generation, Loaded)
     return {
         "config": replace(config, destination=None),
         "destination": destination.name,
@@ -74,22 +82,24 @@ def _publish(handle: BindingHandle, display: SavedDisplay) -> dict[str, object]:
     return saved
 
 
-def _check_kept(sync: Synchronization, handle: BindingHandle, saved: dict[str, object], category: Category) -> None:
+def _check_kept(
+    bindings: Bindings, handle: BindingHandle, saved: dict[str, object], category: DiagnosticCategory
+) -> None:
     # REOPEN-04, REOPEN-05, REOPEN-07: the binding is listed with its records, and the display unchanged,
     # after reopening and after a synchronization that fails for the unavailable source.
-    assert sync.bindings(_scene()) == [handle]
+    assert bindings.in_scene(_scene()) == [handle]
     assert _saved(handle) == saved
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
     assert [d.category for d in result.diagnostics] == [category]
-    assert sync.bindings(_scene()) == [handle]
+    assert bindings.in_scene(_scene()) == [handle]
     assert _saved(handle) == saved
 
 
-def test_moved_file_source(sync: Synchronization, tmp_path: Path) -> None:
+def test_moved_file_source(bindings: Bindings, tmp_path: Path) -> None:
     # F-OFFLINE "moved-file": the binding synchronized before saving, so the source was open; reopening drops it.
     with source_access.offline(tmp_path) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         scene.move_away()
@@ -97,76 +107,76 @@ def test_moved_file_source(sync: Synchronization, tmp_path: Path) -> None:
         gc.collect()
         assert not Sdf.Layer.Find(str(scene.root))
         assert not scene.root.exists()
-        _check_kept(sync, handle, saved, Category.UNAVAILABLE_SOURCE)
+        _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
 
 
-def test_unattached_source(sync: Synchronization, tmp_path: Path) -> None:
+def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
     # F-OFFLINE "unattached": the caller's stage was attached when saving, and still exists, but reopening
     # leaves nothing attached under the key.
     with source_access.offline(tmp_path) as scene:
         caller = scene.open_caller()
-        handle = sync.create_attached_binding(_scene(), scene.key, name="Shot")
-        sync.attach(scene.key, caller)
+        handle = bindings.create_attached_binding(_scene(), scene.key, name="Shot")
+        bindings.attach(scene.key, caller)
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
-        _check_kept(sync, handle, saved, Category.UNAVAILABLE_SOURCE)
+        _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
 
 
 # A removed destination.
 
 
-def _index_entry(binding_id: str) -> tuple[bool, bpy.types.Collection | None]:
-    [text] = bindings.index_texts()
-    index = records.read(text, bindings.INDEX_KEY, bindings.INDEX)
+def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
+    [text] = binding_records.index_texts()
+    index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
 
-def _check_removed(sync: Synchronization, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
+def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
     # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
-    assert sync.bindings(_scene()) == [handle]
-    config = indexes.config(handle.binding_id)
-    assert config is not None and not isinstance(config, Refused)
+    assert bindings.in_scene(_scene()) == [handle]
+    config = runtime.config(handle.binding_id)
+    assert isinstance(config, BindingConfig)
     assert config == saved
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
     assert _index_entry(handle.binding_id) == (True, None)
     # DEST-04: no manifest, no resources, and the object it displayed claims no owner.
-    assert indexes.manifest(handle.binding_id) is None
-    assert indexes.resource(handle.binding_id, "a") is None
-    assert indexes.claims_on(bpy.data.objects["Managed"]) == []
+    assert runtime.manifest(handle.binding_id) is None
+    assert runtime.resource(handle.binding_id, "a") is None
+    assert runtime.claims_on(bpy.data.objects["Managed"]) == []
     # DEST-02: a fatal failure, with no source made for it and no destination created.
     collections = set(bpy.data.collections.keys())
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
-    assert [d.category for d in result.diagnostics] == [Category.REMOVED_DESTINATION]
+    assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
-    assert handle.binding_id not in sync.sources
+    assert handle.binding_id not in bindings.stages
     assert set(bpy.data.collections.keys()) == collections
 
 
-def test_removed_destination(sync: Synchronization, tmp_path: Path) -> None:
+def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
     # F-BINDING-STATE "removed-destination": the destination held a managed object that something else
     # also uses, so the object outlives it. Checked once it's removed, and again after save and reopen.
     with source_access.binding_state(tmp_path) as scene:
-        handle = sync.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
         obj = bpy.data.objects.new("Managed", None)
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)
-        indexes.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+        runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
-        assert indexes.claims_on(obj) != []
-        before = indexes.config(handle.binding_id)
-        assert before is not None and not isinstance(before, Refused)
+        assert runtime.claims_on(obj) != []
+        before = runtime.config(handle.binding_id)
+        assert isinstance(before, BindingConfig)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)
-        _check_removed(sync, handle, config, attempt)
+        _check_removed(bindings, handle, config, attempt)
         save_and_reopen(tmp_path / "removed.blend")
-        _check_removed(sync, handle, config, attempt)
+        _check_removed(bindings, handle, config, attempt)
         # DEST-03: its requested settings read as saved, and a change is written to its configuration.
         assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_ALL)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-        [(_, binding_id, stored)] = bindings.all_bindings()
+        [(_, binding_id, stored)] = binding_records.read_configs()
         assert binding_id == handle.binding_id and isinstance(stored, Loaded)
         assert stored.record == replace(config, payload_policy=PayloadPolicy.LOAD_NONE)

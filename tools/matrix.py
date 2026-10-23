@@ -293,9 +293,9 @@ def check(matrix: Matrix) -> list[str]:
         if r.kind == "behavior":
             if r.qualified_by != QUALIFIER.get(r.phase):
                 problems.append(f"{where}: Phase {r.phase} behavior qualifies in {QUALIFIER.get(r.phase)}")
-        for f in r.fixtures:
-            if f not in fixtures:
-                problems.append(f"{where}: fixture {f} is not in tests/fixtures/registry.py")
+        problems.extend(
+            f"{where}: fixture {f} is not in tests/fixtures/registry.py" for f in r.fixtures if f not in fixtures
+        )
 
     # Quotes are in their sections; every block is quoted or excluded.
     # `covered` collects (doc, line) of each block that a row or exclusion traces.

@@ -65,9 +65,10 @@ EXPECTED = {
 
 
 def caller_stage(path: Path) -> tuple[Any, Any]:
-    """Caller stage with an unsaved root-layer edit and a session-layer opinion,
-    registered in the global UsdUtils.StageCache. Returns (stage, cache id);
-    the caller erases the cache entry."""
+    """A caller stage with an unsaved root-layer edit and a session-layer opinion.
+
+    It is registered in the global UsdUtils.StageCache. Returns (stage, cache id); the caller erases the cache entry.
+    """
     from pxr import Sdf, Usd, UsdUtils
 
     stage = Usd.Stage.Open(str(path))

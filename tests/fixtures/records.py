@@ -9,7 +9,7 @@ they have older versions of their own:
   count has no version 3 meaning, so that migration rejects it.
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
-derived from the migrations above. It also yields binding configurations (proscenium.bindings) a
+derived from the migrations above. It also yields binding configurations (proscenium.persistence.binding_records) a
 newer extension or damage could leave; binding configuration has no older version yet. M5 adds
 pending-cleanup records once it defines their schema.
 """
@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from proscenium.records import VERSION_KEY, Refusal, Schema
+from proscenium.persistence.records import VERSION_KEY, RefusalReason, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -54,7 +54,7 @@ def _v2_to_v3(fields: dict[str, Any]) -> dict[str, Any]:
     return fields | {"scale": 1.0}
 
 
-SAMPLE = Schema(kind="sample", version=3, record=Sample, migrations={1: _v1_to_v2, 2: _v2_to_v3})
+SAMPLE = Schema(name="sample", version=3, record_type=Sample, migrations={1: _v1_to_v2, 2: _v2_to_v3})
 
 
 @dataclass(frozen=True)
@@ -62,9 +62,9 @@ class SchemaVersions:
     schema: Schema[Sample]
     stored: dict[str, object]  # record name -> the record as stored
     loaded: dict[str, Sample]  # the records that load -> each at version 3
-    refused: dict[str, Refusal]  # the records that don't -> why
+    refused: dict[str, RefusalReason]  # the records that don't -> why
     bindings: dict[str, object]  # binding configurations that can't be read, as stored
-    bindings_refused: dict[str, Refusal]  # each -> why
+    bindings_refused: dict[str, RefusalReason]  # each -> why
 
 
 @contextmanager
@@ -76,9 +76,9 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
     # A valid version 1 file-source configuration whose destination was removed (a cleared pointer).
     binding = {
-        "source": "file",
+        "source_kind": "file",
         "path": "//shot.usda",
-        "key": None,
+        "source_key": None,
         "root_layer_identifier": None,
         "destination": None,
         "payload_policy": "load_all",
@@ -102,17 +102,29 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "v3": Sample(**current),
         },
         refused={
-            "failed-migration": Refusal.MIGRATION_FAILED,
-            "newer": Refusal.NEWER,
-            "invalid": Refusal.INVALID,
-            "unknown-field": Refusal.INVALID,
-            "no-version": Refusal.UNREADABLE,
-            "not-a-group": Refusal.UNREADABLE,
+            "failed-migration": RefusalReason.MIGRATION_FAILED,
+            "newer": RefusalReason.NEWER,
+            "invalid": RefusalReason.INVALID,
+            "unknown-field": RefusalReason.INVALID,
+            "no-version": RefusalReason.UNREADABLE,
+            "not-a-group": RefusalReason.UNREADABLE,
         },
         bindings={
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
             "no-path": {VERSION_KEY: 1, **binding, "path": None},
             "unknown-policy": {VERSION_KEY: 1, **binding, "payload_policy": "load_some"},
+            # Version 1 under the field names it had before source_kind and source_key: never released, so refused.
+            "old-field-names": {
+                VERSION_KEY: 1,
+                **{k: v for k, v in binding.items() if k not in ("source_kind", "source_key")},
+                "source": "file",
+                "key": None,
+            },
         },
-        bindings_refused={"newer": Refusal.NEWER, "no-path": Refusal.INVALID, "unknown-policy": Refusal.INVALID},
+        bindings_refused={
+            "newer": RefusalReason.NEWER,
+            "no-path": RefusalReason.INVALID,
+            "unknown-policy": RefusalReason.INVALID,
+            "old-field-names": RefusalReason.INVALID,
+        },
     )

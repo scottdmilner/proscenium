@@ -18,18 +18,23 @@ from .records import Schema
 if TYPE_CHECKING:
     import bpy
 
-    from .records import Loaded, Refused
+    from ..core.binding_ids import BindingId
+    from .records import Loaded, RefusedRecord
 
 SELECTION_KEY = "selection"
 
 
 class SelectionEntry(NamedTuple):
-    binding_id: str
+    """One selected source entity: its binding, and its source-entity identifier."""
+
+    binding_id: BindingId
     path: str  # a source-entity identifier: make it with proscenium.core.source_entities.identifier
 
 
 @dataclass(frozen=True)
 class PersistentSelection:
+    """A scene's persistent selection: its entries, and the active one."""
+
     entries: tuple[SelectionEntry, ...]  # in order; a set, so no entry twice
     active: SelectionEntry | None  # one of the entries, or none
 
@@ -49,13 +54,17 @@ class PersistentSelection:
             raise ValueError("the active entry is not one of the entries")
 
 
-SELECTION = Schema("selection", version=1, record=PersistentSelection)
+SELECTION = Schema("selection", version=1, record_type=PersistentSelection)
 
 
-def read_selection(scene: bpy.types.Scene) -> Loaded[PersistentSelection] | Refused | None:
+def read_selection(scene: bpy.types.Scene) -> Loaded[PersistentSelection] | RefusedRecord | None:
+    """The scene's persistent selection, why it can't be read, or None if it has none."""
     return records.read(scene, SELECTION_KEY, SELECTION)
 
 
 def write_selection(scene: bpy.types.Scene, selection: PersistentSelection) -> None:
-    """Raises RecordRefused, changing nothing, over a stored selection that can't be read."""
+    """Store the scene's persistent selection.
+
+    Raises RefusedRecordError, changing nothing, over a stored selection that can't be read.
+    """
     records.write(scene, SELECTION_KEY, SELECTION, selection)

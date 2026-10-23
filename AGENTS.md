@@ -23,7 +23,12 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/__init__.py` and `proscenium/core/` must import without `bpy`.
   - `proscenium/core/` also holds the compiled core's C++ source. See [Compiled core](#compiled-core).
-  - Blender-facing code goes in modules such as `proscenium/addon.py`.
+  - Blender-facing code is in three tiers, each importing only the tiers below it and `core/` ([plan](docs/plans/source-tiers-and-names.md#tiers)):
+    - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
+    - `proscenium/runtime/`: disposable in-memory state built from the records.
+    - `proscenium/persistence/`: versioned records in ID properties.
+  - `proscenium/addon.py` registers the extension and its handlers, and may import any tier.
+  - Every directory has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
   - `build_extension.py`: build script.
@@ -94,7 +99,13 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Follow PEP 8 (ruff, line length 120) and annotate every function signature.
 - Classes declare their typed attributes in the class body, above `__init__`.
 - Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
-- Prefer short docstrings plus inline comments over long docstrings.
+- Names:
+  - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_kind`, `candidate` for one record or copy of a binding identity.
+  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source tiers are tiers, never layers.
+  - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
+  - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
+  - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
+- Prefer short docstrings plus inline comments over long docstrings. Docstrings follow pep257 (ruff's D rules): a one-line summary ending in a period or question mark, then a blank line before any more. Public objects in `src/` and `tools/` have one; tests and `tools/feasibility/` need one only where it adds something.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.
 - Evidence docs (feasibility records, decision rows) claim only what a check actually tested.

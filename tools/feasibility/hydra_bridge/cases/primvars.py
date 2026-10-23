@@ -117,8 +117,11 @@ def _motion(case: Case, stage: Any, plan: Any, created: dict[str, Any]) -> None:
 
 
 def _expected_property(value: Any) -> Any:
-    """A USD value as Blender's ID property, by the plan's rule: a one-element array is its element, a vector
-    a list, and an array of vectors or a matrix a list of lists (rows). Integers keep their low 32 bits."""
+    """A USD value as Blender's ID property, by the plan's rule.
+
+    A one-element array is its element, a vector a list, and an array of vectors or a matrix a list of lists (rows).
+    Integers keep their low 32 bits.
+    """
     if isinstance(value, int) and not isinstance(value, bool):
         return (value + 2**31) % 2**32 - 2**31
     if hasattr(value, "GetRow"):  # Gf matrices don't iterate

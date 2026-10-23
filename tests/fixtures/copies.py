@@ -1,5 +1,7 @@
-"""F-OWNERSHIP-AMBIGUITY: copied bindings on each copy route, and binding indexes lost, cleared, duplicated,
-disagreeing, or unreadable (source-access.md#copied-bindings, source-access.md#canonical-candidate).
+"""F-OWNERSHIP-AMBIGUITY: copied bindings, and the binding indexes the canonical-candidate rule reads.
+
+Copied bindings on each copy route, and binding indexes lost, cleared, duplicated, disagreeing, or unreadable
+(source-access.md#copied-bindings, source-access.md#canonical-candidate).
 
 The routes are Blender operations, and the generator runs without bpy, so it gives a binding's source and,
 for each route, the outcome the canonical-candidate rule gives what that route leaves, derived from the
@@ -15,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium.core.copies import Reason
+from proscenium.core.canonical_candidate import DecisionReason
 
 from .scenes import Scene, copy_scene
 
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
 class Outcome:
     candidates: int  # the identity's candidates after the route
     canonical: bool  # whether the original stays canonical; False: every candidate is disabled
-    reason: Reason
+    reason: DecisionReason
 
 
 @dataclass(frozen=True)
@@ -38,8 +40,8 @@ class Route:
     index_untouched: bool = True  # the file keeps one index, whose entry names the original destination
 
 
-INDEXED = Outcome(2, canonical=True, reason=Reason.INDEXED)
-UNIQUE = Outcome(1, canonical=True, reason=Reason.UNIQUE)
+INDEXED = Outcome(2, canonical=True, reason=DecisionReason.INDEXED)
+UNIQUE = Outcome(1, canonical=True, reason=DecisionReason.UNIQUE)
 
 ROUTES: dict[str, Route] = {
     # Copy routes: the index names the original, whose record and destination refer to each other.
@@ -48,17 +50,19 @@ ROUTES: dict[str, Route] = {
     "full-copy-scene": Route(INDEXED),  # a second scene and destination referring to each other
     "linked-copy-scene": Route(INDEXED),  # a second scene's record naming the original destination
     "append": Route(INDEXED),  # the destination appended from a copy of the file brings its scene
-    "record-copy": Route(Outcome(3, canonical=True, reason=Reason.INDEXED)),  # records assigned by script
+    "record-copy": Route(Outcome(3, canonical=True, reason=DecisionReason.INDEXED)),  # records assigned by script
     # The index lost, cleared, or disagreeing: the fallback, or nothing, decides.
-    "index-lost": Route(Outcome(2, canonical=False, reason=Reason.SEVERAL_MUTUAL), index_untouched=False),
-    "index-lost-linked-copy": Route(Outcome(2, canonical=True, reason=Reason.MUTUAL), index_untouched=False),
-    "entry-cleared": Route(Outcome(2, canonical=True, reason=Reason.MUTUAL), index_untouched=False),
-    "none-mutual": Route(Outcome(2, canonical=False, reason=Reason.NONE_MUTUAL), index_untouched=False),
-    "index-disagrees": Route(Outcome(2, canonical=False, reason=Reason.INDEX_DISAGREES), index_untouched=False),
-    "unreadable-index": Route(Outcome(2, canonical=False, reason=Reason.UNREADABLE_INDEX), index_untouched=False),
+    "index-lost": Route(Outcome(2, canonical=False, reason=DecisionReason.SEVERAL_MUTUAL), index_untouched=False),
+    "index-lost-linked-copy": Route(Outcome(2, canonical=True, reason=DecisionReason.MUTUAL), index_untouched=False),
+    "entry-cleared": Route(Outcome(2, canonical=True, reason=DecisionReason.MUTUAL), index_untouched=False),
+    "none-mutual": Route(Outcome(2, canonical=False, reason=DecisionReason.NONE_MUTUAL), index_untouched=False),
+    "index-disagrees": Route(Outcome(2, canonical=False, reason=DecisionReason.INDEX_DISAGREES), index_untouched=False),
+    "unreadable-index": Route(
+        Outcome(2, canonical=False, reason=DecisionReason.UNREADABLE_INDEX), index_untouched=False
+    ),
     # The appended index Text brings the destination it names, and its scene; the save drops the Text.
     "two-indexes": Route(
-        Outcome(2, canonical=False, reason=Reason.SEVERAL_INDEXES), reopened=INDEXED, index_untouched=False
+        Outcome(2, canonical=False, reason=DecisionReason.SEVERAL_INDEXES), reopened=INDEXED, index_untouched=False
     ),
     # Not copies: a linked binding is library data, and a duplicated object has no manifest naming it.
     "linked-binding": Route(UNIQUE),

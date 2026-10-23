@@ -22,6 +22,8 @@ paths_exclude_pattern = [
   ".*",
   "/*.zip",
   "*.blend[1-9]",
+  # Each source directory's README, for developers.
+  "README.md",
   # The compiled core's sources (core/); only its built module ships.
   "*.cpp",
   "*.h",

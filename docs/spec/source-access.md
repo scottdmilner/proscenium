@@ -32,9 +32,9 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used.
 - Exceptions report misuse only, such as a call made during another synchronization.
 
-Operations that span bindings belong to the process's synchronization, not to a handle: creating a binding, finding a scene's bindings, reporting copied bindings ([Copied Bindings](#copied-bindings)), and attaching a stage under a source key or releasing it ([Source Identity](#source-identity), [Source Stages](#source-stages)).
+Operations that span bindings belong to the process's bindings, not to a handle: creating a binding, finding a scene's bindings, reporting copied bindings ([Copied Bindings](#copied-bindings)), and attaching a stage under a source key or releasing it ([Source Identity](#source-identity), [Source Stages](#source-stages)).
 
-Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.synchronization`. The process's synchronization is `SYNCHRONIZATION`, a `Synchronization` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
+Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
 ## Source Consistency
 

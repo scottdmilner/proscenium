@@ -38,6 +38,8 @@ MACOS_MIN = "11.2"
 
 @dataclass(frozen=True)
 class Built:
+    """A built module, and its build manifest."""
+
     module: Path  # the module, moved into the output directory
     manifest: dict[str, Any]  # platform, Blender release, dependency revision, command, and audit
 
@@ -117,6 +119,7 @@ def tool(name: str) -> str:
 
 
 def build_env(key: Platform) -> dict[str, str]:
+    """The environment the platform's native build runs in."""
     if key == Platform.WINDOWS_X64:
         # Ninja uses the compiler from this environment; the Visual Studio generator would pick its own.
         return msvc_env()

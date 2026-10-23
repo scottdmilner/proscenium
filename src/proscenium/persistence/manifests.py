@@ -11,9 +11,10 @@ two manifests name is ambiguous. Managed dependents are found by inverting the u
 users are read from Blender's user graph when an operation needs them, since nothing persistent
 can track them.
 
-Reading a manifest reads every entry, so the operations that run often go through runtime indexes
-built from it, not through these functions. Writing one can write only the entries that change
-(write_entries), so an incremental refresh costs what it changes.
+Reading a manifest reads every entry, so the operations that run often go through the ownership
+index built from it (proscenium.runtime.ownership_index), not through these functions. Writing one
+can write only the entries that change (write_entries), so an incremental refresh costs what it
+changes.
 
 A manifest's pointers are users of the datablocks they name. So managed content the user deletes
 in the interface (Object > Delete) stays in the file, still named and so still claimed, until a
@@ -31,7 +32,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from . import records
-from .records import Loaded, Refused, Schema
+from .records import Loaded, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence
@@ -56,7 +57,7 @@ class ManifestEntry:
         # Manifest.__post_init__, which refuses any item that isn't another entry's resource identity.
         if type(self.covers) not in (list, tuple) or type(self.uses) not in (list, tuple):
             raise TypeError("an entry covers a list of source-entity paths and uses a list of resources")
-        # Tuples, so the cache that hands entries out (proscenium.indexes) can't be changed through one.
+        # Tuples, so the cache that hands entries out (proscenium.runtime) can't be changed through one.
         object.__setattr__(self, "covers", tuple(self.covers))
         object.__setattr__(self, "uses", tuple(self.uses))
         if type(self.role) is not str or not self.role:
@@ -82,9 +83,10 @@ class Manifest:
     def updated(
         self, changed: Mapping[str, ManifestEntry], removed: Collection[str], naming: Callable[[int], str | None]
     ) -> Manifest:
-        """This manifest with changed's entries added or replaced and removed's deleted, checked as a whole one
-        is. The checks cost what changes, plus, with removals, a scan of every entry's uses; building the
-        result copies the entries.
+        """This manifest with changed's entries added or replaced and removed's deleted.
+
+        It is checked as a whole one is. The checks cost what changes, plus, with removals, a scan of every entry's
+        uses; building the result copies the entries.
 
         naming gives the key of this manifest's entry naming a datablock, by session_uid, or None; the
         ownership index has it. Raises ValueError or TypeError over an update that makes no manifest.
@@ -116,44 +118,30 @@ class Manifest:
         return manifest
 
 
-MANIFEST = Schema("manifest", version=1, record=Manifest)
+MANIFEST = Schema("manifest", version=1, record_type=Manifest)
 
 
-@dataclass(frozen=True, slots=True)
-class Claim:
-    """A manifest entry naming a datablock: the evidence that a binding manages it (OWN-16).
-
-    A manifest names a datablock at most once, so each claim on a datablock comes from a different
-    manifest. One claim means the datablock is managed by that binding; two or more, that it is
-    ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
-    unmanaged. That judgment needs every manifest that could name the datablock, so the runtime
-    indexes (proscenium.indexes) index every binding's. Each destination's manifest counts once,
-    though several configurations can name it, as a linked-copy scene's do. A manifest that can't be
-    read claims nothing, so its content has no ownership evidence until it is repaired. A binding's
-    copies share its identity, so the destination says which manifest a claim comes from. Like the
-    datablocks it sits beside, it doesn't survive an operator call or undo.
-    """
-
-    binding_id: str  # the binding whose manifest holds the entry
-    destination: bpy.types.Collection  # the collection holding that manifest
-    resource_id: str  # the entry's key in that manifest
-
-
-def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | Refused | None:
+def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | RefusedRecord | None:
+    """The destination's manifest, why it can't be read, or None if it has none."""
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
-    """Raises RecordRefused, changing nothing, over a stored manifest that can't be read."""
+    """Store the destination's manifest whole.
+
+    Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read.
+    """
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
 
 
 def write_entries(
     destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
 ) -> None:
-    """Store manifest, which differs from the stored one only in the entries under changed and removed,
-    writing only those (records.write_items). Raises as write_manifest does, and KeyError, changing nothing,
-    for a resource identity too long for an ID-property key."""
+    """Store manifest, writing only the entries under changed and removed.
+
+    manifest differs from the stored one only in those entries (records.write_items). Raises as write_manifest does, and
+    KeyError, changing nothing, for a resource identity too long for an ID-property key.
+    """
     records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
 
 

@@ -35,12 +35,15 @@ class Platform(StrEnum):
 
 @dataclass(frozen=True)
 class Libs:
+    """One platform's Blender library repo: what to check out of it, and what must exist after."""
+
     repo: str  # projects.blender.org/blender/<repo>; the Blender repo's submodule is lib/<suffix>
     paths: tuple[str, ...]  # non-cone sparse-checkout patterns
     required: tuple[str, ...]  # files that must exist after checkout
 
     @property
     def submodule(self) -> str:
+        """The repo's submodule path in the Blender repo."""
         return "lib/" + self.repo.removeprefix("lib-")
 
 
@@ -114,10 +117,16 @@ def release() -> dict[str, str]:
 
 
 def deps_dir(key: Platform) -> Path:
+    """Where the platform's dependency checkout is cached."""
     return CACHE / LIBS[key].repo
 
 
 def prepare(key: Platform) -> Path:
+    """The platform's dependency checkout, at the locked Blender release's revision.
+
+    Clones it if it isn't cached, and fetches and checks out the revision if it's elsewhere. Raises RuntimeError over a
+    checkout with local changes, or one missing a required file.
+    """
     libs = LIBS[key]
     revision = release()[libs.submodule]
     deps = deps_dir(key)

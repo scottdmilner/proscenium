@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 SCENES = Path(__file__).resolve().parent
 
 
-class CheckFailed(AssertionError):
+class CheckFailedError(AssertionError):
     pass
 
 
@@ -32,7 +32,7 @@ class Case:
 
     def check(self, name: str, condition: bool, detail: object = None) -> None:
         if not condition:
-            raise CheckFailed(name if detail is None else f"{name}: {detail}")
+            raise CheckFailedError(name if detail is None else f"{name}: {detail}")
         self.checks.append(name)
 
     def known_gap(self, name: str, reproduced: bool, detail: object = None) -> None:
@@ -40,12 +40,12 @@ class Case:
         self.check(f"known gap: {name}", reproduced, detail)
 
     def open(self, scene: str) -> Usd.Stage:
-        """Opens a copy of a scene from this directory, so edits never reach the repository."""
+        """Open a copy of a scene from this directory, so edits never reach the repository."""
         copy = self.tmp / scene
         shutil.copy(SCENES / scene, copy)
         stage = Usd.Stage.Open(str(copy))
         if not stage:
-            raise CheckFailed(f"could not open {scene}")
+            raise CheckFailedError(f"could not open {scene}")
         return stage
 
     def collection(self) -> bpy.types.Collection:
@@ -56,13 +56,16 @@ class Case:
         return collection
 
     def apply_plan(self, plan: Any) -> dict[str, bpy.types.Object]:
-        """Applies the plan; returns its objects by USD source. Raises if a source has several objects (a prim
-        shown in both destinations with different materials): use apply.apply then."""
+        """Apply the plan, returning its objects by USD source.
+
+        Raises if a source has several objects (a prim shown in both destinations with different materials): use
+        apply.apply then.
+        """
         objects = self.apply.apply(plan, self.collection())
         sources = [o["source"] for o in plan.objects]
         repeated = sorted({s for s in sources if sources.count(s) > 1})
         if repeated:
-            raise CheckFailed(f"apply_plan needs one object per source; repeated: {repeated}")
+            raise CheckFailedError(f"apply_plan needs one object per source; repeated: {repeated}")
         return dict(zip(sources, objects, strict=True))
 
 

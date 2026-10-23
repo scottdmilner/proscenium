@@ -31,7 +31,7 @@ class PayloadPolicy(StrEnum):
         return Usd.Stage.LoadAll if self is PayloadPolicy.LOAD_ALL else Usd.Stage.LoadNone
 
 
-class SourceUnavailable(Exception):  # noqa: N818 (an expected outcome, not an error)
+class SourceUnavailableError(Exception):
     """The binding's source stage can't be had: its file won't open, or no stage is attached.
 
     Raised inside source access only; the synchronization API returns it as a result.
@@ -58,14 +58,14 @@ class FileSource:
         return self._stage
 
     def open(self, payload_policy: PayloadPolicy) -> Usd.Stage:
-        """The source stage, opening it under payload_policy if it isn't open. Raises SourceUnavailable."""
+        """The source stage, opening it under payload_policy if it isn't open. Raises SourceUnavailableError."""
         if self._stage is None:
             try:
                 # Inside an active cache context, a plain Open can return another tool's cached stage.
                 with Usd.StageCacheContext(Usd.BlockStageCaches):
                     self._stage = Usd.Stage.Open(self.root, payload_policy.load_set)
             except Tf.ErrorException as error:
-                raise SourceUnavailable(f"Can't open {self.root}") from error
+                raise SourceUnavailableError(f"Can't open {self.root}") from error
         return self._stage
 
 
@@ -78,7 +78,7 @@ class AttachedSource:
     attachment holds the stage itself, and release() is the caller's way to free it.
 
     The attachment is runtime only. The key, and the root-layer identifier of the stage last
-    attached, are binding configuration, kept in the binding's records (proscenium.bindings).
+    attached, are binding configuration, kept in the binding's records (proscenium.persistence.binding_records).
     """
 
     key: str
@@ -98,4 +98,5 @@ class AttachedSource:
         self._stage = stage
 
     def release(self) -> None:
+        """Let go of the attached stage, leaving the source unattached."""
         self._stage = None

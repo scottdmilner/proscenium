@@ -78,7 +78,7 @@ def scenes(groups: list[str], out: Path) -> dict[str, dict[str, Any]]:
 
 
 def sample(process: psutil.Popen, interval: float, timeout: float) -> list[dict[str, Any]]:
-    """Samples the child until it exits."""
+    """Sample the child until it exits."""
     samples: list[dict[str, Any]] = []
     deadline = time.monotonic() + timeout
     while process.poll() is None:

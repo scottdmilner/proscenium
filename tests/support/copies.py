@@ -11,13 +11,15 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium import bindings, ownership, records
-from proscenium.ownership import Manifest
-from proscenium.records import Loaded
+from proscenium.persistence import binding_records, manifests, records
+from proscenium.persistence.manifests import Manifest
+from proscenium.persistence.records import Loaded
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from proscenium.core.binding_ids import BindingId
 
 
 def run(route: str, tmp_path: Path) -> None:
@@ -25,8 +27,10 @@ def run(route: str, tmp_path: Path) -> None:
 
 
 def records_by_name() -> dict[tuple[str, str], Any]:
-    """Every scene's, collection's, object's, and text's records, with ID pointers as names, and each collection's
-    objects: what detection must leave as it was."""
+    """Every scene's, collection's, object's, and text's records, with ID pointers as names.
+
+    Also each collection's objects: what detection must leave as it was.
+    """
     found: dict[tuple[str, str], Any] = {}
     for kind, ids in (("scene", bpy.data.scenes), ("collection", bpy.data.collections), ("text", bpy.data.texts)):
         for id_ in ids:
@@ -57,16 +61,18 @@ def _shot() -> bpy.types.Collection:
 
 
 def _index_text() -> bpy.types.Text:
-    [text] = bindings.index_texts()
+    [text] = binding_records.index_texts()
     return text
 
 
-def _write_entries(change: Callable[[dict[str, bpy.types.Collection | None]], None]) -> None:
-    index = records.read(_index_text(), bindings.INDEX_KEY, bindings.INDEX)
+def _write_entries(change: Callable[[dict[BindingId, bpy.types.Collection | None]], None]) -> None:
+    index = records.read(_index_text(), binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, Loaded)
     destinations = dict(index.record.destinations)
     change(destinations)
-    records.write(_index_text(), bindings.INDEX_KEY, bindings.INDEX, bindings.BindingIndex(destinations))
+    records.write(
+        _index_text(), binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations)
+    )
 
 
 def _copy_collection(_: Path) -> bpy.types.Collection:
@@ -77,21 +83,23 @@ def _copy_collection(_: Path) -> bpy.types.Collection:
 
 
 def _deep_copy_collection(tmp_path: Path) -> None:
-    """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1): the objects copied, and
-    the copy's manifest naming the copies, its tag the original's."""
+    """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1).
+
+    The objects copied, and the copy's manifest naming the copies, its tag the original's.
+    """
     copy = _copy_collection(tmp_path)
     copies = {}
     for obj in list(copy.objects):
         copies[obj] = obj.copy()
         copy.objects.unlink(obj)
         copy.objects.link(copies[obj])
-    manifest = ownership.read_manifest(copy)
+    manifest = manifests.read_manifest(copy)
     assert isinstance(manifest, Loaded)
     entries = {
         key: type(entry)(copies.get(entry.datablock, entry.datablock), entry.covers, entry.role, entry.uses)
         for key, entry in manifest.record.entries.items()
     }
-    ownership.write_manifest(copy, Manifest(entries))
+    manifests.write_manifest(copy, Manifest(entries))
 
 
 def _copy_scene(kind: str) -> Callable[[Path], None]:
@@ -132,7 +140,7 @@ def _link(tmp_path: Path) -> None:
 
 def _append_index(tmp_path: Path) -> None:
     """A user appends the other file's index Text; its entry's pointer brings the destination, and its scene."""
-    _load(tmp_path, "texts", bindings.INDEX_NAME, link=False)
+    _load(tmp_path, "texts", binding_records.INDEX_NAME, link=False)
 
 
 def _copy_records(_: Path) -> None:
@@ -149,7 +157,7 @@ def _lose_index(_: Path) -> None:
 
 
 def _remove_tag(_: Path) -> None:
-    del _shot()[records.NAMESPACE][bindings.TAG_KEY]
+    del _shot()[records.NAMESPACE][binding_records.TAG_KEY]
 
 
 def _clear_entries(_: Path) -> None:
@@ -162,7 +170,7 @@ def _disagree(tmp_path: Path) -> None:
 
 
 def _unreadable_index(_: Path) -> None:
-    _index_text()[records.NAMESPACE][bindings.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
+    _index_text()[records.NAMESPACE][binding_records.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
 
 
 def _duplicate_object(_: Path) -> None:

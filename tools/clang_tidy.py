@@ -20,6 +20,7 @@ BUILD = ROOT / "build" / "core"  # build_extension.py's results directory for th
 
 
 def main() -> int:
+    """Run clang-tidy on the compiled core's sources; the exit status."""
     key = current_platform()
     build = native_build.cmake_dir(BUILD)
     native_build.configure(CORE, build)

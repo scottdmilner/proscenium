@@ -3,7 +3,9 @@
 import bpy
 from bpy.app.handlers import persistent
 
-from . import indexes, records, synchronization
+from . import runtime
+from .api import bindings
+from .persistence import records
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):
@@ -24,24 +26,25 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    synchronization.SYNCHRONIZATION.file_loaded()
-    indexes.invalidate()
+    bindings.BINDINGS.drop_all_stages()
+    runtime.invalidate()
 
 
 @persistent
 def _data_changing(*_args: object) -> None:
     # Before a load, undo, or redo, so that another extension's handler running ahead of _file_loaded
     # or _undone_or_redone rebuilds the state from the data that results.
-    indexes.invalidate()
+    runtime.invalidate()
 
 
 @persistent
 def _undone_or_redone(*_args: object) -> None:
-    indexes.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
-    synchronization.SYNCHRONIZATION.prune()  # at once, so an undone binding's stages are freed without waiting
+    runtime.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
+    bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
 
 
 def register() -> None:
+    """Register the record types, and the handlers that keep the bindings' state current."""
     global _registered
     for cls in CLASSES:
         bpy.utils.register_class(cls)
@@ -52,13 +55,14 @@ def register() -> None:
     bpy.app.handlers.load_post.append(_file_loaded)
     bpy.app.handlers.undo_post.append(_undone_or_redone)
     bpy.app.handlers.redo_post.append(_undone_or_redone)
-    indexes.start()
+    runtime.start()
     _registered = True
 
 
 def unregister() -> None:
+    """Remove what register() added, and stop the bindings' state."""
     global _registered
-    indexes.stop()
+    runtime.stop()
     bpy.app.handlers.load_post.remove(_file_loaded)
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)
@@ -72,4 +76,5 @@ def unregister() -> None:
 
 
 def is_registered() -> bool:
+    """Whether register() has run without a matching unregister()."""
     return _registered

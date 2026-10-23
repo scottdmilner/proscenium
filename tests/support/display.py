@@ -10,16 +10,18 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium import binding_state, indexes
-from proscenium.binding_state import Generation
+from proscenium import runtime
 from proscenium.core.source_access import PayloadPolicy
-from proscenium.ownership import Manifest, ManifestEntry
+from proscenium.persistence import binding_state
+from proscenium.persistence.binding_state import Generation
+from proscenium.persistence.manifests import Manifest, ManifestEntry
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
+    from proscenium.core.binding_ids import BindingId
 
 
-def publish_by_hand(binding_id: str, destination: bpy.types.Collection, display: SavedDisplay) -> None:
+def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, display: SavedDisplay) -> None:
     """Build display in destination, write the manifest and generation naming it, and update world matrices."""
     parent = bpy.data.objects.new("World", None)
     parent.location = display.parent_location
@@ -35,7 +37,7 @@ def publish_by_hand(binding_id: str, destination: bpy.types.Collection, display:
         destination.objects.link(each)
     datablocks = {"world": parent, "ref": obj, "ref-mesh": mesh, "ref-material": material}
     entries = {key: ManifestEntry(datablocks[key], *entry) for key, entry in display.entries.items()}
-    indexes.set_manifest(binding_id, Manifest(entries))
+    runtime.set_manifest(binding_id, Manifest(entries))
     binding_state.write_generation(destination, Generation(binding_id, PayloadPolicy.LOAD_ALL, 0.0, ()))
     view_layer = bpy.context.view_layer
     assert view_layer is not None

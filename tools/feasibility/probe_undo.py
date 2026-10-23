@@ -83,7 +83,8 @@ def _plain_push(global_undo: bool) -> dict[str, Any]:
 def _operator_push(global_undo: bool, undo_arg: bool | None) -> dict[str, Any]:
     """A registered operator with bl_options UNDO, invoked from Python.
 
-    bpy.ops calls take optional (execution_context, undo); None calls with no arguments."""
+    bpy.ops calls take optional (execution_context, undo); None calls with no arguments.
+    """
     import bpy
 
     class PROSCENIUM_OT_probe_sync(bpy.types.Operator):

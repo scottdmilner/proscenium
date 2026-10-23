@@ -10,12 +10,14 @@ from enum import StrEnum
 
 
 class ResultState(StrEnum):
+    """How an operation ended: its result's state."""
+
     SUCCESS = "success"
     COMPLETED_WITH_ISSUES = "completed with issues"
     FATAL_FAILURE = "fatal failure"
 
 
-class Category(StrEnum):
+class DiagnosticCategory(StrEnum):
     """Diagnostic categories synchronization reports so far (pipeline.md#diagnostics)."""
 
     UNAVAILABLE_SOURCE = "unavailable source"
@@ -26,6 +28,8 @@ class Category(StrEnum):
 
 
 class Severity(StrEnum):
+    """How serious a diagnostic is."""
+
     INFO = "info"
     ERROR = "error"
 
@@ -34,14 +38,14 @@ class Severity(StrEnum):
 class Diagnostic:
     """One reported problem or state. Also a record field: records store it as a group of strings."""
 
-    category: Category
+    category: DiagnosticCategory
     severity: Severity
     message: str
     layers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
 
     def __post_init__(self) -> None:
         # A stored diagnostic's enums are plain strings and its layers a list; an unknown value raises ValueError.
-        object.__setattr__(self, "category", Category(self.category))
+        object.__setattr__(self, "category", DiagnosticCategory(self.category))
         object.__setattr__(self, "severity", Severity(self.severity))
         object.__setattr__(self, "layers", tuple(self.layers))
         if type(self.message) is not str or not all(type(layer) is str for layer in self.layers):

@@ -243,6 +243,7 @@ def build(source_dir: Path, output_dir: Path, *, sync: bool = True) -> Path:
 
 
 def main() -> int:
+    """Build the extension zip, or with --check only verify the source dir; the exit status."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source-dir", type=Path, default=ROOT / "src" / "proscenium")
     parser.add_argument("--output-dir", type=Path, default=ROOT / "dist")
