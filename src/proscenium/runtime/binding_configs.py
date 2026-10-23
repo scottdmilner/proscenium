@@ -117,10 +117,13 @@ def set_config(binding_id: BindingId, config: BindingConfig) -> None:
     BindingDisabledError if it has no canonical candidate.
     """
     found = writable(binding_id)
+    # records.write refuses only an unreadable or newer record, so an invalid one is refused here.
+    if isinstance(found.config, RefusedRecord):
+        raise RefusedRecordError(found.config)
     if config == found.config:
         return
     binding_records.write_config(found.scene, binding_id, config)
-    moved = isinstance(found.config, RefusedRecord) or found.config.destination != config.destination
+    moved = found.config.destination != config.destination
     found.config = config
     if moved:  # a destination changes only in repair: rebuilt whole, in the order a rebuild finds
         state.invalidate()

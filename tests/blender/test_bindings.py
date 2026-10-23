@@ -343,6 +343,27 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
         assert records.stored(_scene(), binding_records.config_key(handle.binding_id)) == stored
 
 
+@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names"])
+def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tmp_path: Path, name: str) -> None:
+    # SCHEMA-03: the runtime write refuses every refusal, including those at the current version, which
+    # records.write alone lets through.
+    with record_fixtures.schema_versions(tmp_path) as versions:
+        stored = versions.bindings[name]
+        binding_id = binding_records.new_identifier()
+        _scene()[NAMESPACE] = {binding_records.config_key(binding_id): stored}
+        config = BindingConfig(
+            source_kind=SourceKind.FILE,
+            path="//shot.usda",
+            source_key=None,
+            root_layer_identifier=None,
+            destination=None,
+            payload_policy=PayloadPolicy.LOAD_ALL,
+        )
+        with pytest.raises(RefusedRecordError):
+            runtime.set_config(binding_id, config)
+        assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
+
+
 # The source key contract (source-access.md#source-identity).
 
 
