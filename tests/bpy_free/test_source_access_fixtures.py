@@ -108,7 +108,8 @@ def test_reattach(tmp_path: Path) -> None:
 
 def test_binding_state(tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        assert scene.caller.GetRootLayer().identifier == str(scene.root)
+        # Compared as paths: Sdf's identifier for a file uses forward slashes, also on Windows.
+        assert Path(scene.caller.GetRootLayer().identifier) == scene.root
         assert read_values(open_fresh(scene.root)) == read_values(scene.caller) == scene.values
 
 
