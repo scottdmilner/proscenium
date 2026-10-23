@@ -66,10 +66,10 @@ class RequestedSettings:
 class AttachResult:
     """What attach(key, stage) did: attached the stage, or refused.
 
-    Refused when a binding with the key stored a different root-layer identifier and confirm wasn't passed:
-    unconfirmed lists those bindings, and attached is empty. Otherwise unconfirmed is empty, and attached lists
-    every binding the stage is now attached to: those with the key whose configuration can be read and isn't
-    disabled, so none if no such binding has the key.
+    - Refused, when a binding with the key stored another root-layer identifier and confirm wasn't passed: unconfirmed
+      lists those bindings, and attached is empty.
+    - Attached: attached lists the bindings with the key whose configuration can be read and isn't disabled, possibly
+      none, and unconfirmed is empty.
     """
 
     attached: tuple[BindingId, ...]  # the bindings the stage is now attached to

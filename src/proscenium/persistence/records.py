@@ -1,16 +1,20 @@
 """Versioned records in Blender ID properties (lifecycle.md#schema-versions).
 
-A record is a nested ID-property group with a version under VERSION_KEY. Each ID that carries records holds
-them in one group, id_["proscenium"], one record per key. A schema names the dataclass a record
-loads as, and the migration from each older version to the next. A record's fields may hold
-dataclasses, in groups and lists too: writing stores them as groups, and the record's
-__post_init__ builds them again on load.
+A record is a dataclass stored as a nested ID-property group, with its version under VERSION_KEY. Each ID keeps its
+records in one group, id_["proscenium"], one per key. A Schema names a record's dataclass and the migration from each
+older version to the next.
 
-Reading never writes: an older record migrates in memory and is stored at the current version
-only when the extension next writes it. A record that can't be read is a RefusedRecord value, never an
-exception, so its binding can keep its display and report why. Writers read a record before
-writing it and refuse on any refusal, so a newer, damaged, or failed record survives until the user
-repairs it; writing itself refuses to replace one that is unreadable or newer.
+- Fields may hold dataclasses, in groups and lists too: writing stores them as groups, and the record's __post_init__
+  builds them again on load.
+- Datablocks are named by ID pointer, not by name. Blender clears a pointer when its datablock is removed. A full-copy
+  scene or an append points the copies at each other, while Collection.copy() keeps them naming the originals
+  (docs/feasibility/runtime-record.md#copy-routes-m3).
+- Reading never writes. An older record migrates in memory, and is stored at the current version only when it is next
+  written.
+- A record that can't be read is a RefusedRecord value, not an exception, so its binding keeps its display and can
+  report why.
+- A record that can't be read survives until the user repairs it: writers read a record first and refuse on any
+  refusal, and write() itself refuses to replace one that is unreadable or newer.
 """
 
 from __future__ import annotations
@@ -171,11 +175,9 @@ def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -
 def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], record: R) -> None:
     """Store record under key at the current version.
 
-    Raises RefusedRecordError, changing nothing, if the stored record is unreadable (not a group, or no
-    version) or newer than supported: what can be told without loading it. A record at a supported
-    version that fails to load, damaged or failing migration, isn't caught here. Every writer reads
-    the record first and refuses on any refusal, so loading it again on each write would only cost
-    time. A value ID properties can't hold raises Blender's own error, which also changes nothing.
+    Raises RefusedRecordError, changing nothing, over a stored record that is unreadable or newer than supported.
+    It doesn't load the record, so one that is invalid or fails to migrate isn't caught here: every writer has already
+    read it and refused. A value ID properties can't hold raises Blender's own error, which also changes nothing.
     """
     if type(record) is not schema.record_type:
         raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
@@ -205,11 +207,10 @@ def write_items[R: DataclassInstance](
 ) -> None:
     """Store record, writing only the items of its mapping field under changed and removed.
 
-    record differs from the stored one only in those items: changed are added or replaced, and removed deleted.
-
-    When the stored record is at the current version only those items are written, so the cost is what
-    changed; otherwise all of record is, as write() stores it. Raises as write() does, changing nothing,
-    including Blender's own error for a value or key ID properties can't hold.
+    record differs from the stored one only in those items: changed are added or replaced, and removed deleted. So a
+    write costs what changed, unless the stored record isn't at the current version: then all of record is written,
+    as write() does. Raises as write() does, changing nothing, including Blender's own error for a value or key ID
+    properties can't hold.
     """
     if type(record) is not schema.record_type:
         raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")

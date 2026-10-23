@@ -1,26 +1,20 @@
 """Ownership metadata: each binding's manifest of the resources it manages (lifecycle.md#ownership-and-lifecycle).
 
-A binding's manifest is a record on its destination collection, with one entry per managed
-resource, keyed by the resource's identity. An entry names the resource's datablock and records
-its source coverage, representation role, and the managed resources it uses; its ownership is the
-binding whose manifest holds it. These are the separate concepts ownership records keep (OWN-01).
+A manifest is a record on the binding's destination collection with one entry per managed resource, keyed by the
+resource's identity. An entry names the resource's datablock, its source coverage, its representation role, and the
+managed resources it uses; its ownership is the binding whose manifest holds it (OWN-01).
 
-Nothing is stored on the managed datablocks. A datablock is managed by the binding whose manifest
-names it (OWN-16), so a duplicate or appended copy of managed content is unmanaged, and content
-two manifests name is ambiguous. Managed dependents are found by inverting the uses; unmanaged
-users are read from Blender's user graph when an operation needs them, since nothing persistent
-can track them.
+Nothing is stored on the managed datablocks: a datablock is managed by the binding whose manifest names it (OWN-16).
 
-Reading a manifest reads every entry, so the operations that run often go through the ownership
-index built from it (proscenium.runtime.ownership_index), not through these functions. Writing one
-can write only the entries that change (write_entries), so an incremental refresh costs what it
-changes.
+- A duplicate or appended copy of managed content is unmanaged, and content two manifests name is ambiguous.
+- Managed dependents come from inverting the uses (dependents). Unmanaged users are read from Blender's user graph
+  when an operation needs them, since nothing persistent can track them.
+- A manifest's pointers are users of the datablocks they name. Content the user deletes in the interface
+  (Object > Delete) stays in the file, still named and so claimed, until a refresh or cleanup finds it linked
+  nowhere; only bpy.data's remove clears the pointer. Reading unmanaged users has to discount the manifests (M7).
 
-A manifest's pointers are users of the datablocks they name. So managed content the user deletes
-in the interface (Object > Delete) stays in the file, still named and so still claimed, until a
-refresh or cleanup finds it linked nowhere; only bpy.data's remove clears the pointer. And
-Blender's user graph lists each manifest among a managed datablock's users, which reading
-unmanaged users has to discount (M7).
+Reading a manifest reads every entry, so frequent operations go through the ownership index
+(proscenium.runtime.ownership_index). write_entries writes only the entries that change.
 """
 
 from __future__ import annotations
@@ -83,13 +77,11 @@ class Manifest:
     def updated(
         self, changed: Mapping[str, ManifestEntry], removed: Collection[str], naming: Callable[[int], str | None]
     ) -> Manifest:
-        """This manifest with changed's entries added or replaced and removed's deleted.
+        """This manifest with changed's entries added or replaced and removed's deleted, checked as a whole one is.
 
-        It is checked as a whole one is. The checks cost what changes, plus, with removals, a scan of every entry's
-        uses; building the result copies the entries.
-
-        naming gives the key of this manifest's entry naming a datablock, by session_uid, or None; the
-        ownership index has it. Raises ValueError or TypeError over an update that makes no manifest.
+        naming gives, by session_uid, the key of this manifest's entry naming a datablock, or None; the ownership
+        index has it. The checks cost what changes, plus a scan of every entry's uses when removing; the result copies
+        the entries. Raises ValueError or TypeError over an update that makes no manifest.
         """
         removed = frozenset(removed)  # tested once per entry and per use: a caller's list would make each a search
         if not changed.keys().isdisjoint(removed):

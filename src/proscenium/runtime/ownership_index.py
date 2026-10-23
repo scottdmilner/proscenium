@@ -1,16 +1,14 @@
 """The ownership index: the claims on each datablock (lifecycle.md#ownership-and-lifecycle).
 
-Ownership counts every candidate's manifest, a tagged collection's that no record names included
-(Claim), so copied content is ambiguous rather than any one binding's. The index is built from the
-manifests in the bindings' state (proscenium.runtime.state) when first asked for, and a manifest write
-replaces only its destination's claims.
+It's built from every candidate's manifest in the bindings' state when first asked for, a tagged copy's included, so
+content a copy names is ambiguous rather than one binding's. Each destination's claims are kept apart
+(DestinationClaims), so a manifest write replaces only its own.
 
-A removed datablock costs a reread of the one manifest that names it, where Blender has cleared its
-entry, and that destination's claims are replaced. A manifest is checked whole when it's returned,
-since its entries name datablocks. Claims are keyed by each datablock's session_uid, which no other
-datablock in the session gets and an undo re-read keeps, not by its reference: a new datablock often
-takes a removed one's address, and a removed one's claims, left until its destination's claims are
-next replaced, are never found.
+- Claims are keyed by datablock session_uid, not reference: a new datablock often takes a removed one's address, but
+  never its session_uid, so a removed datablock's leftover claims are never found.
+- A removed datablock costs a reread of the one manifest naming it, where Blender has cleared the entry, and that
+  destination's claims are replaced.
+- A manifest is checked whole before it's returned, since its entries name datablocks.
 """
 
 from __future__ import annotations
@@ -39,19 +37,18 @@ if TYPE_CHECKING:
 class Claim:
     """A manifest entry naming a datablock: the evidence that a binding manages it (OWN-16).
 
-    A manifest names a datablock at most once, so each claim on a datablock comes from a different
-    manifest. One claim means the datablock is managed by that binding; two or more, that it is
-    ambiguous: it is reported, never automatically claimed or deleted (OWN-09); none, that it is
-    unmanaged. That judgment needs every manifest that could name the datablock, so the ownership
-    index indexes every binding's. Each destination's manifest counts once, though several
-    configurations can name it, as a linked-copy scene's do. A manifest that can't be read claims
-    nothing, so its content has no ownership evidence until it is repaired. A binding's copies share
-    its identity, so the destination says which manifest a claim comes from. Like the datablocks it
-    sits beside, it doesn't survive an operator call or undo.
+    What the claims on a datablock mean:
+
+    - none: it's unmanaged;
+    - one: the binding whose manifest holds it manages it;
+    - two or more, each from a different manifest: it's ambiguous, reported but never claimed or deleted (OWN-09).
+
+    Each destination's manifest counts once, however many configurations name it, as a linked-copy scene's do, and a
+    manifest that can't be read claims nothing. A claim doesn't survive an operator call or undo.
     """
 
     binding_id: BindingId  # the binding whose manifest holds the entry
-    destination: bpy.types.Collection  # the collection holding that manifest
+    destination: bpy.types.Collection  # the collection holding that manifest; a binding's copies share binding_id
     resource_id: str  # the entry's key in that manifest
 
 

@@ -1,35 +1,27 @@
-"""The bindings' in-memory state, which the runtime indexes are built into (lifecycle.md#undo-and-runtime-state).
+"""The bindings' in-memory state, a disposable cache of their records (lifecycle.md#undo-and-runtime-state).
 
-This state is a disposable write-through cache of the bindings' records: each binding's scene and
-decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
-claims (proscenium.runtime.ownership_index). It holds every candidate of an identity (source-
-access.md#copied-bindings), and the canonical-candidate rule's decision on them
-(proscenium.runtime.copy_detection); lookups by identity are proscenium.runtime.binding_configs'. The extension's
-writes go through it, updating memory and writing the records at once, since the records are what's
-saved and what undo steps capture. So nothing is read back from the records after the extension's own
-writes.
+It holds every binding identity's candidates (copy_detection.IdentityCandidates): each record's scene and decoded
+configuration, its decoded manifest once read, and the canonical-candidate rule's decision. binding_configs looks
+bindings up in it, and ownership_index builds the claims on each datablock from it.
 
-The records change behind the state only when Blender changes data: a file load, undo, or redo.
-The extension's handlers for those drop the state, before and after, and the next use rebuilds it
-from the records; dropping it before means another extension's handler that runs ahead of these
-reads the new data. That's why the state needs the extension registered: without the handlers, a
-binding that redo brings back would never be found. Scenes added or removed, as a scene copy, a new
-scene, or an append makes them, no handler announces: every use compares the scenes' session_uids
-with those the state was built from, and rebuilds if they differ.
+How it stays current:
 
-The state holds datablock references, which Blender invalidates under it: undo re-reads every
-datablock the undone step changed, which a synchronization's managed content always is, and a file
-load frees every one. Those come with a rebuild. The user may also remove content at any time, which
-no handler announces, so every hit is checked before it's returned (a removed ID's reference raises
-when touched, alive()). A removed scene or destination clears pointers in the configurations, so a
-check that finds one gone raises StaleError, and query() rebuilds the state and asks again; a removed
-managed datablock costs less (proscenium.runtime.ownership_index). Only ID references are held, never
-the structs inside a datablock (modifiers, mesh elements, nodes): Blender invalidates a removed ID's
-Python reference but not those, and one held across undo silently reads freed memory.
+- Writes go through it, updating memory and writing the record at once, so nothing is read back from the records.
+- A file load, undo, or redo changes the records behind it. The extension's handlers drop the state before and after
+  each, and the next use rebuilds it; dropping it before means another extension's handler that runs first reads
+  the new data. So the state needs the extension registered (NotRegisteredError).
+- Scenes added or removed, as a scene copy, a new scene, or an append makes them, have no handler: each use compares
+  the scenes' session_uids with those the state was built from.
+- Content appended or linked, and a collection duplicated on its own, add no scene: refresh_if_tags_changed() finds
+  them, as a synchronization asks it to first, and otherwise the next load, undo, or redo does.
 
-Other content brought in by append or link, and a destination collection duplicated on its own,
-add no scene, so they're seen at the next load, undo, or redo, or when refresh_if_tags_changed()
-finds the collections' tags changed, as a synchronization asks it to first.
+What it holds:
+
+- References to IDs only, never to structs inside one (modifiers, mesh elements, nodes): Blender invalidates a
+  removed ID's Python reference, but a struct held across undo silently reads freed memory.
+- Each reference is checked before it's returned (alive()), since the user can remove content at any time. A removed
+  scene or destination raises StaleError, and query() rebuilds the state and asks again; a removed managed datablock
+  rereads only the manifest naming it (ownership_index).
 """
 
 from __future__ import annotations
@@ -138,10 +130,10 @@ def invalidate() -> None:
 
 
 def rebuild_count() -> int:
-    """A count that changes whenever the state is dropped or rebuilt from the records.
+    """A number that changes whenever the state is dropped or rebuilt.
 
-    It changes after a load, undo, or redo, and when scenes are added or removed, so runtime state keyed by binding
-    identity, such as the bindings' stages, knows to compare its bindings with binding_ids().
+    Runtime state kept beside the bindings, such as their stages (CurrentStages), compares it to tell when the bindings
+    may have changed: after a load, undo, or redo, or when scenes are added or removed.
     """
     return _rebuilds
 

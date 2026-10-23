@@ -1,9 +1,8 @@
-"""Lookups by binding identity, creation, and configuration writes, through the bindings' state.
+"""Lookups by binding identity, binding creation, and configuration writes, through the bindings' state.
 
-The state is proscenium.runtime.state's. A lookup by identity uses the identity's canonical
-candidate, and for one with none returns DisabledBinding, in band, as an unreadable configuration
-is returned (source-access.md#copied-bindings); a write to it raises DisabledBindingError. Every candidate
-a lookup decides on is checked before it answers.
+A lookup reaches the identity's canonical candidate, after checking every candidate the rule decides on. A binding
+with no canonical candidate is returned in band as DisabledBinding, as an unreadable configuration is as a
+RefusedRecord, and a write to it raises DisabledBindingError (source-access.md#copied-bindings).
 """
 
 from __future__ import annotations
@@ -170,11 +169,11 @@ def writable_in(current: State, binding_id: BindingId) -> Candidate:
 
 
 def restore_entry(binding_id: BindingId, candidate: Candidate) -> None:
-    """Restore the canonical candidate's missing index entry, after a write to its records.
+    """Add the binding index entry the canonical candidate is missing, after a write to its records.
 
-    Only if the index has none for it and its record and destination refer to each other
-    (source-access.md#canonical-candidate). Detection writes nothing; a file with two indexes, or one that can't be
-    read, is left as it is.
+    Only when the index has no entry for the identity, and the candidate's record and destination refer to each other
+    (source-access.md#canonical-candidate). A file with two indexes, or one that can't be read, is left alone. Writes
+    restore entries; detection never does.
     """
     identity = state.current_state().identities[binding_id]
     config = candidate.config

@@ -34,16 +34,16 @@ class MatchedStage(NamedTuple):
 
 
 class BindingStages[S: (FileSource, AttachedSource)](ABC):
-    """A binding's stages: its source, whose stage is the source stage, and its evaluation stage.
+    """A binding's stages: the source stage its source is composed on, and the evaluation stage it synchronizes.
 
-    The source stage is the stage the source is composed on: the one a file source opens, or the one a caller attaches.
-    The evaluation stage, kept and reused across acquisitions, is matched to the source stage: it composes the source
-    stage's root and session layers under the source stage's mask, muting, and interpolation, which no layer stores, so
-    each is copied over. Only its payload policy differs, being the binding's own. When the binding opened the source
-    stage itself, there are no caller's settings to protect, so the evaluation stage is the source stage. Layers
-    are evaluated as loaded; only reload() rereads them. The requested payload policy is the binding configuration's,
-    passed at each acquisition; this holds only the one the evaluation stage has. Runtime state only. One subclass for
-    each kind of source.
+    - The source stage is the one a file source opens, or the one a caller attaches.
+    - The evaluation stage is kept and reused, and matched to the source stage at each acquisition: it composes the
+      source stage's root and session layers under the source stage's mask, muting, and interpolation, which no layer
+      stores. Only its payload policy is the binding's own, passed at each acquisition from its configuration.
+    - A file source's stage is the binding's own, with no caller's settings to protect, so it is also the evaluation
+      stage.
+
+    Layers are evaluated as loaded; only reload() rereads them. One subclass for each kind of source.
     """
 
     source: S

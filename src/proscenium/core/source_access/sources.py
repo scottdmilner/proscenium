@@ -72,13 +72,12 @@ class FileSource:
 class AttachedSource:
     """A stage a caller attaches under a source key, held until the caller releases it (SRC-02).
 
-    The binding's evaluation stage composes the attached stage's layers, so it keeps them alive in any
-    case, and USD sends no notice when a stage is destroyed: a binding that let go of a stage the
-    caller dropped would still hold its layers, unsaved edits included, until it next looked. So the
-    attachment holds the stage itself, and release() is the caller's way to free it.
+    It holds the stage itself because the binding's evaluation stage composes the stage's layers, so keeps them alive
+    anyway, and USD sends no notice when a stage is destroyed: a binding holding only the layers would keep a dropped
+    stage's unsaved edits alive unseen. release() is the caller's one way to free them.
 
-    The attachment is runtime only. The key, and the root-layer identifier of the stage last
-    attached, are binding configuration, kept in the binding's records (proscenium.persistence.binding_records).
+    The attachment is runtime only. The key, and the root-layer identifier of the stage last attached, are binding
+    configuration (proscenium.persistence.binding_records).
     """
 
     key: str

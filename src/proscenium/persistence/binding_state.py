@@ -10,8 +10,7 @@ scene beside the binding's configuration, under its own key: it exists without a
 publication, and reading the configuration doesn't load its diagnostics.
 
 Nothing writes these records before M5's synchronization transaction, so M5 can still refine their
-version 1 fields. Time codes are stored as their value, or None for the USD default time code,
-whose value is NaN, which would break equality.
+version 1 fields.
 """
 
 from __future__ import annotations
@@ -37,7 +36,7 @@ ATTEMPT_PREFIX = "attempt."
 
 
 def stored_time(time_code: Usd.TimeCode) -> float | None:
-    """A time code as a record stores it: None for the default time code."""
+    """A time code as a record stores it: its value, or None for the default time code, whose NaN breaks equality."""
     return None if time_code.IsDefault() else time_code.GetValue()
 
 

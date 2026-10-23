@@ -1,9 +1,8 @@
-"""Every binding's stages, kept consistent with the bindings (source-access.md#source-stages).
+"""Every binding's stages, kept consistent with the bindings that exist (source-access.md#source-stages).
 
-The stages themselves are core's StageRegistry, made from each binding's configuration on first use. This keeps
-them consistent with the bindings that exist: whenever the bindings' state was rebuilt (state.rebuild_count), as
-after a load, undo, or redo, or when scenes are added or removed, the next use first drops the stages of bindings
-that are gone or can't synchronize (StageRegistry.prune).
+The stages are core's StageRegistry, made from each binding's configuration on first use. Whenever the bindings'
+state was rebuilt since (state.rebuild_count), the next use of the stages first drops those of bindings that are
+gone or can't synchronize (StageRegistry.prune).
 """
 
 from __future__ import annotations

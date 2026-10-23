@@ -1,16 +1,12 @@
 """Binding records: configuration, the destination's tag, and the binding index (lifecycle.md#binding-state).
 
-A binding's configuration is a record on its target scene, under binding.<identifier>. Its
-destination collection carries a tag naming the binding and pointing back at the scene, so the
-scene's record and its destination refer to each other (source-access.md#canonical-candidate).
-
-The binding index maps each binding's identifier to its destination. It is a record on its own
-Text, not on any scene or collection, so duplicating or appending a binding never copies it. The
-Text has a fake user, so Blender keeps it although nothing uses it.
-
-The extension finds the index by looking for the Text that holds the index record, not by the
-Text's name, which users can change. The name it gives the Text, .proscenium, starts with a dot so
-Blender's datablock search menus leave it out unless the user turns on showing hidden data-blocks.
+- Configuration: a record on the binding's target scene, under binding.<identifier>.
+- Destination tag: a record on the destination collection naming the binding and pointing back at the scene, so the
+  configuration and its destination refer to each other (source-access.md#canonical-candidate).
+- Binding index: each binding's identifier to its destination, a record on its own Text, so duplicating or appending
+  a binding never copies it. The Text has a fake user, so Blender keeps it though nothing uses it. It is found by its
+  record, not by its name, which users can change; the name it is given, .proscenium, starts with a dot so Blender's
+  datablock search menus leave it out unless the user shows hidden data-blocks.
 """
 
 from __future__ import annotations
@@ -165,13 +161,11 @@ def read_configs() -> Iterator[tuple[bpy.types.Scene, BindingId, Loaded[BindingC
 
 
 def index_texts() -> list[bpy.types.Text]:
-    """Every Text holding a binding index record, readable or not, found by the record rather than the Text's name.
+    """Every local Text holding a binding index record, readable or not.
 
-    A file normally has one: the index maps each binding's identifier to its destination, and is
-    how the canonical-candidate rule tells an original binding from its copies. A second one comes
-    from appending the index Text from another .blend. With two, the rule can't decide, so
-    every binding sharing an identity is disabled pending repair (source-access.md#canonical-candidate).
-    A linked Text's index belongs to its library, so it is left out.
+    A file normally has one. A second comes from appending the index Text from another .blend; the
+    canonical-candidate rule can't decide on an identity both name, so its bindings are disabled pending repair
+    (source-access.md#canonical-candidate). A linked Text's index belongs to its library.
     """
     texts = bpy.data.texts
     return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
