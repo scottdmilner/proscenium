@@ -10,7 +10,7 @@ Callers use what `__init__.py` exports, not the modules below it.
 | `state.py` | The state itself: each binding's candidates, their configurations and manifests as read when first needed, and each identity's canonical-candidate decision. Also tracking (`start`, `stop`), dropping and rebuilding (`invalidate`, `rebuild_count`, `refresh_if_tags_changed`), and the checks of held datablock references. |
 | `binding_configs.py` | Lookups by binding identity, which reach the canonical candidate; binding creation; configuration writes; and restoring a missing index entry after a write. |
 | `ownership_index.py` | The ownership index, `Claim`s by datablock, built from every candidate's manifest; manifest lookups and writes, each replacing only its destination's claims. |
-| `copy_detection.py` | Copied-binding detection ([Copied Bindings](../../../docs/spec/source-access.md#copied-bindings)): each identity's candidates read from the records, the decision of the rule in `proscenium.core.canonical_candidate`, and the `CopiedBinding` reports. |
+| `copy_detection.py` | Copied-binding detection ([Copied Bindings](../../../docs/spec/source-access.md#copied-bindings)): `detect()`, which reads the destination tags and binding indexes and returns each identity's candidates (`IdentityCandidates`) with the decision of the rule in `proscenium.core.canonical_candidate`; and `report()`'s `CopiedBinding`. |
 
 ## How the state stays current
 

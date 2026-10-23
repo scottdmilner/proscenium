@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from ..persistence.binding_records import BindingConfig
     from ..persistence.manifests import Manifest
     from ..persistence.records import Loaded
+    from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
@@ -74,7 +75,7 @@ UNREAD = Unread()
 
 @dataclass(slots=True)
 class Candidate:
-    """One candidate of a binding identity: a scene's configuration record for it."""
+    """One binding record of a binding identity: a scene's configuration for it, and its manifest once read."""
 
     scene: bpy.types.Scene
     scene_uid: int  # compared instead of the reference: a new scene can take a removed one's address
@@ -87,11 +88,11 @@ class State:
     """The bindings' state, built from the records (the module docstring says how it's kept)."""
 
     scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
-    candidates: dict[BindingId, list[Candidate]]  # each identity's records, in the order found
-    # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
+    # Every identity with a record or a tagged collection, in the order found: its candidates and the rule's decision.
+    identities: dict[BindingId, IdentityCandidates]
+    # By destination session_uid: the records whose configuration names it, with their identifiers, in the
     # order found, so a write reaches them without going through every binding (_by_destination).
     by_destination: dict[int, list[tuple[BindingId, Candidate]]]
-    identities: dict[BindingId, copy_detection.IdentityCandidates]  # its candidates, as the rule reads them
     tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (refresh_if_tags_changed)
     ownership: OwnershipIndex | None = None  # built when first asked for
 
@@ -158,9 +159,8 @@ def current_state() -> State:
         raise NotRegisteredError("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
     if _state is None or _state.scenes != scenes:
-        candidates = _read_candidates()
-        detected = copy_detection.detect({b: [(c.scene, c.config) for c in cs] for b, cs in candidates.items()})
-        _state = State(scenes, candidates, _by_destination(candidates), detected.identities, detected.tagged)
+        detected = copy_detection.detect(_read_candidates())
+        _state = State(scenes, detected.identities, _by_destination(detected.identities), detected.tagged)
         _rebuilds += 1
     return _state
 
@@ -199,14 +199,14 @@ def _read_candidates() -> dict[BindingId, list[Candidate]]:
     return candidates
 
 
-def _by_destination(candidates_by_id: dict[BindingId, list[Candidate]]) -> dict[int, list[tuple[BindingId, Candidate]]]:
-    """Every candidate naming a destination, by its session_uid, in the order found.
+def _by_destination(identities: dict[BindingId, IdentityCandidates]) -> dict[int, list[tuple[BindingId, Candidate]]]:
+    """Every record naming a destination, by its session_uid, in the order found.
 
-    A removed destination's candidates are left out, and checking them rebuilds the state.
+    A removed destination's records are left out, and checking them rebuilds the state.
     """
     by_uid: dict[int, list[tuple[BindingId, Candidate]]] = {}
-    for binding_id, candidates in candidates_by_id.items():
-        for candidate in candidates:
+    for binding_id, identity in identities.items():
+        for candidate in identity.records:
             config = candidate.config
             if not isinstance(config, RefusedRecord) and config.destination is not None and alive(config.destination):
                 by_uid.setdefault(config.destination.session_uid, []).append((binding_id, candidate))

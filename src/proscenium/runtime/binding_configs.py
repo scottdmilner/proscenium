@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import bpy
 
     from ..core.binding_ids import BindingId
+    from .copy_detection import IdentityCandidates
     from .state import State
 
 _UNIQUE = CanonicalDecision(0, DecisionReason.UNIQUE)
@@ -99,12 +100,11 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingI
     current = state.current_state()
     binding_id, config = binding_records.create(scene, config, name)
     made = Candidate(scene, scene.session_uid, config, None)
-    current.candidates[binding_id] = [made]
     assert config.destination is not None
     uid = config.destination.session_uid
     current.by_destination.setdefault(uid, []).append((binding_id, made))  # last, as among the bindings
     current.identities[binding_id] = copy_detection.IdentityCandidates(
-        [], [CandidateEvidence(uid, mutual=True)], [uid], _UNIQUE
+        [made], [], [CandidateEvidence(uid, mutual=True)], [uid], _UNIQUE
     )
     current.tagged |= {uid}
     return binding_id
@@ -136,14 +136,10 @@ def canonical(current: State, binding_id: BindingId) -> Candidate | CopiedBindin
 
     Every candidate is checked (see state.valid).
     """
-    candidates = current.candidates.get(binding_id)
-    if candidates is None:
-        return None
-    _check_candidates(current, binding_id, candidates)
-    identity = current.identities[binding_id]
-    if (index := identity.decision.canonical) is None:
-        return copy_detection.report(binding_id, identity, [(c.scene, c.config) for c in candidates])
-    return candidates[index]  # a record: copies are never mutual, so with records the rule picks one
+    identity = current.identities.get(binding_id)
+    if identity is None or not identity.records:
+        return None  # tagged collections alone aren't a binding
+    return _decided(binding_id, identity)
 
 
 def existing(binding_id: BindingId) -> Candidate | CopiedBinding:
@@ -189,12 +185,14 @@ def restore_entry(binding_id: BindingId, candidate: Candidate) -> None:
 def _listed(current: State, scene: bpy.types.Scene | None) -> list[BindingId]:
     uid = None if scene is None else scene.session_uid
     listed = []
-    for binding_id, candidates in current.candidates.items():
-        if uid is not None and all(c.scene_uid != uid for c in candidates):
+    for binding_id, identity in current.identities.items():
+        if not identity.records:
+            continue  # tagged collections alone aren't a binding
+        if uid is not None and all(c.scene_uid != uid for c in identity.records):
             continue  # none on scene, so it can't be listed there, whatever the rule decides: not checked
-        _check_candidates(current, binding_id, candidates)
-        index = current.identities[binding_id].decision.canonical
-        reached = candidates if index is None else [candidates[index]]
+        _check_candidates(binding_id, identity)
+        canonical_record = identity.canonical_record()
+        reached = identity.records if canonical_record is None else [canonical_record]
         if uid is None or any(c.scene_uid == uid for c in reached):
             listed.append(binding_id)
     return listed
@@ -202,10 +200,10 @@ def _listed(current: State, scene: bpy.types.Scene | None) -> list[BindingId]:
 
 def _configs(current: State) -> dict[BindingId, BindingConfig | RefusedRecord | CopiedBinding]:
     by_id: dict[BindingId, BindingConfig | RefusedRecord | CopiedBinding] = {}
-    for binding_id in current.candidates:
-        candidate = canonical(current, binding_id)
-        assert candidate is not None
-        by_id[binding_id] = candidate.config if isinstance(candidate, Candidate) else candidate
+    for binding_id, identity in current.identities.items():
+        if identity.records:
+            candidate = _decided(binding_id, identity)
+            by_id[binding_id] = candidate.config if isinstance(candidate, Candidate) else candidate
     return by_id
 
 
@@ -213,16 +211,22 @@ def _copied(current: State) -> list[CopiedBinding]:
     copied = []
     for binding_id, identity in current.identities.items():
         if identity.decision.reason is not DecisionReason.UNIQUE:
-            candidates = current.candidates.get(binding_id, [])
-            _check_candidates(current, binding_id, candidates)
-            copied.append(copy_detection.report(binding_id, identity, [(c.scene, c.config) for c in candidates]))
+            _check_candidates(binding_id, identity)
+            copied.append(copy_detection.report(binding_id, identity))
     return copied
 
 
-def _check_candidates(current: State, binding_id: BindingId, candidates: list[Candidate]) -> None:
+def _decided(binding_id: BindingId, identity: IdentityCandidates) -> Candidate | CopiedBinding:
+    """The canonical record of an identity with records, checked, or its report if every candidate is disabled."""
+    _check_candidates(binding_id, identity)
+    if (candidate := identity.canonical_record()) is None:
+        return copy_detection.report(binding_id, identity)
+    return candidate
+
+
+def _check_candidates(binding_id: BindingId, identity: IdentityCandidates) -> None:
     """Raise StaleError if any candidate of the identity is gone: the rule's decision may have been different."""
-    copies = current.identities[binding_id].tagged_copies
-    if not all(state.valid(binding_id, c) for c in candidates) or not all(
-        state.alive(c) and records.has(c, binding_records.TAG_KEY) for c in copies
+    if not all(state.valid(binding_id, c) for c in identity.records) or not all(
+        state.alive(c) and records.has(c, binding_records.TAG_KEY) for c in identity.tagged_copies
     ):
         raise StaleError
