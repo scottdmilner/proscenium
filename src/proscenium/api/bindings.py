@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
     from ..core.binding_ids import BindingId
     from ..core.source_access import AttachedBindingStages, FileBindingStages
-    from ..runtime.copy_detection import CopiedBinding
+    from ..runtime import CopiedBinding
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError

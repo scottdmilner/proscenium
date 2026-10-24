@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
-    from proscenium.runtime.copy_detection import CopiedBinding
+    from proscenium.runtime import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:

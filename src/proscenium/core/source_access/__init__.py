@@ -15,8 +15,8 @@ __all__ = [
     "FileSource",
     "PayloadPolicy",
     "SourceKind",
-    "StageRegistry",
     "SourceUnavailableError",
+    "StageRegistry",
     "contributing_layers",
     "dirty_layers",
 ]

@@ -17,6 +17,7 @@ from .binding_configs import (
     create,
     set_config,
 )
+from .copy_detection import CopiedBinding
 from .current_stages import CurrentStages
 from .ownership_index import (
     Claim,
@@ -31,9 +32,10 @@ from .state import NotRegisteredError, invalidate, rebuild_count, refresh_if_tag
 
 __all__ = [
     "Claim",
+    "CopiedBinding",
     "CurrentStages",
-    "DisabledBindingError",
     "DisabledBinding",
+    "DisabledBindingError",
     "NotRegisteredError",
     "attached_with_key",
     "binding_ids",
@@ -43,15 +45,15 @@ __all__ = [
     "configs",
     "copied_bindings",
     "create",
-    "refresh_if_tags_changed",
     "invalidate",
     "manifest",
     "rebuild_count",
+    "refresh_if_tags_changed",
     "resource",
     "set_config",
     "set_manifest",
+    "set_manifest_entries",
     "start",
     "stop",
     "unreadable_manifests",
-    "set_manifest_entries",
 ]

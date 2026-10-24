@@ -2,7 +2,7 @@
 
 The bindings' in-memory state: a disposable write-through cache of their records, and the runtime indexes into it ([Undo and Runtime State](../../../docs/spec/lifecycle.md#undo-and-runtime-state)). The middle tier: it may import `proscenium.persistence` and `proscenium.core`, never `proscenium.api`.
 
-Callers use what `__init__.py` exports, not the modules below it.
+Callers use what `__init__.py` exports, not the modules below it (checked by `tests/bpy_free/test_import_tiers.py`).
 
 | File | Holds |
 |---|---|
