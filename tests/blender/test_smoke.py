@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
 from proscenium import addon
+from proscenium.persistence import records
 from support import undo
 from support.blend import save_and_reopen
 
+from .state import handler_lists
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import ModuleType
 
 
@@ -30,10 +34,36 @@ def test_pxr_is_the_one_bundled_with_blender() -> None:
     assert local in Path(Usd.__file__).resolve().parents
 
 
+class _Registrations(NamedTuple):
+    handlers: dict[str, list[str]]  # the extension's handlers by event
+    namespaces: list[str]  # the ID types with the records' namespace
+    classes: list[str]  # the extension's classes registered with Blender
+
+
+def _registrations() -> _Registrations:
+    """What the extension has added to Blender."""
+    return _Registrations(
+        {
+            e: names
+            for e, fns in handler_lists().items()
+            if (names := [getattr(f, "__name__", repr(f)) for f in fns if _ours(f)])
+        },
+        [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, records.NAMESPACE)],
+        [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
+    )
+
+
+def _ours(fn: Callable[..., object]) -> bool:
+    return getattr(fn, "__module__", None) == addon.__name__
+
+
 def test_extension_registers_and_unregisters(extension: ModuleType) -> None:
-    assert addon.is_registered()
+    registered = _registrations()
+    assert {"load_pre", "load_post", "undo_pre", "undo_post", "redo_pre", "redo_post"} <= registered.handlers.keys()
+    assert registered.namespaces == [t.__name__ for t in addon.RECORD_TYPES]
+    assert registered.classes == [c.__name__ for c in addon.CLASSES]
     extension.unregister()
-    assert not addon.is_registered()
+    assert _registrations() == _Registrations({}, [], [])
 
 
 def test_save_and_reopen_keeps_data(tmp_path: Path) -> None:

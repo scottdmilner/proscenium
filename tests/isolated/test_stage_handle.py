@@ -1,7 +1,7 @@
 """The core never keeps a released stage alive, and never destroys one its caller holds (AGENTS.md "Compiled core").
 
 Native stage lifetimes run in a fresh process, since a mistake here is a use-after-free. The
-caller-drop case is the core's part of MEM-05: once released, a stage the caller dropped expires.
+caller-drop case is the core's part of SRC-02: once released, a stage the caller dropped expires.
 """
 
 from __future__ import annotations

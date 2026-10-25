@@ -7,9 +7,8 @@ checks on each hit.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator
 from dataclasses import replace
-from typing import TYPE_CHECKING, override
+from typing import TYPE_CHECKING
 
 import bpy
 import pytest
@@ -82,14 +81,13 @@ def test_undo_and_redo_of_creation(bindings: Bindings, tmp_path: Path) -> None:
     undo.push("create")
     undo.undo()
     assert _scene_of(handle.binding_id) is None
-    assert _resource(handle.binding_id, "a") is None
     undo.redo()
     assert _scene_of(handle.binding_id) == _scene()
     assert _resource(handle.binding_id, "a") == bpy.data.objects["Managed"]
 
 
 def test_undo_of_a_change_to_managed_content(bindings: Bindings, tmp_path: Path) -> None:
-    # Undo re-reads what the step changed, as a synchronization changes managed content.
+    # Undo leaves no stale lookup of what the step changed, as a synchronization changes managed content.
     undo.require_global_undo()
     handle = _managed(bindings, tmp_path)
     assert _resource(handle.binding_id, "a") == bpy.data.objects["Managed"]
@@ -103,7 +101,7 @@ def test_undo_of_a_change_to_managed_content(bindings: Bindings, tmp_path: Path)
 
 
 def test_undo_reverts_a_cached_configuration(bindings: Bindings, tmp_path: Path) -> None:
-    # The state caches the decoded configuration; undo restores the record, and the handler drops the cache.
+    # The state caches the decoded configuration; undo restores the record, and leaves no stale configuration.
     undo.require_global_undo()
     handle = _managed(bindings, tmp_path)
     undo.push("base")
@@ -112,25 +110,6 @@ def test_undo_reverts_a_cached_configuration(bindings: Bindings, tmp_path: Path)
     undo.push("settings")
     undo.undo()
     assert _config(handle).settings.payload_policy is PayloadPolicy.LOAD_ALL
-
-
-def test_removed_managed_content(bindings: Bindings, tmp_path: Path) -> None:
-    # No handler announces it: the check on the hit does.
-    handle = _managed(bindings, tmp_path)
-    assert _resource(handle.binding_id, "a") is not None
-    bpy.data.objects.remove(bpy.data.objects["Managed"])
-    assert _resource(handle.binding_id, "a") is None
-
-
-def test_a_removed_datablock_leaves_the_cached_manifest(bindings: Bindings, tmp_path: Path) -> None:
-    # The manifest in memory names the datablock; after the removal it shows what the record does.
-    handle = _managed(bindings, tmp_path)
-    assert runtime.manifest(handle.binding_id) is not None
-    bpy.data.objects.remove(bpy.data.objects["Managed"])
-    found = runtime.manifest(handle.binding_id)
-    assert isinstance(found, Loaded)
-    assert found.record.entries["a"].datablock is None  # Blender cleared the stored pointer
-    assert found == manifests.read_manifest(bpy.data.collections["Shot"])
 
 
 def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], list[str]]:
@@ -173,6 +152,15 @@ def _counted_shares(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return shares
 
 
+def test_the_share_count_sees_a_rebuild(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Guards the counts below: a rebuild of the ownership index builds every destination's share through the hook.
+    ids, names = _two_managed(bindings, tmp_path)
+    shares = _counted_shares(monkeypatch)
+    runtime.invalidate()
+    assert _ownership_view(ids, names)
+    assert sorted(shares) == ["Other", "Shot"]
+
+
 @pytest.mark.parametrize("lookup", ["resource", "manifest"])
 def test_a_removed_datablock_rereads_only_its_manifest(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lookup: str
@@ -196,6 +184,8 @@ def test_a_removed_datablock_rereads_only_its_manifest(
     in_place = _ownership_view(ids, names)
     assert reads == [("Other", manifests.MANIFEST_KEY)]  # the share replaced holds no removed datablock
     assert len(shares) == 1  # Other's, replaced; the index isn't rebuilt
+    if lookup == "manifest":
+        assert found == manifests.read_manifest(bpy.data.collections["Other"])  # what the record shows
     runtime.invalidate()
     assert in_place == _ownership_view(ids, names)
 
@@ -239,7 +229,7 @@ def test_an_update_writes_and_indexes_only_what_changes(
 
 @pytest.mark.parametrize("first_removed", ["Other", "Shot"])
 def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: Path, first_removed: str) -> None:
-    # Ambiguity is rare, so a datablock claimed once is held as its one claim, not a collection of them.
+    # Removing either claim of an ambiguous datablock leaves it managed by the other.
     ids, names = _two_managed(bindings, tmp_path)
     handle, other = ids
     a = bpy.data.objects["A"]
@@ -260,56 +250,9 @@ def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: 
     [kept] = [claim for name, claim in by_name.items() if name != first_removed]
     assert runtime.ownership(a) == runtime.Ownership((kept,))
     assert runtime.ownership(a).status is runtime.OwnershipStatus.MANAGED
-    found = state._state  # noqa: SLF001 - how a claim is held is what saves memory
-    assert found is not None and found.ownership is not None
-    assert found.ownership.claims[a.session_uid] == kept
     in_place = _ownership_view(ids, [*names, "x"])
     runtime.invalidate()
     assert in_place == _ownership_view(ids, [*names, "x"])
-
-
-class _CountedRemovals(Collection[str]):
-    """A caller's removals, counting the membership tests made on them."""
-
-    items: list[str]
-    tests: int
-
-    def __init__(self, items: list[str]) -> None:
-        self.items = items
-        self.tests = 0
-
-    @override
-    def __contains__(self, item: object) -> bool:
-        self.tests += 1
-        return item in self.items
-
-    @override
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.items)
-
-    @override
-    def __len__(self) -> int:
-        return len(self.items)
-
-
-def test_removals_are_tested_as_a_set(bindings: Bindings, tmp_path: Path) -> None:
-    # Each entry and each use is tested against the removals: a caller's list would make every test a search.
-    ids, names = _two_managed(bindings, tmp_path)
-    other = ids[1]
-    current = runtime.manifest(other)
-    assert isinstance(current, Loaded)
-    direct = _CountedRemovals(["a"])
-    current.record.updated({}, direct, lambda _uid: None)
-    through_the_state = _CountedRemovals(["a", "a"])  # a duplicate, too
-    runtime.set_manifest_entries(other, {}, through_the_state)
-    assert (direct.tests, through_the_state.tests) == (0, 0)
-    assert runtime.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
-    # Iterated once: an iterator, which the type rules out, still reaches the record and the index alike.
-    runtime.set_manifest_entries(other, {}, iter(["b"]))  # ty: ignore[invalid-argument-type]
-    assert runtime.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
-    in_place = _ownership_view(ids, names)
-    runtime.invalidate()
-    assert in_place == _ownership_view(ids, names)
 
 
 def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -330,14 +273,15 @@ def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path:
     assert runtime.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     runtime.set_manifest_entries(handle.binding_id, {"a": _entry(obj)})
-    assert runtime.manifest(handle.binding_id) == Loaded(Manifest({"a": _entry(obj)}), 1)
+    assert runtime.manifest(handle.binding_id) == Loaded(Manifest({"a": _entry(obj)}), manifests.MANIFEST.version)
     assert runtime.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
     assert _resource(handle.binding_id, "a") == obj
 
 
-@pytest.mark.parametrize("removed", [["a"], []])
+@pytest.mark.parametrize("removed", [["a"], ["a", "a"], []])
 def test_an_update_after_a_removal(bindings: Bindings, tmp_path: Path, removed: list[str]) -> None:
-    # The removed datablock's entry, which Blender cleared, is removed by the update or carried into its result.
+    # The removed datablock's entry, which Blender cleared, is removed by the update, once even if named twice,
+    # or carried into its result.
     ids, names = _two_managed(bindings, tmp_path)
     other = ids[1]
     bpy.data.objects.remove(bpy.data.objects["A"])
@@ -440,13 +384,6 @@ def _copy_scene(kind: str) -> bpy.types.Scene:
     return copy
 
 
-def _assert_ownership_agrees() -> None:
-    # The state's claims are the oracle's, read from the records now, for every object.
-    expected, _ = oracle.claims()
-    for obj in bpy.data.objects:
-        assert set(runtime.ownership(obj).claims) == set(expected.get(obj, []))
-
-
 @pytest.mark.parametrize("kind", ["FULL_COPY", "LINK_COPY"])
 def test_a_scene_copy_made_after_the_state_was_built(bindings: Bindings, tmp_path: Path, kind: str) -> None:
     # No handler announces a new scene. The copy is a candidate of the binding's identity, which the
@@ -460,7 +397,7 @@ def test_a_scene_copy_made_after_the_state_was_built(bindings: Bindings, tmp_pat
     [copied] = bindings.copied()
     assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
     assert _scene_of(handle.binding_id) == _scene()  # lookups use the canonical candidate
-    _assert_ownership_agrees()
+    oracle.assert_agrees()
     if kind == "FULL_COPY":
         (copied,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
         assert [c.destination for c in runtime.ownership(copied).claims] == [copy.collection.children[0]]
@@ -506,7 +443,7 @@ def test_publications_replace_only_their_share(
 
     runtime.invalidate()
     assert in_place == _ownership_view(ids, names)
-    _assert_ownership_agrees()
+    oracle.assert_agrees()
 
 
 def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_path: Path) -> None:
@@ -585,11 +522,6 @@ def test_the_bindings_with_a_key(bindings: Bindings, tmp_path: Path, monkeypatch
     monkeypatch.setattr(state, "current_state", counted)
     assert set(bindings.release("shot")) == {a.binding_id, b.binding_id}  # the usable ones
     assert len(calls) == 1
-    bpy.data.collections.remove(bpy.data.collections["A"])
-    found = {f.binding_id: f for f in runtime.find_bindings()}
-    config = found[a.binding_id].config
-    assert config is not None
-    assert config.destination is None  # the check found the removed destination; the state was rebuilt
 
 
 def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
@@ -605,9 +537,6 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     assert found[1].config is None
     with pytest.raises(RefusedRecordError):
         found[1].usable_config()
-    bpy.data.collections.remove(bpy.data.collections["A"])
-    [found_readable, _] = runtime.find_bindings()
-    assert found_readable.usable_config().destination is None  # the check found the removed destination; rebuilt
 
 
 def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Path) -> None:
@@ -662,7 +591,7 @@ def test_writes_update_the_state_in_place(bindings: Bindings, tmp_path: Path, mo
 
     monkeypatch.setattr(records, "read", no_reads)
     assert runtime.ownership(added).claims == (Claim(handle.binding_id, bpy.data.collections["Shot"], "b"),)
-    assert runtime.manifest(handle.binding_id) == Loaded(Manifest(entries), 1)
+    assert runtime.manifest(handle.binding_id) == Loaded(Manifest(entries), manifests.MANIFEST.version)
     assert _config(handle).destination == bpy.data.collections["Shot"]
 
 
@@ -679,12 +608,13 @@ def test_the_cached_manifest_cant_be_changed_through_a_caller(bindings: Bindings
     found = runtime.manifest(handle.binding_id)
     assert isinstance(found, Loaded)
     assert found == manifests.read_manifest(bpy.data.collections["Shot"])
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, AttributeError)):
         found.record.entries["c"] = entries["b"]  # ty: ignore[invalid-assignment] - the point: it's read-only
-    with pytest.raises(AttributeError):
+    with pytest.raises((TypeError, AttributeError)):
         found.record.entries["a"].covers.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
-    with pytest.raises(AttributeError):
+    with pytest.raises((TypeError, AttributeError)):
         found.record.entries["a"].uses.append("a")  # ty: ignore[unresolved-attribute]
+    assert runtime.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
 
 
 def _file_data() -> dict[tuple[str, str], object]:

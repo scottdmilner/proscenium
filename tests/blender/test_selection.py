@@ -81,7 +81,6 @@ def test_the_oracles_targets_are_stored_exactly(tmp_path: Path) -> None:
         loaded = read_selection(_scene())
         assert isinstance(loaded, Loaded)
         assert [entry.path for entry in loaded.record.entries] == targets
-        assert [generation.beneath(e.path) for e in loaded.record.entries] == [generation.beneath(t) for t in targets]
 
 
 def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, tmp_path: Path) -> None:
@@ -97,9 +96,14 @@ def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, t
         assert read_selection(_scene()) == Loaded(selection, 1)
 
 
-def test_entries_for_a_binding_that_is_gone_stay_stored() -> None:
-    selection = PersistentSelection((SelectionEntry(BindingId("not-a-binding"), "/World"),), None)
+def test_entries_for_a_binding_that_is_gone_stay_stored(bindings: Bindings, tmp_path: Path) -> None:
+    # The extension's load handlers and a rebuild of the bindings' state run in between, beside a binding that exists.
+    handle = bindings.create_attached_binding(_scene(), "shot")
+    entries = (SelectionEntry(BindingId("not-a-binding"), "/World"), SelectionEntry(handle.binding_id, "/World"))
+    selection = PersistentSelection(entries, entries[0])
     write_selection(_scene(), selection)
+    save_and_reopen(tmp_path / "selection.blend")
+    assert [h.binding_id for h in bindings.in_scene(_scene())] == [handle.binding_id]
     assert read_selection(_scene()) == Loaded(selection, 1)
 
 

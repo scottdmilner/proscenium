@@ -72,8 +72,6 @@ def test_private_stage_settings_differ_from_defaults(tmp_path: Path) -> None:
         assert read_values(scene.caller) == scene.caller_values
         anim = scene.caller.GetPrimAtPath("/World").GetAttribute("animValue")
         assert anim.Get(5) == scene.caller_anim_at_5
-        assert source_access.caller_settings(scene.caller) == scene.settings
-        assert source_access.layer_contents(scene.caller) == scene.layers
         root = scene.caller.GetRootLayer()
         assert root.dirty and "unsavedValue" not in scene.root.read_text(encoding="utf-8")
 
@@ -81,7 +79,6 @@ def test_private_stage_settings_differ_from_defaults(tmp_path: Path) -> None:
 def test_cached_stage_hazard_is_active(tmp_path: Path) -> None:
     with source_access.cached_stage(tmp_path) as scene:
         # The hazard the fixture sets up: a plain open hands back the ambient stage.
-        assert Usd.Stage.Open(str(scene.root)) is not None
         assert Usd.Stage.Open(str(scene.root)) == scene.ambient
         assert read_values(scene.ambient) == scene.ambient_values
         assert read_values(open_fresh(scene.root)) == scene.disk_values

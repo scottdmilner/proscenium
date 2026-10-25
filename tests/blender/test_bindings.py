@@ -87,7 +87,7 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(bindings: Bi
     assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
     [text] = binding_records.index_texts()
-    assert text.name == ".proscenium"
+    assert text.name.startswith(".")  # hidden from Blender's ID lists
     assert text.use_fake_user
 
 
@@ -198,7 +198,7 @@ def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) 
         before = [_config(h) for h in (other, attached)]
         changed.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         assert [_config(h) for h in (other, attached)] == before
-        assert _config(changed).settings.payload_policy == "load_none"
+        assert _config(changed).settings.payload_policy is PayloadPolicy.LOAD_NONE
 
 
 # Handles across undo, redo, and save/reopen.

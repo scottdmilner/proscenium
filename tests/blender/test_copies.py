@@ -58,14 +58,6 @@ def _index_entry() -> bpy.types.Collection | None:
     return destination
 
 
-def _assert_ownership_agrees() -> None:
-    # The state's claims are the oracle's for every object: a copy's manifest counts, a record's or a tagged
-    # collection's that no record names, so content a copy names is ambiguous (OWN-16).
-    expected, _ = oracle.claims()
-    for obj in bpy.data.objects:
-        assert set(runtime.ownership(obj).claims) == set(expected.get(obj, []))
-
-
 def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[CopiedBinding]:
     """What the API reports for the binding, against the outcome; returns the report."""
     result = handle.synchronize(0)  # looks for copies first (COPY-18)
@@ -128,7 +120,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         routes.run(route, tmp_path)
         before = routes.records_by_name()
         reported = _check(bindings, handle, expected.outcome)
-        _assert_ownership_agrees()
+        oracle.assert_agrees()
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content.
         assert routes.records_by_name() == before
         runtime.invalidate()
@@ -137,7 +129,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
         reopened = _check(bindings, handle, expected.reopened or expected.outcome)
-        _assert_ownership_agrees()
+        oracle.assert_agrees()
         if expected.reopened is None:
             assert reopened == reported  # COPY-02, COPY-03: the same after save and reopen
         if expected.index_untouched:

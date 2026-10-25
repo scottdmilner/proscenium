@@ -30,27 +30,33 @@ def _imported(path: Path) -> list[tuple[int, str]]:
     """The proscenium modules path imports, with their line numbers, relative imports resolved."""
     module = _module_name(path)
     package = module if path.name == "__init__.py" else module[:-1]
+    return _imports_in(ast.parse(path.read_text(), str(path)), package)
+
+
+def _imports_in(tree: ast.Module, package: list[str]) -> list[tuple[int, str]]:
     found = []
-    for node in ast.walk(ast.parse(path.read_text(), str(path))):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found += [(node.lineno, alias.name) for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
             base = package[: len(package) - node.level + 1] if node.level else []
             target = ".".join([*base, *([node.module] if node.module else [])])
-            if node.module:
-                found.append((node.lineno, target))
-            else:  # "from . import x" names submodules
+            if target == "proscenium" or not node.module:
+                # "from proscenium import x" and "from . import x" name submodules
                 found += [(node.lineno, f"{target}.{alias.name}") for alias in node.names]
+            else:
+                found.append((node.lineno, target))
     return [(line, name) for line, name in found if name.split(".")[0] == "proscenium"]
 
 
 def _violations(path: Path, tier: str) -> list[str]:
-    allowed = ALLOWED[tier]
     return [
-        f"{path.relative_to(PACKAGE)}:{line} imports {name}"
-        for line, name in _imported(path)
-        if len(name.split(".")) > 1 and name.split(".")[1] not in allowed
+        f"{path.relative_to(PACKAGE)}:{line} imports {name}" for line, name in _imported(path) if _crosses(name, tier)
     ]
+
+
+def _crosses(name: str, tier: str) -> bool:
+    return len(name.split(".")) > 1 and name.split(".")[1] not in ALLOWED[tier]
 
 
 def _tier(path: Path) -> str | None:
@@ -92,3 +98,9 @@ def test_a_wrong_way_import_is_found() -> None:
     # Guards the tests above: the API module, read as if it were in persistence, imports above that tier.
     api = PACKAGE / "api" / "bindings.py"
     assert any("imports proscenium.runtime" in v for v in _violations(api, "persistence"))
+
+
+def test_an_absolute_import_of_a_tier_is_found() -> None:
+    # Guards the tests above: "from proscenium import x" names the tier it imports.
+    imports = _imports_in(ast.parse("from proscenium import runtime"), ["proscenium", "core"])
+    assert [_crosses(name, "core") for _, name in imports] == [True]

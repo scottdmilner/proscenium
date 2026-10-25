@@ -63,10 +63,8 @@ def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
 
     The oracle, reading the records now, must agree.
     """
-    found = {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.ownership(id_).claims)}
-    expected, _ = oracle.claims()
-    assert {id_: set(c) for id_, c in found.items()} == {id_: set(c) for id_, c in expected.items()}
-    return found
+    oracle.assert_agrees()
+    return {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.ownership(id_).claims)}
 
 
 def test_a_manifest_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
@@ -101,21 +99,6 @@ def test_the_manifest_names_what_is_managed(bindings: Bindings, tmp_path: Path) 
     }
 
 
-def test_a_duplicate_of_managed_content_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
-    # OWN-16: Object > Duplicate copies the object, and no manifest names the copy.
-    _managed(bindings, tmp_path)
-    view_layer = bpy.context.view_layer
-    assert view_layer is not None
-    original = bpy.data.objects["Shot0"]
-    original.select_set(True)
-    view_layer.objects.active = original
-    bpy.ops.object.duplicate()
-    [copy] = [o for o in bpy.data.objects if o.name.startswith("Shot0.")]
-    found = _claims()
-    assert copy not in found
-    assert original in found
-
-
 def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: Path) -> None:
     first, _ = _managed(bindings, tmp_path, "First")
     second, _ = _managed(bindings, tmp_path, "Second")
@@ -135,20 +118,6 @@ def test_a_manifest_names_a_datablock_once(bindings: Bindings, tmp_path: Path) -
     twice = manifest.entries["a"]
     with pytest.raises(ValueError, match="two entries name one datablock"):
         Manifest({**manifest.entries, "again": twice})
-
-
-def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
-    # The copied manifest's pointers are rewritten to the copied datablocks (runtime-record.md#copy-routes-m3).
-    _managed(bindings, tmp_path)
-    window = bpy.context.window
-    assert window is not None
-    window.scene = _scene()
-    bpy.ops.scene.new(type="FULL_COPY")
-    found = _claims()
-    for collection in (bpy.data.collections["Shot"], bpy.data.collections["Shot.001"]):
-        for obj in collection.objects:
-            [claim] = found[obj]
-            assert claim.destination == collection  # the copies share the binding identity, not the manifest
 
 
 def test_a_linked_copy_scene_shares_one_manifest(

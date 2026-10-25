@@ -39,11 +39,14 @@ def test_install_enable_disable(runtime: Runtime, extension_zip: Path, tmp_path:
     )
     assert repo in Path(result["module_file"]).parents  # the installed copy, not src/
     assert result["enabled_after_install"]
-    assert result["registered_after_install"]
+    registered = result["registered_after_install"]
+    assert {"load_pre", "load_post", "undo_pre", "undo_post", "redo_pre", "redo_post"} <= set(registered["handlers"])
+    assert registered["namespaces"] == ["Scene", "Collection", "Text"]
+    assert registered["classes"] == ["ProsceniumRecords"]
     assert repo in Path(result["core_file"]).parents
     assert result["core_usd_version"] == result["host_usd_version"]  # built against this Blender's USD
     assert not result["enabled_after_disable"]
-    assert not result["registered_after_disable"]
+    assert result["registered_after_disable"] == {"handlers": [], "namespaces": [], "classes": []}
 
 
 def test_zip_names_this_platform_and_release(extension_zip: Path) -> None:
