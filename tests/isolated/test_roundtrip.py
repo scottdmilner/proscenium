@@ -1,4 +1,4 @@
-"""Save/reopen in a fresh process, in the wheel and the binary (cross-platform smoke)."""
+"""Save/reopen in a fresh process, with the extension registered, in the wheel and the binary (cross-platform smoke)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ def test_save_and_reopen_with_handlers(runtime: Runtime, tmp_path: Path) -> None
     blend = tmp_path / "roundtrip.blend"
     result = run_isolated(runtime, BODIES / "roundtrip.py", "save_and_reopen_with_handlers", tmp_path, path=str(blend))
     assert result["objects"] == ["Kept"]
+    assert result["synchronized"] == ["SUCCESS", "FATAL_FAILURE"]  # the extension's own load handler ran
     assert Path(result["filepath"]) == blend
     # The reopen is one real file load: the persistent handler fires once; the
     # transient one is removed before load_post runs (runtime-record.md#handlers).

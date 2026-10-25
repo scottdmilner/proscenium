@@ -1,9 +1,8 @@
 """The canonical-candidate rule (source-access.md#canonical-candidate), on what Blender data says about each candidate.
 
-A binding identity's candidates are its binding records, one per scene, and the destination collections
-tagged with it that no record names (source-access.md#copied-bindings). The rule reads, for each, which
-destination it names and whether its record and destination refer to each other, and, for the identity,
-what each binding index in the file says about it. It returns the canonical candidate, or none.
+A binding identity's candidates are its binding records, one per scene, and the collections tagged with it that no
+record names (source-access.md#copied-bindings). For each candidate, the rule reads the destination it names and
+whether its record and destination refer to each other; for the identity, what each binding index says about it.
 """
 
 from __future__ import annotations
@@ -59,13 +58,14 @@ class CanonicalDecision:
 def decide(
     candidates: Sequence[CandidateEvidence], entries: Sequence[int | None | UnreadableIndexEntry]
 ) -> CanonicalDecision:
-    """The canonical candidate of one identity.
+    """The canonical candidate of one identity, as a position in candidates, or None if every one is disabled.
 
-    entries has one item per binding index in the file that names the identity: the destination its entry
-    names, None for an entry naming no destination, or UNREADABLE_INDEX_ENTRY for an index that can't be read, which
-    might name it. An identity with one candidate and at most one such index is unique, whatever its
-    candidate's references, so a binding whose destination was removed stays enabled
-    (lifecycle.md#removed-destination); otherwise the rule decides, or every candidate is disabled.
+    entries has one item per binding index in the file that names the identity, or might:
+    - the session_uid of the destination its entry names, or None for an entry naming none;
+    - UNREADABLE_INDEX_ENTRY for an index that can't be read.
+
+    An identity with one candidate and at most one entry is unique whatever its candidate's references, so a binding
+    whose destination was removed stays enabled (lifecycle.md#removed-destination).
     """
     if len(candidates) <= 1 and len(entries) <= 1:
         return CanonicalDecision(0 if candidates else None, DecisionReason.UNIQUE)

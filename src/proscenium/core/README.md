@@ -12,6 +12,7 @@ The compiled core reads Hydra scene indices ([DECISIONS.md](../../../docs/DECISI
 | `source_access/` | The stages a binding reads its source from ([Source Access](../../../docs/spec/source-access.md)). |
 | `binding_ids.py` | `BindingId`, a binding's persistent identifier: a `NewType` of `str`, so the checker tells it from other strings. Every tier uses it. |
 | `canonical_candidate.py` | The canonical-candidate rule, as a pure function of what Blender data says about each candidate and each binding index ([Canonical Candidate](../../../docs/spec/source-access.md#canonical-candidate)). `proscenium.runtime.copy_detection` reads that evidence from the records. |
+| `requested_settings.py` | `RequestedSettings`, the settings a binding's next synchronization uses ([Binding State](../../../docs/spec/lifecycle.md#binding-state)). The binding's configuration holds them. |
 | `results.py` | What operations on a binding report: `Result`, `ResultState`, `Diagnostic`, `DiagnosticCategory`, and `Severity` ([Diagnostics](../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. |
 | `source_entities.py` | Source-entity identifiers: an entity's path in the composed stage, with the instance context its instance-proxy path carries. |
 | `_core.pyi` | The compiled module's types, so ty checks its callers without a build. |

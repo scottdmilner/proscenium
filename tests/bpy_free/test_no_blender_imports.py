@@ -25,9 +25,10 @@ def test_proscenium_and_core_import_without_bpy() -> None:
 
 
 def test_blocker_rejects_bpy() -> None:
-    # Guards the test above: it must be able to fail.
-    with pytest.raises(ImportError, match="Blender module"):
-        bpy_blocker.import_without_blender(["bpy"])
+    # Guards the test above: it must be able to fail. A fresh interpreter too, so this layer's own block can't stand in.
+    proc = subprocess.run([sys.executable, str(BLOCKER), "bpy"], capture_output=True, text=True, check=False)
+    assert proc.returncode != 0
+    assert "Blender module" in proc.stderr
 
 
 def test_layer_runs_with_blender_blocked() -> None:

@@ -81,7 +81,7 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         "source_key": None,
         "root_layer_identifier": None,
         "destination": None,
-        "payload_policy": "load_all",
+        "settings": {"payload_policy": "load_all"},
     }
     yield SchemaVersions(
         schema=SAMPLE,
@@ -112,7 +112,13 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         bindings={
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
             "no-path": {VERSION_KEY: 1, **binding, "path": None},
-            "unknown-policy": {VERSION_KEY: 1, **binding, "payload_policy": "load_some"},
+            "unknown-policy": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_some"}},
+            # Version 1 with its settings beside the other fields, as before they were a group: never released.
+            "flat-settings": {
+                VERSION_KEY: 1,
+                **{k: v for k, v in binding.items() if k != "settings"},
+                "payload_policy": "load_all",
+            },
             # Version 1 under the field names it had before source_kind and source_key: never released, so refused.
             "old-field-names": {
                 VERSION_KEY: 1,
@@ -126,5 +132,6 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "no-path": RefusalReason.INVALID,
             "unknown-policy": RefusalReason.INVALID,
             "old-field-names": RefusalReason.INVALID,
+            "flat-settings": RefusalReason.INVALID,
         },
     )

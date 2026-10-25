@@ -1,4 +1,4 @@
-"""Blender registration. Imports bpy; never import from proscenium.core code."""
+"""Blender registration. Imports bpy, so proscenium.core never imports this module."""
 
 import bpy
 from bpy.app.handlers import persistent

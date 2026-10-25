@@ -15,7 +15,6 @@ import pytest
 from fixtures import copies
 from proscenium import runtime
 from proscenium.api.bindings import (
-    BindingDisabledError,
     BindingHandle,
     Bindings,
     DiagnosticCategory,
@@ -25,6 +24,7 @@ from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
+from proscenium.runtime import DisabledBindingError
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
-    from proscenium.runtime.copy_detection import CopiedBinding
+    from proscenium.runtime import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:
@@ -56,14 +56,6 @@ def _index_entry() -> bpy.types.Collection | None:
     assert isinstance(index, Loaded)
     [destination] = index.record.destinations.values()
     return destination
-
-
-def _assert_ownership_agrees() -> None:
-    # The state's claims are the oracle's for every object: a copy's manifest counts, a record's or a tagged
-    # collection's that no record names, so content a copy names is ambiguous (OWN-16).
-    expected, _ = oracle.claims()
-    for obj in bpy.data.objects:
-        assert set(runtime.claims_on(obj)) == set(expected.get(obj, []))
 
 
 def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[CopiedBinding]:
@@ -88,7 +80,8 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         assert [c.canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
         assert (report.candidates[0].scene, report.candidates[0].destination) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
-        assert runtime.binding_scene(handle.binding_id) == _scene()
+        found = runtime.find_binding(handle.binding_id)
+        assert found is not None and found.scene == _scene()
         for name in scenes:
             assert bindings.in_scene(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
     else:
@@ -102,20 +95,20 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
-        assert handle.binding_id not in bindings.stages
-        with pytest.raises(BindingDisabledError):
+        assert bindings.stages.get(handle.binding_id) is None
+        with pytest.raises(DisabledBindingError):
             handle.requested_settings()
         assert handle.live_stage() is None
-        # The runtime's lookups return the report in band, and its writes raise.
+        # The runtime's lookup finds it disabled, with its copies; its manifest and writes raise.
         binding_id = handle.binding_id
-        lookups = (runtime.config, runtime.binding_scene, runtime.manifest, lambda b: runtime.resource(b, "a"))
-        assert [lookup(binding_id) for lookup in lookups] == [report] * len(lookups)
-        for write in (
+        assert runtime.find_binding(binding_id) == runtime.FoundBinding(binding_id, None, None, None, report)
+        for call in (
+            lambda: runtime.manifest(binding_id),
             lambda: runtime.set_manifest(binding_id, Manifest({})),
             lambda: runtime.set_manifest_entries(binding_id, {}, ["a"]),
         ):
-            with pytest.raises(BindingDisabledError):
-                write()
+            with pytest.raises(DisabledBindingError):
+                call()
     return reported
 
 
@@ -127,7 +120,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         routes.run(route, tmp_path)
         before = routes.records_by_name()
         reported = _check(bindings, handle, expected.outcome)
-        _assert_ownership_agrees()
+        oracle.assert_agrees()
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content.
         assert routes.records_by_name() == before
         runtime.invalidate()
@@ -136,7 +129,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
         reopened = _check(bindings, handle, expected.reopened or expected.outcome)
-        _assert_ownership_agrees()
+        oracle.assert_agrees()
         if expected.reopened is None:
             assert reopened == reported  # COPY-02, COPY-03: the same after save and reopen
         if expected.index_untouched:
@@ -151,7 +144,8 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
         handle.synchronize(0)
         for name in ("Shot", "Shot.001"):
             [obj] = bpy.data.collections[name].objects
-            assert [(c.binding_id, c.destination.name) for c in runtime.claims_on(obj)] == [(handle.binding_id, name)]
+            claims = runtime.ownership(obj).claims
+            assert [(c.binding_id, c.destination.name) for c in claims] == [(handle.binding_id, name)]
 
 
 def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
@@ -161,8 +155,8 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
         routes.run("duplicated-object", tmp_path)
         handle.synchronize(0)
         [copy] = (obj for obj in bpy.data.objects if obj.name != "Managed")
-        assert runtime.claims_on(copy) == []
-        assert len(runtime.claims_on(bpy.data.objects["Managed"])) == 1
+        assert runtime.ownership(copy).claims == ()
+        assert len(runtime.ownership(bpy.data.objects["Managed"]).claims) == 1
 
 
 def test_a_copy_is_found_at_the_next_synchronization(bindings: Bindings, tmp_path: Path) -> None:
@@ -214,5 +208,5 @@ def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) 
         assert bindings.copied()[0].disabled
         caller = open_fresh(scene.root)
         assert bindings.attach("shot", caller).attached == ()
-        assert handle.binding_id not in bindings.stages
+        assert bindings.stages.get(handle.binding_id) is None
         assert handle.synchronize(0).state is ResultState.FATAL_FAILURE

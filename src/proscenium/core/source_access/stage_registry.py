@@ -1,11 +1,11 @@
-"""Every binding's stages, by binding identifier, and when each is made, kept, and let go.
+"""Every binding's stages, by binding identifier: when each is made, kept, and let go.
 
-Source stages, evaluation stages, and attachments are runtime state keyed by binding identity: they live in this
-module, not in Blender data, so they are never saved in the .blend and undo neither restores nor
-removes them (UNDO-06). A file source's path, and an attached source's key and root-layer identifier, are
-binding configuration, which the binding's records keep (proscenium.persistence.binding_records); attaching under a
-source key reads them there. A binding's stages are made from its configuration on first use, and compared
-with the bindings that exist whenever they may have changed (prune).
+- Source stages, evaluation stages, and attachments are runtime state, not Blender data: they are never saved in the
+  .blend, and undo neither restores nor removes them (UNDO-06).
+- What they are made from is configuration, kept in the binding's records (proscenium.persistence.binding_records):
+  a file source's path, or an attached source's key and root-layer identifier.
+- A binding's stages are made on first use, and compared with the bindings that exist whenever those may have
+  changed (prune).
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class StageRegistry:
     def release(self, key: str) -> None:
         """Release the stage attached under key from every binding with that key, which leaves them unattached.
 
-        Whether or not their binding still exists: one that doesn't keeps its attachment (prune).
+        Including bindings that are gone, whose attachment prune leaves.
         """
         for stages in self._stages.values():
             if isinstance(stages, AttachedBindingStages) and stages.source.key == key:

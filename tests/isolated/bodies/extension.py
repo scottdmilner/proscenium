@@ -28,7 +28,7 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "module_file": module.__file__,
         "enabled_after_install": name in prefs.addons,
-        "registered_after_install": module.addon.is_registered(),
+        "registered_after_install": _registrations(module.addon),
     }
     from pxr import Usd
 
@@ -39,5 +39,18 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     # default_set=True also removes the preferences entry, as unchecking it in the UI does.
     addon_utils.disable(name, default_set=True)
     result["enabled_after_disable"] = name in prefs.addons
-    result["registered_after_disable"] = module.addon.is_registered()
+    result["registered_after_disable"] = _registrations(module.addon)
     return result
+
+
+def _registrations(addon: Any) -> dict[str, Any]:
+    """What the installed extension has added to Blender: its handlers' events, record namespaces, and classes."""
+    handlers = bpy.app.handlers
+    lists = {name: fns for name in dir(handlers) if isinstance(fns := getattr(handlers, name), list)}
+    return {
+        "handlers": sorted(
+            event for event, fns in lists.items() if any(getattr(f, "__module__", None) == addon.__name__ for f in fns)
+        ),
+        "namespaces": [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, addon.records.NAMESPACE)],
+        "classes": [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
+    }

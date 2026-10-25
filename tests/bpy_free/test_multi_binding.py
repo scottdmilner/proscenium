@@ -56,6 +56,7 @@ def test_bindings_on_one_file_have_their_own_stages(tmp_path: Path) -> None:
         stages = [_file(root).acquire(PayloadPolicy.LOAD_ALL) for _ in range(2)]
         stages.append(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
         assert all(a != b for i, a in enumerate(stages) for b in stages[i + 1 :])
+        assert len({stage.GetSessionLayer().identifier for stage in stages}) == len(stages)  # opinions kept apart
         assert scene.caller not in stages
 
 

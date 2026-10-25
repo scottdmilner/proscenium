@@ -4,7 +4,7 @@ A body is a plain function in a module under tests/isolated/bodies/. It runs in
 the fresh process (no pytest there), takes JSON-compatible keyword arguments,
 and returns a JSON-compatible value; the test asserts on that value.
 
-    result = run_isolated(runtime, BODIES / "roundtrip.py", "save_and_reopen", tmp_path, name="Kept")
+    result = run_isolated(runtime, BODIES / "roundtrip.py", "save_and_reopen_with_handlers", tmp_path, path=str(blend))
 
 Two runtimes, chosen by the `runtime` fixtures in tests/isolated/conftest.py:
 - wheel: a new uv-environment Python process that imports the bpy wheel (~0.85 s).
@@ -67,8 +67,8 @@ def run_isolated(
 ) -> Any:
     """Call `function(**kwargs)` from `body` in a fresh `runtime` process and return its value.
 
-    Fails the test with the process output if the body raises or the process
-    exits without writing a result.
+    Fails the test with the process output if the body raises, or the process
+    exits without writing a result or with a nonzero code.
     """
     run_dir = tmp_path / f"isolated-{runtime.kind}-{function}"
     run_dir.mkdir()
@@ -76,10 +76,13 @@ def run_isolated(
     env = {**os.environ, "BLENDER_USER_RESOURCES": str(run_dir / "blender-user")}
     cmd = runtime.command(str(body), function, str(out), json.dumps(kwargs))
     proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+    log = (proc.stdout + proc.stderr)[-4000:]
     if not out.exists():
-        log = (proc.stdout + proc.stderr)[-4000:]
         raise AssertionError(f"{runtime.kind} process exited with {proc.returncode} without a result:\n{log}")
     result = json.loads(out.read_text(encoding="utf-8"))
     if "error" in result:
         raise AssertionError(f"{body.name}:{function} raised in the {runtime.kind} process:\n{result['error']}")
+    # The runner exits 0 after writing a result: anything else is a crash on the way out, such as in teardown.
+    if proc.returncode != 0:
+        raise AssertionError(f"{runtime.kind} process exited with {proc.returncode} after its result:\n{log}")
     return result["value"]

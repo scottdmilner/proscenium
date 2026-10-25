@@ -79,7 +79,7 @@ def test_started_milestone_rows_need_oracle_and_fixture(loaded: matrix.Matrix) -
     assert not any(p.startswith(("SRC-05 ", "BIND-02 ")) for p in matrix.check(m))  # not required before M3 starts
     m.started.add("M3")
     problems = matrix.check(m)
-    assert "SRC-05 (spec/source-access.md#source-stages): M3 has started, so the row needs an oracle" in problems
+    assert any(p.startswith("SRC-05 ") and "needs an oracle" in p for p in problems)
     assert not any(p.startswith("LAYER-01 ") and "bespoke fixture" in p for p in problems)  # it has F-DIRTY-LAYER
     assert any("BIND-02" in p and "needs a bespoke fixture" in p for p in problems)
 
@@ -90,8 +90,9 @@ def test_invariant_citing_a_row_outside_its_links_is_reported(loaded: matrix.Mat
     assert any("LAYER-03 is in spec/pipeline.md#diagnostics" in p for p in matrix.check_invariants(rows))
 
 
-def test_milestones_include_the_gate() -> None:
-    assert {"M1", "M1b", "M2", "M14"} <= matrix.milestones()
+def test_milestones_are_the_milestone_files() -> None:
+    # M1 to M14, and the evaluation gate M1b; the directory's README is none.
+    assert matrix.milestones() == {f"M{n}" for n in range(1, 15)} | {"M1b"}
 
 
 # The Markdown parser and loader, on small docs and matrices written under tmp_path.

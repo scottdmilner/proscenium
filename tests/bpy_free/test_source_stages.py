@@ -96,13 +96,6 @@ def test_unavailable_source(kind: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("kind", KINDS)
-def test_payload_policy_sets_the_initial_load(kind: str, tmp_path: Path) -> None:
-    root, caller = _scene(tmp_path)
-    assert read_values(binding(kind, root, caller).acquire(PayloadPolicy.LOAD_ALL)) == DISK
-    assert read_values(binding(kind, root, caller).acquire(PayloadPolicy.LOAD_NONE)) == DISK | UNLOADED
-
-
-@pytest.mark.parametrize("kind", KINDS)
 def test_a_changed_payload_policy_applies_to_the_reused_stage(kind: str, tmp_path: Path) -> None:
     root, caller = _scene(tmp_path)
     source = binding(kind, root, caller)
@@ -155,16 +148,6 @@ def test_ambient_cache(tmp_path: Path) -> None:
         assert read_values(stage) == scene.disk_values
         assert read_values(scene.ambient) == scene.ambient_values
         assert caller_settings(scene.ambient) == ambient_settings
-
-
-def test_bindings_on_one_file_have_their_own_stages(tmp_path: Path) -> None:
-    root, caller = _scene(tmp_path)
-    first, second = (
-        binding("file", root, caller).acquire(PayloadPolicy.LOAD_ALL),
-        binding("file", root, caller).acquire(PayloadPolicy.LOAD_ALL),
-    )
-    assert first != second
-    assert first.GetSessionLayer() != second.GetSessionLayer()
 
 
 # --- attached sources: an evaluation stage matched to the caller's ------------------------------

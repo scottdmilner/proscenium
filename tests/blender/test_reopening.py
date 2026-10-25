@@ -26,7 +26,6 @@ from proscenium.api.bindings import (
 )
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, records
-from proscenium.persistence.binding_records import BindingConfig
 from proscenium.persistence.binding_state import LastAttempt
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
@@ -38,22 +37,28 @@ if TYPE_CHECKING:
 
     from fixtures.source_access import SavedDisplay
     from proscenium.core.binding_ids import BindingId
+    from proscenium.persistence.binding_records import BindingConfig
 
 
 def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
 
 
+def _config(handle: BindingHandle) -> BindingConfig:
+    found = runtime.find_binding(handle.binding_id)
+    assert found is not None and found.config is not None
+    return found.config
+
+
 def _destination(handle: BindingHandle) -> bpy.types.Collection:
-    config = runtime.config(handle.binding_id)
-    assert isinstance(config, BindingConfig) and config.destination is not None
-    return config.destination
+    destination = _config(handle).destination
+    assert destination is not None
+    return destination
 
 
 def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
-    config = runtime.config(handle.binding_id)
-    assert isinstance(config, BindingConfig)
+    config = _config(handle)
     destination = _destination(handle)
     manifest = runtime.manifest(handle.binding_id)
     assert isinstance(manifest, Loaded)
@@ -136,22 +141,19 @@ def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | No
 def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
     # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
     assert bindings.in_scene(_scene()) == [handle]
-    config = runtime.config(handle.binding_id)
-    assert isinstance(config, BindingConfig)
-    assert config == saved
+    assert _config(handle) == saved
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
     assert _index_entry(handle.binding_id) == (True, None)
-    # DEST-04: no manifest, no resources, and the object it displayed claims no owner.
+    # DEST-04: no manifest, so no resources, and the object it displayed claims no owner.
     assert runtime.manifest(handle.binding_id) is None
-    assert runtime.resource(handle.binding_id, "a") is None
-    assert runtime.claims_on(bpy.data.objects["Managed"]) == []
+    assert runtime.ownership(bpy.data.objects["Managed"]).claims == ()
     # DEST-02: a fatal failure, with no source made for it and no destination created.
     collections = set(bpy.data.collections.keys())
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
     assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
-    assert handle.binding_id not in bindings.stages
+    assert bindings.stages.get(handle.binding_id) is None
     assert set(bpy.data.collections.keys()) == collections
 
 
@@ -166,9 +168,8 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
-        assert runtime.claims_on(obj) != []
-        before = runtime.config(handle.binding_id)
-        assert isinstance(before, BindingConfig)
+        assert runtime.ownership(obj).claims != ()
+        before = _config(handle)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)
         _check_removed(bindings, handle, config, attempt)
@@ -179,4 +180,4 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
         [(_, binding_id, stored)] = binding_records.read_configs()
         assert binding_id == handle.binding_id and isinstance(stored, Loaded)
-        assert stored.record == replace(config, payload_policy=PayloadPolicy.LOAD_NONE)
+        assert stored.record == replace(config, settings=RequestedSettings(PayloadPolicy.LOAD_NONE))

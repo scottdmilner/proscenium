@@ -58,23 +58,13 @@ def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[Bi
     return handle, manifest
 
 
-def _ownership() -> tuple[dict[bpy.types.ID, list[Claim]], list[RefusedRecord]]:
-    """Every claimed datablock's claims, and the manifests that can't be read, through the ownership index.
+def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
+    """Every claimed datablock's claims, through the ownership index.
 
     The oracle, reading the records now, must agree.
     """
-    found = {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.claims_on(id_))}
-    unreadable = runtime.unreadable_manifests()
-    expected, expected_unreadable = oracle.claims()
-    assert {id_: set(c) for id_, c in found.items()} == {id_: set(c) for id_, c in expected.items()}
-    assert unreadable == expected_unreadable
-    return found, unreadable
-
-
-def _claims() -> dict[bpy.types.ID, list[Claim]]:
-    found, unreadable = _ownership()
-    assert unreadable == []
-    return found
+    oracle.assert_agrees()
+    return {id_: claims for id_ in bpy.data.user_map() if (claims := runtime.ownership(id_).claims)}
 
 
 def test_a_manifest_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
@@ -103,25 +93,10 @@ def test_the_manifest_names_what_is_managed(bindings: Bindings, tmp_path: Path) 
     handle, _ = _managed(bindings, tmp_path)
     shot = bpy.data.collections["Shot"]
     assert _claims() == {
-        bpy.data.meshes["ShotMesh"]: [Claim(handle.binding_id, shot, "mesh")],
-        bpy.data.objects["Shot0"]: [Claim(handle.binding_id, shot, "a")],
-        bpy.data.objects["Shot1"]: [Claim(handle.binding_id, shot, "b")],
+        bpy.data.meshes["ShotMesh"]: (Claim(handle.binding_id, shot, "mesh"),),
+        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, "a"),),
+        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, "b"),),
     }
-
-
-def test_a_duplicate_of_managed_content_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
-    # OWN-16: Object > Duplicate copies the object, and no manifest names the copy.
-    _managed(bindings, tmp_path)
-    view_layer = bpy.context.view_layer
-    assert view_layer is not None
-    original = bpy.data.objects["Shot0"]
-    original.select_set(True)
-    view_layer.objects.active = original
-    bpy.ops.object.duplicate()
-    [copy] = [o for o in bpy.data.objects if o.name.startswith("Shot0.")]
-    found = _claims()
-    assert copy not in found
-    assert original in found
 
 
 def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: Path) -> None:
@@ -133,7 +108,8 @@ def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: P
     entries = {**manifest.record.entries, "stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
     runtime.set_manifest(second.binding_id, Manifest(entries))
     first_claim = Claim(first.binding_id, bpy.data.collections["First"], "a")
-    assert _claims()[shared] == [first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen")]
+    assert _claims()[shared] == (first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen"))
+    assert runtime.ownership(shared).status is runtime.OwnershipStatus.AMBIGUOUS
 
 
 def test_a_manifest_names_a_datablock_once(bindings: Bindings, tmp_path: Path) -> None:
@@ -142,20 +118,6 @@ def test_a_manifest_names_a_datablock_once(bindings: Bindings, tmp_path: Path) -
     twice = manifest.entries["a"]
     with pytest.raises(ValueError, match="two entries name one datablock"):
         Manifest({**manifest.entries, "again": twice})
-
-
-def test_after_a_full_copy_each_copy_is_managed_by_its_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
-    # The copied manifest's pointers are rewritten to the copied datablocks (runtime-record.md#copy-routes-m3).
-    _managed(bindings, tmp_path)
-    window = bpy.context.window
-    assert window is not None
-    window.scene = _scene()
-    bpy.ops.scene.new(type="FULL_COPY")
-    found = _claims()
-    for collection in (bpy.data.collections["Shot"], bpy.data.collections["Shot.001"]):
-        for obj in collection.objects:
-            [claim] = found[obj]
-            assert claim.destination == collection  # the copies share the binding identity, not the manifest
 
 
 def test_a_linked_copy_scene_shares_one_manifest(
@@ -178,11 +140,11 @@ def test_a_linked_copy_scene_shares_one_manifest(
 
     monkeypatch.setattr(manifests, "read_manifest", counted)
     runtime.invalidate()  # so the index is rebuilt from the records, reading what it reads
-    found = {obj: claims for obj in bpy.data.objects if (claims := runtime.claims_on(obj))}
+    found = {obj: claims for obj in bpy.data.objects if (claims := runtime.ownership(obj).claims)}
     assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
-        bpy.data.objects["Shot0"]: [Claim(handle.binding_id, shot, "a")],
-        bpy.data.objects["Shot1"]: [Claim(handle.binding_id, shot, "b")],
+        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, "a"),),
+        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, "b"),),
     }
 
 
@@ -257,7 +219,7 @@ def test_dependents_invert_the_uses(bindings: Bindings, tmp_path: Path) -> None:
 def test_an_invalid_manifest_is_refused(
     bindings: Bindings, tmp_path: Path, change: dict[str, object], problem: str
 ) -> None:
-    _managed(bindings, tmp_path)
+    handle, _ = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     stored["entries"]["a"] |= change
@@ -267,14 +229,13 @@ def test_an_invalid_manifest_is_refused(
     assert result.refusal is RefusalReason.INVALID
     assert problem in result.message
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
-    found, unreadable = _ownership()
-    assert found == {}
-    assert unreadable == [result]
+    assert _claims() == {}
+    assert runtime.manifest(handle.binding_id) == result
 
 
 def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path) -> None:
     # It claims nothing and is reported, and writing doesn't replace it.
-    _, manifest = _managed(bindings, tmp_path)
+    handle, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
@@ -282,7 +243,8 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     assert isinstance(result, RefusedRecord)
     assert result.refusal is RefusalReason.NEWER
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
-    assert _ownership() == ({}, [result])
+    assert _claims() == {}
+    assert runtime.manifest(handle.binding_id) == result
     with pytest.raises(RefusedRecordError):
         manifests.write_manifest(destination, manifest)
     assert destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict() == stored
@@ -332,11 +294,11 @@ def test_an_update_that_makes_no_manifest_changes_nothing(bindings: Bindings, tm
     objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
     new = bpy.data.objects.new("New", None)
     stored = records.stored(destination, manifests.MANIFEST_KEY)
-    claims = {obj: runtime.claims_on(obj) for obj in [*objects, new]}
+    claims = {obj: runtime.ownership(obj).claims for obj in [*objects, new]}
     make, error, message = _UPDATES[update]
     changed, removed = make(objects, new)
     with pytest.raises(error, match=message):
         runtime.set_manifest_entries(handle.binding_id, changed, removed)
     assert records.stored(destination, manifests.MANIFEST_KEY) == stored
     assert runtime.manifest(handle.binding_id) == Loaded(manifest, 1)
-    assert {obj: runtime.claims_on(obj) for obj in [*objects, new]} == claims
+    assert {obj: runtime.ownership(obj).claims for obj in [*objects, new]} == claims

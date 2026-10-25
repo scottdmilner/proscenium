@@ -1,55 +1,56 @@
-"""The bindings' in-memory state, which the runtime indexes are built into (lifecycle.md#undo-and-runtime-state).
+"""The bindings' in-memory state, a disposable cache of their records (lifecycle.md#undo-and-runtime-state).
 
-This state is a disposable write-through cache of the bindings' records: each binding's scene and
-decoded configuration, and, read when first needed, its decoded manifest, with every datablock's
-claims (proscenium.runtime.ownership_index). It holds every candidate of an identity (source-
-access.md#copied-bindings), and the canonical-candidate rule's decision on them
-(proscenium.runtime.copy_detection); lookups by identity are proscenium.runtime.binding_configs'. The extension's
-writes go through it, updating memory and writing the records at once, since the records are what's
-saved and what undo steps capture. So nothing is read back from the records after the extension's own
-writes.
+It holds two things:
 
-The records change behind the state only when Blender changes data: a file load, undo, or redo.
-The extension's handlers for those drop the state, before and after, and the next use rebuilds it
-from the records; dropping it before means another extension's handler that runs ahead of these
-reads the new data. That's why the state needs the extension registered: without the handlers, a
-binding that redo brings back would never be found. Scenes added or removed, as a scene copy, a new
-scene, or an append makes them, no handler announces: every use compares the scenes' session_uids
-with those the state was built from, and rebuilds if they differ.
+- The records, decoded, each once and held as they are stored, by the datablock holding them: each scene's binding
+  records (SceneRecords), each destination collection's tag and, once read, its manifest (DestinationRecords), and
+  each Text's binding index (IndexRecords).
+- What is computed from them: each binding identity's candidates and the canonical-candidate rule's decision
+  (copy_detection.IdentityCandidates), whose binding records are read through their scenes' (BindingRecord), and the
+  ownership index (ownership_index), built when first asked for.
 
-The state holds datablock references, which Blender invalidates under it: undo re-reads every
-datablock the undone step changed, which a synchronization's managed content always is, and a file
-load frees every one. Those come with a rebuild. The user may also remove content at any time, which
-no handler announces, so every hit is checked before it's returned (a removed ID's reference raises
-when touched, alive()). A removed scene or destination clears pointers in the configurations, so a
-check that finds one gone raises StaleError, and query() rebuilds the state and asks again; a removed
-managed datablock costs less (proscenium.runtime.ownership_index). Only ID references are held, never
-the structs inside a datablock (modifiers, mesh elements, nodes): Blender invalidates a removed ID's
-Python reference but not those, and one held across undo silently reads freed memory.
+binding_configs looks bindings up in it, and ownership_index builds the claims on each datablock from it.
 
-Other content brought in by append or link, and a destination collection duplicated on its own,
-add no scene, so they're seen at the next load, undo, or redo, or when refresh_if_tags_changed()
-finds the collections' tags changed, as a synchronization asks it to first.
+How it stays current:
+
+- Writes go through it, writing the stored record and holding what the write stored, so nothing is read back from
+  the records. A write that changes what the rule reads decides that identity again.
+- A file load, undo, or redo changes the records behind it. The extension's handlers drop the state before and after
+  each, and the next use rebuilds it; dropping it before means another extension's handler that runs first reads
+  the new data. So the state needs the extension registered (NotRegisteredError).
+- Scenes added or removed, as a scene copy, a new scene, or an append makes them, have no handler: each use compares
+  the scenes' session_uids with those the state was built from.
+- Content appended or linked, and a collection duplicated on its own, add no scene: refresh_if_tags_changed() finds
+  them, as a synchronization asks it to first, and otherwise the next load, undo, or redo does.
+
+What it holds:
+
+- References to IDs only, never to structs inside one (modifiers, mesh elements, nodes): Blender invalidates a
+  removed ID's Python reference, but a struct held across undo silently reads freed memory.
+- Each reference is checked before it's returned (alive()), since the user can remove content at any time. A removed
+  scene or destination raises StaleError, and query() rebuilds the state and asks again; a removed managed datablock
+  rereads only the manifest naming it (ownership_index).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import bpy
 
 from ..persistence import binding_records, records
-from ..persistence.records import RefusedRecord
+from ..persistence.binding_records import BindingConfig
+from ..persistence.records import Loaded, RefusedRecord
 from . import copy_detection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..core.binding_ids import BindingId
-    from ..persistence.binding_records import BindingConfig
+    from ..persistence.binding_records import BindingIndex, CreatedBinding, DestinationTag, WrittenIndex
     from ..persistence.manifests import Manifest
-    from ..persistence.records import Loaded
+    from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex
 
 _tracking = False  # whether the extension's handlers are registered, so the state is kept current
@@ -73,27 +74,96 @@ UNREAD = Unread()
 
 
 @dataclass(slots=True)
-class Candidate:
-    """One candidate of a binding identity: a scene's configuration record for it."""
+class SceneRecords:
+    """The binding records on a scene: by binding identity, the configuration stored there."""
 
     scene: bpy.types.Scene
-    scene_uid: int  # compared instead of the reference: a new scene can take a removed one's address
-    config: BindingConfig | RefusedRecord
+    uid: int  # its session_uid, compared instead of the reference: a new scene can take a removed one's address
+    configs: dict[BindingId, BindingConfig | RefusedRecord] = field(default_factory=dict)
+
+    def records(self) -> list[BindingRecord]:
+        """Its binding records, in the order found."""
+        return [BindingRecord(self, binding_id) for binding_id in self.configs]
+
+
+@dataclass(frozen=True, slots=True)
+class BindingRecord:
+    """One scene's binding record for a binding identity, read through the scene's records, so a write reaches it."""
+
+    held: SceneRecords
+    binding_id: BindingId
+
+    @property
+    def scene(self) -> bpy.types.Scene:
+        """The scene holding the record."""
+        return self.held.scene
+
+    @property
+    def scene_uid(self) -> int:
+        """The scene's session_uid."""
+        return self.held.uid
+
+    @property
+    def config(self) -> BindingConfig | RefusedRecord:
+        """The configuration, or why it can't be read."""
+        return self.held.configs[self.binding_id]
+
+
+@dataclass(slots=True)
+class DestinationRecords:
+    """The records on a destination collection: its tag, and its manifest once read."""
+
+    collection: bpy.types.Collection
+    tag: DestinationTag | RefusedRecord | None  # None for a collection a binding record names that has no local tag
     manifest: Loaded[Manifest] | RefusedRecord | None | Unread = UNREAD
+
+
+@dataclass(slots=True)
+class IndexRecords:
+    """The record on a Text holding a binding index: the index."""
+
+    text: bpy.types.Text
+    index: BindingIndex | RefusedRecord
 
 
 @dataclass(slots=True)
 class State:
     """The bindings' state, built from the records (the module docstring says how it's kept)."""
 
-    scenes: tuple[int, ...]  # the session_uids of the scenes it was built from, in order
-    bindings: dict[BindingId, list[Candidate]]  # its candidates, in the order found
-    # By destination session_uid: the candidates whose configuration names it, with their identifiers, in the
-    # order found, so a write reaches them without going through every binding (_by_destination).
-    by_destination: dict[int, list[tuple[BindingId, Candidate]]]
-    identities: dict[BindingId, copy_detection.IdentityCandidates]  # its candidates, as the rule reads them
-    tagged: frozenset[int]  # the session_uids of the tagged collections it was built from (refresh_if_tags_changed)
+    scene_uids: tuple[int, ...]  # the session_uids of every scene it was built from, in order: compared at each use
+    # The records, each held once, by the datablock holding them, in the order found.
+    scenes: dict[int, SceneRecords]  # by session_uid: every local scene with binding records
+    # By session_uid: every local tagged collection, then every other collection a record names.
+    destinations: dict[int, DestinationRecords]
+    indexes: list[IndexRecords]  # every local Text with a binding index; a file normally has one
+    # Computed from the records.
+    identities: dict[BindingId, IdentityCandidates]  # every identity with a record or a tag, records' first
     ownership: OwnershipIndex | None = None  # built when first asked for
+
+    @property
+    def tagged(self) -> frozenset[int]:
+        """The session_uids of the local tagged collections (refresh_if_tags_changed)."""
+        return frozenset(uid for uid, d in self.destinations.items() if d.tag is not None)
+
+    def add_binding(self, scene: bpy.types.Scene, created: CreatedBinding) -> None:
+        """Hold a binding just made on scene: the records create stored, and its identity's decision."""
+        binding_id, destination = created.binding_id, created.config.destination
+        assert destination is not None
+        uid = scene.session_uid
+        held = self.scenes.setdefault(uid, SceneRecords(scene, uid))
+        held.configs[binding_id] = created.config
+        self.destinations[destination.session_uid] = DestinationRecords(destination, created.tag, None)
+        self.indexes = [IndexRecords(*created.index)]
+        self.identities[binding_id] = copy_detection.identity(self, binding_id, [BindingRecord(held, binding_id)])
+
+    def replace_index(self, binding_id: BindingId, written: WrittenIndex) -> None:
+        """Hold the binding index a write stored with binding_id's entry, and decide that identity again.
+
+        A write to the index refuses a file with more than one, so the file now has only this one.
+        """
+        self.indexes = [IndexRecords(*written)]
+        identity = self.identities[binding_id]
+        self.identities[binding_id] = copy_detection.identity(self, binding_id, identity.records)
 
 
 def start() -> None:
@@ -118,10 +188,10 @@ def invalidate() -> None:
 
 
 def rebuild_count() -> int:
-    """A count that changes whenever the state is dropped or rebuilt from the records.
+    """A number that changes whenever the state is dropped or rebuilt.
 
-    It changes after a load, undo, or redo, and when scenes are added or removed, so runtime state keyed by binding
-    identity, such as the bindings' stages, knows to compare its bindings with binding_ids().
+    Runtime state kept beside the bindings, such as their stages (CurrentStages), compares it to tell when the bindings
+    may have changed: after a load, undo, or redo, or when scenes are added or removed.
     """
     return _rebuilds
 
@@ -157,23 +227,21 @@ def current_state() -> State:
     if not _tracking:
         raise NotRegisteredError("the extension isn't registered, so the bindings' state can't be kept current")
     scenes = _scene_uids()
-    if _state is None or _state.scenes != scenes:
-        found = _read_bindings()
-        detected = copy_detection.detect({b: [(c.scene, c.config) for c in cs] for b, cs in found.items()})
-        _state = State(scenes, found, _by_destination(found), detected.identities, detected.tagged)
+    if _state is None or _state.scene_uids != scenes:
+        _state = _read_state(scenes)
         _rebuilds += 1
     return _state
 
 
-def valid(binding_id: BindingId, binding: Candidate) -> bool:
-    """Whether the candidate's scene still exists and holds its configuration, and its destination still exists.
+def valid(binding_id: BindingId, record: BindingRecord) -> bool:
+    """Whether the record's scene still exists and holds its configuration, and its destination still exists.
 
     Removing a destination clears the configuration's pointer to it.
     """
-    destination = None if isinstance(binding.config, RefusedRecord) else binding.config.destination
+    destination = None if isinstance(record.config, RefusedRecord) else record.config.destination
     return (
-        alive(binding.scene)
-        and records.has(binding.scene, binding_records.config_key(binding_id))
+        alive(record.scene)
+        and records.has(record.scene, binding_records.config_key(binding_id))
         and (destination is None or alive(destination))
     )
 
@@ -191,26 +259,28 @@ def _scene_uids() -> tuple[int, ...]:
     return tuple(scene.session_uid for scene in bpy.data.scenes)
 
 
-def _read_bindings() -> dict[BindingId, list[Candidate]]:
-    found: dict[BindingId, list[Candidate]] = {}
+def _read_state(scenes: tuple[int, ...]) -> State:
+    """Read every binding record, tag, and binding index, and decide every identity."""
+    held: dict[int, SceneRecords] = {}
     for scene, binding_id, result in binding_records.read_configs():
-        config = result if isinstance(result, RefusedRecord) else result.record
-        found.setdefault(binding_id, []).append(Candidate(scene, scene.session_uid, config))
-    return found
-
-
-def _by_destination(candidates_by_id: dict[BindingId, list[Candidate]]) -> dict[int, list[tuple[BindingId, Candidate]]]:
-    """Every candidate naming a destination, by its session_uid, in the order found.
-
-    A removed destination's candidates are left out, and checking them rebuilds the state.
-    """
-    found: dict[int, list[tuple[BindingId, Candidate]]] = {}
-    for binding_id, found_for_id in candidates_by_id.items():
-        for b in found_for_id:
-            if (
-                not isinstance(b.config, RefusedRecord)
-                and b.config.destination is not None
-                and alive(b.config.destination)
-            ):
-                found.setdefault(b.config.destination.session_uid, []).append((binding_id, b))
-    return found
+        uid = scene.session_uid
+        configs = held.setdefault(uid, SceneRecords(scene, uid)).configs
+        configs[binding_id] = result if isinstance(result, RefusedRecord) else result.record
+    destinations = {
+        collection.session_uid: DestinationRecords(collection, tag.record if isinstance(tag, Loaded) else tag)
+        for collection, tag in binding_records.read_tags()
+    }
+    # A removed destination is left out, and checking a record naming it rebuilds the state.
+    for scene_records in held.values():
+        for config in scene_records.configs.values():
+            if isinstance(config, BindingConfig) and (destination := config.destination) is not None:
+                if alive(destination) and destination.session_uid not in destinations:
+                    destinations[destination.session_uid] = DestinationRecords(destination, None)
+    indexes = []
+    for text in binding_records.index_texts():
+        index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+        assert index is not None  # index_texts found the record
+        indexes.append(IndexRecords(text, index.record if isinstance(index, Loaded) else index))
+    current = State(scenes, held, destinations, indexes, {})
+    current.identities = copy_detection.identities(current)
+    return current
