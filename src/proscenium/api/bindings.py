@@ -16,7 +16,7 @@ Each kind of call reports a refusal one way:
 
 - An operation (synchronize, set_settings, reload) returns a result whose diagnostic says why.
 - The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
-  DisabledBindingError for a disabled binding.
+  DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call keyed by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
 """
 
@@ -31,6 +31,7 @@ import bpy
 from pxr import Usd
 
 from .. import runtime
+from ..core.requested_settings import RequestedSettings
 from ..core.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
 from ..core.source_access import (
     PayloadPolicy,
@@ -39,8 +40,7 @@ from ..core.source_access import (
     dirty_layers,
 )
 from ..persistence.binding_records import BindingConfig
-from ..persistence.records import RefusedRecord, RefusedRecordError
-from ..runtime import CurrentStages, DisabledBinding, DisabledBindingError
+from ..runtime import BindingStatus, CurrentStages
 
 if TYPE_CHECKING:
     import os
@@ -48,18 +48,11 @@ if TYPE_CHECKING:
 
     from ..core.binding_ids import BindingId
     from ..core.source_access import AttachedBindingStages, FileBindingStages
-    from ..runtime import CopiedBinding
+    from ..runtime import CopiedBinding, FoundBinding
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
     """No binding has this identifier: it was removed, its creation undone, or it never existed."""
-
-
-@dataclass(frozen=True, slots=True)
-class RequestedSettings:
-    """The settings a binding's next synchronization uses (lifecycle.md#binding-state)."""
-
-    payload_policy: PayloadPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +122,7 @@ class Bindings:
         """
         if str(root).startswith("//") and not bpy.data.filepath:
             raise ValueError(f"{root} is relative to the .blend, which hasn't been saved")
-        config = BindingConfig.file(str(root), payload_policy)
+        config = BindingConfig.file(str(root), RequestedSettings(payload_policy))
         return self._create(scene, config, name or Path(root).stem)
 
     def create_attached_binding(
@@ -141,7 +134,7 @@ class Bindings:
         name: str | None = None,
     ) -> BindingHandle:
         """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
-        config = BindingConfig.attached(key, payload_policy)
+        config = BindingConfig.attached(key, RequestedSettings(payload_policy))
         return self._create(scene, config, name or key)
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
@@ -150,7 +143,7 @@ class Bindings:
         Those whose canonical candidate is on it, and each binding with copies and no canonical candidate that has a
         candidate on it.
         """
-        return [BindingHandle(binding_id) for binding_id in runtime.binding_ids(scene)]
+        return [BindingHandle(found.binding_id) for found in runtime.find_bindings(scene)]
 
     def copied(self) -> list[CopiedBinding]:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
@@ -164,7 +157,7 @@ class Bindings:
         whose configuration can't be read is never attached.
         """
         identifier = stage.GetRootLayer().identifier
-        matching = list(runtime.attached_with_key(key))
+        matching = _attached_with_key(key)
         unconfirmed = tuple(
             binding_id for binding_id, config in matching if config.root_layer_identifier not in (None, identifier)
         )
@@ -184,7 +177,7 @@ class Bindings:
         """
         # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune_stages()).
         self.stages.release(key)
-        return tuple(binding_id for binding_id, _ in runtime.attached_with_key(key))
+        return tuple(binding_id for binding_id, _ in _attached_with_key(key))
 
     def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
@@ -192,20 +185,17 @@ class Bindings:
         Raises RefusedRecordError if the binding's configuration can't be read, and DisabledBindingError if it has
         copies and no canonical candidate.
         """
-        config = self._config(binding_id)
-        if isinstance(config, RefusedRecord):
-            raise RefusedRecordError(config)
-        if isinstance(config, DisabledBinding):
-            raise DisabledBindingError(config)
-        return RequestedSettings(config.payload_policy)
+        return self._found(binding_id).usable_config().settings
 
     def set_settings(self, binding_id: BindingId, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing."""
-        config = self._config(binding_id)
-        if not isinstance(config, BindingConfig):
-            return _refused(config)
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        config = found.usable_config()
         if payload_policy is not None:
-            config = dataclasses.replace(config, payload_policy=payload_policy)
+            settings = dataclasses.replace(config.settings, payload_policy=payload_policy)
+            config = dataclasses.replace(config, settings=settings)
         runtime.set_config(binding_id, config)
         return Result(ResultState.SUCCESS)
 
@@ -213,13 +203,14 @@ class Bindings:
         """Synchronize at an explicit time code; acquisition only, so nothing is evaluated at it yet."""
         Usd.TimeCode(time_code)  # a time code evaluation can use, or a TypeError now
         runtime.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
-        config = self._config(binding_id)
-        if not isinstance(config, BindingConfig):
-            return _refused(config)
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        config = found.usable_config()
         if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
             return _removed_destination(binding_id)
         try:
-            dirty = dirty_layers(self._stages(binding_id, config).acquire(config.payload_policy))
+            dirty = dirty_layers(self._stages(binding_id, config).acquire(config.settings.payload_policy))
         except SourceUnavailableError as error:
             return _unavailable(error)
         diagnostics = ()
@@ -233,18 +224,19 @@ class Bindings:
 
         Raises ValueError, and reloads nothing, if layers names one that isn't a contributing layer.
         """
-        config = self._config(binding_id)
-        if not isinstance(config, BindingConfig):
-            return _refused(config)
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        config = found.usable_config()
         try:
-            self._stages(binding_id, config).reload(config.payload_policy, layers)
+            self._stages(binding_id, config).reload(config.settings.payload_policy, layers)
         except SourceUnavailableError as error:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """None before the first synchronization, and for a binding with copies and no canonical candidate."""
-        if isinstance(self._config(binding_id), DisabledBinding):
+        if self._found(binding_id).status is BindingStatus.DISABLED:
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
@@ -259,12 +251,11 @@ class Bindings:
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(runtime.create(scene, config, name))
 
-    def _config(self, binding_id: BindingId) -> BindingConfig | RefusedRecord | DisabledBinding:
-        """The canonical candidate's configuration, why it can't be read, or DisabledBinding if it has none."""
-        config = runtime.config(binding_id)
-        if config is None:
+    def _found(self, binding_id: BindingId) -> FoundBinding:
+        """The binding; raises BindingNotFoundError if it doesn't exist."""
+        if (found := runtime.find_binding(binding_id)) is None:
             raise BindingNotFoundError(binding_id)
-        return config
+        return found
 
     def _stages(self, binding_id: BindingId, config: BindingConfig) -> FileBindingStages | AttachedBindingStages:
         """The binding's stages, made from its configuration on first use.
@@ -280,6 +271,16 @@ class Bindings:
         return self.stages.attached(binding_id, config.source_key)
 
 
+def _attached_with_key(key: str) -> list[tuple[BindingId, BindingConfig]]:
+    """The usable bindings whose attached source has this exact key, with their configurations."""
+    configs = [(found.binding_id, found.usable_config()) for found in runtime.find_bindings() if found.usable]
+    return [
+        (binding_id, config)
+        for binding_id, config in configs
+        if config.source_kind is SourceKind.ATTACHED and config.source_key == key
+    ]
+
+
 def _unavailable(error: SourceUnavailableError) -> Result:
     return Result(
         ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),)
@@ -293,18 +294,16 @@ def _removed_destination(binding_id: BindingId) -> Result:
     )
 
 
-def _refused(refused: RefusedRecord | DisabledBinding) -> Result:
-    if isinstance(refused, RefusedRecord):
-        return _unsupported(refused)
-    report = refused.report
+def _refused(found: FoundBinding) -> Result:
+    """Why a binding that isn't usable refuses."""
+    if found.unreadable is not None:
+        diagnostic = Diagnostic(DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR, found.unreadable.message)
+        return Result(ResultState.FATAL_FAILURE, (diagnostic,))
+    report = found.copies
+    assert report is not None
     named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in report.candidates)
     message = f"Binding {report.binding_id} has copies and no canonical candidate ({report.reason}): {named}"
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
-
-
-def _unsupported(refused: RefusedRecord) -> Result:
-    diagnostic = Diagnostic(DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR, refused.message)
-    return Result(ResultState.FATAL_FAILURE, (diagnostic,))
 
 
 BINDINGS = Bindings()  # the process's bindings, which handles use

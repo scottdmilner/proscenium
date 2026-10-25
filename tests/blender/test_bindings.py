@@ -24,6 +24,7 @@ from proscenium.api.bindings import (
     BindingNotFoundError,
     Bindings,
     DiagnosticCategory,
+    RequestedSettings,
     Result,
     ResultState,
     Severity,
@@ -79,7 +80,9 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(bindings: Bi
         handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
     config = _config(handle)
     destination = bpy.data.collections["Shot"]
-    assert config == BindingConfig.file(str(scene.root), PayloadPolicy.LOAD_ALL, destination=destination)
+    assert config == BindingConfig.file(
+        str(scene.root), RequestedSettings(PayloadPolicy.LOAD_ALL), destination=destination
+    )
     assert destination.name in _scene().collection.children
     assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
@@ -93,14 +96,14 @@ def test_the_enums_are_stored_as_their_values(bindings: Bindings, tmp_path: Path
     handle = bindings.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     stored = records.stored(_scene(), binding_records.config_key(handle.binding_id))
     assert isinstance(stored, dict)
-    assert [(stored[f], type(stored[f])) for f in ("source_kind", "payload_policy")] == [
+    assert [(v, type(v)) for v in (stored["source_kind"], stored["settings"]["payload_policy"])] == [
         ("file", str),
         ("load_none", str),
     ]
     config = _config(handle)
-    assert (config.source_kind, config.payload_policy) == (SourceKind.FILE, PayloadPolicy.LOAD_NONE)
+    assert (config.source_kind, config.settings.payload_policy) == (SourceKind.FILE, PayloadPolicy.LOAD_NONE)
     assert type(config.source_kind) is SourceKind
-    assert type(config.payload_policy) is PayloadPolicy
+    assert type(config.settings.payload_policy) is PayloadPolicy
 
 
 def test_a_scenes_bindings(bindings: Bindings, tmp_path: Path) -> None:
@@ -122,9 +125,11 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path) -> 
         identifier = scene.caller.GetRootLayer().identifier
     save_and_reopen(tmp_path / "bindings.blend")
     f, a = bpy.data.collections["F"], bpy.data.collections["A"]
-    assert _config(file_backed) == BindingConfig.file(str(root), PayloadPolicy.LOAD_NONE, destination=f)
+    assert _config(file_backed) == BindingConfig.file(
+        str(root), RequestedSettings(PayloadPolicy.LOAD_NONE), destination=f
+    )
     assert _config(attached) == BindingConfig.attached(
-        "shot", PayloadPolicy.LOAD_ALL, root_layer_identifier=identifier, destination=a
+        "shot", RequestedSettings(PayloadPolicy.LOAD_ALL), root_layer_identifier=identifier, destination=a
     )
     assert bindings.in_scene(_scene()) == [file_backed, attached]
     assert _destination_tag(f) == DestinationTag(file_backed.binding_id, _scene())
@@ -193,7 +198,7 @@ def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) 
         before = [_config(h) for h in (other, attached)]
         changed.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         assert [_config(h) for h in (other, attached)] == before
-        assert _config(changed).payload_policy == "load_none"
+        assert _config(changed).settings.payload_policy == "load_none"
 
 
 # Handles across undo, redo, and save/reopen.
@@ -320,7 +325,7 @@ def test_an_attached_source_is_unavailable_after_reopening(
 # A configuration that can't be read.
 
 
-@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names"])
+@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names", "flat-settings"])
 def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tmp_path: Path, name: str) -> None:
     # SCHEMA-03: F-SCHEMA-VERSIONS' binding configurations, as another extension version or damage left them.
     with record_fixtures.schema_versions(tmp_path) as versions:
@@ -345,7 +350,7 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
         assert records.stored(_scene(), binding_records.config_key(handle.binding_id)) == stored
 
 
-@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names"])
+@pytest.mark.parametrize("name", ["newer", "no-path", "unknown-policy", "old-field-names", "flat-settings"])
 def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tmp_path: Path, name: str) -> None:
     # SCHEMA-03: the runtime write refuses every refusal, including those at the current version, which
     # records.write alone lets through.
@@ -354,7 +359,7 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
         binding_id = binding_records.new_identifier()
         _scene()[NAMESPACE] = {binding_records.config_key(binding_id): stored}
         with pytest.raises(RefusedRecordError):
-            runtime.set_config(binding_id, BindingConfig.file("//shot.usda", PayloadPolicy.LOAD_ALL))
+            runtime.set_config(binding_id, BindingConfig.file("//shot.usda", RequestedSettings(PayloadPolicy.LOAD_ALL)))
         assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
 
 

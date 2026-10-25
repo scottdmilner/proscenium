@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..core.source_access import StageRegistry
-from ..persistence.binding_records import BindingConfig
 from . import binding_configs, state
 
 if TYPE_CHECKING:
@@ -54,8 +53,8 @@ class CurrentStages:
         """
         if self._registry:
             # A disabled binding's file source goes, as an unreadable one's does: neither synchronizes.
-            configs = binding_configs.configs()
-            self._registry.prune({binding_id: isinstance(c, BindingConfig) for binding_id, c in configs.items()})
+            found = binding_configs.find_bindings()
+            self._registry.prune({f.binding_id: f.usable for f in found})
         self._pruned_at = state.rebuild_count()
 
     def clear(self) -> None:

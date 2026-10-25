@@ -1,7 +1,9 @@
-"""The ownership index: the claims on each datablock (lifecycle.md#ownership-and-lifecycle).
+"""Ownership: whether each datablock is managed, from the claims on it (lifecycle.md#ownership-and-lifecycle).
 
-It's built from every candidate's manifest in the bindings' state when first asked for, a tagged copy's included, so
-content a copy names is ambiguous rather than one binding's. Each destination's claims are kept apart
+ownership(datablock) answers through the ownership index, the claims on each datablock.
+
+It's built from every destination's manifest in the bindings' state when first asked for, a tagged copy's included,
+so content a copy names is ambiguous rather than one binding's. Each destination's claims are kept apart
 (DestinationClaims), so a manifest write replaces only its own.
 
 - Claims are keyed by datablock session_uid, not reference: a new datablock often takes a removed one's address, but
@@ -14,14 +16,15 @@ content a copy names is ambiguous rather than one binding's. Each destination's 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, NamedTuple
 
 from ..persistence import manifests
+from ..persistence.binding_records import DestinationTag
 from ..persistence.manifests import Manifest
 from ..persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
-from .binding_configs import DisabledBinding
-from .state import Candidate, StaleError, Unread
+from .state import BindingRecord, StaleError, Unread
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -30,18 +33,12 @@ if TYPE_CHECKING:
 
     from ..core.binding_ids import BindingId
     from ..persistence.manifests import ManifestEntry
-    from .state import State
+    from .state import DestinationRecords, State
 
 
 @dataclass(frozen=True, slots=True)
 class Claim:
     """A manifest entry naming a datablock: the evidence that a binding manages it (OWN-16).
-
-    What the claims on a datablock mean:
-
-    - none: it's unmanaged;
-    - one: the binding whose manifest holds it manages it;
-    - two or more, each from a different manifest: it's ambiguous, reported but never claimed or deleted (OWN-09).
 
     Each destination's manifest counts once, however many configurations name it, as a linked-copy scene's do, and a
     manifest that can't be read claims nothing. A claim doesn't survive an operator call or undo.
@@ -52,36 +49,66 @@ class Claim:
     resource_id: str  # the entry's key in that manifest
 
 
+class OwnershipStatus(StrEnum):
+    """What the claims on a datablock mean."""
+
+    UNMANAGED = "unmanaged"  # no claims
+    MANAGED = "managed"  # one: the binding whose manifest holds it manages it
+    AMBIGUOUS = "ambiguous"  # two or more, from different manifests: reported, never claimed or deleted (OWN-09)
+
+
+@dataclass(frozen=True, slots=True)
+class Ownership:
+    """Whether a datablock is managed, and the claims that say so."""
+
+    claims: tuple[Claim, ...]  # in the order found
+
+    @property
+    def status(self) -> OwnershipStatus:
+        """What the claims mean."""
+        if not self.claims:
+            return OwnershipStatus.UNMANAGED
+        return OwnershipStatus.MANAGED if len(self.claims) == 1 else OwnershipStatus.AMBIGUOUS
+
+
 @dataclass(slots=True)
 class DestinationClaims:
     """What one destination's manifest adds to the ownership index, so a publication can change it alone."""
 
-    claimant: BindingId  # the binding its claims name: the first found whose configuration names the destination
+    claimant: BindingId  # the first binding found whose configuration names the destination, or else its tag's
     claims: dict[int, Claim]  # by datablock session_uid; a manifest names a datablock at most once
     entries: dict[str, int]  # resource identity -> its datablock's session_uid, for the entries naming one
 
 
 @dataclass(slots=True)
 class OwnershipIndex:
-    """Every candidate's manifest, indexed: the claims on each datablock (Claim), kept per destination."""
+    """Every destination's manifest, indexed: the claims on each datablock (Claim), kept per destination."""
 
     # By datablock session_uid: one Claim, or a tuple of them for an ambiguous datablock, which is rare, so
     # the common case costs no list (88 bytes each, a quarter of the index).
     claims: dict[int, Claim | tuple[Claim, ...]]
-    unreadable: dict[int, RefusedRecord]  # by destination session_uid: manifests that can't be read
     shares: dict[int, DestinationClaims]  # by destination session_uid
 
 
-def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | DisabledBinding | None:
+def ownership(datablock: bpy.types.ID) -> Ownership:
+    """Whether datablock is managed, and by which binding: the claims on it in every manifest."""
+    return Ownership(state.query(lambda s: _checked_claims(s, datablock)))
+
+
+def manifest(binding_id: BindingId) -> Loaded[Manifest] | RefusedRecord | None:
     """A binding's manifest, read through its configuration's destination when first asked for.
 
-    RefusedRecord if the configuration or the manifest can't be read; DisabledBinding if it has no
-    canonical candidate; None if the binding has no destination (it was removed) or no manifest yet. Raises
-    KeyError if no binding has this identifier.
+    RefusedRecord if the configuration or the manifest can't be read; None if the binding has no destination (it was
+    removed) or no manifest yet. Reads only that binding's manifest, not the ownership index. Raises KeyError if no
+    binding has this identifier, and DisabledBindingError if it has no canonical candidate.
     """
-    if isinstance(candidate := binding_configs.existing(binding_id), DisabledBinding):
-        return candidate
-    return _checked_manifest(state.current_state(), binding_id, candidate)
+    record = binding_configs.required_record(binding_id)
+    current = state.current_state()
+    if isinstance(record.config, RefusedRecord):
+        return record.config
+    if (destination := _destination_records(current, record)) is None:
+        return None
+    return _checked_manifest(current, binding_id, destination)
 
 
 def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
@@ -90,11 +117,12 @@ def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
     binding; DisabledBindingError if it has no canonical candidate; ValueError if it has no destination.
     """
-    candidate = binding_configs.writable(binding_id)
-    destination = _destination(binding_id, candidate)
-    manifests.write_manifest(destination, manifest)
-    _replace_manifest(state.current_state(), binding_id, destination, Loaded(manifest, manifests.MANIFEST.version))
-    binding_configs.restore_entry(binding_id, candidate)
+    record = binding_configs.required_record(binding_id)
+    current = state.current_state()
+    destination = _destination(current, binding_id, record)
+    manifests.write_manifest(destination.collection, manifest)
+    _replace_manifest(current, binding_id, destination, Loaded(manifest, manifests.MANIFEST.version))
+    binding_configs.restore_entry(binding_id, record)
 
 
 def set_manifest_entries(
@@ -119,41 +147,22 @@ def set_manifest_entries(
     index, share, destination = target.current.ownership, target.share, target.destination
     assert index is not None and share is not None
     after = target.before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
-    manifests.write_entries(destination, after, changed.keys(), removed)
-    target.current.cache_manifest(destination, Loaded(after, manifests.MANIFEST.version))
+    manifests.write_entries(destination.collection, after, changed.keys(), removed)
+    destination.manifest = Loaded(after, manifests.MANIFEST.version)
     for resource_id in [*changed, *removed]:
         _remove_claim(index, share, resource_id)
     for resource_id in changed:
         if (datablock := after.entries[resource_id].datablock) is not None:
-            _add_claim(index, share, datablock, Claim(share.claimant, destination, resource_id))
-    binding_configs.restore_entry(binding_id, target.candidate)
-
-
-def claims_on(datablock: bpy.types.ID) -> list[Claim]:
-    """The claims on datablock; none if it is unmanaged (Claim says what they mean)."""
-    return state.query(lambda s: _checked_claims(s, datablock))
-
-
-def resource(binding_id: BindingId, resource_id: str) -> bpy.types.ID | DisabledBinding | None:
-    """The datablock of a binding's resource, as its manifest names it.
-
-    DisabledBinding if the binding has no canonical candidate; None if the manifest names none, or the binding has no
-    destination or manifest. Reads only that binding's manifest, not the ownership index.
-    """
-    return state.query(lambda s: _checked_resource(s, binding_id, resource_id))
-
-
-def unreadable_manifests() -> list[RefusedRecord]:
-    """Every manifest that can't be read, once per destination."""
-    return state.query(lambda s: list(_ownership(s).unreadable.values()))
+            _add_claim(index, share, datablock, Claim(share.claimant, destination.collection, resource_id))
+    binding_configs.restore_entry(binding_id, target.record)
 
 
 class _UpdateTarget(NamedTuple):
     """What set_manifest_entries changes, all from one state."""
 
     current: State
-    candidate: Candidate  # the binding's canonical record
-    destination: bpy.types.Collection
+    record: BindingRecord  # the binding's canonical record
+    destination: DestinationRecords
     before: Manifest  # its stored manifest, or an empty one if it has none yet
     share: DestinationClaims | None  # the destination's claims in the ownership index, if indexed
 
@@ -164,52 +173,58 @@ def _update_target(current: State, binding_id: BindingId, *, indexed: bool) -> _
     A question for state.query, so all of them come from the same state: building the ownership index can find a
     removed destination, which rebuilds the state and asks again.
     """
-    candidate = binding_configs.writable_in(current, binding_id)
-    destination = _destination(binding_id, candidate)
+    record = binding_configs.required_record_in(current, binding_id)
+    destination = _destination(current, binding_id, record)
     # Unchecked, which would cost the manifest: an entry naming a removed datablock is carried into the result,
     # whose next check rereads it, and its claim, under a session_uid no other datablock gets, stays unfound.
-    stored = _manifest_of(candidate)
+    stored = _manifest_of(destination)
     if isinstance(stored, RefusedRecord):
         raise RefusedRecordError(stored)
-    share = _ownership(current).shares[destination.session_uid] if indexed else None
+    share = _ownership(current).shares[destination.collection.session_uid] if indexed else None
     before = Manifest({}) if stored is None else stored.record
-    return _UpdateTarget(current, candidate, destination, before, share)
+    return _UpdateTarget(current, record, destination, before, share)
 
 
-def _destination(binding_id: BindingId, candidate: Candidate) -> bpy.types.Collection:
-    if isinstance(candidate.config, RefusedRecord) or candidate.config.destination is None:
+def _destination(current: State, binding_id: BindingId, record: BindingRecord) -> DestinationRecords:
+    """The records on the destination of a binding's record; ValueError if it has none to hold a manifest."""
+    if isinstance(record.config, RefusedRecord) or (destination := _destination_records(current, record)) is None:
         raise ValueError(f"binding {binding_id} has no destination to hold a manifest")
-    return candidate.config.destination
+    return destination
 
 
-def _manifest_of(candidate: Candidate) -> Loaded[Manifest] | RefusedRecord | None:
-    """The candidate's manifest, read through its destination the first time."""
-    if isinstance(candidate.config, RefusedRecord):
-        return candidate.config
-    if isinstance(candidate.manifest, Unread):
-        destination = candidate.config.destination
-        candidate.manifest = None if destination is None else manifests.read_manifest(destination)
-    return candidate.manifest
+def _destination_records(current: State, record: BindingRecord) -> DestinationRecords | None:
+    """The records on the destination a readable binding record names, or None if it names none."""
+    if isinstance(record.config, RefusedRecord) or record.config.destination is None:
+        return None
+    if (destination := current.destinations.get(record.config.destination.session_uid)) is None:
+        raise StaleError  # a destination the state wasn't built with
+    return destination
+
+
+def _manifest_of(destination: DestinationRecords) -> Loaded[Manifest] | RefusedRecord | None:
+    """The destination's manifest, read the first time."""
+    if isinstance(destination.manifest, Unread):
+        destination.manifest = manifests.read_manifest(destination.collection)
+    return destination.manifest
 
 
 def _checked_manifest(
-    current: State, binding_id: BindingId, candidate: Candidate
+    current: State, binding_id: BindingId, destination: DestinationRecords
 ) -> Loaded[Manifest] | RefusedRecord | None:
-    """The candidate's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
-    manifest = _manifest_of(candidate)
+    """The destination's manifest, reread if a datablock it names was removed; Blender cleared that entry's pointer."""
+    manifest = _manifest_of(destination)
     if isinstance(manifest, Loaded) and not all(
         e.datablock is None or state.alive(e.datablock) for e in manifest.record.entries.values()
     ):
-        assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
-        manifest = _reread(current, binding_id, candidate.config.destination)
+        manifest = _reread(current, binding_id, destination)
     return manifest
 
 
 def _reread(
-    current: State, binding_id: BindingId, destination: bpy.types.Collection
+    current: State, binding_id: BindingId, destination: DestinationRecords
 ) -> Loaded[Manifest] | RefusedRecord | None:
     """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
-    manifest = manifests.read_manifest(destination)
+    manifest = manifests.read_manifest(destination.collection)
     _replace_manifest(current, binding_id, destination, manifest)
     return manifest
 
@@ -217,44 +232,53 @@ def _reread(
 def _replace_manifest(
     current: State,
     binding_id: BindingId,
-    destination: bpy.types.Collection,
+    destination: DestinationRecords,
     manifest: Loaded[Manifest] | RefusedRecord | None,
 ) -> None:
-    """Give the manifest to every configuration naming the destination, and replace its share of ownership.
+    """Hold the destination's new manifest, and replace its share of ownership.
 
     The share keeps its claimant (binding_id's, if it has no share yet).
     """
-    current.cache_manifest(destination, manifest)
+    destination.manifest = manifest
     if (index := current.ownership) is not None:
-        uid = destination.session_uid
+        uid = destination.collection.session_uid
         share = index.shares.get(uid)
         _remove_share(index, uid)
-        _add_share(index, binding_id if share is None else share.claimant, destination, manifest)
+        _add_share(index, binding_id if share is None else share.claimant, destination.collection, manifest)
 
 
 def _ownership(current: State) -> OwnershipIndex:
-    """The ownership index, built from every candidate's manifest if it isn't.
+    """The ownership index, built from every destination's manifest if it isn't.
 
     Each destination counts once, though several configurations can name it, with the first binding
     found whose configuration names it as the claimant; a tagged collection no record names claims
     for the binding its tag names.
     """
     if current.ownership is None:
-        index = OwnershipIndex({}, {}, {})
-        for naming in current.by_destination.values():
-            binding_id, candidate = naming[0]
-            assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
-            if not state.alive(candidate.config.destination):
-                raise StaleError  # removed since the state was built: Blender cleared the configurations' pointers
-            destination = candidate.config.destination
-            _add_share(index, binding_id, destination, _checked_manifest(current, binding_id, candidate))
-        for binding_id, identity in current.identities.items():  # tagged collections no record names
-            for copy in identity.tagged_copies:
-                if not state.alive(copy):
-                    raise StaleError
-                _add_share(index, binding_id, copy, manifests.read_manifest(copy))
+        index = OwnershipIndex({}, {})
+        for uid, claimant in _claimants(current).items():
+            destination = current.destinations[uid]
+            if not state.alive(destination.collection):
+                raise StaleError  # removed since the state was built
+            _add_share(index, claimant, destination.collection, _checked_manifest(current, claimant, destination))
         current.ownership = index
     return current.ownership
+
+
+def _claimants(current: State) -> dict[int, BindingId]:
+    """By destination session_uid, the binding each destination's claims name, in the order found."""
+    claimants: dict[int, BindingId] = {}
+    for binding_id, identity in current.identities.items():
+        for record in identity.records:
+            if isinstance(record.config, RefusedRecord) or (collection := record.config.destination) is None:
+                continue
+            if not state.alive(collection):
+                raise StaleError  # removed since the state was built: Blender cleared the configurations' pointers
+            claimants.setdefault(collection.session_uid, binding_id)
+    for uid, destination in current.destinations.items():  # tagged collections no record names
+        if isinstance(destination.tag, DestinationTag):
+            claimants.setdefault(uid, destination.tag.binding_id)
+    return claimants
 
 
 def _add_share(
@@ -265,9 +289,7 @@ def _add_share(
 ) -> None:
     uid = destination.session_uid
     share = DestinationClaims(claimant, {}, {})
-    if isinstance(manifest, RefusedRecord):
-        index.unreadable[uid] = manifest  # claims nothing until it is repaired
-    elif manifest is not None:
+    if isinstance(manifest, Loaded):  # one that can't be read claims nothing until it is repaired
         for resource_id, entry in manifest.record.entries.items():
             if entry.datablock is not None:
                 _add_claim(index, share, entry.datablock, Claim(claimant, destination, resource_id))
@@ -279,7 +301,6 @@ def _remove_share(index: OwnershipIndex, uid: int) -> None:
         return
     for resource_id in list(share.entries):
         _remove_claim(index, share, resource_id)
-    index.unreadable.pop(uid, None)
 
 
 def _add_claim(index: OwnershipIndex, share: DestinationClaims, datablock: bpy.types.ID, claim: Claim) -> None:
@@ -304,9 +325,9 @@ def _remove_claim(index: OwnershipIndex, share: DestinationClaims, resource_id: 
         index.claims[datablock_uid] = remaining[0] if len(remaining) == 1 else remaining
 
 
-def _checked_claims(current: State, datablock: bpy.types.ID) -> list[Claim]:
+def _checked_claims(current: State, datablock: bpy.types.ID) -> tuple[Claim, ...]:
     indexed = _ownership(current).claims.get(datablock.session_uid)
-    claims = [] if indexed is None else list(_as_tuple(indexed))
+    claims = () if indexed is None else _as_tuple(indexed)
     if not all(state.alive(claim.destination) for claim in claims):
         raise StaleError
     return claims
@@ -314,22 +335,3 @@ def _checked_claims(current: State, datablock: bpy.types.ID) -> list[Claim]:
 
 def _as_tuple(claims: Claim | tuple[Claim, ...]) -> tuple[Claim, ...]:
     return claims if isinstance(claims, tuple) else (claims,)
-
-
-def _checked_resource(current: State, binding_id: BindingId, resource_id: str) -> bpy.types.ID | DisabledBinding | None:
-    """Through the manifest of the binding's canonical candidate, checked as every lookup by identity is."""
-    if not isinstance(candidate := binding_configs.canonical(current, binding_id), Candidate):
-        return candidate
-    datablock = _datablock_of(_manifest_of(candidate), resource_id)
-    if datablock is not None and not state.alive(datablock):
-        # Removed: its manifest is reread, where Blender has cleared the entry, and its share replaced.
-        assert not isinstance(candidate.config, RefusedRecord) and candidate.config.destination is not None
-        datablock = _datablock_of(_reread(current, binding_id, candidate.config.destination), resource_id)
-        if datablock is not None and not state.alive(datablock):
-            raise StaleError
-    return datablock
-
-
-def _datablock_of(manifest: Loaded[Manifest] | RefusedRecord | None, resource_id: str) -> bpy.types.ID | None:
-    entry = manifest.record.entries.get(resource_id) if isinstance(manifest, Loaded) else None
-    return None if entry is None else entry.datablock

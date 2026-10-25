@@ -1,18 +1,18 @@
 """Copied-binding detection (source-access.md#copied-bindings).
 
-detect() reads the file's destination tags and binding indexes, and returns each binding identity's candidates with
-the canonical-candidate rule's decision on them (proscenium.core.canonical_candidate). A candidate is one of the
-identity's binding records, one per local scene, or a local collection tagged with the identity that no record names,
-as a collection duplicated on its own is. report() describes an identity that isn't unique.
+identities() finds each binding identity's candidates in the records the bindings' state holds, and the
+canonical-candidate rule's decision on them (proscenium.core.canonical_candidate). A candidate is one of the identity's
+binding records, one per local scene, or a local collection tagged with the identity that no record names, as a
+collection duplicated on its own is. report() describes an identity that isn't unique.
 
-Detection never writes: whether a binding is disabled is derived from the records each time they are read, never
-stored, so it survives save and reopen and no copy carries it.
+Detection reads only the state's records, and never writes: whether a binding is disabled is derived from the records
+each time they are read, never stored, so it survives save and reopen and no copy carries it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING
 
 from ..core.canonical_candidate import (
     UNREADABLE_INDEX_ENTRY,
@@ -21,8 +21,8 @@ from ..core.canonical_candidate import (
     UnreadableIndexEntry,
     decide,
 )
-from ..persistence import binding_records, records
-from ..persistence.records import Loaded, RefusedRecord
+from ..persistence.binding_records import BindingIndex, DestinationTag
+from ..persistence.records import RefusedRecord
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -31,18 +31,10 @@ if TYPE_CHECKING:
 
     from ..core.binding_ids import BindingId
     from ..core.canonical_candidate import CanonicalDecision
-    from ..persistence.binding_records import BindingConfig, DestinationTag
-    from .state import Candidate
+    from .state import BindingRecord, DestinationRecords, State
 
     Entry = int | None | UnreadableIndexEntry  # what one binding index says about an identity (decide)
     Index = Mapping[BindingId, int | None] | UnreadableIndexEntry  # by binding: its destination's session_uid
-
-
-class TaggedCollection(NamedTuple):
-    """A local collection with a destination tag."""
-
-    collection: bpy.types.Collection
-    tag: DestinationTag | None  # None if the tag can't be read, so it points at no binding
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,157 +60,145 @@ class CopiedBinding:
         return not any(c.canonical for c in self.candidates)
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
+class Candidate:
+    """One candidate of a binding identity: one of its binding records, or a tagged collection none of them names."""
+
+    record: BindingRecord | None  # None for a tagged copy
+    collection: bpy.types.Collection | None  # the collection its readable record names, or the tagged copy
+    evidence: CandidateEvidence  # what the rule reads about it
+
+
+@dataclass(frozen=True, slots=True)
 class IdentityCandidates:
-    """One binding identity's candidates, its records and then its tagged copies, and the rule's decision on them."""
+    """One binding identity's candidates, and the rule's decision on them."""
 
-    records: list[Candidate]  # one per local scene, in the order found
-    tagged_copies: list[bpy.types.Collection]  # tagged collections no record of the identity names
-    evidence: list[CandidateEvidence]  # what the rule reads, one per candidate: the records', then the copies'
-    entries: list[Entry]  # what each binding index naming the identity, or unreadable, says
-    decision: CanonicalDecision  # its canonical position is a position in evidence
+    candidates: tuple[Candidate, ...]  # its binding records, in the order found, then its tagged copies
+    index_entries: tuple[Entry, ...]  # what each binding index naming the identity, or unreadable, says
+    decision: CanonicalDecision  # its canonical position is a position in candidates
 
-    def canonical_record(self) -> Candidate | None:
-        """The canonical candidate, or None if every candidate is disabled. Only for an identity with records.
+    @property
+    def records(self) -> tuple[BindingRecord, ...]:
+        """The identity's binding records; none if it has only tagged copies, which aren't a binding."""
+        return tuple(c.record for c in self.candidates if c.record is not None)
+
+    def canonical_record(self) -> BindingRecord | None:
+        """The canonical candidate's record, or None if every candidate is disabled. Only for an identity with records.
 
         The rule's position is always a record's: with records, it picks the only candidate or a mutual one, and a
         tagged copy is never mutual.
         """
         assert self.records
-        return None if (position := self.decision.canonical) is None else self.records[position]
-
-    def restored(self, destination: bpy.types.Collection) -> None:
-        """The index now names destination, as the canonical candidate's write restored its entry."""
-        self.entries = [destination.session_uid]
-        self.decision = decide(self.evidence, self.entries)
-
-
-@dataclass(frozen=True, slots=True)
-class CopyDetection:
-    """What detection found: every identity's candidates, and the tagged collections."""
-
-    identities: dict[BindingId, IdentityCandidates]  # every identity with a record or a tagged collection
-    tagged: frozenset[int]  # the session_uids of the local tagged collections (binding_records.tagged_uids)
+        if (position := self.decision.canonical) is None:
+            return None
+        record = self.candidates[position].record
+        assert record is not None
+        return record
 
 
-def detect(records_by_id: Mapping[BindingId, Sequence[Candidate]]) -> CopyDetection:
-    """Every identity's candidates and decision, from its binding records in the order found and the file's tags."""
-    tagged = _read_tagged()
-    indexes = _read_indexes()
-    record_evidence = {
-        binding_id: [_record_evidence(binding_id, candidate, tagged) for candidate in identity_records]
-        for binding_id, identity_records in records_by_id.items()
-    }
-    copies = _tagged_copies(record_evidence, tagged)
-    binding_ids = [*records_by_id, *(b for b in copies if b not in records_by_id)]
-    identities = {
-        binding_id: _identity(
-            binding_id,
-            list(records_by_id.get(binding_id, ())),
-            record_evidence.get(binding_id, []),
-            copies.get(binding_id, []),
-            indexes,
-        )
-        for binding_id in binding_ids
-    }
-    return CopyDetection(identities, frozenset(tagged))
+def identities(current: State) -> dict[BindingId, IdentityCandidates]:
+    """Every identity with a binding record or a tagged collection, records' first, its candidates and decision."""
+    by_identity: dict[BindingId, list[BindingRecord]] = {}
+    for held in current.scenes.values():
+        for record in held.records():
+            by_identity.setdefault(record.binding_id, []).append(record)
+    tagged_with = _tagged_with(current)
+    indexes = _indexes(current)
+    binding_ids = [*by_identity, *(b for b in tagged_with if b not in by_identity)]
+    return {b: _identity(current, b, by_identity.get(b, ()), tagged_with.get(b, []), indexes) for b in binding_ids}
+
+
+def identity(current: State, binding_id: BindingId, records: Sequence[BindingRecord]) -> IdentityCandidates:
+    """One identity's candidates and decision, given its binding records, after a write changed what the rule reads."""
+    tagged = [d for d in current.destinations.values() if _tagged_binding(d) == binding_id]
+    return _identity(current, binding_id, records, tagged, _indexes(current))
 
 
 def report(binding_id: BindingId, identity: IdentityCandidates) -> CopiedBinding:
     """The identity's candidates by name, for reporting: names aren't identities, and may change."""
     canonical = identity.decision.canonical
     reports = [
-        CandidateReport(c.scene.name, None if (d := _destination(c.config)) is None else d.name, position == canonical)
-        for position, c in enumerate(identity.records)
-    ]
-    # The copies' positions follow the records', as their evidence does.
-    reports += [
-        CandidateReport(None, c.name, position == canonical)
-        for position, c in enumerate(identity.tagged_copies, start=len(identity.records))
+        CandidateReport(
+            None if c.record is None else c.record.scene.name,
+            None if c.collection is None else c.collection.name,
+            position == canonical,
+        )
+        for position, c in enumerate(identity.candidates)
     ]
     return CopiedBinding(binding_id, identity.decision.reason, tuple(reports))
 
 
-def refers_back(binding_id: BindingId, scene: bpy.types.Scene, config: BindingConfig) -> bool:
-    """Whether config's destination is tagged with binding_id and points back at scene, read from the destination."""
-    if config.destination is None:
+def refers_back(current: State, binding_id: BindingId, record: BindingRecord) -> bool:
+    """Whether the record's destination is tagged with binding_id and points back at the record's scene."""
+    if isinstance(record.config, RefusedRecord) or record.config.destination is None:
         return False
-    tag = records.read(config.destination, binding_records.TAG_KEY, binding_records.TAG)
-    return _points_back(tag.record if isinstance(tag, Loaded) else None, binding_id, scene)
-
-
-def _read_tagged() -> dict[int, TaggedCollection]:
-    """Every local tagged collection, by session_uid."""
-    return {
-        collection.session_uid: TaggedCollection(collection, tag.record if isinstance(tag, Loaded) else None)
-        for collection, tag in binding_records.read_tags()
-    }
-
-
-def _read_indexes() -> list[Index]:
-    """Every binding index in the file, with its destinations by session_uid, or UNREADABLE_INDEX_ENTRY."""
-    indexes: list[Index] = []
-    for text in binding_records.index_texts():
-        index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
-        if not isinstance(index, Loaded):
-            indexes.append(UNREADABLE_INDEX_ENTRY)
-            continue
-        destinations = index.record.destinations
-        indexes.append({b: None if d is None else d.session_uid for b, d in destinations.items()})
-    return indexes
-
-
-def _record_evidence(
-    binding_id: BindingId, candidate: Candidate, tagged: Mapping[int, TaggedCollection]
-) -> CandidateEvidence:
-    """What the rule reads about a binding record: the destination it names, and whether that tag points back."""
-    config = candidate.config
-    if isinstance(config, RefusedRecord):
-        # A record that can't be read names no destination, but a collection whose tag points back at its scene is
-        # its destination, not a copy: the binding is unreadable, not copied.
-        destination = next((uid for uid, t in tagged.items() if _points_back(t.tag, binding_id, candidate.scene)), None)
-        return CandidateEvidence(destination, mutual=False)
-    if config.destination is None:
-        return CandidateEvidence(None, mutual=False)
-    uid = config.destination.session_uid
-    tag = tagged[uid].tag if uid in tagged else None
-    return CandidateEvidence(uid, mutual=_points_back(tag, binding_id, candidate.scene))
-
-
-def _tagged_copies(
-    record_evidence: Mapping[BindingId, Sequence[CandidateEvidence]], tagged: Mapping[int, TaggedCollection]
-) -> dict[BindingId, list[bpy.types.Collection]]:
-    """By binding identity, the tagged collections none of its records names: its tagged copies."""
-    named = {
-        (b, e.destination) for b, evidence in record_evidence.items() for e in evidence if e.destination is not None
-    }
-    copies: dict[BindingId, list[bpy.types.Collection]] = {}
-    for uid, (collection, tag) in tagged.items():
-        if tag is not None and (tag.binding_id, uid) not in named:
-            copies.setdefault(tag.binding_id, []).append(collection)
-    return copies
+    destination = current.destinations.get(record.config.destination.session_uid)
+    return destination is not None and _points_back(destination.tag, binding_id, record.scene)
 
 
 def _identity(
+    current: State,
     binding_id: BindingId,
-    identity_records: list[Candidate],
-    record_evidence: list[CandidateEvidence],
-    copies: list[bpy.types.Collection],
+    records: Sequence[BindingRecord],
+    tagged: Sequence[DestinationRecords],
     indexes: Sequence[Index],
 ) -> IdentityCandidates:
-    """The identity's candidates, the index entries naming it, and the rule's decision."""
-    evidence = [*record_evidence, *(CandidateEvidence(c.session_uid, mutual=False) for c in copies)]
-    entries: list[Entry] = [
+    """The identity's candidates, index entries, and decision, from its records, tagged collections, and the indexes."""
+    candidates = [_record_candidate(current, binding_id, r) for r in records]
+    named = {c.evidence.destination for c in candidates}
+    candidates += [
+        Candidate(None, d.collection, CandidateEvidence(d.collection.session_uid, mutual=False))
+        for d in tagged
+        if d.collection.session_uid not in named
+    ]
+    entries = tuple(
         index if isinstance(index, UnreadableIndexEntry) else index[binding_id]
         for index in indexes
         if isinstance(index, UnreadableIndexEntry) or binding_id in index
+    )
+    return IdentityCandidates(tuple(candidates), entries, decide([c.evidence for c in candidates], entries))
+
+
+def _record_candidate(current: State, binding_id: BindingId, record: BindingRecord) -> Candidate:
+    """A binding record as a candidate: the destination it names, and whether that destination's tag points back."""
+    config = record.config
+    if isinstance(config, RefusedRecord):
+        # A record that can't be read names no destination, but a collection whose tag points back at its scene is
+        # its destination, not a copy: the binding is unreadable, not copied.
+        uid = next(
+            (uid for uid, d in current.destinations.items() if _points_back(d.tag, binding_id, record.scene)), None
+        )
+        return Candidate(record, None, CandidateEvidence(uid, mutual=False))
+    if config.destination is None:
+        return Candidate(record, None, CandidateEvidence(None, mutual=False))
+    uid = config.destination.session_uid
+    destination = current.destinations.get(uid)
+    mutual = destination is not None and _points_back(destination.tag, binding_id, record.scene)
+    return Candidate(record, config.destination, CandidateEvidence(uid, mutual=mutual))
+
+
+def _tagged_with(current: State) -> dict[BindingId, list[DestinationRecords]]:
+    """By binding identity, the collections tagged with it, in the order found."""
+    tagged: dict[BindingId, list[DestinationRecords]] = {}
+    for destination in current.destinations.values():
+        if (binding_id := _tagged_binding(destination)) is not None:
+            tagged.setdefault(binding_id, []).append(destination)
+    return tagged
+
+
+def _indexes(current: State) -> list[Index]:
+    """Every binding index, with its destinations by session_uid, or UNREADABLE_INDEX_ENTRY."""
+    return [
+        {b: None if d is None else d.session_uid for b, d in index.destinations.items()}
+        if isinstance(index, BindingIndex)
+        else UNREADABLE_INDEX_ENTRY
+        for index in (held.index for held in current.indexes)
     ]
-    return IdentityCandidates(identity_records, copies, evidence, entries, decide(evidence, entries))
 
 
-def _points_back(tag: DestinationTag | None, binding_id: BindingId, scene: bpy.types.Scene) -> bool:
-    return tag is not None and tag.binding_id == binding_id and tag.scene == scene
+def _tagged_binding(destination: DestinationRecords) -> BindingId | None:
+    return destination.tag.binding_id if isinstance(destination.tag, DestinationTag) else None
 
 
-def _destination(config: BindingConfig | RefusedRecord) -> bpy.types.Collection | None:
-    return None if isinstance(config, RefusedRecord) else config.destination
+def _points_back(tag: DestinationTag | RefusedRecord | None, binding_id: BindingId, scene: bpy.types.Scene) -> bool:
+    return isinstance(tag, DestinationTag) and tag.binding_id == binding_id and tag.scene == scene

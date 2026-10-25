@@ -5,7 +5,7 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 | File | Holds |
 |---|---|
 | `__init__.py` | The package. |
-| `bindings.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `RequestedSettings`, `AttachResult`, and `BindingNotFoundError`. |
+| `bindings.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `AttachResult` and `BindingNotFoundError`, and `RequestedSettings`, from `proscenium.core.requested_settings`. |
 
 ## `bindings.py`
 

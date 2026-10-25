@@ -6,54 +6,50 @@ identity are proscenium.runtime.binding_configs', and ownership is proscenium.ru
 """
 
 from .binding_configs import (
-    DisabledBinding,
+    BindingStatus,
     DisabledBindingError,
-    attached_with_key,
-    binding_ids,
-    binding_scene,
-    config,
-    configs,
+    FoundBinding,
     copied_bindings,
     create,
+    find_binding,
+    find_bindings,
     set_config,
 )
 from .copy_detection import CopiedBinding
 from .current_stages import CurrentStages
 from .ownership_index import (
     Claim,
-    claims_on,
+    Ownership,
+    OwnershipStatus,
     manifest,
-    resource,
+    ownership,
     set_manifest,
     set_manifest_entries,
-    unreadable_manifests,
 )
 from .state import NotRegisteredError, invalidate, rebuild_count, refresh_if_tags_changed, start, stop
 
 __all__ = [
+    "BindingStatus",
     "Claim",
     "CopiedBinding",
     "CurrentStages",
-    "DisabledBinding",
     "DisabledBindingError",
+    "FoundBinding",
     "NotRegisteredError",
-    "attached_with_key",
-    "binding_ids",
-    "binding_scene",
-    "claims_on",
-    "config",
-    "configs",
+    "Ownership",
+    "OwnershipStatus",
     "copied_bindings",
     "create",
+    "find_binding",
+    "find_bindings",
     "invalidate",
     "manifest",
+    "ownership",
     "rebuild_count",
     "refresh_if_tags_changed",
-    "resource",
     "set_config",
     "set_manifest",
     "set_manifest_entries",
     "start",
     "stop",
-    "unreadable_manifests",
 ]

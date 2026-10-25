@@ -18,13 +18,13 @@ from proscenium.api.bindings import (
     BindingHandle,
     Bindings,
     DiagnosticCategory,
-    DisabledBindingError,
     ResultState,
 )
 from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, records
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
+from proscenium.runtime import DisabledBindingError
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -63,7 +63,7 @@ def _assert_ownership_agrees() -> None:
     # collection's that no record names, so content a copy names is ambiguous (OWN-16).
     expected, _ = oracle.claims()
     for obj in bpy.data.objects:
-        assert set(runtime.claims_on(obj)) == set(expected.get(obj, []))
+        assert set(runtime.ownership(obj).claims) == set(expected.get(obj, []))
 
 
 def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[CopiedBinding]:
@@ -88,7 +88,8 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         assert [c.canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
         assert (report.candidates[0].scene, report.candidates[0].destination) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
-        assert runtime.binding_scene(handle.binding_id) == _scene()
+        found = runtime.find_binding(handle.binding_id)
+        assert found is not None and found.scene == _scene()
         for name in scenes:
             assert bindings.in_scene(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
     else:
@@ -106,16 +107,16 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         with pytest.raises(DisabledBindingError):
             handle.requested_settings()
         assert handle.live_stage() is None
-        # The runtime's lookups return DisabledBinding in band, and its writes raise.
+        # The runtime's lookup finds it disabled, with its copies; its manifest and writes raise.
         binding_id = handle.binding_id
-        lookups = (runtime.config, runtime.binding_scene, runtime.manifest, lambda b: runtime.resource(b, "a"))
-        assert [lookup(binding_id) for lookup in lookups] == [runtime.DisabledBinding(report)] * len(lookups)
-        for write in (
+        assert runtime.find_binding(binding_id) == runtime.FoundBinding(binding_id, None, None, None, report)
+        for call in (
+            lambda: runtime.manifest(binding_id),
             lambda: runtime.set_manifest(binding_id, Manifest({})),
             lambda: runtime.set_manifest_entries(binding_id, {}, ["a"]),
         ):
             with pytest.raises(DisabledBindingError):
-                write()
+                call()
     return reported
 
 
@@ -151,7 +152,8 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
         handle.synchronize(0)
         for name in ("Shot", "Shot.001"):
             [obj] = bpy.data.collections[name].objects
-            assert [(c.binding_id, c.destination.name) for c in runtime.claims_on(obj)] == [(handle.binding_id, name)]
+            claims = runtime.ownership(obj).claims
+            assert [(c.binding_id, c.destination.name) for c in claims] == [(handle.binding_id, name)]
 
 
 def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
@@ -161,8 +163,8 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
         routes.run("duplicated-object", tmp_path)
         handle.synchronize(0)
         [copy] = (obj for obj in bpy.data.objects if obj.name != "Managed")
-        assert runtime.claims_on(copy) == []
-        assert len(runtime.claims_on(bpy.data.objects["Managed"])) == 1
+        assert runtime.ownership(copy).claims == ()
+        assert len(runtime.ownership(bpy.data.objects["Managed"]).claims) == 1
 
 
 def test_a_copy_is_found_at_the_next_synchronization(bindings: Bindings, tmp_path: Path) -> None:
