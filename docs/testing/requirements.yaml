@@ -25,8 +25,7 @@
 #   fixtures      Bespoke fixtures from tests/fixtures/registry.py.
 #   oracle        What the test or check asserts, from the spec or the fixture's construction.
 #   note          Optional clarification shown with the oracle.
-#
-# M4 adds a field marking the high-risk rows from its risk matrix.
+#   risk          high: a row M4's risk matrix marks (docs/plans/M04-prototypes.md#risk-matrix).
 #
 # Fixtures and oracles are recorded once known: today, the named contract fixtures
 # and M1's own rows. The delivering milestone fills in the rest before implementing
@@ -85,6 +84,7 @@ requirements:
         quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
       - id: PH2-04
         quote: "Establish and meet representative performance targets"
+        risk: high
 
   - section: PROJECT.md#compatibility-and-development
     kind: process
@@ -185,9 +185,11 @@ requirements:
       - id: TXN-05
         quote: "Preparation never mutates resources reachable from the published generation unless a complete rollback mechanism covers the mutation."
         fixtures: [F-SHARED-MATERIAL-FAILURE]
+        risk: high
       - id: TXN-06
         quote: "Publication switches the whole generation together"
         fixtures: [F-PUBLICATION-FAILURE]
+        risk: high
       - id: TXN-07
         quote: "After publication, retirement failures do not fail the synchronization."
         fixtures: [F-RETIREMENT-FAILURE]
@@ -543,6 +545,7 @@ requirements:
         quote: "Refresh does not mutate a managed resource that unmanaged content uses."
         delivery: M7
         fixtures: [F-UNMANAGED-USER]
+        risk: high
       - id: OWN-09
         quote: "Content without sufficient ownership evidence is treated as unmanaged. Ambiguous candidates are reported, not automatically claimed or deleted."
         fixtures: [F-OWNERSHIP-AMBIGUITY]
@@ -589,11 +592,13 @@ requirements:
         quote: "Remove the binding's ownership metadata, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers."
       - id: DET-03
         quote: "Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies"
+        risk: high
       - id: DET-04
         quote: "Changes in appearance caused by removing binding-specific mechanisms are permitted and reported"
       - id: DET-05
         quote: "Later refresh or removal must not mutate or delete the detached result."
         fixtures: [F-DETACH-AS-IS, F-DETACH-SHARED]
+        risk: high
       - id: DET-06
         quote: "Release this binding's surviving pending-cleanup resources intact as well"
 
@@ -788,16 +793,20 @@ requirements:
     rows:
       - id: INSP-01
         quote: "Display selection resolves to a binding and source entity, including instance context where applicable."
+        risk: high
       - id: INSP-02
         quote: "Source selection of a prim or subtree resolves to its associated display elements."
+        risk: high
       - id: INSP-03
         quote: "Source inspection works independently of Blender parenting."
       - id: INSP-04
         quote: "Native instance roots are selectable and source-identifiable."
         delivery: M10
+        risk: high
       - id: INSP-05
         quote: "Source correspondence survives any batching, reordering, or geometry partitioning."
         delivery: M8
+        risk: high
       - id: INSP-06
         quote: "The browsing universe: which of the populated composed hierarchy"
         kind: contract
@@ -955,6 +964,7 @@ requirements:
         quote: "Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "highlight_targets covers every display element of the expanded entities and no other."
+        risk: high
 
   - section: spec/interaction-contract.md#persistent-selection
     delivery: M7
@@ -982,6 +992,7 @@ requirements:
         quote: "A managed display object whose source coverage lies entirely within the expanded selection is selected"
         fixtures: [F-KIND-HIERARCHY]
         oracle: "After apply_selection, display objects covering only selected entities are selected and those covering none are not."
+        risk: high
       - id: ICON-28
         quote: "When the active entry has exactly one display object, it is the active Blender object. When it has several, such as a component shown by several objects, all of them are selected and there is no active object."
         fixtures: [F-KIND-HIERARCHY]
@@ -994,6 +1005,7 @@ requirements:
         quote: "Selecting displayed content in Blender produces a source selection"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "selection_from_blender, given read_blender_selection's result, returns the targets at the given level of the selected display objects' entities."
+        risk: high
 
   - section: spec/interaction-contract.md#interfaces-for-future-tools
     delivery: M7
@@ -1036,10 +1048,12 @@ requirements:
         quote: "Source-affected entities: source state actually changed."
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
+        risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
         delivery: M14
         fixtures: [F-NO-OP-REFRESH]
+        risk: high
 
   # --- spec/support/transforms.md -------------------------------------------------------------
 
@@ -1051,13 +1065,16 @@ requirements:
         quote: "Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes."
       - id: XFORM-02
         quote: "Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting."
+        risk: high
       - id: XFORM-03
         quote: "Support matrix transforms, negative and nonuniform scale, and shear."
         fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: XFORM-05
         quote: "Diagnose approximations when exact representation is unavailable."
       - id: XFORM-06
         quote: "Evaluate supported time-varying values at the supplied time code, including topology changes."
+        risk: high
       - id: XFORM-07
         quote: "including topology changes."
         delivery: M8
@@ -1085,6 +1102,7 @@ requirements:
         delivery: M7
       - id: CONV-03
         quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
+        risk: high
       - id: CONV-07
         quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
         delivery: M7
@@ -1160,8 +1178,10 @@ requirements:
       - id: INST-01
         quote: "Native and nested native instances."
         fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: INST-02
         quote: "Multi-mesh, multi-material instance contents."
+        risk: high
       - id: INST-04
         quote: "Effective instance transforms, visibility, and purpose."
       - id: INST-05
@@ -1171,6 +1191,7 @@ requirements:
       - id: INST-07
         quote: "Per-instance displayColor, inherited material assignments, and named primvars driving supported material inputs."
         fixtures: [F-NESTED-STRESS]
+        risk: high
 
   - section: spec/support/instancing.md#geometry-sharing
     delivery: M10
@@ -1179,10 +1200,13 @@ requirements:
       - id: SHARE-01
         quote: "Within a binding, deduplicate geometry whenever sharing preserves correct display."
         delivery: M8
+        risk: high
       - id: SHARE-02
         quote: "Per-instance appearance must not collapse into a single shared appearance."
+        risk: high
       - id: SHARE-04
         quote: "Uses with equivalent geometry-resource requirements remain shared, including equivalent variants within cases that require distinct resources."
+        risk: high
       - id: SHARE-05
         quote: "Separate bindings do not share managed geometry resources."
       - id: SHARE-06
@@ -1210,12 +1234,14 @@ requirements:
       - id: MAT-06
         quote: "Required per-instance variation."
         delivery: M10
+        risk: high
       - id: MAT-07
         quote: "Supported displacement signals through the material displacement path, without baking into mesh geometry."
       - id: MAT-08
         quote: "Target the Principled BSDF subset usable in Eevee and Cycles, with documented displacement exceptions."
       - id: MAT-09
         quote: "Display batching must not collapse distinct material assignments or attribute meanings."
+        risk: high
 
   - section: spec/support/materials.md#connection-grammar
     kind: contract
@@ -1264,6 +1290,7 @@ requirements:
         quote: "Viewport | default, proxy"
       - id: VIS-03
         quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
+        risk: high
       - id: VIS-04
         quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
 
@@ -1384,10 +1411,12 @@ requirements:
         quote: "Synchronization completes without a fatal failure."
       - id: ASTD-02
         quote: "World bounds of each model's display match USD-computed bounds under the bounds comparison contract."
+        risk: high
       - id: ASTD-03
         quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
       - id: ASTD-04
         quote: "Save and reopen preserves the display and correspondence without accessing the source."
+        risk: high
 
   - section: testing/acceptance.md#expected-failure-checks
     kind: process

@@ -61,12 +61,14 @@ def test_field_problems_are_reported(loaded: matrix.Matrix) -> None:
     _row(m, "LAYER-01").fixtures = ["F-NOT-REGISTERED"]
     _row(m, "SRC-01").delivery = "M99"
     _row(m, "LAYER-06").qualified_by = "M14"  # Phase 1 behavior qualifies in M12
+    _row(m, "LAYER-07").risk = "medium"  # only "high" is a risk M4 assigns
     problems = "\n".join(matrix.check(m))
     for expected in [
         "LAYER-03 (spec/source-access.md#layer-state-and-reloading): duplicate ID",
         "LAYER-01 (spec/source-access.md#layer-state-and-reloading): fixture F-NOT-REGISTERED is not in",
         "SRC-01 (spec/source-access.md#source-stages): delivery 'M99' is not a milestone",
         "LAYER-06 (spec/source-access.md#layer-state-and-reloading): Phase 1 behavior qualifies in M12",
+        "LAYER-07 (spec/source-access.md#layer-state-and-reloading): risk must be one of ['high']",
     ]:
         assert expected in problems
 
