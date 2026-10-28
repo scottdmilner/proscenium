@@ -269,6 +269,22 @@ The baseline is the bridge's representation, extended until it covers every case
     In an ad hoc mutation run of `update.py`, each of eight single changes failed it: no renumbering, removed objects kept, no repointing of data or of slots, changed objects kept or unchanged ones rebuilt, no data retired, and an old mesh reused for a rebuilt one.
   - **On ALab** (`measure/updates.py`, ad hoc, the bpy wheel, three runs each): the real translation now replaces both of the prim's objects. Its incremental capture, planning, diff, and update took 23 ms, 0.36 s, 69 ms, and 0.14 s, 0.59 s in all, against a full synchronization of 2.56 s. Phase C's harness measures the scenarios in the binary.
     - **Not exercised:** a publication that fails, as in B6; and a topology-changing time step, which the harness measures.
+- **C3, provisional budgets and the measurement harness.** `measure/run.py` gains update modes: a fresh synchronization in the Blender binary, then one scenario from `measure/scenarios.py`, then the capture, planning, diff, and update that follow, each stage sampled from outside. Every scene gets an unrecorded warmup run first, since dropping the OS file cache needs root (with the user). The scenarios are acceptance.md's: an unchanged refresh, a transform, shared geometry, a material parameter, a time step, and a payload switch each way. They run on ALab and on generated `updates-N` scenes of 301, 3,001, and 30,001 objects, which have instances behind a payload, unique meshes, and a mesh whose topology changes. The budgets are recorded against the results as baselines (APERF-03), in the [feasibility record](../feasibility/runtime-record.md#measurements-m4-phase-c) with the method and environment (APERF-01, APERF-02, APERF-06).
+  - **Against the budgets:**
+    - initial synchronization meets both on ALab (1.09× the matched importer's time, 1.56× its peak memory) and at 301 and 3,001 objects, but takes 4.37× its time at 30,001;
+    - an unchanged refresh takes 0.03–0.15× of initial synchronization, and writes nothing to Blender;
+    - small updates miss ten times faster than a full rebuild everywhere except one: 5.3–6.8× on ALab, 2.9–10.3× on the generated scenes.
+  - **Why the small updates miss:**
+    - on ALab, whole-stage planning (0.33–0.43 s) and the diff (76–123 ms) are most of each update, as in B6;
+    - on the generated scenes, the depsgraph's evaluation after any link or repointing grows with the scene: 68 ms at 3,001 objects, 761 ms at 30,001.
+  - **Why large scenes are slow to build:**
+    - Blender inserts each new datablock into a list sorted by name, at a cost that grows with how far from the end it lands. The prototype's names come from prims, so 10,000 objects named `Body` pass the point where Blender's numbered names stop sorting in creation order. Names in creation order (ad hoc) cut construction at 30,001 objects from 6.68 s to 1.06 s.
+    - Retiring many objects grows faster than their count, for a cause not investigated: 16.9 s for 20,001 IDs at 30,001 objects.
+  - **For M6 (with the user):** objects must be created so that their names land at the end of the list, whatever names users see. This also applies to any batching, such as Geometry Nodes instancing, which changes which objects are created at all.
+  - **For the partition unit (F1):**
+    - an update's Blender cost has a part that grows with the whole scene (the depsgraph's evaluation), whatever the unit;
+    - the transaction keeps a second generation only of what an update rebuilds: 19–62 MB on ALab's small updates and time step.
+  - **An unchanged refresh writes nothing:** `update.py` creates its staging collection only when something is built, since creating and removing a collection is itself a Blender write that triggers the depsgraph's rebuild. The test checks it.
 
 ### Phase D — Targeted alternatives
 

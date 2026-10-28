@@ -137,4 +137,4 @@ def test_update_follows_edits(fixture: str, users: str, wheel: Runtime, hydra_br
             else:
                 assert after["objects"][index] == before["objects"][old], (edit, index)
         if edit == "unchanged":
-            assert step["written"] == {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0}
+            assert step["written"] == {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0, "staged": False}

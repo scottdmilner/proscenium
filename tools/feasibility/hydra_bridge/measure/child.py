@@ -2,7 +2,9 @@
 
     blender --background --factory-startup --python child.py -- <config.json>
 
-The config names the mode, scene, time code, module directory, and output paths. The child writes a marker
+The config names the mode, scene, time code, module directory, and output paths. An update mode (M4 Phase C)
+runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
+planning, diff, and update that follow; the initial scenario saves the .blend instead. The child writes a marker
 (JSON line) at every stage boundary with its CPU time and lifetime memory peaks; the parent samples the
 process from outside and aligns its samples to these markers. Settle windows hold still for a while so the
 parent can read memory at rest.
@@ -25,6 +27,7 @@ sys.path.insert(0, str(HERE.parent))
 
 import bpy  # noqa: E402
 import memory  # noqa: E402
+import scenarios  # noqa: E402
 
 # The importer's options closest to what the prototype builds: every purpose, invisible prims too, no
 # Principled networks, and none of the types the prototype only marks with placeholders. Shapes stay on,
@@ -163,8 +166,9 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         markers.mark(f"end:{name}")
         filter_timings[name] = {kind: list(value) for kind, value in native.take_filter_timings().items()}
 
+    scenario = config.get("scenario")
     stage("stage open")
-    usd_stage = Usd.Stage.Open(config["scene"], Usd.Stage.LoadAll)
+    usd_stage = Usd.Stage.Open(config["scene"], scenarios.load_set(scenario or "initial"))
     done("stage open")
     stage("bridge construction")
     bridge = native.Bridge(usd_stage)
@@ -182,7 +186,7 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     collection = bpy.data.collections.new("Prototype")
     scene: Any = bpy.context.scene
     scene.collection.children.link(collection)
-    apply.apply(view, collection)
+    display = apply.apply(view, collection)
     done("construction")
     stage("evaluate")
     evaluate()
@@ -199,6 +203,16 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     }
     counts = blender_counts()
     markers.settle("synced")
+    if scenario == "initial":
+        blend = Path(config["work"]) / "synced.blend"
+        stage("save")
+        bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=False)
+        done("save")
+        facts["blend bytes"] = blend.stat().st_size
+    elif scenario is not None:
+        session = SimpleNamespace(stage=usd_stage, bridge=bridge, plan=plan, display=display, collection=collection)
+        facts["update"] = run_update(scenario, config["time"], session, stage, done)
+        markers.settle("updated")
     stage("release")
     bridge.release()
     del bridge, snapshot, plan, view
@@ -213,6 +227,58 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     done("delete data")
     markers.settle("data deleted")
     return {"plan": facts, "blender": counts, "filter timings": filter_timings}
+
+
+def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any, done: Any) -> dict[str, Any]:
+    """The scenario's edit, then the incremental capture, planning, diff, and update by the diff."""
+    import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
+    import update
+
+    stage("update:edit")
+    capture_time, edited = scenarios.edit(scenario, session.stage, session.plan, time)
+    done("update:edit")
+    stage("update:capture")
+    snapshot = session.bridge.capture(capture_time, incremental=True)
+    done("update:capture")
+    stage("update:planning")
+    plan = native.build_plan(snapshot)
+    done("update:planning")
+    stage("update:diff")
+    diff = native.diff_plans(session.plan, plan)
+    done("update:diff")
+    stage("update:prepare")
+    prepared = update.prepare(plan, diff, session.display, update.UserPolicy.REPOINT)
+    done("update:prepare")
+    stage("update:publish")
+    update.publish(prepared, session.display, session.collection)
+    done("update:publish")
+    stage("update:retire")
+    retired = len(prepared.retired)
+    kept = update.retire(prepared)
+    done("update:retire")
+    stage("update:evaluate")
+    evaluate()
+    done("update:evaluate")
+    return {
+        "edited": edited,
+        "copied prims": snapshot.copied,
+        "diff": {
+            "changed": len(diff["changed"]),
+            "repointable": len(diff["repointable"]),
+            "added": diff["objects"].count(-1),
+            "removed": len(diff["removed"]),
+            "new meshes": diff["meshes"].count(-1),
+            "new materials": diff["materials"].count(-1),
+        },
+        "written": {
+            "created": len(prepared.created),
+            "repointed": len(prepared.repointed),
+            "renumbered": len(prepared.renumbered),
+            "retired": retired,
+            "kept for other users": len(kept),
+        },
+        "blender": blender_counts(),
+    }
 
 
 def main(config_path: Path) -> None:

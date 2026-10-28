@@ -60,7 +60,8 @@ class Repoint:
 class Prepared:
     """An update built beside the published display, which it doesn't touch until publication."""
 
-    staging: bpy.types.Collection
+    # Where the new objects wait; None when there are none, since creating a collection is a Blender write.
+    staging: bpy.types.Collection | None
     display: Display  # the display once published, in the new plan's order
     created: dict[int, bpy.types.Object]  # by new plan index: the new objects
     leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
@@ -155,13 +156,15 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> 
     ]
     kept = set(diff["repointable"]) if users is UserPolicy.REPOINT else set()
     rebuilt = set(diff["changed"]) - kept
-    staging = bpy.data.collections.new("Prepared")
+    added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
+    staging = bpy.data.collections.new("Prepared") if added else None
     objects: list[bpy.types.Object] = []
     created: dict[int, bpy.types.Object] = {}
     leaving = [display.objects[old] for old in diff["removed"]]
     renumbered = []
     for index, old in enumerate(diff["objects"]):
         if old == -1 or index in rebuilt:
+            assert staging is not None  # an added or rebuilt object, so there is a staging collection
             created[index] = new_object(index, records[index], meshes, materials, staging)
             objects.append(created[index])
             if old != -1:
@@ -198,7 +201,9 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
         for obj in prepared.created.values():
             for created in _with_parent(obj):
                 collection.objects.link(created)
-                prepared.staging.objects.unlink(created)
+                staging = prepared.staging
+                assert staging is not None
+                staging.objects.unlink(created)
         for obj in prepared.leaving:
             for old in _with_parent(obj):
                 collection.objects.unlink(old)
@@ -212,11 +217,15 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
 def retire(prepared: Prepared) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
     objects = [i for i in prepared.retired if isinstance(i, bpy.types.Object)]
-    bpy.data.batch_remove([*objects, prepared.staging])
+    staging = [] if prepared.staging is None else [prepared.staging]
+    if objects or staging:
+        bpy.data.batch_remove([*objects, *staging])
     # Only once the old objects are gone does a mesh or material count no users from the display.
     data = [i for i in prepared.retired if not isinstance(i, bpy.types.Object)]
     kept = [i for i in data if i.users > 0]
-    bpy.data.batch_remove([i for i in data if i.users == 0])
+    unused = [i for i in data if i.users == 0]
+    if unused:
+        bpy.data.batch_remove(unused)
     return kept
 
 
@@ -237,8 +246,9 @@ def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[S
         for created in _with_parent(obj):
             if created.name in collection.objects:
                 collection.objects.unlink(created)
-            if created.name not in prepared.staging.objects:
-                prepared.staging.objects.link(created)
+            staging = prepared.staging
+            if staging is not None and created.name not in staging.objects:
+                staging.objects.link(created)
     for obj in prepared.leaving:
         for old in _with_parent(obj):
             if old.name not in collection.objects:

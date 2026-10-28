@@ -142,6 +142,7 @@ def update_edits(module_dir: str, scene: str, edits: list[str], users: str) -> l
                     "repointed": len(prepared.repointed),
                     "renumbered": len(prepared.renumbered),
                     "retired": len(prepared.retired),
+                    "staged": prepared.staging is not None,  # a staging collection is a Blender write too
                 },
             }
         )

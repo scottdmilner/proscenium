@@ -1,4 +1,4 @@
-"""Generated stress scenes of controlled size for Phase E, each varying one dimension.
+"""Generated stress scenes of controlled size for M1b's Phase E, each varying one dimension, and M4's update scenes.
 
 Authored through Sdf into crate files under the output directory (not committed); every layer documents its
 purpose and parameters. Every mesh is a plain polygon mesh (subdivisionScheme none), so neither side
@@ -196,6 +196,49 @@ def animation(path: Path, side: int = 256, movers: int = 1000) -> dict[str, Any]
     return parameters
 
 
+def updates(path: Path, copies: int) -> dict[str, Any]:
+    """M4 Phase C: every update scenario at one size.
+
+    `copies` native instances of a two-mesh, two-material asset, all behind one payload, and as many cubes
+    outside instances, alternating between the two materials; and a grid whose topology changes between time
+    codes 1 and 2.
+    """
+    sides = (16, 17)
+    parameters = {"asset copies": copies, "unique cubes": copies, "morph grid sides": sides, "frames": (1, 2)}
+    layer = _layer(path, "update scenarios: instances behind a payload, unique meshes, changing topology", parameters)
+    layer.startTimeCode, layer.endTimeCode = 1, 2
+    cube = _cube()
+    with Sdf.ChangeBlock():
+        _materials(layer, {"Red": (0.8, 0.1, 0.1), "Blue": (0.1, 0.1, 0.8)})
+        assets = Sdf.PrimSpec(layer, "Assets", Sdf.SpecifierClass, "")
+        asset = _xform(assets, "Asset", specifier=Sdf.SpecifierClass)
+        _bind(_mesh(asset, "Body", _grid(8)), "Red")
+        _bind(_mesh(_xform(asset, "Top", (0, 0, 1)), "Lid", cube), "Blue")
+        payloads = Sdf.PrimSpec(layer, "Payloads", Sdf.SpecifierClass, "")
+        held = _xform(payloads, "Copies", specifier=Sdf.SpecifierClass)
+        for i in range(copies):
+            copy = _xform(held, f"Copy_{i}", (2.0 * (i % 100), 2.0 * (i // 100), 0))
+            copy.referenceList.explicitItems = [Sdf.Reference(primPath="/Assets/Asset")]
+            copy.instanceable = True
+        world = _xform(layer, "World")
+        _xform(world, "Copies").payloadList.explicitItems = [Sdf.Payload(primPath="/Payloads/Copies")]
+        unique = _xform(world, "Unique", (0, 0, -4))
+        for i in range(copies):
+            holder = _xform(unique, f"Cube_{i}", (2.0 * (i % 100), 2.0 * (i // 100), 0))
+            _bind(_mesh(holder, "Mesh", cube), "Red" if i % 2 else "Blue")
+        morph = _mesh(_xform(world, "Morph", (0, 0, 4)), "Grid", _grid(sides[0]))
+        for frame, side in zip((1, 2), sides, strict=True):
+            points, counts, indices = _grid(side)
+            for name, value in (
+                ("points", Vt.Vec3fArray.FromNumpy(points)),
+                ("faceVertexCounts", Vt.IntArray.FromNumpy(counts)),
+                ("faceVertexIndices", Vt.IntArray.FromNumpy(indices)),
+            ):
+                layer.SetTimeSample(morph.attributes[name].path, frame, value)
+    layer.Save()
+    return parameters
+
+
 # Scene name -> (generator, time code imported). One small and one large size per dimension that matters;
 # instances-100 is the CI smoke scene.
 SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
@@ -205,8 +248,12 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "instances-100": (lambda p: instancing(p, 100), 1.0),
     "instances-1000": (lambda p: instancing(p, 1000), 1.0),
     "animation": (animation, 1.0),
+    "updates-100": (lambda p: updates(p, 100), 1.0),
+    "updates-1000": (lambda p: updates(p, 1000), 1.0),
+    "updates-10000": (lambda p: updates(p, 10000), 1.0),
 }
 STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
+UPDATES = ["updates-100", "updates-1000", "updates-10000"]  # M4 Phase C's sizes
 
 
 def generate(name: str, directory: Path) -> tuple[Path, dict[str, Any]]:

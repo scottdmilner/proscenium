@@ -1,6 +1,6 @@
 # Runtime Feasibility Record (M1)
 
-Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate, plus later milestones' probes ([Buffer transfer](#buffer-transfer) for M1b, [Copy routes](#copy-routes-m3) for M3). Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
+Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate, plus later milestones' probes ([Buffer transfer](#buffer-transfer) for M1b, [Copy routes](#copy-routes-m3) for M3) and M4's [measurements](#measurements-m4-phase-c). Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
 
 ```sh
 uv run python tools/feasibility/run_all.py          # writes build/feasibility/<platform>-*.json
@@ -719,6 +719,111 @@ What the prototype's planner leaves for a production core to address:
 
   A production core should profile the parallel pass, for example with Instruments' Time Profiler and System Trace, before tuning it. Reusing buffers, and skipping the source tables when the layout is the identity, are candidates.
 - **One large mesh is still built on one thread.** Half of it is USD's validation, a single call. The M1b plan's Phase E log lists the options.
+
+### Measurements (M4 Phase C)
+
+The object baseline's synchronization and updates against M4's provisional budgets ([M4 plan](../plans/M04-prototypes.md), settled item 4), recorded as baselines, not gates. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-10-28. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes importer-matched --scenarios all
+```
+
+The full statistics go to `build/hydra-bridge/measure/summary.md` (not committed).
+
+**Method:** as in [M1b Phase E](#measurements-m1b-phase-e), with these differences:
+- **Runs:** each scene first gets one unrecorded warmup run of the matched importer and of the prototype, for the file cache and the loader. Then come three runs of each mode, alternating. Figures are medians, with ranges.
+- **Update modes:** each is a fresh synchronization followed by one scenario from `measure/scenarios.py`:
+  - the scenario's edit;
+  - an incremental capture, planning, and the plan diff;
+  - the update by that diff (`update.py`), under the repoint policy: preparation, publication, and retirement;
+  - a depsgraph evaluation.
+
+  The update's time is those steps, without the edit.
+- **Coexisting memory:** the most footprint above the level just before preparation, until retirement ends, while both generations' data exist.
+- **Scenarios** (acceptance.md, Performance), each target chosen from the plan:
+  - an unchanged refresh;
+  - a translation of the first mesh object outside instances;
+  - the points of the instanced mesh with the most copies;
+  - a constant input of the material in the most slots outside instances;
+  - the next time code;
+  - every payload unloaded, or loaded into a stage opened without them.
+
+  The initial scenario also saves the file uncompressed.
+- **ALab's shared-geometry edit:** instance contents take no session-layer opinion, so this edit changes the layer that defines the mesh, in memory only; no layer is saved.
+- **Generated scenes:** `updates-N` (`measure/stress.py`) has N native copies of a two-mesh, two-material asset behind one payload; N cubes outside instances, alternating between the materials; and a grid whose topology changes between time codes 1 and 2. They give 301, 3,001, and 30,001 objects.
+- **Not measured:**
+  - undo overhead: in background mode Blender pushes no undo steps;
+  - cold source acquisition: dropping the OS file cache needs root;
+  - the interaction functions (M4 C4);
+  - the replace policy (B6 measured both).
+
+**Budgets:**
+
+| Budget (provisional) | ALab | updates-100 | updates-1000 | updates-10000 |
+|---|---|---|---|---|
+| Initial synchronization, at most 1.5× the matched importer's time | 1.09× | 1.27× | 1.20× | **4.37×** |
+| Initial synchronization, at most 2× its peak memory | 1.56× | 0.74× | 1.49× | 1.24× |
+| Unchanged refresh, no slower than initial synchronization | 0.15× | 0.04× | 0.07× | 0.03× |
+| Transform update, at least 10× faster than a full rebuild | **5.3×** | 10.3× | **3.5×** | **8.8×** |
+| Shared-geometry update, likewise | **6.0×** | **8.4×** | **2.9×** | **7.7×** |
+| Material update, likewise | **6.8×** | **7.2×** | **2.9×** | **7.0×** |
+
+The ratios are of medians; the full rebuild is the prototype's initial synchronization in the same set.
+
+**ALab** (7,018 objects; synchronization 3.823 s (3.336–4.004 s), the matched importer 3.501 s (3.190–3.615 s); peak 2,829 MB (2,828–2,829) against 1,808 MB (1,803–1,812)):
+
+| Scenario | Update s | Capture s | Planning s | Diff s | Prepare s | Publish s | Retire s | Evaluate s | Coexisting MB | Objects created / repointed / retired IDs |
+|---|---|---|---|---|---|---|---|---|---|---|
+| unchanged | 0.556 (0.436–0.653) | 0.024 (0.024–0.026) | 0.325 (0.284–0.355) | 0.091 (0.070–0.114) | 0.053 (0.050–0.181) | 0.005 (0.004–0.006) | 0.002 (0.002–0.010) | 0.002 (0.002–0.016) | 25 (19–33) | 0 / 0 / 0 |
+| transform | 0.721 (0.577–0.767) | 0.022 (0.021–0.027) | 0.366 (0.355–0.433) | 0.123 (0.074–0.144) | 0.057 (0.049–0.137) | 0.005 (0.005–0.006) | 0.013 (0.010–0.021) | 0.067 (0.057–0.074) | 23 (23–27) | 2 / 0 / 2 |
+| shared-geometry | 0.636 (0.515–0.715) | 0.025 (0.024–0.026) | 0.353 (0.315–0.377) | 0.100 (0.052–0.211) | 0.052 (0.046–0.053) | 0.006 (0.005–0.008) | 0.011 | 0.060 (0.058–0.060) | 22 (21–23) | 0 / 169 / 1 |
+| material | 0.561 (0.549–0.790) | 0.024 (0.023–0.027) | 0.338 (0.332–0.453) | 0.076 (0.056–0.136) | 0.049 (0.047–0.060) | 0.008 (0.007–0.009) | 0.012 | 0.062 (0.061–0.096) | 19 (16–22) | 0 / 244 / 1 |
+| time-step | 1.701 (1.694–2.032) | 0.087 (0.083–0.125) | 0.429 (0.390–0.439) | 0.106 (0.094–0.126) | 0.644 (0.593–0.803) | 0.010 (0.008–0.010) | 0.398 (0.360–0.462) | 0.087 (0.077–0.096) | 62 (60–73) | 695 / 0 / 1,051 |
+| payload-unload | 1.573 (1.482–1.579) | 0.904 (0.870–0.931) | 0.006 | 0.004 (0.003–0.004) | 0.002 | 0.019 (0.018–0.021) | 0.582 (0.556–0.616) | 0.028 (0.023–0.030) | 0 (0–0) | 0 / 0 / 11,185 |
+| payload-load | 2.963 (2.717–2.966) | 0.921 (0.835–0.925) | 0.258 (0.245–0.263) | 0.001 | 1.670 (1.521–1.673) | 0.021 (0.020–0.023) | 0.011 (0.010–0.012) | 0.076 (0.075–0.084) | 1,073 (1,069–1,077) | 7,018 / 0 / 0 |
+
+Time 1004 to 1005 changes 695 objects' transforms or points, with 355 new meshes. The diff finds no repointable objects, so each changed object is replaced. The file saves to 1,059 MB uncompressed in 0.842 s (0.532–0.864 s).
+
+**Against size** (each updates-N scene, and ALab between them by object count):
+
+| Scene | Objects | Importer sync s | Sync s | Construction s | Unchanged s | Transform s | Its evaluation s | Material s |
+|---|---|---|---|---|---|---|---|---|
+| updates-100 | 301 | 0.063 (0.062–0.091) | 0.079 (0.044–0.080) | 0.008 | 0.003 | 0.008 (0.007–0.010) | 0.004 (0.004–0.005) | 0.011 (0.009–0.011) |
+| updates-1000 | 3,001 | 0.273 (0.258–0.330) | 0.327 (0.312–0.350) | 0.097 (0.094–0.099) | 0.022 (0.021–0.025) | 0.092 (0.092–0.093) | 0.068 (0.064–0.068) | 0.114 (0.112–0.120) |
+| alab | 7,018 | 3.501 (3.190–3.615) | 3.823 (3.336–4.004) | 1.612 (1.497–1.787) | 0.556 (0.436–0.653) | 0.721 (0.577–0.767) | 0.067 (0.057–0.074) | 0.561 (0.549–0.790) |
+| updates-10000 | 30,001 | 2.009 (1.981–2.058) | 8.776 (8.219–8.790) | 6.680 (6.267–6.743) | 0.231 (0.224–0.231) | 0.993 (0.992–1.064) | 0.761 (0.760–0.800) | 1.249 (1.223–1.310) |
+
+| Scene | Objects added or removed | Payload load s | Its preparation s | Payload unload s | Its retirement s |
+|---|---|---|---|---|---|
+| updates-100 | 200 | 0.023 (0.022–0.027) | 0.006 | 0.015 (0.014–0.020) | 0.002 |
+| updates-1000 | 2,000 | 0.265 (0.255–0.266) | 0.096 (0.095–0.102) | 0.169 (0.167–0.182) | 0.056 (0.054–0.057) |
+| alab | 7,018 | 2.963 (2.717–2.966) | 1.670 (1.521–1.673) | 1.573 (1.482–1.579) | 0.582 (0.556–0.616) |
+| updates-10000 | 20,000 | 27.061 (26.534–28.687) | 25.281 (24.757–26.744) | 20.174 (19.561–20.315) | 16.890 (16.328–17.033) |
+
+The files save to 1.3, 8.0, and 74.5 MB uncompressed.
+
+**Findings:**
+- **Blender inserts each new datablock into a list sorted by name,** and the cost grows with how far from the end it lands. Ad hoc probes, in the same binary, created empties in batches of 1,000:
+  - names created in sort order (zero-padded): 15–20 ms per batch throughout;
+  - reversed: rising to 782 ms per batch by 15,000;
+  - random: rising to 354 ms per batch.
+
+  The same held for mesh objects and `Object.copy()`. Only objects slowed: 10,000 meshes in the file didn't. Plain numbered names (`O_9999`, `O_10000`) went from about 12 ms to about 500 ms per batch at 10,000 objects, where their sort order stops matching creation order. Blender's own `.NNNN` suffixes behave the same way. The baseline names each object for its prim, so `updates-10000`'s 10,000 each of `Mesh`, `Body`, and `Lid` cross that point; ALab's names are varied.
+  - **Measured variant** (ad hoc, a scratch copy of `apply.py` naming each object with its zero-padded plan index first, three runs per mode on the same scenes):
+    - construction fell from 6.680 s to 1.064 s (1.055–1.139 s) on `updates-10000`, putting synchronization at 3.294 s (3.107–3.419 s), 1.64× the importer's 2.009 s;
+    - on ALab, construction took 1.428 s (1.337–1.489 s) against 1.612 s; synchronization's run-to-run spread between the two sets is as large as the difference;
+    - preparing the payload load still took 11.474 s (9.378–13.311 s) on `updates-10000`, since the loaded objects' plan indices come before those already in the file.
+
+    The names users see are M6's design, which must create objects so that their names land at the end of the list. This also applies to batching such as Geometry Nodes instancing, which changes which objects are created at all.
+- **The depsgraph's evaluation after an update grows with the scene,** whenever objects were linked, unlinked, or repointed: 4 ms at 301 objects, 68 ms at 3,001, 67 ms on ALab, and 761 ms at 30,001. An unchanged refresh writes nothing to Blender, and its evaluation takes 2 ms on ALab and on `updates-10000`.
+- **Retirement grows faster than the IDs it removes:** 0.056 s for 2,001 at 3,001 objects, 0.582 s for 11,185 on ALab, and 16.890 s for 20,001 at 30,001 objects. Names don't cause it: the variant's retirement was the same, 16.749 s. The cause wasn't investigated.
+- **Planning and the diff cost more inside an update than alone:**
+  - on ALab, planning took 0.33–0.43 s in updates against 0.25 s in the initial synchronization;
+  - the diff took 76–123 ms here, against 38 ms in the bpy wheel ([M4 plan](../plans/M04-prototypes.md), C1).
+
+  Not investigated. Together they are most of every small update on ALab.
+- **Coexisting memory** for ALab's small updates is 19–25 MB, and 62 MB for the time step. Loading every payload builds the whole display beside an almost empty one: 1,073 MB.
 
 ### Distribution (M1b Phase F)
 
