@@ -1,7 +1,7 @@
 """Expected interaction results, from USD's own APIs on the composed stage (interaction-contract.md).
 
-M2 provides it with the interaction fixtures (fixtures/interaction.py); M4 writes the
-checks of each representation's headless functions against it, and M7 and M10 reuse them.
+M2 provides it with the interaction fixtures (fixtures/interaction.py). The checks of each
+representation's headless functions against it are in support/interaction_checks.py.
 
 Nothing here reads a display: hierarchy and kinds come from the stage (Usd.ModelAPI,
 Kind.Registry), and what the viewport displays from UsdGeom.Imageable's effective visibility
@@ -47,6 +47,12 @@ def display_elements(stage: Usd.Stage, time: float) -> frozenset[str]:
     return frozenset(found)
 
 
+def instance_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
+    """The native-instance roots enclosing `path`, outermost first."""
+    prefixes = Sdf.Path(path).GetPrefixes()[:-1]
+    return tuple(str(prefix) for prefix in prefixes if stage.GetPrimAtPath(prefix).IsInstance())
+
+
 def floor(stage: Usd.Stage, path: str) -> str:
     """The outermost native-instance root enclosing `path`, or `path` itself outside instance contents."""
     for prefix in Sdf.Path(path).GetPrefixes():
@@ -83,8 +89,9 @@ def generation(stage: Usd.Stage, time: float) -> Generation:
 def kind_target(stage: Usd.Stage, floor_path: str, level: str | None) -> str:
     """The selection target of a floor: itself at the prim level (None), else its nearest kind match.
 
-    At a kind level, the nearest ancestor-or-self on the stage whose kind is `level`
-    or derives from it; the floor when there is none or the floor is absent.
+    At a kind level, the nearest ancestor-or-self on the stage whose authored kind is `level`
+    or derives from it, in a valid model hierarchy or not; the floor when there is none or the
+    floor is absent.
     """
     prim = stage.GetPrimAtPath(floor_path)
     if level is None or not prim:

@@ -97,6 +97,37 @@ The baseline is the bridge's representation, extended until it covers every case
   - **Pointers:** no owning raw pointer remains but `TfCreateRefPtr(new ...)`. Vectors of never-null record pointers became `std::reference_wrapper`s (`PrimRefs`), the planner's nullable `slots` argument a reference whose empty value marks a placeholder, and the source-info filter's `const_cast` of `this` a weak self pointer set once in `New`. Each remaining raw pointer is a nullable lookup or optional argument whose declaration says what null means. AGENTS.md states the rule.
   - **The rest:** about 200 findings, fixed or, where the code needs the construct, marked with a `NOLINT` naming its check and reason (USD's reserved override names, a function address for `dladdr`, the stringizing macro, recursion bounded by `kMaxDepth`, two by-design globals).
   - **Unchanged behavior:** M1b's 42 loading, 20 prototype, and 131 correctness checks pass in the wheel and the binary, and on ALab (`entry.usda`, load-all) an order-free digest of the plan's 7,315 objects, 3,943 meshes, 806 materials, and 11,255 diagnostics is identical to the committed bridge's (ad hoc).
+- **B3, the headless interaction functions for the baseline.**
+  - **The checks** are in `tests/support/interaction_checks.py`, written once against the seven functions. A representation passes a `Display` adapter. The adapter publishes generations of a fixture's live stage, says what a pick on each Blender object supplies, and says which viewport elements each object and display target shows, by its own record of what it built. Each check names the matrix rows it covers:
+    - picks (INSP-01, ICON-01, ICON-19), and picks after renaming and reparenting (ICON-17);
+    - `displayed` over every composed prim and probe (ICON-11 to ICON-15);
+    - `select_targets` at every level, and the fixtures' cases (ICON-18, ICON-20, ICON-21), including an absent floor;
+    - a read-only stage (ICON-06);
+    - exact highlighting of every path and of each level's targets (ICON-10, ICON-22, ICON-23, INSP-02);
+    - mirroring into Blender (ICON-27 to ICON-29), and reading it back (ICON-30).
+
+    Each check runs at every time code a fixture publishes, so `F-UNIVERSE-MEMBERSHIP`'s animated visibility checks membership per generation (ICON-25 and ICON-26's basis); resolving M3's stored persistent selection is not exercised.
+  - **The baseline's core functions** are in the bridge's C++: `interaction.h/.cpp` over the plan's correspondence, bound as `_hydra_bridge.Interaction(stage, plan)`. Kind levels go to `inspection.h/.cpp`, which models M7's inspection layer: it reads only the stage it is given and includes nothing else of the bridge, so paths never pass through Python between the two. The correspondence now also holds the viewport's elements sorted by floor, so a target's expansion is one range, as in the universe.
+  - **The Python display component** is the bridge's `selection.py`.
+  - `isolated/test_interaction.py` runs each check on the three interaction fixtures in a fresh wheel process; `nested_selection` and `kind_hierarchy` have the absent-floor case, `universe_membership` doesn't. In an ad hoc mutation run, each of 14 single changes failed a test. The C++ changes were promotion from the floor alone, exact kind matching, promotion from the source, the innermost instance root as the floor, expansion without the target, expansion stopping at one element, a level-blind or active-blind `selection_from_blender`, and everything displayed. The Python changes were the active object kept with several display objects, unmanaged objects deselected, inverted selection, every managed object read as selected, and picks resolved by object name.
+  - **What a pick supplies (Q2, for the baseline):** the object. The object names its display element, its plan index, which `apply.py` records as `proscenium_element`, and `resolve_pick` reaches the outermost instance root from it through the plan. That a real viewport pick yields the object is assumed, not checked: windowed tests are out of scope.
+  - **Partial coverage (Q3, Q5, for the baseline):** none arises. Each object shows exactly one display element, so highlighting is exact, and each object is wholly in or out of a selection.
+  - **Settled here for the baseline, for review:**
+    - An object's coverage is the viewport elements it shows. A render-only object, such as one of a copy's two destination objects, covers none: it is never a display target, and `apply_selection` deselects it.
+    - With no active entry, or one with no display object, no managed object stays active, and an unmanaged active object is kept.
+  - **Element identities** are plan indices, which name elements within one generation only; a pick held across a republish could name another element. Production identities need M3's resource identities. Not checked.
+  - **Without a live stage,** each of the five core functions raises `RuntimeError`. This was smoke-run once, ad hoc; `F-OFFLINE`'s checks (ICON-08, ICON-09) are M7's.
+  - **Paths in and out (with the user).** The bridge takes paths as `Sdf.Path` or strings, through Sdf's converter, and returns strings.
+    - **Why strings out:** Python stores paths only where strings are needed (Blender ID properties, JSON, M3's records, the interaction oracle), and the path algebra is in C++.
+    - **Why not `Sdf.Path` out:** an `Sdf.Path` equals its string but hashes differently, so every set or dict mixing the two misses matches silently. Trying it, two of M1b's known-gap checks went vacuous until their paths were converted. The time cost was small: on ALab (ad hoc, one run, median of 5), `apply.py`'s conversions back to strings took 15 ms for 7,317 objects, and building `plan.objects` took the same 23–25 ms either way. M7 should weigh the hashing hazard before its bindings return `Sdf.Path`.
+- **Q11, kinds outside a valid model hierarchy (with the user).** A kind level matches a prim's authored kind, whether or not the prim is in a valid model hierarchy (`UsdPrim::IsModel`). The rule is stated in [Selection](../spec/interaction-contract.md#selection), ICON-21's oracle, and the DECISIONS.md row "Browsing universe and inspection metadata set". So a component-level pick on a component nested in another selects the nested one, as the oracle and the bridge already did. Under the other rule, it would select the outer one.
+  - **In ALab** (`entry.usda`, load-all, one ad hoc survey), 594 of 1,877 authored components are outside a valid hierarchy:
+    - 413 under point-instancer prototypes;
+    - 180 directly inside another component;
+    - 1 under a Scope with no kind.
+
+    12 of 60 groups are outside one too. ALab's light-rig kinds aren't registered, so no level matches them.
+  - **The case:** `F-KIND-HIERARCHY` gains `Vase`, a component inside the component `Table`, and `Crate`, a component under `Debris`, which has no kind. The fixture names both, and `bpy_free/test_interaction_fixtures.py` checks that `IsModel` rejects them. With the valid-hierarchy rule planted in the bridge's C++, `kind_hierarchy`'s `select_targets` and `selection_from_blender` checks fail (ad hoc).
 
 ### Phase C — Budgets and measurements
 

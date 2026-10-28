@@ -959,7 +959,7 @@ requirements:
       - id: ICON-21
         quote: "At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
-        oracle: "At a kind level, targets match the oracle's nearest ancestor-or-self with that kind or one derived from it (Kind.Registry.IsA), falling back to the floor when none exists or the floor is absent from the stage."
+        oracle: "At a kind level, targets match the oracle's nearest ancestor-or-self whose authored kind is that kind or one derived from it (Kind.Registry.IsA), including prims outside a valid model hierarchy (a component inside a component, and one under a prim with no kind), falling back to the floor when none exists or the floor is absent from the stage."
       - id: ICON-22
         quote: "Selecting a target selects its subtree"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]

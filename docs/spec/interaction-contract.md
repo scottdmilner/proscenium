@@ -53,7 +53,7 @@ The caller supplies a selection level: either the prim level or a model kind.
 
 - The floor of an entity is the outermost native-instance root enclosing it, or the entity itself when it is not inside instance contents. The correspondence layer derives it from the entity's instance context. Nothing inside instance contents is a selection target.
 - At the prim level, the target is the floor.
-- At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage whose kind is that kind or derives from it. When no such ancestor exists, or the floor is absent from the live stage, the target is the floor.
+- At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage whose kind is that kind or derives from it. A prim's kind is the one authored on it, whether or not its ancestors place it in a valid model hierarchy (`UsdPrim::IsModel`). When no such ancestor exists, or the floor is absent from the live stage, the target is the floor.
 
 Selecting a target selects its subtree: the target and every entity in the universe beneath it in the source hierarchy. The display elements of a selection are those of its expanded entities, found through correspondence, independent of how Hydra or the display representation groups them.
 

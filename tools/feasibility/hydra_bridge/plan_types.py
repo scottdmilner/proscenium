@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from pxr import Gf, Vt
+    from pxr import Gf, Sdf, Vt
 
 # The subsets of bpy's AttributeDomainItems and AttributeTypeItems the planner produces (plan.h).
 PlanDomain = Literal["POINT", "FACE", "CORNER"]
@@ -27,6 +27,7 @@ type AttributeArray = Vt.FloatArray | Vt.Vec2fArray | Vt.Vec3fArray | Vt.Vec4fAr
 type PlanArray = AttributeArray
 type PropertyScalar = bool | int | float | str
 type PropertyValue = PropertyScalar | list[PropertyScalar] | list[list[PropertyScalar]]
+type PathLike = Sdf.Path | str  # what Interaction takes as a path
 
 
 class AttributeRecord(TypedDict):
@@ -97,3 +98,34 @@ class Plan(Protocol):
     def universe(self) -> list[str]: ...  # USD paths, sorted: the browsing universe
     @property
     def diagnostics(self) -> list[DiagnosticRecord]: ...
+
+
+class ResolvedEntity(TypedDict):
+    """An element's source entity, as Interaction.resolve_pick returns it."""
+
+    source: str
+    instance_context: tuple[str, ...]  # native instance roots, outermost first
+    floor: str
+
+
+class SourceSelection(TypedDict):
+    targets: list[str]  # USD paths, in the order of the selected elements, without repeats
+    active: str | None  # the active element's target
+
+
+class Interaction(Protocol):
+    """The module's Interaction (M4): the baseline's core interaction functions over a plan and the live stage.
+
+    Elements are plan object indices; a level is None (the prim level) or a registered kind. Paths are taken as
+    Sdf.Path or str and returned as str. Each raises RuntimeError once the live stage has expired.
+    """
+
+    def resolve_pick(self, element: int) -> ResolvedEntity | None: ...
+    def select_targets(
+        self, entities: Sequence[tuple[PathLike, Sequence[PathLike]]], level: str | None = None
+    ) -> list[str]: ...  # (source, instance context) pairs
+    def displayed(self, paths: Sequence[PathLike]) -> list[bool]: ...
+    def highlight_targets(self, targets: Sequence[PathLike]) -> list[int]: ...  # elements, in plan order
+    def selection_from_blender(
+        self, selected: Sequence[int], active: int | None = None, level: str | None = None
+    ) -> SourceSelection: ...

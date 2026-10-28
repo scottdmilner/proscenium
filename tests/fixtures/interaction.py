@@ -1,7 +1,8 @@
 """Interaction fixtures: the interaction contract's cases as scenes (docs/spec/interaction-contract.md).
 
 - kind_hierarchy (F-KIND-HIERARCHY): an assembly > group > component > subcomponent
-  hierarchy whose organizational prims author nothing Hydra needs, and a mesh under no model.
+  hierarchy whose organizational prims author nothing Hydra needs, a mesh under no model, and
+  components outside a valid model hierarchy.
 - nested_selection (F-NESTED-SELECTION): nested native instances, one prototype used
   inside and outside an outer instance, and component kinds on instance roots.
 - universe_membership (F-UNIVERSE-MEMBERSHIP): one case per child of /World for what is
@@ -43,6 +44,7 @@ class InteractionScene:
     # (prim a check removes from the live stage, an entity whose floor that makes absent, a kind level)
     absent_floor: tuple[str, str, str] | None = None
     excluded: dict[str, str] = field(default_factory=dict)  # composed prim -> why it is not in the universe
+    outside_model_hierarchy: tuple[str, ...] = ()  # prims with an authored model kind that UsdPrim.IsModel rejects
 
 
 def _with_ancestors(paths: frozenset[str]) -> frozenset[str]:
@@ -65,7 +67,8 @@ def kind_hierarchy(dest: Path) -> Generator[InteractionScene]:
     chair = "/World/Props/Chair"
     seat, back, legs = f"{chair}/Geom/Seat", f"{chair}/Geom/Back", f"{chair}/Legs"
     shade, top, rock = "/World/Props/Lamp/Shade", "/World/Table/Top", "/Debris/Rock"
-    elements = frozenset({seat, back, legs, shade, top, rock})
+    vase, crate = "/World/Table/Vase/Body", "/Debris/Crate/Box"
+    elements = frozenset({seat, back, legs, shade, top, rock, vase, crate})
     root, stage = _open(dest, "kind_hierarchy.usda")
     yield InteractionScene(
         root=root,
@@ -85,9 +88,16 @@ def kind_hierarchy(dest: Path) -> Generator[InteractionScene]:
             (seat, "assembly"): "/World",
             ("/World/Props", "model"): "/World/Props",  # ancestor-or-self, and group derives from model
             (rock, "model"): rock,  # under no model
+            # Authored kinds match outside a valid model hierarchy (M4, Q11).
+            (vase, "component"): "/World/Table/Vase",  # not Table, though Vase's parent is a component
+            (vase, "model"): "/World/Table/Vase",
+            (vase, "group"): "/World",
+            (crate, "component"): "/Debris/Crate",  # though Debris has no kind
+            (crate, "assembly"): crate,  # no assembly above: its floor
         },
         probes=("/World/Props/Missing",),
         absent_floor=("/World/Table", top, "group"),
+        outside_model_hierarchy=("/World/Table/Vase", "/Debris/Crate"),
     )
 
 

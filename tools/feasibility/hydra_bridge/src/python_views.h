@@ -1,7 +1,9 @@
 // Python views over the immutable snapshot and plan. Large arrays are returned as the existing
 // pxr.Vt array types (an O(1) copy-on-write copy), which support the buffer protocol.
+// Paths are returned as strings, and taken as Sdf.Path or strings, through Sdf's converter.
 #pragma once
 
+#include "interaction.h"
 #include "plan.h"
 #include "snapshot.h"
 
@@ -18,11 +20,11 @@ struct SnapshotView {
 
     [[nodiscard]] bp::object Time() const;  // None at default time
     [[nodiscard]] bp::list Paths() const;
-    [[nodiscard]] bp::object Prim(const std::string &path) const;  // dict of what planning reads, or None
-    [[nodiscard]] bp::object Dump(const std::string &path) const;  // the prim's retained data sources, as text, or None
-    [[nodiscard]] bp::list Events() const;                         // (kind, path) tuples
-    [[nodiscard]] bp::dict DirtyLocators() const;                  // path -> locator strings
-    [[nodiscard]] bp::list Renames() const;                        // (old path, new path) tuples
+    [[nodiscard]] bp::object Prim(const bp::object &path) const;  // dict of what planning reads, or None
+    [[nodiscard]] bp::object Dump(const bp::object &path) const;  // the prim's retained data sources, as text, or None
+    [[nodiscard]] bp::list Events() const;                        // (kind, path) tuples
+    [[nodiscard]] bp::dict DirtyLocators() const;                 // path -> locator strings
+    [[nodiscard]] bp::list Renames() const;                       // (old path, new path) tuples
     [[nodiscard]] bp::list Diagnostics() const;
     // WORKAROUND for OpenUSD #3690: {"instances": [paths], "materials": {copy path: {purpose: material}}},
     // purposes "allPurpose", "preview", "full"; a material is "" when nothing binds.
@@ -38,6 +40,24 @@ struct PlanView {
     [[nodiscard]] bp::list Objects() const;
     [[nodiscard]] bp::list Diagnostics() const;
     [[nodiscard]] bp::list Universe() const;
+};
+
+// M4: the baseline's core interaction functions over a plan and the live stage, which it holds weakly. Elements
+// are plan object indices; entities are (source, instance context) pairs, and resolve_pick also gives the floor.
+// Each runs without the GIL, and raises RuntimeError once the stage has expired; a level is None (the prim
+// level) or a registered kind, and anything else raises ValueError.
+struct InteractionView {
+    InteractionView(const pxr::UsdStagePtr &stage, const PlanView &plan);
+
+    [[nodiscard]] bp::object ResolvePick(std::size_t element) const;  // dict, or None for no element
+    [[nodiscard]] bp::list SelectTargets(const bp::object &entities, const bp::object &level) const;
+    [[nodiscard]] bp::list Displayed(const bp::object &paths) const;  // a malformed path is not displayed
+    [[nodiscard]] bp::list HighlightTargets(const bp::object &targets) const;
+    // {"targets": [paths], "active": path or None}
+    [[nodiscard]] bp::dict SelectionFromBlender(const bp::object &selected, const bp::object &active,
+                                                const bp::object &level) const;
+
+    Interaction interaction;
 };
 
 // Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",

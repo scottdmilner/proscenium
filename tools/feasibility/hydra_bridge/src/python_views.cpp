@@ -8,14 +8,52 @@
 #include <pxr/imaging/hd/tokens.h>
 
 #include <array>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
 namespace {
+
+[[noreturn]] void Raise(PyObject *type, const std::string &message) {
+    PyErr_SetString(type, message.c_str());
+    bp::throw_error_already_set();
+    throw std::logic_error("unreachable");
+}
+
+std::string String(const bp::object &value, const char *what) {
+    const bp::extract<std::string> text(value);
+    if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
+    return text();
+}
+
+// The absolute root or an absolute prim path, from an Sdf.Path or a string through Sdf's own converter; any other
+// path raises ValueError, unless `lenient`, when it is the empty path.
+SdfPath PrimPath(const bp::object &value, bool lenient = false) {
+    // Sdf's converter prints a warning for a malformed string, so strings are checked first.
+    const bp::extract<std::string> text(value);
+    const bool wellFormed = !text.check() || SdfPath::IsValidPathString(text());
+    const bp::extract<SdfPath> path(value);
+    if (!path.check()) Raise(PyExc_TypeError, "a path must be an Sdf.Path or a string");
+    if (wellFormed) {
+        SdfPath result = path();
+        if (result.IsAbsolutePath() && result.IsAbsoluteRootOrPrimPath()) return result;
+    }
+    if (lenient) return {};
+    Raise(PyExc_ValueError,
+          "'" + bp::extract<std::string>(bp::str(value))() + "' is not the absolute root or an absolute prim path");
+}
+
+SdfPathVector PrimPaths(const bp::object &values, bool lenient = false) {
+    const bp::list list(values);  // any iterable
+    SdfPathVector paths;
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) paths.push_back(PrimPath(list[i], lenient));
+    return paths;
+}
 
 template <class Paths>
 bp::list PathList(const Paths &paths) {
@@ -175,15 +213,17 @@ bp::list SnapshotView::Paths() const {
     return result;
 }
 
-bp::object SnapshotView::Prim(const std::string &path) const {
+bp::object SnapshotView::Prim(const bp::object &path) const {
+    const SdfPath primPath = PrimPath(path, true);
     PrimRecord record;
-    if (!SdfPath::IsValidPathString(path) || !ReadPrim(*data->scene, SdfPath(path), record)) return {};
+    if (primPath.IsEmpty() || !ReadPrim(*data->scene, primPath, record)) return {};
     return PrimDict(record);
 }
 
-bp::object SnapshotView::Dump(const std::string &path) const {
-    if (!SdfPath::IsValidPathString(path)) return {};
-    const HdSceneIndexPrim prim = data->scene->GetPrim(SdfPath(path));
+bp::object SnapshotView::Dump(const bp::object &path) const {
+    const SdfPath primPath = PrimPath(path, true);
+    if (primPath.IsEmpty()) return {};
+    const HdSceneIndexPrim prim = data->scene->GetPrim(primPath);
     if (!prim.dataSource) return {};
     std::ostringstream out;
     HdDebugPrintDataSource(out, prim.dataSource);
@@ -310,16 +350,38 @@ bp::list PlanView::Universe() const { return PathList(data->correspondence.unive
 
 namespace {
 
-[[noreturn]] void Raise(PyObject *type, const std::string &message) {
-    PyErr_SetString(type, message.c_str());
-    bp::throw_error_already_set();
-    throw std::logic_error("unreachable");
+std::size_t Element(const bp::object &value) {
+    const bp::extract<std::size_t> element(value);
+    if (!element.check()) Raise(PyExc_TypeError, "an element must be a non-negative integer");
+    return element();
 }
 
-std::string String(const bp::object &value, const char *what) {
-    const bp::extract<std::string> text(value);
-    if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
-    return text();
+std::optional<TfToken> Level(const bp::object &value) {
+    if (value.is_none()) return std::nullopt;
+    TfToken level(String(value, "a level"));
+    try {
+        Interaction::CheckLevel(level);
+    } catch (const std::invalid_argument &error) {
+        Raise(PyExc_ValueError, error.what());
+    }
+    return level;
+}
+
+// Runs `call` without the GIL, and raises the source's unavailability as RuntimeError.
+template <class Call>
+auto Unlocked(const Call &call) {
+    std::optional<std::string> unavailable;
+    std::optional<decltype(call())> result;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        try {
+            result = call();
+        } catch (const SourceUnavailableError &error) {
+            unavailable = error.what();
+        }
+    }
+    if (unavailable) Raise(PyExc_RuntimeError, *unavailable);
+    return std::move(*result);
 }
 
 // Prim purposes by their USD names; Hydra calls USD's default "geometry".
@@ -343,6 +405,64 @@ void SetMaterialPurpose(const bp::object &name, TfToken &purpose) {
 }
 
 }  // namespace
+
+InteractionView::InteractionView(const UsdStagePtr &stage, const PlanView &plan)
+    : interaction(stage, plan.data) {
+    if (!stage) Raise(PyExc_ValueError, "the live stage is invalid");
+}
+
+bp::object InteractionView::ResolvePick(std::size_t element) const {
+    const std::optional<Entity> entity = Unlocked([&] { return interaction.ResolvePick(element); });
+    if (!entity) return {};
+    bp::dict record;
+    record["source"] = entity->source.GetString();
+    record["instance_context"] = bp::tuple(PathList(entity->instanceContext));
+    record["floor"] = Floor(*entity).GetString();
+    return std::move(record);
+}
+
+bp::list InteractionView::SelectTargets(const bp::object &entities, const bp::object &level) const {
+    std::vector<Entity> values;
+    const bp::list list(entities);
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) {
+        const bp::tuple pair(list[i]);
+        if (bp::len(pair) != 2) Raise(PyExc_TypeError, "an entity must be a (source, instance context) pair");
+        values.push_back(Entity{PrimPath(pair[0]), PrimPaths(pair[1])});
+    }
+    const std::optional<TfToken> kind = Level(level);
+    return PathList(Unlocked([&] { return interaction.SelectTargets(values, kind); }));
+}
+
+bp::list InteractionView::Displayed(const bp::object &paths) const {
+    const SdfPathVector values = PrimPaths(paths, true);
+    bp::list result;
+    for (const bool displayed : Unlocked([&] { return interaction.Displayed(values); })) result.append(displayed);
+    return result;
+}
+
+bp::list InteractionView::HighlightTargets(const bp::object &targets) const {
+    const SdfPathVector values = PrimPaths(targets);
+    bp::list result;
+    for (const std::size_t element : Unlocked([&] { return interaction.HighlightTargets(values); }))
+        result.append(element);
+    return result;
+}
+
+bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const bp::object &active,
+                                               const bp::object &level) const {
+    std::vector<std::size_t> elements;
+    const bp::list list(selected);
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) elements.push_back(Element(list[i]));
+    const std::optional<std::size_t> activeElement =
+        active.is_none() ? std::nullopt : std::optional<std::size_t>(Element(active));
+    const std::optional<TfToken> kind = Level(level);
+    const SourceSelection selection =
+        Unlocked([&] { return interaction.SelectionFromBlender(elements, activeElement, kind); });
+    bp::dict result;
+    result["targets"] = PathList(selection.targets);
+    result["active"] = PathOrNone(selection.active);
+    return result;
+}
 
 PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
@@ -380,6 +500,13 @@ void WrapViews() {
         .add_property("objects", &PlanView::Objects)
         .add_property("universe", &PlanView::Universe)
         .add_property("diagnostics", &PlanView::Diagnostics);
+    bp::class_<InteractionView>("Interaction", bp::init<UsdStagePtr, PlanView>())
+        .def("resolve_pick", &InteractionView::ResolvePick)
+        .def("select_targets", &InteractionView::SelectTargets, (bp::arg("entities"), bp::arg("level") = bp::object()))
+        .def("displayed", &InteractionView::Displayed)
+        .def("highlight_targets", &InteractionView::HighlightTargets)
+        .def("selection_from_blender", &InteractionView::SelectionFromBlender,
+             (bp::arg("selected"), bp::arg("active") = bp::object(), bp::arg("level") = bp::object()));
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),

@@ -57,7 +57,7 @@ def apply(plan: Plan, collection: bpy.types.Collection) -> list[bpy.types.Object
     """Create the plan's materials, meshes, and objects; returns the objects in plan order."""
     materials = [_material(data) for data in plan.materials]
     meshes = [_mesh(data) for data in plan.meshes]
-    return [_object(data, meshes, materials, collection) for data in plan.objects]
+    return [_object(index, data, meshes, materials, collection) for index, data in enumerate(plan.objects)]
 
 
 def _material(data: MaterialRecord) -> bpy.types.Material:
@@ -122,6 +122,7 @@ def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> 
 
 
 def _object(
+    index: int,
     data: ObjectRecord,
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
@@ -154,6 +155,8 @@ def _object(
         obj[name] = value
     obj["proscenium_source"] = data["source"]
     obj["proscenium_instance_context"] = list(data["instance_context"])
+    # The display element it realizes (M4): its plan index, which the interaction functions take and return.
+    obj["proscenium_element"] = index
     if data["placeholder_type"] is not None:
         # A bounding box when the plan has bounds, otherwise an empty marker.
         if bounds is not None:

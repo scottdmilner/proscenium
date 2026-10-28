@@ -102,6 +102,7 @@ Current tests:
 - `test_extension.py`: installing, enabling, and disabling the zip built by `tools/build_extension.py` in check mode (`sync=False`), which only reads `src/proscenium` and fails if its wheels or manifest are out of date with `uv.lock`, or its compiled core with its sources (run `tools/build_extension.py` to sync them). The installed copy's compiled core loads and matches the host's USD version, disabling removes the handlers, record namespaces, and classes it registered, and the zip's manifest names this platform.
 - `test_baseline.py`: M4's object baseline, the bridge and its `apply.py`, on `F-APPEARANCE-CASES` and `F-NESTED-STRESS`: one object per drawn copy and destination it displays in (one hidden object for a copy shown in neither), with its source and instance context; each face's material per destination, by its material purpose; and shared meshes only among copies of one prototype mesh.
 - `test_correspondence.py`: the baseline plan's correspondence on the interaction and appearance fixtures, at each time code they publish: its viewport display elements, each object's floor, and the browsing universe, against `support/interaction_oracle.py`.
+- `test_interaction.py`: the baseline's headless interaction functions (the bridge's C++ correspondence and kind promotion, and its Python display component `selection.py`), by each check in `support/interaction_checks.py` on each interaction fixture.
 - `test_stage_handle.py`: the compiled core's `StageHandle` keeps a stage alive until `release()`, then lets a stage its caller dropped expire, and never destroys one its caller still holds.
 
 ### `support/`
@@ -116,6 +117,7 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 | `display.py` | `publish_by_hand(binding_id, destination, display)`: build `F-OFFLINE`'s saved display and record it as a publication would, since nothing publishes until M5. `expected_content(display)` is what `collection_content` reads from it. |
 | `undo.py` | `push`, `undo`, `redo` an undo step, failing if none is available. `require_global_undo()` skips when global undo is off, where background-mode undo is unavailable (see the [feasibility record](../docs/feasibility/runtime-record.md#undo)). |
 | `interaction_oracle.py` | Expected results of the [interaction contract](../docs/spec/interaction-contract.md) on a fixture's live stage, from USD's own APIs: display elements, floors, the browsing universe, and kind-level targets. Checks of a representation's headless functions compare against it. |
+| `interaction_checks.py` | The checks of a representation's seven headless interaction functions against `interaction_oracle.py`, written once and reused by M4, M7, and M10. A representation passes an adapter, a `Display`, that publishes generations of an interaction fixture's live stage; `CHECKS` names each check, and each check names its matrix rows. Uses bpy, so it runs where the display does. |
 
 ### `fixtures/`
 

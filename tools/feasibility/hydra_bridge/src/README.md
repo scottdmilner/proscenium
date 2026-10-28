@@ -50,7 +50,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
    - for each object, whether it displays in the viewport and the final render: its effective visibility (purpose visibility included) and whether the destination includes its purpose;
    - each object's materials per slot, resolved for the material purpose of each destination it displays in, falling back to allPurpose as UsdShade does. A prim shown in both with different materials gets two objects sharing its mesh;
    - diagnostics;
-   - the correspondence derived from the objects (M4): each object's floor, the outermost native-instance root in its context or else its source, and the browsing universe, the floors of the viewport's objects and their ancestors.
+   - the correspondence derived from the objects (M4): each object's floor, the outermost native-instance root in its context or else its source; the browsing universe, the floors of the viewport's objects and their ancestors; and the viewport's objects sorted by floor, for expansion.
 
    Sources in a plan are USD paths; Hydra paths and instance indices never are.
 4. **Application** (`../apply.py`) passes the plan's Vt arrays to `foreach_set` as flat `memoryview`s, with no Python-side copy.
@@ -72,7 +72,9 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
 | `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
-| `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects, each object's floor and the browsing universe (sorted, so a subtree is one range) |
+| `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects: each object's floor, the browsing universe, and the viewport's elements by floor (both sorted, so a subtree is one range) |
+| `interaction.h/.cpp` | M4: the baseline's five core interaction functions over a plan's correspondence and the live stage, held weakly. Kind levels go to `inspection.h` in C++; each function raises once the stage has expired |
+| `inspection.h/.cpp` | M4's model of the inspection layer: kind promotion, the nearest ancestor-or-self of a floor on the live stage with a kind, read-only. It includes only USD, as M7's library will |
 | `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
@@ -90,7 +92,8 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../probe.py` | Loading checks: stage exchange, time, inheritance, instancing and stage expiry, on `../scene.usda` |
 | `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
-| `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags) |
+| `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`) |
+| `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
 | `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters |
@@ -110,10 +113,17 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 plan.universe  # sorted USD paths; each object dict also has its "floor"
+interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
+interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
+interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind
+interaction.displayed(paths), interaction.highlight_targets(targets)  # [bool]; elements at or beneath the targets
+interaction.selection_from_blender(selected, active, level)  # {"targets": [...], "active": path or None}
 bridge.release()  # lets a caller-released stage expire; capture() then raises
 snapshot.copy_bindings  # workaround for OpenUSD #3690: {"instances": [...], "materials": {copy: {purpose: material}}}
 _hydra_bridge.take_filter_timings()  # Phase E: {kind: (calls, seconds)} of the filter's USD reads since the last call
 ```
+
+Paths the module returns are strings; paths it takes may be `Sdf.Path` or strings, through Sdf's converter. Python stores paths only where strings are needed (Blender ID properties, JSON, the test oracles) and does no path algebra, which stays in C++. An `Sdf.Path` equals its string but hashes differently, so returning `Sdf.Path` would make every set or dict mixing the two miss matches silently.
 
 A capture evaluates one time code. At default time it reads authored default values, so animated values need a numeric time. Capturing several frames, and caching them, is a layer above capture ([feasibility record](../../../../docs/feasibility/runtime-record.md#time-sampled-data-detection-m1b-phase-d)).
 
