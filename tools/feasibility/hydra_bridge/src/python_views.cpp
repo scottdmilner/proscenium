@@ -1,5 +1,6 @@
 #include "python_views.h"
 
+#include "correspondence.h"
 #include "plan_diff.h"
 #include "prim_reader.h"
 
@@ -9,6 +10,7 @@
 #include <pxr/imaging/hd/tokens.h>
 
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -502,6 +504,15 @@ bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
     return result;
 }
 
+std::size_t RebuildCorrespondence(const PlanView &plan) {
+    std::size_t size = 0;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        size = BuildCorrespondence(*plan.data).universe.size();
+    }
+    return size;
+}
+
 void WrapViews() {
     bp::class_<SnapshotView>("Snapshot", bp::no_init)
         .add_property("time", &SnapshotView::Time)
@@ -534,6 +545,7 @@ void WrapViews() {
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
              bp::arg("render_material_purpose") = bp::object()));
     bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
+    bp::def("rebuild_correspondence", RebuildCorrespondence, bp::arg("plan"));
 }
 
 }  // namespace hydra_bridge

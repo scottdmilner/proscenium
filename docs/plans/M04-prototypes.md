@@ -285,6 +285,15 @@ The baseline is the bridge's representation, extended until it covers every case
     - an update's Blender cost has a part that grows with the whole scene (the depsgraph's evaluation), whatever the unit;
     - the transaction keeps a second generation only of what an update rebuilds: 19–62 MB on ALab's small updates and time step.
   - **An unchanged refresh writes nothing:** `update.py` creates its staging collection only when something is built, since creating and removing a collection is itself a Blender write that triggers the depsgraph's rebuild. The test checks it.
+- **C4, interaction at scale (Q6, Q9).** `measure/run.py --modes interaction` times the baseline's interaction functions after a synchronization, in process, on ALab and the `updates-N` scenes, in the binary. `_hydra_bridge.rebuild_correspondence` derives a plan's correspondence again so its cost can be timed. The results are in the [feasibility record](../feasibility/runtime-record.md#interaction-at-scale-m4-phase-c). Phase F answers the questions; these are its inputs.
+  - **Q6:**
+    - ALab's universe is 2,020 prims with its payloads loaded, and none without them, since its payloads hold all its displayed content.
+    - Deriving the universe takes 1.9 ms.
+    - `displayed` over the whole stage browser takes 8.4 ms, or 135 ms over all 38,197 prims with instance proxies.
+    - Expanding the widest prim (178 children) takes 0.8 ms.
+    - A box selection over `/root` (1,886 elements) takes about 38 ms from Blender's selection back to Blender. Kind promotion is 1.9 ms of it at the component level and 4.5 ms at the assembly level.
+  - **Q9:** on ALab, every function meets the provisional budgets, the slowest being `apply_selection` with its depsgraph update for a pick (12.3 ms of 50) and `highlight_targets` for the box selection (15.9 ms of 250).
+  - **At scale:** mirroring a selection grows with the display, and a pick's `apply_selection` takes 129 ms at 30,001 objects. Blender's depsgraph update after one selection change is 102 ms of that (an ad hoc probe), and the baseline's walk over every managed object is 26 ms. So, with C3's evaluation after updates, past about 10,000 objects Blender's per-object costs alone exceed the interaction budget. That is a reason to weigh batching in Phase D, if scenes that large are in scope.
 
 ### Phase D — Targeted alternatives
 

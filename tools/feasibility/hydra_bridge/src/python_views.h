@@ -9,6 +9,7 @@
 
 #include <pxr/external/boost/python.hpp>
 
+#include <cstddef>
 #include <string>
 
 namespace hydra_bridge {
@@ -71,6 +72,9 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
 // "objects": [old index or -1 per new entry], "changed" and "repointable": [new object indices], "removed": [old
 // object indices]}.
 bp::dict DiffPlanViews(const PlanView &published, const PlanView &next);
+
+// M4 (C4): derives the plan's correspondence again without the GIL, for timing; returns the universe's size.
+std::size_t RebuildCorrespondence(const PlanView &plan);
 
 void WrapViews();
 

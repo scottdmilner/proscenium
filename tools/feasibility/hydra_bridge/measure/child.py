@@ -4,7 +4,8 @@
 
 The config names the mode, scene, time code, module directory, and output paths. An update mode (M4 Phase C)
 runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
-planning, diff, and update that follow; the initial scenario saves the .blend instead. The child writes a marker
+planning, diff, and update that follow; the initial scenario saves the .blend instead. The interaction mode
+times the interaction functions after it (interaction_timing.py). The child writes a marker
 (JSON line) at every stage boundary with its CPU time and lifetime memory peaks; the parent samples the
 process from outside and aligns its samples to these markers. Settle windows hold still for a while so the
 parent can read memory at rest.
@@ -26,6 +27,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
 import bpy  # noqa: E402
+import interaction_timing  # noqa: E402
 import memory  # noqa: E402
 import scenarios  # noqa: E402
 
@@ -209,6 +211,12 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=False)
         done("save")
         facts["blend bytes"] = blend.stat().st_size
+    elif config["mode"] == "interaction":
+        import selection
+
+        facts["interaction"] = interaction_timing.measure(
+            native, selection, usd_stage, plan, collection, config["time"]
+        )
     elif scenario is not None:
         session = SimpleNamespace(stage=usd_stage, bridge=bridge, plan=plan, display=display, collection=collection)
         facts["update"] = run_update(scenario, config["time"], session, stage, done)

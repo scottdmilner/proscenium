@@ -101,7 +101,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
-| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters; M4 Phase C adds update modes that run `scenarios.py`'s scenarios after a synchronization, on ALab and the generated `updates-N` scenes, and `updates.py` times B6's unit replacements on ALab |
+| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters; M4 Phase C adds update modes that run `scenarios.py`'s scenarios after a synchronization, on ALab and the generated `updates-N` scenes, and an interaction mode (`interaction_timing.py`), and `updates.py` times B6's unit replacements on ALab |
 | `../cases/<case>.py`, `.usda` | One check module and scene per case: `subsets`, `implicit`, `instances`, `edits`, `untranslated`, `malformed`, `bindings`, `purposes`, `primvars`, `animation` (Phase D: what a time change dirties, and values at each time), and `large_arrays` (its scene is generated) |
 
 ## Python API
@@ -120,6 +120,7 @@ plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a
 plan.universe  # sorted USD paths; each object dict also has its "floor"
 _hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
 #   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
+_hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
 interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind

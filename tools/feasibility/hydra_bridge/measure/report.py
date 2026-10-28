@@ -176,7 +176,23 @@ def summarize(runs_dir: Path, scenes: dict[str, dict[str, Any]], environment: di
             "log warnings": runs[0]["warnings"],
             "log errors": runs[0]["errors"],
         }
+        if mode == "interaction":
+            entry["modes"][mode]["interaction"] = _interaction([run["result"]["plan"]["interaction"] for run in runs])
     return summary
+
+
+# M4's provisional interaction budgets: each function, with the Blender updates it triggers (M04 plan, item 4).
+INTERACTION_BUDGETS = {"single": 0.050, "assembly": 0.250}
+
+
+def _interaction(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Each operation's per-run medians, as a median and range over the runs, and the first run's sizes."""
+    first = runs[0]["timings"]
+    timings = {
+        name: (_stats([run["timings"][name]["median"] for run in runs]) or {}) | {"repeats": first[name]["repeats"]}
+        for name in first
+    }
+    return {"runs": len(runs), "timings": timings, "sizes": runs[0]["sizes"]}
 
 
 def _fmt(stat: dict[str, float | None] | None, digits: int = 3) -> str:
@@ -247,6 +263,27 @@ def _updates(entry: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _interaction_lines(entry: dict[str, Any]) -> list[str]:
+    data = entry["modes"].get("interaction", {}).get("interaction")
+    if not data:
+        return []
+    lines = [
+        "",
+        f"Interaction ({data['runs']} runs; each run's median of its repeats, as a median and range over the runs):",
+        "",
+        "| Operation | Repeats per run | ms | Budget ms |",
+        "|---|---|---|---|",
+    ]
+    for name, stat in data["timings"].items():
+        budget = INTERACTION_BUDGETS.get(name.split(":")[0])
+        scaled = {key: value * 1000 for key, value in stat.items() if key in ("median", "min", "max")}
+        lines.append(
+            f"| {name} | {stat['repeats']} | {_fmt(scaled, 3)} | {'—' if budget is None else f'{budget * 1000:.0f}'} |"
+        )
+    lines += ["", f"Sizes: `{json.dumps(data['sizes'])}`"]
+    return lines
+
+
 def markdown(summary: dict[str, Any]) -> str:
     lines = [
         "# Measurements (M1b Phase E, M4 Phase C)",
@@ -294,11 +331,11 @@ def markdown(summary: dict[str, Any]) -> str:
                 f"{_fmt(totals['sync peak MB'], 1)} | {_fmt(totals.get('hydra wall s'))} | "
                 f"{_fmt(totals.get('blender wall s'))} | {_fmt(data['baseline MB'], 1)} | {rest} | {heap} |"
             )
-        lines += _budgets(entry) + _updates(entry)
+        lines += _budgets(entry) + _updates(entry) + _interaction_lines(entry)
         lines += ["", "| Mode | Built (first run) |", "|---|---|"]
         for mode, data in entry["modes"].items():
             built = dict(data["result"]["blender"])
             if "plan" in data["result"]:
-                built["plan"] = {k: v for k, v in data["result"]["plan"].items() if k != "update"}
+                built["plan"] = {k: v for k, v in data["result"]["plan"].items() if k not in ("update", "interaction")}
             lines.append(f"| {mode} | `{json.dumps(built)}` |")
     return "\n".join(lines) + "\n"

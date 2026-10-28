@@ -200,7 +200,13 @@ def main() -> int:
         default=1,
         help="unrecorded runs per scene before its repeats, of each side's first mode, for the file cache and loader",
     )
-    parser.add_argument("--modes", nargs="*", default=MODES, choices=MODES, help="synchronization modes")
+    parser.add_argument(
+        "--modes",
+        nargs="*",
+        default=MODES,
+        choices=[*MODES, "interaction"],
+        help="synchronization modes; interaction (M4 Phase C) times the interaction functions after one",
+    )
     parser.add_argument(
         "--scenarios",
         nargs="*",

@@ -825,6 +825,74 @@ The files save to 1.3, 8.0, and 74.5 MB uncompressed.
   Not investigated. Together they are most of every small update on ALab.
 - **Coexisting memory** for ALab's small updates is 19–25 MB, and 62 MB for the time step. Loading every payload builds the whole display beside an almost empty one: 1,073 MB.
 
+#### Interaction at scale (M4 Phase C)
+
+The baseline's interaction functions after a synchronization, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes interaction`.
+
+**Method** (`measure/interaction_timing.py`): each process synchronizes, then times each operation in process with a monotonic clock. Each operation is repeated 20 times, or 5 for whole-browser and whole-assembly ones, and takes its median. The tables give the median and range of those medians over three processes, after one unrecorded warmup per scene.
+- **The pick:** a viewport element inside the deepest instance context.
+- **The box selection:** every viewport element under the top-level prim with the most of them; on ALab that is `/root`, kind `assembly`, with 1,886 elements.
+- **The chain,** as the contract has it:
+  - `select_targets` at the prim level and at the `component` and `assembly` levels;
+  - `highlight_targets` (`component` for the pick, `assembly` for the box selection);
+  - `apply_selection`, timed with the depsgraph update it triggers;
+  - `read_blender_selection`;
+  - `selection_from_blender` at each level.
+
+  The box selection's `resolve_pick` is one call per element.
+- **The other payload policy:** the universe without payloads comes from a capture after unloading every payload.
+- **Budgets:** the provisional ones are 50 ms for each function on a single pick or entry and 250 ms on a whole-assembly selection, with their Blender updates ([M4 plan](../plans/M04-prototypes.md), settled item 4).
+
+| | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Objects | 301 | 3,001 | 7,018 | 30,001 |
+| Universe, payloads loaded | 305 | 3,005 | 2,020 | 30,005 |
+| Universe, no payloads | 204 | 2,004 | 0 | 20,004 |
+| Stage browser prims | 310 | 3,010 | 2,962 | 30,010 |
+| Stage browser prims, with instance proxies | 610 | 6,010 | 38,197 | 60,010 |
+| Children of the widest prim | 100 | 1,000 | 178 | 10,000 |
+| Viewport elements in the box selection | 301 | 3,001 | 1,886 | 30,001 |
+
+ALab's payloads hold all of its displayed content, so without them nothing is displayed.
+
+| Operation (ms) | Repeats | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|---|
+| derive the universe | 20 | 0.104 (0.093–0.127) | 1.290 (1.276–1.298) | 1.884 (1.864–2.206) | 19.122 (18.363–19.939) |
+| `displayed`, every prim | 5 | 0.382 (0.259–0.421) | 3.577 (3.064–3.599) | 8.381 (7.944–8.981) | 36.087 (35.697–42.060) |
+| `displayed`, with instance proxies | 5 | 0.658 (0.638–0.804) | 6.813 (6.679–7.021) | 135.080 (134.669–137.192) | 81.783 (80.886–85.461) |
+| expand the widest prim | 20 | 0.254 (0.241–0.265) | 2.703 (2.625–2.973) | 0.823 (0.748–0.837) | 32.323 (31.515–32.947) |
+| pick: `resolve_pick` | 20 | 0.001 | 0.001 | 0.001 | 0.001 |
+| pick: `select_targets`, prim level | 20 | 0.003 | 0.002 | 0.005 | 0.002 |
+| pick: `select_targets`, component | 20 | 0.003 | 0.003 | 0.005 (0.005–0.006) | 0.003 |
+| pick: `select_targets`, assembly | 20 | 0.003 | 0.003 | 0.007 (0.006–0.007) | 0.003 |
+| pick: `highlight_targets` | 20 | 0.001 | 0.001 | 0.003 | 0.001 |
+| pick: `apply_selection`, with the depsgraph update | 20 | 0.594 (0.556–0.622) | 9.984 (9.957–10.120) | 12.258 (12.210–12.301) | **129.475 (125.632–131.329)** |
+| pick: `read_blender_selection` | 20 | 0.140 (0.137–0.150) | 1.448 (1.398–1.937) | 4.036 (4.008–4.382) | 22.590 (22.031–24.704) |
+| pick: `selection_from_blender`, prim level | 20 | 0.001 | 0.001 | 0.001 | 0.001 |
+| pick: `selection_from_blender`, component | 20 | 0.002 | 0.002 | 0.002 | 0.002 |
+| pick: `selection_from_blender`, assembly | 20 | 0.002 | 0.002 | 0.003 (0.002–0.005) | 0.002 |
+| box: `resolve_pick`, per element | 5 | 0.225 (0.221–0.225) | 2.322 (2.290–2.430) | 1.917 (1.649–1.921) | 32.189 (28.483–35.264) |
+| box: `select_targets`, prim level | 5 | 0.543 (0.528–0.898) | 5.498 (5.413–5.593) | 9.478 (9.010–10.821) | 72.594 (71.416–73.056) |
+| box: `select_targets`, component | 5 | 0.725 (0.698–0.935) | 7.340 (7.041–8.495) | 13.047 (12.342–13.135) | 96.808 (94.137–104.429) |
+| box: `select_targets`, assembly | 5 | 0.701 (0.681–0.729) | 7.132 (7.036–7.647) | 14.277 (13.944–15.061) | 95.723 (92.386–112.540) |
+| box: `highlight_targets` | 5 | 0.290 (0.277–0.301) | 3.114 (3.062–3.512) | 15.863 (15.526–16.114) | 42.927 (41.558–47.298) |
+| box: `apply_selection`, with the depsgraph update | 5 | 0.491 (0.476–0.606) | 9.545 (9.200–11.580) | 12.642 (12.167–12.703) | 122.474 (121.890–136.204) |
+| box: `read_blender_selection` | 5 | 0.150 (0.145–0.171) | 1.942 (1.480–2.033) | 4.159 (4.107–4.580) | 23.259 (22.781–25.991) |
+| box: `selection_from_blender`, prim level | 5 | 0.053 (0.050–0.060) | 0.516 (0.502–0.708) | 0.438 (0.416–0.567) | 6.218 (6.136–8.597) |
+| box: `selection_from_blender`, component | 5 | 0.224 (0.223–0.227) | 2.746 (2.585–3.016) | 2.379 (2.018–2.872) | 32.324 (31.245–37.427) |
+| box: `selection_from_blender`, assembly | 5 | 0.226 (0.224–0.230) | 2.721 (2.597–2.766) | 4.977 (4.340–5.426) | 30.456 (30.456–36.391) |
+
+**Findings:**
+- **On ALab every function is within its budget.** A pick's slowest function is `apply_selection` with its depsgraph update, 12.3 ms, against 50 ms. A box selection's slowest is `highlight_targets`, 15.9 ms, against 250 ms. The box selection's chain from Blender's selection back to Blender takes about 38 ms in all: `read_blender_selection`, `selection_from_blender` at the assembly level, `highlight_targets`, and `apply_selection`.
+- **Kind promotion's share** of `selection_from_blender` on ALab's box selection: 1.9 ms at the component level and 4.5 ms at the assembly level, over 0.4 ms at the prim level.
+- **The universe is small beside the display:** ALab's 7,018 objects are 2,020 universe prims, since instance contents are not in it. Deriving it takes 1.9 ms on ALab and grows with the display: 19.1 ms at 30,001 objects.
+- **The whole stage browser** takes 8.4 ms on ALab without instance proxies. With them, 38,197 paths, it takes 135 ms, about 3.5 µs a path. Expanding one prim is a fraction of that.
+- **Mirroring a selection grows with the display:** a pick's `apply_selection` takes 129 ms at 30,001 objects, over the budget. In an ad hoc probe in the same binary, with 30,000 objects in one collection:
+  - the depsgraph update after one `select_set` took 102 ms (91–108 ms) by itself;
+  - `apply_selection`, which sets every managed object's selection, took 26 ms, 9 ms of it collecting the managed objects.
+
+  `read_blender_selection` likewise reads every managed object: 23 ms at 30,001.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
