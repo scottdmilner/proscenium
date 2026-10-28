@@ -120,6 +120,7 @@ void ReadSourceInfo(const HdContainerDataSourceHandle &source, PrimRecord &recor
     record.isGprim = ValueOr(HdBoolDataSource::Cast(get(SourceInfoTokens::IsGprim())), false);
     if (auto doubleSided = HdBoolDataSource::Cast(get(SourceInfoTokens::DoubleSided())))
         record.sourceDoubleSided = doubleSided->GetTypedValue(kNow);
+    record.resetsXformStack = ValueOr(HdBoolDataSource::Cast(get(SourceInfoTokens::ResetsXformStack())), false);
     for (const TfToken &purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
         if (auto visibility = HdTokenDataSource::Cast(get(purpose)))
             record.purposeVisibility.emplace_back(purpose, visibility->GetTypedValue(kNow));

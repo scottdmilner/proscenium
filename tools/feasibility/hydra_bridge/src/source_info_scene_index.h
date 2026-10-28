@@ -4,6 +4,8 @@
 // - authored guide, proxy, and render visibility (UsdGeomVisibilityAPI is not imaged), as UsdImaging
 //   attribute data sources, so animated opinions read at the graph's time and are dirtied when it changes;
 // - a gprim's doubleSided (the implicit-surface filter loses a Cube's authored true);
+// - whether an xformable prim resets the transform stack, which flattening hides (WORKAROUND for OpenUSD #862,
+//   ResetsBelow in instancing.h);
 // - USD's verdict on a mesh's materialBind family (UsdGeomSubset::ValidateFamily);
 // - an extent computed by USD (ComputeExtentFromPlugins) for a point-based prim Hydra gives none, such as
 //   curves or points, so its placeholder can show bounds;

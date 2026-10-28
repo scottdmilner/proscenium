@@ -29,22 +29,51 @@ def apply_scene(module_dir: str, scene: str) -> dict[str, Any]:
 
     stage = Usd.Stage.Open(scene)
     bridge = native.Bridge(stage)
-    plan = native.build_plan(bridge.capture())
+    snapshot = bridge.capture()
+    plan = native.build_plan(snapshot)
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
     objects = apply.apply(plan, collection)
-    bridge.release()
-    return {
-        "objects": [_object(obj) for obj in objects],
+    result = {
+        "objects": [_object(record, obj) for record, obj in zip(plan.objects, objects, strict=True)],
+        "hydra_world": _hydra_world(snapshot),
         "errors": [d for d in plan.diagnostics if d["severity"] == "error"],
     }
+    bridge.release()
+    return result
 
 
-def _object(obj: Any) -> dict[str, Any]:
+def _rows(matrix: Any) -> list[list[float]]:
+    return [[matrix[row][col] for col in range(4)] for row in range(4)]
+
+
+def _hydra_world(snapshot: Any) -> dict[str, list[list[float]]]:
+    """Hydra's own world transform of each mesh in a top-level instance: its matrix, then the instance's.
+
+    The transform a Hydra consumer composes from the snapshot, before the planner's corrections; keyed by the
+    drawn copy's USD path (instance location and the mesh's prototype-relative origin).
+    """
+    result = {}
+    for path in snapshot.paths():
+        prim = snapshot.prim(path)
+        by = prim.get("instanced_by")
+        if prim["type"] != "mesh" or not by:
+            continue
+        instancer = snapshot.prim(by["instancers"][0])
+        if instancer.get("instanced_by"):  # nested: its frame is itself composed
+            continue
+        transforms = instancer["primvars"]["hydra:instanceTransforms"]["values"]
+        for location, transform in zip(instancer["instancer"]["locations"], transforms, strict=True):
+            result[f"{location}/{prim['origin']}"] = _rows(prim["matrix"] * transform)
+    return result
+
+
+def _object(record: Any, obj: Any) -> dict[str, Any]:
     mesh = obj.data if obj.type == "MESH" else None
     return {
         "source": obj["proscenium_source"],
+        "plan_world": _rows(record["matrix"]),  # USD's row-vector convention
         "instance_context": list(obj["proscenium_instance_context"]),
         "placeholder": obj.get("proscenium_placeholder"),
         # Blender's own name for the mesh data, so objects that share it report the same name.

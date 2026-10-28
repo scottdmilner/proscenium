@@ -33,6 +33,8 @@ struct SourceInfoTokens {
     // token array, on an imageable prim or subset without MaterialBindingAPI: its authored material:binding
     // relationships, which UsdShade still honors (with a warning) for compatibility
     static const pxr::TfToken &BindingsWithoutApi();
+    // bool, on an xformable prim: true if its xformOpOrder resets the transform stack (Hydra's flattening hides it)
+    static const pxr::TfToken &ResetsXformStack();
     // The purpose-visibility fields are named by the purpose they control: guide, proxy, render.
 };
 

@@ -64,6 +64,13 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
 pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame,
                            const pxr::TfToken &purpose);
 
+// WORKAROUND for OpenUSD #862: true if `path` or an ancestor below `prototypeRoot` resets the transform stack.
+// In UsdGeom a reset inside an instance drops every ancestor's transform, the instance roots' included, but
+// Hydra's instancers apply the instance's transform anyway, and its flattening marks every transform as
+// resetting the stack, so the reset comes from the source-info filter. A drawn copy in a frame then takes its
+// own flattened transform alone. Checked by tests/isolated/test_baseline.py, which also asserts the gap.
+bool ResetsBelow(const PrimTable &table, pxr::SdfPath path, const pxr::SdfPath &prototypeRoot);
+
 class InstanceResolver {
 public:
     // Diagnostics about malformed or unsupported instancers go to `diagnostics`.

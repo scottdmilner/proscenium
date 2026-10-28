@@ -121,6 +121,12 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
     return purpose == HdRenderTagTokens->guide ? *opinion == kVisible : *opinion != kInvisible;
 }
 
+bool ResetsBelow(const PrimTable &table, SdfPath path, const SdfPath &prototypeRoot) {
+    for (; !path.IsEmpty() && path != prototypeRoot && !path.IsAbsoluteRootPath(); path = path.GetParentPath())
+        if (const PrimRecord *prim = table.Find(path); prim && prim->resetsXformStack) return true;
+    return false;
+}
+
 InstanceResolver::InstanceResolver(const PrimTable &table, Diagnostics &diagnostics)
     : table_(table),
       diagnostics_(diagnostics) {}
@@ -184,13 +190,16 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                 invalidIndex = true;
                 continue;
             }
+            const SdfPath &location = topology.instanceLocations[index];
             Frame frame;
             frame.hydraRoot = prototypeRoot;
-            frame.usdRoot = outer.Map(topology.instanceLocations[index]);
+            frame.usdRoot = outer.Map(location);
             frame.context = outer.context;
             frame.context.push_back(frame.usdRoot);
-            // Row vectors: the instance's own transform first, then the frame it sits in.
-            frame.world = (*transforms)[index] * outer.world;
+            // Row vectors: the instance's own transform first, then the frame it sits in, unless the instance root
+            // or an ancestor inside the outer prototype resets the stack (WORKAROUND for OpenUSD #862).
+            frame.world = ResetsBelow(table_, location, outer.hydraRoot) ? (*transforms)[index]
+                                                                         : (*transforms)[index] * outer.world;
             frame.visible =
                 outer.visible && (topology.mask.empty() || (index < topology.mask.size() && topology.mask[index]));
             // The instance root's own constant primvars, flattened within its namespace, with the type and
@@ -208,7 +217,6 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                         invalidPrimvar = true;
                 }
             }
-            const SdfPath &location = topology.instanceLocations[index];
             static const std::array kPurposesBound{TfToken(), TfToken("preview"), TfToken("full")};
             if (const PrimRecord *root = table_.Find(location)) {
                 for (const TfToken &purpose : kPurposesBound) {

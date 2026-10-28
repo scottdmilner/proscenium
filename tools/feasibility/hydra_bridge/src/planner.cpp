@@ -165,7 +165,9 @@ private:
             object.mesh = mesh;
             object.placeholderType = placeholderType;
             if (mesh == -1) object.bounds = prim.extent;
-            object.matrix = prim.matrix.value_or(GfMatrix4d(1.0)) * frame.world;
+            object.matrix = prim.matrix.value_or(GfMatrix4d(1.0));
+            // A reset inside the prototype drops the instance's transform too (WORKAROUND for OpenUSD #862).
+            if (!ResetsBelow(table_, prim.path, frame.hydraRoot)) object.matrix *= frame.world;
             object.visible = EffectivelyVisible(table_, prim, frame);
             object.purpose = purpose;
             object.constantPrimvars = Constants(prim, own, frame);

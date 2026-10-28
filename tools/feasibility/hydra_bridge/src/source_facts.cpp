@@ -75,6 +75,10 @@ const TfToken &SourceInfoTokens::BindingsWithoutApi() {
     static const TfToken token("bindingsWithoutApi");
     return token;
 }
+const TfToken &SourceInfoTokens::ResetsXformStack() {
+    static const TfToken token("resetsXformStack");
+    return token;
+}
 const TfToken &SourceInfoTokens::DroppedAttributes() {
     static const TfToken token("droppedAttributes");
     return token;
@@ -125,8 +129,9 @@ bool DroppedAttribute(const UsdPrim &prim, const TfToken &name) {
 }
 
 bool SourceFact(const UsdPrim &prim, const TfToken &name) {
-    static const std::array kNames{TfToken("familyName"), TfToken("doubleSided"), TfToken("guideVisibility"),
-                                   TfToken("proxyVisibility"), TfToken("renderVisibility")};
+    static const std::array kNames{TfToken("familyName"),       TfToken("doubleSided"),
+                                   TfToken("guideVisibility"),  TfToken("proxyVisibility"),
+                                   TfToken("renderVisibility"), UsdGeomTokens->xformOpOrder};
     const std::string &text = name.GetString();
     if (std::find(kNames.begin(), kNames.end(), name) != kNames.end() || TfStringStartsWith(text, "material:binding") ||
         TfStringStartsWith(text, "collection:") || TfStringStartsWith(text, "subsetFamily:"))
@@ -222,6 +227,10 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim &prim, const UsdImagingData
             !UsdGeomSubset::ValidateFamily(mesh, UsdGeomTokens->face, kMaterialBind, &reason))
             add(SourceInfoTokens::FamilyIssue(), Retained(TfToken(reason)));
     }
+    // WORKAROUND for OpenUSD #862 (ResetsBelow in instancing.h): Hydra marks every
+    // flattened transform as resetting the stack, so only USD can say which prims reset it.
+    if (const UsdGeomXformable xformable{prim}; xformable && xformable.GetResetXformStack())
+        add(SourceInfoTokens::ResetsXformStack(), Retained(true));
     if (const UsdGeomSubset subset{prim}) {
         TfToken family;
         if (subset.GetFamilyNameAttr().Get(&family)) add(SourceInfoTokens::FamilyName(), Retained(family));

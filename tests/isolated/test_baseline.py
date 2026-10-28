@@ -1,8 +1,8 @@
 """M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and apply.py build in Blender.
 
-One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag
-and materials, on the two feasibility fixtures. Expected values come from how the fixtures are built and from
-UsdGeom and UsdShade; appearance values (transforms, colors, shading) are B4's.
+One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag,
+materials, and world transform, on the two feasibility fixtures. Expected values come from how the fixtures are
+built and from UsdGeom and UsdShade.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from pxr import Tf, Usd, UsdGeom, UsdShade
+from pxr import Gf, Tf, Usd, UsdGeom, UsdShade
 
 from fixtures import appearance
 
@@ -50,9 +50,14 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[BaselineS
 
 
 @pytest.fixture
-def applied(scene: BaselineScene, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> list[dict[str, Any]]:
+def result(scene: BaselineScene, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> dict[str, Any]:
     result = run_isolated(wheel, BODY, "apply_scene", tmp_path, module_dir=str(hydra_bridge), scene=str(scene.root))
     assert result["errors"] == []
+    return result
+
+
+@pytest.fixture
+def applied(result: dict[str, Any]) -> list[dict[str, Any]]:
     return result["objects"]
 
 
@@ -73,6 +78,15 @@ def _ancestors(prim: Usd.Prim) -> Generator[Usd.Prim]:
     while prim and not prim.IsPseudoRoot():
         yield prim
         prim = prim.GetParent()
+
+
+def _resets_in_instance(prim: Usd.Prim) -> bool:
+    """Whether a drawn copy or an ancestor below its nearest instance root resets the transform stack."""
+    while prim and not prim.IsPseudoRoot() and not prim.IsInstance():
+        if UsdGeom.Xformable(prim).GetResetXformStack():
+            return True
+        prim = prim.GetParent()
+    return False
 
 
 def _bound(prim: Usd.Prim, purpose: str) -> str | None:
@@ -142,3 +156,31 @@ def test_shared_meshes_hold_equivalent_geometry(scene: BaselineScene, applied: l
     for obj in applied:
         users[obj["mesh"]].add(geometry(obj["source"]))
     assert all(len(geometries) == 1 for geometries in users.values()), users
+
+
+def test_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Shear, negative and nonuniform scale, and a reset stack inside instances (XFORM-01 to XFORM-03), in the plan.
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    wrong = [
+        o["source"]
+        for o in applied
+        if not Gf.IsClose(Gf.Matrix4d(o["plan_world"]), cache.GetLocalToWorldTransform(drawn[o["source"]]), 1e-6)
+    ]
+    assert not wrong
+
+
+def test_known_gap_hydra_ignores_a_reset_inside_an_instance(scene: BaselineScene, result: dict[str, Any]) -> None:
+    # WORKAROUND for OpenUSD #862 (ResetsBelow in the bridge's instancing.h): Hydra's own composition, a copy's
+    # flattened transform then its instance's, is wrong exactly for the copies under a reset inside an instance.
+    # This fails once Hydra honors the reset, and the workaround can go.
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    hydra = result["hydra_world"]
+    wrong = {
+        s
+        for s, rows in hydra.items()
+        if not Gf.IsClose(Gf.Matrix4d(rows), cache.GetLocalToWorldTransform(drawn[s]), 1e-6)
+    }
+    assert hydra
+    assert wrong == {s for s in hydra if _resets_in_instance(drawn[s])}
