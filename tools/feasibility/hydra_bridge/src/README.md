@@ -49,7 +49,8 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
    - placeholders for untranslated types: a bounding box when Hydra has an extent, otherwise an empty marker;
    - for each object, whether it displays in the viewport and the final render: its effective visibility (purpose visibility included) and whether the destination includes its purpose;
    - each object's materials per slot, resolved for the material purpose of each destination it displays in, falling back to allPurpose as UsdShade does. A prim shown in both with different materials gets two objects sharing its mesh;
-   - diagnostics.
+   - diagnostics;
+   - the correspondence derived from the objects (M4): each object's floor, the outermost native-instance root in its context or else its source, and the browsing universe, the floors of the viewport's objects and their ancestors.
 
    Sources in a plan are USD paths; Hydra paths and instance indices never are.
 4. **Application** (`../apply.py`) passes the plan's Vt arrays to `foreach_set` as flat `memoryview`s, with no Python-side copy.
@@ -71,6 +72,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
 | `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
+| `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects, each object's floor and the browsing universe (sorted, so a subtree is one range) |
 | `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
@@ -107,6 +109,7 @@ snapshot.copied, snapshot.diagnostics, snapshot.time  # prims copied by this cap
 plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, viewport_material_purpose,
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
+plan.universe  # sorted USD paths; each object dict also has its "floor"
 bridge.release()  # lets a caller-released stage expire; capture() then raises
 snapshot.copy_bindings  # workaround for OpenUSD #3690: {"instances": [...], "materials": {copy: {purpose: material}}}
 _hydra_bridge.take_filter_timings()  # Phase E: {kind: (calls, seconds)} of the filter's USD reads since the last call

@@ -76,6 +76,7 @@ public:
                 AddObjects(prim, -1, prim.usdTypeName);
         }
         for (const Diagnostic &diagnostic : snapshot_.diagnostics) MapToSources(diagnostic);
+        plan_->correspondence = BuildCorrespondence(*plan_);
         return plan_;
     }
 

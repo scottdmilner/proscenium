@@ -65,7 +65,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-NO-OP-REFRESH` | **No-op refresh:** resource counts and diagnostics follow [Resource Stability](../spec/lifecycle.md#resource-stability), including separate pending-cleanup accounting and recovery; in Phase 2, zero unnecessary writes. |
 | `F-KIND-HIERARCHY` | **Kind hierarchy:** an assembly, group, and component above meshes, a mesh under no model, and intermediate prims with nothing Hydra needs to keep; selection by kind and expansion follow the composed stage. |
 | `F-NESTED-SELECTION` | **Selection floors in nested native instances:** one prototype used inside and outside an outer instance, and a kind on an instance root; nothing inside instance contents is a selection target. |
-| `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |
+| `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a guide made explicitly visible by an ancestor's `guideVisibility`, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |
 
 ## Incremental Synchronization Tests
 

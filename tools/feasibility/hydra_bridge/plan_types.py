@@ -58,6 +58,7 @@ class MaterialRecord(TypedDict):
 class ObjectRecord(TypedDict):
     source: str  # USD path
     instance_context: tuple[str, ...]  # native instance roots, outermost first
+    floor: str  # USD path: the outermost native instance root, or the source outside instance contents
     mesh: int | None  # into Plan.meshes; None for a placeholder
     placeholder_type: str | None  # the untranslated type, for a placeholder
     # A placeholder's local (min, max), when it has an extent. Gf.Vec3d at run time; Sequence because the
@@ -92,5 +93,7 @@ class Plan(Protocol):
     def materials(self) -> list[MaterialRecord]: ...
     @property
     def objects(self) -> list[ObjectRecord]: ...
+    @property
+    def universe(self) -> list[str]: ...  # USD paths, sorted: the browsing universe
     @property
     def diagnostics(self) -> list[DiagnosticRecord]: ...

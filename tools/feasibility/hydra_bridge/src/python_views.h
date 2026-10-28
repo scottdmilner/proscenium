@@ -37,6 +37,7 @@ struct PlanView {
     bp::list Materials() const;
     bp::list Objects() const;
     bp::list Diagnostics() const;
+    bp::list Universe() const;
 };
 
 // Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",

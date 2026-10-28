@@ -277,10 +277,12 @@ bp::list PlanView::Materials() const {
 
 bp::list PlanView::Objects() const {
     bp::list result;
-    for (const ObjectEntry &object : data->objects) {
+    for (size_t i = 0; i < data->objects.size(); ++i) {
+        const ObjectEntry &object = data->objects[i];
         bp::dict record;
         record["source"] = object.source.GetString();
         record["instance_context"] = bp::tuple(PathList(object.instanceContext));
+        record["floor"] = data->correspondence.floors[i].GetString();
         record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
         record["placeholder_type"] = object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
         record["bounds"] = RangeOrNone(object.bounds);
@@ -300,6 +302,8 @@ bp::list PlanView::Objects() const {
 }
 
 bp::list PlanView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
+
+bp::list PlanView::Universe() const { return PathList(data->correspondence.universe); }
 
 namespace {
 
@@ -370,6 +374,7 @@ void WrapViews() {
         .add_property("meshes", &PlanView::Meshes)
         .add_property("materials", &PlanView::Materials)
         .add_property("objects", &PlanView::Objects)
+        .add_property("universe", &PlanView::Universe)
         .add_property("diagnostics", &PlanView::Diagnostics);
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),

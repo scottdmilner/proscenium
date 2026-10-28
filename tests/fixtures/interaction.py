@@ -128,7 +128,14 @@ def nested_selection(dest: Path) -> Generator[InteractionScene]:
 def universe_membership(dest: Path) -> Generator[InteractionScene]:
     """F-UNIVERSE-MEMBERSHIP: see scenes/interaction/universe_membership.usda. /World/Payload is unloaded."""
     always = frozenset(
-        {"/World/Shown/Box", "/World/Proxy/Box", "/World/Mixed/Shown", "/World/Placeholder", "/World/Marker"}
+        {
+            "/World/Shown/Box",
+            "/World/Proxy/Box",
+            "/World/Mixed/Shown",
+            "/World/VisibleGuide/Box",
+            "/World/Placeholder",
+            "/World/Marker",
+        }
     )
     blinker = "/World/Blinker/Box"
     root, stage = _open(dest, "universe_membership.usda")

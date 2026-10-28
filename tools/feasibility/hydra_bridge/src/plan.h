@@ -3,6 +3,7 @@
 // Sources are USD paths (instance proxies inside native instances); Hydra paths never are.
 #pragma once
 
+#include "correspondence.h"
 #include "diagnostics.h"
 #include "properties.h"
 #include "snapshot.h"
@@ -88,7 +89,8 @@ struct Plan {
     std::vector<MeshData> meshes;
     std::vector<MaterialData> materials;
     std::vector<ObjectEntry> objects;
-    Diagnostics diagnostics;  // sources are USD paths
+    Correspondence correspondence;  // derived from the objects once they are all planned
+    Diagnostics diagnostics;        // sources are USD paths
 };
 
 using PlanPtr = std::shared_ptr<const Plan>;

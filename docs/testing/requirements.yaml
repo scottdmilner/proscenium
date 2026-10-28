@@ -910,7 +910,7 @@ requirements:
       - id: ICON-11
         quote: "every prim outside native-instance contents that has a viewport display element of its own"
         fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
-        oracle: "displayed is true exactly for the prims the oracle finds with a viewport display element in their subtree (including placeholders, empty markers, and native instances), from UsdGeomImageable visibility and purpose and instance traversal."
+        oracle: "displayed is true exactly for the prims the oracle finds with a viewport display element in their subtree (including placeholders, empty markers, and native instances), from UsdGeomImageable effective visibility for each prim's purpose (an explicitly visible guide included) and instance traversal."
       - id: ICON-12
         quote: "Content displayed only in the final render destination is not in the universe."
         fixtures: [F-UNIVERSE-MEMBERSHIP]
@@ -1387,6 +1387,7 @@ requirements:
         risk: high
       - id: VIS-04
         quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
 
   - section: spec/support/visibility.md#models-and-unsupported-content
     delivery: M6

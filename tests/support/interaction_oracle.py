@@ -4,8 +4,8 @@ M2 provides it with the interaction fixtures (fixtures/interaction.py); M4 write
 checks of each representation's headless functions against it, and M7 and M10 reuse them.
 
 Nothing here reads a display: hierarchy and kinds come from the stage (Usd.ModelAPI,
-Kind.Registry), and what the viewport displays from UsdGeom.Imageable visibility and
-purpose with instance-proxy traversal. Paths are strings. Inside native-instance
+Kind.Registry), and what the viewport displays from UsdGeom.Imageable's effective visibility
+for each prim's purpose, with instance-proxy traversal. Paths are strings. Inside native-instance
 contents an entity is named by its instance-proxy path, which carries its instance
 context; checks translate to and from the implementation's encoding.
 """
@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from pxr import Kind, Sdf, Tf, Usd, UsdGeom
 
 GPRIM = Tf.Type.Find(UsdGeom.Gprim)
-VIEWPORT_PURPOSES = frozenset({UsdGeom.Tokens.default_, UsdGeom.Tokens.proxy})  # visibility.md#visibility-and-purpose
+# The viewport's purposes (visibility.md#visibility-and-purpose). A guide is in it only when explicitly visible, which
+# effective visibility gives: guideVisibility falls back to invisible, unlike proxyVisibility.
+VIEWPORT_PURPOSES = frozenset({UsdGeom.Tokens.default_, UsdGeom.Tokens.proxy, UsdGeom.Tokens.guide})
 
 
 def all_paths(stage: Usd.Stage) -> list[str]:
@@ -37,9 +39,10 @@ def display_elements(stage: Usd.Stage, time: float) -> frozenset[str]:
         if not prim.IsA(GPRIM):
             continue
         imageable = UsdGeom.Imageable(prim)
-        if imageable.ComputeVisibility(Usd.TimeCode(time)) == UsdGeom.Tokens.invisible:
+        purpose = imageable.ComputePurposeInfo().purpose
+        if purpose not in VIEWPORT_PURPOSES:
             continue
-        if imageable.ComputePurposeInfo().purpose in VIEWPORT_PURPOSES:
+        if imageable.ComputeEffectiveVisibility(purpose, Usd.TimeCode(time)) != UsdGeom.Tokens.invisible:
             found.add(str(prim.GetPath()))
     return frozenset(found)
 

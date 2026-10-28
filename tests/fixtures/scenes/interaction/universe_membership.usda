@@ -1,9 +1,9 @@
 #usda 1.0
 # F-UNIVERSE-MEMBERSHIP (tests/fixtures/interaction.py): which prims are in the browsing universe.
 # Each child of /World is one case, named for it. In the universe: shown and proxy-purpose meshes,
-# the shown half of Mixed, a curves prim (a placeholder, since curves are deferred), and a points
-# prim with no points or extent (an empty marker). Not in it: an invisible subtree, guide- and
-# render-only subtrees, an inactive prim, a payload the fixture leaves unloaded, a materials
+# the shown half of Mixed, a guide subtree made explicitly visible by guideVisibility on its root,
+# a curves prim (a placeholder, since curves are deferred), and a points prim with no points or
+# extent (an empty marker). Not in it: an invisible subtree, guide- and render-only subtrees, an inactive prim, a payload the fixture leaves unloaded, a materials
 # scope, an Xform with nothing beneath, a camera (no display support), and the abstract
 # /Prototypes. Blinker's visibility is animated: displayed at time 0, invisible at time 5.
 (
@@ -52,6 +52,22 @@ def Xform "World"
 
     def Xform "Guide"
     {
+        uniform token purpose = "guide"
+
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
+    }
+
+    def Xform "VisibleGuide" (
+        prepend apiSchemas = ["VisibilityAPI"]
+    )
+    {
+        uniform token guideVisibility = "visible"
         uniform token purpose = "guide"
 
         def Mesh "Box"
