@@ -46,8 +46,8 @@ bool SameProperties(const ObjectEntry &a, const ObjectEntry &b) {
     return true;
 }
 
-// Everything apply.py sets from an object entry; its mesh and slots are compared through the diff's mappings.
-bool SameObject(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff &diff) {
+// Whether the object's mesh and each slot's material are the old ones, through the diff's mappings.
+bool SameData(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff &diff) {
     const int mesh = next.mesh == -1 ? -1 : diff.meshes[static_cast<std::size_t>(next.mesh)];
     if (mesh != old.mesh || (next.mesh != -1 && mesh == -1)) return false;
     if (next.materialSlots.size() != old.materialSlots.size()) return false;
@@ -56,9 +56,15 @@ bool SameObject(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff 
         const int material = slot == -1 ? -1 : diff.materials[static_cast<std::size_t>(slot)];
         if (material != old.materialSlots[i] || (slot != -1 && material == -1)) return false;
     }
+    return true;
+}
+
+// Everything else apply.py sets from an object entry. A placeholder and a mesh object differ here too.
+bool SameRest(const ObjectEntry &next, const ObjectEntry &old) {
     return std::tie(next.placeholderType, next.bounds, next.matrix, next.visible, next.purpose,
                     next.constantPrimvars) ==
                std::tie(old.placeholderType, old.bounds, old.matrix, old.visible, old.purpose, old.constantPrimvars) &&
+           (next.mesh == -1) == (old.mesh == -1) && next.materialSlots.size() == old.materialSlots.size() &&
            SameProperties(next, old);
 }
 
@@ -99,8 +105,12 @@ PlanDiff DiffPlans(const Plan &published, const Plan &next) {
         diff.objects.push_back(old);
         if (old == -1) continue;
         matched[static_cast<std::size_t>(old)] = true;
-        if (!SameObject(next.objects[i], published.objects[static_cast<std::size_t>(old)], diff))
-            diff.changed.push_back(static_cast<int>(i));
+        const ObjectEntry &entry = next.objects[i];
+        const ObjectEntry &before = published.objects[static_cast<std::size_t>(old)];
+        const bool rest = SameRest(entry, before);
+        if (rest && SameData(entry, before, diff)) continue;
+        diff.changed.push_back(static_cast<int>(i));
+        if (rest) diff.repointable.push_back(static_cast<int>(i));
     }
     for (std::size_t i = 0; i < matched.size(); ++i)
         if (!matched[i]) diff.removed.push_back(static_cast<int>(i));

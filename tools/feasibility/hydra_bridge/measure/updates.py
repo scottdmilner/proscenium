@@ -4,7 +4,7 @@
 
 Runs in the bpy wheel, in one process, timing each step with a monotonic clock. A full synchronization
 (capture, planning, construction, depsgraph evaluation) comes first. Then one real edit: a translation of one
-object outside instances, followed by an incremental capture, planning, and the object's replacement. Then each
+object outside instances, followed by an incremental capture, planning, the plan diff, and the update. Then each
 of update.py's sample units is replaced from the unchanged plan, under both user policies where they differ:
 prepare, publish, retire, and the depsgraph evaluation after it. Writes <out>/updates.json.
 """
@@ -47,20 +47,20 @@ def evaluate() -> None:
     view_layer.update()
 
 
-def replacement(update: Any, plan: Any, display: Any, collection: Any, unit: Any, users: Any) -> tuple[Any, dict]:
-    """Replace `unit`, returning the published display and each step's time and what it changed."""
+def replacement(update: Any, plan: Any, diff: Any, display: Any, collection: Any, users: Any) -> tuple[Any, dict]:
+    """Update `display` to `plan` by `diff`, returning the published display and each step's time and changes."""
     steps: dict[str, float] = {}
-    prepared = timed(steps, "prepare", lambda: update.prepare(plan, display, unit, users))
+    prepared = timed(steps, "prepare", lambda: update.prepare(plan, diff, display, users))
     published = timed(steps, "publish", lambda: update.publish(prepared, display, collection))
     retired = len(prepared.retired)
     kept = timed(steps, "retire", lambda: update.retire(prepared))
     timed(steps, "evaluate", evaluate)
     steps["total"] = sum(steps.values())
     changed = {
-        "objects replaced": len(prepared.objects),
+        "objects replaced": len(prepared.created),
         "objects repointed": len(prepared.repointed),
-        "meshes replaced": len(unit.meshes),
-        "materials replaced": len(unit.materials),
+        "meshes replaced": diff["meshes"].count(-1),
+        "materials replaced": diff["materials"].count(-1),
         "retired": retired,
         "kept for other users": len(kept),
     }
@@ -126,16 +126,15 @@ def main() -> int:
             op = UsdGeom.Xformable(stage.GetPrimAtPath(source)).AddTranslateOp(opSuffix=f"b6_{repeat}")
             op.Set(Gf.Vec3d(0.01, 0, 0))
         snapshot = timed(steps, "incremental capture", lambda: bridge.capture(ALAB_TIME, incremental=True))
-        plan = timed(steps, "planning", partial(native.build_plan, snapshot))
-        display, replaced = replacement(
-            update, plan, display, collection, update.Unit(objects=frozenset({edited})), update.UserPolicy.REPOINT
-        )
+        published, plan = plan, timed(steps, "planning", partial(native.build_plan, snapshot))
+        diff = timed(steps, "diff", partial(native.diff_plans, published, plan))
+        display, replaced = replacement(update, plan, diff, display, collection, update.UserPolicy.REPOINT)
         steps |= {f"replace {step}": value for step, value in replaced["steps"].items()}
-        steps["total"] = steps["incremental capture"] + steps["planning"] + replaced["steps"]["total"]
+        steps["total"] = sum(steps[s] for s in ("incremental capture", "planning", "diff")) + replaced["steps"]["total"]
         edits.append({"steps": steps, "changed": replaced["changed"]})
     results["edit"] = {"source": source, "median": median_steps(edits), "runs": edits}
 
-    units = update.sample_units(records)
+    units = update.sample_units(plan.objects)
     replaced_units: dict[str, Any] = {}
     for name, unit in units.items():
         policies = [update.UserPolicy.REPOINT]
@@ -144,7 +143,8 @@ def main() -> int:
         for users in policies:
             runs = []
             for _ in range(args.repeats):
-                display, run = replacement(update, plan, display, collection, unit, users)
+                diff = update.unit_diff(plan, unit)
+                display, run = replacement(update, plan, diff, display, collection, users)
                 runs.append(run)
             replaced_units[f"{name} ({users})"] = {"changed": runs[0]["changed"], "median": median_steps(runs)}
     results["units"] = replaced_units

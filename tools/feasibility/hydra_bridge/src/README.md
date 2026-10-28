@@ -96,7 +96,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`) |
-| `../update.py` | M4: replaces one unit of an applied display: prepared beside it, published in one call, and retired |
+| `../update.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
 | `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties and keeps everything else |
 | `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
@@ -119,7 +119,7 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 plan.universe  # sorted USD paths; each object dict also has its "floor"
 _hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
-#   "changed": new object indices, "removed": old object indices}
+#   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
 interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind

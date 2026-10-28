@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from fixtures import appearance
+from fixtures import appearance, interaction
 
 from .harness import Runtime, run_isolated
 
@@ -101,3 +101,40 @@ def _replace(
 
 def _values(held: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in held.items() if key not in POINTERS}
+
+
+DIFF_BODY = Path(__file__).parent / "bodies/plan_diff.py"
+APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "visibility", "structure"]
+
+
+@pytest.mark.parametrize("users", ["repoint", "replace"])
+@pytest.mark.parametrize("fixture", ["appearance", "universe", "stress"])
+def test_update_follows_edits(fixture: str, users: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
+    """C2: after each edit, the display updated by the plan diff holds what a fresh application of the plan does."""
+    generators = {
+        "appearance": (appearance.appearance_cases, APPEARANCE_EDITS),
+        "universe": (interaction.universe_membership, ["unchanged", "unload", "load"]),
+        "stress": (appearance.nested_stress, ["unchanged"]),
+    }
+    generator, edits = generators[fixture]
+    with generator(tmp_path / "scene") as built:
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
+        steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, users=users, **kwargs)
+    for step in steps:
+        edit, diff, before, after = step["edit"], step["diff"], step["before"], step["after"]
+        assert step["held"] == step["fresh"], edit
+        assert step["counts"] == step["fresh_counts"], edit  # nothing left over
+        assert step["elements"] == list(range(len(after["objects"]))), edit  # each object names its plan index
+        for kind in ("meshes", "materials"):
+            for index, old in enumerate(diff[kind]):
+                kept = old != -1 and after[kind][index] == before[kind][old]
+                assert kept == (old != -1), (edit, kind, index)
+        rebuilt = set(diff["changed"]) - (set(diff["repointable"]) if users == "repoint" else set())
+        previous = set(before["objects"])
+        for index, old in enumerate(diff["objects"]):
+            if old == -1 or index in rebuilt:
+                assert after["objects"][index] not in previous, (edit, index)
+            else:
+                assert after["objects"][index] == before["objects"][old], (edit, index)
+        if edit == "unchanged":
+            assert step["written"] == {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0}

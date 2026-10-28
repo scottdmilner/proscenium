@@ -107,6 +107,7 @@ class PlanDiff(TypedDict):
     materials: list[int]  # per new material: an equal old material, or -1
     objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
     changed: list[int]  # new objects whose old counterpart differs, in plan order
+    repointable: list[int]  # changed objects that differ only in their mesh or materials, in plan order
     removed: list[int]  # old objects with no new counterpart, in plan order
 
 

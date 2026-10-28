@@ -497,6 +497,7 @@ bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
     result["materials"] = list(diff.materials);
     result["objects"] = list(diff.objects);
     result["changed"] = list(diff.changed);
+    result["repointable"] = list(diff.repointable);
     result["removed"] = list(diff.removed);
     return result;
 }

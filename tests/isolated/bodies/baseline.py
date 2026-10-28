@@ -180,7 +180,7 @@ def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: 
     before = _held(display, plan.objects)
     positions = None if outside is None else _positions(outside)
     counts = _counts()
-    prepared = update.prepare(plan, display, chosen, update.UserPolicy(users))
+    prepared = update.prepare(plan, update.unit_diff(plan, chosen), display, update.UserPolicy(users))
     untouched = _held(display, plan.objects) == before and _linked(collection) == before["linked"]
     published = update.publish(prepared, display, collection)
     linked = _linked(collection)

@@ -255,6 +255,20 @@ The baseline is the bridge's representation, extended until it covers every case
 
     It also checks that every match keeps its source. In an ad hoc mutation run of `plan_diff.cpp`, each of eight single changes failed it: identity without destinations (in the comparison and the hash), no mesh matches, materials compared by name, and the matrix, mesh, slots, or primvars ignored in the object comparison, and no removed objects.
   - **Cost on ALab** (ad hoc, the bpy wheel, five runs each in one process): the diff took a median of 38 ms unchanged (range 37–91 ms), and 40 ms after one translation (38–45 ms), which changed that prim's 2 objects. The incremental capture copied 1 prim. Phase C's harness measures it in the binary.
+- **C2, updates from a diff (with the user: structural changes now).** `update.prepare` takes the new plan, its diff, and the published display, so an update can add and remove objects and renumber meshes, materials, and objects.
+  - **What it builds:** every mesh and material the diff doesn't match, and every added or changed object, in the staging collection as before.
+  - **Repointing:** the diff now also lists the **repointable** changed objects, those that differ only in their mesh or materials. Under repointing, they're kept and moved onto the rebuilt data at publication.
+  - **Renumbering:** publication rewrites the element index of each kept object whose plan index changed, and restores it if publication fails.
+  - **B6's units:** each becomes a diff (`update.unit_diff`), so there is one update path.
+  - **The check:** `isolated/test_update.py` applies a fixture, then after each edit updates the display by the diff, under both user policies. It covers C1's edits on `F-APPEARANCE-CASES`, unloading and reloading the payload on `F-UNIVERSE-MEMBERSHIP`, and no edit on each fixture. After each update, it asserts that:
+    - the display holds what a fresh application of the new plan does, with Blender's data counts equal;
+    - each object's element index is its new plan index;
+    - the display keeps exactly the meshes, materials, and objects the diff matches and doesn't rebuild;
+    - with no edit, it prepares, repoints, renumbers, and retires nothing.
+
+    In an ad hoc mutation run of `update.py`, each of eight single changes failed it: no renumbering, removed objects kept, no repointing of data or of slots, changed objects kept or unchanged ones rebuilt, no data retired, and an old mesh reused for a rebuilt one.
+  - **On ALab** (`measure/updates.py`, ad hoc, the bpy wheel, three runs each): the real translation now replaces both of the prim's objects. Its incremental capture, planning, diff, and update took 23 ms, 0.36 s, 69 ms, and 0.14 s, 0.59 s in all, against a full synchronization of 2.56 s. Phase C's harness measures the scenarios in the binary.
+    - **Not exercised:** a publication that fails, as in B6; and a topology-changing time step, which the harness measures.
 
 ### Phase D — Targeted alternatives
 

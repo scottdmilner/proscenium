@@ -19,6 +19,9 @@ struct PlanDiff {
     // New objects with an old counterpart that differs in anything the plan holds, its mesh and materials
     // compared through `meshes` and `materials`, in plan order.
     std::vector<int> changed;
+    // The changed objects that differ only in their mesh or materials: users of a rebuilt one, which an update
+    // may move onto it rather than replace. In plan order.
+    std::vector<int> repointable;
     std::vector<int> removed;  // old objects with no new counterpart, in plan order
 };
 
