@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import copies, interaction, records, source_access
+from . import appearance, copies, interaction, records, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -234,7 +234,18 @@ FIXTURES: dict[str, Fixture] = {
                 Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),
             ),
         ),
-        Fixture("F-NESTED-STRESS", "Nested instance plus shear plus appearance variation", ("M10",)),
+        Fixture(
+            "F-NESTED-STRESS",
+            "Nested instance plus shear plus appearance variation",
+            ("M4", "M10"),
+            appearance.nested_stress,
+        ),
+        Fixture(
+            "F-APPEARANCE-CASES",
+            "The representation feasibility cases for primvars and material connections",
+            ("M4",),
+            appearance.appearance_cases,
+        ),
         Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M13",)),
         Fixture("F-SAME-VALUES", "Same evaluated values at a different time (Phase 2)", ("M12", "M13")),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),

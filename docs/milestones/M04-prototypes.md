@@ -39,6 +39,7 @@
 **Tests:**
 
 - Checks of each evaluated representation's headless interaction functions against the M2 oracle, written here and reused by M7 and M10: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
+- The representation feasibility cases and the stress fixture through each evaluated representation: `F-APPEARANCE-CASES`, `F-NESTED-STRESS`.
 
 Later milestones build on the partitioning decision and frozen support cases. Changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant prototypes before implementation, revising the decision record, and listing the affected milestones.
 

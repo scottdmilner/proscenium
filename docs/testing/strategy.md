@@ -58,6 +58,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-LIFECYCLE-FAILURE` | **Lifecycle failure and retry:** detach before-commit failure, partial cleanup/removal, save/reopen retry, ownership protection, and undo/redo of committed changes. |
 | `F-OFFLINE` | **Unavailable source and assets:** verifies the exact offline persistence promise. |
 | `F-NESTED-STRESS` | **Nested instance plus shear plus appearance variation.** |
+| `F-APPEARANCE-CASES` | **Representation feasibility cases:** the primvar and material-connection cases of [Primvar Support Matrix](../spec/support/geometry.md#representation-feasibility-cases) and [Connection Grammar](../spec/support/materials.md#representation-feasibility-cases), one per scene subtree. |
 | `F-TEXTURE-IN-PLACE` | **Texture edited in place:** no USD property changes. |
 | `F-SAME-VALUES` | **Same evaluated values at a different time (Phase 2):** no unnecessary display writes. |
 | `F-UNDO-AFTER-DAMAGE` | **Undo after partial external display damage.** |

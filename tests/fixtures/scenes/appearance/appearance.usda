@@ -1,0 +1,828 @@
+#usda 1.0
+# F-APPEARANCE-CASES (tests/fixtures/appearance.py): the representation feasibility cases of
+# spec/support/geometry.md and spec/support/materials.md, one child of /World per case:
+# - SharedPrototype: copies of a two-mesh, two-material prototype (PVAR-04, GRAM-06); Body authors
+#   a display color its bound material must not show.
+# - EqualContent: meshes outside instances, two with equal content and one differing only in
+#   displayColor (PVAR-05).
+# - NamedUVs: typed UV sets (st faceVarying and indexed, perfuv faceVarying, st vertex) and float2[]
+#   primvars only UV-set names make UV sets of (ST, offset, and a constant uv_shift) (PVAR-06,
+#   GEOM-13, GEOM-14), with a texture read through perfuv (GRAM-09).
+# - MeshDisplayColor: unbound meshes with their own displayColor and displayOpacity at each
+#   interpolation, one indexed (PVAR-07, GRAM-05).
+# - InheritedColor: nested instances; inner and outer instance roots author display color, which
+#   copies inherit unless nearer opinions win (PVAR-08).
+# - InstancePrimvars: tint and rough on instance roots, read by primvar readers with fallbacks, and a
+#   reader of displayColor (PVAR-09, GRAM-08).
+# - MaterialPerInstance: one prototype whose instance roots bind different materials (GRAM-07).
+# - FaceAssignments: materialBind subsets in a prototype, with unassigned faces taking each instance
+#   root's binding, and a partition outside instances (PVAR-10, GRAM-10).
+# - OneMaterial: Tinted bound to meshes of different geometry with different tints, and by the
+#   InstancePrimvars copies (GRAM-11).
+# - PurposeBindings: preview, full, and all-purpose bindings in combination (GRAM-12).
+# Every mesh is visible with default purpose. Prototypes are abstract class prims.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World" (
+    kind = "assembly"
+)
+{
+    def Scope "Looks"
+    {
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.8, 0.1, 0.1)
+                float inputs:ior = 1.5
+                float inputs:metallic = 0
+                float inputs:opacity = 1
+                float inputs:roughness = 0.3
+                token outputs:surface
+            }
+        }
+
+        def Material "Blue"
+        {
+            token outputs:surface.connect = </World/Looks/Blue/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.1, 0.1, 0.8)
+                float inputs:roughness = 0.6
+                token outputs:surface
+            }
+        }
+
+        def Material "Green"
+        {
+            token outputs:surface.connect = </World/Looks/Green/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.1, 0.8, 0.1)
+                token outputs:surface
+            }
+        }
+
+        def Material "Yellow"
+        {
+            token outputs:surface.connect = </World/Looks/Yellow/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.8, 0.8, 0.1)
+                token outputs:surface
+            }
+        }
+
+        def Material "Tinted"
+        {
+            token outputs:surface.connect = </World/Looks/Tinted/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/Tinted/Tint.outputs:result>
+                float inputs:roughness.connect = </World/Looks/Tinted/Rough.outputs:result>
+                token outputs:surface
+            }
+
+            def Shader "Tint"
+            {
+                uniform token info:id = "UsdPrimvarReader_float3"
+                float3 inputs:fallback = (0.5, 0.5, 0.5)
+                string inputs:varname = "tint"
+                float3 outputs:result
+            }
+
+            def Shader "Rough"
+            {
+                uniform token info:id = "UsdPrimvarReader_float"
+                float inputs:fallback = 0.5
+                string inputs:varname = "rough"
+                float outputs:result
+            }
+        }
+
+        def Material "DisplayTinted"
+        {
+            token outputs:surface.connect = </World/Looks/DisplayTinted/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/DisplayTinted/Color.outputs:result>
+                token outputs:surface
+            }
+
+            def Shader "Color"
+            {
+                uniform token info:id = "UsdPrimvarReader_float3"
+                float3 inputs:fallback = (1, 1, 1)
+                string inputs:varname = "displayColor"
+                float3 outputs:result
+            }
+        }
+
+        def Material "Textured"
+        {
+            token outputs:surface.connect = </World/Looks/Textured/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor.connect = </World/Looks/Textured/Texture.outputs:rgb>
+                float inputs:roughness.connect = </World/Looks/Textured/Texture.outputs:r>
+                token outputs:surface
+            }
+
+            def Shader "Texture"
+            {
+                uniform token info:id = "UsdUVTexture"
+                asset inputs:file = @./grid.png@
+                float2 inputs:st.connect = </World/Looks/Textured/Uv.outputs:result>
+                token inputs:wrapS = "repeat"
+                token inputs:wrapT = "repeat"
+                float outputs:r
+                float3 outputs:rgb
+            }
+
+            def Shader "Uv"
+            {
+                uniform token info:id = "UsdPrimvarReader_float2"
+                string inputs:varname = "perfuv"
+                float2 outputs:result
+            }
+        }
+
+        def Material "PurposePreview"
+        {
+            token outputs:surface.connect = </World/Looks/PurposePreview/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.9, 0.5, 0.1)
+                token outputs:surface
+            }
+        }
+
+        def Material "PurposeFull"
+        {
+            token outputs:surface.connect = </World/Looks/PurposeFull/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.5, 0.1, 0.9)
+                token outputs:surface
+            }
+        }
+
+        def Material "PurposeAll"
+        {
+            token outputs:surface.connect = </World/Looks/PurposeAll/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.5, 0.5, 0.5)
+                token outputs:surface
+            }
+        }
+    }
+
+    def Xform "SharedPrototype"
+    {
+        def Xform "KitA" (
+            instanceable = true
+            references = </Prototypes/Kit>
+        )
+        {
+        }
+
+        def Xform "KitB" (
+            instanceable = true
+            references = </Prototypes/Kit>
+        )
+        {
+            double3 xformOp:translate = (3, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "KitC" (
+            instanceable = true
+            references = </Prototypes/Kit>
+        )
+        {
+            double xformOp:rotateZ = 90
+            float3 xformOp:scale = (2, 1, 0.5)
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ", "xformOp:scale"]
+        }
+    }
+
+    def Xform "EqualContent"
+    {
+        def Mesh "MeshA"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "MeshB"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "MeshC"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.6, 0.4, 0.2)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "NamedUVs"
+    {
+        def Mesh "Typed" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            rel material:binding = </World/Looks/Textured>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            texCoord2f[] primvars:perfuv = [(0, 0), (2, 0), (2, 2), (0, 0), (2, 2), (0, 2)] (
+                interpolation = "faceVarying"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "faceVarying"
+            )
+            int[] primvars:st:indices = [0, 1, 2, 0, 2, 3]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "PointUVs"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Untyped"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            float2[] primvars:offset = [(0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1)] (
+                interpolation = "faceVarying"
+            )
+            float2[] primvars:ST = [(0, 0), (1, 0), (1, 1), (0, 0), (1, 1), (0, 1)] (
+                interpolation = "faceVarying"
+            )
+            float2[] primvars:uv_shift = [(0.5, 0.5)] (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "MeshDisplayColor"
+    {
+        def Mesh "Constant"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(1, 0, 0)] (
+                interpolation = "constant"
+            )
+            float[] primvars:displayOpacity = [0.5] (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "ConstantIndexed"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0, 0, 0), (0, 1, 0)] (
+                interpolation = "constant"
+            )
+            int[] primvars:displayColor:indices = [1]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Uniform"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(1, 0, 0), (0, 0, 1)] (
+                interpolation = "uniform"
+            )
+            float[] primvars:displayOpacity = [1, 0.25] (
+                interpolation = "uniform"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Vertex"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "FaceVarying"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(1, 0, 0), (1, 0, 0), (1, 0, 0), (0, 0, 1), (0, 0, 1), (0, 0, 1)] (
+                interpolation = "faceVarying"
+            )
+            float[] primvars:displayOpacity = [1, 1, 1, 0.5, 0.5, 0.5] (
+                interpolation = "faceVarying"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (8, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "InheritedColor"
+    {
+        def Xform "OuterRed" (
+            instanceable = true
+            references = </Prototypes/Pair>
+        )
+        {
+            color3f[] primvars:displayColor = [(1, 0, 0)] (
+                interpolation = "constant"
+            )
+            float[] primvars:displayOpacity = [0.75] (
+                interpolation = "constant"
+            )
+        }
+
+        def Xform "OuterBlue" (
+            instanceable = true
+            references = </Prototypes/Pair>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 0, 1)] (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (0, 3, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "InstancePrimvars"
+    {
+        def Xform "SwatchA" (
+            instanceable = true
+            references = </Prototypes/Swatch>
+        )
+        {
+            color3f primvars:tint = (1, 0.5, 0) (
+                interpolation = "constant"
+            )
+            float primvars:rough = 0.1 (
+                interpolation = "constant"
+            )
+        }
+
+        def Xform "SwatchB" (
+            instanceable = true
+            references = </Prototypes/Swatch>
+        )
+        {
+            color3f primvars:tint = (0, 0.5, 1) (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "SwatchC" (
+            instanceable = true
+            references = </Prototypes/Swatch>
+        )
+        {
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "ColorA" (
+            instanceable = true
+            references = </Prototypes/DisplaySwatch>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 1, 1)] (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (0, 2, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "ColorB" (
+            instanceable = true
+            references = </Prototypes/DisplaySwatch>
+        )
+        {
+            double3 xformOp:translate = (2, 2, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "MaterialPerInstance"
+    {
+        def Xform "PlainRed" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            instanceable = true
+            references = </Prototypes/Plain>
+        )
+        {
+            rel material:binding = </World/Looks/Red>
+        }
+
+        def Xform "PlainBlue" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            instanceable = true
+            references = </Prototypes/Plain>
+        )
+        {
+            rel material:binding = </World/Looks/Blue>
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "FaceAssignments"
+    {
+        def Xform "TileGreen" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            instanceable = true
+            references = </Prototypes/Tile>
+        )
+        {
+            rel material:binding = </World/Looks/Green>
+        }
+
+        def Xform "TileYellow" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+            instanceable = true
+            references = </Prototypes/Tile>
+        )
+        {
+            rel material:binding = </World/Looks/Yellow>
+            double3 xformOp:translate = (0, 2, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Partitioned"
+        {
+            float3[] extent = [(0, 0, 0), (4, 1, 0)]
+            int[] faceVertexCounts = [4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 1, 6, 5, 1, 2, 7, 6, 2, 3, 8, 7, 3, 4, 9, 8]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 0, 0), (0, 1, 0), (1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token subsetFamily:materialBind:familyType = "partition"
+            double3 xformOp:translate = (0, 4, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+
+            def GeomSubset "Even" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [0, 2]
+                rel material:binding = </World/Looks/Red>
+            }
+
+            def GeomSubset "Odd" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [1, 3]
+                rel material:binding = </World/Looks/Blue>
+            }
+        }
+    }
+
+    def Xform "OneMaterial"
+    {
+        def Mesh "Triangle" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            rel material:binding = </World/Looks/Tinted>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            color3f primvars:tint = (0.2, 0.2, 0.2) (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Square" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/Tinted>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f primvars:tint = (0.9, 0.9, 0.9) (
+                interpolation = "constant"
+            )
+            float primvars:rough = 0.9 (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "PurposeBindings"
+    {
+        def Mesh "Both" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/PurposeAll>
+            rel material:binding:full = </World/Looks/PurposeFull>
+            rel material:binding:preview = </World/Looks/PurposePreview>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "PreviewOnly" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/PurposeAll>
+            rel material:binding:preview = </World/Looks/PurposePreview>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "FullOnly" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding:full = </World/Looks/PurposeFull>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    class Xform "Kit"
+    {
+        def Mesh "Body" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/Red>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0, 1, 0)] (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Lid" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 1), (1, 1, 1)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            rel material:binding = </World/Looks/Blue>
+            point3f[] points = [(0, 0, 1), (1, 0, 1), (0, 1, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    class Xform "Dot"
+    {
+        def Mesh "Own"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(1, 1, 0)] (
+                interpolation = "constant"
+            )
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Bare"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (1, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    class Xform "Pair"
+    {
+        def Xform "InnerGreen" (
+            instanceable = true
+            references = </Prototypes/Dot>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 1, 0)] (
+                interpolation = "constant"
+            )
+        }
+
+        def Xform "InnerBare" (
+            instanceable = true
+            references = </Prototypes/Dot>
+        )
+        {
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    class Xform "Swatch"
+    {
+        def Mesh "Geom" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/Tinted>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    class Xform "DisplaySwatch"
+    {
+        def Mesh "Geom" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            rel material:binding = </World/Looks/DisplayTinted>
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    class Xform "Plain"
+    {
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    class Xform "Tile"
+    {
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (4, 1, 0)]
+            int[] faceVertexCounts = [4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 1, 6, 5, 1, 2, 7, 6, 2, 3, 8, 7, 3, 4, 9, 8]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 0, 0), (0, 1, 0), (1, 1, 0), (2, 1, 0), (3, 1, 0), (4, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            uniform token subsetFamily:materialBind:familyType = "nonOverlapping"
+
+            def GeomSubset "Left" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [0, 1]
+                rel material:binding = </World/Looks/Red>
+            }
+
+            def GeomSubset "Right" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+            )
+            {
+                uniform token elementType = "face"
+                uniform token familyName = "materialBind"
+                int[] indices = [2]
+                rel material:binding = </World/Looks/Blue>
+            }
+        }
+    }
+}

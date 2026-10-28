@@ -270,7 +270,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
 | [XFORM-01](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [XFORM-02](../spec/support/transforms.md#transforms-and-time-codes) | Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting. | behavior | **high** | M6 | 1 / M12 | — | Set by M6. |
+| [XFORM-02](../spec/support/transforms.md#transforms-and-time-codes) | Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
 | [XFORM-03](../spec/support/transforms.md#transforms-and-time-codes) | Support matrix transforms, negative and nonuniform scale, and shear. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
 | [XFORM-05](../spec/support/transforms.md#transforms-and-time-codes) | Diagnose approximations when exact representation is unavailable. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [XFORM-06](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate supported time-varying values at the supplied time code, including topology changes. | behavior | **high** | M6 | 1 / M12 | — | Set by M6. |
@@ -291,8 +291,8 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [GEOM-02](../spec/support/geometry.md#supported-geometry) | Authored normals and a documented generation fallback. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 | [GEOM-03](../spec/support/geometry.md#supported-geometry) | Orientation/winding and documented double-sidedness behavior. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 | [GEOM-04](../spec/support/geometry.md#supported-geometry) | Supported UV sets with their names and meaningful domains. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
-| [GEOM-13](../spec/support/geometry.md#supported-geometry) | A binding's UV-set names, a list of globs, also make a UV set of a float2[] primvar with vertex, varying, or faceVarying interpolation whose whole name matches one of them, case-insensitively. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
-| [GEOM-14](../spec/support/geometry.md#supported-geometry) | The default is an empty list, so only texCoord2f[] primvars are UV sets. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
+| [GEOM-13](../spec/support/geometry.md#supported-geometry) | A binding's UV-set names, a list of globs, also make a UV set of a float2[] primvar with vertex, varying, or faceVarying interpolation whose whole name matches one of them, case-insensitively. | behavior |  | M8 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M8. |
+| [GEOM-14](../spec/support/geometry.md#supported-geometry) | The default is an empty list, so only texCoord2f[] primvars are UV sets. | behavior |  | M8 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M8. |
 | [GEOM-05](../spec/support/geometry.md#supported-geometry) | displayColor and displayOpacity. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 | [GEOM-06](../spec/support/geometry.md#supported-geometry) | Supported arbitrary primvars converted into native float, color, and vector attributes. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 | [GEOM-07](../spec/support/geometry.md#supported-geometry) | Indexed and inherited primvars, and supported domain conversions. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
@@ -304,13 +304,13 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [PVAR-01](../spec/support/geometry.md#primvar-support-matrix) | Settle the primvar support matrix before implementation. | contract |  | M8 | 1 / M8 | — | Set by M8. |
 | [PVAR-02](../spec/support/geometry.md#primvar-support-matrix) | Before choosing a display backend, M4 defines and freezes concrete cases | contract |  | M4 | 1 / M4 | — | Set by M4. |
 | [PVAR-03](../spec/support/geometry.md#primvar-support-matrix) | Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes | process |  | M4 | 1 / M12 | — | Set by M4. |
-| [PVAR-04](../spec/support/geometry.md#representation-feasibility-cases) | Every drawn copy of an instance prototype's mesh, whatever its transform, uses one geometry resource. | behavior |  | M10 | 1 / M12 | — | Set by M10. |
-| [PVAR-05](../spec/support/geometry.md#representation-feasibility-cases) | Meshes outside instances with equal topology, points, and primvars are equivalent uses and share one geometry resource. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
-| [PVAR-06](../spec/support/geometry.md#representation-feasibility-cases) | Each UV set displays as a UV map with its primvar's name, so a primvar reader selects it by name | behavior |  | M8 | 1 / M12 | — | Set by M8. |
-| [PVAR-07](../spec/support/geometry.md#representation-feasibility-cases) | Without a material, the mesh shows its display color and opacity on its interpolation's domain. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
-| [PVAR-08](../spec/support/geometry.md#representation-feasibility-cases) | Copies of one prototype show their own roots' values, through nested instances, without collapsing into one appearance. | behavior | **high** | M10 | 1 / M12 | — | Set by M10. |
-| [PVAR-09](../spec/support/geometry.md#representation-feasibility-cases) | A material that reads them through primvar readers shows each copy's own values | behavior | **high** | M10 | 1 / M12 | — | Set by M10. |
-| [PVAR-10](../spec/support/geometry.md#representation-feasibility-cases) | Each face shows its subset's bound material, and an unassigned face the mesh's own binding | behavior |  | M10 | 1 / M12 | — | Set by M10. |
+| [PVAR-04](../spec/support/geometry.md#representation-feasibility-cases) | Every drawn copy of an instance prototype's mesh, whatever its transform, uses one geometry resource. | behavior |  | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [PVAR-05](../spec/support/geometry.md#representation-feasibility-cases) | Meshes outside instances with equal topology, points, and primvars are equivalent uses and share one geometry resource. | behavior |  | M8 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M8. |
+| [PVAR-06](../spec/support/geometry.md#representation-feasibility-cases) | Each UV set displays as a UV map with its primvar's name, so a primvar reader selects it by name | behavior |  | M8 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M8. |
+| [PVAR-07](../spec/support/geometry.md#representation-feasibility-cases) | Without a material, the mesh shows its display color and opacity on its interpolation's domain. | behavior |  | M8 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M8. |
+| [PVAR-08](../spec/support/geometry.md#representation-feasibility-cases) | Copies of one prototype show their own roots' values, through nested instances, without collapsing into one appearance. | behavior | **high** | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [PVAR-09](../spec/support/geometry.md#representation-feasibility-cases) | A material that reads them through primvar readers shows each copy's own values | behavior | **high** | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [PVAR-10](../spec/support/geometry.md#representation-feasibility-cases) | Each face shows its subset's bound material, and an unassigned face the mesh's own binding | behavior |  | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
 | [MCLS-01](../spec/support/geometry.md#mesh-classification) | Also classify, for each case, whether the mesh remains supported with an approximation, becomes a placeholder, or fails: | contract |  | M8 | 1 / M8 | — | Set by M8. |
 | [MCLS-02](../spec/support/geometry.md#mesh-classification) | Geometric primvars such as velocities when unused. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 ## spec/support/instancing.md
@@ -345,14 +345,14 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [GRAM-02](../spec/support/materials.md#connection-grammar) | Also settle how displayColor and displayOpacity interact with no material binding | contract |  | M9 | 1 / M9 | — | Set by M9. |
 | [GRAM-03](../spec/support/materials.md#connection-grammar) | Before choosing a display backend, M4 defines and freezes concrete connection cases | contract |  | M4 | 1 / M4 | — | Set by M4. |
 | [GRAM-04](../spec/support/materials.md#connection-grammar) | A chosen backend does not authorize silently narrowing required support. | process |  | M4 | 1 / M12 | — | Set by M4. |
-| [GRAM-05](../spec/support/materials.md#representation-feasibility-cases) | A copy with no bound material shows its display color and opacity. | behavior |  | M9 | 1 / M12 | — | Set by M9. |
-| [GRAM-06](../spec/support/materials.md#representation-feasibility-cases) | A bound material shows its own inputs, whatever the mesh's display color. | behavior |  | M9 | 1 / M12 | — | Set by M9. |
-| [GRAM-07](../spec/support/materials.md#representation-feasibility-cases) | Each copy shows the material its own instance root binds. | behavior | **high** | M10 | 1 / M12 | — | Set by M10. |
-| [GRAM-08](../spec/support/materials.md#representation-feasibility-cases) | Each copy shows its own primvar values, and the reader's fallback where the copy has none. | behavior | **high** | M10 | 1 / M12 | — | Set by M10. |
-| [GRAM-09](../spec/support/materials.md#representation-feasibility-cases) | The texture is sampled through the UV map the reader names, never another. | behavior |  | M9 | 1 / M12 | — | Set by M9. |
-| [GRAM-10](../spec/support/materials.md#representation-feasibility-cases) | Each face shows its subset's material, and unassigned faces each copy's own fallback. | behavior | **high** | M10 | 1 / M12 | — | Set by M10. |
-| [GRAM-11](../spec/support/materials.md#representation-feasibility-cases) | Every use shows that material with its own primvar values | behavior |  | M10 | 1 / M12 | — | Set by M10. |
-| [GRAM-12](../spec/support/materials.md#representation-feasibility-cases) | The viewport shows the preview binding's material and the final render the full binding's | behavior | **high** | M9 | 1 / M12 | — | Set by M9. |
+| [GRAM-05](../spec/support/materials.md#representation-feasibility-cases) | A copy with no bound material shows its display color and opacity. | behavior |  | M9 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M9. |
+| [GRAM-06](../spec/support/materials.md#representation-feasibility-cases) | A bound material shows its own inputs, whatever the mesh's display color. | behavior |  | M9 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M9. |
+| [GRAM-07](../spec/support/materials.md#representation-feasibility-cases) | Each copy shows the material its own instance root binds. | behavior | **high** | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [GRAM-08](../spec/support/materials.md#representation-feasibility-cases) | Each copy shows its own primvar values, and the reader's fallback where the copy has none. | behavior | **high** | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [GRAM-09](../spec/support/materials.md#representation-feasibility-cases) | The texture is sampled through the UV map the reader names, never another. | behavior |  | M9 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M9. |
+| [GRAM-10](../spec/support/materials.md#representation-feasibility-cases) | Each face shows its subset's material, and unassigned faces each copy's own fallback. | behavior | **high** | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [GRAM-11](../spec/support/materials.md#representation-feasibility-cases) | Every use shows that material with its own primvar values | behavior |  | M10 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M10. |
+| [GRAM-12](../spec/support/materials.md#representation-feasibility-cases) | The viewport shows the preview binding's material and the final render the full binding's | behavior | **high** | M9 | 1 / M12 | `F-APPEARANCE-CASES` | Set by M9. |
 | [MDIAG-01](../spec/support/materials.md#ownership-and-diagnostics) | Document ownership and reuse rules for translated materials, images, node groups, and dependencies. | contract |  | M9 | 1 / M9 | — | Set by M9. |
 | [MDIAG-02](../spec/support/materials.md#ownership-and-diagnostics) | Diagnose missing textures, unsupported networks, and incomplete translations. | behavior |  | M9 | 1 / M12 | — | Set by M9. |
 | [MDIAG-03](../spec/support/materials.md#ownership-and-diagnostics) | Do not silently substitute another UV set when the requested one is unavailable. | behavior |  | M9 | 1 / M12 | — | Set by M9. |
@@ -362,7 +362,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 |---|---|---|---|---|---|---|---|
 | [VIS-01](../spec/support/visibility.md#visibility-and-purpose) | Respect effective inherited visibility separately from purpose. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [VIS-02](../spec/support/visibility.md#visibility-and-purpose) | Viewport \| default, proxy | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | **high** | M6 | 1 / M12 | — | Set by M6. |
+| [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
 | [VIS-04](../spec/support/visibility.md#visibility-and-purpose) | A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-01](../spec/support/visibility.md#models-and-unsupported-content) | Expose model kind and available asset metadata. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-03](../spec/support/visibility.md#models-and-unsupported-content) | Support is decided per behavior, not per prim type. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
