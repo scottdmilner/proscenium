@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, get_args
 
 import bpy
+import numpy
 from mathutils import Matrix
 from plan_types import PlanDataType, PlanDomain
 
@@ -41,6 +42,10 @@ ATTRIBUTE_FORMATS: dict[PlanDataType, tuple[BufferFormat, ForeachProperty]] = {
     "INT": (BufferFormat.INT, ForeachProperty.VALUE),
 }
 PLAN_DOMAINS: frozenset[PlanDomain] = frozenset(get_args(PlanDomain))
+# Axes whose cosine is above this are not orthogonal, so an object's location, rotation, and scale can't hold them.
+SHEAR_TOLERANCE = 1e-6
+# On a parent empty (M4): the USD source of the copy whose shear it carries.
+SHEAR_PARENT = "proscenium_shear_of"
 
 
 def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
@@ -121,6 +126,41 @@ def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> 
     return mesh
 
 
+def _sheared(world: Matrix) -> bool:
+    linear = world.to_3x3()
+    # mathutils, not numpy: about 20 times faster for one small matrix.
+    axes = [linear.col[i] for i in range(3)]  # ty: ignore[not-subscriptable] - the stubs omit MatrixAccess indexing
+    return any(
+        abs(axes[i].dot(axes[j])) > SHEAR_TOLERANCE * axes[i].length * axes[j].length
+        for i, j in ((0, 1), (0, 2), (1, 2))
+    )
+
+
+def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection: bpy.types.Collection) -> None:
+    """Give `obj` the sheared `world` through a parent empty, which Blender composes back to float precision.
+
+    The linear part splits by SVD into rotation x scale x rotation: the parent takes the first rotation, the
+    scale, and the translation, and the object the second rotation, so neither holds shear. A reflection in
+    either rotation moves into a negative scale. The parent can't be selected, so a pick lands on the object.
+    """
+    u, scale, vt = numpy.linalg.svd(numpy.array(world.to_3x3()))
+    if numpy.linalg.det(u) < 0:
+        u[:, -1] *= -1
+        scale[-1] *= -1
+    if numpy.linalg.det(vt) < 0:
+        vt[-1, :] *= -1
+        scale[-1] *= -1
+    parent = bpy.data.objects.new(f"{obj.name} shear", None)
+    collection.objects.link(parent)
+    parent_world = Matrix((u * scale).tolist()).to_4x4()
+    parent_world.translation = world.translation
+    parent.matrix_world = parent_world
+    parent.hide_select = True
+    parent[SHEAR_PARENT] = source
+    obj.parent = parent
+    obj.matrix_basis = Matrix(vt.tolist()).to_4x4()
+
+
 def _object(
     index: int,
     data: ObjectRecord,
@@ -140,7 +180,11 @@ def _object(
     collection.objects.link(obj)
     matrix = data["matrix"]
     # USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
-    obj.matrix_world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+    world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+    if _sheared(world):
+        _shear_parent(obj, data["source"], world, collection)
+    else:
+        obj.matrix_world = world
     # Each destination shows its own prim purposes; an object can be in one, both, or neither.
     obj.hide_viewport = not data["viewport"]
     obj.hide_render = not data["render"]

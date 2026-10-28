@@ -170,6 +170,29 @@ def test_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict
     assert not wrong
 
 
+def _sheared(world: Gf.Matrix4d) -> bool:
+    """Whether a world transform's axes aren't orthogonal: its rows, in USD's row-vector convention."""
+    axes = [world.GetRow3(i) for i in range(3)]
+    return any(
+        abs(Gf.Dot(axes[i], axes[j])) > 1e-6 * axes[i].GetLength() * axes[j].GetLength()
+        for i, j in ((0, 1), (0, 2), (1, 2))
+    )
+
+
+def test_blender_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # What Blender composes once the depsgraph evaluates each object: a sheared copy through its parent empty,
+    # which only sheared copies have (XFORM-03).
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    wrong = []
+    for obj in applied:
+        usd = cache.GetLocalToWorldTransform(drawn[obj["source"]])
+        if not Gf.IsClose(Gf.Matrix4d(obj["world"]), usd, 1e-5):
+            wrong.append(obj["source"])
+        assert obj["shear_parent"] == (obj["source"] if _sheared(usd) else None), obj["source"]
+    assert not wrong
+
+
 def test_known_gap_hydra_ignores_a_reset_inside_an_instance(scene: BaselineScene, result: dict[str, Any]) -> None:
     # WORKAROUND for OpenUSD #862 (ResetsBelow in the bridge's instancing.h): Hydra's own composition, a copy's
     # flattened transform then its instance's, is wrong exactly for the copies under a reset inside an instance.

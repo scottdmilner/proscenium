@@ -35,8 +35,18 @@ def apply_scene(module_dir: str, scene: str) -> dict[str, Any]:
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
     objects = apply.apply(plan, collection)
+    reported = [_object(record, obj) for record, obj in zip(plan.objects, objects, strict=True)]
+    # The depsgraph evaluates only objects shown in the viewport, so every object is shown before Blender's world
+    # transforms are read, once its hide flags are reported.
+    for obj in collection.objects:
+        obj.hide_viewport = False
+    view_layer: Any = bpy.context.view_layer  # never None in a running Blender
+    view_layer.update()
+    for entry, obj in zip(reported, objects, strict=True):
+        entry["world"] = _rows(obj.matrix_world.transposed())  # USD's row-vector convention
+        entry["shear_parent"] = None if obj.parent is None else obj.parent.get(apply.SHEAR_PARENT)
     result = {
-        "objects": [_object(record, obj) for record, obj in zip(plan.objects, objects, strict=True)],
+        "objects": reported,
         "hydra_world": _hydra_world(snapshot),
         "errors": [d for d in plan.diagnostics if d["severity"] == "error"],
     }
