@@ -89,7 +89,7 @@ Keep these distinct:
 
 | State | Contents | Persisted |
 |---|---|---|
-| Binding configuration | Binding identity, source information, destination, target scene, and requested settings (payload policy, conversion, purpose) | Yes |
+| Binding configuration | Binding identity, source information, destination, target scene, and requested settings (payload policy, conversion, purpose, UV-set names) | Yes |
 | Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
 | Last attempt | Settings and time code attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |

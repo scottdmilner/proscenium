@@ -272,6 +272,9 @@ requirements:
         fixtures: [F-MULTI-BINDING]
         oracle: "Each binding keeps its own units, up-axis, and purpose settings: setting one binding's leaves the others' as they were."
         delivery: M6
+      - id: BIND-11
+        quote: "UV-set names, which decide which untyped primvars display as UV sets"
+        delivery: M8
       - id: BIND-07
         quote: "Multiple independent bindings, including bindings using the same source."
         fixtures: [F-MULTI-BINDING]
@@ -302,7 +305,7 @@ requirements:
         fixtures: [F-BINDING-STATE]
         oracle: "After synchronize(t) for any t, the default time code included, the binding's configuration is unchanged, and the attempt used the binding's requested settings, such as its payload policy."
       - id: API-03
-        quote: "The requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
+        quote: "The requested settings (payload policy, conversion, purpose, UV-set names) change only through set_settings(...), which records them without synchronizing."
         fixtures: [F-BINDING-STATE]
         oracle: "set_settings changes the requested settings and nothing else: the published generation, last attempt, and live stage are unchanged, and no synchronization runs."
       - id: API-06
@@ -1123,6 +1126,10 @@ requirements:
         quote: "Orientation/winding and documented double-sidedness behavior."
       - id: GEOM-04
         quote: "Supported UV sets with their names and meaningful domains."
+      - id: GEOM-13
+        quote: "A binding's UV-set names, a list of globs, also make a UV set of a float2[] primvar with vertex, varying, or faceVarying interpolation whose whole name matches one of them, case-insensitively."
+      - id: GEOM-14
+        quote: "The default is an empty list, so only texCoord2f[] primvars are UV sets."
       - id: GEOM-05
         quote: "displayColor and displayOpacity."
       - id: GEOM-06
@@ -1157,6 +1164,34 @@ requirements:
         kind: process
         delivery: M4
         qualified_by: M12
+
+  # The representation feasibility cases PVAR-02 asks M4 for; the milestones that deliver each display them.
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    phase: 1
+    rows:
+      - id: PVAR-04
+        quote: "Every drawn copy of an instance prototype's mesh, whatever its transform, uses one geometry resource."
+        delivery: M10
+      - id: PVAR-05
+        quote: "Meshes outside instances with equal topology, points, and primvars are equivalent uses and share one geometry resource."
+        delivery: M8
+      - id: PVAR-06
+        quote: "Each UV set displays as a UV map with its primvar's name, so a primvar reader selects it by name"
+        delivery: M8
+      - id: PVAR-07
+        quote: "Without a material, the mesh shows its display color and opacity on its interpolation's domain."
+        delivery: M8
+      - id: PVAR-08
+        quote: "Copies of one prototype show their own roots' values, through nested instances, without collapsing into one appearance."
+        delivery: M10
+        risk: high
+      - id: PVAR-09
+        quote: "A material that reads them through primvar readers shows each copy's own values"
+        delivery: M10
+        risk: high
+      - id: PVAR-10
+        quote: "Each face shows its subset's bound material, and an unassigned face the mesh's own binding"
+        delivery: M10
 
   - section: spec/support/geometry.md#mesh-classification
     delivery: M8
@@ -1264,6 +1299,39 @@ requirements:
         kind: process
         delivery: M4
         qualified_by: M12
+
+  # The representation feasibility cases GRAM-03 asks M4 for; the milestones that deliver each display them.
+  - section: spec/support/materials.md#representation-feasibility-cases
+    phase: 1
+    rows:
+      - id: GRAM-05
+        quote: "A copy with no bound material shows its display color and opacity."
+        delivery: M9
+      - id: GRAM-06
+        quote: "A bound material shows its own inputs, whatever the mesh's display color."
+        delivery: M9
+      - id: GRAM-07
+        quote: "Each copy shows the material its own instance root binds."
+        delivery: M10
+        risk: high
+      - id: GRAM-08
+        quote: "Each copy shows its own primvar values, and the reader's fallback where the copy has none."
+        delivery: M10
+        risk: high
+      - id: GRAM-09
+        quote: "The texture is sampled through the UV map the reader names, never another."
+        delivery: M9
+      - id: GRAM-10
+        quote: "Each face shows its subset's material, and unassigned faces each copy's own fallback."
+        delivery: M10
+        risk: high
+      - id: GRAM-11
+        quote: "Every use shows that material with its own primvar values"
+        delivery: M10
+      - id: GRAM-12
+        quote: "The viewport shows the preview binding's material and the final render the full binding's"
+        delivery: M9
+        risk: high
 
   - section: spec/support/materials.md#ownership-and-diagnostics
     delivery: M9
@@ -1821,6 +1889,15 @@ excluded:
   - section: spec/support/geometry.md#primvar-support-matrix
     quotes: ["For each supported primvar category, record USD value types"]
     restates: [PVAR-01]
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    quotes: ["Per drawn copy, the representation chooses where a value is stored"]
+    restates: [SHARE-06]
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    quotes: ["Cases whose display depends on the representation."]
+    restates: [PVAR-02, PVAR-03]
+  - section: spec/support/materials.md#representation-feasibility-cases
+    quotes: ["Cases whose display depends on the representation."]
+    restates: [GRAM-03]
   - section: spec/support/instancing.md
     quotes: ["Part of the supported scene state."]
     reason: "File introduction."

@@ -13,6 +13,7 @@ Support:
 - Load-all or load-no-payload policy.
 - Explicit evaluation time code, including the USD default time code.
 - Coordinate-conversion and purpose/display settings.
+- UV-set names, which decide which untyped primvars display as UV sets ([Supported Geometry](support/geometry.md#supported-geometry)).
 - Multiple independent bindings, including bindings using the same source.
 
 The default scope is the entire available stage. Subtree selection and individual payload selection are not required.
@@ -26,7 +27,7 @@ Binding configuration must not cross-contaminate other bindings. Opening or sync
 Callers reach a binding through a **binding handle**: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. Each method looks the binding up when it is called, and two handles are equal when their identifiers are.
 
 - `synchronize(time_code)` synchronizes the binding at an explicit USD time code, which may be the default time code. The time code is the attempt's, not a setting of the binding: the caller derives it at each synchronization, and the attempt uses the binding's requested settings.
-- The requested settings (payload policy, conversion, purpose) change only through `set_settings(...)`, which records them without synchronizing.
+- The requested settings (payload policy, conversion, purpose, UV-set names) change only through `set_settings(...)`, which records them without synchronizing.
 - `reload(layers=None)` rereads the binding's source layers from disk on request ([Layer State and Reloading](#layer-state-and-reloading)) without synchronizing; the next synchronization displays them.
 - `synchronize` returns an immutable result: its result state and deduplicated diagnostics ([Diagnostics](pipeline.md#diagnostics)). An expected failure, such as an unavailable source, is a result, not an exception.
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used.

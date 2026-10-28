@@ -30,7 +30,7 @@ Each phase ends with a review by the user before the next starts. Each phase lis
 
 If a commit grows past one feature, it splits, and this list is updated in the same commit.
 
-### Phase A — Frozen cases and the risk matrix
+### Phase A — Representation feasibility cases and the risk matrix
 
 The milestone freezes the support cases before any backend is chosen, so this phase writes no prototype code.
 
@@ -38,15 +38,24 @@ The milestone freezes the support cases before any backend is chosen, so this ph
 2. **The risk matrix.**
    - A `risk: high` field on matrix rows, which `tools/matrix.py` validates and renders as a column, as the comment at the top of `requirements.yaml` anticipates.
    - The risk matrix in this plan: each high-risk requirement, why the representation could fail it, and which phase tests it. Candidates: per-instance appearance under sharing (SHARE), nested instancing with shear and negative determinants (XFORM), viewport and render participation from one snapshot (visibility and purpose), correspondence surviving batching (INSP), partial highlighting and mirroring (ICON), whole-generation publication and replacement (TXN-05, TXN-06), managed resources with unmanaged users (OWN-08), detach with shared content (DET), resource stability (STAB), runtime references across undo (UNDO-07), and ALab scale.
-3. **Frozen primvar cases** in [Primvar Support Matrix](../spec/support/geometry.md#primvar-support-matrix): geometry sharing, named UVs, face-level material assignments, and primvars driving per-instance appearance, each with its value types, interpolation, indexing, inheritance, Blender domain, and how varying data reaches the display. New PVAR rows, and the DECISIONS.md row "Support cases for backend feasibility".
-4. **Frozen connection cases** in [Connection Grammar](../spec/support/materials.md#connection-grammar): per-instance appearance, named UV selection and primvar readers, face-level assignments, and sharing, with shader identifiers, connections, reader types, and the `displayColor`/`displayOpacity` rules. New GRAM rows, and the same DECISIONS.md row.
-5. **Fixtures for the frozen cases.** A new appearance fixture (`F-APPEARANCE-CASES`, name to settle) for the cases in items 3 and 4, including a multi-mesh, multi-material asset; and the `F-NESTED-STRESS` generator, which M4 co-owns with M10: shear, negative determinants, nonuniform scale, reset transform stacks inside instances, nested instances with differing appearance, and separate viewport and render purposes. Each with its rows and an oracle from USD.
+3. **Primvar feasibility cases** in [Primvar Support Matrix](../spec/support/geometry.md#primvar-support-matrix): geometry sharing, named UVs, face-level material assignments, and primvars driving per-instance appearance, each with its value types, interpolation, indexing, inheritance, Blender domain, and how varying data reaches the display. New PVAR rows, and the DECISIONS.md row "Support cases for backend feasibility".
+4. **Connection feasibility cases** in [Connection Grammar](../spec/support/materials.md#connection-grammar): per-instance appearance, named UV selection and primvar readers, face-level assignments, and sharing, with shader identifiers, connections, reader types, and the `displayColor`/`displayOpacity` rules. New GRAM rows, and the same DECISIONS.md row.
+5. **Fixtures for the feasibility cases.** A new appearance fixture (`F-APPEARANCE-CASES`, name to settle) for the cases in items 3 and 4, including a multi-mesh, multi-material asset; and the `F-NESTED-STRESS` generator, which M4 co-owns with M10: shear, negative determinants, nonuniform scale, reset transform stacks inside instances, nested instances with differing appearance, and separate viewport and render purposes. Each with its rows and an oracle from USD.
 6. **Oracles on M4's rows, and M4 started:** every M4 row gets its oracle, M4 joins `started`, then `tools/matrix.py render`.
 
 #### Phase A log
 
 - **A1, the plan,** with the five choices settled with the user above.
-- **A2, the risk matrix.** Rows take an optional `risk: high`; `tools/matrix.py` refuses any other value, renders a Risk column, and counts the marked rows in the view's summary. The 30 marked rows are grouped in the [Risk matrix](#risk-matrix) below by why a representation could fail them, with the step that tests each. The field holds no reason, so the reasons stay in one place.
+- **A2, the risk matrix.** Rows take an optional `risk: high`; `tools/matrix.py` refuses any other value, renders a Risk column, and counts the marked rows in the view's summary. The marked rows are grouped in the [Risk matrix](#risk-matrix) below by why a representation could fail them, with the step that tests each. The field holds no reason, so the reasons stay in one place. It is a label: nothing checks that a marked row was tested (with the user).
+- **A3, primvar feasibility cases.** Seven cases in [Representation Feasibility Cases](../spec/support/geometry.md#representation-feasibility-cases), rows PVAR-04 to PVAR-10, each delivered by the milestone that displays it (M8 for one mesh, M10 where instances are involved). Each case states what the display shows; for a value per drawn copy, where it is stored is the representation's choice, recorded with the sharing criteria (B5). Chosen from an ad hoc survey of ALab under load-all, through instance proxies (7,484 meshes):
+  - **UVs:** `st` as indexed faceVarying `texCoord2f[]` on 6,984 meshes, `perfuv` likewise on 5,725, and `st` as `float2[]` on 308 and as vertex on 162. Every `UsdPrimvarReader_float2` names `st` (845) or `perfuv` (422) by a constant `varname`, so named UV selection is in production use.
+  - **Display color:** on meshes only, constant (3,708, 41 of them indexed), uniform (1,497), vertex (341), and faceVarying (72); `displayOpacity` likewise.
+  - **Not in ALab:** GeomSubsets (none on any mesh) and primvars on instance roots, so face assignments and per-instance appearance come from fixtures only.
+  - **UV-set names (with the user).** By USD's typing a `float2[]` primvar is not a UV set, so a binding setting decides: a list of globs, matched case-insensitively against whole names, that also take `float2[]` primvars with vertex, varying, or faceVarying interpolation. The default, an empty list, keeps USD's typing; `st`, `st_*`, `*uv`, `uv*` covers ALab without `st*`'s matches such as `stretch`. It joins the payload policy in the requested settings (BIND-11, GEOM-13, GEOM-14, and the API-03 and STATE-01 lists), and DECISIONS.md has a row "UV-set names". M8 implements it; the binding records gain the field then, with a migration, and Phase F's compatibility review lists it.
+- **A4, connection feasibility cases.** Eight cases in [Representation Feasibility Cases](../spec/support/materials.md#representation-feasibility-cases), rows GRAM-05 to GRAM-12. Shader graphs alone (normal maps, scale and bias, texture transforms, displacement) don't bear on the representation and stay M9's. From the same survey:
+  - **Textures:** every `UsdUVTexture` (3,409) takes `st` from a `UsdPrimvarReader_float2`, wraps `repeat`, and leaves `sourceColorSpace` unauthored; 422 author `scale` and `bias`.
+  - **Surface inputs:** textures feed `diffuseColor` (1,266, from `rgb`) and `roughness`, `metallic`, `occlusion`, `ior` (422 each, from `r`), `normal` (422), and `opacity` (32); constant inputs are `ior` and `roughness` (844 each).
+  - **Bindings by purpose:** 3,287 `material:binding:preview` and 1,853 `material:binding:full`, almost all on Xforms, and 3 all-purpose. So the viewport and the final render can show different materials on one prim, which a representation with one material per object slot can't show without a second object or mechanism. The case settles which binding each destination shows: preview in the viewport, full in the final render, each falling back to the all-purpose binding as `UsdShade` resolves purposes.
 
 ### Phase B — The object baseline
 
@@ -55,7 +64,7 @@ The baseline is the bridge's representation, extended until it covers every case
 1. **The baseline, from M1b's `apply.py`:** objects per drawn copy, shared meshes, materials, viewport and render participation, placeholders and markers, with what changed from M1b in the decision log.
 2. **Correspondence in the plan:** each display element's source entity with its instance context and floor, and the browsing universe derived from it (Q1, Q10's inputs).
 3. **The headless interaction functions for the baseline,** with kind promotion in C++, and the reusable checks on `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP`. Q11 gets its new case here.
-4. **The frozen cases and the stress fixture through the baseline,** checked against USD-derived expectations, interior correctness included.
+4. **The feasibility cases and the stress fixture through the baseline,** checked against USD-derived expectations, interior correctness included.
 5. **Sharing criteria:** which display state forces a distinct mesh in this representation, each with its correctness case and measured cost, and content deduplication of the 576 duplicates.
 6. **Small updates within a larger scene:** what replacing one object, one asset, or one shared mesh's users costs, as input to the partition unit.
 7. **Detach walkthrough:** the baseline's binding-specific controls to remove and the ordinary Blender dependencies to keep, under [Detach As-Is](../spec/lifecycle.md#detach-as-is).
@@ -83,7 +92,7 @@ Only for the requirements or costs Phases B and C found failing; this phase may 
 
 1. **The partitioning decision record:** the partition unit, what a partition owns, and how it is replaced as a whole, in DECISIONS.md "Partition unit" and the Glossary.
 2. **Answers to Q1–Q11** and the finalized [interaction contract](../spec/interaction-contract.md), with its draft notice removed, its rows, and its invariant if a guarantee changes. The pick-data assumption is recorded as an accepted risk (ITEST-02).
-3. **Compatibility review of M3's identifiers and schemas** against the finalized contract and the partition unit, with any required change made before M5 starts.
+3. **Compatibility review of M3's identifiers and schemas** against the finalized contract and the partition unit, with any required change made before M5 starts. The requested settings' new UV-set names are listed for M8 (A3).
 4. **The bounds comparison contract** in [acceptance.md](../testing/acceptance.md#bounds-comparison-contract) (ABND-01), using M1's finding on `BBoxCache` under rotation.
 5. **Limitations and fallbacks,** and the "Python-only implementation" row's measurements.
 6. **Notes for M5 to M10** in their milestone files, and the close of this plan.
@@ -94,10 +103,10 @@ The requirements a display representation is most likely to fail, each marked `r
 
 | Risk | Rows | Why a representation could fail it | Tested in |
 |---|---|---|---|
-| Sharing against per-instance appearance | SHARE-01, SHARE-02, SHARE-04, INST-07, MAT-06, MAT-09 | Deduplicating meshes puts appearance on objects or materials; a primvar that drives a material input per instance must reach the shader without a distinct mesh per instance, and batching must keep distinct assignments apart. | B4, B5 |
+| Sharing against per-instance appearance | SHARE-01, SHARE-02, SHARE-04, INST-07, MAT-06, MAT-09, PVAR-08, PVAR-09, GRAM-07, GRAM-08, GRAM-10 | Deduplicating meshes puts appearance on objects or materials; a primvar that drives a material input per instance must reach the shader without a distinct mesh per instance, and batching must keep distinct assignments apart. | B4, B5 |
 | Nested, multi-mesh, multi-material instances | INST-01, INST-02 | Each drawn copy of nested contents needs its own transform, visibility, and inherited bindings, at ALab's scale of copies. | B4, C2 |
 | Transforms objects can't hold | XFORM-02, XFORM-03, CONV-03 | A Blender object's transform is location, rotation, and scale, so shear may need parenting or baked geometry (to be checked); reset transform stacks inside instances and the correction matrix must still reach every copy. | B4 (`F-NESTED-STRESS`) |
-| Two destinations from one snapshot | VIS-03 | Viewport and render participation differ per prim and purpose, and a shared or batched resource has one visibility per object. | B1, B4 |
+| Two destinations from one snapshot | VIS-03, GRAM-12 | Viewport and render participation differ per prim and purpose, and the viewport and final render may show different materials on one prim, while a Blender object has one visibility per destination and one material per slot. | B1, B4 |
 | Correspondence and selection | INSP-01, INSP-02, INSP-04, INSP-05, ICON-23, ICON-27, ICON-30 | Batching and merged meshes hide which instance or element a pick hit, and per-object selection can't highlight part of a shared resource exactly (Q2, Q3, Q5). | B3, D |
 | Publication and replacement | TXN-05, TXN-06 | Preparing a generation beside the published one, and switching it whole, depends on what a partition owns and how it is replaced. | B6, F1 |
 | Managed resources with unmanaged users | OWN-08 | An unmanaged object using a shared mesh or material forces replacement instead of an in-place change. | B6 |
