@@ -131,7 +131,7 @@ The baseline is the bridge's representation, extended until it covers every case
     - **Cost:** one empty per sheared object. Mesh sharing is unchanged. The stress fixture has 12 sheared copies of 21.
     - **The check:** `isolated/test_baseline.py` reads every object's world transform once the depsgraph has evaluated it, with every object shown, since hidden ones aren't evaluated. It compares them with `UsdGeom` on both fixtures, and checks that exactly the sheared copies have a parent. With the chain disabled, the stress fixture fails (ad hoc).
     - **The shear test:** it runs on every object, so it uses `mathutils`. On 7,317 matrices, ALab's object count, it took 6.7 ms, against 129 ms for numpy (ad hoc, median of 5).
-    - **For B7:** the parents are ordinary Blender parenting, which detach could keep.
+    - **Detach** keeps the parents, as ordinary Blender parenting (B7).
   - **Appearance values where the baseline stores them.** `isolated/test_baseline.py` checks each case against the fixtures' facts and USD. Values held once per copy are on the copy's object, so copies of one shared mesh keep their own values:
     - **Display color and opacity (PVAR-07, PVAR-08, GRAM-05):** a constant value is an ID property of the copy's object, and a constant color and opacity are also the object's color and alpha, which Solid shading's Object color shows. Any other interpolation is a mesh attribute on its domain, with USD's values. This includes inherited values through nested instances: the nearest opinion wins, the mesh's own, then the inner root's, then the outer's.
     - **Reader primvars (PVAR-09, GRAM-08, GRAM-11):** each copy's own `tint`, `rough`, or `displayColor`, inherited from its instance root, is an ID property of its object, which an Attribute node of type Object can read. A copy with none has no property. So the reader's fallback must come from M9's translated material, or be written per copy: which one is M9's to settle.
@@ -200,6 +200,21 @@ The baseline is the bridge's representation, extended until it covers every case
     - A unit as large as the display can't be replaced within any budget.
     - The users of a shared mesh or material needn't join its unit: repointing them is cheap and keeps their identities.
     - A transform change could be applied in place, with its old value kept for rollback, and skip the depsgraph's rebuild (ad hoc probe only; not built).
+- **B7, the detach walkthrough.** `detach.py` releases an applied display under [Detach As-Is](../spec/lifecycle.md#detach-as-is). It works on what survives in the destination collection when it runs, Blender-side edits and deletions included, and reads no USD.
+  - **What it removes:** the baseline ties Blender data to its binding only through ID properties, named in `apply.py`: each object's source, instance context, element, and placeholder type, each shear parent's source, and each material's sources. The baseline has no handlers, drivers, modifiers, node groups, or overlays. Its correspondence and selection associations live in the bridge's `Interaction` and plan, not in Blender data, so releasing them removes nothing from the file.
+  - **What it keeps,** as ordinary Blender data that works without the binding:
+    - meshes, shared where they were;
+    - objects, with their transforms, visibility per destination, and object color;
+    - constant primvars as ID properties, which an Attribute node reads without the binding;
+    - shear parent empties, by ordinary parenting, still unselectable;
+    - placeholders (with the user), as bounds boxes and empty markers: plain objects that keep the layout readable, though they no longer say which USD type they stood for;
+    - materials in object-linked slots (a new object on a detached mesh shows no material until one is assigned, as in any Blender file);
+    - collection links and the selection.
+
+    So detaching the baseline changes no appearance, and DET-04 has nothing to report.
+  - **The check:** `isolated/test_detach.py` applies `F-APPEARANCE-CASES`, `F-NESTED-STRESS`, and `F-UNIVERSE-MEMBERSHIP` (for its bounds placeholder and empty marker). It then deletes an object whose mesh others share, moves another, recolors a material, and detaches. It asserts that Blender's data afterward equals the data before, minus every `proscenium_` property, edits included, and that the counts detach reports match. It also asserts that the saved file reopens the same in a process without the bridge. In an ad hoc mutation run of `detach.py`, each of seven single changes failed it: nothing removed, every ID property removed, materials skipped, placeholders deleted, object colors reset, shear parents unparented, and an object unlinked.
+  - **For M11 and the compatibility review (F3):** the baseline's properties name no binding. So with two bindings in one collection, or sharing a material, detach couldn't tell which properties are this binding's ("Remove only metadata and controls belonging to this binding"). M3's ownership manifests are keyed by binding identity. So the product finds a binding's content through its manifest, and any per-datablock metadata it keeps must name the binding or be derived from the manifest.
+    - **Not exercised:** DET-05's later refresh or removal, since the baseline keeps no ownership records for one to consult; and DET-06, since it has no pending cleanup.
 - **Q11, kinds outside a valid model hierarchy (with the user).** A kind level matches a prim's authored kind, whether or not the prim is in a valid model hierarchy (`UsdPrim::IsModel`). The rule is stated in [Selection](../spec/interaction-contract.md#selection), ICON-21's oracle, and the DECISIONS.md row "Browsing universe and inspection metadata set". So a component-level pick on a component nested in another selects the nested one, as the oracle and the bridge already did. Under the other rule, it would select the outer one.
   - **In ALab** (`entry.usda`, load-all, one ad hoc survey), 594 of 1,877 authored components are outside a valid hierarchy:
     - 413 under point-instancer prototypes;

@@ -47,6 +47,16 @@ PLAN_DOMAINS: frozenset[PlanDomain] = frozenset(get_args(PlanDomain))
 SHEAR_TOLERANCE = 1e-6
 # On a parent empty (M4): the USD source of the copy whose shear it carries.
 SHEAR_PARENT = "proscenium_shear_of"
+# The ID properties that tie Blender data to the binding, which detach removes (M4, B7). Constant primvars keep
+# their own names, since an Attribute node reads them, so they aren't among these.
+OBJECT_PROPERTIES = (
+    "proscenium_source",
+    "proscenium_instance_context",
+    "proscenium_element",
+    "proscenium_placeholder",
+    SHEAR_PARENT,
+)
+MATERIAL_PROPERTIES = ("proscenium_sources",)
 
 
 def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:

@@ -249,3 +249,90 @@ def _counts() -> dict[str, int]:
         "materials": len(data.materials),
         "collections": len(data.collections),
     }
+
+
+def detach_scene(module_dir: str, scene: str, blend: str) -> dict[str, Any]:
+    """Apply `scene`, edit its display in Blender, detach it, and save to `blend` (B7); Blender's data around detach.
+
+    The edits come before detach, which must keep them: an object whose mesh others share is deleted, another
+    is moved, and a material is recolored.
+    """
+    native = _native(module_dir)
+    apply = importlib.import_module("apply")
+    detach = importlib.import_module("detach")
+
+    stage = Usd.Stage.Open(scene)
+    bridge = native.Bridge(stage)
+    plan = native.build_plan(bridge.capture())
+    collection = bpy.data.collections.new("Baseline")
+    blender_scene: Any = bpy.context.scene  # never None in a running Blender
+    blender_scene.collection.children.link(collection)
+    display = apply.apply(plan, collection)
+    shared: list[Any] = [obj for obj in display.objects if obj.type == "MESH" and obj.data.users > 1]
+    deleted = shared[0].name
+    bpy.data.objects.remove(shared[0])
+    shared[1].location.x += 1.0
+    recolored = None
+    if display.materials:
+        display.materials[0].diffuse_color = (1.0, 0.0, 1.0, 1.0)
+        recolored = display.materials[0].name
+    before = _blender_data()
+    released = detach.detach(collection)
+    after = _blender_data()
+    bpy.ops.wm.save_as_mainfile(filepath=blend)
+    bridge.release()
+    return {
+        "before": before,
+        "after": after,
+        "released": {"objects": released.objects, "materials": released.materials, "properties": released.properties},
+        "deleted": deleted,
+        "recolored": recolored,
+    }
+
+
+def read_blend(blend: str) -> dict[str, Any]:
+    """Blender's data in `blend`, opened without the bridge."""
+    bpy.ops.wm.open_mainfile(filepath=blend)
+    return _blender_data()
+
+
+def _blender_data() -> dict[str, Any]:
+    """Every object, mesh, material, and collection as Blender holds it, by name, with all its ID properties."""
+    return {
+        "objects": {obj.name: _object_data(obj) for obj in bpy.data.objects},
+        "meshes": {
+            mesh.name: {
+                "users": mesh.users,
+                "vertices": len(mesh.vertices),
+                "faces": len(mesh.polygons),
+                "attributes": sorted(a.name for a in mesh.attributes),
+                "properties": _properties(mesh),
+            }
+            for mesh in bpy.data.meshes
+        },
+        "materials": {
+            material.name: {"diffuse": list(material.diffuse_color), "properties": _properties(material)}
+            for material in bpy.data.materials
+        },
+        "collections": {c.name: sorted(obj.name for obj in c.objects) for c in bpy.data.collections},
+    }
+
+
+def _object_data(obj: Any) -> dict[str, Any]:
+    return {
+        "type": obj.type,
+        "data": None if obj.data is None else obj.data.name,
+        "parent": None if obj.parent is None else obj.parent.name,
+        "basis": _rows(obj.matrix_basis),
+        "parent_inverse": _rows(obj.matrix_parent_inverse),
+        "hide": [obj.hide_viewport, obj.hide_render, obj.hide_select],
+        "display": [obj.display_type, obj.empty_display_type],
+        "color": list(obj.color),
+        "slots": [[slot.link, None if slot.material is None else slot.material.name] for slot in obj.material_slots],
+        "collections": sorted(c.name for c in obj.users_collection),
+        "properties": _properties(obj),
+    }
+
+
+def _properties(datablock: Any) -> dict[str, Any]:
+    return {key: _plain(datablock[key]) for key in datablock.keys()}
