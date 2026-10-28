@@ -18,6 +18,7 @@
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/timeCode.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -88,6 +89,7 @@ struct ObjectEntry {
 struct Plan {
     pxr::UsdTimeCode time;
     std::vector<MeshData> meshes;
+    std::vector<std::size_t> meshHashes;  // per mesh, its ContentHash, which a later plan's diff looks up (M4)
     std::vector<MaterialData> materials;
     std::vector<ObjectEntry> objects;
     Correspondence correspondence;  // derived from the objects once they are all planned

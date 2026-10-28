@@ -73,6 +73,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
 | `mesh_sharing.h/.cpp` | M4: content deduplication: a built mesh's content hash and equality, and the plan's meshes by content |
+| `plan_diff.h/.cpp` | M4: what a new plan changes from the published one: meshes by content, materials by value, objects by identity |
 | `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
 | `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects: each object's floor, the browsing universe, and the viewport's elements by floor (both sorted, so a subtree is one range) |
 | `interaction.h/.cpp` | M4: the baseline's five core interaction functions over a plan's correspondence and the live stage, held weakly. Kind levels go to `inspection.h` in C++; each function raises once the stage has expired |
@@ -95,10 +96,12 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`) |
+| `../update.py` | M4: replaces one unit of an applied display: prepared beside it, published in one call, and retired |
+| `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties and keeps everything else |
 | `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
-| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters |
+| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters; `updates.py` (M4) times unit replacements on ALab |
 | `../cases/<case>.py`, `.usda` | One check module and scene per case: `subsets`, `implicit`, `instances`, `edits`, `untranslated`, `malformed`, `bindings`, `purposes`, `primvars`, `animation` (Phase D: what a time change dirties, and values at each time), and `large_arrays` (its scene is generated) |
 
 ## Python API
@@ -115,6 +118,8 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 plan.universe  # sorted USD paths; each object dict also has its "floor"
+_hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
+#   "changed": new object indices, "removed": old object indices}
 interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind

@@ -188,7 +188,7 @@ The baseline is the bridge's representation, extended until it covers every case
     | Largest floor (an asset copy) | 113 | 0 | 113 and 2 | 151 ms | 1 ms | 91 ms | 54 ms | 0.29 s |
     | Everything | 7,018 | 0 | 3,360 and 806 | 7.53 s | 35 ms | 5.57 s | 151 ms | 13.06 s |
 
-    - **One real edit:** a translation of `/root/stoat/backpack_M_hrc/GEO/leatherBelt_M_hrc/belt07_M_geo`, followed by an incremental capture (21 ms), planning (0.30 s), and the object's replacement (0.13 s), took 0.50 s in all. That is 5.3 times faster than the full synchronization, short of the provisional ten times. Planning is most of it: the planner always plans the whole stage.
+    - **One real edit:** a translation of `/root/stoat/backpack_M_hrc/GEO/leatherBelt_M_hrc/belt07_M_geo`, followed by an incremental capture (21 ms), planning (0.30 s), and the replacement of its viewport object (0.13 s), took 0.50 s in all. The prim has a second object, for the render, which the measurement left unreplaced (C1 found it); as with almost every ALab copy, its two destinations bind different materials (6,997 of 7,018 objects display in one destination only). That is 5.3 times faster than the full synchronization, short of the provisional ten times. Planning is most of it: the planner always plans the whole stage.
     - **Fixed costs:** these dominate small units (an ad hoc probe in the same setup):
       - reading the plan's records, which the prototype's bindings convert whole on every read: `plan.objects` 36 ms and `plan.meshes` 12 ms;
       - the depsgraph's evaluation after any link, unlink, or `obj.data` change, 54–55 ms, against 2 ms after a transform change;
@@ -226,10 +226,35 @@ The baseline is the bridge's representation, extended until it covers every case
 
 ### Phase C — Budgets and measurements
 
-1. **Provisional budgets,** as settled above, recorded with the measurements that test them.
-2. **The measurement harness,** extending the bridge's `measure/`: initial construction, unchanged refresh, a small update, each interaction function with its Blender updates, peak memory while two generations coexist, and `.blend` size, on ALab and on generated fixtures of controlled size, repeated in the Blender binary on the reference hardware (APERF-01, APERF-02, APERF-06).
-3. **Interaction at scale (Q6, Q9):** the universe's size under each payload policy, `displayed` over a whole stage browser, expansion, and a kind-level selection over a whole assembly, with the kind promotion's share.
-4. **The first ownership lookup after an undo at ALab scale,** with the baseline's manifest entries written through M3's runtime, against the interaction budget. If it is over, the revision-token option in the [M3 plan](M03-bindings.md), Phase E.
+1. **The plan diff,** in the bridge's C++, so refreshes and edits find what to replace, and an unchanged refresh changes nothing.
+2. **Updates from a diff:** `update.py` adding and removing objects and renumbering meshes, for the payload switch, the topology step, and geometry edits that change content deduplication.
+3. **Provisional budgets and the measurement harness,** extending the bridge's `measure/`: the budgets as settled above, recorded with the measurements that test them. The harness covers initial construction, unchanged refresh, a small update, each interaction function with its Blender updates, peak memory while two generations coexist, and `.blend` size, on ALab and on generated fixtures of controlled size, repeated in the Blender binary on the reference hardware (APERF-01, APERF-02, APERF-06).
+4. **Interaction at scale (Q6, Q9):** the universe's size under each payload policy, `displayed` over a whole stage browser, expansion, and a kind-level selection over a whole assembly, with the kind promotion's share.
+5. **The first ownership lookup after an undo at ALab scale,** with the baseline's manifest entries written through M3's runtime, against the interaction budget. If it is over, the revision-token option in the [M3 plan](M03-bindings.md), Phase E.
+
+#### Phase C log
+
+- **C1, the plan diff (with the user: a diff in C++; Hydra's notices narrow only the capture).** `plan_diff.h/.cpp` compares a new plan with the published one, and `_hydra_bridge.diff_plans(published, next)` returns it:
+  - **Meshes** match by B5's content: the plan keeps each mesh's hash, and a match is confirmed byte for byte.
+  - **Materials** match by everything the plan holds.
+  - **Objects** match by identity: source, instance context, and the destinations they display in. So a copy that becomes hidden, or shows in another destination, is a new object.
+  - A matched object is **changed** when anything `apply.py` sets differs, its mesh and materials compared through their matches; unmatched old objects are **removed**.
+
+  Change discovery proposes work, and this comparison decides it ([Affected Content](../spec/incremental.md#affected-content)), so an unchanged refresh changes nothing. The incremental capture already re-copies only the prims named in Hydra's notices. Narrowing planning and the diff by those notices is Phase 2's (M13): the spec takes notices as hints only, and they miss binding-setting changes, undo, external assets, and a rebuilt imaging pipeline, so a full comparison remains the fallback.
+  - **The check:** `isolated/test_plan_diff.py` edits the caller's stage through its session layer, recaptures incrementally, and diffs. What each edit changes comes from how the fixture is built:
+    - on `F-APPEARANCE-CASES`:
+      - no edit: everything matched, nothing changed;
+      - a translation: only its prim's objects;
+      - the prototype's `Body` points: one new mesh, and its three copies;
+      - `Red`'s color: rebuilt materials only among those with `Red`'s sources, and exactly the meshes the fixture binds to `Red`;
+      - a constant `displayColor`: its object;
+      - hiding a prim: its object removed and a hidden one added;
+      - a deactivated prim and an added copy of `MeshA`: removed and added objects, and no new mesh;
+    - on `F-UNIVERSE-MEMBERSHIP`: unloading and reloading `/World/Payload` removes and adds its contents;
+    - on `F-NESTED-STRESS`: no edit matches everything.
+
+    It also checks that every match keeps its source. In an ad hoc mutation run of `plan_diff.cpp`, each of eight single changes failed it: identity without destinations (in the comparison and the hash), no mesh matches, materials compared by name, and the matrix, mesh, slots, or primvars ignored in the object comparison, and no removed objects.
+  - **Cost on ALab** (ad hoc, the bpy wheel, five runs each in one process): the diff took a median of 38 ms unchanged (range 37–91 ms), and 40 ms after one translation (38–45 ms), which changed that prim's 2 objects. The incremental capture copied 1 prim. Phase C's harness measures it in the binary.
 
 ### Phase D — Targeted alternatives
 

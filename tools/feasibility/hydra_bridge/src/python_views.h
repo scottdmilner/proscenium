@@ -67,6 +67,10 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
                   const bp::object &renderMaterialPurpose);
 
+// M4: what `next` changes from `published` (plan_diff.h), computed without the GIL, as {"meshes", "materials",
+// "objects": [old index or -1 per new entry], "changed": [new object indices], "removed": [old object indices]}.
+bp::dict DiffPlanViews(const PlanView &published, const PlanView &next);
+
 void WrapViews();
 
 }  // namespace hydra_bridge

@@ -1,5 +1,6 @@
 #include "python_views.h"
 
+#include "plan_diff.h"
 #include "prim_reader.h"
 
 #include <pxr/base/tf/pyLock.h>
@@ -480,6 +481,26 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
     return PlanView{plan};
 }
 
+bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
+    PlanDiff diff;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        diff = DiffPlans(*published.data, *next.data);
+    }
+    const auto list = [](const std::vector<int> &values) {
+        bp::list result;
+        for (const int value : values) result.append(value);
+        return result;
+    };
+    bp::dict result;
+    result["meshes"] = list(diff.meshes);
+    result["materials"] = list(diff.materials);
+    result["objects"] = list(diff.objects);
+    result["changed"] = list(diff.changed);
+    result["removed"] = list(diff.removed);
+    return result;
+}
+
 void WrapViews() {
     bp::class_<SnapshotView>("Snapshot", bp::no_init)
         .add_property("time", &SnapshotView::Time)
@@ -511,6 +532,7 @@ void WrapViews() {
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
              bp::arg("render_material_purpose") = bp::object()));
+    bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
 }
 
 }  // namespace hydra_bridge

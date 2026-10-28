@@ -135,6 +135,7 @@ private:
         int index = contents_.Find(*mesh, built.contentHash, plan_->meshes);
         if (index == -1) {
             plan_->meshes.push_back(std::move(*mesh));
+            plan_->meshHashes.push_back(built.contentHash);
             index = static_cast<int>(plan_->meshes.size() - 1);
             contents_.Add(built.contentHash, index);
         }

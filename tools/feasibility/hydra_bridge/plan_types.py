@@ -100,6 +100,16 @@ class Plan(Protocol):
     def diagnostics(self) -> list[DiagnosticRecord]: ...
 
 
+class PlanDiff(TypedDict):
+    """What a plan changes from the published one, as diff_plans returns it (M4)."""
+
+    meshes: list[int]  # per new mesh: an old mesh with equal content, or -1
+    materials: list[int]  # per new material: an equal old material, or -1
+    objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
+    changed: list[int]  # new objects whose old counterpart differs, in plan order
+    removed: list[int]  # old objects with no new counterpart, in plan order
+
+
 class ResolvedEntity(TypedDict):
     """An element's source entity, as Interaction.resolve_pick returns it."""
 
