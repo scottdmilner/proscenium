@@ -32,7 +32,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2, M3]
+started: [M1, M1b, M2, M3, M4]
 
 requirements:
 
@@ -58,6 +58,7 @@ requirements:
         oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log. M4 finalizes it."
       - id: ARCH-08
         quote: "Keep the performance tests around for later"
+        oracle: "The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M14 its Phase 2 targets."
         kind: process
         delivery: M4
         qualified_by: M14
@@ -1084,6 +1085,7 @@ requirements:
         delivery: M8
       - id: XFORM-08
         quote: "This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses."
+        oracle: "The M4 decision record: the DECISIONS.md row \"Time-sampled data representation\" states whether and where animation data is used, and the time-code-to-frame mapping of any approach adopted, with the M4 plan's Phase E measurements of playback, construction, memory, and .blend size."
         kind: contract
         delivery: M4
         qualified_by: M4
@@ -1160,10 +1162,12 @@ requirements:
         qualified_by: M8
       - id: PVAR-02
         quote: "Before choosing a display backend, M4 defines and freezes concrete cases"
+        oracle: "The M4 decision record: Representation Feasibility Cases in geometry.md, the M4 plan's A3 log, and the DECISIONS.md row \"Support cases for backend feasibility\". F-APPEARANCE-CASES builds each case, and the chosen representation displays every one before M4 closes."
         delivery: M4
         qualified_by: M4
       - id: PVAR-03
         quote: "Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes"
+        oracle: "A change to a primvar feasibility case, or to the partition unit, lands with a rerun of the affected M4 prototypes and an updated decision record; M12 checks that no case changed without one."
         kind: process
         delivery: M4
         qualified_by: M12
@@ -1256,6 +1260,7 @@ requirements:
         quote: "Separate bindings do not share managed geometry resources."
       - id: SHARE-06
         quote: "M4 records sharing criteria and the display state that requires each distinct-resource case"
+        oracle: "The M4 decision record: the sharing criteria (M4 plan, B5) in the DECISIONS.md row \"Geometry sharing\", each distinct-resource case with the display state that requires it, its correctness case in F-APPEARANCE-CASES or F-NESTED-STRESS, and its measured cost."
         kind: contract
         delivery: M4
         qualified_by: M4
@@ -1302,10 +1307,12 @@ requirements:
         qualified_by: M9
       - id: GRAM-03
         quote: "Before choosing a display backend, M4 defines and freezes concrete connection cases"
+        oracle: "The M4 decision record: Representation Feasibility Cases in materials.md, the M4 plan's A4 log, and the DECISIONS.md row \"Support cases for backend feasibility\". F-APPEARANCE-CASES builds each case, and the chosen representation displays every one before M4 closes."
         delivery: M4
         qualified_by: M4
       - id: GRAM-04
         quote: "A chosen backend does not authorize silently narrowing required support."
+        oracle: "A case the chosen representation can't display is recorded as a failure in the M4 decision record, never removed or narrowed; M12 checks that every feasibility case row still traces its spec text and passes."
         kind: process
         delivery: M4
         qualified_by: M12
@@ -1560,6 +1567,7 @@ requirements:
     rows:
       - id: ABND-01
         quote: "M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints"
+        oracle: "The M4 decision record: the Bounds Comparison Contract in acceptance.md states, for the chosen representation, each item this row lists (M4 plan, F4)."
         kind: contract
         delivery: M4
         qualified_by: M4
@@ -1602,12 +1610,16 @@ requirements:
         oracle: "The feasibility record's macOS environment table lists the machine, memory, OS build, and Blender build."
       - id: APERF-06
         quote: "Measurements run in the Blender binary on AC power"
+        oracle: "Every measurement M4 records names the Blender binary and build hash, the OS version, and that it ran on AC power."
       - id: APERF-01
         quote: "Record repeated-run statistics, not single timings."
+        oracle: "Every measurement M4 records gives repeated-run statistics: the number of runs, the median, and the range."
       - id: APERF-02
         quote: "ALab provides production-scale numbers. Generated fixtures of controlled size show how each cost scales."
+        oracle: "M4's measurements cover ALab and generated fixtures at several controlled sizes, and report each cost against size."
       - id: APERF-03
         quote: "M4 sets provisional budgets for comparing representations. Phase 1 records baselines on the reference hardware, not gates."
+        oracle: "The provisional budgets settled in the M4 plan (item 4), and Phase C's measurements against them, recorded as baselines rather than gates."
 
   - section: testing/acceptance.md#where-it-runs
     kind: process
