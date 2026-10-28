@@ -15,6 +15,14 @@ import bpy
 from pxr import Usd
 
 BRIDGE = Path(__file__).resolve().parents[3] / "tools/feasibility/hydra_bridge"
+# The property each attribute data type's elements hold their value in.
+ELEMENT_VALUES = {
+    "FLOAT": "value",
+    "FLOAT2": "vector",
+    "FLOAT_VECTOR": "vector",
+    "FLOAT_COLOR": "color",
+    "INT": "value",
+}
 
 
 def _native(module_dir: str) -> Any:
@@ -93,7 +101,34 @@ def _object(record: Any, obj: Any) -> dict[str, Any]:
         # Per material slot, the USD sources of the material it shows (None for none).
         "slots": [None if s.material is None else list(s.material["proscenium_sources"]) for s in obj.material_slots],
         "face_slots": [] if mesh is None else [p.material_index for p in mesh.polygons],
+        "color": list(obj.color),
+        # The ID properties the bridge didn't add for itself: constant primvars by name.
+        "properties": {k: _plain(obj[k]) for k in obj.keys() if not k.startswith("proscenium_")},
+        "attributes": {} if mesh is None else _attributes(mesh),
+        "uv_maps": [] if mesh is None else [layer.name for layer in mesh.uv_layers],
+        "corner_verts": [] if mesh is None else [loop.vertex_index for loop in mesh.loops],
     }
+
+
+def _plain(value: Any) -> Any:
+    """An ID property value as JSON: arrays as (nested) lists."""
+    return value.to_list() if hasattr(value, "to_list") else value
+
+
+def _attributes(mesh: Any) -> dict[str, dict[str, Any]]:
+    """The mesh's named attributes, Blender's internal ones aside: domain, data type, and each element's value."""
+    result = {}
+    for attribute in mesh.attributes:
+        if attribute.name.startswith(".") or attribute.data_type not in ELEMENT_VALUES:
+            continue
+        prop = ELEMENT_VALUES[attribute.data_type]
+        values = [getattr(element, prop) for element in attribute.data]
+        result[attribute.name] = {
+            "domain": attribute.domain,
+            "data_type": attribute.data_type,
+            "values": [v if isinstance(v, (int, float)) else list(v) for v in values],
+        }
+    return result
 
 
 def correspondence(module_dir: str, scene: str, times: list[float], unload: list[str]) -> dict[str, Any]:

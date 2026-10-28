@@ -191,9 +191,12 @@ def _object(
     for slot, material in zip(obj.material_slots, data["material_slots"], strict=True):
         slot.link = "OBJECT"
         slot.material = None if material is None else materials[material]
+    # The object color shows a constant displayColor and displayOpacity, in Solid shading's Object color.
     color = data["primvars"].get("displayColor")
-    if color is not None and len(color) == 1:
-        obj.color = (*color[0], 1.0)
+    opacity = data["primvars"].get("displayOpacity")
+    rgb = tuple(color[0]) if color is not None and len(color) == 1 else tuple(obj.color[:3])
+    alpha = opacity[0] if opacity is not None and len(opacity) == 1 else 1.0
+    obj.color = (*rgb, alpha)
     # Constant primvars by name, which an Attribute node of type Object reads; the plan converted them.
     for name, value in data["properties"].items():
         obj[name] = value
