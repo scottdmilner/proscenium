@@ -38,21 +38,22 @@ constexpr HdSampledDataSource::Time kNow = 0.0f;
 // The typed value of a data source, or `fallback` when the source is absent.
 template <class Handle, class T = decltype(std::declval<Handle>()->GetTypedValue(kNow))>
 T ValueOr(const Handle &source, T fallback = T()) {
-    return source ? source->GetTypedValue(kNow) : fallback;
+    return source ? source->GetTypedValue(kNow) : std::move(fallback);
 }
 
 void ReadPrimvars(const HdContainerDataSourceHandle &source, PrimRecord &record) {
-    HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(source);
+    const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(source);
     if (!primvars) return;
     for (const TfToken &name : primvars.GetPrimvarNames()) {
-        HdPrimvarSchema primvar = primvars.GetPrimvar(name);
+        const HdPrimvarSchema primvar = primvars.GetPrimvar(name);
         if (!primvar) continue;
         PrimvarRecord out;
         out.name = name;
         out.interpolation = ValueOr(primvar.GetInterpolation());
         out.role = ValueOr(primvar.GetRole());
         // Unflattened values whether or not the primvar is indexed; GetPrimvarValue would flatten.
-        if (HdSampledDataSourceHandle values = primvar.GetIndexedPrimvarValue()) out.values = values->GetValue(kNow);
+        if (const HdSampledDataSourceHandle values = primvar.GetIndexedPrimvarValue())
+            out.values = values->GetValue(kNow);
         if (primvar.IsIndexed()) out.indices = ValueOr(primvar.GetIndices());
         // Blocked primvars, such as the points of a skinned mesh before pruning, have no value.
         if (!out.values.IsEmpty()) record.primvars.push_back(std::move(out));
@@ -61,7 +62,7 @@ void ReadPrimvars(const HdContainerDataSourceHandle &source, PrimRecord &record)
 
 // Absent scheme and orientation take USD's schema fallbacks; an authored bad token reaches validation.
 MeshRecord ReadMesh(const HdMeshSchema &mesh) {
-    HdMeshTopologySchema topology = mesh.GetTopology();
+    const HdMeshTopologySchema topology = mesh.GetTopology();
     return MeshRecord{PxOsdMeshTopology(ValueOr(mesh.GetSubdivisionScheme(), PxOsdOpenSubdivTokens->catmullClark),
                                         ValueOr(topology.GetOrientation(), PxOsdOpenSubdivTokens->rightHanded),
                                         ValueOr(topology.GetFaceVertexCounts()),
@@ -72,7 +73,7 @@ MeshRecord ReadMesh(const HdMeshSchema &mesh) {
 InstancerRecord ReadInstancer(const HdInstancerTopologySchema &topology) {
     InstancerRecord out;
     out.prototypes = ValueOr(topology.GetPrototypes());
-    HdIntArrayVectorSchema indices = topology.GetInstanceIndices();
+    const HdIntArrayVectorSchema indices = topology.GetInstanceIndices();
     for (size_t i = 0; i < indices.GetNumElements(); ++i) out.instanceIndices.push_back(ValueOr(indices.GetElement(i)));
     out.mask = ValueOr(topology.GetMask());
     out.instanceLocations = ValueOr(topology.GetInstanceLocations());
@@ -84,9 +85,9 @@ InstancerRecord ReadInstancer(const HdInstancerTopologySchema &topology) {
 MaterialRecord ReadMaterial(const SdfPath &path, const HdContainerDataSourceHandle &prim,
                             const HdMaterialSchema &material) {
     MaterialRecord out;
-    HdMaterialNetworkSchema network = material.GetMaterialNetwork();
+    const HdMaterialNetworkSchema network = material.GetMaterialNetwork();
     if (!network) return out;
-    HdDataSourceMaterialNetworkInterface interface(path, network.GetContainer(), prim);
+    const HdDataSourceMaterialNetworkInterface interface(path, network.GetContainer(), prim);
     const auto [connected, terminal] = interface.GetTerminalConnection(HdMaterialTerminalTokens->surface);
     if (!connected) return out;
     const TfToken &node = terminal.upstreamNodeName;
@@ -134,8 +135,7 @@ void ReadSourceInfo(const HdContainerDataSourceHandle &source, PrimRecord &recor
     if (auto bindings = HdContainerDataSource::Cast(get(SourceInfoTokens::Bindings()))) {
         static const TfToken kAllPurpose("allPurpose");
         for (const TfToken &purpose : bindings->GetNames())
-            if (auto material = HdTokenDataSource::Cast(bindings->Get(purpose)))
-            {
+            if (auto material = HdTokenDataSource::Cast(bindings->Get(purpose))) {
                 const std::string path = material->GetTypedValue(kNow).GetString();
                 record.usdBindings.emplace_back(purpose == kAllPurpose ? TfToken() : purpose,
                                                 path.empty() ? SdfPath() : ToHydraPath(record, SdfPath(path)));
@@ -148,7 +148,7 @@ void ReadSourceInfo(const HdContainerDataSourceHandle &source, PrimRecord &recor
 }
 
 void ReadMaterialBindings(const HdContainerDataSourceHandle &source, PrimRecord &record) {
-    HdMaterialBindingsSchema bindings = HdMaterialBindingsSchema::GetFromParent(source);
+    const HdMaterialBindingsSchema bindings = HdMaterialBindingsSchema::GetFromParent(source);
     if (!bindings) return;
     for (const TfToken &purpose : bindings.GetContainer()->GetNames()) {
         SdfPath path = ValueOr(bindings.GetMaterialBinding(purpose).GetPath());
@@ -160,20 +160,27 @@ void ReadMaterialBindings(const HdContainerDataSourceHandle &source, PrimRecord 
 
 const TfTokenVector &PlannedSchemas() {
     static const TfTokenVector schemas{
-        UsdImagingUsdPrimInfoSchema::GetSchemaToken(), HdPrimOriginSchema::GetSchemaToken(),
-        HdXformSchema::GetSchemaToken(),               HdVisibilitySchema::GetSchemaToken(),
-        HdPurposeSchema::GetSchemaToken(),             HdMaterialBindingsSchema::GetSchemaToken(),
-        HdPrimvarsSchema::GetSchemaToken(),            HdMeshSchema::GetSchemaToken(),
-        HdGeomSubsetSchema::GetSchemaToken(),          HdInstancedBySchema::GetSchemaToken(),
-        HdInstancerTopologySchema::GetSchemaToken(),   HdMaterialSchema::GetSchemaToken(),
-        HdExtentSchema::GetSchemaToken(),              SourceInfoTokens::Schema(),
+        UsdImagingUsdPrimInfoSchema::GetSchemaToken(),
+        HdPrimOriginSchema::GetSchemaToken(),
+        HdXformSchema::GetSchemaToken(),
+        HdVisibilitySchema::GetSchemaToken(),
+        HdPurposeSchema::GetSchemaToken(),
+        HdMaterialBindingsSchema::GetSchemaToken(),
+        HdPrimvarsSchema::GetSchemaToken(),
+        HdMeshSchema::GetSchemaToken(),
+        HdGeomSubsetSchema::GetSchemaToken(),
+        HdInstancedBySchema::GetSchemaToken(),
+        HdInstancerTopologySchema::GetSchemaToken(),
+        HdMaterialSchema::GetSchemaToken(),
+        HdExtentSchema::GetSchemaToken(),
+        SourceInfoTokens::Schema(),
     };
     return schemas;
 }
 
 // Copies everything planning reads; returns false for a path with no prim.
 bool ReadPrim(const HdSceneIndexBase &scene, const SdfPath &path, PrimRecord &record) {
-    HdSceneIndexPrim prim = scene.GetPrim(path);
+    const HdSceneIndexPrim prim = scene.GetPrim(path);
     if (!prim.dataSource) return false;
     const HdContainerDataSourceHandle &source = prim.dataSource;
     record.path = path;
@@ -182,24 +189,25 @@ bool ReadPrim(const HdSceneIndexBase &scene, const SdfPath &path, PrimRecord &re
     record.usdTypeName = ValueOr(primInfo.GetTypeName());
     record.pointInstancerPrototype = static_cast<bool>(primInfo.GetPiPropagatedPrototypes());
     record.originPath = HdPrimOriginSchema::GetFromParent(source).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
-    if (HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
+    if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
         record.matrix = matrix->GetTypedValue(kNow);
     record.visible = ValueOr(HdVisibilitySchema::GetFromParent(source).GetVisibility(), true);
     record.purpose = ValueOr(HdPurposeSchema::GetFromParent(source).GetPurpose());
     ReadMaterialBindings(source, record);
-    if (HdExtentSchema extent = HdExtentSchema::GetFromParent(source)) {
-        if (HdVec3dDataSourceHandle min = extent.GetMin(), max = extent.GetMax(); min && max)
+    if (const HdExtentSchema extent = HdExtentSchema::GetFromParent(source)) {
+        if (const HdVec3dDataSourceHandle min = extent.GetMin(), max = extent.GetMax(); min && max)
             record.extent = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));
     }
     ReadPrimvars(source, record);
-    if (HdMeshSchema mesh = HdMeshSchema::GetFromParent(source)) record.mesh = ReadMesh(mesh);
-    if (HdGeomSubsetSchema subset = HdGeomSubsetSchema::GetFromParent(source))
+    if (const HdMeshSchema mesh = HdMeshSchema::GetFromParent(source)) record.mesh = ReadMesh(mesh);
+    if (const HdGeomSubsetSchema subset = HdGeomSubsetSchema::GetFromParent(source))
         record.geomSubset = GeomSubsetRecord{ValueOr(subset.GetType()), ValueOr(subset.GetIndices()), TfToken()};
-    if (HdInstancedBySchema instancedBy = HdInstancedBySchema::GetFromParent(source))
-        record.instancedBy = InstancedByRecord{ValueOr(instancedBy.GetPaths()), ValueOr(instancedBy.GetPrototypeRoots())};
-    if (HdInstancerTopologySchema topology = HdInstancerTopologySchema::GetFromParent(source))
+    if (const HdInstancedBySchema instancedBy = HdInstancedBySchema::GetFromParent(source))
+        record.instancedBy =
+            InstancedByRecord{ValueOr(instancedBy.GetPaths()), ValueOr(instancedBy.GetPrototypeRoots())};
+    if (const HdInstancerTopologySchema topology = HdInstancerTopologySchema::GetFromParent(source))
         record.instancer = ReadInstancer(topology);
-    if (HdMaterialSchema material = HdMaterialSchema::GetFromParent(source))
+    if (const HdMaterialSchema material = HdMaterialSchema::GetFromParent(source))
         record.material = ReadMaterial(path, source, material);
     ReadSourceInfo(source, record);
     return true;
@@ -209,9 +217,9 @@ PrimTable ReadPrims(const HdSceneIndexBaseRefPtr &scene) {
     SdfPathVector paths;
     for (const SdfPath &path : HdSceneIndexPrimView(scene, SdfPath::AbsoluteRootPath())) paths.push_back(path);
     std::vector<PrimRecord> records(paths.size());
-    std::vector<char> present(paths.size(), 0);
+    std::vector<char> present(paths.size(), 0);  // not vector<bool>, whose packed bits parallel writes would race on
     WorkParallelForN(paths.size(), [&](size_t begin, size_t end) {
-        for (size_t i = begin; i < end; ++i) present[i] = ReadPrim(*scene, paths[i], records[i]);
+        for (size_t i = begin; i < end; ++i) present[i] = static_cast<char>(ReadPrim(*scene, paths[i], records[i]));
     });
     PrimTable table;
     for (size_t i = 0; i < records.size(); ++i) {

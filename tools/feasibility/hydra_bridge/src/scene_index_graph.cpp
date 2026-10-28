@@ -23,8 +23,8 @@ namespace {
 // has already seen; that is untested and undecided.
 class SinglePriority final : public HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctor {
 public:
-    size_t GetPriorityForPrimType(const TfToken &) const override { return 0; }
-    size_t GetNumPriorities() const override { return 1; }
+    [[nodiscard]] size_t GetPriorityForPrimType(const TfToken &) const override { return 0; }
+    [[nodiscard]] size_t GetNumPriorities() const override { return 1; }
 };
 
 HdContainerDataSourceHandle ImplicitSurfacesToMesh() {
@@ -68,7 +68,8 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
     info.addDrawModeSceneIndex = false;
     // Right after the stage scene index, where paths are still USD paths.
     const UsdStagePtr weakStage(stage);
-    info.overridesSceneIndexCallback = [this, weakStage](const HdSceneIndexBaseRefPtr &input) -> HdSceneIndexBaseRefPtr {
+    info.overridesSceneIndexCallback = [this,
+                                        weakStage](const HdSceneIndexBaseRefPtr &input) -> HdSceneIndexBaseRefPtr {
         sourceInfo_ = SourceInfoSceneIndex::New(input, weakStage);
         return sourceInfo_;
     };
@@ -86,10 +87,11 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
     scene = HdDependencyForwardingSceneIndex::New(scene);
     auto priorities = std::make_shared<SinglePriority>();
     batching_ = HdsiPrimTypeNoticeBatchingSceneIndex::New(
-        scene, HdRetainedContainerDataSource::New(
-                   HdsiPrimTypeNoticeBatchingSceneIndexTokens->primTypePriorityFunctor,
-                   HdRetainedTypedSampledDataSource<
-                       HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctorHandle>::New(priorities)));
+        scene,
+        HdRetainedContainerDataSource::New(
+            HdsiPrimTypeNoticeBatchingSceneIndexTokens->primTypePriorityFunctor,
+            HdRetainedTypedSampledDataSource<HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctorHandle>::New(
+                priorities)));
     terminal_ = batching_;
     terminal_->AddObserver(HdSceneIndexObserverPtr(&observer_));
 }

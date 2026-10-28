@@ -8,10 +8,10 @@
 
 #include <algorithm>
 #include <functional>
-#include <utility>
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <utility>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -36,7 +36,8 @@ std::string ValidateTopology(const PxOsdMeshTopology &topology, size_t pointCoun
     const bool unsubdivided = topology.GetScheme() == PxOsdOpenSubdivTokens->none;
     const PxOsdMeshTopology checked = unsubdivided ? topology.WithScheme(PxOsdOpenSubdivTokens->bilinear) : topology;
     std::optional<ScopedFactTiming> usdTiming(std::in_place, FactTiming::MeshUsdValidate);
-    if (PxOsdMeshTopologyValidation validation = checked.Validate(); !validation) return validation.begin()->message;
+    if (const PxOsdMeshTopologyValidation validation = checked.Validate(); !validation)
+        return validation.begin()->message;
     usdTiming.reset();
     // USD can't check indices against points it doesn't have. The corner sum is recomputed in size_t,
     // since an int sum of huge counts could overflow and still match the index count.
@@ -44,7 +45,7 @@ std::string ValidateTopology(const PxOsdMeshTopology &topology, size_t pointCoun
     const VtIntArray &counts = topology.GetFaceVertexCounts();
     const VtIntArray &indices = topology.GetFaceVertexIndices();
     size_t corners = 0;
-    for (int count : counts) {
+    for (const int count : counts) {
         corners += static_cast<size_t>(count);
         if (corners > kMaxIndex) return "More corners than Blender can index";
     }
@@ -89,7 +90,8 @@ std::string ValidatePrimvar(const PrimvarRecord &primvar, const MeshCounts &coun
 std::string ValidateSubset(const GeomSubsetRecord &subset, size_t faceCount) {
     for (size_t i = 0; i < subset.indices.size(); ++i) {
         const int face = subset.indices[i];
-        if (face < 0 || static_cast<size_t>(face) >= faceCount) return Describe("Subset face index", i, face, faceCount);
+        if (face < 0 || static_cast<size_t>(face) >= faceCount)
+            return Describe("Subset face index", i, face, faceCount);
     }
     return {};
 }
@@ -110,7 +112,8 @@ RejectedFaces FacesBlenderDeletes(const PxOsdMeshTopology &topology) {
         std::sort(begin, end);
         if (std::adjacent_find(begin, end) != end) {
             rejected.drop[face] = true;
-            if (rejected.repeatedPoint++ == 0) repeatedExample = "face " + std::to_string(face) + " uses a point more than once";
+            if (rejected.repeatedPoint++ == 0)
+                repeatedExample = "face " + std::to_string(face) + " uses a point more than once";
         }
     }
     // Faces with equal hashes end up adjacent after one sort of (hash, face) pairs, earliest face first; only
@@ -119,7 +122,7 @@ RejectedFaces FacesBlenderDeletes(const PxOsdMeshTopology &topology) {
     keyed.reserve(counts.size());
     for (size_t face = 0; face < counts.size(); ++face) {
         if (rejected.drop[face]) continue;
-        size_t seed = static_cast<size_t>(counts[face]);
+        auto seed = static_cast<size_t>(counts[face]);
         for (size_t corner = offsets[face]; corner < offsets[face + 1]; ++corner)
             seed ^= std::hash<int>()(sorted[corner]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         keyed.emplace_back(seed, face);
@@ -133,12 +136,13 @@ RejectedFaces FacesBlenderDeletes(const PxOsdMeshTopology &topology) {
     };
     for (size_t i = 1; i < keyed.size(); ++i) {
         const size_t face = keyed[i].second;
-        for (size_t j = i; j-- > 0 && keyed[j].first == keyed[i].first;) {
-            const size_t earlier = keyed[j].second;
+        for (size_t j = i; j > 0 && keyed[j - 1].first == keyed[i].first; --j) {
+            const size_t earlier = keyed[j - 1].second;
             if (rejected.drop[earlier] || !same(earlier, face)) continue;
             rejected.drop[face] = true;
             if (rejected.duplicate++ == 0)
-                duplicateExample = "face " + std::to_string(face) + " uses the points of face " + std::to_string(earlier);
+                duplicateExample =
+                    "face " + std::to_string(face) + " uses the points of face " + std::to_string(earlier);
             break;
         }
     }

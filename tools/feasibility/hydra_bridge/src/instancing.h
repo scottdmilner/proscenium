@@ -36,7 +36,9 @@ struct Frame {
     std::vector<std::pair<pxr::TfToken, pxr::SdfPath>> bindings;
     pxr::TfTokenVector strongPurposes;
 
-    pxr::SdfPath Map(const pxr::SdfPath &hydraPath) const { return hydraPath.ReplacePrefix(hydraRoot, usdRoot); }
+    [[nodiscard]] pxr::SdfPath Map(const pxr::SdfPath &hydraPath) const {
+        return hydraPath.ReplacePrefix(hydraRoot, usdRoot);
+    }
 };
 
 // UsdGeomImageable::ComputeEffectiveVisibility for the prim's own purpose, in one drawn copy: invisible if
@@ -61,7 +63,6 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
 // they reach through the workaround in copy_bindings.h instead.
 pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame,
                            const pxr::TfToken &purpose);
-
 
 class InstanceResolver {
 public:

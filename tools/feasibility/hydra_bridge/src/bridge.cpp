@@ -11,10 +11,11 @@ PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
-Bridge::Bridge(const UsdStagePtr &stage) : stage_(stage) {
-    TfErrorMark mark;
+Bridge::Bridge(const UsdStagePtr &stage)
+    : stage_(stage) {
+    const TfErrorMark mark;
     // A strong reference of the graph's own, added to the caller's rather than taken from it.
-    UsdStageRefPtr strong = TfCreateRefPtrFromProtectedWeakPtr(stage);
+    const UsdStageRefPtr strong = TfCreateRefPtrFromProtectedWeakPtr(stage);
     if (!strong) throw std::invalid_argument("Expected a valid USD stage");
     {
         WarningCollector warnings;

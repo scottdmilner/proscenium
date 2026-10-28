@@ -129,6 +129,7 @@ Only the schemas planning reads, each copied whole with `HdMakeStaticCopy`. The 
 
 - **C++17,** in `namespace hydra_bridge`. Each stage gets its own header and source. Types follow USD's naming (`PascalCase` methods, `member_` fields).
 - **Warnings.** The bridge's own code builds clean with `-Wall -Wextra -Wpedantic`, or `/W4` on MSVC. USD's headers are system includes.
+- **Format and checks.** clang-format (`../.clang-format`, the 4-space style the bridge was written in) and clang-tidy, with the repository's checks (the root `.clang-tidy`), run as pre-commit hooks, as for the core; the pointer and `NOLINT` rules in [AGENTS.md](../../../../AGENTS.md#compiled-core) apply.
 - **No Python inside the pipeline.** Only `module.cpp`, `python_views.cpp`, and `RaiseTfErrors` touch `pxr_boost::python`. Capture and planning run without the GIL.
 - **Threading.** Reads of the terminal may run in parallel, but never alongside `Advance`, stage edits, or notice delivery.
 - **Errors, not crashes.**

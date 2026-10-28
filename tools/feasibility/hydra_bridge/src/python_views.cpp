@@ -7,6 +7,7 @@
 #include <pxr/imaging/hd/sceneIndexPrimView.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <array>
 #include <sstream>
 #include <stdexcept>
 
@@ -115,7 +116,8 @@ bp::dict PrimDict(const PrimRecord &prim) {
     for (const auto &[purpose, material] : prim.usdBindings) usdBindings[purpose.GetString()] = material.GetString();
     record["usd_bindings"] = usdBindings;  // UsdShade's, per exact purpose, from the source-info filter
     bp::dict purposeVisibility;
-    for (const auto &[purpose, visibility] : prim.purposeVisibility) purposeVisibility[purpose.GetString()] = visibility.GetString();
+    for (const auto &[purpose, visibility] : prim.purposeVisibility)
+        purposeVisibility[purpose.GetString()] = visibility.GetString();
     record["purpose_visibility"] = purposeVisibility;  // authored opinions on this prim
     record["source_double_sided"] = prim.sourceDoubleSided ? bp::object(*prim.sourceDoubleSided) : bp::object();
     record["extent"] = RangeOrNone(prim.extent);
@@ -175,14 +177,14 @@ bp::list SnapshotView::Paths() const {
 
 bp::object SnapshotView::Prim(const std::string &path) const {
     PrimRecord record;
-    if (!SdfPath::IsValidPathString(path) || !ReadPrim(*data->scene, SdfPath(path), record)) return bp::object();
+    if (!SdfPath::IsValidPathString(path) || !ReadPrim(*data->scene, SdfPath(path), record)) return {};
     return PrimDict(record);
 }
 
 bp::object SnapshotView::Dump(const std::string &path) const {
-    if (!SdfPath::IsValidPathString(path)) return bp::object();
-    HdSceneIndexPrim prim = data->scene->GetPrim(SdfPath(path));
-    if (!prim.dataSource) return bp::object();
+    if (!SdfPath::IsValidPathString(path)) return {};
+    const HdSceneIndexPrim prim = data->scene->GetPrim(SdfPath(path));
+    if (!prim.dataSource) return {};
     std::ostringstream out;
     HdDebugPrintDataSource(out, prim.dataSource);
     return bp::object(out.str());
@@ -221,7 +223,7 @@ bp::dict SnapshotView::CopyBindings() const {
     bp::dict materials;
     if (const auto &copies = data->copyBindings) {
         for (const SdfPath &path : copies->instances) instances.append(path.GetString());
-        static const char *const kPurposes[] = {"allPurpose", "preview", "full"};
+        static const std::array kPurposes{"allPurpose", "preview", "full"};
         for (const auto &[path, bound] : copies->materials) {
             bp::dict perPurpose;
             for (size_t p = 0; p < bound.size(); ++p) perPurpose[kPurposes[p]] = bound[p].GetString();
@@ -284,7 +286,8 @@ bp::list PlanView::Objects() const {
         record["instance_context"] = bp::tuple(PathList(object.instanceContext));
         record["floor"] = data->correspondence.floors[i].GetString();
         record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
-        record["placeholder_type"] = object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
+        record["placeholder_type"] =
+            object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
         record["bounds"] = RangeOrNone(object.bounds);
         record["matrix"] = object.matrix;
         record["visible"] = object.visible;
@@ -292,7 +295,7 @@ bp::list PlanView::Objects() const {
         record["render"] = object.inRender;
         record["purpose"] = object.purpose.GetString();
         bp::list slots;
-        for (int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+        for (const int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
         record["material_slots"] = slots;
         record["primvars"] = Parameters(object.constantPrimvars);
         record["properties"] = Properties(object.properties);
@@ -314,7 +317,7 @@ namespace {
 }
 
 std::string String(const bp::object &value, const char *what) {
-    bp::extract<std::string> text(value);
+    const bp::extract<std::string> text(value);
     if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
     return text();
 }
@@ -364,7 +367,8 @@ void WrapViews() {
         .def("prim", &SnapshotView::Prim)
         .def("dump", &SnapshotView::Dump)
         .add_property("events", &SnapshotView::Events)
-        .add_property("copied", +[](const SnapshotView &view) { return view.data->copied; })
+        .add_property(
+            "copied", +[](const SnapshotView &view) { return view.data->copied; })
         .add_property("dirty_locators", &SnapshotView::DirtyLocators)
         .add_property("renames", &SnapshotView::Renames)
         .add_property("diagnostics", &SnapshotView::Diagnostics)

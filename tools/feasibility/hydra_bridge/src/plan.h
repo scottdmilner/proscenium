@@ -18,6 +18,7 @@
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/timeCode.h>
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,8 +28,8 @@
 namespace hydra_bridge {
 
 // Blender attribute domains and data types, named as bpy spells them.
-enum class Domain { Point, Face, Corner };
-enum class DataType { Float, Float2, FloatVector, FloatColor, Int };
+enum class Domain : std::uint8_t { Point, Face, Corner };
+enum class DataType : std::uint8_t { Float, Float2, FloatVector, FloatColor, Int };
 
 const char *DomainName(Domain domain);
 const char *DataTypeName(DataType type);
@@ -46,8 +47,8 @@ using ConstantPrimvars = std::vector<std::pair<pxr::TfToken, pxr::VtValue>>;
 struct MeshData {
     std::string name;
     pxr::VtVec3fArray positions;
-    pxr::VtIntArray cornerVerts;      // per corner
-    pxr::VtIntArray faceOffsets;      // per face: its first corner (Blender's loop_start)
+    pxr::VtIntArray cornerVerts;  // per corner
+    pxr::VtIntArray faceOffsets;  // per face: its first corner (Blender's loop_start)
     // Per face, its material slot: 0 for the mesh's own binding, then one per materialBind subset. Objects
     // say which material each slot holds, so one mesh serves both destinations.
     pxr::VtIntArray materialIndices;
@@ -66,9 +67,9 @@ struct MaterialData {
 
 struct ObjectEntry {
     pxr::SdfPath source;
-    pxr::SdfPathVector instanceContext;  // native instance roots, outermost first
-    int mesh = -1;                       // into Plan::meshes; -1 for a placeholder
-    pxr::TfToken placeholderType;        // the untranslated Hydra type, for a placeholder
+    pxr::SdfPathVector instanceContext;    // native instance roots, outermost first
+    int mesh = -1;                         // into Plan::meshes; -1 for a placeholder
+    pxr::TfToken placeholderType;          // the untranslated Hydra type, for a placeholder
     std::optional<pxr::GfRange3d> bounds;  // a placeholder's local bounds, when Hydra has an extent
     pxr::GfMatrix4d matrix{1.0};           // world, USD row-vector convention
     bool visible = true;                   // effective visibility for the object's own purpose

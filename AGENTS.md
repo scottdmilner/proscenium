@@ -33,7 +33,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 - `tools/`:
   - `build_extension.py`: build script.
   - `native_build.py`, `blender_deps.py`: build compiled modules against the locked Blender release's USD, and audit their linkage.
-  - `clang_tidy.py`: runs clang-tidy on the compiled core with its build's compile commands (a pre-commit hook).
+  - `clang_tidy.py`: runs clang-tidy on the compiled core and the Hydra bridge, each with its build's compile commands (a pre-commit hook).
   - `matrix.py`: checks and renders the requirement-to-test matrix.
   - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
   - `feasibility/`: M1 runtime probes and M1b's Hydra bridge (`hydra_bridge/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.
@@ -68,7 +68,9 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
   - Values the core gives Hydra are Vt's own types; a type made in the core's module isn't recognized by USD's code.
   - The core never keeps a released stage alive.
   - Each workaround for an OpenUSD bug is labeled `WORKAROUND for OpenUSD #<issue>` at every site, and a known-gap check fails when the bug stops reproducing.
-- **Style:** C++17, warnings as the core's CMakeLists.txt sets them, and no warnings in any platform's build. clang-format and clang-tidy run as pre-commit hooks, with the style and checks in `src/proscenium/core/.clang-format` and `.clang-tidy`; every clang-tidy warning fails.
+- **Style:** C++17, warnings as the core's CMakeLists.txt sets them, and no warnings in any platform's build. clang-format and clang-tidy run as pre-commit hooks on the core and on the Hydra bridge in `tools/feasibility/`. Each has its own `.clang-format`; clang-tidy's checks are in the root `.clang-tidy`, which covers both and includes the C++ Core Guidelines checks, and every clang-tidy warning fails.
+  - **Pointers:** no owning raw pointers; `TfCreateRefPtr(new ...)`, as Tf's ref-counted types require, is the exception. A raw `T*` is non-owning and means something when null (a lookup that found nothing, an absent optional argument), and its declaration says what null means. Anything never null is a reference, or `std::reference_wrapper` in a container.
+  - **Exceptions to a check:** a `NOLINT` names its check and says why the code needs it.
 - **Inspection layer:** a C++ library that maps picked prims to selection targets by kind on the live stage ([interaction contract](docs/spec/interaction-contract.md#two-layers-and-the-live-stage)). The core calls it and exposes it through the core's own bindings; it has no Python bindings, and never includes or calls the core. The build and style rules above apply to it too. M7 builds it.
 - **Tests:** through the core's Python module, in the test layers below. Expected values come from the spec, from USD's own APIs (`UsdGeom`, `UsdShade`), or from how the fixture is built, never from Hydra's output. A test whose input could crash native code runs in `isolated/`, since a crash ends the process.
 

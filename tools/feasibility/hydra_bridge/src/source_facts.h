@@ -1,5 +1,5 @@
-// Source facts the UsdImaging chain drops, read from USD for one prim: what the source-info filter adds under the `prosceniumSource` container. See source_info_scene_index.h for
-// what each fact is for.
+// Source facts the UsdImaging chain drops, read from USD for one prim: what the source-info filter adds under the
+// `prosceniumSource` container. See source_info_scene_index.h for what each fact is for.
 #pragma once
 
 #include <pxr/pxr.h>
@@ -24,7 +24,8 @@ struct SourceInfoTokens {
     static const pxr::TfToken &IsGprim();
     static const pxr::TfToken &DoubleSided();
     static const pxr::TfToken &FamilyName();
-    static const pxr::TfToken &FamilyIssue();  // on a mesh: why UsdGeomSubset::ValidateFamily rejects its materialBind family
+    static const pxr::TfToken &
+    FamilyIssue();  // on a mesh: why UsdGeomSubset::ValidateFamily rejects its materialBind family
     static const pxr::TfToken &Bindings();        // container: allPurpose, preview, full -> material path token
     static const pxr::TfToken &StrongPurposes();  // token array: bound strongerThanDescendants; "" is allPurpose
     // token array, on a gprim or point instancer: authored attributes UsdImaging drops (DroppedAttribute)
@@ -73,7 +74,8 @@ bool DroppedAttribute(const pxr::UsdPrim &prim, const pxr::TfToken &name);
 // The source facts of `prim` (the contents of the prosceniumSource container); null for none. Facts that
 // can be animated (authored purpose visibility) are UsdImaging attribute data sources on `globals`: they
 // read at its time and are flagged time-varying, so a time change dirties them.
-pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim, const pxr::UsdImagingDataSourceStageGlobals &globals);
+pxr::HdContainerDataSourceHandle SourceInfo(const pxr::UsdPrim &prim,
+                                            const pxr::UsdImagingDataSourceStageGlobals &globals);
 
 // USD's computed extent for a point-based prim Hydra gives no extent and doesn't draw as a mesh, as an extent
 // schema container; null otherwise.

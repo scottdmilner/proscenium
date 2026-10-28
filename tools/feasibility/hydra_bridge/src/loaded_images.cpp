@@ -7,7 +7,9 @@
 #include <stdexcept>
 
 #if defined(_WIN32)
+// In separate blocks, so include sorting keeps windows.h first: psapi.h uses its types without including it.
 #include <windows.h>
+
 #include <psapi.h>
 #elif defined(__APPLE__)
 #include <dlfcn.h>
@@ -62,13 +64,13 @@ std::vector<std::string> LoadedImages() {
     std::vector<HMODULE> modules(1024);
     DWORD needed = 0;
     HANDLE process = GetCurrentProcess();
-    while (EnumProcessModules(process, modules.data(), static_cast<DWORD>(modules.size() * sizeof(HMODULE)),
-                              &needed) &&
+    while (EnumProcessModules(process, modules.data(), static_cast<DWORD>(modules.size() * sizeof(HMODULE)), &needed) &&
            needed > modules.size() * sizeof(HMODULE))
         modules.resize(needed / sizeof(HMODULE));
     modules.resize(std::min<size_t>(modules.size(), needed / sizeof(HMODULE)));
     for (HMODULE module : modules) images.push_back(ModulePath(module));
 #elif defined(__APPLE__)
+    images.reserve(_dyld_image_count());
     for (uint32_t i = 0; i < _dyld_image_count(); ++i) images.emplace_back(_dyld_get_image_name(i));
 #else
     dl_iterate_phdr(CollectImage, &images);
@@ -87,7 +89,10 @@ std::vector<std::string> LoadedUsdLibraries() {
 
 std::string UsdProvidingLibrary() {
     using Create = UsdImagingSceneIndices (*)(const UsdImagingCreateSceneIndicesInfo &);
-    const void *address = reinterpret_cast<const void *>(static_cast<Create>(&UsdImagingCreateSceneIndices));
+    // dladdr and GetModuleHandleExW take an address as a data pointer, which only reinterpret_cast makes from a
+    // function pointer.
+    const void *address = reinterpret_cast<const void *>(  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+        static_cast<Create>(&UsdImagingCreateSceneIndices));
 #if defined(_WIN32)
     HMODULE module = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,

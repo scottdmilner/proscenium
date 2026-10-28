@@ -1,0 +1,33 @@
+# The C++ clang-tidy checks, for the compiled core and the Hydra bridge (tools/feasibility/hydra_bridge/), run by
+# pre-commit through tools/clang_tidy.py. At the root, so clang-tidy and editors find it from either project.
+# Every warning fails.
+# Left out:
+# - trailing return types (a style choice) and include-cleaner, which can't follow pxr's umbrella headers;
+# - from the C++ Core Guidelines checks: unchecked container access and constant array indices, which flag every
+#   subscript, though the code validates indices before it uses them; reference and const data
+#   members, which short-lived helper classes hold on purpose; and magic numbers;
+# - bugprone-easily-swappable-parameters, which flags any two adjacent parameters of one type; the bridge's
+#   Python entry points take them as keyword arguments;
+# - the analyzer's leak check (cplusplus.NewDeleteLeaks), which reports inside USD's TfNotice::Register, whose
+#   registry owns what it allocates; cppcoreguidelines-owning-memory covers the code's own allocations.
+# A NOLINT names its check and says why the code needs the exception.
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  clang-analyzer-*,
+  -clang-analyzer-cplusplus.NewDeleteLeaks,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  misc-*,
+  -misc-include-cleaner,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*
+WarningsAsErrors: "*"
+CheckOptions:
+  # A struct whose members are all public is a plain record, even with a method or two.
+  misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic: true

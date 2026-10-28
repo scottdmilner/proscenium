@@ -5,37 +5,38 @@
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/geomSubsetSchema.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
-#include <pxr/imaging/hd/tokens.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
+#include <pxr/imaging/hd/tokens.h>
 #include <pxr/usd/usdGeom/boundable.h>
 #include <pxr/usd/usdGeom/gprim.h>
+#include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/pointBased.h>
-#include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/subset.h>
 #include <pxr/usd/usdGeom/tokens.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/usd/usdShade/tokens.h>
 #include <pxr/usdImaging/usdImaging/dataSourcePrim.h>
-#include <pxr/usdImaging/usdImaging/usdPrimInfoSchema.h>
 #include <pxr/usdImaging/usdImaging/types.h>
+#include <pxr/usdImaging/usdImaging/usdPrimInfoSchema.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>
 #include <mutex>
+#include <utility>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
-
 UsdTimeCode SourceInfoSceneIndex::Globals::GetTime() const { return owner_.time_; }
 
-void SourceInfoSceneIndex::Globals::FlagAsTimeVarying(const SdfPath &hydraPath, const HdDataSourceLocator &locator) const {
-    std::lock_guard<std::mutex> lock(owner_.mutex_);
+void SourceInfoSceneIndex::Globals::FlagAsTimeVarying(const SdfPath &hydraPath,
+                                                      const HdDataSourceLocator &locator) const {
+    const std::scoped_lock lock(owner_.mutex_);
     owner_.timeVarying_[hydraPath].insert(locator);
 }
 
@@ -64,7 +65,7 @@ void SourceInfoSceneIndex::Forget(const SdfPath &root) const {
 }
 
 void SourceInfoSceneIndex::Detach() {
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     for (auto &[path, cached] : cache_) *cached.generation = kForgotten;
     cache_.clear();
     stage_ = nullptr;
@@ -85,7 +86,7 @@ void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
     time_ = time;
     HdSceneIndexObserver::DirtiedPrimEntries dirtied;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         // UsdImaging's data sources (supplied prims, purpose visibility) read the time from Globals and flag
         // themselves; computed extents are retained values, so their prims are rebuilt.
         for (const auto &[path, locators] : timeVarying_) {
@@ -96,17 +97,21 @@ void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
     if (!dirtied.empty()) _SendPrimsDirtied(dirtied);
 }
 
-
 SourceInfoSceneIndexRefPtr SourceInfoSceneIndex::New(const HdSceneIndexBaseRefPtr &input, const UsdStagePtr &stage) {
-    SourceInfoSceneIndexRefPtr index = TfCreateRefPtr(new SourceInfoSceneIndex(input, stage));
+    // Tf's ref-counted types are created this way: TfCreateRefPtr takes ownership of the new object.
+    SourceInfoSceneIndexRefPtr index =
+        TfCreateRefPtr(new SourceInfoSceneIndex(input, stage));  // NOLINT(cppcoreguidelines-owning-memory)
+    index->self_ = SourceInfoSceneIndexPtr(index);
     if (stage)
         index->noticeKey_ = TfNotice::Register(SourceInfoSceneIndexPtr(index), &SourceInfoSceneIndex::OnObjectsChanged,
                                                UsdStageWeakPtr(stage));
     return index;
 }
 
-SourceInfoSceneIndex::SourceInfoSceneIndex(const HdSceneIndexBaseRefPtr &input, const UsdStagePtr &stage)
-    : HdSingleInputFilteringSceneIndexBase(input), stage_(stage), globals_(std::make_unique<Globals>(*this)) {}
+SourceInfoSceneIndex::SourceInfoSceneIndex(const HdSceneIndexBaseRefPtr &input, UsdStagePtr stage)
+    : HdSingleInputFilteringSceneIndexBase(input),
+      stage_(std::move(stage)),
+      globals_(std::make_unique<Globals>(*this)) {}
 
 SourceInfoSceneIndex::~SourceInfoSceneIndex() { TfNotice::Revoke(noticeKey_); }
 
@@ -114,7 +119,7 @@ SourceInfoSceneIndex::~SourceInfoSceneIndex() { TfNotice::Revoke(noticeKey_); }
 // queued for an edit to a source fact on it, or to any property of a prim given a transform, visibility, or
 // purpose. Edits inside a prototype are reported at the prototype's path, which propagation forwards.
 void SourceInfoSceneIndex::OnObjectsChanged(const UsdNotice::ObjectsChanged &notice, const UsdStageWeakPtr &) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     auto consider = [&](const SdfPath &path) {
         if (!path.IsPropertyPath()) return;
         const SdfPath prim = path.GetPrimPath();
@@ -128,7 +133,7 @@ void SourceInfoSceneIndex::OnObjectsChanged(const UsdNotice::ObjectsChanged &not
 void SourceInfoSceneIndex::ApplyPendingUpdates() {
     HdSceneIndexObserver::DirtiedPrimEntries dirtied;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         const HdDataSourceLocatorSet facts{HdDataSourceLocator(SourceInfoTokens::Schema())};
         bool bindingsChanged = false;
         for (const auto &[path, properties] : pending_) {
@@ -136,7 +141,8 @@ void SourceInfoSceneIndex::ApplyPendingUpdates() {
                 bindingsChanged |= TfStringStartsWith(property.GetString(), "material:binding") ||
                                    TfStringStartsWith(property.GetString(), "collection:");
             // A subset edit can change its mesh's family verdict.
-            if (const UsdPrim prim = stage_ ? stage_->GetPrimAtPath(path) : UsdPrim(); prim && prim.IsA<UsdGeomSubset>()) {
+            if (const UsdPrim prim = stage_ ? stage_->GetPrimAtPath(path) : UsdPrim();
+                prim && prim.IsA<UsdGeomSubset>()) {
                 dirtied.emplace_back(path.GetParentPath(), facts);
                 Invalidate(path.GetParentPath());
             }
@@ -170,34 +176,37 @@ void SourceInfoSceneIndex::ApplyPendingUpdates() {
 // container that reads USD on every access.
 HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, const HdContainerDataSourceHandle &input,
                                                         bool imaged, const TfToken &hydraType) const {
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     if (auto found = cache_.find(prim.GetPath()); found != cache_.end()) return found->second.container;
-    const SourceInfoSceneIndexPtr self(const_cast<SourceInfoSceneIndex *>(this));
+    const SourceInfoSceneIndexPtr self = self_;
     auto generation = std::make_shared<std::atomic<uint64_t>>(0);
     HdContainerDataSourceHandle container = LazyContainer::New(
         [self, prim, input, imaged, hydraType, generation]() -> HdContainerDataSourceHandle {
             if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
             const ScopedFactTiming timing(FactTiming::Build);
-            HdContainerDataSourceHandle info = SourceInfo(prim, *self->globals_);
+            const HdContainerDataSourceHandle info = SourceInfo(prim, *self->globals_);
             // For a prim UsdImaging has no data for, the data it gives any prim without an adapter.
             HdContainerDataSourceHandle supplied;
             if (!imaged) {
                 supplied = UsdImagingDataSourcePrim::New(prim.GetPath(), prim, *self->globals_);
-                std::lock_guard<std::mutex> suppliedLock(self->mutex_);
+                const std::scoped_lock suppliedLock(self->mutex_);
                 self->supplied_.insert(prim.GetPath());
             }
             const bool hasExtent = input && input->Get(HdExtentSchema::GetSchemaToken());
-            HdContainerDataSourceHandle extent = hasExtent ? nullptr : ComputedExtent(prim, hydraType, self->time_);
+            const HdContainerDataSourceHandle extent =
+                hasExtent ? nullptr : ComputedExtent(prim, hydraType, self->time_);
             if (extent && UsdGeomPointBased(prim).GetPointsAttr().ValueMightBeTimeVarying())
                 self->globals_->FlagAsTimeVarying(prim.GetPath(), HdExtentSchema::GetDefaultLocator());
             // UsdImaging's subset data source reads animated indices at the current time but never flags them,
             // so a time change wouldn't dirty them and an incremental capture would keep stale subsets (Phase D,
             // measured).
-            if (UsdGeomSubset subset{prim}; subset && subset.GetIndicesAttr().ValueMightBeTimeVarying())
+            if (const UsdGeomSubset subset{prim}; subset && subset.GetIndicesAttr().ValueMightBeTimeVarying())
                 self->globals_->FlagAsTimeVarying(
-                    prim.GetPath(), HdDataSourceLocator(HdGeomSubsetSchemaTokens->geomSubset, HdGeomSubsetSchemaTokens->indices));
+                    prim.GetPath(),
+                    HdDataSourceLocator(HdGeomSubsetSchemaTokens->geomSubset, HdGeomSubsetSchemaTokens->indices));
             HdContainerDataSourceHandle added =
-                info ? HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info) : HdContainerDataSourceHandle();
+                info ? HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info)
+                     : HdContainerDataSourceHandle();
             for (const HdContainerDataSourceHandle &more : {supplied, extent})
                 if (more) added = added ? HdOverlayContainerDataSource::New(added, more) : more;
             return added;
@@ -217,7 +226,7 @@ HdSceneIndexPrim SourceInfoSceneIndex::GetPrim(const SdfPath &primPath) const {
     // typeless prim it does image, such as an Xform or Scope, already has it; adding a visibility there would
     // override an invisible ancestor's.
     const bool imaged = prim.dataSource && prim.dataSource->Get(UsdImagingUsdPrimInfoSchema::GetSchemaToken());
-    HdContainerDataSourceHandle added = Added(usdPrim, prim.dataSource, imaged, prim.primType);
+    const HdContainerDataSourceHandle added = Added(usdPrim, prim.dataSource, imaged, prim.primType);
     prim.dataSource = prim.dataSource ? HdOverlayContainerDataSource::New(prim.dataSource, added) : added;
     return prim;
 }
@@ -228,9 +237,10 @@ SdfPathVector SourceInfoSceneIndex::GetChildPrimPaths(const SdfPath &primPath) c
 
 // A resync: the re-added prims get new containers. Any prim's bindings can depend on an added prim (a
 // material or collection appearing), so everything else rebuilds when next read, without notices.
-void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase &, const HdSceneIndexObserver::AddedPrimEntries &entries) {
+void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase &,
+                                       const HdSceneIndexObserver::AddedPrimEntries &entries) {
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         // Hydra lists every added prim, so an exact erase suffices; removals list only subtree roots.
         InvalidateAll();
         ++bindingsGeneration_;
@@ -248,7 +258,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase &,
                                          const HdSceneIndexObserver::RemovedPrimEntries &entries) {
     {
         // A removed prim is no longer dirtied; a re-added one registers again when read.
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         for (const auto &entry : entries) {
             for (auto it = supplied_.begin(); it != supplied_.end();)
                 it = it->HasPrefix(entry.primPath) ? supplied_.erase(it) : std::next(it);
@@ -265,7 +275,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase &,
 void SourceInfoSceneIndex::_PrimsDirtied(const HdSceneIndexBase &,
                                          const HdSceneIndexObserver::DirtiedPrimEntries &entries) {
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        const std::scoped_lock lock(mutex_);
         for (const auto &entry : entries) Invalidate(entry.primPath);
     }
     _SendPrimsDirtied(entries);

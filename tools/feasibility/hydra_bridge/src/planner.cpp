@@ -11,9 +11,11 @@
 #include <pxr/imaging/pxOsd/tokens.h>
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -25,9 +27,9 @@ namespace {
 // USD types the scene-index graph converts to meshes inexactly: curved implicit surfaces become fixed coarse
 // cages, and NURBS patches their control hull. Hydra itself gives no signal.
 bool Approximated(const TfToken &usdTypeName) {
-    static const TfToken kTypes[] = {TfToken("Sphere"), TfToken("Cone"), TfToken("Cylinder"), TfToken("Capsule"),
-                                     TfToken("NurbsPatch")};
-    return std::find(std::begin(kTypes), std::end(kTypes), usdTypeName) != std::end(kTypes);
+    static const std::array kTypes{TfToken("Sphere"), TfToken("Cone"), TfToken("Cylinder"), TfToken("Capsule"),
+                                   TfToken("NurbsPatch")};
+    return std::find(kTypes.begin(), kTypes.end(), usdTypeName) != kTypes.end();
 }
 
 // Geometry the prototype draws only as a placeholder.
@@ -40,9 +42,9 @@ bool Untranslated(const TfToken &type) {
 class Planner {
 public:
     // The records are read from the snapshot's frozen scene index, in parallel.
-    Planner(const Snapshot &snapshot, const PlanSettings &settings)
+    Planner(const Snapshot &snapshot, PlanSettings settings)
         : snapshot_(snapshot),
-          settings_(settings),
+          settings_(std::move(settings)),
           table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics) {
@@ -52,12 +54,13 @@ public:
     PlanPtr Run() {
         const ScopedFactTiming timing(FactTiming::PlanRun);
         for (const PrimRecord &prim : table_.prims)
-            if (prim.geomSubset) subsets_[prim.path.GetParentPath()].push_back(&prim);
+            if (prim.geomSubset) subsets_[prim.path.GetParentPath()].emplace_back(prim);
         // A point instancer's prototype originals carry Hydra's piPropagatedPrototypes marker; they are drawn
         // only as copies under the instancer, so neither they nor their descendants get objects.
         auto inPointInstancerPrototype = [&](SdfPath path) {
             for (; !path.IsEmpty() && !path.IsAbsoluteRootPath(); path = path.GetParentPath())
-                if (const PrimRecord *record = table_.Find(path); record && record->pointInstancerPrototype) return true;
+                if (const PrimRecord *record = table_.Find(path); record && record->pointInstancerPrototype)
+                    return true;
             return false;
         };
         std::vector<BuiltMesh> built = BuildMeshes();
@@ -67,12 +70,11 @@ public:
                 AddMesh(prim, built[i]);
             else if (Untranslated(prim.type))
                 AddObjects(prim, -1, prim.type);
-            else if (prim.instancer && prim.instancer->instanceLocations.empty())
-                // A point instancer, which the prototype doesn't translate: Hydra leaves instanceLocations null
-                // for point instancers (HdInstancerTopologySchema).
-                AddObjects(prim, -1, prim.usdTypeName);
-            else if (prim.type.IsEmpty() && prim.isGprim && !inPointInstancerPrototype(prim.path))
-                // A gprim Hydra doesn't image, such as HermiteCurves; the source-info filter supplies its type.
+            else if ((prim.instancer && prim.instancer->instanceLocations.empty()) ||
+                     (prim.type.IsEmpty() && prim.isGprim && !inPointInstancerPrototype(prim.path)))
+                // A point instancer, which the prototype doesn't translate (Hydra leaves instanceLocations null
+                // for point instancers, HdInstancerTopologySchema), or a gprim Hydra doesn't image, such as
+                // HermiteCurves, whose type the source-info filter supplies.
                 AddObjects(prim, -1, prim.usdTypeName);
         }
         for (const Diagnostic &diagnostic : snapshot_.diagnostics) MapToSources(diagnostic);
@@ -85,7 +87,7 @@ private:
     struct BuiltMesh {
         std::optional<MeshData> mesh;
         Diagnostics problems;
-        std::vector<const PrimRecord *> slots;
+        PrimRefs slots;
     };
 
     // Every mesh, built in parallel: BuildMesh reads only its prim and the prim's subsets. Everything that
@@ -94,7 +96,7 @@ private:
     // and then dropped, as deciding that first would move the resolver's diagnostics.
     std::vector<BuiltMesh> BuildMeshes() const {
         std::vector<BuiltMesh> built(table_.prims.size());
-        static const std::vector<const PrimRecord *> kNoSubsets;
+        static const PrimRefs kNoSubsets;
         WorkParallelForN(table_.prims.size(), [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
                 const PrimRecord &prim = table_.prims[i];
@@ -117,7 +119,7 @@ private:
     void AddMesh(const PrimRecord &prim, BuiltMesh &built) {
         if (resolver_.FramesOf(prim).empty()) return;
         std::optional<MeshData> &mesh = built.mesh;
-        const std::vector<const PrimRecord *> &slots = built.slots;
+        const PrimRefs &slots = built.slots;
         for (const Diagnostic &problem : built.problems) MapToSources(problem);
         if (!mesh) {
             AddObjects(prim, -1, HdPrimTypeTokens->mesh);
@@ -126,10 +128,10 @@ private:
         const bool subdivided = mesh->subdivisionScheme == PxOsdOpenSubdivTokens->catmullClark ||
                                 mesh->subdivisionScheme == PxOsdOpenSubdivTokens->loop;
         plan_->meshes.push_back(std::move(*mesh));
-        AddObjects(prim, static_cast<int>(plan_->meshes.size() - 1), TfToken(), &slots);
+        AddObjects(prim, static_cast<int>(plan_->meshes.size() - 1), TfToken(), slots);
         // A subset has no object of its own; its bindings are reported on the mesh's copies.
-        for (const PrimRecord *subset : subsets_[prim.path])
-            WarnBindingsWithoutApi(*subset, prim.path, "Subset " + subset->path.GetName() + ": ");
+        for (const PrimRecord &subset : subsets_[prim.path])
+            WarnBindingsWithoutApi(subset, prim.path, "Subset " + subset.path.GetName() + ": ");
         if (!prim.materialBindFamilyIssue.empty())
             MapToSources({Severity::Warning, "invalid-subset-family", prim.path,
                           "USD rejects the materialBind family: " + prim.materialBindFamilyIssue});
@@ -145,9 +147,8 @@ private:
     // One object per drawn copy, or two when the copy displays in both destinations with different
     // materials: they share the mesh, and each displays in one destination. A copy that displays in neither
     // still gets one (hidden) object. A placeholder when `mesh` is -1. `slots` is the prim whose binding
-    // each of the mesh's material slots takes.
-    void AddObjects(const PrimRecord &prim, int mesh, const TfToken &placeholderType,
-                    const std::vector<const PrimRecord *> *slots = nullptr) {
+    // each of the mesh's material slots takes; a placeholder has none.
+    void AddObjects(const PrimRecord &prim, int mesh, const TfToken &placeholderType, const PrimRefs &slots = {}) {
         const ScopedFactTiming timing(FactTiming::PlanObjects);
         const std::vector<Frame> &frames = resolver_.FramesOf(prim);
         const ConstantPrimvars own = OwnConstants(prim);
@@ -171,7 +172,7 @@ private:
             object.properties = Properties(object);
             object.inViewport = object.visible && includes(settings_.viewport);
             object.inRender = object.visible && includes(settings_.render);
-            if (slots) {
+            if (!slots.empty()) {
                 // Resolved per drawn copy, not once per Hydra prim, so each copy stays correct even if
                 // UsdImaging stops splitting native instances with different bindings into different
                 // prototypes, as Pixar plans (M1b plan, Phase C log: "Splitting by binding is Pixar's
@@ -180,8 +181,8 @@ private:
                 // A copy in neither keeps the viewport's, for correspondence.
                 const bool forViewport = object.inViewport || !object.inRender;
                 std::vector<int> viewport, render;
-                if (forViewport) viewport = Materials(*slots, frame, settings_.viewport.materialPurpose);
-                if (object.inRender) render = Materials(*slots, frame, settings_.render.materialPurpose);
+                if (forViewport) viewport = Materials(slots, frame, settings_.viewport.materialPurpose);
+                if (object.inRender) render = Materials(slots, frame, settings_.render.materialPurpose);
                 if (object.inViewport && object.inRender && viewport != render) {
                     ObjectEntry forRender = object;
                     object.inRender = false;
@@ -204,7 +205,8 @@ private:
             if (prim.type.IsEmpty())
                 what = "USD type '" + prim.usdTypeName.GetString() + "', which Hydra doesn't image,";
             else if (prim.instancer)
-                what = "Point instancer (USD type '" + prim.usdTypeName.GetString() + "'), which the prototype doesn't translate,";
+                what = "Point instancer (USD type '" + prim.usdTypeName.GetString() +
+                       "'), which the prototype doesn't translate,";
             MapToSources({Severity::Warning, "untranslated-type", prim.path, what + " is displayed as " + shown});
         }
         // UsdImaging passes only schema attributes and primvars to Hydra; anything else is lost.
@@ -223,8 +225,10 @@ private:
         std::string names;
         for (const TfToken &name : bound.bindingsWithoutApi) names += (names.empty() ? "" : ", ") + name.GetString();
         MapToSources({Severity::Warning, "binding-without-api", source,
-                      what + "Material bindings authored without MaterialBindingAPI, which UsdShade honors only for "
-                             "compatibility: " + names});
+                      what +
+                          "Material bindings authored without MaterialBindingAPI, which UsdShade honors only for "
+                          "compatibility: " +
+                          names});
     }
 
     // The prim's own constant primvars, an indexed one flattened through its index.
@@ -266,18 +270,18 @@ private:
                     continue;
                 }
             if (unconverted_.emplace(object.source, name).second)
-                plan_->diagnostics.push_back({Severity::Warning, "untransferred-primvar", object.source,
-                                              "Constant primvar '" + name.GetString() + "' is not an object property: " + why});
+                plan_->diagnostics.push_back(
+                    {Severity::Warning, "untransferred-primvar", object.source,
+                     "Constant primvar '" + name.GetString() + "' is not an object property: " + why});
         }
         return properties;
     }
 
     // The plan material of each slot's binding, for `purpose`.
-    std::vector<int> Materials(const std::vector<const PrimRecord *> &slots, const Frame &frame,
-                               const TfToken &purpose) {
+    std::vector<int> Materials(const PrimRefs &slots, const Frame &frame, const TfToken &purpose) {
         std::vector<int> materials;
         materials.reserve(slots.size());
-        for (const PrimRecord *slot : slots) materials.push_back(MaterialIndex(SlotMaterial(*slot, frame, purpose)));
+        for (const PrimRecord &slot : slots) materials.push_back(MaterialIndex(SlotMaterial(slot, frame, purpose)));
         return materials;
     }
 
@@ -303,7 +307,8 @@ private:
             materialsByUsdPath_.emplace();
             for (const PrimRecord &prim : table_.prims)
                 if (prim.material)
-                    for (const Frame &frame : resolver_.FramesOf(prim)) materialsByUsdPath_->emplace(frame.Map(prim.path), prim.path);
+                    for (const Frame &frame : resolver_.FramesOf(prim))
+                        materialsByUsdPath_->emplace(frame.Map(prim.path), prim.path);
         }
         const auto found = materialsByUsdPath_->find(usdPath);
         return found != materialsByUsdPath_->end() ? found->second : usdPath;
@@ -332,16 +337,16 @@ private:
 
     // A diagnostic about a Hydra prim, once per USD source it is drawn as.
     void MapToSources(const Diagnostic &diagnostic) {
+        // Null for a diagnostic without a source, or one naming a prim the snapshot doesn't hold.
         const PrimRecord *prim = diagnostic.source.IsEmpty() ? nullptr : table_.Find(diagnostic.source);
-        const std::vector<Frame> *frames = prim ? &resolver_.FramesOf(*prim) : nullptr;
-        if (!frames || frames->empty()) {
+        if (!prim || resolver_.FramesOf(*prim).empty()) {
             Diagnostic unmapped = diagnostic;
             unmapped.source = SdfPath();
             if (!diagnostic.source.IsEmpty()) unmapped.message += " (Hydra prim " + diagnostic.source.GetString() + ")";
             plan_->diagnostics.push_back(std::move(unmapped));
             return;
         }
-        for (const Frame &frame : *frames) {
+        for (const Frame &frame : resolver_.FramesOf(*prim)) {
             Diagnostic mapped = diagnostic;
             mapped.source = frame.Map(diagnostic.source);
             plan_->diagnostics.push_back(std::move(mapped));
@@ -353,7 +358,7 @@ private:
     const PrimTable table_;
     std::shared_ptr<Plan> plan_;
     InstanceResolver resolver_;
-    std::unordered_map<SdfPath, std::vector<const PrimRecord *>, SdfPath::Hash> subsets_;  // by mesh path
+    std::unordered_map<SdfPath, PrimRefs, SdfPath::Hash> subsets_;  // by mesh path
     std::unordered_map<SdfPath, int, SdfPath::Hash> materials_;
     std::optional<std::unordered_map<SdfPath, SdfPath, SdfPath::Hash>> materialsByUsdPath_;  // see HydraMaterial
     std::set<std::pair<SdfPath, TfToken>> unconverted_;  // constant primvars already warned about, by source

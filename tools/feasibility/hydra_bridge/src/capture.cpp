@@ -29,7 +29,7 @@ HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle
     TfTokenVector names;
     std::vector<HdDataSourceBaseHandle> copies;
     for (const TfToken &name : PlannedSchemas()) {
-        if (HdDataSourceBaseHandle schema = source->Get(name)) {
+        if (const HdDataSourceBaseHandle schema = source->Get(name)) {
             names.push_back(name);
             copies.push_back(HdMakeStaticCopy(schema));
         }
@@ -58,7 +58,7 @@ public:
         }
     }
 
-    bool Contains(const SdfPath &path) const {
+    [[nodiscard]] bool Contains(const SdfPath &path) const {
         if (exact_.count(path)) return true;
         for (SdfPath ancestor = path; !ancestor.IsEmpty(); ancestor = ancestor.GetParentPath()) {
             if (subtrees_.count(ancestor)) return true;
@@ -76,7 +76,8 @@ private:
 // may read a value more than once.
 class UniqueAppender {
 public:
-    explicit UniqueAppender(Diagnostics &to) : to_(to) {
+    explicit UniqueAppender(Diagnostics &to)
+        : to_(to) {
         for (const Diagnostic &diagnostic : to) seen_.insert(Key(diagnostic));
     }
 
@@ -104,7 +105,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     // Prim attribution is per capture; a carried warning names no prim of this snapshot.
     for (Diagnostic &diagnostic : graphDiagnostics) diagnostic.source = SdfPath();
     {
-        TfErrorMark mark;
+        const TfErrorMark mark;
         graph.Advance(time);
         // Depth-first, parents before children, with an explicit stack rather than recursion.
         for (const SdfPath &path : HdSceneIndexPrimView(graph.Terminal(), SdfPath::AbsoluteRootPath()))
@@ -126,15 +127,15 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     WorkParallelForN(paths.size(), [&](size_t begin, size_t end) {
         for (size_t i = begin; i < end; ++i) {
             if (previous && !affected.Contains(paths[i])) {
-                HdSceneIndexPrim kept = previous->scene->GetPrim(paths[i]);
+                const HdSceneIndexPrim kept = previous->scene->GetPrim(paths[i]);
                 if (kept.dataSource) {
                     entries[i] = {paths[i], kept.primType, kept.dataSource};
                     continue;
                 }
             }
-            WarningCollector::ScopedSource source(paths[i]);
-            TfErrorMark mark;
-            HdSceneIndexPrim prim = scene.GetPrim(paths[i]);
+            const WarningCollector::ScopedSource source(paths[i]);
+            const TfErrorMark mark;
+            const HdSceneIndexPrim prim = scene.GetPrim(paths[i]);
             entries[i] = {paths[i], prim.primType, CopyPlannedSchemas(prim.dataSource)};
             copied[i] = 1;
             HarvestErrors(mark, paths[i], errors[i]);

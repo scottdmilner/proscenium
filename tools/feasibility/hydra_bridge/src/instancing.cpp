@@ -1,16 +1,16 @@
 #include "instancing.h"
 
+#include <pxr/base/gf/half.h>
 #include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/vec2d.h>
 #include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec2i.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
-#include <pxr/base/gf/vec4f.h>
-#include <pxr/base/gf/half.h>
-#include <pxr/base/gf/vec2d.h>
-#include <pxr/base/gf/vec2i.h>
 #include <pxr/base/gf/vec3h.h>
 #include <pxr/base/gf/vec3i.h>
 #include <pxr/base/gf/vec4d.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/base/gf/vec4i.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/tokens.h>
@@ -35,7 +35,8 @@ std::optional<VtMatrix4dArray> InstanceTransforms(const PrimRecord &instancer) {
     if (primvar->values.IsHolding<VtMatrix4fArray>()) {
         const auto &single = primvar->values.UncheckedGet<VtMatrix4fArray>();
         VtMatrix4dArray transforms(single.size());
-        std::transform(single.cbegin(), single.cend(), transforms.begin(), [](const GfMatrix4f &m) { return GfMatrix4d(m); });
+        std::transform(single.cbegin(), single.cend(), transforms.begin(),
+                       [](const GfMatrix4f &m) { return GfMatrix4d(m); });
         return transforms;
     }
     return std::nullopt;
@@ -57,6 +58,7 @@ const TfToken *NearestOpinion(const PrimTable &table, SdfPath path, const SdfPat
     return nullptr;
 }
 
+// The opinion for `purpose` among `opinions`; null for none.
 const TfToken *Inherited(const PurposeVisibility &opinions, const TfToken &purpose) {
     for (const auto &[authored, visibility] : opinions)
         if (authored == purpose) return &visibility;
@@ -65,7 +67,7 @@ const TfToken *Inherited(const PurposeVisibility &opinions, const TfToken &purpo
 
 using Bindings = std::vector<std::pair<TfToken, SdfPath>>;
 
-// The binding for `purpose`, if there is one; it may be an empty path, which binds nothing.
+// The binding for `purpose`; null if there is none, and an empty path for a binding to nothing.
 const SdfPath *FindBinding(const Bindings &bindings, const TfToken &purpose) {
     for (const auto &[bound, material] : bindings)
         if (bound == purpose) return &material;
@@ -99,12 +101,11 @@ std::optional<SdfPath> CorrectedBinding(const PrimTable &, const PrimRecord &pri
 
 }  // namespace
 
-
 SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame, const TfToken &purpose) {
     // As UsdShade: the purpose across the whole hierarchy first, then allPurpose.
     for (const TfToken &tried : {purpose, TfToken()})
         if (std::optional<SdfPath> material = CorrectedBinding(table, prim, frame, tried)) return *material;
-    return SdfPath();
+    return {};
 }
 
 bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Frame &frame) {
@@ -121,11 +122,14 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
 }
 
 InstanceResolver::InstanceResolver(const PrimTable &table, Diagnostics &diagnostics)
-    : table_(table), diagnostics_(diagnostics) {}
+    : table_(table),
+      diagnostics_(diagnostics) {}
 
 const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim) { return FramesOf(prim, 0); }
 
-const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim, int depth) {
+// FramesOf, FramesUnder, and Expand recurse once per nesting level, bounded by kMaxDepth.
+const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim,  // NOLINT(misc-no-recursion)
+                                                     int depth) {
     if (!prim.instancedBy) return top_;
     const InstancedByRecord &by = *prim.instancedBy;
     // Native instancing gives each prototype copy exactly one instancer.
@@ -136,8 +140,8 @@ const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim, int
     return FramesUnder(by.instancers[0], by.prototypeRoots[0], depth);
 }
 
-const std::vector<Frame> &InstanceResolver::FramesUnder(const SdfPath &instancerPath, const SdfPath &prototypeRoot,
-                                                        int depth) {
+const std::vector<Frame> &InstanceResolver::FramesUnder(  // NOLINT(misc-no-recursion)
+    const SdfPath &instancerPath, const SdfPath &prototypeRoot, int depth) {
     if (auto found = cache_.find(prototypeRoot); found != cache_.end()) return found->second;
     // Inserted before expanding, so a cycle in malformed data ends with no frames. References into
     // an unordered_map survive later insertions.
@@ -154,7 +158,8 @@ const std::vector<Frame> &InstanceResolver::FramesUnder(const SdfPath &instancer
     return frames;
 }
 
-std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const SdfPath &prototypeRoot, int depth) {
+std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
+    const PrimRecord &instancer, const SdfPath &prototypeRoot, int depth) {
     const InstancerRecord &topology = *instancer.instancer;
     auto prototype = std::find(topology.prototypes.begin(), topology.prototypes.end(), prototypeRoot);
     const auto p = static_cast<size_t>(prototype - topology.prototypes.begin());
@@ -173,7 +178,7 @@ std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const S
     std::vector<Frame> frames;
     bool invalidIndex = false, invalidPrimvar = false;
     for (const Frame &outer : FramesOf(instancer, depth + 1)) {
-        for (int k : topology.instanceIndices[p]) {
+        for (const int k : topology.instanceIndices[p]) {
             const auto index = static_cast<size_t>(k);
             if (k < 0 || index >= topology.instanceLocations.size() || index >= transforms->size()) {
                 invalidIndex = true;
@@ -186,7 +191,8 @@ std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const S
             frame.context.push_back(frame.usdRoot);
             // Row vectors: the instance's own transform first, then the frame it sits in.
             frame.world = (*transforms)[index] * outer.world;
-            frame.visible = outer.visible && (topology.mask.empty() || (index < topology.mask.size() && topology.mask[index]));
+            frame.visible =
+                outer.visible && (topology.mask.empty() || (index < topology.mask.size() && topology.mask[index]));
             // The instance root's own constant primvars, flattened within its namespace, with the type and
             // shape USD authored. Hydra's instancer has them too, as instance-rate primvars, but its
             // aggregation keeps only the first element of an array value and takes names and types from the
@@ -203,7 +209,7 @@ std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const S
                 }
             }
             const SdfPath &location = topology.instanceLocations[index];
-            static const TfToken kPurposesBound[] = {TfToken(), TfToken("preview"), TfToken("full")};
+            static const std::array kPurposesBound{TfToken(), TfToken("preview"), TfToken("full")};
             if (const PrimRecord *root = table_.Find(location)) {
                 for (const TfToken &purpose : kPurposesBound) {
                     if (std::optional<SdfPath> material = CorrectedBinding(table_, *root, outer, purpose))
@@ -217,7 +223,8 @@ std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const S
             // The mask already folds in the instance root's flattened visibility, its ancestors included.
             // Opinions at or above the instance root, inside the outer prototype, then the outer frame's.
             for (const TfToken &purpose : Purposes()) {
-                const TfToken *opinion = NearestOpinion(table_, topology.instanceLocations[index], outer.hydraRoot, purpose);
+                const TfToken *opinion =
+                    NearestOpinion(table_, topology.instanceLocations[index], outer.hydraRoot, purpose);
                 if (!opinion) opinion = Inherited(outer.purposeVisibility, purpose);
                 if (opinion) frame.purposeVisibility.emplace_back(purpose, *opinion);
             }
@@ -231,7 +238,8 @@ std::vector<Frame> InstanceResolver::Expand(const PrimRecord &instancer, const S
         }
     }
     if (invalidIndex) Report(instancer, "invalid-instancer", "Instance indices out of range were skipped");
-    if (invalidPrimvar) Report(instancer, "invalid-primvar", "Instance-root primvars with invalid indices were skipped");
+    if (invalidPrimvar)
+        Report(instancer, "invalid-primvar", "Instance-root primvars with invalid indices were skipped");
     return frames;
 }
 

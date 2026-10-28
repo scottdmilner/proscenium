@@ -37,6 +37,8 @@ public:
     ~SceneIndexGraph();
     SceneIndexGraph(const SceneIndexGraph &) = delete;
     SceneIndexGraph &operator=(const SceneIndexGraph &) = delete;
+    SceneIndexGraph(SceneIndexGraph &&) = delete;
+    SceneIndexGraph &operator=(SceneIndexGraph &&) = delete;
 
     // Moves the graph to `time` and processes pending stage edits; notices reach the observer.
     // Must not overlap reads of the terminal.

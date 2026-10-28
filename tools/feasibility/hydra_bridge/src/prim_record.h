@@ -12,6 +12,7 @@
 #include <pxr/imaging/pxOsd/meshTopology.h>
 #include <pxr/usd/sdf/path.h>
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -71,14 +72,14 @@ struct PrimRecord {
     bool isGprim = false;  // source-info filter
     // Hydra's piPropagatedPrototypes marker: a point instancer's prototype original, drawn only as its copies.
     bool pointInstancerPrototype = false;
-    std::string materialBindFamilyIssue;  // source-info filter: why USD rejects this mesh's materialBind family
-    pxr::TfTokenVector droppedAttributes;  // source-info filter: authored attributes UsdImaging drops
+    std::string materialBindFamilyIssue;    // source-info filter: why USD rejects this mesh's materialBind family
+    pxr::TfTokenVector droppedAttributes;   // source-info filter: authored attributes UsdImaging drops
     pxr::TfTokenVector bindingsWithoutApi;  // source-info filter: material:binding relationships without the API
-    pxr::SdfPath originPath;  // primOrigin/scenePath: prototype-relative inside prototypes
+    pxr::SdfPath originPath;                // primOrigin/scenePath: prototype-relative inside prototypes
     std::optional<pxr::GfMatrix4d> matrix;
     bool visible = true;
     pxr::TfToken purpose;
-    PurposeVisibility purposeVisibility;  // authored guide/proxy/render visibility; Hydra doesn't image it
+    PurposeVisibility purposeVisibility;    // authored guide/proxy/render visibility; Hydra doesn't image it
     std::optional<bool> sourceDoubleSided;  // USD's, fallback included; Hydra's can be wrong
     std::optional<pxr::GfRange3d> extent;   // local
     std::vector<PrimvarRecord> primvars;
@@ -96,9 +97,13 @@ struct PrimRecord {
     std::optional<InstancerRecord> instancer;
     std::optional<MaterialRecord> material;
 
+    // Null when the prim has no such primvar, or no authored visibility for the purpose.
     const PrimvarRecord *FindPrimvar(const pxr::TfToken &name) const;
     const pxr::TfToken *PurposeVisibilityOf(const pxr::TfToken &forPurpose) const;
 };
+
+// Records by reference, so never null: a mesh's subsets, or the prims whose bindings its material slots take.
+using PrimRefs = std::vector<std::reference_wrapper<const PrimRecord>>;
 
 // A constant primvar's value as the prim sees it: flattened through its indices with USD's own
 // UsdGeomPrimvar::ComputeFlattened, which reports bad indices in `error` (and returns false) rather than
@@ -110,7 +115,7 @@ struct PrimTable {
     std::vector<PrimRecord> prims;
     std::unordered_map<pxr::SdfPath, size_t, pxr::SdfPath::Hash> index;
 
-    const PrimRecord *Find(const pxr::SdfPath &path) const;
+    [[nodiscard]] const PrimRecord *Find(const pxr::SdfPath &path) const;  // null when the table has no such prim
 };
 
 }  // namespace hydra_bridge

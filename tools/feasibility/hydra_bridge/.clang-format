@@ -1,0 +1,23 @@
+# The Hydra bridge's C++ style (clang-format, run by pre-commit): the 4-space style M1b wrote it in, with pxr/pxr.h
+# first among USD's headers as USD requires. The compiled core's style is src/proscenium/core/.clang-format.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakTemplateDeclarations: Yes
+SpacesBeforeTrailingComments: 2
+IncludeCategories:
+  - Regex: '^"'
+    Priority: 1
+  - Regex: '^<pxr/pxr\.h>'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '^<pxr/'
+    Priority: 2
+    SortPriority: 3
+  - Regex: '.*'
+    Priority: 4
+PackConstructorInitializers: Never
+QualifierAlignment: Left

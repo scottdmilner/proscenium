@@ -16,9 +16,11 @@
 #include <pxr/imaging/pxOsd/tokens.h>
 
 #include <algorithm>
+#include <array>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <string_view>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -29,8 +31,8 @@ namespace {
 // How each Blender corner and face relates to the captured topology. Faces Blender would delete are left out,
 // so Blender's faces and corners can be fewer than the captured ones.
 struct Layout {
-    MeshCounts source;  // the captured mesh's, which primvars are validated against
-    MeshCounts counts;  // Blender's
+    MeshCounts source;                 // the captured mesh's, which primvars are validated against
+    MeshCounts counts;                 // Blender's
     std::vector<size_t> sourceCorner;  // the captured corner each Blender corner takes its data from
     std::vector<size_t> faceOfCorner;  // the captured face of each Blender corner
     std::vector<size_t> sourceFace;    // the captured face of each Blender face
@@ -102,7 +104,7 @@ std::vector<size_t> SourceElements(Domain domain, const TfToken &interpolation, 
     if (domain == Domain::Face) return layout.sourceFace;
     if (interpolation == HdPrimvarSchemaTokens->faceVarying) return layout.sourceCorner;
     if (interpolation == HdPrimvarSchemaTokens->uniform) return layout.faceOfCorner;
-    return std::vector<size_t>(layout.cornerVerts.begin(), layout.cornerVerts.end());
+    return {layout.cornerVerts.begin(), layout.cornerVerts.end()};
 }
 
 // Validated beforehand: every source element and index is in range.
@@ -110,11 +112,11 @@ template <class In, class Out, class Convert>
 VtValue Gather(const PrimvarRecord &primvar, const std::vector<size_t> &sources, Convert convert) {
     const auto &values = primvar.values.UncheckedGet<VtArray<In>>();
     VtArray<Out> out(sources.size());
-    Out *data = out.data();
-    for (size_t i = 0; i < sources.size(); ++i) {
-        const size_t element = primvar.indices ? static_cast<size_t>((*primvar.indices)[sources[i]]) : sources[i];
-        data[i] = convert(values[element]);
-    }
+    // Through the mutable iterator once: VtArray's non-const operator[] checks for sharing on every call.
+    std::transform(sources.begin(), sources.end(), out.begin(), [&](size_t source) {
+        const size_t element = primvar.indices ? static_cast<size_t>((*primvar.indices)[source]) : source;
+        return convert(values[element]);
+    });
     return VtValue(std::move(out));
 }
 
@@ -137,7 +139,8 @@ std::optional<Attribute> ToAttribute(const PrimvarRecord &primvar, const std::st
         attribute.data = Gather<GfVec2f, GfVec2f>(primvar, sources, kSame);
     } else if (values.IsHolding<VtVec3fArray>() && primvar.role == HdPrimvarRoleTokens->color) {
         attribute.type = DataType::FloatColor;
-        attribute.data = Gather<GfVec3f, GfVec4f>(primvar, sources, [](const GfVec3f &c) { return GfVec4f(c[0], c[1], c[2], 1.0f); });
+        attribute.data = Gather<GfVec3f, GfVec4f>(primvar, sources,
+                                                  [](const GfVec3f &c) { return GfVec4f(c[0], c[1], c[2], 1.0f); });
     } else if (values.IsHolding<VtVec3fArray>()) {
         attribute.type = DataType::FloatVector;
         attribute.data = Gather<GfVec3f, GfVec3f>(primvar, sources, kSame);
@@ -166,11 +169,10 @@ std::string BlenderName(const PrimvarRecord &primvar) {
 
 // Names Blender gives a meaning of its own: a primvar with one would change shading, creases, or seams.
 bool ReservedName(const std::string &name) {
-    static const char *const kBuiltIn[] = {"position",          "material_index",    "sharp_face",  "sharp_edge",
-                                           "crease_vert",       "crease_edge",       "uv_seam",     "custom_normal",
-                                           "bevel_weight_vert", "bevel_weight_edge", "freestyle_edge", "freestyle_face"};
-    return name.empty() || name[0] == '.' ||
-           std::find(std::begin(kBuiltIn), std::end(kBuiltIn), name) != std::end(kBuiltIn);
+    static const std::array<std::string_view, 12> kBuiltIn{
+        "position", "material_index", "sharp_face",        "sharp_edge",        "crease_vert",    "crease_edge",
+        "uv_seam",  "custom_normal",  "bevel_weight_vert", "bevel_weight_edge", "freestyle_edge", "freestyle_face"};
+    return name.empty() || name[0] == '.' || std::find(kBuiltIn.begin(), kBuiltIn.end(), name) != kBuiltIn.end();
 }
 
 // Slot 0 is the mesh's own binding, for faces in no subset, and each materialBind subset gets the next
@@ -178,31 +180,32 @@ bool ReservedName(const std::string &name) {
 // may group the faces differently. Only the materialBind family assigns materials, as in UsdShade; Hydra
 // binds a subset of any family, so the family comes from the source-info filter. A face in several subsets
 // keeps the first.
-void AssignSlots(const PrimRecord &prim, const std::vector<const PrimRecord *> &subsets, const Layout &layout,
-                 MeshData &data, Diagnostics &problems, std::vector<const PrimRecord *> &slots) {
+void AssignSlots(const PrimRecord &prim, const PrimRefs &subsets, const Layout &layout, MeshData &data,
+                 Diagnostics &problems, PrimRefs &slots) {
     const size_t faceCount = layout.counts.faces;
     static const TfToken kMaterialBind("materialBind");
-    slots.assign(1, &prim);
+    slots.assign(1, std::cref(prim));
     std::vector<int> faceSlot(faceCount, -1);
     bool overlap = false;
     // In path order, so which overlapping subset wins doesn't depend on the order Hydra lists children in.
-    std::vector<const PrimRecord *> ordered(subsets);
-    std::sort(ordered.begin(), ordered.end(), [](const PrimRecord *a, const PrimRecord *b) { return a->path < b->path; });
-    for (const PrimRecord *subset : ordered) {
-        const GeomSubsetRecord &record = *subset->geomSubset;
+    PrimRefs ordered(subsets);
+    std::sort(ordered.begin(), ordered.end(), [](const PrimRecord &a, const PrimRecord &b) { return a.path < b.path; });
+    for (const PrimRecord &subset : ordered) {
+        if (!subset.geomSubset) continue;  // the planner lists only subsets, so never taken
+        const GeomSubsetRecord &record = *subset.geomSubset;
         if (record.familyName != kMaterialBind) continue;
         if (record.type != HdGeomSubsetSchemaTokens->typeFaceSet) {
             problems.push_back({Severity::Warning, "unsupported-subset", prim.path,
-                                subset->path.GetName() + ": a materialBind subset must list faces; it is ignored"});
+                                subset.path.GetName() + ": a materialBind subset must list faces; it is ignored"});
             continue;
         }
-        if (std::string problem = ValidateSubset(record, layout.source.faces); !problem.empty()) {
-            problems.push_back({Severity::Error, "invalid-subset", prim.path, subset->path.GetName() + ": " + problem});
+        if (const std::string problem = ValidateSubset(record, layout.source.faces); !problem.empty()) {
+            problems.push_back({Severity::Error, "invalid-subset", prim.path, subset.path.GetName() + ": " + problem});
             continue;
         }
         const int slot = static_cast<int>(slots.size());
-        slots.push_back(subset);
-        for (int sourceFace : record.indices) {
+        slots.emplace_back(subset);
+        for (const int sourceFace : record.indices) {
             const int face = layout.blenderFace[static_cast<size_t>(sourceFace)];
             if (face < 0) continue;  // left out, as Blender would delete it
             int &assigned = faceSlot[static_cast<size_t>(face)];
@@ -222,8 +225,9 @@ void AssignSlots(const PrimRecord &prim, const std::vector<const PrimRecord *> &
 
 }  // namespace
 
-std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<const PrimRecord *> &subsets,
-                                  Diagnostics &problems, std::vector<const PrimRecord *> &slots) {
+std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subsets, Diagnostics &problems,
+                                  PrimRefs &slots) {
+    if (!prim.mesh) return std::nullopt;  // the planner builds only meshes, so never taken
     const MeshRecord &mesh = *prim.mesh;
     auto fail = [&](const std::string &message) {
         problems.push_back({Severity::Error, "invalid-mesh", prim.path, message});
@@ -235,7 +239,8 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
     if (positions->empty() && !mesh.topology.GetFaceVertexIndices().empty())
         return fail("No points (a points attribute that isn't point3f reads as empty)");
     std::optional<ScopedFactTiming> validateTiming(std::in_place, FactTiming::MeshValidate);
-    if (std::string problem = ValidateTopology(mesh.topology, positions->size()); !problem.empty()) return fail(problem);
+    if (const std::string problem = ValidateTopology(mesh.topology, positions->size()); !problem.empty())
+        return fail(problem);
     validateTiming.reset();
     // Valid USD that Blender's Mesh.validate() would repair by deleting faces: the same repair, warned.
     std::optional<ScopedFactTiming> deletedTiming(std::in_place, FactTiming::MeshDeletedFaces);
@@ -246,10 +251,11 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
                             std::to_string(rejected.repeatedPoint) + " face(s) using a point more than once and " +
                                 std::to_string(rejected.duplicate) +
                                 " face(s) on an earlier face's points are left out, as Blender's Mesh.validate() "
-                                "deletes them (" + rejected.example + ")"});
+                                "deletes them (" +
+                                rejected.example + ")"});
 
     std::optional<ScopedFactTiming> layoutTiming(std::in_place, FactTiming::MeshLayout);
-    Layout layout = MakeLayout(mesh.topology, positions->size(), rejected.drop);
+    const Layout layout = MakeLayout(mesh.topology, positions->size(), rejected.drop);
     MeshData data;
     data.name = prim.path.GetName();
     data.positions = std::move(*positions);
@@ -277,7 +283,7 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
             problems.push_back({severity, code, prim.path, "Primvar '" + primvar.name.GetString() + "': " + why});
         };
         const std::string name = BlenderName(primvar);
-        if (std::string problem = ValidatePrimvar(primvar, layout.source); !problem.empty()) {
+        if (const std::string problem = ValidatePrimvar(primvar, layout.source); !problem.empty()) {
             skip(Severity::Error, "invalid-primvar", problem);
         } else if (primvar.name == HdTokens->normals && subdivided) {
             // UsdGeomMesh: a subdivision surface's normals come from the subdivision, not from authored ones.
@@ -287,14 +293,16 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<cons
         } else if (primvar.name == kVelocities && name != primvar.name.GetString() && prim.FindPrimvar(TfToken(name))) {
             skip(Severity::Warning, "name-collision", "Blender's '" + name + "' is taken by the primvar of that name");
         } else if (primvar.name == HdTokens->normals && !primvar.values.IsHolding<VtVec3fArray>()) {
-            skip(Severity::Warning, "untransferred-primvar", "normals of type " + primvar.values.GetTypeName() + " are not transferred");
+            skip(Severity::Warning, "untransferred-primvar",
+                 "normals of type " + primvar.values.GetTypeName() + " are not transferred");
         } else if (std::optional<Attribute> attribute = ToAttribute(primvar, name, layout)) {
             data.attributes.push_back(std::move(*attribute));
             if (primvar.name == kAccelerations)
                 skip(Severity::Warning, "no-blender-equivalent",
                      "Blender has no acceleration attribute; kept as a generic attribute, which Blender doesn't use");
         } else {
-            skip(Severity::Info, "untransferred-primvar", "type " + primvar.values.GetTypeName() + " is not transferred");
+            skip(Severity::Info, "untransferred-primvar",
+                 "type " + primvar.values.GetTypeName() + " is not transferred");
         }
     }
     return data;

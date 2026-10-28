@@ -12,6 +12,7 @@
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/timeCode.h>
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -20,7 +21,7 @@
 namespace hydra_bridge {
 
 // The scene-index observer notices, one per prim entry.
-enum class EventKind { Added, Removed, Dirtied, Renamed };
+enum class EventKind : std::uint8_t { Added, Removed, Dirtied, Renamed };
 
 const char *EventKindName(EventKind kind);  // "added", "removed", "dirtied", "renamed"
 

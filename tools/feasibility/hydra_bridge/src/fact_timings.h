@@ -10,7 +10,7 @@
 
 namespace hydra_bridge {
 
-enum class FactTiming {
+enum class FactTiming : std::uint8_t {
     Build,
     Bindings,
     StrongPurposes,
@@ -43,10 +43,14 @@ std::vector<std::tuple<std::string, uint64_t, double>> TakeFactTimings();
 // Times its scope as one call of `kind`.
 class ScopedFactTiming {
 public:
-    explicit ScopedFactTiming(FactTiming kind) : kind_(kind), start_(std::chrono::steady_clock::now()) {}
+    explicit ScopedFactTiming(FactTiming kind)
+        : kind_(kind),
+          start_(std::chrono::steady_clock::now()) {}
     ~ScopedFactTiming() { AddFactTiming(kind_, std::chrono::steady_clock::now() - start_); }
     ScopedFactTiming(const ScopedFactTiming &) = delete;
     ScopedFactTiming &operator=(const ScopedFactTiming &) = delete;
+    ScopedFactTiming(ScopedFactTiming &&) = delete;
+    ScopedFactTiming &operator=(ScopedFactTiming &&) = delete;
 
 private:
     FactTiming kind_;

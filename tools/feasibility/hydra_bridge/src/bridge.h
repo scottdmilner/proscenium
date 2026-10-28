@@ -36,7 +36,7 @@ public:
 private:
     pxr::UsdStagePtr stage_;
     std::unique_ptr<SceneIndexGraph> graph_;
-    SnapshotPtr last_;  // the graph's notices since this capture are the ones not yet taken
+    SnapshotPtr last_;     // the graph's notices since this capture are the ones not yet taken
     Diagnostics pending_;  // warnings posted while building the graph, until the first capture takes them
 };
 

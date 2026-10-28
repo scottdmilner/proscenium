@@ -30,9 +30,9 @@
 #include "source_facts.h"
 
 #include <pxr/pxr.h>
+#include <pxr/base/tf/notice.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/imaging/hd/filteringSceneIndex.h>
-#include <pxr/base/tf/notice.h>
 #include <pxr/usd/usd/notice.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/timeCode.h>
@@ -47,7 +47,6 @@
 
 namespace hydra_bridge {
 
-
 class SourceInfoSceneIndex;
 using SourceInfoSceneIndexRefPtr = pxr::TfRefPtr<SourceInfoSceneIndex>;
 using SourceInfoSceneIndexPtr = pxr::TfWeakPtr<SourceInfoSceneIndex>;
@@ -58,6 +57,10 @@ public:
     static SourceInfoSceneIndexRefPtr New(const pxr::HdSceneIndexBaseRefPtr &input, const pxr::UsdStagePtr &stage);
 
     ~SourceInfoSceneIndex() override;
+    SourceInfoSceneIndex(const SourceInfoSceneIndex &) = delete;
+    SourceInfoSceneIndex &operator=(const SourceInfoSceneIndex &) = delete;
+    SourceInfoSceneIndex(SourceInfoSceneIndex &&) = delete;
+    SourceInfoSceneIndex &operator=(SourceInfoSceneIndex &&) = delete;
 
     // Call before the stage scene index's SetTime, never alongside reads.
     void SetTime(pxr::UsdTimeCode time);
@@ -77,15 +80,17 @@ public:
     pxr::SdfPathVector GetChildPrimPaths(const pxr::SdfPath &primPath) const override;
 
 protected:
-    // Hydra's notices pass through unchanged; the filter adds its own for the values it supplies.
-    void _PrimsAdded(const pxr::HdSceneIndexBase &, const pxr::HdSceneIndexObserver::AddedPrimEntries &entries) override;
-    void _PrimsRemoved(const pxr::HdSceneIndexBase &,
+    // Hydra's notices pass through unchanged; the filter adds its own for the values it supplies. The names are
+    // HdSingleInputFilteringSceneIndexBase's virtuals, reserved identifiers USD chose.
+    void _PrimsAdded(const pxr::HdSceneIndexBase &,  // NOLINT(bugprone-reserved-identifier)
+                     const pxr::HdSceneIndexObserver::AddedPrimEntries &entries) override;
+    void _PrimsRemoved(const pxr::HdSceneIndexBase &,  // NOLINT(bugprone-reserved-identifier)
                        const pxr::HdSceneIndexObserver::RemovedPrimEntries &entries) override;
-    void _PrimsDirtied(const pxr::HdSceneIndexBase &,
+    void _PrimsDirtied(const pxr::HdSceneIndexBase &,  // NOLINT(bugprone-reserved-identifier)
                        const pxr::HdSceneIndexObserver::DirtiedPrimEntries &entries) override;
 
 private:
-    SourceInfoSceneIndex(const pxr::HdSceneIndexBaseRefPtr &input, const pxr::UsdStagePtr &stage);
+    SourceInfoSceneIndex(const pxr::HdSceneIndexBaseRefPtr &input, pxr::UsdStagePtr stage);
 
     pxr::HdContainerDataSourceHandle Added(const pxr::UsdPrim &prim, const pxr::HdContainerDataSourceHandle &input,
                                            bool imaged, const pxr::TfToken &hydraType) const;
@@ -100,8 +105,9 @@ private:
     // of what they flag as time-varying. Asset-path dependencies aren't tracked.
     class Globals final : public pxr::UsdImagingDataSourceStageGlobals {
     public:
-        explicit Globals(const SourceInfoSceneIndex &owner) : owner_(owner) {}
-        pxr::UsdTimeCode GetTime() const override;
+        explicit Globals(const SourceInfoSceneIndex &owner)
+            : owner_(owner) {}
+        [[nodiscard]] pxr::UsdTimeCode GetTime() const override;
         void FlagAsTimeVarying(const pxr::SdfPath &hydraPath, const pxr::HdDataSourceLocator &locator) const override;
         void FlagAsAssetPathDependent(const pxr::SdfPath &) const override {}
 
@@ -114,6 +120,8 @@ private:
     pxr::UsdStagePtr stage_;
     pxr::UsdTimeCode time_{0.0};  // the stage scene index's starting time
     pxr::TfNotice::Key noticeKey_;
+    // Set once by New, so const members can hand containers a weak pointer to the filter.
+    SourceInfoSceneIndexPtr self_;
     // One container per prim, built once and rebuilt only when its own generation moves: when the prim is
     // dirtied, or when something its facts depend on changes (an ancestor's binding, a collection, a
     // mesh's subsets), so one edit doesn't rebuild every prim.
