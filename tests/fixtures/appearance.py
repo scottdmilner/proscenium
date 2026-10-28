@@ -38,7 +38,8 @@ LOOKS = "/World/Looks"
 class AppearanceScene:
     root: Path
     stage: Usd.Stage  # the caller's live stage
-    # Under `shared_roots`, each drawn mesh is in exactly one set: the uses that share one geometry resource.
+    # Under `shared_roots`, each drawn mesh is in exactly one set: the equivalent uses, which share one geometry
+    # resource. A representation may share more where the display stays correct (M4 plan, B5).
     shared_roots: tuple[str, ...]
     shared: tuple[frozenset[str], ...]
     # Mesh -> (interpolation, values) of the displayColor and displayOpacity it shows, its own or inherited.
@@ -94,7 +95,7 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             for mesh in ("Own", "Bare"):  # only OuterRed authors an opacity
                 inherited_opacity[f"{base}/{mesh}"] = ("constant", (0.75,)) if root_name == "OuterRed" else None
 
-    unbound = [f"{equal}/Mesh{c}" for c in "ABC"] + [f"{colors}/{m}" for m in ("Constant", "ConstantIndexed")]
+    unbound = [f"{equal}/Mesh{c}" for c in "ABCDEF"] + [f"{colors}/{m}" for m in ("Constant", "ConstantIndexed")]
     unbound += [f"{colors}/{m}" for m in ("Uniform", "Vertex", "FaceVarying")] + list(inherited_color)
     unbound += [f"{uvs}/PointUVs", f"{uvs}/Untyped"]
     root, stage = _open(dest, "appearance.usda")
@@ -106,7 +107,10 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             frozenset(f"{k}/Body" for k in kits),
             frozenset(f"{k}/Lid" for k in kits),
             frozenset({f"{equal}/MeshA", f"{equal}/MeshB"}),  # equal content
-            frozenset({f"{equal}/MeshC"}),  # differs only in displayColor
+            frozenset({f"{equal}/MeshC"}),  # differs only in a constant displayColor
+            frozenset({f"{equal}/MeshD"}),  # differs only in its vertex st values
+            frozenset({f"{equal}/MeshE"}),  # differs only in its subdivision scheme
+            frozenset({f"{equal}/MeshF"}),  # differs only in its sidedness
         ),
         display_color={
             f"{colors}/Constant": ("constant", ((1.0, 0.0, 0.0),)),

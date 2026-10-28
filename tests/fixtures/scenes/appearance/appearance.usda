@@ -3,8 +3,9 @@
 # spec/support/geometry.md and spec/support/materials.md, one child of /World per case:
 # - SharedPrototype: copies of a two-mesh, two-material prototype (PVAR-04, GRAM-06); Body authors
 #   a display color its bound material must not show.
-# - EqualContent: meshes outside instances, two with equal content and one differing only in
-#   displayColor (PVAR-05).
+# - EqualContent: meshes outside instances, two with equal content, one differing only in a constant
+#   displayColor, and one each only in its vertex st values, its subdivision scheme, and its sidedness
+#   (PVAR-05).
 # - NamedUVs: typed UV sets (st faceVarying and indexed, perfuv faceVarying, st vertex) and float2[]
 #   primvars only UV-set names make UV sets of (ST, offset, and a constant uv_shift) (PVAR-06,
 #   GEOM-13, GEOM-14), with a texture read through perfuv (GRAM-09).
@@ -281,6 +282,58 @@ def Xform "World" (
             )
             uniform token subdivisionScheme = "none"
             double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "MeshD"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(1, 0), (0, 0), (0, 1), (1, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "MeshE"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "catmullClark"
+            double3 xformOp:translate = (8, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "MeshF"
+        {
+            uniform bool doubleSided = 1
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3, 3]
+            int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+                interpolation = "vertex"
+            )
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (10, 0, 0)
             uniform token[] xformOpOrder = ["xformOp:translate"]
         }
     }

@@ -58,7 +58,7 @@ def _shaders(material: UsdShade.Material, shader_id: str) -> list[UsdShade.Shade
 
 
 def _content(prim: Usd.Prim) -> tuple[object, ...]:
-    """What makes two meshes outside instances equivalent uses: topology, points, and primvars."""
+    """What makes two meshes outside instances equivalent uses: topology, points, primvars, scheme, and sidedness."""
     mesh = UsdGeom.Mesh(prim)
     primvars = sorted(
         (pv.GetPrimvarName(), str(pv.GetTypeName()), pv.GetInterpolation(), tuple(pv.ComputeFlattened()))
@@ -66,7 +66,8 @@ def _content(prim: Usd.Prim) -> tuple[object, ...]:
         if pv.HasAuthoredValue()
     )
     counts, indices = mesh.GetFaceVertexCountsAttr().Get(), mesh.GetFaceVertexIndicesAttr().Get()
-    return (tuple(counts), tuple(indices), tuple(mesh.GetPointsAttr().Get()), tuple(primvars))
+    scheme, sided = mesh.GetSubdivisionSchemeAttr().Get(), mesh.GetDoubleSidedAttr().Get()
+    return (tuple(counts), tuple(indices), tuple(mesh.GetPointsAttr().Get()), tuple(primvars), scheme, sided)
 
 
 def _sharing_key(prim: Usd.Prim) -> object:

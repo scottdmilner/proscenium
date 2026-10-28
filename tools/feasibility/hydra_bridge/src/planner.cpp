@@ -2,6 +2,7 @@
 #include "fact_timings.h"
 #include "instancing.h"
 #include "mesh_builder.h"
+#include "mesh_sharing.h"
 #include "plan.h"
 #include "prim_reader.h"
 
@@ -12,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <optional>
 #include <set>
 #include <unordered_map>
@@ -86,6 +88,7 @@ private:
     // BuildMesh's results for one prim, before anything is added to the plan.
     struct BuiltMesh {
         std::optional<MeshData> mesh;
+        std::size_t contentHash = 0;
         Diagnostics problems;
         PrimRefs slots;
     };
@@ -106,6 +109,7 @@ private:
                 BuiltMesh &result = built[i];
                 result.mesh = BuildMesh(prim, found == subsets_.end() ? kNoSubsets : found->second, result.problems,
                                         result.slots);
+                if (result.mesh) result.contentHash = ContentHash(*result.mesh);
             }
         });
         return built;
@@ -127,8 +131,14 @@ private:
         }
         const bool subdivided = mesh->subdivisionScheme == PxOsdOpenSubdivTokens->catmullClark ||
                                 mesh->subdivisionScheme == PxOsdOpenSubdivTokens->loop;
-        plan_->meshes.push_back(std::move(*mesh));
-        AddObjects(prim, static_cast<int>(plan_->meshes.size() - 1), TfToken(), slots);
+        // A mesh whose content another already has shares it (M4, B5).
+        int index = contents_.Find(*mesh, built.contentHash, plan_->meshes);
+        if (index == -1) {
+            plan_->meshes.push_back(std::move(*mesh));
+            index = static_cast<int>(plan_->meshes.size() - 1);
+            contents_.Add(built.contentHash, index);
+        }
+        AddObjects(prim, index, TfToken(), slots);
         // A subset has no object of its own; its bindings are reported on the mesh's copies.
         for (const PrimRecord &subset : subsets_[prim.path])
             WarnBindingsWithoutApi(subset, prim.path, "Subset " + subset.path.GetName() + ": ");
@@ -361,6 +371,7 @@ private:
     std::shared_ptr<Plan> plan_;
     InstanceResolver resolver_;
     std::unordered_map<SdfPath, PrimRefs, SdfPath::Hash> subsets_;  // by mesh path
+    MeshContents contents_;
     std::unordered_map<SdfPath, int, SdfPath::Hash> materials_;
     std::optional<std::unordered_map<SdfPath, SdfPath, SdfPath::Hash>> materialsByUsdPath_;  // see HydraMaterial
     std::set<std::pair<SdfPath, TfToken>> unconverted_;  // constant primvars already warned about, by source

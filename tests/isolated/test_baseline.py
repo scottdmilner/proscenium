@@ -151,18 +151,53 @@ def test_materials_per_destination(scene: BaselineScene, applied: list[dict[str,
                 assert material is None or material in sources, (obj["source"], destination, face, sources)
 
 
-def test_shared_meshes_hold_equivalent_geometry(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+def _mesh_content(prim: Usd.Prim) -> tuple[object, ...]:
+    """What a drawn copy's Blender mesh holds, from USD: everything per copy is on its object instead.
+
+    Points, topology and orientation, each face's material slot (its first materialBind subset, by path, or the
+    mesh's own), the non-constant primvars and normals, and the subdivision scheme and sidedness.
+    """
+    mesh = UsdGeom.Mesh(prim)
+    faces = len(mesh.GetFaceVertexCountsAttr().Get())
+    subsets = sorted(UsdShade.MaterialBindingAPI(prim).GetMaterialBindSubsets(), key=lambda s: s.GetPrim().GetPath())
+    slots = [0] * faces
+    for slot, subset in enumerate(subsets, 1):
+        for face in subset.GetIndicesAttr().Get():
+            slots[face] = slots[face] or slot
+    primvars = sorted(
+        (pv.GetPrimvarName(), str(pv.GetTypeName()), pv.GetInterpolation(), tuple(pv.ComputeFlattened()))
+        for pv in UsdGeom.PrimvarsAPI(prim).GetPrimvars()
+        if pv.HasAuthoredValue() and pv.GetInterpolation() != UsdGeom.Tokens.constant
+    )
+    normals = mesh.GetNormalsAttr().Get()
+    return (
+        tuple(mesh.GetPointsAttr().Get()),
+        tuple(mesh.GetFaceVertexCountsAttr().Get()),
+        tuple(mesh.GetFaceVertexIndicesAttr().Get()),
+        mesh.GetOrientationAttr().Get(),
+        (len(subsets) + 1, tuple(slots)),
+        tuple(primvars),
+        None if normals is None else tuple(normals),
+        mesh.GetSubdivisionSchemeAttr().Get(),
+        mesh.GetDoubleSidedAttr().Get(),
+    )
+
+
+def test_meshes_shared_exactly_among_equal_content(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # The sharing criteria (B5, SHARE-06): copies share a mesh exactly when their mesh content is equal, so the
+    # fixture's equivalent uses share one (PVAR-04, PVAR-05), and so does a mesh differing only in a constant
+    # primvar, which is on its object.
     drawn = _drawn(scene.stage)
-
-    def geometry(path: str) -> str:
-        # Copies of one prototype mesh are one prim in the prototype; any other mesh is only itself.
-        prim = drawn[path]
-        return str(prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else prim.GetPath())
-
-    users: dict[str, set[str]] = defaultdict(set)
+    content: dict[str, set[tuple[object, ...]]] = defaultdict(set)
     for obj in applied:
-        users[obj["mesh"]].add(geometry(obj["source"]))
-    assert all(len(geometries) == 1 for geometries in users.values()), users
+        content[obj["mesh"]].add(_mesh_content(drawn[obj["source"]]))
+    assert all(len(held) == 1 for held in content.values()), content  # a shared mesh holds one content
+    held = [next(iter(c)) for c in content.values()]
+    assert len(set(held)) == len(held)  # and no two meshes hold the same
+    if isinstance(scene.facts, appearance.AppearanceScene):
+        meshes = {obj["source"]: obj["mesh"] for obj in applied}
+        for uses in scene.facts.shared:
+            assert len({meshes[use] for use in uses}) == 1, uses
 
 
 def test_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:

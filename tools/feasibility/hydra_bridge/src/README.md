@@ -42,6 +42,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
    - Paths in a snapshot are Hydra paths.
 3. **Planning.** The planner reads the schemas it needs from the snapshot into plain records, in parallel, then turns them into a `Plan`:
    - validated meshes in Blender's exact element types;
+   - one mesh for each content (M4): meshes whose positions, corners, faces, face slots, attributes, subdivision scheme and sidedness are equal byte for byte are one, whatever prims and instancers they come from;
    - material slots from GeomSubsets: slot 0 for the mesh's binding, then one per materialBind subset;
    - primvars as attributes on Blender's domains: authored normals as Blender's `custom_normal`, `velocities` as `velocity`;
    - each object's constant primvars, its own and inherited from instance roots, as the ID properties Blender holds;
@@ -71,6 +72,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `instancing.h/.cpp` | Reverse mapping from instancers to USD sources, as `HdxPrimOriginInfo` does it: walks `instancedBy` upward and folds in `instanceLocations`, instance transforms, the instancer's visibility mask, the instance roots' own constant primvars and bindings, and purpose-visibility opinions at each level. `BoundMaterial` combines the filter's UsdShade bindings with what's bound at or above each instance root (Hydra's flattened bindings are unusable inside instances). Switch source identity to `HdxPrimOriginInfo` once Blender's USD has its `cdata()` fix (plan log) |
 | `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names) |
+| `mesh_sharing.h/.cpp` | M4: content deduplication: a built mesh's content hash and equality, and the plan's meshes by content |
 | `plan.h`, `planner.cpp` | Plan types, `PlanSettings` (each destination's prim purposes and material purpose), and `BuildPlan`: meshes built in parallel, then added to the plan with their objects, materials and diagnostics in prim order |
 | `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects: each object's floor, the browsing universe, and the viewport's elements by floor (both sorted, so a subtree is one range) |
 | `interaction.h/.cpp` | M4: the baseline's five core interaction functions over a plan's correspondence and the live stage, held weakly. Kind levels go to `inspection.h` in C++; each function raises once the stage has expired |

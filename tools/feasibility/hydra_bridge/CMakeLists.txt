@@ -43,6 +43,7 @@ Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/interaction.cpp
   src/loaded_images.cpp
   src/mesh_builder.cpp
+  src/mesh_sharing.cpp
   src/module.cpp
   src/planner.cpp
   src/prim_reader.cpp
