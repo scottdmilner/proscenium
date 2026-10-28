@@ -42,7 +42,7 @@ def apply_scene(module_dir: str, scene: str) -> dict[str, Any]:
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    objects = apply.apply(plan, collection)
+    objects = apply.apply(plan, collection).objects
     reported = [_object(record, obj) for record, obj in zip(plan.objects, objects, strict=True)]
     # The depsgraph evaluates only objects shown in the viewport, so every object is shown before Blender's world
     # transforms are read, once its hide flags are reported.
@@ -153,3 +153,99 @@ def correspondence(module_dir: str, scene: str, times: list[float], unload: list
         }
     bridge.release()
     return generations
+
+
+def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: bool) -> dict[str, Any]:
+    """Apply `scene`, then replace one unit of its display from the same plan (B6); what Blender holds around it.
+
+    `unit` names one of update.py's sample units. With `unmanaged`, an object outside the display uses its mesh.
+    """
+    native = _native(module_dir)
+    apply = importlib.import_module("apply")
+    update = importlib.import_module("update")
+
+    stage = Usd.Stage.Open(scene)
+    bridge = native.Bridge(stage)
+    plan = native.build_plan(bridge.capture())
+    collection = bpy.data.collections.new("Baseline")
+    blender_scene: Any = bpy.context.scene  # never None in a running Blender
+    blender_scene.collection.children.link(collection)
+    display = apply.apply(plan, collection)
+    chosen = update.sample_units(plan.objects)[unit]
+    outside = None
+    if unmanaged:
+        (mesh,) = (display.meshes[index] for index in chosen.meshes)
+        outside = bpy.data.objects.new("Unmanaged", mesh)
+        blender_scene.collection.objects.link(outside)
+    before = _held(display, plan.objects)
+    positions = None if outside is None else _positions(outside)
+    counts = _counts()
+    prepared = update.prepare(plan, display, chosen, update.UserPolicy(users))
+    untouched = _held(display, plan.objects) == before and _linked(collection) == before["linked"]
+    published = update.publish(prepared, display, collection)
+    linked = _linked(collection)
+    kept = update.retire(prepared)
+    result = {
+        "plan": [{"mesh": r["mesh"], "material_slots": list(r["material_slots"])} for r in plan.objects],
+        "unit": {kind: sorted(getattr(chosen, kind)) for kind in ("objects", "meshes", "materials")},
+        "before": before,
+        "after": _held(published, plan.objects),
+        "linked": {"published": linked, "retired": _linked(collection)},
+        "counts": {"before": counts, "after": _counts()},
+        "prepared_untouched": untouched,
+        "kept": [i.as_pointer() for i in kept],
+        "unmanaged": None
+        if outside is None
+        else {"data": _mesh_pointer(outside), "positions_kept": _positions(outside) == positions},
+    }
+    bridge.release()
+    return result
+
+
+def _held(display: Any, records: Any) -> dict[str, Any]:
+    """Each object as Blender holds it (mesh by plan index), and the pointers of the display's data."""
+    meshes = {mesh.as_pointer(): index for index, mesh in enumerate(display.meshes)}
+    objects = []
+    for record, obj in zip(records, display.objects, strict=True):
+        facts = _object(record, obj)
+        del facts["mesh"]  # Blender's name, which a replacement changes
+        parent = obj.parent
+        facts |= {
+            "mesh_index": None if obj.data is None else meshes.get(obj.data.as_pointer()),
+            "basis": _rows(obj.matrix_basis.transposed()),
+            "parent_world": None if parent is None else _rows(parent.matrix_world.transposed()),
+            "pointer": obj.as_pointer(),
+            "data_pointer": None if obj.data is None else obj.data.as_pointer(),
+        }
+        objects.append(facts)
+    return {
+        "objects": objects,
+        "meshes": [mesh.as_pointer() for mesh in display.meshes],
+        "materials": [material.as_pointer() for material in display.materials],
+        "linked": sorted(
+            {p for obj in display.objects for p in (obj.as_pointer(), obj.parent and obj.parent.as_pointer()) if p}
+        ),
+    }
+
+
+# A mesh object's data, read through Any: its Object.data is typed as every kind of object data.
+def _mesh_pointer(obj: Any) -> int:
+    return obj.data.as_pointer()
+
+
+def _positions(obj: Any) -> list[list[float]]:
+    return [list(v.co) for v in obj.data.vertices]
+
+
+def _linked(collection: Any) -> list[int]:
+    return sorted(obj.as_pointer() for obj in collection.objects)
+
+
+def _counts() -> dict[str, int]:
+    data = bpy.data
+    return {
+        "objects": len(data.objects),
+        "meshes": len(data.meshes),
+        "materials": len(data.materials),
+        "collections": len(data.collections),
+    }

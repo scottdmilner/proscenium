@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, get_args
 
@@ -58,14 +59,25 @@ def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
     return view.cast("B").cast(fmt)  # ty: ignore[no-matching-overload] - stubs list only literal formats
 
 
-def apply(plan: Plan, collection: bpy.types.Collection) -> list[bpy.types.Object]:
-    """Create the plan's materials, meshes, and objects; returns the objects in plan order."""
-    materials = [_material(data) for data in plan.materials]
-    meshes = [_mesh(data) for data in plan.meshes]
-    return [_object(index, data, meshes, materials, collection) for index, data in enumerate(plan.objects)]
+@dataclass(frozen=True)
+class Display:
+    """What a plan's application holds, each list in plan order."""
+
+    objects: list[bpy.types.Object]
+    meshes: list[bpy.types.Mesh]
+    materials: list[bpy.types.Material]
 
 
-def _material(data: MaterialRecord) -> bpy.types.Material:
+def apply(plan: Plan, collection: bpy.types.Collection) -> Display:
+    """Create the plan's materials, meshes, and objects."""
+    materials = [new_material(data) for data in plan.materials]
+    meshes = [new_mesh(data) for data in plan.meshes]
+    objects = [new_object(index, data, meshes, materials, collection) for index, data in enumerate(plan.objects)]
+    return Display(objects, meshes, materials)
+
+
+def new_material(data: MaterialRecord) -> bpy.types.Material:
+    """A plan material's viewport stand-in."""
     material = bpy.data.materials.new(data["name"])
     material["proscenium_sources"] = data["sources"]
     # Viewport color only: shader translation is M9's.
@@ -75,7 +87,8 @@ def _material(data: MaterialRecord) -> bpy.types.Material:
     return material
 
 
-def _mesh(data: MeshRecord) -> bpy.types.Mesh:
+def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
+    """A plan mesh, with empty material slots for its objects to fill."""
     mesh = bpy.data.meshes.new(data["name"])
     positions = flat(data["positions"], BufferFormat.FLOAT)
     corner_verts = flat(data["corner_verts"], BufferFormat.INT)
@@ -161,13 +174,14 @@ def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection:
     obj.matrix_basis = Matrix(vt.tolist()).to_4x4()
 
 
-def _object(
+def new_object(
     index: int,
     data: ObjectRecord,
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
     collection: bpy.types.Collection,
 ) -> bpy.types.Object:
+    """Plan object `index` in `collection`, on `meshes` and `materials`, with a shear parent if it needs one."""
     name = data["source"].rsplit("/", 1)[-1]
     bounds = data["bounds"]
     if data["mesh"] is not None:

@@ -161,6 +161,45 @@ The baseline is the bridge's representation, extended until it covers every case
     - **By USD identity,** sharing among copies of one prim in a prototype: it merges no mesh, since every Hydra mesh already draws a distinct prim. All 585 duplicates are equal content from different prims, as with one asset referenced several times without instancing. Identity also can't meet PVAR-05, whose equal meshes outside instances are distinct prims.
     - **By shared buffers:** points share a buffer for 415 meshes, but no two meshes share their topology arrays, so comparing the builder's input buffers merges no mesh. Comparing the built arrays' buffers merges none either: the builder makes new ones.
     - **By content, before building** (not built): it would skip building at most 585 meshes, about 22 ms of the 149 ms mesh build, against 12 ms of hashing and 7 ms of comparison now. It would also lower planning's peak, since all built meshes are held until the merges, which follow the parallel build (freeing each duplicate at its merge left the peak unchanged, ad hoc). It wasn't adopted. Its key must cover every input the builder reads (points before conversion, topology, primvars and the rules that read them, subsets, sidedness), so an input left out merges meshes that build differently. Different inputs can build equal meshes, so it finds no more duplicates. Each skipped prim still needs its own material slots and diagnostics. In Blender, the duplicates cost about 0.25 s of construction, which both methods avoid.
+- **B6, small updates (with the user: a prototype with its test, and both user policies measured).** `update.py` replaces one unit of an applied display: some objects, meshes, and materials by plan index. Change discovery is out of scope, so the caller names the unit, and the new plan must keep the display's objects, meshes, and materials in order. `apply()` now returns the `Display` it built, its objects, meshes, and materials in plan order.
+  - **Preparation** builds the unit's new meshes, materials, and objects in a collection no scene links, so it changes nothing the display uses (TXN-05).
+  - **Publication** links the new objects, with their shear parents, in place of the old ones in one call (TXN-06). Objects that use a replaced mesh or material are either repointed or replaced, by the caller's user policy:
+    - **Repoint:** kept, with publication moving their data and slots onto the replacement and restoring both if a later step fails. TXN-05 allows that mutation, since the rollback covers it.
+    - **Replace:** each becomes a new object.
+  - **Retirement** removes the old objects, and the old meshes and materials nothing uses once the old objects are gone. One that an object outside the display still uses stays intact (OWN-08).
+  - **The check:** `isolated/test_update.py` replaces each of `update.sample_units`' units from the same plan, on `F-APPEARANCE-CASES` and `F-NESTED-STRESS`: one object whose mesh others share, the most-used mesh and material under each policy, the floor with the most objects, everything, and the most-used mesh with an object outside the display using it. It asserts five things:
+    - preparation leaves the display and its collection as they were;
+    - afterward, the display holds the same values, meshes by plan index, and materials per slot;
+    - from publication on, the collection holds exactly the published objects and their shear parents;
+    - new data appears exactly where the unit and policy say, and kept objects are on their mesh's replacement;
+    - nothing is left over, except the old mesh the outside object keeps, with its positions unchanged.
+
+    In an ad hoc mutation run of `update.py`, each of seven single changes failed it: no mesh repointing, no slot repointing, the old objects left linked at publication, shear parents left behind, no data retired, data retired despite another user, and preparation into the published collection.
+    - **Not exercised:** a publication that fails, so the restore path is untested; and an outside user of a material.
+  - **Cost on ALab** (`measure/updates.py`; the bpy wheel in one process, three runs each, medians, ad hoc on one Mac). A full synchronization took 2.61 s: capture 0.57 s, planning 0.35 s, construction 1.60 s, and evaluation 0.09 s. Each replacement below includes the depsgraph evaluation after it:
+
+    | Unit | Objects replaced | Objects repointed | Meshes and materials replaced | Prepare | Publish | Retire | Evaluate | Total |
+    |---|---|---|---|---|---|---|---|---|
+    | One object | 1 | 0 | 0 | 62 ms | 1 ms | 11 ms | 66 ms | 0.14 s |
+    | Most-used mesh, repoint | 0 | 169 | 1 | 55 ms | 2 ms | 16 ms | 65 ms | 0.14 s |
+    | Most-used mesh, replace | 169 | 0 | 1 | 143 ms | 2 ms | 135 ms | 78 ms | 0.36 s |
+    | Most-used material, repoint | 0 | 244 | 1 | 49 ms | 3 ms | 18 ms | 70 ms | 0.14 s |
+    | Most-used material, replace | 244 | 0 | 1 | 157 ms | 2 ms | 134 ms | 65 ms | 0.37 s |
+    | Largest floor (an asset copy) | 113 | 0 | 113 and 2 | 151 ms | 1 ms | 91 ms | 54 ms | 0.29 s |
+    | Everything | 7,018 | 0 | 3,360 and 806 | 7.53 s | 35 ms | 5.57 s | 151 ms | 13.06 s |
+
+    - **One real edit:** a translation of `/root/stoat/backpack_M_hrc/GEO/leatherBelt_M_hrc/belt07_M_geo`, followed by an incremental capture (21 ms), planning (0.30 s), and the object's replacement (0.13 s), took 0.50 s in all. That is 5.3 times faster than the full synchronization, short of the provisional ten times. Planning is most of it: the planner always plans the whole stage.
+    - **Fixed costs:** these dominate small units (an ad hoc probe in the same setup):
+      - reading the plan's records, which the prototype's bindings convert whole on every read: `plan.objects` 36 ms and `plan.meshes` 12 ms;
+      - the depsgraph's evaluation after any link, unlink, or `obj.data` change, 54–55 ms, against 2 ms after a transform change;
+      - about 20 ms for each `batch_remove`.
+    - **Per object:** about 0.5 ms to prepare and 0.7 ms to retire (the most-used mesh's two policies, 169 objects apart). So repointing 169 users cost 2 ms where replacing them cost about 0.2 s. Repointing also keeps their identities, and with them selection and any outside references.
+    - **The whole display as one unit:** its replacement took 5.0 times as long as the full synchronization. Preparation took 4.7 times construction's time in a scene that already holds the display, and retirement about 0.5 ms per removed ID. In the probe, colliding names didn't slow object creation (1,000 objects in 219 ms, against 333 ms for fresh names); the cause wasn't investigated further.
+  - **For the partition unit (F1):**
+    - Up to about a hundred objects, a unit's size matters less than its fixed costs: one object and an asset copy of 113 objects both cost under 0.3 s. Most of those fixed costs belong to this prototype: whole-stage planning, and the bindings' conversion of every record. Only the depsgraph's 55 ms belongs to Blender.
+    - A unit as large as the display can't be replaced within any budget.
+    - The users of a shared mesh or material needn't join its unit: repointing them is cheap and keeps their identities.
+    - A transform change could be applied in place, with its old value kept for rollback, and skip the depsgraph's rebuild (ad hoc probe only; not built).
 - **Q11, kinds outside a valid model hierarchy (with the user).** A kind level matches a prim's authored kind, whether or not the prim is in a valid model hierarchy (`UsdPrim::IsModel`). The rule is stated in [Selection](../spec/interaction-contract.md#selection), ICON-21's oracle, and the DECISIONS.md row "Browsing universe and inspection metadata set". So a component-level pick on a component nested in another selects the nested one, as the oracle and the bridge already did. Under the other rule, it would select the outer one.
   - **In ALab** (`entry.usda`, load-all, one ad hoc survey), 594 of 1,877 authored components are outside a valid hierarchy:
     - 413 under point-instancer prototypes;

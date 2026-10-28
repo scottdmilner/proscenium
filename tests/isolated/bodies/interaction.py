@@ -61,7 +61,7 @@ class BaselineDisplay:
         plan = self._native.build_plan(self._bridge.capture(time))
         errors = [d for d in plan.diagnostics if d["severity"] == "error"]
         assert not errors, errors
-        self._objects = self._apply.apply(plan, self.collection)
+        self._objects = self._apply.apply(plan, self.collection).objects
         self._interaction = self._native.Interaction(self.stage, plan)
 
     def managed_objects(self) -> list[bpy.types.Object]:

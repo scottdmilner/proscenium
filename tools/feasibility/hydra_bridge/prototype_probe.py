@@ -113,7 +113,9 @@ def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
         collection = bpy.data.collections.new("HydraPrototype")
         blender_scene: Any = bpy.context.scene  # never None in a running Blender
         blender_scene.collection.children.link(collection)
-        created: dict[str, Any] = dict(zip((o["source"] for o in objects), apply.apply(plan, collection), strict=True))
+        created: dict[str, Any] = dict(
+            zip((o["source"] for o in objects), apply.apply(plan, collection).objects, strict=True)
+        )
         check("every planned object reaches Blender", all(o.name in collection.objects for o in created.values()))
         # The curves author no extent, so the placeholder takes USD's computed one and draws as bounds.
         hair_obj: Any = created["/World/Hair"]
