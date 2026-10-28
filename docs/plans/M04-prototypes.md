@@ -71,6 +71,19 @@ The baseline is the bridge's representation, extended until it covers every case
 6. **Small updates within a larger scene:** what replacing one object, one asset, or one shared mesh's users costs, as input to the partition unit.
 7. **Detach walkthrough:** the baseline's binding-specific controls to remove and the ordinary Blender dependencies to keep, under [Detach As-Is](../spec/lifecycle.md#detach-as-is).
 
+#### Phase B log
+
+- **B1, the baseline.** The baseline is M1b's representation unchanged: the bridge's planner and `apply.py`. What's new is that it runs in the test suite. The `hydra_bridge` fixture in `tests/isolated/conftest.py` builds the bridge once per run (on Linux, CI builds it in the manylinux job beside the core). `isolated/test_baseline.py` applies `F-APPEARANCE-CASES` and `F-NESTED-STRESS` in a fresh wheel process and checks what Blender holds against the fixtures and `UsdGeom`/`UsdShade`:
+  - one object for each drawn copy and destination it displays in, with its source and instance context, and one hidden object for a copy shown in neither (the stress fixture's guides);
+  - each face's material in each destination, preview in the viewport and full in the final render (GRAM-12);
+  - meshes shared only among copies of one prototype mesh.
+
+  In an ad hoc mutation run, each of five single changes to the expectations failed a test: swapped material purposes, reversed instance context, swapped destinations, sharing by own path, and subsets ignored.
+  - **Two destinations:** a copy whose viewport and render materials differ becomes two objects sharing one mesh, each hidden in the other destination. The appearance fixture's three `PurposeBindings` meshes do this, so its 40 drawn copies are 43 objects.
+  - **Sharing:** the baseline shares a mesh among the copies of one Hydra instancer only. The appearance fixture's 40 copies of 25 geometries (prototype meshes and meshes outside instances) use 36 meshes, and the stress fixture's 21 copies of 6 use 14. The likely cause, not checked: Hydra's instance aggregation splits copies whose roots differ in bindings (M1b recorded this) or inherited primvars. B5 takes this up.
+  - **Placeholders and markers:** unchanged, and neither fixture has an untranslated prim; M1b's `untranslated` case covers them.
+  - Appearance values (transforms with shear, display color, shading) are B4's.
+
 ### Phase C — Budgets and measurements
 
 1. **Provisional budgets,** as settled above, recorded with the measurements that test them.

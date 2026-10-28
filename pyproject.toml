@@ -17,6 +17,7 @@ dev = [
     "clang-tidy>=22.1.8",
     "cmake>=3.26",  # cmake and ninja build compiled modules (tools/native_build.py)
     "fake-bpy-module-5-2>=20260730",
+    "filelock>=3.20",  # parallel test workers build the Hydra bridge once (tests/isolated/conftest.py)
     "ninja>=1.13.2",
     "packaging>=26.3",
     "pre-commit>=4.6.2",

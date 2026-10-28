@@ -46,7 +46,7 @@ tests/
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   └── state.py              the reset, baseline check, and cleanup
 ├── isolated/                 fresh-process tests
-│   ├── conftest.py           `wheel` and `runtime` fixtures
+│   ├── conftest.py           `wheel`, `runtime`, and `hydra_bridge` fixtures
 │   ├── harness.py            run_isolated: starts the fresh process, returns the body's result
 │   ├── runner.py             the script the fresh process executes
 │   └── bodies/               functions run inside the fresh process
@@ -94,11 +94,13 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 - The **`wheel`** fixture is a fresh bpy-wheel process. Use it by default.
 - The **`runtime`** fixture is parametrized over the wheel and the Blender binary. Use it for cross-platform smoke tests that should also pass in the runtime users run. The **`binary`** fixture is the binary alone, for a check another layer already makes with the wheel. Binary runs are skipped without a binary, unless `PROSCENIUM_REQUIRE_BLENDER` is set.
 - Each call gets its own Blender user dir under the test's `tmp_path`.
+- The **`hydra_bridge`** fixture is the directory of M1b's compiled Hydra bridge (`tools/feasibility/hydra_bridge/`), which M4's prototype tests pass to their bodies. It builds the bridge from its sources once per run, into `build/hydra-bridge/` as `build.py` does; when nothing changed, the build only checks. `PROSCENIUM_HYDRA_BRIDGE` names a prebuilt one instead, as CI does on Linux, where the build must run on Blender's glibc floor.
 
 Current tests:
 - `test_roundtrip.py`: save/reopen with persistent and transient `load_post` handlers, and the extension's own load handler dropping an attachment.
 - `test_ci_fixture.py`: the CI fixture's inventory with the binary's `pxr`, under both payload policies.
 - `test_extension.py`: installing, enabling, and disabling the zip built by `tools/build_extension.py` in check mode (`sync=False`), which only reads `src/proscenium` and fails if its wheels or manifest are out of date with `uv.lock`, or its compiled core with its sources (run `tools/build_extension.py` to sync them). The installed copy's compiled core loads and matches the host's USD version, disabling removes the handlers, record namespaces, and classes it registered, and the zip's manifest names this platform.
+- `test_baseline.py`: M4's object baseline, the bridge and its `apply.py`, on `F-APPEARANCE-CASES` and `F-NESTED-STRESS`: one object per drawn copy and destination it displays in (one hidden object for a copy shown in neither), with its source and instance context; each face's material per destination, by its material purpose; and shared meshes only among copies of one prototype mesh.
 - `test_stage_handle.py`: the compiled core's `StageHandle` keeps a stage alive until `release()`, then lets a stage its caller dropped expire, and never destroys one its caller still holds.
 
 ### `support/`
