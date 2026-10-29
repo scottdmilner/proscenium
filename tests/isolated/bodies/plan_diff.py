@@ -56,6 +56,12 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("displayColor").Set(
                 [Gf.Vec3f(0, 0, 1)]
             )
+        elif edit == "holes":  # a build problem, which later plans reuse with the build (D9)
+            UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetHoleIndicesAttr().Set([0])
+        elif edit == "subset":  # moves face 2 between Partitioned's subsets, which alone change
+            mesh = "/World/FaceAssignments/Partitioned"
+            stage.GetPrimAtPath(f"{mesh}/Even").GetAttribute("indices").Set([0])
+            stage.GetPrimAtPath(f"{mesh}/Odd").GetAttribute("indices").Set([1, 2, 3])
         elif edit == "unload":
             stage.Unload("/World/Payload")
         elif edit == "load":
@@ -88,6 +94,49 @@ def diff_edits(module_dir: str, scene: str, edits: list[str]) -> list[dict[str, 
         plan = following
     bridge.release()
     return steps
+
+
+def reuse_edits(module_dir: str, scene: str, edits: list[str], point_instancers: bool = False) -> list[dict[str, Any]]:
+    """Plan `scene`, then after each edit plan it twice: from scratch, and reusing the previous plan's builds (D9).
+
+    Each step reports whether the two plans are the same in everything Python reads, and how many meshes each
+    built, from the planner's own count. The reusing plans chain: each step reuses the previous step's.
+    """
+    sys.path[:0] = [str(BRIDGE), module_dir]
+    native = importlib.import_module("_hydra_bridge")
+    stage = Usd.Stage.Open(scene, Usd.Stage.LoadAll)
+    bridge = native.Bridge(stage)
+    plan = native.build_plan(bridge.capture(), point_instancers=point_instancers)
+    steps = []
+    for edit in edits:
+        _edit(stage, edit)
+        snapshot = bridge.capture(incremental=True)
+        native.take_filter_timings()
+        fresh = native.build_plan(snapshot, point_instancers=point_instancers)
+        fresh_built = native.take_filter_timings()["plan: build mesh"][0]
+        reused = native.build_plan(snapshot, point_instancers=point_instancers, previous=plan)
+        built = native.take_filter_timings()["plan: build mesh"][0]
+        differing = [name for name in PLAN_FIELDS if _plain(getattr(fresh, name)) != _plain(getattr(reused, name))]
+        steps.append({"edit": edit, "differing": differing, "built": built, "fresh_built": fresh_built})
+        plan = reused
+    bridge.release()
+    return steps
+
+
+# What Python reads of a plan.
+PLAN_FIELDS = ("objects", "meshes", "materials", "diagnostics", "universe")
+
+
+def _plain(value: Any) -> Any:
+    """A plan view's value as comparable data: buffers as their bytes, containers recursively."""
+    if isinstance(value, dict):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    try:
+        return bytes(memoryview(value))
+    except TypeError:
+        return value
 
 
 def _objects(plan: Any) -> list[dict[str, Any]]:

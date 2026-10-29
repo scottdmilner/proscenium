@@ -71,10 +71,11 @@ struct InteractionView {
 
 // Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",
 // "render", "guide") and a material purpose ("" for allPurpose, "preview", "full"); None keeps the default
-// (PlanSettings). `pointInstancers` translates point instancers' instances (PlanSettings::pointInstancers).
+// (PlanSettings). `pointInstancers` translates point instancers' instances (PlanSettings::pointInstancers), and
+// `previous`, a Plan or None, is one whose mesh builds this plan may reuse (BuildPlan, D9).
 PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
-                  const bp::object &renderMaterialPurpose, bool pointInstancers);
+                  const bp::object &renderMaterialPurpose, bool pointInstancers, const bp::object &previous);
 
 // M4: what `next` changes from `published` (plan_diff.h), computed without the GIL, as {"meshes", "materials",
 // "objects": [old index or -1 per new entry], "changed" and "repointable": [new object indices], "removed": [old

@@ -530,9 +530,19 @@ bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const
 
 PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
-                  const bp::object &renderMaterialPurpose, bool pointInstancers) {
+                  const bp::object &renderMaterialPurpose, bool pointInstancers, const bp::object &previous) {
     PlanSettings settings;
     settings.pointInstancers = pointInstancers;
+    // Held until planning ends, so the builds it reuses stay alive.
+    PlanPtr reused;
+    if (!previous.is_none()) {
+        const bp::extract<PlanView> plan(previous);
+        if (!plan.check()) {
+            PyErr_SetString(PyExc_TypeError, "previous must be a Plan or None");
+            bp::throw_error_already_set();
+        }
+        reused = plan().data;
+    }
     SetPurposes(viewportPurposes, settings.viewport.purposes);
     SetMaterialPurpose(viewportMaterialPurpose, settings.viewport.materialPurpose);
     SetPurposes(renderPurposes, settings.render.purposes);
@@ -540,7 +550,7 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
     PlanPtr plan;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        plan = BuildPlan(*snapshot.data, settings);
+        plan = BuildPlan(*snapshot.data, settings, reused.get());
     }
     return PlanView{plan};
 }
@@ -611,7 +621,8 @@ void WrapViews() {
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
-             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = false));
+             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = false,
+             bp::arg("previous") = bp::object()));
     bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
     bp::def("rebuild_correspondence", RebuildCorrespondence, bp::arg("plan"));
 }

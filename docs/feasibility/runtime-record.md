@@ -1129,6 +1129,44 @@ The groups are those the Python grouping formed: on every scene measured here an
 - **An instance-transform update on `updates-10000` still rebuilds two batches' points whole** (15,000 and 10,000 instances), 0.10 s of preparation, though one copy of each moved.
 - **The capture of an instance-transform edit** takes 0.08–0.12 s, against 0.03–0.04 s for the other edits. Not profiled.
 
+#### Plans that reuse the previous plan's mesh builds
+
+[M4 plan](../plans/M04-prototypes.md), D9, a probe of incremental planning: with `build_plan(snapshot, previous=plan)`, a mesh prim whose captured container, and its subsets', are the ones the previous plan built it from reuses that build (its mesh, content hash, diagnostics, and slots' prims). An incremental capture shares the container of every prim no notice named, so Hydra's own invalidation decides what is rebuilt. Everything else is planned as before, from the whole snapshot. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all "$@"; }
+r --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d9-batched
+r --representation batched --batch-minimum 5 --reuse-builds --out build/hydra-bridge/measure-d9-batched-reuse
+r --representation objects --reuse-builds --out build/hydra-bridge/measure-d9-objects-reuse
+```
+
+`test_plan_diff.py`'s `test_reused_builds_give_the_same_plan` checks that a plan reusing builds equals the plan built from scratch in every field, after each of 14 chained edits on `F-APPEARANCE-CASES` and on the payload, nested-stress, and point-instancer fixtures, and that an unchanged refresh rebuilds no mesh. In an ad hoc mutation run, four of five single changes failed it: reusing regardless of the prim's container, or without a reused build's diagnostics, slots, or content hash. Comparing the subsets' containers survived, since Hydra recaptures a mesh prim whenever its subsets change, on the edits tested; it's kept.
+
+**Small updates, without and with reuse** (seconds, medians):
+
+| | `updates-10000`, batched | ALab with point instancers, batched | ALab with point instancers, objects |
+|---|---|---|---|
+| Unchanged refresh | 0.135 → 0.128 | 0.492 → 0.198 | 0.234 |
+| Transform | 0.139 → 0.137 | 0.493 → 0.250 | 0.283 |
+| Instance transform | 0.269 → 0.256 | 0.567 → 0.356 | 0.445 |
+| Shared geometry | 0.187 → 0.182 | 0.531 → 0.242 | 0.329 |
+| Material | 0.145 → 0.138 | 0.531 → 0.252 | 0.362 |
+| Time step | 0.139 → 0.131 | 1.389 → 1.065 | 2.288 |
+| A transform update's planning and diff | 0.079 and 0.005 → 0.077 and 0.005 | 0.299 and 0.066 → 0.113 and 0.013 | 0.140 and 0.013 |
+| Against a full rebuild (budget 10×), transform to material | 4.3–8.4× → 4.5–8.4× | 6.8–7.9× → 10.6–15.7× | 13.4–21.1× |
+
+The objects column is with reuse only; D8's objects set, from another session, took 0.50–0.63 s for these updates, at 9.8–12.3×. On `updates-10000`, the baseline's small updates with reuse take 0.85–1.16 s, most of it the depsgraph's evaluation (0.71–0.88 s), at 7.1–9.3×. Reuse doesn't change initial synchronization, which builds with no previous plan: 1.04–1.07× the importer's time batched on ALab with its point instancers, and 1.63× for the baseline, as in D8's session (1.65×).
+
+**Where a batched transform update's time goes with reuse** (seconds): on ALab with its point instancers, capture 0.037, planning 0.113, diff 0.013, preparation 0.029, and Blender's publication, retirement, and evaluation 0.056; on `updates-10000`, capture 0.033, planning 0.077, diff 0.005, preparation 0.019, and Blender's 0.003. In an ad hoc profile of the planning that remains, reading every prim's record from the snapshot took 0.033 s on ALab with its point instancers and 0.025 s on `updates-10000`, and planning every object 0.027 s and 0.013 s.
+
+**Findings:**
+- **Reused builds put ALab with its point instancers within the small-update budget** in both representations: batched, its updates take about half as long, at 10.6–15.7×, and the baseline's reach 13.4–21.1×. Planning falls to 45% of a batched transform update, and the diff to a fifth of its time, since its unchanged meshes now share their arrays with the previous plan's.
+- **`updates-10000` gains nothing:** its three meshes were never the cost. Its planning reads 30,017 prims and plans 30,001 objects either way, so its batched updates stay at 4.5–8.4×.
+- **What remains of planning is per prim and per object,** read and planned again on every update. Reusing them too would need a table that shares its records with the previous plan's, and dependency tracking for what an object takes from other prims (its frame, its instance context, its materials), which mesh reuse doesn't need.
+- **An instance-transform update** still misses the budget only on `updates-10000` (4.5×), where 0.094 s of preparation rebuilds the points of each batch a moved copy is in (D8).
+- **Tested only on these edits and scenes:** whether Hydra recaptures every prim an edit affects, as reuse assumes, is checked by the oracle test on its edits, not in general.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

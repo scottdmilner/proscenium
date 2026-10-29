@@ -283,6 +283,7 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
             collection=collection,
             batched=batched,
             point_instancers=point_instancers,
+            reuse_builds=config.get("reuse_builds", False),
         )
         facts["update"] = run_update(scenario, config["time"], session, stage, done)
         markers.settle("updated")
@@ -316,7 +317,9 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     snapshot = session.bridge.capture(capture_time, incremental=True)
     done("update:capture")
     stage("update:planning")
-    plan = native.build_plan(snapshot, point_instancers=session.point_instancers)
+    # With reuse_builds (D9), the published plan's mesh builds are reused where their prims weren't recaptured.
+    previous = session.plan if session.reuse_builds else None
+    plan = native.build_plan(snapshot, point_instancers=session.point_instancers, previous=previous)
     done("update:planning")
     stage("update:diff")
     diff = native.diff_plans(session.plan, plan)

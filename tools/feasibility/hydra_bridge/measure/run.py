@@ -132,6 +132,7 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
         "representation": args.representation,
         "batch_minimum": args.batch_minimum,
         "point_instancers": scene.get("point_instancers", False),
+        "reuse_builds": args.reuse_builds,
     }
     if mode.startswith("update:"):
         config["scenario"] = mode.removeprefix("update:")
@@ -244,6 +245,11 @@ def main() -> int:
     parser.add_argument(
         "--batch-minimum", type=int, default=2, help="the batched display's smallest group that becomes a batch"
     )
+    parser.add_argument(
+        "--reuse-builds",
+        action="store_true",
+        help="M4 Phase D's probe (D9): an update's plan reuses the published plan's mesh builds where it can",
+    )
     parser.add_argument("--out", type=Path, help="default: build/hydra-bridge/measure, or measure-batched")
     parser.add_argument("--module-dir", type=Path, default=ROOT / "build/hydra-bridge")
     parser.add_argument("--blender", default=find_blender())
@@ -293,6 +299,7 @@ def main() -> int:
     setup["representation"] = args.representation
     if args.representation == "batched":
         setup["batch minimum"] = args.batch_minimum
+    setup["reuse builds"] = args.reuse_builds
     summary = report.summarize(out / "runs", measured, setup)
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     (out / "summary.md").write_text(report.markdown(summary))

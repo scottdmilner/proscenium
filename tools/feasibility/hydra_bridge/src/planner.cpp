@@ -44,9 +44,10 @@ bool Untranslated(const TfToken &type) {
 class Planner {
 public:
     // The records are read from the snapshot's frozen scene index, in parallel.
-    Planner(const Snapshot &snapshot, PlanSettings settings)
+    Planner(const Snapshot &snapshot, PlanSettings settings, const Plan *previous)
         : snapshot_(snapshot),
           settings_(std::move(settings)),
+          previous_(previous ? previous->builds.get() : nullptr),
           table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
@@ -68,7 +69,9 @@ public:
             }
             return false;
         };
-        std::vector<BuiltMesh> built = BuildMeshes();
+        auto builds = std::make_shared<MeshBuilds>();
+        std::vector<BuiltMesh> built = BuildMeshes(*builds);
+        plan_->builds = std::move(builds);
         for (size_t i = 0; i < table_.prims.size(); ++i) {
             const PrimRecord &prim = table_.prims[i];
             if (prim.type == HdPrimTypeTokens->mesh && prim.mesh)
@@ -99,23 +102,61 @@ private:
     // Every mesh, built in parallel: BuildMesh reads only its prim and the prim's subsets. Everything that
     // adds to the plan (meshes, objects, materials, diagnostics, and the instance resolver's cache) runs
     // after, in prim order, so the plan is the one a serial build makes. A mesh with no drawn copy is built
-    // and then dropped, as deciding that first would move the resolver's diagnostics.
-    std::vector<BuiltMesh> BuildMeshes() const {
+    // and then dropped, as deciding that first would move the resolver's diagnostics. Each build goes into
+    // `builds`, and one the previous plan made from the same containers is reused (D9).
+    std::vector<BuiltMesh> BuildMeshes(MeshBuilds &builds) const {
         std::vector<BuiltMesh> built(table_.prims.size());
+        std::vector<std::optional<MeshBuild>> kept(table_.prims.size());
         static const PrimRefs kNoSubsets;
+        const HdRetainedSceneIndex &scene = *snapshot_.scene;
         WorkParallelForN(table_.prims.size(), [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
                 const PrimRecord &prim = table_.prims[i];
                 if (prim.type != HdPrimTypeTokens->mesh || !prim.mesh) continue;
-                const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
                 const auto found = subsets_.find(prim.path);
+                const PrimRefs &subsets = found == subsets_.end() ? kNoSubsets : found->second;
+                MeshBuild build;
+                build.prim = scene.GetPrim(prim.path).dataSource;
+                for (const PrimRecord &subset : subsets) build.subsets.push_back(scene.GetPrim(subset.path).dataSource);
                 BuiltMesh &result = built[i];
-                result.mesh = BuildMesh(prim, found == subsets_.end() ? kNoSubsets : found->second, result.problems,
-                                        result.slots);
-                if (result.mesh) result.contentHash = ContentHash(*result.mesh);
+                if (!Reuse(prim.path, build, result)) {
+                    const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
+                    result.mesh = BuildMesh(prim, subsets, result.problems, result.slots);
+                    if (result.mesh) result.contentHash = ContentHash(*result.mesh);
+                }
+                build.mesh = result.mesh;
+                build.contentHash = result.contentHash;
+                build.problems = result.problems;
+                for (const PrimRecord &slot : result.slots) build.slots.push_back(slot.path);
+                kept[i] = std::move(build);
             }
         });
+        for (size_t i = 0; i < kept.size(); ++i) {
+            std::optional<MeshBuild> &build = kept[i];
+            if (build) builds.emplace(table_.prims[i].path, std::move(*build));
+        }
         return built;
+    }
+
+    // Fills `result` from the previous plan's build of the mesh at `path`, if it was made from the containers
+    // `build` names; false otherwise.
+    bool Reuse(const SdfPath &path, const MeshBuild &build, BuiltMesh &result) const {
+        if (!previous_ || !build.prim) return false;
+        const auto found = previous_->find(path);
+        if (found == previous_->end()) return false;
+        const MeshBuild &old = found->second;
+        if (old.prim != build.prim || old.subsets != build.subsets) return false;
+        PrimRefs slots;
+        for (const SdfPath &slot : old.slots) {
+            const PrimRecord *record = table_.Find(slot);
+            if (!record) return false;
+            slots.emplace_back(*record);
+        }
+        result.mesh = old.mesh;
+        result.contentHash = old.contentHash;
+        result.problems = old.problems;
+        result.slots = std::move(slots);
+        return true;
     }
 
     static PrimTable TimedRead(const HdSceneIndexBaseRefPtr &scene) {
@@ -371,6 +412,7 @@ private:
 
     const Snapshot &snapshot_;
     const PlanSettings settings_;
+    const MeshBuilds *previous_;  // the previous plan's builds to reuse; null for none (D9)
     const PrimTable table_;
     std::shared_ptr<Plan> plan_;
     InstanceResolver resolver_;
@@ -411,6 +453,8 @@ const char *DataTypeName(DataType type) {
     return "FLOAT";
 }
 
-PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings) { return Planner(snapshot, settings).Run(); }
+PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings, const Plan *previous) {
+    return Planner(snapshot, settings, previous).Run();
+}
 
 }  // namespace hydra_bridge

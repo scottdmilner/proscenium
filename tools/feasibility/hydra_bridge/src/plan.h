@@ -15,6 +15,7 @@
 #include <pxr/base/vt/array.h>
 #include <pxr/base/vt/types.h>
 #include <pxr/base/vt/value.h>
+#include <pxr/imaging/hd/dataSource.h>
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/timeCode.h>
 
@@ -23,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -86,14 +88,29 @@ struct ObjectEntry {
     std::vector<std::pair<std::string, PropertyValue>> properties;
 };
 
+// M4 Phase D (D9, a probe): a mesh prim's build, kept with the captured containers of the prim and its subsets
+// it was built from. BuildMesh reads only those, and an incremental capture shares the container of every prim
+// no notice named, so a later plan whose prim and subsets have the same containers can reuse the build.
+struct MeshBuild {
+    pxr::HdContainerDataSourceHandle prim;
+    std::vector<pxr::HdContainerDataSourceHandle> subsets;
+    std::optional<MeshData> mesh;
+    std::size_t contentHash = 0;
+    Diagnostics problems;
+    pxr::SdfPathVector slots;  // the prims whose bindings the mesh's slots take
+};
+
+using MeshBuilds = std::unordered_map<pxr::SdfPath, MeshBuild, pxr::SdfPath::Hash>;
+
 struct Plan {
     pxr::UsdTimeCode time;
     std::vector<MeshData> meshes;
     std::vector<std::size_t> meshHashes;  // per mesh, its ContentHash, which a later plan's diff looks up (M4)
     std::vector<MaterialData> materials;
     std::vector<ObjectEntry> objects;
-    Correspondence correspondence;  // derived from the objects once they are all planned
-    Diagnostics diagnostics;        // sources are USD paths
+    Correspondence correspondence;             // derived from the objects once they are all planned
+    Diagnostics diagnostics;                   // sources are USD paths
+    std::shared_ptr<const MeshBuilds> builds;  // by mesh prim path: what the next plan may reuse (D9)
 };
 
 using PlanPtr = std::shared_ptr<const Plan>;
@@ -117,7 +134,9 @@ struct PlanSettings {
     bool pointInstancers = false;
 };
 
-// Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception.
-PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings = {});
+// Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception. With
+// `previous`, a mesh whose prim and subsets are the containers `previous` built it from reuses that build (D9);
+// the plan is the same either way.
+PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings = {}, const Plan *previous = nullptr);
 
 }  // namespace hydra_bridge

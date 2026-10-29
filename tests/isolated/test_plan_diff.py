@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from fixtures import appearance, interaction
 
 from .harness import Runtime, run_isolated
@@ -84,3 +86,36 @@ def test_unchanged_stress_plan_matches_everything(wheel: Runtime, hydra_bridge: 
     with appearance.nested_stress(tmp_path / "scene") as stress:
         steps = _steps(stress.root, ["unchanged"], wheel, hydra_bridge, tmp_path)
     assert _changes(steps["unchanged"]) == NOTHING
+
+
+# The update tests' edits on F-APPEARANCE-CASES (test_update.py), each a different kind of change, after a mesh
+# gains a build problem that every later plan reuses, and with an edit to a mesh's subsets alone.
+REUSE_EDITS = ["unchanged", "holes", "transform", "shared-geometry", "material", "primvar", "visibility", "subset"]
+REUSE_EDITS += ["structure", "instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
+REUSE_EDITS += ["instance-color"]
+
+
+@pytest.mark.parametrize("fixture", ["appearance", "universe", "stress", "point_instancers"])
+def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
+    # D9's probe: a plan that reuses the previous plan's mesh builds, where its prims' captured containers are
+    # the ones built from, is the plan built from scratch, after every kind of edit, chained over the edits.
+    generators = {
+        "appearance": (appearance.appearance_cases, REUSE_EDITS),
+        "universe": (interaction.universe_membership, ["unchanged", "unload", "load"]),
+        "stress": (appearance.nested_stress, ["unchanged"]),
+        "point_instancers": (appearance.point_instancers, ["unchanged"]),
+    }
+    generator, edits = generators[fixture]
+    with generator(tmp_path / "scene") as built:
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
+        kwargs["point_instancers"] = fixture == "point_instancers"
+        steps = run_isolated(wheel, BODY, "reuse_edits", tmp_path, **kwargs)
+    for step in steps:
+        assert step["differing"] == [], step["edit"]
+        assert step["built"] <= step["fresh_built"], step["edit"]
+    by_edit = {step["edit"]: step for step in steps}
+    assert by_edit["unchanged"]["fresh_built"] > 0
+    assert by_edit["unchanged"]["built"] == 0  # nothing was recaptured, so every build is reused
+    if fixture == "appearance":
+        # An edit rebuilds only the meshes of the prims it recaptured, far fewer than a plan from scratch.
+        assert all(by_edit[edit]["built"] < by_edit[edit]["fresh_built"] for edit in ("transform", "material"))
