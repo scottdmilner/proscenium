@@ -313,7 +313,7 @@ Only for the requirements or costs Phases B and C found failing; this phase may 
 Phases B and C left one failing question a representation can answer: above about 10,000 objects, Blender's per-object costs (the depsgraph's evaluation after an update, a selection change, retirement) exceed the budgets. ALab's small updates miss theirs through whole-stage planning and the diff, which no representation changes; Phase F records that as a limitation (with the user). So this phase prototypes Geometry Nodes instancing, on `updates-10000` and checked on ALab:
 
 1. **Batched application:** plan objects that differ only in transform and constant primvars become instances on one carrier object, held to the baseline's own checks.
-2. **One object for both destinations:** a copy whose viewport and render objects differ only in their materials becomes one object, whose Geometry Nodes switch materials by destination.
+2. **One object for both destinations:** whether a copy whose viewport and render objects differ only in their materials can be one object, whose Geometry Nodes switch materials by destination, and how many objects that saves.
 3. **Interaction on the batched display (Q2, Q3, Q5):** a pick resolved to its instance's element, and `apply_selection` and `read_blender_selection` with instances.
 4. **Updates and detach of the batched display.**
 5. **Measurements:** the batched display in the harness, against the baseline and the budgets.
@@ -334,6 +334,10 @@ Phases B and C left one failing question a representation can answer: above abou
   - **Ad hoc probes** (the Blender binary, one run each):
     - a ray cast that hits an instance returns the prototype and the instance's world matrix, but not its index, which Q2's pick resolution (D3) must recover;
     - a depsgraph instance's `persistent_id[1]` is its index on the carrier, which the check uses.
+- **D2, one object for both destinations (with the user: a probe, not a prototype).** A copy has a viewport and a render object only when its preview and full materials differ (GRAM-12).
+  - **How many:** 336 of ALab's 7,016 plan objects, so merging them would save 336 objects (4.8%). `F-APPEARANCE-CASES` has 3 such copies, and `F-NESTED-STRESS` and the `updates-N` scenes have none. In every pair, the two objects differ only in their material slots, one shown only in the viewport and the other only in the render. A scene saves one object per such copy, so the saving depends on how many it has. The generated scene at 30,001 objects has none, so merging can't change that measurement, and `batch.py` doesn't do it.
+  - **That it works** (an ad hoc probe in the Blender binary, one run): a node group sets each slot's material through a Switch on Is Viewport, with the preview material when true and the full one when false. The viewport depsgraph showed the preview materials and the final render's depsgraph, read by a Python `RenderEngine`, the full ones. That held with the object's slots linked to the object or to the data, and on a prototype that a carrier instances. Viewport shading modes other than Solid weren't checked separately, since they evaluate in the same viewport depsgraph.
+  - **What it would cost** (not tested): one Blender object would stand for two display elements, and the materials would live in modifier inputs, not in the object's slots, which detach (DET-03) and users' material edits would have to account for. M9 and M10 can adopt it if the object count warrants it.
 
 ### Phase E — Time-sampled data
 
