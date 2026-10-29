@@ -9,6 +9,8 @@ directory.
         --scenarios all   # M4 Phase C: every update scenario, with the importer for the budgets
     uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes prototype interaction \
         --scenarios all --representation batched   # M4 Phase D: the batched display
+    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+        --modes viewport importer-viewport   # M4 Phase D: viewport frame time, in windows on the screen
 
 Each run is sampled from outside with psutil (resident memory, CPU time, threads; on macOS also the physical
 footprint) and aligned with the stage markers the child writes. Raw runs go to <out>/runs/, the summary to
@@ -47,6 +49,8 @@ CASES = HERE.parent / "cases"
 # The bespoke scenes the importer can read; malformed.usda is built to be rejected.
 BESPOKE = ["subsets", "implicit", "instances", "edits", "untranslated", "bindings", "purposes", "primvars", "animation"]
 MODES = ["importer-defaults", "prototype", "importer-matched", "importer-expanded"]
+# The viewport modes' window size, in screen points (its position is the screen's top left).
+WINDOW = ["1600", "1000"]
 SMOKE = ["instances-100"]
 ALAB_TIME = 1004.0  # the first of ALab's time codes
 
@@ -132,9 +136,11 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
     if mode.startswith("update:"):
         config["scenario"] = mode.removeprefix("update:")
     (work / "config.json").write_text(json.dumps(config))
+    # The viewport modes draw in a window of one fixed size (M4 Phase D); the rest run in the background.
+    windowed = mode in ("viewport", "importer-viewport")
     command = [
         blender,
-        "--background",
+        *(["--window-geometry", "0", "0", *WINDOW] if windowed else ["--background"]),
         "--factory-startup",
         "--python-exit-code",
         "1",
@@ -214,9 +220,10 @@ def main() -> int:
         "--modes",
         nargs="*",
         default=MODES,
-        choices=[*MODES, "interaction", "ownership"],
+        choices=[*MODES, "interaction", "ownership", "viewport", "importer-viewport"],
         help="synchronization modes; interaction and ownership (M4 Phase C) time the interaction functions, or "
-        "the first ownership lookup after an undo, after one",
+        "the first ownership lookup after an undo, after one; viewport and importer-viewport (M4 Phase D) time "
+        "the 3D view's frames after one, in a window on the screen",
     )
     parser.add_argument(
         "--scenarios",

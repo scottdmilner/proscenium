@@ -1043,6 +1043,57 @@ A batch is three carriers and a prototype, so it has fewer objects than its copi
 - **Payload changes at 30,001 objects** fall from 19–27 s to 1.1–3.1 s, since they add or retire three batches instead of 20,000 objects. The unload's remaining time is mostly its capture (about 3.0 s).
 - **Unexplained:** each ALab set picked a different copy as the one inside the deepest instance context, which the timing chooses from the plan's order, the two baseline sets included. So the plan's object order may differ between processes. Not investigated.
 
+#### ALab with point instancers, and viewport frame time
+
+Two further sets ([M4 plan](../plans/M04-prototypes.md), D6 and D7), in one session on 2026-10-29, on AC power throughout, in the environment above:
+
+```sh
+# ALab with its point instancers planned (D6), batched at minimums of 5 and 20, then the baseline
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers \
+    --modes prototype importer-matched interaction --scenarios all --representation batched --batch-minimum 5 \
+    --out build/hydra-bridge/measure-pi-min5
+# likewise with --batch-minimum 20 (measure-pi-min20), and --representation objects (measure-pi-objects)
+# Viewport frame time, in windows on the screen: batched with the importer, then the baseline
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes viewport importer-viewport --representation batched \
+    --batch-minimum 5 --out build/hydra-bridge/measure-viewport-batched
+# likewise with --modes viewport --representation objects (measure-viewport-objects)
+```
+
+**ALab with point instancers** (`alab-instancers`): ALab's measurement entry layer without deactivating its 21 point instancers, which the plan translates with `point_instancers` (D6), and which Blender's importer imports too, as 21 point-cloud objects with Geometry Nodes instancing. Its plan has 15,159 objects, 8,141 of them point-instanced, against `alab`'s 7,018. Its update scenarios are `alab`'s, except that `instance-transform` moves a native instance root, and `shared-geometry` edits the mesh with the most copies, which here is a point instancer's prototype (2,407 copies). The matched importer's time rose through the session, 3.685, 3.852, then 4.197 s, so differences between the sets of about 15% or less aren't attributed to the representation.
+
+| | Minimum 5 | Minimum 20 | Baseline |
+|---|---|---|---|
+| Batches → Blender objects | 379 → 6,981 | 78 → 8,087 | 15,159 |
+| Initial synchronization against the importer (budget 1.5×) | 1.09× | 1.23× | 1.47× |
+| Its construction | 1.224 (1.207–1.247) | 1.297 (1.266–1.431) | 3.514 (3.244–3.580) |
+| Peak memory against the importer (budget 2×) | 1.58× | 1.59× | 1.59× |
+| Small updates (unchanged to material) | 0.61–0.75 | 0.72–0.86 | 0.62–0.81 |
+| Their preparation | 0.18–0.19 | 0.19–0.21 | 0.10–0.13 |
+| Small updates against a full rebuild (budget 10×) | 5.3–6.2× | 5.5–6.5× | 7.6–10.0× |
+| Time step, payload unload, payload load | 1.468, 2.015, 3.392 | 1.775, 2.195, 3.435 | 2.577, 3.147, 5.706 |
+| Pick of a copy kept as an object: `apply_selection` with its depsgraph update, ms | 12.1 (12.0–12.4) | 11.7 (10.6–11.9) | 23.2 (22.6–23.5) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 19.7 (19.6–20.0) | 18.7 (16.8–20.2) | 22.7 (22.4–23.6) |
+| `read_blender_selection`, pick and box, ms | 6.0, 6.3 | 5.1, 4.9 | 11.1, 11.0 |
+
+**Viewport frame time** (`--modes viewport importer-viewport`): the run's synchronization, then `viewport_timing.py` in a windowed Blender, its window 1,600 × 1,000 points and its 3D view 2,622 × 1,758 pixels, on an Apple M1 Max through Metal. The view is framed on everything, with nothing selected. Each frame turns the view a degree about Z and redraws the window with a swap, so every frame draws the scene, as orbiting does; a still view would redisplay its converged samples. The swap waits for the display's refresh, so no frame is shorter than 8.3 ms (120 Hz), and one at that floor can't be told from a faster one. Each run's median over 5 repeats of 20 frames, as a median and range over 3 runs, in ms:
+
+| Orbiting frame | Batched (minimum 5) | Baseline | Importer |
+|---|---|---|---|
+| `updates-10000`, Solid | 8.5 (8.4–8.6), at the floor | 59.9 (58.1–59.9) | 71.0 (68.2–73.4) |
+| `updates-10000`, Material Preview | 15.6 (15.5–15.6) | 77.1 (75.4–77.9) | 129.5 (126.8–131.1) |
+| `alab-instancers`, Solid | 16.7 (15.9–16.9) | 30.7 (29.8–33.0) | 35.7 (35.7–38.4) |
+| `alab-instancers`, Material Preview | 21.2 (20.6–22.2) | 34.4 (33.8–39.7) | 60.5 (59.7–64.0) |
+
+The importer is a reference only: its matched options import no preview materials (no node trees), so its Material Preview shades something else. Each run's first frame and its wait for shader compilation were recorded too, but after each set's unrecorded warmup run, with the shaders already in the system's cache, so they aren't cold-start figures; Material Preview's wait was under 0.1 ms in every run.
+
+**Findings:**
+- **With its point instancers, ALab batches, and batching pays.** At a minimum of 5, its 15,159 plan objects become 6,981 Blender objects. Construction falls from 3.5 s to 1.2 s, and initial synchronization from 1.47× the importer's time, at its budget's edge, to 1.09×. A time step and the payload changes take about 40% less time, and a pick's mirroring and the reading of Blender's selection about half.
+- **The viewport draws faster batched in every case measured:** at 30,001 objects, Solid orbits at the display's refresh against 59.9 ms, and Material Preview at 15.6 ms against 77.1 ms; on ALab with its point instancers, 16.7 ms against 30.7 ms, and 21.2 ms against 34.4 ms.
+- **Small updates take as long either way,** about 0.6–0.8 s on ALab with its point instancers, so their ratio to the now faster full rebuild is lower batched: 5.3–6.2× against 7.6–10.0×, where the baseline's shared-geometry update just reaches 10×. A batched update's preparation is 60–80 ms slower; on `updates-10000` an ad hoc profile put that in reading and regrouping every plan record, and it wasn't profiled here.
+- **A minimum of 5 did no worse than 20 anywhere,** and better in initial synchronization (1.09× against 1.23×, each against its own set's importer) and the time step (1.47 s against 1.78 s); the other differences are within the session's drift. At 20, 7,775 copies stay objects, against 5,465 at 5.
+- **Not measured:** frame time on other GPUs or at other view sizes, other orbits or viewpoints, frames below the display's refresh, render (Cycles or EEVEE final renders), and the cold-start shader compilation.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

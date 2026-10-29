@@ -6,7 +6,9 @@ The config names the mode, scene, time code, module directory, and output paths.
 runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
 planning, diff, and update that follow; the initial scenario saves the .blend instead. The interaction mode
 times the interaction functions after it (interaction_timing.py), and the ownership mode the first ownership
-lookup after an undo, the display written as a binding's manifest (ownership_timing.py). The child writes a marker
+lookup after an undo, the display written as a binding's manifest (ownership_timing.py). The viewport modes (M4
+Phase D), the prototype's and the importer's, run in a windowed Blender, started without --background, and time
+the 3D view's frames after the synchronization (viewport_timing.py). The child writes a marker
 (JSON line) at every stage boundary with its CPU time and lifetime memory peaks; the parent samples the
 process from outside and aligns its samples to these markers. Settle windows hold still for a while so the
 parent can read memory at rest.
@@ -32,6 +34,7 @@ import interaction_timing  # noqa: E402
 import memory  # noqa: E402
 import ownership_timing  # noqa: E402
 import scenarios  # noqa: E402
+import viewport_timing  # noqa: E402
 
 # The importer's options closest to what the prototype builds: every purpose, invisible prims too, no
 # Principled networks, and none of the types the prototype only marks with placeholders. Shapes stay on,
@@ -40,6 +43,8 @@ import scenarios  # noqa: E402
 # turns scene instancing off: with it on, the importer drops materials bound at or above an instance root
 # (measured on the instancing stress scene), which the prototype honors; with it off, every instance gets
 # its own object and mesh.
+# The modes that run in a windowed Blender (run.py starts them without --background).
+VIEWPORT_MODES = ("viewport", "importer-viewport")
 MATCHED = {
     "import_cameras": False,
     "import_curves": False,
@@ -135,6 +140,7 @@ def run_importer(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         "importer-defaults": {},
         "importer-matched": MATCHED,
         "importer-expanded": {**MATCHED, "support_scene_instancing": False},
+        "importer-viewport": MATCHED,
     }[config["mode"]]
     markers.settle("baseline")
     markers.mark("begin:import")
@@ -146,11 +152,13 @@ def run_importer(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     markers.mark("end:evaluate")
     counts = blender_counts()
     markers.settle("synced")
+    viewport = viewport_timing.measure() if config["mode"] == "importer-viewport" else None
     markers.mark("begin:delete data")
     delete_blender_data()
     markers.mark("end:delete data")
     markers.settle("data deleted")
-    return {"operator": sorted(result), "options": options, "blender": counts}
+    found = {"operator": sorted(result), "options": options, "blender": counts}
+    return found if viewport is None else found | {"viewport": viewport}
 
 
 def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
@@ -247,6 +255,8 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         facts["blend bytes"] = blend.stat().st_size
     elif config["mode"] == "ownership":
         facts["ownership"] = ownership_timing.measure(binding_id, display, view.objects, view.materials)
+    elif config["mode"] == "viewport":
+        facts["viewport"] = viewport_timing.measure()
     elif config["mode"] == "interaction":
         import batch_selection
         import selection
@@ -356,8 +366,29 @@ def _batches_written(prepared: Any) -> dict[str, int]:
 
 def main(config_path: Path) -> None:
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    # An empty scene, so counts and deletion cover only what the run imports.
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    if config["mode"] not in VIEWPORT_MODES:
+        measured(config)
+        return
+
+    # A windowed run: once the event loop has drawn the window, measure, then quit.
+    def windowed() -> None:
+        try:
+            measured(config)
+        finally:
+            bpy.ops.wm.quit_blender()
+
+    bpy.app.timers.register(windowed, first_interval=1.0)
+
+
+def measured(config: dict[str, Any]) -> None:
+    """The run the config names, its result written where the config says."""
+    if config["mode"] in VIEWPORT_MODES:
+        # The startup layout's window stays, with its 3D view; only the startup scene's objects go.
+        bpy.data.batch_remove(list(bpy.data.objects))
+        bpy.data.orphans_purge(do_recursive=True)
+    else:
+        # An empty scene, so counts and deletion cover only what the run imports.
+        bpy.ops.wm.read_factory_settings(use_empty=True)
     scene: Any = bpy.context.scene
     scene.frame_set(int(config["time"]))
     markers = Markers(Path(config["markers"]), config["settle"])
