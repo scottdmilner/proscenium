@@ -4,7 +4,8 @@ Plan objects that look the same except for their transform and constant primvars
 carrier object: those with the same mesh, material slots, destinations, and object color, and constant primvars
 of the same names and kinds, and no two with the same transform. Only a group of at least a minimum size becomes
 a batch, since a batch is four Blender objects. A smaller group, a placeholder, and a copy with a primvar no
-attribute can hold stay objects, as apply.py builds them.
+attribute can hold stay objects, as apply.py builds them. The bridge's module forms the groups (`plan.batch_groups`,
+batch_groups.h), so an update needn't convert and regroup every plan record in Python.
 
 Instances leave out constant string primvars, which apply.py keeps on an object as ID properties: no shading node
 reads a string, so they neither split a group nor reach its batch.
@@ -30,6 +31,8 @@ from apply import new_material, new_mesh, new_object, object_color
 from selection import ELEMENT
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from plan_types import ObjectRecord, Plan, PropertyValue
 
 # Carrier point attributes, besides each instance's element (ELEMENT): its world transform and selection state.
@@ -62,7 +65,7 @@ class Batch:
     carriers: list[bpy.types.Object]  # by state, on one points mesh
     prototype: bpy.types.Object
     elements: list[int]
-    key: tuple[Any, ...]  # the group's batch_key in the plan it was applied from
+    key: tuple[Any, ...]  # its group's key in the plan it was applied from (plan.batch_groups)
 
     @property
     def points(self) -> bpy.types.Mesh:
@@ -105,47 +108,24 @@ def attribute_type(value: PropertyValue) -> str | None:
     return None
 
 
-def batch_key(record: ObjectRecord) -> tuple[Any, ...] | None:
-    """What instances of one carrier share, or None for an object that stays an object."""
-    kinds = {name: attribute_type(value) for name, value in _primvars(record).items()}
-    if record["mesh"] is None or None in kinds.values():
-        return None
-    return (
-        record["mesh"],
-        tuple(record["material_slots"]),
-        record["viewport"],
-        record["render"],
-        object_color(record),
-        tuple(sorted(kinds.items())),
-    )
+def groups(plan: Plan, minimum: int) -> tuple[dict[tuple[Any, ...], list[int]], list[int]]:
+    """The plan objects in batches of at least `minimum`, by their group's key, and the rest, in plan order.
 
-
-def groups(records: list[ObjectRecord], minimum: int) -> tuple[dict[tuple[Any, ...], list[int]], list[int]]:
-    """The plan objects in batches of at least `minimum`, by their batch_key, and the rest, in plan order."""
-    grouped: dict[tuple[Any, ...], list[int]] = {}
-    single: list[int] = []
-    coincident: dict[tuple[Any, ...], int] = {}
-    for index, record in enumerate(records):
-        key = batch_key(record)
-        if key is None:
-            single.append(index)
-            continue
-        # A pick names an instance by its prototype and world matrix (batch_selection.py), so copies whose
-        # transforms are equal go to separate batches, each with its own prototype.
-        stored = (key, numpy.array(record["matrix"], dtype=numpy.float32).tobytes())
-        repeat = coincident[stored] = coincident.get(stored, -1) + 1
-        grouped.setdefault((*key, repeat), []).append(index)
-    single.extend(index for members in grouped.values() if len(members) < minimum for index in members)
-    return {key: members for key, members in grouped.items() if len(members) >= minimum}, sorted(single)
+    A key is (mesh, material slots, in the viewport, in the render, object color, (primvar, attribute type)
+    pairs, repeat); copies whose transforms are equal are in separate groups, by repeat, since a pick names an
+    instance by its prototype and world matrix (batch_selection.py).
+    """
+    shared, single = plan.batch_groups(minimum)
+    return dict(shared), single
 
 
 def apply_batched(plan: Plan, collection: bpy.types.Collection, minimum: int = MINIMUM) -> BatchedDisplay:
     """Create the plan's materials and meshes, a batch per group of `minimum` or more, and objects for the rest."""
     assert minimum >= 2  # a batch of one would be four objects for one copy
-    records = plan.objects
+    records = dict(enumerate(plan.objects))
     materials = [new_material(data) for data in plan.materials]
     meshes = [new_mesh(data) for data in plan.meshes]
-    shared, single = groups(records, minimum)
+    shared, single = groups(plan, minimum)
     nodes = _node_group()
     batches = [
         new_batch(number, key, members, records, meshes, materials, collection, nodes)
@@ -171,7 +151,7 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     number: int,
     key: tuple[Any, ...],
     members: list[int],
-    records: list[ObjectRecord],
+    records: Mapping[int, ObjectRecord],
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
     collection: bpy.types.Collection,
@@ -180,7 +160,7 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     """Batch `number` of plan objects `members`, which share `key`: its prototype, points, and carriers."""
     first = records[members[0]]
     mesh = first["mesh"]
-    assert mesh is not None  # batch_key left out placeholders
+    assert mesh is not None  # the groups leave out placeholders
     # Numbered in creation order, so each new name sorts last (C3).
     prototype = bpy.data.objects.new(f"Prototype {number:06d}", meshes[mesh])
     set_prototype(prototype, first, meshes, materials)
@@ -209,7 +189,7 @@ def set_prototype(
 ) -> None:
     """Put a group's mesh, object-linked materials, and object color on its prototype, changing only what differs."""
     mesh = record["mesh"]
-    assert mesh is not None  # batch_key left out placeholders
+    assert mesh is not None  # the groups leave out placeholders
     if prototype.data != meshes[mesh]:
         # The same slot count, and the slots link to the object, so each keeps its place.
         prototype.data = meshes[mesh]
@@ -224,7 +204,7 @@ def set_prototype(
         prototype.color = color
 
 
-def new_points(number: int, members: list[int], records: list[ObjectRecord], held: list[int]) -> bpy.types.Mesh:
+def new_points(number: int, members: list[int], records: Mapping[int, ObjectRecord], held: list[int]) -> bpy.types.Mesh:
     """A batch's points mesh: one point per member, with its transform, element, state `held`, and primvars."""
     points = bpy.data.meshes.new(f"Carrier {number:06d}")
     points.vertices.add(len(members))
@@ -234,7 +214,7 @@ def new_points(number: int, members: list[int], records: list[ObjectRecord], hel
     _point_attribute(points, STATE, "INT", held)
     for name, value in _primvars(records[members[0]]).items():
         data_type = attribute_type(value)
-        assert data_type is not None  # batch_key left out copies with any other primvar
+        assert data_type is not None  # the groups leave out copies with any other primvar
         _point_attribute(points, name, data_type, [records[i]["properties"][name] for i in members])
     return points
 

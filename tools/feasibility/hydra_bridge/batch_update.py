@@ -21,7 +21,6 @@ batches, and the old data nothing uses once they are gone (OWN-08).
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -45,7 +44,7 @@ class Rebatch:
     """A published batch the update keeps, and what publication changes on it."""
 
     batch: Batch  # once published
-    record: ObjectRecord  # a member's, whose mesh and materials the prototype shows
+    record: ObjectRecord | None  # when reprototyped, a member's, whose mesh and materials the prototype shows
     reprototyped: bool  # whether the prototype moves onto another mesh or materials
     points: bpy.types.Mesh | None  # new points the carriers move onto, or None to keep theirs
     previous: bpy.types.Mesh  # the points the carriers are on before publication
@@ -71,49 +70,66 @@ class Prepared:
 
 def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPolicy) -> Prepared:
     """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links."""
-    records = plan.objects  # each read of a plan's list converts all its records, so each is read once
-    meshes, materials = new_data(plan, records, diff, display.meshes, display.materials)
+    meshes, materials = new_data(plan, diff, display.meshes, display.materials)
     previous = diff["objects"]
+    olds_of = numpy.array(previous, dtype=numpy.int64)  # per new plan index: its old index, or -1
     repointable = set(diff["repointable"])
     # Members whose points change; a change to only the mesh or materials is the prototype's.
     moved = set(diff["changed"]) - repointable
     rebuilt = set(diff["changed"]) - (repointable if users is UserPolicy.REPOINT else set())
-    shared, single = groups(records, display.minimum)
-    matched = _matches(shared, previous, display.batches)
+    shared, single = groups(plan, display.minimum)
+    matched = _matches(shared, olds_of, display.batches)
     kept_objects = _kept_objects(single, previous, display, rebuilt)
     made = [index for index in single if index not in kept_objects]
     staging = bpy.data.collections.new("Prepared") if made or None in matched else None
-    serial = display.serial
-    batches, added, kept = [], [], []
+
+    # What each group needs, decided from the diff and the groups' keys before any record is read, since reading
+    # the plan's whole list converts every record: a new batch, or for a kept batch new points when its members,
+    # or a member's transform or primvars, changed, and its prototype moved when its mesh or materials did.
+    needed = {*made, *(repointable & kept_objects)}
+    decided: list[tuple[numpy.ndarray, bool, bool] | None] = []
     for (key, members), old in zip(shared.items(), matched, strict=True):
         if old is None:
+            needed.update(members)
+            decided.append(None)
+            continue
+        olds = olds_of[members]
+        rebuild = not numpy.array_equal(olds, old.elements) or not moved.isdisjoint(members)
+        slots = [None if m is None else materials[m] for m in key[1]]
+        reprototyped = (
+            old.prototype.data != meshes[key[0]] or [slot.material for slot in old.prototype.material_slots] != slots
+        )
+        needed.update(members if rebuild else members[:1] if reprototyped else ())
+        decided.append((olds, rebuild, reprototyped))
+    order = sorted(needed)
+    records = dict(zip(order, plan.objects_at(order), strict=True))
+
+    serial = display.serial
+    batches, added, kept = [], [], []
+    for (key, members), old, decision in zip(shared.items(), matched, decided, strict=True):
+        if old is None or decision is None:
             assert staging is not None  # a group no batch matches, so there is a staging collection
             batch = new_batch(serial, key, members, records, meshes, materials, staging, display.nodes)
             serial += 1
             added.append(batch)
             batches.append(batch)
             continue
-        olds = [previous[index] for index in members]
+        olds, rebuild, reprototyped = decision
         points = None
-        if olds != old.elements or moved.intersection(members):
+        if rebuild:
             # The members kept from this batch keep their state, so an update keeps their selection.
             position = {element: point for point, element in enumerate(old.elements)}
             held = states(old)
             carried = [
                 int(held[position[o]]) if o in position and index not in moved else 0
-                for index, o in zip(members, olds, strict=True)
+                for index, o in zip(members, olds.tolist(), strict=True)
             ]
             points = new_points(serial, members, records, carried)
             serial += 1
-        record = records[members[0]]
-        mesh = record["mesh"]
-        assert mesh is not None  # batch_key left out placeholders
-        slots = [None if m is None else materials[m] for m in record["material_slots"]]
-        reprototyped = (
-            old.prototype.data != meshes[mesh] or [slot.material for slot in old.prototype.material_slots] != slots
-        )
+        record = records[members[0]] if reprototyped else None
+        renumbered = points is None and not numpy.array_equal(olds, members)
         batch = Batch(old.carriers, old.prototype, members, key)
-        kept.append(Rebatch(batch, record, reprototyped, points, old.points, points is None and olds != members))
+        kept.append(Rebatch(batch, record, reprototyped, points, old.points, renumbered))
         batches.append(batch)
     claimed = {old.prototype.as_pointer() for old in matched if old is not None}
     dropped = [old for old in display.batches if old.prototype.as_pointer() not in claimed]
@@ -160,6 +176,7 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
         for rebatch in prepared.kept:
             batch = rebatch.batch
             if rebatch.reprototyped:
+                assert rebatch.record is not None  # prepare reads a member's record for a moved prototype
                 undo.append(_saved(batch.prototype))
                 set_prototype(batch.prototype, rebatch.record, new.meshes, new.materials)
             if rebatch.points is not None:
@@ -199,21 +216,26 @@ def retire(prepared: Prepared) -> list[bpy.types.ID]:
     return retire_ids(prepared.retired, prepared.staging)
 
 
-def _matches(shared: dict[tuple[Any, ...], list[int]], previous: list[int], batches: list[Batch]) -> list[Batch | None]:
+def _matches(
+    shared: dict[tuple[Any, ...], list[int]], olds_of: numpy.ndarray, batches: list[Batch]
+) -> list[Batch | None]:
     """For each group, in order, the published batch that keeps showing it, or None for a new batch."""
-    holding = {element: number for number, batch in enumerate(batches) for element in batch.elements}
+    # Per old plan index: the batch holding it, or -1.
+    holding = numpy.full(1 + max((max(batch.elements) for batch in batches), default=-1), -1, dtype=numpy.int64)
+    for number, batch in enumerate(batches):
+        holding[batch.elements] = number
     claimed: set[int] = set()
     matched = []
     for key, members in shared.items():
         # Everything in a key but the mesh, the slots, and the repeat: what a batch's carriers and prototype show
         # besides its mesh and materials, and the kinds of its points' primvars.
         looks = key[2:-1]
-        counts = Counter(
-            holding[old]
-            for old in (previous[index] for index in members)
-            if old in holding and batches[holding[old]].key[2:-1] == looks
-        )
-        best = max((n for n in counts if n not in claimed), key=lambda n: (counts[n], -n), default=None)
+        olds = olds_of[members]
+        held = holding[olds[(olds >= 0) & (olds < len(holding))]]
+        counts = numpy.bincount(held[held >= 0], minlength=len(batches))
+        held_by = numpy.flatnonzero(counts).tolist()
+        candidates = [n for n in held_by if n not in claimed and batches[n].key[2:-1] == looks]
+        best = max(candidates, key=lambda n: (counts[n], -n), default=None)
         if best is not None:
             claimed.add(best)
         matched.append(None if best is None else batches[best])

@@ -1094,6 +1094,41 @@ The importer is a reference only: its matched options import no preview material
 - **A minimum of 5 did no worse than 20 anywhere,** and better in initial synchronization (1.09× against 1.23×, each against its own set's importer) and the time step (1.47 s against 1.78 s); the other differences are within the session's drift. At 20, 7,775 copies stay objects, against 5,465 at 5.
 - **Not measured:** frame time on other GPUs or at other view sizes, other orbits or viewpoints, frames below the display's refresh, render (Cycles or EEVEE final renders), and the cold-start shader compilation.
 
+#### Small updates without Python's whole-plan work
+
+[M4 plan](../plans/M04-prototypes.md), D8: the bridge's module forms the batched display's groups (`plan.batch_groups`), and both representations' updates read only the plan records and meshes they build from (`plan.objects_at`, `plan.meshes_at`), where they read every record before. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all \
+    --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d8-batched
+# likewise with --representation objects (measure-d8-objects)
+```
+
+The groups are those the Python grouping formed: on every scene measured here and the bridge's test fixtures, at minimums of 2, 5, and 20, the same keys, members, and order (ad hoc). In an ad hoc profile of one transform update, `batch_update.prepare` took 0.027 s on ALab with its point instancers and 0.017 s on `updates-10000`, against 0.18 s and 0.16 s before.
+
+**Batched small updates** (seconds, medians; the earlier sets' in brackets, from other sessions: D5 for `updates-10000` and D7 for ALab with its point instancers):
+
+| | `updates-10000` | ALab with point instancers |
+|---|---|---|
+| Unchanged refresh | 0.144 [0.284] | 0.585 [0.608] |
+| Transform | 0.143 [0.297] | 0.503 [0.675] |
+| Instance transform | 0.294 [0.372] | 0.748 [0.753] |
+| Shared geometry | 0.202 [0.300] | 0.532 [0.646] |
+| Material | 0.159 [0.326] | 0.507 [0.655] |
+| Their preparation | 0.020–0.103 [0.163–0.178] | 0.026–0.037 [0.178–0.185] |
+| Against a full rebuild (budget 10×), transform to material | 4.2–8.6× [3.7–4.7×] | 5.4–8.0× [5.3–6.2×] |
+
+**Where a batched transform update's time goes now** (seconds): on `updates-10000`, capture 0.032, planning 0.083, diff 0.005, preparation 0.020, and Blender's publication, retirement, and evaluation 0.003; on ALab with its point instancers, capture 0.038, planning 0.309, diff 0.071, preparation 0.029, and Blender's 0.058.
+
+**The baseline in the same session:** on `updates-10000`, its small updates take 0.88–1.19 s, most of it the depsgraph's evaluation (0.72–0.91 s), and its ratios are 7.1–9.6×. On ALab with its point instancers, they take 0.50–0.63 s, as the batched display's do, and its ratios reach the budget, 9.8–12.3×, since its full rebuild is the slower one: 1.65× the importer's time here, against the batched display's 1.08×.
+
+**Findings:**
+- **Python's whole-plan work is gone,** and with it most of preparation. On `updates-10000`, the unchanged refresh and the transform and material updates take about half as long, the shared-geometry update a third less, and the instance-transform update a fifth less. On ALab with its point instancers, the transform, shared-geometry, and material updates take 18–25% less, and the unchanged refresh and instance-transform update about as long, within the difference between sessions.
+- **Planning is now most of each batched update:** 58% of a transform update on `updates-10000` and 61% on ALab with its point instancers, where the diff adds 14%. Both still rebuild and compare the whole plan, so no batched update reaches the budget; the closest are transform updates, at 8.6× and 8.0×.
+- **An instance-transform update on `updates-10000` still rebuilds two batches' points whole** (15,000 and 10,000 instances), 0.10 s of preparation, though one copy of each moved.
+- **The capture of an instance-transform edit** takes 0.08–0.12 s, against 0.03–0.04 s for the other edits. Not profiled.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

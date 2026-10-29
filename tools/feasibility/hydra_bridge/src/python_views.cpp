@@ -1,5 +1,6 @@
 #include "python_views.h"
 
+#include "batch_groups.h"
 #include "correspondence.h"
 #include "plan_diff.h"
 #include "prim_reader.h"
@@ -139,6 +140,52 @@ bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &pr
 
 bp::object RangeOrNone(const std::optional<GfRange3d> &range) {
     return range ? bp::object(bp::make_tuple(range->GetMin(), range->GetMax())) : bp::object();
+}
+
+bp::dict MeshDict(const MeshData &mesh) {
+    bp::dict record;
+    record["name"] = mesh.name;
+    record["positions"] = mesh.positions;
+    record["corner_verts"] = mesh.cornerVerts;
+    record["face_offsets"] = mesh.faceOffsets;
+    record["material_indices"] = mesh.materialIndices;
+    record["slot_count"] = mesh.slotCount;
+    bp::list attributes;
+    for (const Attribute &attribute : mesh.attributes) {
+        bp::dict entry;
+        entry["name"] = attribute.name;
+        entry["domain"] = DomainName(attribute.domain);
+        entry["data_type"] = DataTypeName(attribute.type);
+        entry["data"] = bp::object(attribute.data);
+        attributes.append(entry);
+    }
+    record["attributes"] = attributes;
+    record["subdivision_scheme"] = mesh.subdivisionScheme.GetString();
+    record["double_sided"] = mesh.doubleSided;
+    return record;
+}
+
+bp::dict ObjectDict(const Plan &plan, std::size_t i) {
+    const ObjectEntry &object = plan.objects[i];
+    bp::dict record;
+    record["source"] = object.source.GetString();
+    record["instance_context"] = bp::tuple(PathList(object.instanceContext));
+    record["floor"] = plan.correspondence.floors[i].GetString();
+    record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
+    record["placeholder_type"] =
+        object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
+    record["bounds"] = RangeOrNone(object.bounds);
+    record["matrix"] = object.matrix;
+    record["visible"] = object.visible;
+    record["viewport"] = object.inViewport;
+    record["render"] = object.inRender;
+    record["purpose"] = object.purpose.GetString();
+    bp::list slots;
+    for (const int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+    record["material_slots"] = slots;
+    record["primvars"] = Parameters(object.constantPrimvars);
+    record["properties"] = Properties(object.properties);
+    return record;
 }
 
 bp::dict PrimDict(const PrimRecord &prim) {
@@ -282,28 +329,7 @@ bp::object PlanView::Time() const { return TimeOrNone(data->time); }
 
 bp::list PlanView::Meshes() const {
     bp::list result;
-    for (const MeshData &mesh : data->meshes) {
-        bp::dict record;
-        record["name"] = mesh.name;
-        record["positions"] = mesh.positions;
-        record["corner_verts"] = mesh.cornerVerts;
-        record["face_offsets"] = mesh.faceOffsets;
-        record["material_indices"] = mesh.materialIndices;
-        record["slot_count"] = mesh.slotCount;
-        bp::list attributes;
-        for (const Attribute &attribute : mesh.attributes) {
-            bp::dict entry;
-            entry["name"] = attribute.name;
-            entry["domain"] = DomainName(attribute.domain);
-            entry["data_type"] = DataTypeName(attribute.type);
-            entry["data"] = bp::object(attribute.data);
-            attributes.append(entry);
-        }
-        record["attributes"] = attributes;
-        record["subdivision_scheme"] = mesh.subdivisionScheme.GetString();
-        record["double_sided"] = mesh.doubleSided;
-        result.append(record);
-    }
+    for (const MeshData &mesh : data->meshes) result.append(MeshDict(mesh));
     return result;
 }
 
@@ -322,29 +348,64 @@ bp::list PlanView::Materials() const {
 
 bp::list PlanView::Objects() const {
     bp::list result;
-    for (size_t i = 0; i < data->objects.size(); ++i) {
-        const ObjectEntry &object = data->objects[i];
-        bp::dict record;
-        record["source"] = object.source.GetString();
-        record["instance_context"] = bp::tuple(PathList(object.instanceContext));
-        record["floor"] = data->correspondence.floors[i].GetString();
-        record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
-        record["placeholder_type"] =
-            object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
-        record["bounds"] = RangeOrNone(object.bounds);
-        record["matrix"] = object.matrix;
-        record["visible"] = object.visible;
-        record["viewport"] = object.inViewport;
-        record["render"] = object.inRender;
-        record["purpose"] = object.purpose.GetString();
-        bp::list slots;
-        for (const int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
-        record["material_slots"] = slots;
-        record["primvars"] = Parameters(object.constantPrimvars);
-        record["properties"] = Properties(object.properties);
-        result.append(record);
+    for (size_t i = 0; i < data->objects.size(); ++i) result.append(ObjectDict(*data, i));
+    return result;
+}
+
+namespace {
+
+// Plan indices from Python, each checked against `size`.
+std::vector<std::size_t> Indices(const bp::object &indices, std::size_t size) {
+    std::vector<std::size_t> result;
+    const auto count = bp::len(indices);
+    result.reserve(static_cast<std::size_t>(count));
+    for (bp::ssize_t i = 0; i < count; ++i) {
+        const auto index = bp::extract<std::size_t>(indices[i])();
+        if (index >= size) {
+            PyErr_SetString(PyExc_IndexError, "plan index out of range");
+            bp::throw_error_already_set();
+        }
+        result.push_back(index);
     }
     return result;
+}
+
+}  // namespace
+
+bp::list PlanView::ObjectsAt(const bp::object &indices) const {
+    bp::list result;
+    for (const std::size_t index : Indices(indices, data->objects.size())) result.append(ObjectDict(*data, index));
+    return result;
+}
+
+bp::list PlanView::MeshesAt(const bp::object &indices) const {
+    bp::list result;
+    for (const std::size_t index : Indices(indices, data->meshes.size())) result.append(MeshDict(data->meshes[index]));
+    return result;
+}
+
+bp::tuple PlanView::BatchGroups(std::size_t minimum) const {
+    hydra_bridge::BatchGroups grouped;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        grouped = GroupForBatches(*data, minimum);
+    }
+    const auto list = [](const std::vector<int> &values) {
+        bp::list result;
+        for (const int value : values) result.append(value);
+        return result;
+    };
+    bp::list groups;
+    for (const BatchGroup &group : grouped.groups) {
+        bp::list slots, kinds;
+        for (const int slot : group.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+        for (const auto &[name, type] : group.kinds) kinds.append(bp::make_tuple(name, type));
+        const auto &[r, g, b, a] = group.color;
+        const bp::tuple key = bp::make_tuple(group.mesh, bp::tuple(slots), group.inViewport, group.inRender,
+                                             bp::make_tuple(r, g, b, a), bp::tuple(kinds), group.repeat);
+        groups.append(bp::make_tuple(key, list(group.members)));
+    }
+    return bp::make_tuple(groups, list(grouped.single));
 }
 
 bp::list PlanView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
@@ -533,6 +594,12 @@ void WrapViews() {
         .add_property("materials", &PlanView::Materials)
         .add_property("objects", &PlanView::Objects)
         .add_property("universe", &PlanView::Universe)
+        .add_property("object_count", &PlanView::ObjectCount)
+        .add_property("mesh_count", &PlanView::MeshCount)
+        .add_property("material_count", &PlanView::MaterialCount)
+        .def("objects_at", &PlanView::ObjectsAt, bp::arg("indices"))
+        .def("meshes_at", &PlanView::MeshesAt, bp::arg("indices"))
+        .def("batch_groups", &PlanView::BatchGroups, bp::arg("minimum"))
         .add_property("diagnostics", &PlanView::Diagnostics);
     bp::class_<InteractionView>("Interaction", bp::init<UsdStagePtr, PlanView>())
         .def("resolve_pick", &InteractionView::ResolvePick)

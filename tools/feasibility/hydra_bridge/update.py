@@ -139,11 +139,13 @@ def sample_units(records: Sequence[ObjectRecord]) -> dict[str, Unit]:
 
 def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> Prepared:
     """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links."""
-    records = plan.objects  # each read of a plan's list converts all its records, so each is read once
-    meshes, materials = new_data(plan, records, diff, display.meshes, display.materials)
+    meshes, materials = new_data(plan, diff, display.meshes, display.materials)
     kept = set(diff["repointable"]) if users is UserPolicy.REPOINT else set()
     rebuilt = set(diff["changed"]) - kept
     added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
+    # Only the records the update builds from: reading the plan's whole list converts every record.
+    needed = sorted({*added, *kept})
+    records = dict(zip(needed, plan.objects_at(needed), strict=True))
     staging = bpy.data.collections.new("Prepared") if added else None
     objects: list[bpy.types.Object] = []
     created: dict[int, bpy.types.Object] = {}
@@ -170,20 +172,21 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> 
 
 
 def new_data(
-    plan: Plan,
-    records: list[ObjectRecord],
-    diff: PlanDiff,
-    meshes: list[bpy.types.Mesh],
-    materials: list[bpy.types.Material],
+    plan: Plan, diff: PlanDiff, meshes: list[bpy.types.Mesh], materials: list[bpy.types.Material]
 ) -> tuple[list[bpy.types.Mesh], list[bpy.types.Material]]:
-    """The new plan's meshes and materials: the published ones the diff matches, and new ones for the rest."""
-    mesh_records, material_records = plan.meshes, plan.materials
+    """The new plan's meshes and materials: the published ones the diff matches, and new ones for the rest.
+
+    Only the new ones' records are read, since reading a plan's whole list converts every record.
+    """
     if (len(diff["objects"]), len(diff["meshes"]), len(diff["materials"])) != (
-        len(records),
-        len(mesh_records),
-        len(material_records),
+        plan.object_count,
+        plan.mesh_count,
+        plan.material_count,
     ):
         raise ValueError("The diff isn't the plan's")
+    built = [index for index, old in enumerate(diff["meshes"]) if old == -1]
+    mesh_records = dict(zip(built, plan.meshes_at(built), strict=True))
+    material_records = plan.materials if -1 in diff["materials"] else []
     return (
         [meshes[old] if old != -1 else new_mesh(mesh_records[index]) for index, old in enumerate(diff["meshes"])],
         [

@@ -200,7 +200,11 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     plan = native.build_plan(snapshot, point_instancers=point_instancers)
     done("planning")
     stage("transfer")
-    view = SimpleNamespace(materials=plan.materials, meshes=plan.meshes, objects=plan.objects)
+    # The plan's lists, converted here so construction is timed apart from the conversion; the batched display's
+    # groups are formed in construction, by the bridge's module (D8).
+    view: Any = SimpleNamespace(
+        materials=plan.materials, meshes=plan.meshes, objects=plan.objects, batch_groups=plan.batch_groups
+    )
     done("transfer")
     stage("construction")
     scene: Any = bpy.context.scene

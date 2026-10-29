@@ -41,6 +41,14 @@ struct PlanView {
     [[nodiscard]] bp::list Objects() const;
     [[nodiscard]] bp::list Diagnostics() const;
     [[nodiscard]] bp::list Universe() const;
+    // M4 Phase D (D8): the records at `indices` only, so an update converts what it uses; the counts; and
+    // GroupForBatches, as ((key, members), ...) with the key as batch.py's, and the objects in no batch.
+    [[nodiscard]] bp::list ObjectsAt(const bp::object &indices) const;
+    [[nodiscard]] bp::list MeshesAt(const bp::object &indices) const;
+    [[nodiscard]] std::size_t ObjectCount() const { return data->objects.size(); }
+    [[nodiscard]] std::size_t MeshCount() const { return data->meshes.size(); }
+    [[nodiscard]] std::size_t MaterialCount() const { return data->materials.size(); }
+    [[nodiscard]] bp::tuple BatchGroups(std::size_t minimum) const;
 };
 
 // M4: the baseline's core interaction functions over a plan and the live stage, which it holds weakly. Elements

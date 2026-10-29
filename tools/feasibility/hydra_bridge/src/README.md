@@ -80,7 +80,8 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `inspection.h/.cpp` | M4's model of the inspection layer: kind promotion, the nearest ancestor-or-self of a floor on the live stage with a kind, read-only. It includes only USD, as M7's library will |
 | `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
-| `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan` |
+| `batch_groups.h/.cpp` | M4 Phase D (D8): the batched display's groups, formed from the plan, so an update needn't convert and regroup every record in Python |
+| `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan`; the plan also gives its counts, the records at given indices, and its batch groups (D8) |
 | `loaded_images.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
 | `copy_bindings.h/.cpp` | **Workaround for OpenUSD #3690:** UsdShade's binding per drawn copy, on its instance-proxy path, for the instances a binding collection reaches (Hydra and per-prototype resolution miss collections naming paths inside instances). Cached in the source-info filter until a binding or collection edit; the planner uses it for those copies |
 | `fact_timings.h/.cpp` | Phase E only: time the source-info filter spends building facts and in each USD query (bindings, strong purposes, family verdict, dropped attributes, computed extents), summed over threads, and how planning's time splits (reading, building each mesh and its parts, objects) |
