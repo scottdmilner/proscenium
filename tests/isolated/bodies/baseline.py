@@ -70,6 +70,7 @@ def apply_scene(module_dir: str, scene: str, representation: str = "objects") ->
         reported[element]["instance"] = False
     for element, entry in _instances(view_layer, batches, shown).items():
         assert element not in reported, element  # each element is displayed once
+        del entry["carrier"]
         reported[element] = {"source": records[element]["source"], "plan_world": _rows(records[element]["matrix"])}
         reported[element] |= {"instance_context": list(records[element]["instance_context"]), **entry}
     result = {
@@ -110,6 +111,7 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
             "world": _rows(instance.matrix_world.transposed()),
             "shear_parent": None,
             "instance": True,
+            "carrier": carrier.name,
             # The instance attributes the bridge didn't add for itself: constant primvars by name.
             "properties": {
                 name: a["values"][index]
@@ -270,26 +272,76 @@ def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: 
 def _held(display: Any, records: Any) -> dict[str, Any]:
     """Each object as Blender holds it (mesh by plan index), and the pointers of the display's data."""
     meshes = {mesh.as_pointer(): index for index, mesh in enumerate(display.meshes)}
-    objects = []
-    for record, obj in zip(records, display.objects, strict=True):
-        facts = _object(record, obj)
-        del facts["mesh"]  # Blender's name, which a replacement changes
-        parent = obj.parent
-        facts |= {
-            "mesh_index": None if obj.data is None else meshes.get(obj.data.as_pointer()),
-            "basis": _rows(obj.matrix_basis.transposed()),
-            "parent_world": None if parent is None else _rows(parent.matrix_world.transposed()),
-            "pointer": obj.as_pointer(),
-            "data_pointer": None if obj.data is None else obj.data.as_pointer(),
-        }
-        objects.append(facts)
+    objects = [_held_object(record, obj, meshes) for record, obj in zip(records, display.objects, strict=True)]
     return {
         "objects": objects,
         "meshes": [mesh.as_pointer() for mesh in display.meshes],
         "materials": [material.as_pointer() for material in display.materials],
+        "selected": [element for element, obj in enumerate(display.objects) if obj.select_get()],
         "linked": sorted(
             {p for obj in display.objects for p in (obj.as_pointer(), obj.parent and obj.parent.as_pointer()) if p}
         ),
+    }
+
+
+def _held_object(record: Any, obj: Any, meshes: dict[int, int]) -> dict[str, Any]:
+    """An object as Blender holds it, its mesh by plan index from `meshes` (by pointer), with its pointers."""
+    facts = _object(record, obj)
+    del facts["mesh"]  # Blender's name, which a replacement changes
+    parent = obj.parent
+    return facts | {
+        "mesh_index": None if obj.data is None else meshes.get(obj.data.as_pointer()),
+        "basis": _rows(obj.matrix_basis.transposed()),
+        "parent_world": None if parent is None else _rows(parent.matrix_world.transposed()),
+        "pointer": obj.as_pointer(),
+        "data_pointer": None if obj.data is None else obj.data.as_pointer(),
+    }
+
+
+def batched_held(display: Any, records: Any) -> dict[str, Any]:
+    """A batched display as Blender holds and evaluates it, in plan order, and the pointers of its parts.
+
+    An object reports as _held reports it, and an instance as apply_scene reports it, with its prototype's mesh
+    by plan index. The carriers are shown while the display is read, then hidden again as they were.
+    """
+    meshes = {mesh.as_pointer(): index for index, mesh in enumerate(display.meshes)}
+    carriers = [carrier for batch in display.batches for carrier in batch.carriers]
+    shown = {c.name: (not c.hide_viewport, not c.hide_render) for c in carriers}
+    hidden = [(carrier, carrier.hide_viewport) for carrier in carriers]
+    for carrier in carriers:
+        carrier.hide_viewport = False
+    view_layer: Any = bpy.context.view_layer  # never None in a running Blender
+    view_layer.update()
+    # Read once evaluated, as a shear parent's world matrix is, after an earlier update or not.
+    held = {element: _held_object(records[element], obj, meshes) for element, obj in display.objects.items()}
+    names = {mesh.name: index for index, mesh in enumerate(display.meshes)}
+    # Selected: an object selected in Blender, or an instance in the viewport on a carrier other than the
+    # unselected one. Blender's selection holds no object hidden in the viewport.
+    selected = [element for element, obj in display.objects.items() if obj.select_get(view_layer=view_layer)]
+    states = {carrier.name: state for batch in display.batches for state, carrier in enumerate(batch.carriers)}
+    for element, entry in _instances(view_layer, display.batches, shown).items():
+        assert element not in held, element  # each element is displayed once
+        mesh = entry.pop("mesh")
+        if states[entry.pop("carrier")] != 0 and entry["viewport"]:
+            selected.append(element)
+        held[element] = {"source": records[element]["source"], "mesh_index": names.get(mesh), **entry}
+    for carrier, hide in hidden:
+        carrier.hide_viewport = hide
+    view_layer.update()
+    return {
+        "objects": [held[element] for element in range(len(records))],
+        "batches": [
+            {
+                "elements": list(batch.elements),
+                "carriers": [carrier.as_pointer() for carrier in batch.carriers],
+                "prototype": batch.prototype.as_pointer(),
+                "points": batch.points.as_pointer(),
+            }
+            for batch in display.batches
+        ],
+        "meshes": [mesh.as_pointer() for mesh in display.meshes],
+        "materials": [material.as_pointer() for material in display.materials],
+        "selected": sorted(selected),
     }
 
 
@@ -316,14 +368,14 @@ def _counts() -> dict[str, int]:
     }
 
 
-def detach_scene(module_dir: str, scene: str, blend: str) -> dict[str, Any]:
+def detach_scene(module_dir: str, scene: str, blend: str, representation: str = "objects") -> dict[str, Any]:
     """Apply `scene`, edit its display in Blender, detach it, and save to `blend` (B7); Blender's data around detach.
 
     The edits come before detach, which must keep them: an object whose mesh others share is deleted, another
-    is moved, and a material is recolored.
+    is moved, and a material is recolored. In the batched display (`representation` "batched", D4), the first
+    batch's unselected carrier, if there is one, is deleted too.
     """
     native = _native(module_dir)
-    apply = importlib.import_module("apply")
     detach = importlib.import_module("detach")
 
     stage = Usd.Stage.Open(scene)
@@ -332,8 +384,15 @@ def detach_scene(module_dir: str, scene: str, blend: str) -> dict[str, Any]:
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    display = apply.apply(plan, collection)
-    shared: list[Any] = [obj for obj in display.objects if obj.type == "MESH" and obj.data.users > 1]
+    if representation == "objects":
+        display = importlib.import_module("apply").apply(plan, collection)
+        objects = display.objects
+    else:
+        display = importlib.import_module("batch").apply_batched(plan, collection)
+        objects = list(display.objects.values())
+        if display.batches:
+            bpy.data.objects.remove(display.batches[0].carriers[0])
+    shared: list[Any] = [obj for obj in objects if obj.type == "MESH" and obj.data.users > 1]
     deleted = shared[0].name
     bpy.data.objects.remove(shared[0])
     shared[1].location.x += 1.0
@@ -349,7 +408,13 @@ def detach_scene(module_dir: str, scene: str, blend: str) -> dict[str, Any]:
     return {
         "before": before,
         "after": after,
-        "released": {"objects": released.objects, "materials": released.materials, "properties": released.properties},
+        "released": {
+            "objects": released.objects,
+            "materials": released.materials,
+            "properties": released.properties,
+            "carriers": released.carriers,
+            "attributes": released.attributes,
+        },
         "deleted": deleted,
         "recolored": recolored,
     }
@@ -362,8 +427,19 @@ def read_blend(blend: str) -> dict[str, Any]:
 
 
 def _blender_data() -> dict[str, Any]:
-    """Every object, mesh, material, and collection as Blender holds it, by name, with all its ID properties."""
+    """Every object, mesh, material, and collection as Blender holds it, by name, with all its ID properties.
+
+    Also, by the name of the object that instances them, how many instances Blender evaluates.
+    """
+    view_layer: Any = bpy.context.view_layer  # never None in a running Blender
+    view_layer.update()
+    instances: dict[str, int] = {}
+    for instance in view_layer.depsgraph.object_instances:
+        if instance.is_instance and instance.parent is not None:
+            name = instance.parent.original.name
+            instances[name] = instances.get(name, 0) + 1
     return {
+        "instances": instances,
         "objects": {obj.name: _object_data(obj) for obj in bpy.data.objects},
         "meshes": {
             mesh.name: {
@@ -396,6 +472,26 @@ def _object_data(obj: Any) -> dict[str, Any]:
         "slots": [[slot.link, None if slot.material is None else slot.material.name] for slot in obj.material_slots],
         "collections": sorted(c.name for c in obj.users_collection),
         "properties": _properties(obj),
+        "modifiers": [_modifier(modifier) for modifier in obj.modifiers],
+    }
+
+
+def _modifier(modifier: Any) -> dict[str, Any]:
+    """A modifier's type, and a Geometry Nodes modifier's node group and the objects its inputs name."""
+    tree = getattr(modifier, "node_group", None)
+    if tree is None:
+        return {"type": modifier.type}
+    sockets = [item for item in tree.interface.items_tree if item.item_type == "SOCKET" and item.in_out == "INPUT"]
+    inputs = modifier.properties.inputs
+    return {
+        "type": modifier.type,
+        "node_group": tree.name,
+        "inputs": {
+            s.name: _plain(value.name if isinstance(value, bpy.types.ID) else value)
+            for s in sockets
+            if s.socket_type != "NodeSocketGeometry"
+            for value in [getattr(inputs, s.identifier).value]
+        },
     }
 
 

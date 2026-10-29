@@ -99,7 +99,8 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../batch.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one batch per group of copies that differ only in transform and constant primvars, which are its points' attributes, instanced by a carrier object per selection state |
 | `../batch_selection.py` | M4 Phase D: the batched display's Python display component, `apply_selection` and `read_blender_selection` through the carriers' selection states, and `pick_element`, which resolves a ray cast's hit to an element |
 | `../update.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
-| `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties and keeps everything else |
+| `../batch_update.py` | M4 Phase D: updates a batched display from the plan diff, as `update.py` does, matching the new plan's groups to the published batches and rebuilding only the points of batches whose members changed |
+| `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties, and the `proscenium_element` attribute on a batched display's points meshes, and keeps everything else |
 | `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |

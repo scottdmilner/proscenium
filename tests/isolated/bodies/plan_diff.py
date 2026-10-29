@@ -17,6 +17,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom, UsdShade
 
 BRIDGE = Path(__file__).resolve().parents[3] / "tools/feasibility/hydra_bridge"
 EQUAL = "/World/EqualContent"
+KITS = "/World/SharedPrototype"
 
 
 def _edit(stage: Usd.Stage, edit: str) -> None:
@@ -42,6 +43,19 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             stage.GetPrimAtPath(f"{EQUAL}/MeshC").SetActive(False)
             Sdf.CreatePrimInLayer(session, EQUAL)
             Sdf.CopySpec(stage.GetRootLayer(), f"{EQUAL}/MeshA", session, f"{EQUAL}/MeshNew")
+        elif edit == "instance-transform":  # moves one copy of each of the kit's batches
+            stage.GetPrimAtPath(f"{KITS}/KitB").GetAttribute("xformOp:translate").Set(Gf.Vec3d(3, 2, 0))
+        elif edit == "instance-remove":  # leaves two copies in each of the kit's batches
+            stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
+        elif edit == "instance-remove-another":  # leaves one copy of each of the kit's meshes, so no batch
+            stage.GetPrimAtPath(f"{KITS}/KitB").SetActive(False)
+        elif edit == "instance-restore":
+            for kit in ("KitA", "KitB"):
+                stage.GetPrimAtPath(f"{KITS}/{kit}").SetActive(True)
+        elif edit == "instance-color":  # recolors every copy of one of the kit's batches
+            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("displayColor").Set(
+                [Gf.Vec3f(0, 0, 1)]
+            )
         elif edit == "unload":
             stage.Unload("/World/Payload")
         elif edit == "load":
@@ -89,17 +103,25 @@ def _baseline() -> Any:
     return module
 
 
-def update_edits(module_dir: str, scene: str, edits: list[str], users: str) -> list[dict[str, Any]]:
+def update_edits(
+    module_dir: str, scene: str, edits: list[str], users: str, representation: str = "objects"
+) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
-    Each step reports the diff, the display's pointers before and after, what the updated display holds against
-    a fresh application of the same plan, and Blender's data counts for each.
+    `representation` is the baseline's "objects" (apply.py and update.py) or Phase D's "batched" (batch.py and
+    batch_update.py). Every element is selected before each edit. Each step reports the diff, what the display
+    held before and after, what the updated display holds against a fresh application of the same plan, and
+    Blender's data counts for each.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    apply = importlib.import_module("apply")
-    update = importlib.import_module("update")
+    batched = representation == "batched"
+    apply = importlib.import_module("batch" if batched else "apply")
+    update = importlib.import_module("batch_update" if batched else "update")
+    selection = importlib.import_module("batch_selection" if batched else "selection")
+    policy = importlib.import_module("update").UserPolicy(users)
     baseline = _baseline()
+    held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
 
     stage = Usd.Stage.Open(scene, Usd.Stage.LoadAll)
     bridge = native.Bridge(stage)
@@ -107,43 +129,43 @@ def update_edits(module_dir: str, scene: str, edits: list[str], users: str) -> l
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    display = apply.apply(plan, collection)
+    view_layer = blender_scene.view_layers[0]
+    display = (apply.apply_batched if batched else apply.apply)(plan, collection)
     steps = []
     for edit in edits:
+        selected = set(range(len(plan.objects)))
+        selection.apply_selection(view_layer, display if batched else collection, selected, set())
+        before = held_by(display, plan.objects)
         _edit(stage, edit)
         following = native.build_plan(bridge.capture(incremental=True))
         diff = native.diff_plans(plan, following)
-        before = _pointers(display)
-        prepared = update.prepare(following, diff, display, update.UserPolicy(users))
+        prepared = update.prepare(following, diff, display, policy)
         display = update.publish(prepared, display, collection)
+        linked = {"published": _linked(collection), "expected": _published(display, batched)}
         update.retire(prepared)
         records = following.objects
-        held = baseline._held(display, records)  # noqa: SLF001 - the sibling body's reader
+        held = held_by(display, records)
         counts = baseline._counts()  # noqa: SLF001
         fresh_collection = bpy.data.collections.new("Fresh")
-        fresh = apply.apply(following, fresh_collection)
-        fresh_held = baseline._held(fresh, records)  # noqa: SLF001
+        blender_scene.collection.children.link(fresh_collection)  # so the depsgraph evaluates its carriers
+        fresh = (apply.apply_batched if batched else apply.apply)(following, fresh_collection)
+        fresh_held = held_by(fresh, records)
         fresh_counts = baseline._counts()  # noqa: SLF001
-        bpy.data.batch_remove([*fresh_collection.all_objects, *fresh.meshes, *fresh.materials, fresh_collection])
-        bpy.data.orphans_purge(do_recursive=True)  # the placeholders' own bounds meshes
+        _remove(fresh, fresh_collection, batched)
         steps.append(
             {
                 "edit": edit,
                 "diff": diff,
-                "before": before,
-                "after": _pointers(display),
+                "before": _pointers(before),
+                "after": _pointers(held),
                 "held": [_values(o) for o in held["objects"]],
                 "fresh": [_values(o) for o in fresh_held["objects"]],
-                "elements": [obj["proscenium_element"] for obj in display.objects],
+                "elements": [obj["proscenium_element"] for obj in _objects_of(display)],
+                "selected": held["selected"],
+                "linked": linked,
                 "counts": counts,
                 "fresh_counts": {kind: fresh_counts[kind] - counts[kind] for kind in counts},
-                "written": {
-                    "created": len(prepared.created),
-                    "repointed": len(prepared.repointed),
-                    "renumbered": len(prepared.renumbered),
-                    "retired": len(prepared.retired),
-                    "staged": prepared.staging is not None,  # a staging collection is a Blender write too
-                },
+                "written": _written(prepared, batched),
             }
         )
         plan = following
@@ -151,11 +173,62 @@ def update_edits(module_dir: str, scene: str, edits: list[str], users: str) -> l
     return steps
 
 
-def _pointers(display: Any) -> dict[str, list[int]]:
+def _remove(fresh: Any, collection: Any, batched: bool) -> None:
+    """Remove a fresh application and everything it created."""
+    created = [*collection.all_objects, *fresh.meshes, *fresh.materials, collection]
+    if batched:
+        created += [batch.prototype for batch in fresh.batches] + [batch.points for batch in fresh.batches]
+        created.append(fresh.nodes.tree)
+    bpy.data.batch_remove(created)
+    bpy.data.orphans_purge(do_recursive=True)  # the placeholders' own bounds meshes
+
+
+def _linked(collection: Any) -> list[int]:
+    return sorted(obj.as_pointer() for obj in collection.objects)
+
+
+def _published(display: Any, batched: bool) -> list[int]:
+    """What the published display links: its objects, their shear parents, and a batched display's carriers."""
+    objects = _objects_of(display)
+    linked = [*objects, *(obj.parent for obj in objects if obj.parent is not None)]
+    if batched:
+        linked += [carrier for batch in display.batches for carrier in batch.carriers]
+    return sorted(obj.as_pointer() for obj in linked)
+
+
+def _objects_of(display: Any) -> list[Any]:
+    """The display's objects in plan order: all of them, or for a batched display, those kept as objects."""
+    objects = display.objects
+    return list(objects.values()) if isinstance(objects, dict) else objects
+
+
+def _written(prepared: Any, batched: bool) -> dict[str, Any]:
+    """What an update wrote to Blender, by kind; a staging collection is a Blender write too."""
+    written = {
+        "created": len(prepared.created),
+        "repointed": len(prepared.repointed),
+        "renumbered": len(prepared.renumbered),
+        "retired": len(prepared.retired),
+        "staged": prepared.staging is not None,
+    }
+    if batched:
+        written |= {
+            "added": len(prepared.added),
+            "dropped": len(prepared.dropped),
+            "points": sum(rebatch.points is not None for rebatch in prepared.kept),
+            "reprototyped": sum(rebatch.reprototyped for rebatch in prepared.kept),
+            "renumbered batches": sum(rebatch.renumbered for rebatch in prepared.kept),
+        }
+    return written
+
+
+def _pointers(held: dict[str, Any]) -> dict[str, Any]:
+    """The pointers of a display's objects (None for an instance), meshes, materials, and batches."""
     return {
-        "objects": [obj.as_pointer() for obj in display.objects],
-        "meshes": [mesh.as_pointer() for mesh in display.meshes],
-        "materials": [material.as_pointer() for material in display.materials],
+        "objects": [o.get("pointer") for o in held["objects"]],
+        "meshes": held["meshes"],
+        "materials": held["materials"],
+        "batches": held.get("batches", []),
     }
 
 

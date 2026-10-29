@@ -139,21 +139,8 @@ def sample_units(records: Sequence[ObjectRecord]) -> dict[str, Unit]:
 
 def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> Prepared:
     """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links."""
-    # Each read of a plan's list converts all its records, so each is read once.
-    records, mesh_records, material_records = plan.objects, plan.meshes, plan.materials
-    if (len(diff["objects"]), len(diff["meshes"]), len(diff["materials"])) != (
-        len(records),
-        len(mesh_records),
-        len(material_records),
-    ):
-        raise ValueError("The diff isn't the plan's")
-    meshes = [
-        display.meshes[old] if old != -1 else new_mesh(mesh_records[index]) for index, old in enumerate(diff["meshes"])
-    ]
-    materials = [
-        display.materials[old] if old != -1 else new_material(material_records[index])
-        for index, old in enumerate(diff["materials"])
-    ]
+    records = plan.objects  # each read of a plan's list converts all its records, so each is read once
+    meshes, materials = new_data(plan, records, diff, display.meshes, display.materials)
     kept = set(diff["repointable"]) if users is UserPolicy.REPOINT else set()
     rebuilt = set(diff["changed"]) - kept
     added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
@@ -182,6 +169,30 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> 
     return Prepared(staging, Display(objects, meshes, materials), created, leaving, repointed, renumbered)
 
 
+def new_data(
+    plan: Plan,
+    records: list[ObjectRecord],
+    diff: PlanDiff,
+    meshes: list[bpy.types.Mesh],
+    materials: list[bpy.types.Material],
+) -> tuple[list[bpy.types.Mesh], list[bpy.types.Material]]:
+    """The new plan's meshes and materials: the published ones the diff matches, and new ones for the rest."""
+    mesh_records, material_records = plan.meshes, plan.materials
+    if (len(diff["objects"]), len(diff["meshes"]), len(diff["materials"])) != (
+        len(records),
+        len(mesh_records),
+        len(material_records),
+    ):
+        raise ValueError("The diff isn't the plan's")
+    return (
+        [meshes[old] if old != -1 else new_mesh(mesh_records[index]) for index, old in enumerate(diff["meshes"])],
+        [
+            materials[old] if old != -1 else new_material(material_records[index])
+            for index, old in enumerate(diff["materials"])
+        ],
+    )
+
+
 def publish(prepared: Prepared, display: Display, collection: bpy.types.Collection) -> Display:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
     new = prepared.display
@@ -199,13 +210,13 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
                     slot.material = material
             obj[ELEMENT] = index
         for obj in prepared.created.values():
-            for created in _with_parent(obj):
+            for created in with_parent(obj):
                 collection.objects.link(created)
                 staging = prepared.staging
                 assert staging is not None
                 staging.objects.unlink(created)
         for obj in prepared.leaving:
-            for old in _with_parent(obj):
+            for old in with_parent(obj):
                 collection.objects.unlink(old)
     except BaseException:
         _restore(prepared, collection, saved)
@@ -216,12 +227,17 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
 
 def retire(prepared: Prepared) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
-    objects = [i for i in prepared.retired if isinstance(i, bpy.types.Object)]
-    staging = [] if prepared.staging is None else [prepared.staging]
+    return retire_ids(prepared.retired, prepared.staging)
+
+
+def retire_ids(retired: list[bpy.types.ID], staging_collection: bpy.types.Collection | None) -> list[bpy.types.ID]:
+    """Remove the objects in `retired` and the staging collection, then the data in `retired` nothing uses."""
+    objects = [i for i in retired if isinstance(i, bpy.types.Object)]
+    staging = [] if staging_collection is None else [staging_collection]
     if objects or staging:
         bpy.data.batch_remove([*objects, *staging])
     # Only once the old objects are gone does a mesh or material count no users from the display.
-    data = [i for i in prepared.retired if not isinstance(i, bpy.types.Object)]
+    data = [i for i in retired if not isinstance(i, bpy.types.Object)]
     kept = [i for i in data if i.users > 0]
     unused = [i for i in data if i.users == 0]
     if unused:
@@ -229,7 +245,7 @@ def retire(prepared: Prepared) -> list[bpy.types.ID]:
     return kept
 
 
-def _with_parent(obj: bpy.types.Object) -> list[bpy.types.Object]:
+def with_parent(obj: bpy.types.Object) -> list[bpy.types.Object]:
     """The object, then the shear parent empty that carries its transform, if any."""
     parent = obj.parent
     return [obj] if parent is None or SHEAR_PARENT not in parent else [obj, parent]
@@ -243,14 +259,14 @@ def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[S
             slot.material = material
         obj[ELEMENT] = element
     for obj in prepared.created.values():
-        for created in _with_parent(obj):
+        for created in with_parent(obj):
             if created.name in collection.objects:
                 collection.objects.unlink(created)
             staging = prepared.staging
             if staging is not None and created.name not in staging.objects:
                 staging.objects.link(created)
     for obj in prepared.leaving:
-        for old in _with_parent(obj):
+        for old in with_parent(obj):
             if old.name not in collection.objects:
                 collection.objects.link(old)
 
@@ -260,7 +276,7 @@ def _retired(prepared: Prepared, display: Display) -> list[bpy.types.ID]:
     retired: list[bpy.types.ID] = []
     planned = {mesh.as_pointer() for mesh in display.meshes}
     for old in prepared.leaving:
-        retired.extend(_with_parent(old))
+        retired.extend(with_parent(old))
         if old.data is not None and old.data.as_pointer() not in planned:  # a placeholder's own bounds
             retired.append(old.data)
     new = prepared.display

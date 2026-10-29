@@ -3,6 +3,11 @@
 The bridge's detach.py releases an applied display after Blender-side edits. It must remove the binding's own
 ID properties, which all start with "proscenium_", and keep everything else as it was, edits included. The
 saved result must reopen the same in a process without the bridge.
+
+The batched display (Phase D, D4) also ties each instance to the binding through the `proscenium_element`
+attribute on its batch's points mesh, which names the instance's element, and which detach removes. Its
+carriers, modifiers, node group, and prototypes stay, and so do the points' other attributes, which the node
+group reads: Blender evaluates as many instances before detach as after it and after reopening.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ if TYPE_CHECKING:
 
 BODY = Path(__file__).parent / "bodies/baseline.py"
 BINDING = "proscenium_"  # the prefix of every ID property the baseline adds for itself
+ELEMENT = "proscenium_element"  # the point attribute that names a batched instance's element
 
 
 @pytest.fixture(params=["appearance", "stress", "universe"])
@@ -35,13 +41,14 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[tuple[str
         yield request.param, built.root
 
 
+@pytest.mark.parametrize("representation", ["objects", "batched"])
 def test_detach_removes_only_binding_metadata(
-    scene: tuple[str, Path], wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+    scene: tuple[str, Path], representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
 ) -> None:
     name, root = scene
     blend = tmp_path / "detached.blend"
     kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(root), "blend": str(blend)}
-    result = run_isolated(wheel, BODY, "detach_scene", tmp_path, **kwargs)
+    result = run_isolated(wheel, BODY, "detach_scene", tmp_path, representation=representation, **kwargs)
     before, after = result["before"], result["after"]
     # The edits made before detach, which it keeps.
     assert result["deleted"] not in before["objects"]
@@ -60,6 +67,12 @@ def test_detach_removes_only_binding_metadata(
     kinds = ("objects", "meshes", "materials")
     assert released["properties"] == sum(len(_binding_keys(d)) for kind in kinds for d in before[kind].values())
     assert released["objects"] > 0
+    points = {n for n, mesh in before["meshes"].items() if ELEMENT in mesh["attributes"]}
+    assert released["attributes"] == len(points)
+    assert released["carriers"] == sum(1 for o in before["objects"].values() if o["data"] in points)
+    if representation == "batched" and name != "universe":  # its copies are all objects
+        assert released["carriers"] > 0
+        assert before["instances"]
 
     reopened = run_isolated(wheel, BODY, "read_blend", tmp_path, blend=str(blend))
     assert reopened == after
@@ -75,4 +88,6 @@ def _without_binding(data: dict[str, Any]) -> dict[str, Any]:
         for name, entry in data[kind].items():
             properties = {k: v for k, v in entry["properties"].items() if not k.startswith(BINDING)}
             stripped[kind][name] = {**entry, "properties": properties}
+            if kind == "meshes":
+                stripped[kind][name]["attributes"] = [a for a in entry["attributes"] if a != ELEMENT]
     return stripped

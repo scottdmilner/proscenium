@@ -56,6 +56,7 @@ class Batch:
     carriers: list[bpy.types.Object]  # by state, on one points mesh
     prototype: bpy.types.Object
     elements: list[int]
+    key: tuple[Any, ...]  # the group's batch_key in the plan it was applied from
 
     @property
     def points(self) -> bpy.types.Mesh:
@@ -80,6 +81,8 @@ class BatchedDisplay:
     batches: list[Batch]
     meshes: list[bpy.types.Mesh]
     materials: list[bpy.types.Material]
+    nodes: NodeGroup
+    serial: int  # the number the next batch or points mesh takes, so its names sort last (C3)
 
 
 def attribute_type(value: PropertyValue) -> str | None:
@@ -110,12 +113,9 @@ def batch_key(record: ObjectRecord) -> tuple[Any, ...] | None:
     )
 
 
-def apply_batched(plan: Plan, collection: bpy.types.Collection) -> BatchedDisplay:
-    """Create the plan's materials and meshes, a carrier per group of two or more, and objects for the rest."""
-    records = plan.objects
-    materials = [new_material(data) for data in plan.materials]
-    meshes = [new_mesh(data) for data in plan.meshes]
-    groups: dict[tuple[Any, ...], list[int]] = {}
+def groups(records: list[ObjectRecord]) -> tuple[dict[tuple[Any, ...], list[int]], list[int]]:
+    """The plan objects in batches, by their batch_key, and the rest, which stay objects, in plan order."""
+    grouped: dict[tuple[Any, ...], list[int]] = {}
     single: list[int] = []
     coincident: dict[tuple[Any, ...], int] = {}
     for index, record in enumerate(records):
@@ -127,15 +127,36 @@ def apply_batched(plan: Plan, collection: bpy.types.Collection) -> BatchedDispla
         # transforms are equal go to separate batches, each with its own prototype.
         stored = (key, numpy.array(record["matrix"], dtype=numpy.float32).tobytes())
         repeat = coincident[stored] = coincident.get(stored, -1) + 1
-        groups.setdefault((*key, repeat), []).append(index)
-    single.extend(members[0] for members in groups.values() if len(members) == 1)
-    tree = _node_group()
-    shared = [members for members in groups.values() if len(members) > 1]
+        grouped.setdefault((*key, repeat), []).append(index)
+    single.extend(members[0] for members in grouped.values() if len(members) == 1)
+    return {key: members for key, members in grouped.items() if len(members) > 1}, sorted(single)
+
+
+def apply_batched(plan: Plan, collection: bpy.types.Collection) -> BatchedDisplay:
+    """Create the plan's materials and meshes, the batches of its groups of two or more, and objects for the rest."""
+    records = plan.objects
+    materials = [new_material(data) for data in plan.materials]
+    meshes = [new_mesh(data) for data in plan.meshes]
+    shared, single = groups(records)
+    nodes = _node_group()
     batches = [
-        _batch(number, members, records, meshes, materials, collection, tree) for number, members in enumerate(shared)
+        new_batch(number, key, members, records, meshes, materials, collection, nodes)
+        for number, (key, members) in enumerate(shared.items())
     ]
-    objects = {index: new_object(index, records[index], meshes, materials, collection) for index in sorted(single)}
-    return BatchedDisplay(objects, batches, meshes, materials)
+    objects = {index: new_object(index, records[index], meshes, materials, collection) for index in single}
+    return BatchedDisplay(objects, batches, meshes, materials, nodes, len(batches))
+
+
+def prototype_of(carrier: bpy.types.Object) -> bpy.types.Object | None:
+    """The object a carrier's modifier instances, or None if it has none."""
+    for modifier in carrier.modifiers:
+        tree: Any = getattr(modifier, "node_group", None)
+        if modifier.type != "NODES" or tree is None:
+            continue
+        for item in tree.interface.items_tree:
+            if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == PROTOTYPE_INPUT:
+                return getattr(modifier.properties.inputs, item.identifier).value  # ty: ignore[unresolved-attribute]
+    return None
 
 
 def _color(record: ObjectRecord) -> tuple[float, ...]:
@@ -146,36 +167,24 @@ def _color(record: ObjectRecord) -> tuple[float, ...]:
     return (*rgb, opacity[0] if opacity is not None and len(opacity) == 1 else 1.0)
 
 
-def _batch(  # noqa: PLR0913 - a carrier's whole context
+def new_batch(  # noqa: PLR0913 - a batch's whole context
     number: int,
+    key: tuple[Any, ...],
     members: list[int],
     records: list[ObjectRecord],
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
     collection: bpy.types.Collection,
-    tree: NodeGroup,
+    nodes: NodeGroup,
 ) -> Batch:
+    """Batch `number` of plan objects `members`, which share `key`: its prototype, points, and carriers."""
     first = records[members[0]]
     mesh = first["mesh"]
     assert mesh is not None  # batch_key left out placeholders
     # Numbered in creation order, so each new name sorts last (C3).
     prototype = bpy.data.objects.new(f"Prototype {number:06d}", meshes[mesh])
-    for slot, material in zip(prototype.material_slots, first["material_slots"], strict=True):
-        slot.link = "OBJECT"
-        slot.material = None if material is None else materials[material]
-    prototype.color = _color(first)
-
-    points = bpy.data.meshes.new(f"Carrier {number:06d}")
-    points.vertices.add(len(members))
-    # USD's row-vector matrix, flattened row by row, is Blender's column-major 4x4 attribute layout.
-    _point_attribute(points, TRANSFORM, "FLOAT4X4", [records[i]["matrix"] for i in members])
-    _point_attribute(points, ELEMENT, "INT", members)
-    _point_attribute(points, STATE, "INT", [0] * len(members))
-    for name, value in first["properties"].items():
-        data_type = attribute_type(value)
-        assert data_type is not None  # batch_key left out copies with any other primvar
-        _point_attribute(points, name, data_type, [records[i]["properties"][name] for i in members])
-
+    set_prototype(prototype, first, meshes, materials)
+    points = new_points(number, members, records, [0] * len(members))
     carriers = []
     # Created in name order, so each sorts after the last: the unselected carrier, then "active", then "selected".
     for state, suffix in ((0, ""), (2, " active"), (1, " selected")):
@@ -184,12 +193,50 @@ def _batch(  # noqa: PLR0913 - a carrier's whole context
         carrier.hide_viewport = not first["viewport"]
         carrier.hide_render = not first["render"]
         modifier: Any = carrier.modifiers.new("Batch", "NODES")
-        modifier.node_group = tree.tree
+        modifier.node_group = nodes.tree
         # Blender 5's modifier inputs are structs by socket identifier, each holding its value, not ID properties.
-        getattr(modifier.properties.inputs, tree.prototype_input).value = prototype
-        getattr(modifier.properties.inputs, tree.state_input).value = state
+        getattr(modifier.properties.inputs, nodes.prototype_input).value = prototype
+        getattr(modifier.properties.inputs, nodes.state_input).value = state
         carriers.append((state, carrier))
-    return Batch([carrier for _, carrier in sorted(carriers, key=lambda pair: pair[0])], prototype, members)
+    return Batch([carrier for _, carrier in sorted(carriers, key=lambda pair: pair[0])], prototype, members, key)
+
+
+def set_prototype(
+    prototype: bpy.types.Object,
+    record: ObjectRecord,
+    meshes: list[bpy.types.Mesh],
+    materials: list[bpy.types.Material],
+) -> None:
+    """Put a group's mesh, object-linked materials, and object color on its prototype, changing only what differs."""
+    mesh = record["mesh"]
+    assert mesh is not None  # batch_key left out placeholders
+    if prototype.data != meshes[mesh]:
+        # The same slot count, and the slots link to the object, so each keeps its place.
+        prototype.data = meshes[mesh]
+    for slot, material in zip(prototype.material_slots, record["material_slots"], strict=True):
+        if slot.link != "OBJECT":
+            slot.link = "OBJECT"
+        wanted = None if material is None else materials[material]
+        if slot.material != wanted:
+            slot.material = wanted
+    color = _color(record)
+    if list(prototype.color) != numpy.array(color, dtype=numpy.float32).tolist():  # as Blender stores it
+        prototype.color = color
+
+
+def new_points(number: int, members: list[int], records: list[ObjectRecord], held: list[int]) -> bpy.types.Mesh:
+    """A batch's points mesh: one point per member, with its transform, element, state `held`, and primvars."""
+    points = bpy.data.meshes.new(f"Carrier {number:06d}")
+    points.vertices.add(len(members))
+    # USD's row-vector matrix, flattened row by row, is Blender's column-major 4x4 attribute layout.
+    _point_attribute(points, TRANSFORM, "FLOAT4X4", [records[i]["matrix"] for i in members])
+    _point_attribute(points, ELEMENT, "INT", members)
+    _point_attribute(points, STATE, "INT", held)
+    for name, value in records[members[0]]["properties"].items():
+        data_type = attribute_type(value)
+        assert data_type is not None  # batch_key left out copies with any other primvar
+        _point_attribute(points, name, data_type, [records[i]["properties"][name] for i in members])
+    return points
 
 
 def _point_attribute(points: bpy.types.Mesh, name: str, data_type: str, values: list[Any]) -> None:

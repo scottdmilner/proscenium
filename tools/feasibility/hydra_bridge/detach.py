@@ -15,14 +15,22 @@ Everything else is ordinary Blender data and stays:
 - materials, in object-linked slots;
 - collection links and the selection.
 So detaching changes no appearance, and there is nothing to report under DET-04.
+
+A batched display (batch.py, M4 Phase D) ties its instances to the binding only through the
+`proscenium_element` attribute on each batch's points mesh, which names each instance's element, and which
+detach removes. Everything else in a batch is ordinary Blender data that works without the binding, so it
+stays: the carriers, their Geometry Nodes modifiers and node group, the prototypes they instance, and the
+points' transforms, selection states, and primvars, which the node group and Attribute nodes read.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from apply import MATERIAL_PROPERTIES, OBJECT_PROPERTIES
+from batch import prototype_of
+from selection import ELEMENT
 
 if TYPE_CHECKING:
     import bpy
@@ -35,14 +43,19 @@ class Detached:
     objects: int
     materials: int
     properties: int  # ID properties removed
+    carriers: int
+    attributes: int  # point attributes removed
 
 
 def detach(collection: bpy.types.Collection) -> Detached:
     """Release the display in `collection` as ordinary Blender data."""
     objects = [obj for obj in collection.all_objects if any(key in obj for key in OBJECT_PROPERTIES)]
+    # A carrier is an object whose mesh's points name their elements.
+    carriers = [obj for obj in collection.all_objects if obj.type == "MESH" and ELEMENT in _mesh(obj).attributes]
+    prototypes = [p for p in map(prototype_of, carriers) if p is not None]
     materials = {
         slot.material.as_pointer(): slot.material
-        for obj in objects
+        for obj in [*objects, *prototypes]
         for slot in obj.material_slots
         if slot.material is not None and any(key in slot.material for key in MATERIAL_PROPERTIES)
     }
@@ -53,4 +66,12 @@ def detach(collection: bpy.types.Collection) -> Detached:
                 if key in released:
                     del released[key]
                     removed += 1
-    return Detached(len(objects), len(materials), removed)
+    points = {_mesh(carrier).as_pointer(): _mesh(carrier) for carrier in carriers}
+    for mesh in points.values():
+        mesh.attributes.remove(mesh.attributes[ELEMENT])
+    return Detached(len(objects), len(materials), removed, len(carriers), len(points))
+
+
+def _mesh(obj: bpy.types.Object) -> Any:
+    """A mesh object's mesh; Object.data is typed as every kind of object data."""
+    return obj.data
