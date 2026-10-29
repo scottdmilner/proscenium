@@ -469,8 +469,9 @@ bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const
 
 PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
-                  const bp::object &renderMaterialPurpose) {
+                  const bp::object &renderMaterialPurpose, bool pointInstancers) {
     PlanSettings settings;
+    settings.pointInstancers = pointInstancers;
     SetPurposes(viewportPurposes, settings.viewport.purposes);
     SetMaterialPurpose(viewportMaterialPurpose, settings.viewport.materialPurpose);
     SetPurposes(renderPurposes, settings.render.purposes);
@@ -543,7 +544,7 @@ void WrapViews() {
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
-             bp::arg("render_material_purpose") = bp::object()));
+             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = false));
     bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
     bp::def("rebuild_correspondence", RebuildCorrespondence, bp::arg("plan"));
 }

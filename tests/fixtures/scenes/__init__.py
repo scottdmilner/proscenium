@@ -21,7 +21,7 @@ class Scene(Enum):
     SOURCE_ACCESS = "source_access"  # layers for every generator in fixtures/source_access.py
     PRODUCTION_LIKE = "production_like"  # assets/ for the generated CI fixture
     INTERACTION = "interaction"  # one layer each for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
-    APPEARANCE = "appearance"  # F-APPEARANCE-CASES (with its texture) and F-NESTED-STRESS
+    APPEARANCE = "appearance"  # F-APPEARANCE-CASES (with its texture), F-NESTED-STRESS, and point instancers
 
     @property
     def path(self) -> Path:

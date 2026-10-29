@@ -1,0 +1,136 @@
+#usda 1.0
+# Purpose: M4 Phase D, point instancers planned for measurement (the spec defers point instancers). Scatter
+# is a point instancer under a translated Field, with its own translation and rotation, and six points:
+# - Leaf (an Xform with its own translation, holding the mesh Blade) at points 0, 2, and 4; Rock (a mesh
+#   prototype root) at points 1 and 5; Pebble (a native instance of Stone) at point 3.
+# - Per-point positions, orientations, and scales. Point 1's orientation, (0.5, 0.5, 0.5, 0.5), is exact in half
+#   precision: 120 degrees about (1, 1, 1), which with its nonuniform scale fixes the order they compose in.
+# - Point 4 is invisible (invisibleIds).
+# - heat is a per-point primvar (varying), and groupId a constant one on the instancer.
+# - Blade binds Green inside its prototype; Scatter binds Red, which Rock and Stone's Geom inherit.
+# - Unused is under Scatter's prototypes but not a prototype, so USD draws nothing of it.
+(
+    defaultPrim = "World"
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Scope "Looks"
+    {
+        def Material "Green"
+        {
+            token outputs:surface.connect = </World/Looks/Green/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0, 1, 0)
+                token outputs:surface
+            }
+        }
+
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0, 0)
+                token outputs:surface
+            }
+        }
+    }
+
+    def Xform "Field"
+    {
+        double3 xformOp:translate = (0, 5, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def PointInstancer "Scatter" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            rel material:binding = </World/Looks/Red>
+            double3 xformOp:translate = (10, 0, 0)
+            float xformOp:rotateZ = 90
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+            rel prototypes = [</World/Field/Scatter/Protos/Leaf>, </World/Field/Scatter/Protos/Rock>, </World/Field/Scatter/Protos/Pebble>]
+            int[] protoIndices = [0, 1, 0, 2, 0, 1]
+            point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0), (4, 0, 0), (5, 0, 0)]
+            quath[] orientations = [(1, 0, 0, 0), (0.5, 0.5, 0.5, 0.5), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)]
+            float3[] scales = [(1, 1, 1), (2, 1, 1), (1, 2, 1), (1, 1, 1), (1, 1, 1), (1, 1, 1)]
+            int64[] invisibleIds = [4]
+            float[] primvars:heat = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5] (
+                interpolation = "varying"
+            )
+            int primvars:groupId = 7 (
+                interpolation = "constant"
+            )
+
+            def Scope "Protos"
+            {
+                def Xform "Leaf"
+                {
+                    double3 xformOp:translate = (0, 0, 5)
+                    uniform token[] xformOpOrder = ["xformOp:translate"]
+
+                    def Mesh "Blade" (
+                        prepend apiSchemas = ["MaterialBindingAPI"]
+                    )
+                    {
+                        rel material:binding = </World/Looks/Green>
+                        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                        int[] faceVertexCounts = [3]
+                        int[] faceVertexIndices = [0, 1, 2]
+                        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                        uniform token subdivisionScheme = "none"
+                    }
+                }
+
+                def Mesh "Rock"
+                {
+                    float3[] extent = [(0, 0, 0), (1, 0, 1)]
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                    point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 0, 1)]
+                    uniform token subdivisionScheme = "none"
+                }
+
+                def Xform "Pebble" (
+                    instanceable = true
+                    references = </Prototypes/Stone>
+                )
+                {
+                    double3 xformOp:translate = (0, 0, 1)
+                    uniform token[] xformOpOrder = ["xformOp:translate"]
+                }
+
+                def Mesh "Unused"
+                {
+                    float3[] extent = [(0, 0, 0), (1, 1, 1)]
+                    int[] faceVertexCounts = [3]
+                    int[] faceVertexIndices = [0, 1, 2]
+                    point3f[] points = [(0, 0, 0), (1, 1, 0), (0, 1, 1)]
+                    uniform token subdivisionScheme = "none"
+                }
+            }
+        }
+    }
+}
+
+class "Prototypes"
+{
+    class Xform "Stone"
+    {
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (0, 1, 0), (1, 1, 0)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+}

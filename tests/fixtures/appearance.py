@@ -5,6 +5,8 @@
   spec/support/materials.md#representation-feasibility-cases, one child of /World per case.
 - nested_stress (F-NESTED-STRESS): shear, negative determinants, nonuniform scale, and a reset
   transform stack inside nested instances with differing appearance and separate purposes.
+- point_instancers: a point instancer, for M4 Phase D's measurement of point instancers, which the spec
+  defers. Not a contract fixture, so not in the registry.
 
 Each copies its layer from Scene.APPEARANCE, opens it as the caller's live stage, and yields
 what the scene is built to display, written out by hand from the layer. Meshes inside instance
@@ -181,6 +183,61 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             },
         },
         texture_uvs={f"{uvs}/Typed": "perfuv"},
+    )
+
+
+@dataclass
+class PointInstancerScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage
+    instancer: str
+    # (drawn mesh, point) -> world transform (USD row-vector convention), for every point's prototype meshes.
+    world: dict[tuple[str, int], Gf.Matrix4d]
+    invisible: frozenset[int]  # points USD doesn't draw
+    primvars: dict[int, dict[str, float | int]]  # point -> the per-point and constant primvars of its copies
+    materials: dict[str, str]  # drawn mesh -> its bound material, for every purpose
+    unused: str  # a mesh under the instancer's prototypes that no point draws
+
+
+@contextmanager
+def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
+    """Point instancers (M4 Phase D): see scenes/appearance/point_instancers.usda."""
+    instancer = "/World/Field/Scatter"
+    protos = f"{instancer}/Protos"
+    # Row vectors: Scatter's rotation, then its translation, then Field's.
+    scatter = _rotate_z(90) * _translate(10, 0, 0) * _translate(0, 5, 0)
+    # Each point's scale, then orientation, then position, as UsdGeomPointInstancer composes them.
+    points = {
+        0: _translate(0, 0, 0),
+        1: _scale(2, 1, 1) * Gf.Matrix4d().SetRotate(Gf.Rotation(Gf.Vec3d(1, 1, 1), 120)) * _translate(1, 0, 0),
+        2: _scale(1, 2, 1) * _translate(2, 0, 0),
+        3: _translate(3, 0, 0),
+        4: _translate(4, 0, 0),
+        5: _translate(5, 0, 0),
+    }
+    # Each prototype's meshes, with their transforms in the prototype, its root's own included.
+    prototypes = {
+        "Leaf": {f"{protos}/Leaf/Blade": _translate(0, 0, 5)},
+        "Rock": {f"{protos}/Rock": Gf.Matrix4d(1.0)},
+        "Pebble": {f"{protos}/Pebble/Geom": _translate(0, 0, 1)},
+    }
+    drawn = {0: "Leaf", 1: "Rock", 2: "Leaf", 3: "Pebble", 4: "Leaf", 5: "Rock"}
+    world = {
+        (mesh, point): local * points[point] * scatter
+        for point, prototype in drawn.items()
+        for mesh, local in prototypes[prototype].items()
+    }
+    green, red = f"{LOOKS}/Green", f"{LOOKS}/Red"
+    root, stage = _open(dest, "point_instancers.usda")
+    yield PointInstancerScene(
+        root=root,
+        stage=stage,
+        instancer=instancer,
+        world=world,
+        invisible=frozenset({4}),
+        primvars={point: {"heat": point + 0.5, "groupId": 7} for point in drawn},
+        materials={f"{protos}/Leaf/Blade": green, f"{protos}/Rock": red, f"{protos}/Pebble/Geom": red},
+        unused=f"{protos}/Unused",
     )
 
 

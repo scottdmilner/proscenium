@@ -187,7 +187,9 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     snapshot = bridge.capture(config["time"])
     done("capture")
     stage("planning")
-    plan = native.build_plan(snapshot)
+    # Point instancers' instances as objects, for the scenes that keep them (M4 Phase D).
+    point_instancers = config.get("point_instancers", False)
+    plan = native.build_plan(snapshot, point_instancers=point_instancers)
     done("planning")
     stage("transfer")
     view = SimpleNamespace(materials=plan.materials, meshes=plan.meshes, objects=plan.objects)
@@ -260,7 +262,13 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         )
     elif scenario is not None:
         session = SimpleNamespace(
-            stage=usd_stage, bridge=bridge, plan=plan, display=display, collection=collection, batched=batched
+            stage=usd_stage,
+            bridge=bridge,
+            plan=plan,
+            display=display,
+            collection=collection,
+            batched=batched,
+            point_instancers=point_instancers,
         )
         facts["update"] = run_update(scenario, config["time"], session, stage, done)
         markers.settle("updated")
@@ -294,7 +302,7 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     snapshot = session.bridge.capture(capture_time, incremental=True)
     done("update:capture")
     stage("update:planning")
-    plan = native.build_plan(snapshot)
+    plan = native.build_plan(snapshot, point_instancers=session.point_instancers)
     done("update:planning")
     stage("update:diff")
     diff = native.diff_plans(session.plan, plan)

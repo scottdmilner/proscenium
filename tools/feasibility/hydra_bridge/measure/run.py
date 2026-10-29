@@ -67,19 +67,21 @@ def scenes(groups: list[str], out: Path) -> dict[str, dict[str, Any]]:
                     "group": group,
                     "parameters": parameters,
                 }
-        elif group == "alab":
+        elif group in ("alab", "alab-instancers"):
             alab = os.environ.get("PROSCENIUM_ALAB_ROOT")
             if not alab:
-                raise SystemExit("--scenes alab needs PROSCENIUM_ALAB_ROOT (environment or .env)")
-            entry = out / "scenes" / "alab_entry_measure.usda"
+                raise SystemExit(f"--scenes {group} needs PROSCENIUM_ALAB_ROOT (environment or .env)")
+            stem = "alab_entry_measure" if group == "alab" else "alab_instancers_entry_measure"
+            entry = out / "scenes" / f"{stem}.usda"
             entry.unlink(missing_ok=True)
-            written = alab_entry.write(Path(alab) / "entry.usda", entry)
-            (out / "scenes" / "alab_entry_measure.json").write_text(json.dumps(written, indent=2) + "\n")
-            found["alab"] = {
+            written = alab_entry.write(Path(alab) / "entry.usda", entry, point_instancers=group != "alab")
+            (out / "scenes" / f"{stem}.json").write_text(json.dumps(written, indent=2) + "\n")
+            found[group] = {
                 "path": str(entry),
                 "time": ALAB_TIME,
                 "group": group,
                 "parameters": {k: v for k, v in written.items() if k != "deactivated paths"},
+                "point_instancers": group != "alab",
             }
         else:
             raise SystemExit(f"unknown scene group {group}")
@@ -125,6 +127,7 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
         "work": str(work),
         "representation": args.representation,
         "batch_minimum": args.batch_minimum,
+        "point_instancers": scene.get("point_instancers", False),
     }
     if mode.startswith("update:"):
         config["scenario"] = mode.removeprefix("update:")
@@ -196,7 +199,8 @@ def main() -> int:
         "--scenes",
         nargs="+",
         default=["stress", "alab"],
-        help="groups: bespoke, stress, alab, updates (M4 Phase C), smoke (one small scene, for CI)",
+        help="groups: bespoke, stress, alab, alab-instancers (its point instancers active, M4 Phase D), updates "
+        "(M4 Phase C), smoke (one small scene, for CI)",
     )
     parser.add_argument("--only", nargs="+", help="scene names within the groups")
     parser.add_argument("--repeats", type=int, default=3)

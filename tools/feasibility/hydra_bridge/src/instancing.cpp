@@ -1,9 +1,18 @@
 #include "instancing.h"
 
 #include <pxr/base/gf/half.h>
+#include <pxr/base/gf/matrix2d.h>
+#include <pxr/base/gf/matrix2f.h>
+#include <pxr/base/gf/matrix3d.h>
+#include <pxr/base/gf/matrix3f.h>
 #include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/quatd.h>
+#include <pxr/base/gf/quatf.h>
+#include <pxr/base/gf/quath.h>
+#include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec2d.h>
 #include <pxr/base/gf/vec2f.h>
+#include <pxr/base/gf/vec2h.h>
 #include <pxr/base/gf/vec2i.h>
 #include <pxr/base/gf/vec3d.h>
 #include <pxr/base/gf/vec3f.h>
@@ -11,13 +20,17 @@
 #include <pxr/base/gf/vec3i.h>
 #include <pxr/base/gf/vec4d.h>
 #include <pxr/base/gf/vec4f.h>
+#include <pxr/base/gf/vec4h.h>
 #include <pxr/base/gf/vec4i.h>
+#include <pxr/base/tf/stringUtils.h>
 #include <pxr/imaging/hd/primvarSchema.h>
 #include <pxr/imaging/hd/tokens.h>
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <optional>
+#include <string>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -42,6 +55,68 @@ std::optional<VtMatrix4dArray> InstanceTransforms(const PrimRecord &instancer) {
     return std::nullopt;
 }
 
+// `values` converted to an array of `T` if it holds an array of `Source`.
+template <class T, class Source>
+bool Converted(const VtValue &values, VtArray<T> &converted) {
+    if (!values.IsHolding<VtArray<Source>>()) return false;
+    const auto &held = values.UncheckedGet<VtArray<Source>>();
+    converted.reserve(held.size());
+    for (const Source &value : held) converted.push_back(T(value));
+    return true;
+}
+
+// A point instancer's per-point array of `T`, or of one of the types `From` converted to it; empty when it has
+// none.
+template <class T, class... From>
+VtArray<T> PointValues(const PrimRecord &instancer, const TfToken &name) {
+    const PrimvarRecord *primvar = instancer.FindPrimvar(name);
+    if (!primvar || primvar->indices) return {};
+    VtArray<T> converted;
+    Converted<T, T>(primvar->values, converted) || (Converted<T, From>(primvar->values, converted) || ...);
+    return converted;
+}
+
+// Each point's transform in the instancer's space, as UsdGeomPointInstancer::ComputeInstanceTransformsAtTime
+// composes it without the prototype root's transform, which the prototype's flattened matrices already hold:
+// scale, then rotation, then translation, after any instance transform. Row vectors, as Gf's.
+std::vector<GfMatrix4d> PointTransforms(const PrimRecord &instancer, size_t points) {
+    const auto translations =
+        PointValues<GfVec3d, GfVec3f, GfVec3h>(instancer, HdInstancerTokens->instanceTranslations);
+    const auto rotations = PointValues<GfQuatd, GfQuatf, GfQuath>(instancer, HdInstancerTokens->instanceRotations);
+    const auto scales = PointValues<GfVec3d, GfVec3f, GfVec3h>(instancer, HdInstancerTokens->instanceScales);
+    const std::optional<VtMatrix4dArray> instanceTransforms = InstanceTransforms(instancer);
+    std::vector<GfMatrix4d> transforms(points, GfMatrix4d(1.0));
+    for (size_t i = 0; i < points; ++i) {
+        GfMatrix4d &transform = transforms[i];
+        if (instanceTransforms && i < instanceTransforms->size()) transform = (*instanceTransforms)[i];
+        if (i < scales.size()) transform *= GfMatrix4d(1.0).SetScale(scales[i]);
+        if (i < rotations.size()) transform *= GfMatrix4d(1.0).SetRotate(GfRotation(rotations[i]));
+        if (i < translations.size()) transform *= GfMatrix4d(1.0).SetTranslate(translations[i]);
+    }
+    return transforms;
+}
+
+template <class... Types>
+struct TypeList {};
+
+// Types a point's primvar value can take, as properties.cpp converts constant primvars.
+using PointTypes =
+    TypeList<bool, int, unsigned char, unsigned int, int64_t, uint64_t, GfHalf, float, double, std::string, TfToken,
+             GfVec2i, GfVec3i, GfVec4i, GfVec2h, GfVec3h, GfVec4h, GfVec2f, GfVec3f, GfVec4f, GfVec2d, GfVec3d, GfVec4d,
+             GfMatrix2f, GfMatrix3f, GfMatrix4f, GfMatrix2d, GfMatrix3d, GfMatrix4d>;
+
+bool PointValue(const VtValue &, size_t, VtValue &, TypeList<>) { return false; }
+
+// One point's value of a flattened per-point primvar, as a one-element array: a constant primvar's form.
+template <class T, class... Rest>
+bool PointValue(const VtValue &values, size_t point, VtValue &value, TypeList<T, Rest...>) {
+    if (!values.IsHolding<VtArray<T>>()) return PointValue(values, point, value, TypeList<Rest...>{});
+    const auto &elements = values.UncheckedGet<VtArray<T>>();
+    if (point >= elements.size()) return false;
+    value = VtValue(VtArray<T>(1, elements[point]));
+    return true;
+}
+
 // The purposes with their own visibility. Built on first use, after Hydra's static tokens.
 const std::array<TfToken, 3> &Purposes() {
     static const std::array<TfToken, 3> purposes{HdRenderTagTokens->guide, HdRenderTagTokens->proxy,
@@ -63,6 +138,23 @@ const TfToken *Inherited(const PurposeVisibility &opinions, const TfToken &purpo
     for (const auto &[authored, visibility] : opinions)
         if (authored == purpose) return &visibility;
     return nullptr;
+}
+
+// What a frame inherits from its outer frame, once its own values are set: for each purpose, the nearest
+// visibility opinion at or above `root` (its instance root or point instancer) inside the outer prototype, else
+// the outer frame's; and each of the outer frame's instance primvars the frame doesn't set, since an inner
+// instance root is nearer the prim than an outer one.
+void Inherit(const PrimTable &table, const SdfPath &root, const Frame &outer, Frame &frame) {
+    for (const TfToken &purpose : Purposes()) {
+        const TfToken *opinion = NearestOpinion(table, root, outer.hydraRoot, purpose);
+        if (!opinion) opinion = Inherited(outer.purposeVisibility, purpose);
+        if (opinion) frame.purposeVisibility.emplace_back(purpose, *opinion);
+    }
+    for (const auto &inherited : outer.instancePrimvars) {
+        auto same = [&](const auto &entry) { return entry.first == inherited.first; };
+        if (std::none_of(frame.instancePrimvars.begin(), frame.instancePrimvars.end(), same))
+            frame.instancePrimvars.push_back(inherited);
+    }
 }
 
 using Bindings = std::vector<std::pair<TfToken, SdfPath>>;
@@ -121,15 +213,18 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
     return purpose == HdRenderTagTokens->guide ? *opinion == kVisible : *opinion != kInvisible;
 }
 
+TfToken PointName(size_t point) { return TfToken("__point_" + std::to_string(point)); }
+
 bool ResetsBelow(const PrimTable &table, SdfPath path, const SdfPath &prototypeRoot) {
     for (; !path.IsEmpty() && path != prototypeRoot && !path.IsAbsoluteRootPath(); path = path.GetParentPath())
         if (const PrimRecord *prim = table.Find(path); prim && prim->resetsXformStack) return true;
     return false;
 }
 
-InstanceResolver::InstanceResolver(const PrimTable &table, Diagnostics &diagnostics)
+InstanceResolver::InstanceResolver(const PrimTable &table, Diagnostics &diagnostics, bool pointInstancers)
     : table_(table),
-      diagnostics_(diagnostics) {}
+      diagnostics_(diagnostics),
+      pointInstancers_(pointInstancers) {}
 
 const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim) { return FramesOf(prim, 0); }
 
@@ -173,9 +268,10 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
         Report(instancer, "invalid-instancer", "Prototype root " + prototypeRoot.GetString() + " has no instances");
         return {};
     }
-    // Point instancers have no instance locations: their identity is (instancer, point index). They aren't
-    // translated: the planner gives the point instancer itself a placeholder and diagnostic.
-    if (topology.instanceLocations.empty()) return {};
+    // Point instancers have no instance locations: their identity is (instancer, point index). Without
+    // pointInstancers_, the planner gives the point instancer itself a placeholder and diagnostic.
+    if (topology.instanceLocations.empty())
+        return pointInstancers_ ? ExpandPoints(instancer, topology, p, depth) : none_;
     std::optional<VtMatrix4dArray> transforms = InstanceTransforms(instancer);
     if (!transforms) {
         Report(instancer, "invalid-instancer", "Native instancer has no instance transforms");
@@ -229,25 +325,87 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                 }
             }
             // The mask already folds in the instance root's flattened visibility, its ancestors included.
-            // Opinions at or above the instance root, inside the outer prototype, then the outer frame's.
-            for (const TfToken &purpose : Purposes()) {
-                const TfToken *opinion =
-                    NearestOpinion(table_, topology.instanceLocations[index], outer.hydraRoot, purpose);
-                if (!opinion) opinion = Inherited(outer.purposeVisibility, purpose);
-                if (opinion) frame.purposeVisibility.emplace_back(purpose, *opinion);
-            }
-            // An inner instance root is nearer the prim than an outer one, so its values win.
-            for (const auto &inherited : outer.instancePrimvars) {
-                auto same = [&](const auto &entry) { return entry.first == inherited.first; };
-                if (std::none_of(frame.instancePrimvars.begin(), frame.instancePrimvars.end(), same))
-                    frame.instancePrimvars.push_back(inherited);
-            }
+            Inherit(table_, location, outer, frame);
             frames.push_back(std::move(frame));
         }
     }
     if (invalidIndex) Report(instancer, "invalid-instancer", "Instance indices out of range were skipped");
     if (invalidPrimvar)
         Report(instancer, "invalid-primvar", "Instance-root primvars with invalid indices were skipped");
+    return frames;
+}
+
+std::vector<Frame> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recursion)
+    const PrimRecord &instancer, const InstancerRecord &topology, size_t prototype, int depth) {
+    const SdfPath &prototypeRoot = topology.prototypes[prototype];
+    // Hydra copies each prototype under its original, as ForInstancer<hash>, so the original is its source.
+    if (!TfStringStartsWith(prototypeRoot.GetName(), "ForInstancer")) {
+        Report(instancer, "invalid-instancer", "Prototype " + prototypeRoot.GetString() + " is not a propagated copy");
+        return {};
+    }
+    size_t points = topology.mask.size();
+    for (const VtIntArray &indices : topology.instanceIndices)
+        for (const int k : indices) points = std::max(points, static_cast<size_t>(std::max(k, 0)) + 1);
+    const std::vector<GfMatrix4d> transforms = PointTransforms(instancer, points);
+    // One value per point of the instancer's per-point primvars, which USD authors as vertex or varying
+    // primvars on the instancer and Hydra gives instance interpolation; each copy takes its point's, as an
+    // instance's primvar. Hydra's own per-point transforms aren't primvars of the copies, and the instancer's
+    // constant primvars Hydra already gives the prototype copies, as their ancestor's.
+    std::vector<std::pair<TfToken, VtValue>> perPoint;
+    bool invalidPrimvar = false;
+    for (const PrimvarRecord &primvar : instancer.primvars) {
+        if (primvar.interpolation != HdPrimvarSchemaTokens->instance ||
+            TfStringStartsWith(primvar.name.GetString(), "hydra:"))
+            continue;
+        VtValue value;
+        std::string error;
+        if (FlattenedConstant(primvar, value, error))
+            perPoint.emplace_back(primvar.name, std::move(value));
+        else
+            invalidPrimvar = true;
+    }
+    std::vector<Frame> frames;
+    bool invalidIndex = false;
+    for (const Frame &outer : FramesOf(instancer, depth + 1)) {
+        const SdfPath instancerPath = outer.Map(instancer.path);
+        const SdfPath usdRoot = outer.Map(prototypeRoot.GetParentPath());
+        // The instancer's world transform in this frame, unless it or an ancestor inside the outer prototype resets
+        // the stack (WORKAROUND for OpenUSD #862).
+        const GfMatrix4d local = instancer.matrix.value_or(GfMatrix4d(1.0));
+        const GfMatrix4d world = ResetsBelow(table_, instancer.path, outer.hydraRoot) ? local : local * outer.world;
+        for (const int k : topology.instanceIndices[prototype]) {
+            const auto point = static_cast<size_t>(k);
+            if (k < 0 || point >= transforms.size()) {
+                invalidIndex = true;
+                continue;
+            }
+            Frame frame;
+            frame.hydraRoot = prototypeRoot;
+            frame.usdRoot = usdRoot;
+            frame.context = outer.context;
+            frame.context.push_back(instancerPath);
+            frame.context.push_back(instancerPath.AppendChild(PointName(point)));
+            frame.world = transforms[point] * world;
+            frame.visible = outer.visible && instancer.visible &&
+                            (topology.mask.empty() || (point < topology.mask.size() && topology.mask[point]));
+            for (const auto &[name, values] : perPoint) {
+                VtValue value;
+                if (PointValue(values, point, value, PointTypes{}))
+                    frame.instancePrimvars.emplace_back(name, std::move(value));
+                else
+                    invalidPrimvar = true;
+            }
+            // The prototypes are the instancer's descendants, so the bindings UsdShade resolves on them already
+            // include the instancer's and its ancestors' inside the outer prototype; above that, the outer frame's.
+            frame.bindings = outer.bindings;
+            frame.strongPurposes = outer.strongPurposes;
+            Inherit(table_, instancer.path, outer, frame);
+            frames.push_back(std::move(frame));
+        }
+    }
+    if (invalidIndex) Report(instancer, "invalid-instancer", "Point indices out of range were skipped");
+    if (invalidPrimvar)
+        Report(instancer, "invalid-primvar", "Point instancer primvars with invalid indices or types were skipped");
     return frames;
 }
 

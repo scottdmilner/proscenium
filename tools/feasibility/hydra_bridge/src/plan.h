@@ -112,6 +112,9 @@ struct PlanSettings {
     Destination viewport{{pxr::TfToken("geometry"), pxr::TfToken("proxy"), pxr::TfToken("guide")},
                          pxr::TfToken("preview")};
     Destination render{{pxr::TfToken("geometry"), pxr::TfToken("render")}, pxr::TfToken("full")};
+    // Whether a point instancer's instances become objects, one per point and prototype mesh (M4 Phase D, for
+    // measurement only: the spec defers point instancers); otherwise the instancer gets a placeholder.
+    bool pointInstancers = false;
 };
 
 // Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception.

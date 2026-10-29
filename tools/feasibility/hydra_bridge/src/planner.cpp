@@ -49,7 +49,7 @@ public:
           settings_(std::move(settings)),
           table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
-          resolver_(table_, plan_->diagnostics) {
+          resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
         plan_->time = snapshot.time;
     }
 
@@ -57,12 +57,15 @@ public:
         const ScopedFactTiming timing(FactTiming::PlanRun);
         for (const PrimRecord &prim : table_.prims)
             if (prim.geomSubset) subsets_[prim.path.GetParentPath()].emplace_back(prim);
-        // A point instancer's prototype originals carry Hydra's piPropagatedPrototypes marker; they are drawn
-        // only as copies under the instancer, so neither they nor their descendants get objects.
-        auto inPointInstancerPrototype = [&](SdfPath path) {
-            for (; !path.IsEmpty() && !path.IsAbsoluteRootPath(); path = path.GetParentPath())
-                if (const PrimRecord *record = table_.Find(path); record && record->pointInstancerPrototype)
-                    return true;
+        static const TfToken kPointInstancer("PointInstancer");
+        // A point instancer's descendants are drawn only as copies of its prototypes, as UsdImaging culls them:
+        // its prototype originals (which carry Hydra's piPropagatedPrototypes marker) and anything else under it,
+        // such as a prototype it doesn't target, get no objects.
+        auto underPointInstancer = [&](SdfPath path) {
+            for (; !path.IsEmpty() && !path.IsAbsoluteRootPath(); path = path.GetParentPath()) {
+                const PrimRecord *record = table_.Find(path);
+                if (record && (record->pointInstancerPrototype || record->usdTypeName == kPointInstancer)) return true;
+            }
             return false;
         };
         std::vector<BuiltMesh> built = BuildMeshes();
@@ -72,10 +75,10 @@ public:
                 AddMesh(prim, built[i]);
             else if (Untranslated(prim.type))
                 AddObjects(prim, -1, prim.type);
-            else if ((prim.instancer && prim.instancer->instanceLocations.empty()) ||
-                     (prim.type.IsEmpty() && prim.isGprim && !inPointInstancerPrototype(prim.path)))
-                // A point instancer, which the prototype doesn't translate (Hydra leaves instanceLocations null
-                // for point instancers, HdInstancerTopologySchema), or a gprim Hydra doesn't image, such as
+            else if ((!settings_.pointInstancers && prim.instancer && prim.instancer->instanceLocations.empty()) ||
+                     (prim.type.IsEmpty() && prim.isGprim && !underPointInstancer(prim.path)))
+                // A point instancer, unless the settings translate them (Hydra leaves instanceLocations null for
+                // point instancers, HdInstancerTopologySchema), or a gprim Hydra doesn't image, such as
                 // HermiteCurves, whose type the source-info filter supplies.
                 AddObjects(prim, -1, prim.usdTypeName);
         }

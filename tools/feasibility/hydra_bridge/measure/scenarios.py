@@ -38,6 +38,8 @@ SCENARIOS = (
     "payload-load",
     "time-step",
 )
+# What names a point instancer's point in a copy's instance context (instancing.h, Frame).
+POINT = "/__point_"
 
 
 def load_set(scenario: str) -> Usd.Stage.InitialLoadSet:
@@ -57,7 +59,12 @@ def edit(scenario: str, stage: Usd.Stage, plan: Plan, time: float) -> tuple[floa
             op.Set(Gf.Vec3d(0.01, 0, 0))
         return time, {"prim": source}
     if scenario == "instance-transform":
-        root = next(r["instance_context"][0] for r in records if r["instance_context"] and r["mesh"] is not None)
+        # A native instance root, not a point instancer, which would move all its points (M4 Phase D).
+        root = next(
+            r["instance_context"][0]
+            for r in records
+            if r["instance_context"] and r["mesh"] is not None and not any(POINT in c for c in r["instance_context"])
+        )
         with Usd.EditContext(stage, stage.GetSessionLayer()):
             op = UsdGeom.Xformable(stage.GetPrimAtPath(root)).AddTranslateOp(opSuffix="phase_d")
             op.Set(Gf.Vec3d(0.01, 0, 0))
@@ -81,7 +88,9 @@ def _shared_geometry(stage: Usd.Stage, records: list[ObjectRecord], time: float)
     copies = Counter(r["mesh"] for r in records if r["instance_context"] and r["mesh"] is not None)
     mesh, count = copies.most_common(1)[0]
     source = next(r["source"] for r in records if r["mesh"] == mesh and r["instance_context"])
-    prototype = stage.GetPrimAtPath(source).GetPrimInPrototype()
+    # A point instancer's prototype is an ordinary prim, and a native instance's copy an instance proxy.
+    copy = stage.GetPrimAtPath(source)
+    prototype = copy.GetPrimInPrototype() if copy.IsInstanceProxy() else copy
     points = UsdGeom.Mesh(prototype).GetPointsAttr()
     scaled = Vt.Vec3fArray.FromNumpy((np.array(points.Get(time), dtype=np.float32) * 1.01).astype(np.float32))
     spec = next(

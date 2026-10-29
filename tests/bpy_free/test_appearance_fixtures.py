@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
 
-    from fixtures.appearance import AppearanceScene, StressScene
+    from fixtures.appearance import AppearanceScene, PointInstancerScene, StressScene
 
 MESH, SHADER = Tf.Type.Find(UsdGeom.Mesh), Tf.Type.Find(UsdShade.Shader)
 UV_INTERPOLATIONS = {UsdGeom.Tokens.vertex, UsdGeom.Tokens.varying, UsdGeom.Tokens.faceVarying}
@@ -29,6 +29,12 @@ def cases(tmp_path: Path) -> Generator[AppearanceScene]:
 @pytest.fixture
 def stress(tmp_path: Path) -> Generator[StressScene]:
     with appearance.nested_stress(tmp_path) as scene:
+        yield scene
+
+
+@pytest.fixture
+def scattered(tmp_path: Path) -> Generator[PointInstancerScene]:
+    with appearance.point_instancers(tmp_path) as scene:
         yield scene
 
 
@@ -226,3 +232,52 @@ def test_stress_copies_of_a_mesh_differ_in_appearance(stress: StressScene) -> No
     # Nested instances with differing appearance: one prototype mesh shows more than one display color.
     leaves = [p for p in stress.display_color if p.endswith("/Inner/Geom")]
     assert len({stress.display_color[p] for p in leaves}) == len(leaves)
+
+
+def test_point_instancer_world_transforms(scattered: PointInstancerScene) -> None:
+    # Each point's prototype meshes: the mesh within its prototype, the point's transform with the prototype
+    # root's, then the instancer's world transform.
+    stage, time = scattered.stage, Usd.TimeCode.Default()
+    instancer = UsdGeom.PointInstancer(stage.GetPrimAtPath(scattered.instancer))
+    # Every point, the invisible one too, so the index is the point's.
+    include, ignore = UsdGeom.PointInstancer.IncludeProtoXform, UsdGeom.PointInstancer.IgnoreMask
+    points = instancer.ComputeInstanceTransformsAtTime(time, time, include, ignore)
+    indices = instancer.GetProtoIndicesAttr().Get()
+    prototypes = instancer.GetPrototypesRel().GetTargets()
+    world = UsdGeom.Xformable(instancer.GetPrim()).ComputeLocalToWorldTransform(time)
+    cache = UsdGeom.XformCache(time)
+    computed = {}
+    for point, transform in enumerate(points):
+        root = stage.GetPrimAtPath(prototypes[indices[point]])
+        for mesh in _meshes(stage, str(root.GetPath())):
+            within = cache.ComputeRelativeTransform(mesh, root)[0] if mesh != root else Gf.Matrix4d(1.0)
+            computed[(str(mesh.GetPath()), point)] = within * transform * world
+    assert computed.keys() == scattered.world.keys()
+    for copy, expected in scattered.world.items():
+        assert Gf.IsClose(computed[copy], expected, 1e-6), copy
+
+
+def test_point_instancer_invisible_points(scattered: PointInstancerScene) -> None:
+    instancer = UsdGeom.PointInstancer(scattered.stage.GetPrimAtPath(scattered.instancer))
+    mask = instancer.ComputeMaskAtTime(Usd.TimeCode.Default())
+    assert {point for point, shown in enumerate(mask) if not shown} == scattered.invisible
+
+
+def test_point_instancer_primvars(scattered: PointInstancerScene) -> None:
+    primvars = UsdGeom.PrimvarsAPI(scattered.stage.GetPrimAtPath(scattered.instancer))
+    heat, group = primvars.GetPrimvar("heat"), primvars.GetPrimvar("groupId")
+    assert heat.GetInterpolation() == UsdGeom.Tokens.varying
+    assert group.GetInterpolation() == UsdGeom.Tokens.constant
+    for point, expected in scattered.primvars.items():
+        assert {"heat": heat.Get()[point], "groupId": group.Get()} == expected, point
+
+
+def test_point_instancer_materials_and_unused_prototype(scattered: PointInstancerScene) -> None:
+    stage = scattered.stage
+    for mesh, material in scattered.materials.items():
+        for purpose in (UsdShade.Tokens.preview, UsdShade.Tokens.full):
+            assert _bound(stage.GetPrimAtPath(mesh), purpose) == material, (mesh, purpose)
+    instancer = UsdGeom.PointInstancer(stage.GetPrimAtPath(scattered.instancer))
+    targets = [str(t) for t in instancer.GetPrototypesRel().GetTargets()]
+    assert stage.GetPrimAtPath(scattered.unused).IsA(MESH)
+    assert not any(scattered.unused.startswith(t) for t in targets)

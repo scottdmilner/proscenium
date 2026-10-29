@@ -30,12 +30,15 @@ def _native(module_dir: str) -> Any:
     return importlib.import_module("_hydra_bridge")
 
 
-def apply_scene(module_dir: str, scene: str, representation: str = "objects", minimum: int = 2) -> dict[str, Any]:
+def apply_scene(
+    module_dir: str, scene: str, representation: str = "objects", minimum: int = 2, point_instancers: bool = False
+) -> dict[str, Any]:
     """Capture, plan, and apply `scene` at default time; each plan object as Blender displays it, in plan order.
 
     `representation` is the baseline's "objects" (apply.py) or Phase D's "batched" (batch.py), where an instance
     reports its prototype's mesh and materials, its carrier's destinations, and its own transform and attributes.
-    `minimum` is the batched display's smallest batch.
+    `minimum` is the batched display's smallest batch, and `point_instancers` the plan setting that translates
+    point instancers' instances.
     """
     native = _native(module_dir)
     apply = importlib.import_module("apply")
@@ -43,7 +46,7 @@ def apply_scene(module_dir: str, scene: str, representation: str = "objects", mi
     stage = Usd.Stage.Open(scene)
     bridge = native.Bridge(stage)
     snapshot = bridge.capture()
-    plan = native.build_plan(snapshot)
+    plan = native.build_plan(snapshot, point_instancers=point_instancers)
     records = plan.objects
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
@@ -142,7 +145,8 @@ def _hydra_world(snapshot: Any) -> dict[str, list[list[float]]]:
         if prim["type"] != "mesh" or not by:
             continue
         instancer = snapshot.prim(by["instancers"][0])
-        if instancer.get("instanced_by"):  # nested: its frame is itself composed
+        # Nested, so its frame is itself composed, or a point instancer, which has no instance locations.
+        if instancer.get("instanced_by") or not instancer["instancer"]["locations"]:
             continue
         transforms = instancer["primvars"]["hydra:instanceTransforms"]["values"]
         for location, transform in zip(instancer["instancer"]["locations"], transforms, strict=True):
