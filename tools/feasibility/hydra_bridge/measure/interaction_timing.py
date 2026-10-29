@@ -9,6 +9,10 @@ reported as the median and range of its repeats; the parent's runs then give the
 - Q9: each interaction function, with the Blender updates it triggers, for one pick of a copy inside the deepest
   instance context, and for a box selection over the top-level prim with the most viewport elements. The kind
   promotion's share is `selection_from_blender` at a kind level against the prim level.
+
+`selection` is the display component, the baseline's selection.py or the batched display's batch_selection.py, and
+`target` what its functions take: the collection, or the batched display. On the batched display, a pick first
+resolves what a ray cast at the copy would return to its element (`pick_element`, timed too).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 import bpy
+from mathutils import Matrix
 from pxr import Usd
 
 if TYPE_CHECKING:
@@ -38,7 +43,7 @@ def _timed(repeats: int, call: Callable[[], Any]) -> tuple[dict[str, float], Any
     return {"median": statistics.median(times), "min": min(times), "max": max(times), "repeats": repeats}, result
 
 
-def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, collection: Any, time_code: float) -> dict:
+def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, target: Any, time_code: float) -> dict:
     """Every timing, by operation name, with the sizes it covered."""
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     interaction = native.Interaction(stage, plan)
@@ -68,7 +73,12 @@ def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, collection
     viewport = [i for i, r in enumerate(records) if r["viewport"]]
     picked = max(viewport, key=lambda i: (len(records[i]["instance_context"]), -i))
     sizes |= {"picked": records[picked]["source"], "its instance roots": len(records[picked]["instance_context"])}
-    results |= _entry("single", SINGLE_REPEATS, interaction, selection, view_layer, collection, [picked], "component")
+    if hasattr(selection, "pick_element"):
+        hit = _hit(target, picked, records[picked])
+        results["single: pick_element"], found = _timed(SINGLE_REPEATS, lambda: selection.pick_element(target, *hit))
+        assert found == picked, (found, picked)
+        sizes["picked batch's instances"] = next((len(b.elements) for b in target.batches if picked in b.elements), 0)
+    results |= _entry("single", SINGLE_REPEATS, interaction, selection, view_layer, target, [picked], "component")
 
     # A box selection over the top-level prim with the most viewport elements.
     tops = Counter(r["floor"].split("/")[1] for r in (records[i] for i in viewport))
@@ -79,7 +89,7 @@ def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, collection
         "its kind": Usd.ModelAPI(stage.GetPrimAtPath(f"/{top}")).GetKind(),
         "its viewport elements": len(elements),
     }
-    results |= _entry("assembly", WHOLE_REPEATS, interaction, selection, view_layer, collection, elements, "assembly")
+    results |= _entry("assembly", WHOLE_REPEATS, interaction, selection, view_layer, target, elements, "assembly")
 
     # The universe without payloads: the other payload policy, captured after unloading every payload.
     stage.Unload("/")
@@ -90,13 +100,25 @@ def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, collection
     return {"timings": results, "sizes": sizes}
 
 
+def _hit(display: Any, element: int, record: Any) -> tuple[Any, Matrix]:
+    """What a ray cast at `element`'s copy returns: its object, or its prototype, and its world matrix."""
+    kept = display.objects.get(element)
+    if kept is not None:
+        return kept, kept.matrix_world.copy()
+    batch = next(b for b in display.batches if element in b.elements)
+    matrix = record["matrix"]
+    # USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
+    world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+    return batch.prototype, batch.carriers[0].matrix_world @ world
+
+
 def _entry(  # noqa: PLR0913 - the chain's whole context
     name: str,
     repeats: int,
     interaction: Any,
     selection: Any,
     view_layer: Any,
-    collection: Any,
+    target: Any,
     picks: list[int],
     highlighted: str,
 ) -> dict[str, dict[str, float]]:
@@ -118,11 +140,11 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
     active = shown[:1]
 
     def mirror() -> None:
-        selection.apply_selection(view_layer, collection, set(shown), set(active))
+        selection.apply_selection(view_layer, target, set(shown), set(active))
         view_layer.update()
 
     def clear() -> None:
-        selection.apply_selection(view_layer, collection, set(), set())
+        selection.apply_selection(view_layer, target, set(), set())
         view_layer.update()
 
     times = []
@@ -138,7 +160,7 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
         "repeats": repeats,
     }
     results[f"{name}: read_blender_selection"], blender = _timed(
-        repeats, lambda: selection.read_blender_selection(view_layer, collection)
+        repeats, lambda: selection.read_blender_selection(view_layer, target)
     )
     results[f"{name}: selection_from_blender, prim level"], _ = _timed(
         repeats, lambda: interaction.selection_from_blender(blender.selected, blender.active)

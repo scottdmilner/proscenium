@@ -78,9 +78,10 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
     # Members whose points change; a change to only the mesh or materials is the prototype's.
     moved = set(diff["changed"]) - repointable
     rebuilt = set(diff["changed"]) - (repointable if users is UserPolicy.REPOINT else set())
-    shared, single = groups(records)
+    shared, single = groups(records, display.minimum)
     matched = _matches(shared, previous, display.batches)
-    made = [index for index in single if index not in _kept_objects(single, previous, display, rebuilt)]
+    kept_objects = _kept_objects(single, previous, display, rebuilt)
+    made = [index for index in single if index not in kept_objects]
     staging = bpy.data.collections.new("Prepared") if made or None in matched else None
     serial = display.serial
     batches, added, kept = [], [], []
@@ -121,7 +122,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
     created: dict[int, bpy.types.Object] = {}
     renumbered, repointed = [], {}
     for index in single:
-        if index not in made:
+        if index in kept_objects:
             objects[index] = display.objects[previous[index]]
             if previous[index] != index:
                 renumbered.append(index)
@@ -135,7 +136,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
         objects[index] = created[index] = new_object(index, records[index], meshes, materials, staging)
     kept_pointers = {obj.as_pointer() for obj in objects.values()}
     leaving = [obj for obj in display.objects.values() if obj.as_pointer() not in kept_pointers]
-    new = BatchedDisplay(objects, batches, meshes, materials, display.nodes, serial)
+    new = BatchedDisplay(objects, batches, meshes, materials, display.nodes, serial, display.minimum)
     return Prepared(staging, new, created, added, kept, dropped, leaving, repointed, renumbered)
 
 

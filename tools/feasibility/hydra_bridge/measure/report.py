@@ -230,7 +230,7 @@ def _budgets(entry: dict[str, Any]) -> list[str]:
     unchanged = median("update:unchanged", "update wall s")
     if sync and unchanged:
         rows.append(f"| Unchanged refresh | no slower than initial synchronization | {unchanged / sync:.2f}× |")
-    for scenario in ("transform", "shared-geometry", "material"):
+    for scenario in ("transform", "instance-transform", "shared-geometry", "material"):
         update = median(f"update:{scenario}", "update wall s")
         if sync and update:
             rows.append(f"| {scenario} update | at least 10× faster than a full rebuild | {sync / update:.1f}× |")

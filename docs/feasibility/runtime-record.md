@@ -925,6 +925,124 @@ The first ownership lookup after an undo or redo, with the baseline's display as
 - **The outliers are mostly garbage collection.** In one more ALab run, nine of ten first lookups took 42.6–43.8 ms and one 97.8 ms. With Python's garbage collector off for the loop (ad hoc, two runs), all twenty took 37.4–40.4 ms, but one 59.9 ms. So the rebuild's allocations set off a full collection now and then, and the collector costs about 5 ms of a typical rebuild.
 - **Blender's undo** at this scale takes about 350 ms on ALab and 1.05 s at 30,001 objects, an undo push 49 ms and 96 ms: an undo step's own cost, beside the lookup that follows it.
 
+### Measurements (M4 Phase D)
+
+Phase D's batched display (`batch.py`, Geometry Nodes instances; [M4 plan](../plans/M04-prototypes.md), D1–D4) against the object baseline, both measured in the same session, in the environment of [Phase C](#measurements-m4-phase-c) (2026-10-28, AC power throughout). Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+    --modes prototype importer-matched interaction --scenarios all --representation batched
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+    --modes prototype importer-matched interaction --scenarios all --out build/hydra-bridge/measure-d5-objects
+# Batching only large groups, on ALab, with the baseline again (2026-10-29)
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab --modes prototype importer-matched \
+    interaction --scenarios all --repeats 3 --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-min5
+# likewise with --batch-minimum 20 (measure-min20), and --representation objects (measure-min-objects)
+```
+
+The full statistics go to the `summary.md` in each of those directories under `build/hydra-bridge/` (not committed).
+
+**Method:** as in Phase C and [C4](#interaction-at-scale-m4-phase-c), with these differences:
+- **The batched display:** `--representation batched` applies the plan with `batch.py`, updates it with `batch_update.py`, and mirrors selections with `batch_selection.py`. The interaction timing also times `pick_element` on what a ray cast at the picked copy returns.
+- **A new scenario,** in both sets: a translation of the first instanced copy's outermost instance root, which moves one copy of each of its meshes (`instance-transform`). Phase C's transform scenario moves a mesh object outside instances, which on `updates-N` is the morph grid, an object in both representations.
+- **Two fixes before the final runs,** both found by these measurements. Every figure below is from after them.
+  - `batch_update.prepare` rebuilt its set of kept objects once per object, quadratic in the objects a batched display keeps (3,633 on ALab).
+  - Both representations read each copy's object color by indexing the record's `Vt` array from Python, about 48 µs per record (ad hoc, ALab). They now read the converted ID-property values. On ALab that was about 0.34 s of the baseline's construction, which Phase C's figures include.
+- **String primvars:** batches leave them out, so they never split a group. The first sets ran with copies grouped also by their strings' values, which groups every scene here the same (ALab's 657 batches either way, ad hoc), and puts each batch's strings on its prototype.
+- **Batching only large groups:** `--batch-minimum N` batches only groups of at least N copies, and keeps smaller ones as objects; the first sets batch every group of two or more. ALab ran at minimums of 5, the smallest at which a batch has fewer objects than its copies, and 20, with the baseline again, in one session of 3 repeats each. A first run of those three sets, in that order, had every update stage of the first two slower, the native capture and diff included, which don't depend on the representation; an ad hoc rerun of two scenarios in the reverse order showed no such difference, so those sets were rerun in full and only the rerun is reported.
+- **Not measured:** the ownership mode (C5), which writes the baseline's manifest; the replace policy; undo.
+
+**Grouping** (each plan's batches as `batch.py` forms them):
+
+| Scene | Plan objects | Batches | Instances | Blender objects, batched | Blender objects, baseline |
+|---|---|---|---|---|---|
+| updates-100 | 301 | 3 (150, 100, 50) | 300 | 13 | 301 |
+| updates-1000 | 3,001 | 3 | 3,000 | 13 | 3,001 |
+| updates-10000 | 30,001 | 3 (15,000, 10,000, 5,000) | 30,000 | 13 | 30,001 |
+| ALab | 7,018 | 657 (382 of 2 copies; at most 77) | 3,385 | 6,261 | 7,018 |
+| ALab, minimum 5 | 7,018 | 169 | 2,244 | 5,450 | 7,018 |
+| ALab, minimum 20 | 7,018 | 30 | 1,012 | 6,126 | 7,018 |
+
+A batch is three carriers and a prototype, so it has fewer objects than its copies only from 5 copies up. 6,997 of ALab's 7,018 copies show in one destination only (C1 and D2), and its largest groups are of 77 copies. The `updates-N` scenes' batches are all larger than 20, so a minimum up to 20 doesn't change them.
+
+**Budgets** (ratios of medians, each against the matched importer and the full rebuild of its own set; baseline in brackets):
+
+| Budget (provisional) | ALab | updates-100 | updates-1000 | updates-10000 |
+|---|---|---|---|---|
+| Initial synchronization, at most 1.5× the importer's time | 0.90× [0.88×] | 1.15× [1.41×] | 0.76× [1.27×] | 0.62× [**4.01×**] |
+| Initial synchronization, at most 2× its peak memory | 1.56× [1.55×] | 0.67× [0.84×] | 0.63× [1.45×] | 0.50× [1.25×] |
+| Unchanged refresh, no slower than initial synchronization | 0.16× [0.14×] | 0.07× [0.05×] | 0.14× [0.07×] | 0.20× [0.02×] |
+| Transform update, at least 10× faster than a full rebuild | **6.2×** [**6.3×**] | **8.7×** [**9.6×**] | **7.0×** [**3.6×**] | **4.7×** [**8.6×**] |
+| Instance-transform update, likewise | **5.9×** [**5.8×**] | **8.5×** [**7.8×**] | **5.6×** [**3.1×**] | **3.7×** [**7.0×**] |
+| Shared-geometry update, likewise | **6.2×** [**5.9×**] | 11.8× [**8.1×**] | **6.5×** [**3.3×**] | **4.6×** [**7.6×**] |
+| Material update, likewise | **6.1×** [**6.2×**] | 12.6× [**7.1×**] | **6.8×** [**3.2×**] | **4.2×** [**6.8×**] |
+
+**updates-10000** (30,001 objects; medians with ranges, seconds unless marked):
+
+| | Batched | Baseline |
+|---|---|---|
+| Initial synchronization (importer 2.242 / 2.034) | 1.386 (1.372–1.397) | 8.145 (8.114–8.397) |
+| Its construction | 0.120 (0.114–0.120) | 6.204 (6.201–6.389) |
+| Peak MB (importer 1,111 / 1,093) | 557 (556–558) | 1,367 (1,359–1,373) |
+| `.blend` MB, uncompressed | 3.1 | 71.1 |
+| Unchanged refresh | 0.284 (0.276–0.285) | 0.199 (0.195–0.214) |
+| Transform | 0.297 (0.297–0.312) | 0.947 (0.938–0.947) |
+| Instance transform | 0.372 (0.361–0.442) | 1.169 (1.099–1.336) |
+| Shared geometry | 0.300 (0.299–0.306) | 1.077 (1.073–1.201) |
+| Material | 0.326 (0.286–0.335) | 1.199 (1.150–1.279) |
+| Time step | 0.306 (0.264–0.323) | 0.946 (0.917–0.988) |
+| Payload unload | 3.126 (2.877–3.551) | 19.189 (18.978–19.688) |
+| Payload load | 1.118 (1.003–1.200) | 27.063 (26.213–27.210) |
+| Each small update's preparation | 0.162–0.178 | 0.076–0.104 |
+| Each small update's evaluation | 0.001–0.003 | 0.711–0.868 |
+| Pick: `pick_element`, a batch of 15,000, ms | 3.2 (3.2–3.5) | — |
+| Pick: `apply_selection` with its depsgraph update, ms | 2.7 (2.6–2.7) | 119.1 (115.0–119.5) |
+| Box selection of 30,001 elements: `apply_selection`, ms | 3.3 | 118.7 (115.5–120.7) |
+| `read_blender_selection`, pick and box, ms | 6.3, 7.0 | 22.4, 23.7 |
+
+**ALab** (7,018 objects):
+
+| | Batched | Baseline |
+|---|---|---|
+| Initial synchronization (importer 3.134 / 3.133) | 2.824 (2.731–2.893) | 2.748 (2.700–2.833) |
+| Its construction | 1.052 (0.990–1.067) | 1.030 (1.021–1.059) |
+| Peak MB (importer 1,799 / 1,804) | 2,814 (2,806–2,815) | 2,797 (2,796–2,818) |
+| Small updates (unchanged to material) | 0.457–0.483 | 0.393–0.477 |
+| Their preparation | 0.074–0.075 | 0.044–0.047 |
+| Their evaluation | 0.002–0.043 | 0.002–0.054 |
+| Time step, payload unload, payload load | 1.184, 1.360, 2.247 | 1.247, 1.382, 2.208 |
+| Pick: `apply_selection` with its depsgraph update, ms | 14.1 (13.7–17.6) | 11.3 (11.2–11.4) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 24.8 (24.7–25.4) | 11.4 (11.1–12.5) |
+| `read_blender_selection`, pick and box, ms | 5.1, 5.2 | 3.7, 3.8 |
+
+**ALab, batching only large groups** (one session; medians with ranges, seconds unless marked):
+
+| | Minimum 5 | Minimum 20 | Baseline |
+|---|---|---|---|
+| Blender objects | 5,450 | 6,126 | 7,018 |
+| Initial synchronization against the importer (budget 1.5×) | 0.85× | 0.88× | 0.87× |
+| Its construction | 0.940 (0.929–0.964) | 0.966 (0.947–1.057) | 1.024 (1.021–1.046) |
+| Its evaluation | 0.048 (0.047–0.049) | 0.055 (0.055–0.062) | 0.067 (0.064–0.079) |
+| Peak memory against the importer (budget 2×) | 1.55× | 1.55× | 1.57× |
+| Small updates (unchanged to material) | 0.416–0.492 | 0.427–0.498 | 0.403–0.506 |
+| Their preparation | 0.070–0.072 | 0.071 | 0.043–0.047 |
+| Their evaluation | 0.002–0.038 | 0.002–0.046 | 0.002–0.058 |
+| Small updates against a full rebuild (budget 10×) | 5.4–6.1× | 5.4–6.1× | 5.4–6.3× |
+| Time step, payload unload, payload load | 1.028, 1.252, 2.108 | 1.232, 1.311, 2.150 | 1.508, 1.558, 2.357 |
+| Pick of a copy kept as an object: `apply_selection` with its depsgraph update, ms | 8.6 (8.5–11.8) | 8.4 (8.2–8.5) | 11.5 (11.4–12.6) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 15.5 (15.4–15.6) | 13.8 (13.2–14.1) | 11.7 (11.6–12.3) |
+| `read_blender_selection`, pick and box, ms | 3.0, 3.1 | 2.5, 2.6 | 3.7, 3.8 |
+
+**Findings:**
+- **Batching removes Blender's per-object costs where copies batch.** At 30,001 objects, construction falls from 6.2 s to 0.12 s, the evaluation after an update from 0.71–0.87 s to 1–3 ms, and a selection's mirroring from 119 ms to 3 ms. Initial synchronization meets its budget there (0.62× the importer), and peak memory and file size halve or better.
+- **Small updates still miss ten times faster than a full rebuild,** and by more than the baseline at 30,001 objects, though each takes about a third as long (0.28–0.37 s): the full rebuild fell further. Preparation is most of each, and in an ad hoc profile of one instance-transform update it was reading the plan's 30,001 records (52 ms) and regrouping them all in Python (110 ms), against 14 ms to build the two batches' new points. Grouping in the planner, or only what the diff changed, would remove most of it (not built).
+- **`pick_element` grows with its batch:** 3.2 ms for a batch of 15,000, against 0.3 ms for 1,500.
+- **On ALab, batching changes little.** Its 657 batches leave 6,261 objects, synchronization and small updates take within a few percent of the baseline, and mirroring a box selection takes twice as long, 24.8 ms against 11.4 ms; that wasn't profiled. Every ALab interaction stays within its budget.
+- **Batching only large groups on ALab** leaves fewer objects than batching every group (5,450 at a minimum of 5), but changes little else. Against the baseline, initial synchronization's construction and evaluation are a little faster (by 60–80 ms and 10–20 ms), each small update's preparation is about 25 ms slower, and the small updates themselves are within their ranges. The ratios to a full rebuild are the same, so the budget is missed as much. A box selection's mirroring falls from 24.8 ms (every group, from the first sets) to 15.5 ms at 5 and 13.8 ms at 20, against the baseline's 11.7 ms, so it grows with the number of batches. The time step and payload changes are faster than the baseline's in this session, but this session's baseline was also slower than the first sets' (1.508 s against 1.247 s for the time step), so that isn't attributed to batching. The single pick in each set was of a copy kept as an object.
+- **Payload changes at 30,001 objects** fall from 19–27 s to 1.1–3.1 s, since they add or retire three batches instead of 20,000 objects. The unload's remaining time is mostly its capture (about 3.0 s).
+- **Unexplained:** each ALab set picked a different copy as the one inside the deepest instance context, which the timing chooses from the plan's order, the two baseline sets included. So the plan's object order may differ between processes. Not investigated.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

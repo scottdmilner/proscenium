@@ -158,6 +158,13 @@ def test_reader_values(cases: AppearanceScene) -> None:
         assert shown == pytest.approx(expected), (path, name)
 
 
+def test_string_values(cases: AppearanceScene) -> None:
+    for (path, name), expected in cases.string_values.items():
+        primvar = _inherited(cases.stage.GetPrimAtPath(path), name)
+        assert primvar is not None and primvar.GetInterpolation() == "constant", (path, name)
+        assert primvar.Get() == expected, (path, name)
+
+
 def test_uv_sets(cases: AppearanceScene) -> None:
     for names, meshes in cases.uv_sets.items():
         for path, expected in meshes.items():

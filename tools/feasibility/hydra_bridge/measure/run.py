@@ -1,10 +1,14 @@
 """Measurements of the Hydra prototype in fresh Blender processes, one per run: M1b's Phase E and M4's Phase C.
 
-M1b compares it with Blender's USD importer; M4 adds its updates after each scenario's edit.
+M1b compares it with Blender's USD importer; M4 adds its updates after each scenario's edit, and Phase D the
+batched display (--representation batched, with --batch-minimum copies or more per batch), measured into its own
+directory.
 
     uv run python tools/feasibility/hydra_bridge/measure/run.py [--scenes bespoke stress alab] [--repeats 5]
     uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes importer-matched \
         --scenarios all   # M4 Phase C: every update scenario, with the importer for the budgets
+    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes prototype interaction \
+        --scenarios all --representation batched   # M4 Phase D: the batched display
 
 Each run is sampled from outside with psutil (resident memory, CPU time, threads; on macOS also the physical
 footprint) and aligned with the stage markers the child writes. Raw runs go to <out>/runs/, the summary to
@@ -119,6 +123,8 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
         "result": str(work / "result.json"),
         "settle": args.settle,
         "work": str(work),
+        "representation": args.representation,
+        "batch_minimum": args.batch_minimum,
     }
     if mode.startswith("update:"):
         config["scenario"] = mode.removeprefix("update:")
@@ -218,7 +224,16 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=0.01, help="sampling interval (s)")
     parser.add_argument("--settle", type=float, default=0.5, help="length of each rest window (s)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="per run (s)")
-    parser.add_argument("--out", type=Path, default=ROOT / "build/hydra-bridge/measure")
+    parser.add_argument(
+        "--representation",
+        choices=["objects", "batched"],
+        default="objects",
+        help="the prototype's display: the baseline's objects, or Phase D's batched display",
+    )
+    parser.add_argument(
+        "--batch-minimum", type=int, default=2, help="the batched display's smallest group that becomes a batch"
+    )
+    parser.add_argument("--out", type=Path, help="default: build/hydra-bridge/measure, or measure-batched")
     parser.add_argument("--module-dir", type=Path, default=ROOT / "build/hydra-bridge")
     parser.add_argument("--blender", default=find_blender())
     args = parser.parse_args()
@@ -230,7 +245,8 @@ def main() -> int:
         load_dotenv(ROOT / ".env")
     except ImportError:
         pass
-    out: Path = args.out.resolve()
+    default = "measure" if args.representation == "objects" else "measure-batched"
+    out: Path = (args.out or ROOT / "build/hydra-bridge" / default).resolve()
     (out / "runs").mkdir(parents=True, exist_ok=True)
     found = scenes(args.scenes, out)
     chosen = list(scenarios.SCENARIOS) if "all" in args.scenarios else args.scenarios
@@ -263,6 +279,9 @@ def main() -> int:
     measured.update(found)
     measured_path.write_text(json.dumps(measured, indent=2) + "\n")
     setup = {**environment(args.blender), "warmup": f"{args.warmup} unrecorded run(s) per scene of {warmups}"}
+    setup["representation"] = args.representation
+    if args.representation == "batched":
+        setup["batch minimum"] = args.batch_minimum
     summary = report.summarize(out / "runs", measured, setup)
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     (out / "summary.md").write_text(report.markdown(summary))

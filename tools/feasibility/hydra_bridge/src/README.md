@@ -96,7 +96,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`) |
-| `../batch.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one batch per group of copies that differ only in transform and constant primvars, which are its points' attributes, instanced by a carrier object per selection state |
+| `../batch.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one batch per group, of at least a minimum size, of copies that differ only in transform and constant primvars, which are its points' attributes (strings are left out), instanced by a carrier object per selection state |
 | `../batch_selection.py` | M4 Phase D: the batched display's Python display component, `apply_selection` and `read_blender_selection` through the carriers' selection states, and `pick_element`, which resolves a ray cast's hit to an element |
 | `../update.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
 | `../batch_update.py` | M4 Phase D: updates a batched display from the plan diff, as `update.py` does, matching the new plan's groups to the published batches and rebuilding only the points of batches whose members changed |

@@ -50,6 +50,8 @@ class AppearanceScene:
     face_materials: dict[str, tuple[str | None, ...]]  # mesh with subsets -> each face's viewport material
     # (mesh, primvar a reader of its material reads) -> the value shown: the copy's own, or the reader's fallback.
     reader_values: dict[tuple[str, str], Color | float]
+    # (mesh, primvar) -> the constant string the copy inherits from its instance root.
+    string_values: dict[tuple[str, str], str]
     uv_sets: dict[tuple[str, ...], dict[str, frozenset[str]]]  # UV-set names -> mesh -> its UV sets
     texture_uvs: dict[str, str]  # mesh -> the UV set its material's texture is sampled through
 
@@ -98,6 +100,9 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
     unbound = [f"{equal}/Mesh{c}" for c in "ABCDEF"] + [f"{colors}/{m}" for m in ("Constant", "ConstantIndexed")]
     unbound += [f"{colors}/{m}" for m in ("Uniform", "Vertex", "FaceVarying")] + list(inherited_color)
     unbound += [f"{uvs}/PointUVs", f"{uvs}/Untyped"]
+    tag_values = (("A", "props"), ("B", "props"), ("C", "screens"))
+    tags = {f"/World/StringPrimvars/Tag{c}/Geom": value for c, value in tag_values}
+    unbound += list(tags)
     root, stage = _open(dest, "appearance.usda")
     yield AppearanceScene(
         root=root,
@@ -161,6 +166,7 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             (f"{one}/Square", "tint"): (0.9, 0.9, 0.9),
             (f"{one}/Square", "rough"): 0.9,
         },
+        string_values={(mesh, "lightGroup"): value for mesh, value in tags.items()},
         uv_sets={
             (): {
                 f"{uvs}/Typed": frozenset({"st", "perfuv"}),

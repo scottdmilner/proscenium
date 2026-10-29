@@ -157,7 +157,13 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     sys.path.insert(0, config["module_dir"])
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
     import apply
+    import batch
     from pxr import Usd
+
+    # The baseline's one object per copy (apply.py), or Phase D's batched display (batch.py).
+    batched = config.get("representation", "objects") == "batched"
+    if batched and config["mode"] == "ownership":
+        raise SystemExit("ownership mode measures the baseline's manifest only")
 
     native.take_filter_timings()
     markers.settle("baseline")
@@ -204,7 +210,11 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     else:
         collection = bpy.data.collections.new("Prototype")
         scene.collection.children.link(collection)
-    display = apply.apply(view, collection)
+    display: Any = (
+        batch.apply_batched(view, collection, config.get("batch_minimum", batch.MINIMUM))
+        if batched
+        else apply.apply(view, collection)
+    )
     done("construction")
     stage("evaluate")
     evaluate()
@@ -219,6 +229,12 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         "diagnostics": len(plan.diagnostics),
         "diagnostic codes": dict(Counter(d["code"] for d in plan.diagnostics)),
     }
+    if batched:
+        facts |= {
+            "batches": len(display.batches),
+            "instances": sum(len(b.elements) for b in display.batches),
+            "plan objects kept as objects": len(display.objects),
+        }
     counts = blender_counts()
     markers.settle("synced")
     if scenario == "initial":
@@ -230,13 +246,22 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     elif config["mode"] == "ownership":
         facts["ownership"] = ownership_timing.measure(binding_id, display, view.objects, view.materials)
     elif config["mode"] == "interaction":
+        import batch_selection
         import selection
 
+        # The display component and what its functions take: the collection, or the batched display.
         facts["interaction"] = interaction_timing.measure(
-            native, selection, usd_stage, plan, collection, config["time"]
+            native,
+            batch_selection if batched else selection,
+            usd_stage,
+            plan,
+            display if batched else collection,
+            config["time"],
         )
     elif scenario is not None:
-        session = SimpleNamespace(stage=usd_stage, bridge=bridge, plan=plan, display=display, collection=collection)
+        session = SimpleNamespace(
+            stage=usd_stage, bridge=bridge, plan=plan, display=display, collection=collection, batched=batched
+        )
         facts["update"] = run_update(scenario, config["time"], session, stage, done)
         markers.settle("updated")
     stage("release")
@@ -258,8 +283,10 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
 def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any, done: Any) -> dict[str, Any]:
     """The scenario's edit, then the incremental capture, planning, diff, and update by the diff."""
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
+    import batch_update
     import update
 
+    updater: Any = batch_update if session.batched else update
     stage("update:edit")
     capture_time, edited = scenarios.edit(scenario, session.stage, session.plan, time)
     done("update:edit")
@@ -273,14 +300,14 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     diff = native.diff_plans(session.plan, plan)
     done("update:diff")
     stage("update:prepare")
-    prepared = update.prepare(plan, diff, session.display, update.UserPolicy.REPOINT)
+    prepared = updater.prepare(plan, diff, session.display, update.UserPolicy.REPOINT)
     done("update:prepare")
     stage("update:publish")
-    update.publish(prepared, session.display, session.collection)
+    updater.publish(prepared, session.display, session.collection)
     done("update:publish")
     stage("update:retire")
     retired = len(prepared.retired)
-    kept = update.retire(prepared)
+    kept = updater.retire(prepared)
     done("update:retire")
     stage("update:evaluate")
     evaluate()
@@ -302,8 +329,20 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
             "renumbered": len(prepared.renumbered),
             "retired": retired,
             "kept for other users": len(kept),
-        },
+        }
+        | (_batches_written(prepared) if session.batched else {}),
         "blender": blender_counts(),
+    }
+
+
+def _batches_written(prepared: Any) -> dict[str, int]:
+    """What a batched update wrote to its batches."""
+    return {
+        "batches added": len(prepared.added),
+        "batches dropped": len(prepared.dropped),
+        "points rebuilt": sum(rebatch.points is not None for rebatch in prepared.kept),
+        "prototypes repointed": sum(rebatch.reprototyped for rebatch in prepared.kept),
+        "points renumbered": sum(rebatch.renumbered for rebatch in prepared.kept),
     }
 
 

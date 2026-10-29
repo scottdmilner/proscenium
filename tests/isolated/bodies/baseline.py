@@ -30,11 +30,12 @@ def _native(module_dir: str) -> Any:
     return importlib.import_module("_hydra_bridge")
 
 
-def apply_scene(module_dir: str, scene: str, representation: str = "objects") -> dict[str, Any]:
+def apply_scene(module_dir: str, scene: str, representation: str = "objects", minimum: int = 2) -> dict[str, Any]:
     """Capture, plan, and apply `scene` at default time; each plan object as Blender displays it, in plan order.
 
     `representation` is the baseline's "objects" (apply.py) or Phase D's "batched" (batch.py), where an instance
     reports its prototype's mesh and materials, its carrier's destinations, and its own transform and attributes.
+    `minimum` is the batched display's smallest batch.
     """
     native = _native(module_dir)
     apply = importlib.import_module("apply")
@@ -51,7 +52,7 @@ def apply_scene(module_dir: str, scene: str, representation: str = "objects") ->
         objects = dict(enumerate(apply.apply(plan, collection).objects))
         batches = []
     else:
-        display = importlib.import_module("batch").apply_batched(plan, collection)
+        display = importlib.import_module("batch").apply_batched(plan, collection, minimum)
         objects, batches = display.objects, display.batches
     reported: dict[int, dict[str, Any]] = {}
     for element, obj in objects.items():
@@ -112,12 +113,14 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
             "shear_parent": None,
             "instance": True,
             "carrier": carrier.name,
-            # The instance attributes the bridge didn't add for itself: constant primvars by name.
+            # The instance attributes the bridge didn't add for itself, constant primvars by name, and the
+            # prototype's ID properties.
             "properties": {
                 name: a["values"][index]
                 for name, a in held.items()
                 if name != "position" and not name.startswith("proscenium_")
-            },
+            }
+            | _object_properties(instance.instance_object.original),
         }
     return found
 
@@ -156,9 +159,14 @@ def _object(record: Any, obj: Any) -> dict[str, Any]:
         "viewport": not obj.hide_viewport,
         "render": not obj.hide_render,
         # The ID properties the bridge didn't add for itself: constant primvars by name.
-        "properties": {k: _plain(obj[k]) for k in obj.keys() if not k.startswith("proscenium_")},
+        "properties": _object_properties(obj),
         **_shown(obj),
     }
+
+
+def _object_properties(obj: Any) -> dict[str, Any]:
+    """The ID properties the bridge didn't add for itself: constant primvars by name."""
+    return {k: _plain(obj[k]) for k in obj.keys() if not k.startswith("proscenium_")}
 
 
 def _shown(obj: Any) -> dict[str, Any]:

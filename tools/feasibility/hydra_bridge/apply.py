@@ -184,6 +184,18 @@ def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection:
     obj.matrix_basis = Matrix(vt.tolist()).to_4x4()
 
 
+def object_color(data: ObjectRecord) -> tuple[float, float, float, float]:
+    """A copy's object color: its constant displayColor and displayOpacity of one value each, or opaque white."""
+    # From the converted properties, where a one-value array is its value: indexing the Vt array in `primvars`
+    # from Python costs about 50 us (ad hoc, ALab).
+    color = data["properties"].get("displayColor")
+    opacity = data["properties"].get("displayOpacity")
+    channels = color if isinstance(color, list) else []
+    rgb = [c for c in channels if isinstance(c, float)]
+    r, g, b = rgb if len(rgb) == 3 == len(channels) else (1.0, 1.0, 1.0)
+    return (r, g, b, opacity if isinstance(opacity, float) else 1.0)
+
+
 def new_object(
     index: int,
     data: ObjectRecord,
@@ -216,11 +228,7 @@ def new_object(
         slot.link = "OBJECT"
         slot.material = None if material is None else materials[material]
     # The object color shows a constant displayColor and displayOpacity, in Solid shading's Object color.
-    color = data["primvars"].get("displayColor")
-    opacity = data["primvars"].get("displayOpacity")
-    rgb = tuple(color[0]) if color is not None and len(color) == 1 else tuple(obj.color[:3])
-    alpha = opacity[0] if opacity is not None and len(opacity) == 1 else 1.0
-    obj.color = (*rgb, alpha)
+    obj.color = object_color(data)
     # Constant primvars by name, which an Attribute node of type Object reads; the plan converted them.
     for name, value in data["properties"].items():
         obj[name] = value

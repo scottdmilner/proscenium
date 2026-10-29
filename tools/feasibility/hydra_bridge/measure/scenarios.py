@@ -4,6 +4,8 @@ Each scenario after the initial synchronization makes one change that the next c
 is chosen from the published plan, so the same scenario runs on ALab and on the generated update scenes:
 - unchanged: nothing, a manual refresh;
 - transform: a translation of the first mesh object outside instances, from the session layer;
+- instance-transform (Phase D): a translation of the first instanced copy's outermost instance root, which moves
+  one copy of each of its meshes, from the session layer;
 - shared-geometry: the points of the instanced mesh with the most copies, scaled by 1.01;
 - material: a constant surface input of the material in the most slots whose prim is outside instances;
 - payload-unload and payload-load: every payload unloaded from a stage opened with them loaded, or loaded into
@@ -29,6 +31,7 @@ SCENARIOS = (
     "initial",
     "unchanged",
     "transform",
+    "instance-transform",
     "shared-geometry",
     "material",
     "payload-unload",
@@ -53,6 +56,12 @@ def edit(scenario: str, stage: Usd.Stage, plan: Plan, time: float) -> tuple[floa
             op = UsdGeom.Xformable(stage.GetPrimAtPath(source)).AddTranslateOp(opSuffix="phase_c")
             op.Set(Gf.Vec3d(0.01, 0, 0))
         return time, {"prim": source}
+    if scenario == "instance-transform":
+        root = next(r["instance_context"][0] for r in records if r["instance_context"] and r["mesh"] is not None)
+        with Usd.EditContext(stage, stage.GetSessionLayer()):
+            op = UsdGeom.Xformable(stage.GetPrimAtPath(root)).AddTranslateOp(opSuffix="phase_d")
+            op.Set(Gf.Vec3d(0.01, 0, 0))
+        return time, {"instance root": root}
     if scenario == "shared-geometry":
         return time, _shared_geometry(stage, records, time)
     if scenario == "material":

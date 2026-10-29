@@ -344,6 +344,39 @@ def test_reader_primvars_reach_each_copy(scene: BaselineScene, applied: list[dic
                 assert _close(stored, shown), (mesh, name, stored)
 
 
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_string_primvars_reach_each_object(
+    scene: BaselineScene, representation: str, applied: list[dict[str, Any]]
+) -> None:
+    # A constant string primvar, as ALab's renderer settings are, is an ID property of each copy's object. The
+    # batched display leaves strings out of its instances, so copies with different strings still share a batch.
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    assert len(set(facts.string_values.values())) > 1
+    grouped = _by_source(applied)
+    for (mesh, name), value in facts.string_values.items():
+        for obj in grouped[mesh]:
+            assert obj["instance"] == (representation == "batched"), mesh
+            assert obj["properties"].get(name) == (None if obj["instance"] else value), (mesh, name)
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+@pytest.mark.parametrize("minimum", [3, 4])
+def test_groups_below_the_minimum_stay_objects(
+    scene: BaselineScene, minimum: int, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    # The fixture's tags are one group of three copies, which is a batch from a minimum of three, and at a larger
+    # minimum three objects, as the object baseline builds them.
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(scene.root), "minimum": minimum}
+    result = run_isolated(wheel, BODY, "apply_scene", tmp_path, representation="batched", **kwargs)
+    grouped = _by_source(result["objects"])
+    tags = [obj for mesh, _ in facts.string_values for obj in grouped[mesh]]
+    assert len(tags) == len(facts.string_values) == 3
+    assert {obj["instance"] for obj in tags} == {minimum <= len(tags)}
+
+
 def _usd_corners(prim: Usd.Prim, primvar: UsdGeom.Primvar) -> list[Any]:
     """A primvar's flattened values, one per face corner, in USD's face-vertex order."""
     values = primvar.ComputeFlattened()

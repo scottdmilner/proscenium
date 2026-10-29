@@ -2,8 +2,12 @@
 
 Plan objects that look the same except for their transform and constant primvars become instances on one
 carrier object: those with the same mesh, material slots, destinations, and object color, and constant primvars
-of the same names and kinds, and no two with the same transform. A group of one, a placeholder, and a copy with a
-primvar no attribute can hold stay objects, as apply.py builds them.
+of the same names and kinds, and no two with the same transform. Only a group of at least a minimum size becomes
+a batch, since a batch is four Blender objects. A smaller group, a placeholder, and a copy with a primvar no
+attribute can hold stay objects, as apply.py builds them.
+
+Instances leave out constant string primvars, which apply.py keeps on an object as ID properties: no shading node
+reads a string, so they neither split a group nor reach its batch.
 
 - **Carriers:** three objects on one mesh of one point per instance. Its point attributes are each instance's
   world transform (a 4x4 matrix, so shear needs no parent), its element (`proscenium_element`, its plan index),
@@ -22,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import new_material, new_mesh, new_object
+from apply import new_material, new_mesh, new_object, object_color
 from selection import ELEMENT
 
 if TYPE_CHECKING:
@@ -33,6 +37,8 @@ TRANSFORM = "proscenium_transform"
 STATE = "proscenium_state"
 # The selection states, by value: each batch has a carrier per state, which shows the instances in it.
 STATES = ("unselected", "selected", "active")
+# The smallest group that becomes a batch, unless a caller asks for larger ones.
+MINIMUM = 2
 # The node group's inputs on a carrier: the object it instances, and the state whose points it instances.
 PROTOTYPE_INPUT = "Prototype"
 STATE_INPUT = "State"
@@ -83,6 +89,7 @@ class BatchedDisplay:
     materials: list[bpy.types.Material]
     nodes: NodeGroup
     serial: int  # the number the next batch or points mesh takes, so its names sort last (C3)
+    minimum: int  # the smallest group that becomes a batch
 
 
 def attribute_type(value: PropertyValue) -> str | None:
@@ -100,7 +107,7 @@ def attribute_type(value: PropertyValue) -> str | None:
 
 def batch_key(record: ObjectRecord) -> tuple[Any, ...] | None:
     """What instances of one carrier share, or None for an object that stays an object."""
-    kinds = {name: attribute_type(value) for name, value in record["properties"].items()}
+    kinds = {name: attribute_type(value) for name, value in _primvars(record).items()}
     if record["mesh"] is None or None in kinds.values():
         return None
     return (
@@ -108,13 +115,13 @@ def batch_key(record: ObjectRecord) -> tuple[Any, ...] | None:
         tuple(record["material_slots"]),
         record["viewport"],
         record["render"],
-        _color(record),
+        object_color(record),
         tuple(sorted(kinds.items())),
     )
 
 
-def groups(records: list[ObjectRecord]) -> tuple[dict[tuple[Any, ...], list[int]], list[int]]:
-    """The plan objects in batches, by their batch_key, and the rest, which stay objects, in plan order."""
+def groups(records: list[ObjectRecord], minimum: int) -> tuple[dict[tuple[Any, ...], list[int]], list[int]]:
+    """The plan objects in batches of at least `minimum`, by their batch_key, and the rest, in plan order."""
     grouped: dict[tuple[Any, ...], list[int]] = {}
     single: list[int] = []
     coincident: dict[tuple[Any, ...], int] = {}
@@ -128,23 +135,24 @@ def groups(records: list[ObjectRecord]) -> tuple[dict[tuple[Any, ...], list[int]
         stored = (key, numpy.array(record["matrix"], dtype=numpy.float32).tobytes())
         repeat = coincident[stored] = coincident.get(stored, -1) + 1
         grouped.setdefault((*key, repeat), []).append(index)
-    single.extend(members[0] for members in grouped.values() if len(members) == 1)
-    return {key: members for key, members in grouped.items() if len(members) > 1}, sorted(single)
+    single.extend(index for members in grouped.values() if len(members) < minimum for index in members)
+    return {key: members for key, members in grouped.items() if len(members) >= minimum}, sorted(single)
 
 
-def apply_batched(plan: Plan, collection: bpy.types.Collection) -> BatchedDisplay:
-    """Create the plan's materials and meshes, the batches of its groups of two or more, and objects for the rest."""
+def apply_batched(plan: Plan, collection: bpy.types.Collection, minimum: int = MINIMUM) -> BatchedDisplay:
+    """Create the plan's materials and meshes, a batch per group of `minimum` or more, and objects for the rest."""
+    assert minimum >= 2  # a batch of one would be four objects for one copy
     records = plan.objects
     materials = [new_material(data) for data in plan.materials]
     meshes = [new_mesh(data) for data in plan.meshes]
-    shared, single = groups(records)
+    shared, single = groups(records, minimum)
     nodes = _node_group()
     batches = [
         new_batch(number, key, members, records, meshes, materials, collection, nodes)
         for number, (key, members) in enumerate(shared.items())
     ]
     objects = {index: new_object(index, records[index], meshes, materials, collection) for index in single}
-    return BatchedDisplay(objects, batches, meshes, materials, nodes, len(batches))
+    return BatchedDisplay(objects, batches, meshes, materials, nodes, len(batches), minimum)
 
 
 def prototype_of(carrier: bpy.types.Object) -> bpy.types.Object | None:
@@ -157,14 +165,6 @@ def prototype_of(carrier: bpy.types.Object) -> bpy.types.Object | None:
             if item.item_type == "SOCKET" and item.in_out == "INPUT" and item.name == PROTOTYPE_INPUT:
                 return getattr(modifier.properties.inputs, item.identifier).value  # ty: ignore[unresolved-attribute]
     return None
-
-
-def _color(record: ObjectRecord) -> tuple[float, ...]:
-    """The object color apply.py gives a copy: its constant displayColor and displayOpacity, or white."""
-    color = record["primvars"].get("displayColor")
-    opacity = record["primvars"].get("displayOpacity")
-    rgb = tuple(color[0]) if color is not None and len(color) == 1 else (1.0, 1.0, 1.0)
-    return (*rgb, opacity[0] if opacity is not None and len(opacity) == 1 else 1.0)
 
 
 def new_batch(  # noqa: PLR0913 - a batch's whole context
@@ -219,7 +219,7 @@ def set_prototype(
         wanted = None if material is None else materials[material]
         if slot.material != wanted:
             slot.material = wanted
-    color = _color(record)
+    color = object_color(record)
     if list(prototype.color) != numpy.array(color, dtype=numpy.float32).tolist():  # as Blender stores it
         prototype.color = color
 
@@ -232,11 +232,16 @@ def new_points(number: int, members: list[int], records: list[ObjectRecord], hel
     _point_attribute(points, TRANSFORM, "FLOAT4X4", [records[i]["matrix"] for i in members])
     _point_attribute(points, ELEMENT, "INT", members)
     _point_attribute(points, STATE, "INT", held)
-    for name, value in records[members[0]]["properties"].items():
+    for name, value in _primvars(records[members[0]]).items():
         data_type = attribute_type(value)
         assert data_type is not None  # batch_key left out copies with any other primvar
         _point_attribute(points, name, data_type, [records[i]["properties"][name] for i in members])
     return points
+
+
+def _primvars(record: ObjectRecord) -> dict[str, PropertyValue]:
+    """A copy's constant primvars that instances hold: all but its strings."""
+    return {name: value for name, value in record["properties"].items() if not isinstance(value, str)}
 
 
 def _point_attribute(points: bpy.types.Mesh, name: str, data_type: str, values: list[Any]) -> None:

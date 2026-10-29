@@ -21,6 +21,9 @@
 # - OneMaterial: Tinted bound to meshes of different geometry with different tints, and by the
 #   InstancePrimvars copies (GRAM-11).
 # - PurposeBindings: preview, full, and all-purpose bindings in combination (GRAM-12).
+# - StringPrimvars: three copies of one prototype, each with a constant string primvar on its
+#   instance root, two with one value and one with another, as ALab's renderer settings are (M4
+#   Phase D: the batched display leaves strings out, so all three batch together).
 # Every mesh is visible with default purpose. Prototypes are abstract class prims.
 (
     defaultPrim = "World"
@@ -722,6 +725,43 @@ def Xform "World" (
             uniform token[] xformOpOrder = ["xformOp:translate"]
         }
     }
+
+    def Xform "StringPrimvars"
+    {
+        def Xform "TagA" (
+            instanceable = true
+            references = </Prototypes/Tag>
+        )
+        {
+            string primvars:lightGroup = "props" (
+                interpolation = "constant"
+            )
+        }
+
+        def Xform "TagB" (
+            instanceable = true
+            references = </Prototypes/Tag>
+        )
+        {
+            string primvars:lightGroup = "props" (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "TagC" (
+            instanceable = true
+            references = </Prototypes/Tag>
+        )
+        {
+            string primvars:lightGroup = "screens" (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
 }
 
 class "Prototypes"
@@ -801,6 +841,18 @@ class "Prototypes"
         {
             double3 xformOp:translate = (2, 0, 0)
             uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    class Xform "Tag"
+    {
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
         }
     }
 
