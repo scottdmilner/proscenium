@@ -204,8 +204,9 @@ def main() -> int:
         "--modes",
         nargs="*",
         default=MODES,
-        choices=[*MODES, "interaction"],
-        help="synchronization modes; interaction (M4 Phase C) times the interaction functions after one",
+        choices=[*MODES, "interaction", "ownership"],
+        help="synchronization modes; interaction and ownership (M4 Phase C) time the interaction functions, or "
+        "the first ownership lookup after an undo, after one",
     )
     parser.add_argument(
         "--scenarios",

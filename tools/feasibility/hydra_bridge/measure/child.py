@@ -5,7 +5,8 @@
 The config names the mode, scene, time code, module directory, and output paths. An update mode (M4 Phase C)
 runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
 planning, diff, and update that follow; the initial scenario saves the .blend instead. The interaction mode
-times the interaction functions after it (interaction_timing.py). The child writes a marker
+times the interaction functions after it (interaction_timing.py), and the ownership mode the first ownership
+lookup after an undo, the display written as a binding's manifest (ownership_timing.py). The child writes a marker
 (JSON line) at every stage boundary with its CPU time and lifetime memory peaks; the parent samples the
 process from outside and aligns its samples to these markers. Settle windows hold still for a while so the
 parent can read memory at rest.
@@ -29,6 +30,7 @@ sys.path.insert(0, str(HERE.parent))
 import bpy  # noqa: E402
 import interaction_timing  # noqa: E402
 import memory  # noqa: E402
+import ownership_timing  # noqa: E402
 import scenarios  # noqa: E402
 
 # The importer's options closest to what the prototype builds: every purpose, invisible prims too, no
@@ -185,9 +187,23 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     view = SimpleNamespace(materials=plan.materials, meshes=plan.meshes, objects=plan.objects)
     done("transfer")
     stage("construction")
-    collection = bpy.data.collections.new("Prototype")
     scene: Any = bpy.context.scene
-    scene.collection.children.link(collection)
+    binding_id = None
+    if config["mode"] == "ownership":
+        # The display goes into a file binding's destination, made through M3's API, whose manifest C5 writes.
+        sys.path.insert(0, str(HERE.parents[3] / "src"))
+        import proscenium
+        from proscenium import runtime
+        from proscenium.api.bindings import BINDINGS
+
+        proscenium.register()
+        binding_id = BINDINGS.create_file_binding(scene, config["scene"], name="Prototype").binding_id
+        found = runtime.find_binding(binding_id)
+        assert found is not None and found.config is not None and found.config.destination is not None
+        collection = found.config.destination
+    else:
+        collection = bpy.data.collections.new("Prototype")
+        scene.collection.children.link(collection)
     display = apply.apply(view, collection)
     done("construction")
     stage("evaluate")
@@ -211,6 +227,8 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=False)
         done("save")
         facts["blend bytes"] = blend.stat().st_size
+    elif config["mode"] == "ownership":
+        facts["ownership"] = ownership_timing.measure(binding_id, display, view.objects, view.materials)
     elif config["mode"] == "interaction":
         import selection
 

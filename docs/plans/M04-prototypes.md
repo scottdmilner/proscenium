@@ -294,6 +294,14 @@ The baseline is the bridge's representation, extended until it covers every case
     - A box selection over `/root` (1,886 elements) takes about 38 ms from Blender's selection back to Blender. Kind promotion is 1.9 ms of it at the component level and 4.5 ms at the assembly level.
   - **Q9:** on ALab, every function meets the provisional budgets, the slowest being `apply_selection` with its depsgraph update for a pick (12.3 ms of 50) and `highlight_targets` for the box selection (15.9 ms of 250).
   - **At scale:** mirroring a selection grows with the display, and a pick's `apply_selection` takes 129 ms at 30,001 objects. Blender's depsgraph update after one selection change is 102 ms of that (an ad hoc probe), and the baseline's walk over every managed object is 26 ms. So, with C3's evaluation after updates, past about 10,000 objects Blender's per-object costs alone exceed the interaction budget. That is a reason to weigh batching in Phase D, if scenes that large are in scope.
+- **C5, the first ownership lookup after an undo (with the user: the revision token goes to M5).** `measure/run.py --modes ownership` applies each scene into a file binding's destination through M3's API and writes the display as its manifest with `runtime.set_manifest`. It then times the first `runtime.ownership()` after each undo and redo, which rebuilds the bindings' state from every manifest, in the binary. The results are in the [feasibility record](../feasibility/runtime-record.md#ownership-lookup-after-undo-m4-phase-c).
+  - **Against the interaction budget (50 ms):**
+    - ALab's 11,185 entries take a median of 43.9 ms, under it, but each run's worst lookup took 85–90 ms, which a full garbage collection during the rebuild mostly explains (ad hoc);
+    - 30,006 entries take 158 ms.
+
+    So the plan's condition for the revision token holds.
+  - **For M5 (with the user):** a revision token in each manifest record, so an undo or redo rereads only the manifests whose token changed and keeps the cached ones, repaired as after a removal ([M3 plan](M03-bindings.md), notes for M4 and M5). In the measured case, an undo of an edit that touched no manifest, nothing would be reread. M5 owns the manifests' publication and is the next milestone to change the records' schema; Phase F's notes for M5 carry this. Until then, the rebuild's own allocations are worth keeping few, since a collection during it doubled a lookup.
+  - **Undo itself** takes about 350 ms on ALab (an undo push 49 ms), the undo overhead C3 couldn't measure without global undo.
 
 ### Phase D — Targeted alternatives
 

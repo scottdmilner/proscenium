@@ -176,8 +176,8 @@ def summarize(runs_dir: Path, scenes: dict[str, dict[str, Any]], environment: di
             "log warnings": runs[0]["warnings"],
             "log errors": runs[0]["errors"],
         }
-        if mode == "interaction":
-            entry["modes"][mode]["interaction"] = _interaction([run["result"]["plan"]["interaction"] for run in runs])
+        if mode in ("interaction", "ownership"):
+            entry["modes"][mode][mode] = _interaction([run["result"]["plan"][mode] for run in runs])
     return summary
 
 
@@ -188,11 +188,17 @@ INTERACTION_BUDGETS = {"single": 0.050, "assembly": 0.250}
 def _interaction(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """Each operation's per-run medians, as a median and range over the runs, and the first run's sizes."""
     first = runs[0]["timings"]
+
+    def median(value: Any) -> float:  # a single timing, or one repeated within the run
+        return value["median"] if isinstance(value, dict) else value
+
     timings = {
-        name: (_stats([run["timings"][name]["median"] for run in runs]) or {}) | {"repeats": first[name]["repeats"]}
+        name: (_stats([median(run["timings"][name]) for run in runs]) or {})
+        | {"repeats": first[name]["repeats"] if isinstance(first[name], dict) else 1}
         for name in first
     }
-    return {"runs": len(runs), "timings": timings, "sizes": runs[0]["sizes"]}
+    facts = {key: value for key, value in runs[0].items() if key != "timings"}
+    return {"runs": len(runs), "timings": timings, "sizes": facts.get("sizes", facts)}
 
 
 def _fmt(stat: dict[str, float | None] | None, digits: int = 3) -> str:
@@ -263,19 +269,20 @@ def _updates(entry: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _interaction_lines(entry: dict[str, Any]) -> list[str]:
-    data = entry["modes"].get("interaction", {}).get("interaction")
+def _interaction_lines(entry: dict[str, Any], mode: str) -> list[str]:
+    data = entry["modes"].get(mode, {}).get(mode)
     if not data:
         return []
     lines = [
         "",
-        f"Interaction ({data['runs']} runs; each run's median of its repeats, as a median and range over the runs):",
+        f"{mode.capitalize()} ({data['runs']} runs; each run's median of its repeats, as a median and range over "
+        "the runs):",
         "",
         "| Operation | Repeats per run | ms | Budget ms |",
         "|---|---|---|---|",
     ]
     for name, stat in data["timings"].items():
-        budget = INTERACTION_BUDGETS.get(name.split(":")[0])
+        budget = INTERACTION_BUDGETS.get("single" if name.startswith("first ownership") else name.split(":")[0])
         scaled = {key: value * 1000 for key, value in stat.items() if key in ("median", "min", "max")}
         lines.append(
             f"| {name} | {stat['repeats']} | {_fmt(scaled, 3)} | {'—' if budget is None else f'{budget * 1000:.0f}'} |"
@@ -331,11 +338,14 @@ def markdown(summary: dict[str, Any]) -> str:
                 f"{_fmt(totals['sync peak MB'], 1)} | {_fmt(totals.get('hydra wall s'))} | "
                 f"{_fmt(totals.get('blender wall s'))} | {_fmt(data['baseline MB'], 1)} | {rest} | {heap} |"
             )
-        lines += _budgets(entry) + _updates(entry) + _interaction_lines(entry)
+        lines += _budgets(entry) + _updates(entry)
+        lines += _interaction_lines(entry, "interaction") + _interaction_lines(entry, "ownership")
         lines += ["", "| Mode | Built (first run) |", "|---|---|"]
         for mode, data in entry["modes"].items():
             built = dict(data["result"]["blender"])
             if "plan" in data["result"]:
-                built["plan"] = {k: v for k, v in data["result"]["plan"].items() if k not in ("update", "interaction")}
+                built["plan"] = {
+                    k: v for k, v in data["result"]["plan"].items() if k not in ("update", "interaction", "ownership")
+                }
             lines.append(f"| {mode} | `{json.dumps(built)}` |")
     return "\n".join(lines) + "\n"

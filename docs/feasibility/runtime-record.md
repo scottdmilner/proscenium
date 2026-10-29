@@ -893,6 +893,38 @@ ALab's payloads hold all of its displayed content, so without them nothing is di
 
   `read_blender_selection` likewise reads every managed object: 23 ms at 30,001.
 
+#### Ownership lookup after undo (M4 Phase C)
+
+The first ownership lookup after an undo or redo, with the baseline's display as a binding's manifest, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes ownership`.
+
+**Method** (`measure/ownership_timing.py`):
+- **The manifest:** the child applies the display into a file binding's destination, made through M3's API (`create_file_binding`), and writes its manifest with `runtime.set_manifest`. There is one entry per object, shear parent, placeholder mesh, mesh, and material. An object's entry covers its source and uses its mesh and materials; a mesh's or material's covers its users' sources.
+- **The undo steps:** with global undo on, it pushes a step, then five times moves one object, pushes a step, undoes it, and redoes it.
+- **The lookups:** after each undo and redo it times `runtime.ownership()` of an object no step changed, found by name before the clock starts, then again, cached. Each undo and redo dropped the bindings' state, so each first lookup rebuilt it: `rebuild_count` changed three times per undo or redo in every run.
+- **Statistics:** three processes per scene after a warmup; each process's median of its repeats, as a median and range over the processes.
+
+| Operation (ms) | Repeats per run | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|---|
+| Manifest entries | | 306 | 3,006 | 11,185 | 30,006 |
+| build the manifest | 1 | 3.878 (0.953–7.681) | 12.464 (11.978–12.565) | 37.516 (28.914–42.367) | 96.384 (88.286–107.658) |
+| `set_manifest` | 1 | 2.017 (1.921–3.178) | 17.105 (16.908–27.657) | 58.463 (56.344–59.863) | 166.580 (164.135–172.193) |
+| ownership after the write | 1 | 0.251 (0.250–0.256) | 2.419 (2.358–3.093) | 9.759 (9.513–10.196) | 25.479 (25.423–26.877) |
+| undo push | 6 | 1.179 (1.156–1.219) | 8.568 (8.530–8.616) | 48.529 (46.509–48.971) | 96.234 (93.331–96.363) |
+| undo | 5 | 9.588 (9.254–9.602) | 87.753 (87.696–87.855) | 350.961 (341.752–363.524) | 1,056.177 (1,041.535–1,074.516) |
+| redo | 5 | 9.379 (9.098–9.616) | 86.511 (85.831–88.356) | 355.716 (334.683–357.616) | 1,036.296 (1,017.067–1,066.851) |
+| **first ownership after undo or redo** | 10 | 1.116 (1.108–1.119) | 11.045 (10.958–11.194) | **43.886 (43.845–45.447)** | **158.042 (156.328–163.547)** |
+| cached ownership | 10 | 0.004 | 0.006 | 0.010 (0.010–0.011) | 0.012 (0.011–0.012) |
+
+**Findings:**
+- **Against the 50 ms budget:**
+  - ALab's median first lookup is under it, at 43.9 ms, about 39 ms per 10,000 entries;
+  - each ALab run had one lookup at 85–90 ms, over it;
+  - 30,006 entries take 158 ms.
+
+  M3 measured 21–35 ms per 10,000 resources in the bpy wheel ([M3 plan](../plans/M03-bindings.md), D8).
+- **The outliers are mostly garbage collection.** In one more ALab run, nine of ten first lookups took 42.6–43.8 ms and one 97.8 ms. With Python's garbage collector off for the loop (ad hoc, two runs), all twenty took 37.4–40.4 ms, but one 59.9 ms. So the rebuild's allocations set off a full collection now and then, and the collector costs about 5 ms of a typical rebuild.
+- **Blender's undo** at this scale takes about 350 ms on ALab and 1.05 s at 30,001 objects, an undo push 49 ms and 96 ms: an undo step's own cost, beside the lookup that follows it.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
