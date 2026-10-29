@@ -24,9 +24,6 @@ ELEMENT_VALUES = {
     "INT": "value",
 }
 
-# Instance attributes on a batched carrier that aren't constant primvars: Blender's position, and the bridge's.
-INSTANCE_ATTRIBUTES = {"position", "proscenium_element"}
-
 
 def _native(module_dir: str) -> Any:
     sys.path[:0] = [str(BRIDGE), module_dir]
@@ -61,7 +58,8 @@ def apply_scene(module_dir: str, scene: str, representation: str = "objects") ->
         reported[element] = _object(records[element], obj)
     # The depsgraph evaluates only objects shown in the viewport, so every object is shown before Blender's world
     # transforms are read, once its hide flags are reported.
-    shown = {b.carrier.name: (not b.carrier.hide_viewport, not b.carrier.hide_render) for b in batches}
+    carriers = [carrier for batch in batches for carrier in batch.carriers]
+    shown = {c.name: (not c.hide_viewport, not c.hide_render) for c in carriers}
     for obj in collection.objects:
         obj.hide_viewport = False
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
@@ -88,19 +86,21 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
     """Each carrier's evaluated instances, by the element its instance attributes name."""
     depsgraph = view_layer.depsgraph
     attributes = {}
-    for batch in batches:
+    for carrier in (carrier for batch in batches for carrier in batch.carriers):
         # The instances' point cloud lives only as long as the geometry set that holds it.
-        geometry = batch.carrier.evaluated_get(depsgraph).evaluated_geometry()
-        attributes[batch.carrier.name] = _attributes(geometry.instances_pointcloud())
-    prototypes = {b.carrier.name: b.prototype for b in batches}
+        geometry = carrier.evaluated_get(depsgraph).evaluated_geometry()
+        instances = geometry.instances_pointcloud()  # None for a carrier with no instances
+        if instances is not None:
+            attributes[carrier.name] = _attributes(instances)
     found = {}
     for instance in depsgraph.object_instances:
         carrier = instance.parent.original if instance.is_instance and instance.parent else None
-        if carrier is None or carrier.name not in prototypes:
+        if carrier is None or carrier.name not in attributes:
             continue
         held = attributes[carrier.name]
         index = instance.persistent_id[1]  # the instance's index in its carrier's instances (ad hoc, Blender 5.2)
         element = held["proscenium_element"]["values"][index]
+        assert element not in found, element  # one carrier shows each point
         viewport, render = shown[carrier.name]
         found[element] = {
             **_shown(instance.instance_object.original),
@@ -111,7 +111,11 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
             "shear_parent": None,
             "instance": True,
             # The instance attributes the bridge didn't add for itself: constant primvars by name.
-            "properties": {name: a["values"][index] for name, a in held.items() if name not in INSTANCE_ATTRIBUTES},
+            "properties": {
+                name: a["values"][index]
+                for name, a in held.items()
+                if name != "position" and not name.startswith("proscenium_")
+            },
         }
     return found
 

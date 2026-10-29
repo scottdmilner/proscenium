@@ -115,13 +115,17 @@ def check_picks(display: Display, scene: InteractionScene) -> None:
 
 
 def check_picks_ignore_names_and_parenting(display: Display, scene: InteractionScene) -> None:
-    """ICON-17: picks resolve to the same entities after the display objects are renamed and reparented."""
+    """ICON-17: picks resolve to the same entities after the display objects are renamed and reparented.
+
+    The new parent is offset, so reparenting moves every object, and a pick's own data changes with it.
+    """
     import bpy
 
     display.publish(scene.times[0])
     objects = display.managed_objects()
     before = [[display.resolve_pick(pick) for pick in display.picks(obj)] for obj in objects]
     parent = bpy.data.objects.new("UnmanagedParent", None)
+    parent.location = (5.0, -3.0, 2.0)
     _scene_collection().objects.link(parent)
     # Each takes another's name, so a lookup by name would find the wrong one.
     names = [obj.name for obj in objects]
@@ -204,7 +208,7 @@ def _assert_covers(display: Display, targets: list[str], elements: frozenset[str
 
 
 def check_apply_selection(display: Display, scene: InteractionScene) -> None:
-    """ICON-27, ICON-28, ICON-29: mirroring a source selection into Blender's selection and active object."""
+    """ICON-27, ICON-28, ICON-29: mirroring a source selection into Blender's selection and active object, exactly."""
     import bpy
 
     view_layer = display.view_layer
@@ -223,16 +227,31 @@ def check_apply_selection(display: Display, scene: InteractionScene) -> None:
                     display.highlight_targets(selected), display.highlight_targets([active] if active else [])
                 )
                 expanded = frozenset().union(*map(expected.beneath, selected))
+                shown: frozenset[str] = frozenset()
                 for obj in display.managed_objects():
                     coverage = display.coverage(obj)
                     if coverage and coverage <= expanded:
                         assert obj.select_get(view_layer=view_layer), (selected, obj.name)
                     if not coverage & expanded:
                         assert not obj.select_get(view_layer=view_layer), (selected, obj.name)
+                    if obj.select_get(view_layer=view_layer):
+                        shown |= coverage
+                # Partial coverage (M4, D3, for review): none arises, so the selected objects show exactly the
+                # selection's viewport elements.
+                assert shown == expanded, (selected, shown ^ expanded)
+                # Read back, the mirrored selection gives the targets of its elements (ICON-30), which for a target
+                # with a nested model of its level include that model's.
+                read = display.selection_from_blender(display.read_blender_selection(), level)
+                own = {e: oracle.kind_target(stage, f, level) for e, f in expected.floors.items()}
+                assert sorted(read.targets) == sorted({own[e] for e in expanded}), (level, selected, read)
                 if active is not None:
                     showing = [o for o in display.managed_objects() if display.coverage(o) & expected.beneath(active)]
                     assert view_layer.objects.active == (showing[0] if len(showing) == 1 else None), active
                     assert all(o.select_get(view_layer=view_layer) for o in showing), active
+                    if len(showing) == 1:  # the target of an element the active object shows
+                        assert read.active in {own[e] for e in display.coverage(showing[0])}, (active, read)
+                    else:
+                        assert read.active is None, (active, read)
                 assert [o.select_get(view_layer=view_layer) for o in unmanaged] == [True, False], selected
 
 
