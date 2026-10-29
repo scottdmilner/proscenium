@@ -310,6 +310,31 @@ Only for the requirements or costs Phases B and C found failing; this phase may 
 - Batching (such as Geometry Nodes instances of shared meshes) or a hybrid partitioned by asset or by independently updated subtree, prototyped as far as the failing question needs.
 - Each alternative answers the same list as the baseline: multi-mesh, multi-material assets, per-instance shading, pick data (Q2), partial highlighting and mirroring (Q3, Q5), small updates, detach, and the interaction checks.
 
+Phases B and C left one failing question a representation can answer: above about 10,000 objects, Blender's per-object costs (the depsgraph's evaluation after an update, a selection change, retirement) exceed the budgets. ALab's small updates miss theirs through whole-stage planning and the diff, which no representation changes; Phase F records that as a limitation (with the user). So this phase prototypes Geometry Nodes instancing, on `updates-10000` and checked on ALab:
+
+1. **Batched application:** plan objects that differ only in transform and constant primvars become instances on one carrier object, held to the baseline's own checks.
+2. **One object for both destinations:** a copy whose viewport and render objects differ only in their materials becomes one object, whose Geometry Nodes switch materials by destination.
+3. **Interaction on the batched display (Q2, Q3, Q5):** a pick resolved to its instance's element, and `apply_selection` and `read_blender_selection` with instances.
+4. **Updates and detach of the batched display.**
+5. **Measurements:** the batched display in the harness, against the baseline and the budgets.
+
+#### Phase D log
+
+- **D1, batched application.** `batch.py` applies a plan with Geometry Nodes instancing. Plan objects that share a mesh, material slots, destinations, and object color, and whose constant primvars have the same names and kinds, are instances on one carrier object. A group of one, a placeholder, and a copy with a primvar no attribute holds stay objects, as `apply.py` builds them.
+  - **Carrier:** a mesh with one point per instance. Its point attributes hold each instance's world transform as a 4x4 matrix, its element (`proscenium_element`), and its constant primvars by name, which reach the instance domain, where an Attribute node of type Instancer reads them. Its hide flags are the group's destinations, and one node group instances its prototype on every point.
+  - **Prototype:** an object no scene links, on the shared mesh, with the group's object-linked materials and object color, which every instance shows.
+  - **The check:** `isolated/test_baseline.py` runs every baseline check on both representations, reading the batched display from Blender's evaluated instances: each instance's world transform, its prototype's mesh and materials, its carrier's destinations, and its instance attributes, by the element the attributes name. The only difference it allows is that a sheared instance has no parent empty, since its 4x4 transform holds the shear.
+    - `F-APPEARANCE-CASES`'s 46 objects become 18 instances on 8 carriers and 28 objects.
+    - `F-NESTED-STRESS`'s 21 become 12 instances on 4 carriers (6 of them sheared) and 9 objects.
+    - In an ad hoc mutation run of `batch.py`, each of eight single changes failed it: a transposed transform, one material for every slot, no primvar attributes, the first copy's primvars for all, elements out of order, and the mesh slots, destinations, or object color left out of the grouping.
+  - **What batching changes:**
+    - **Object color:** Solid shading's object color is the prototype's, so copies whose constant `displayColor` or `displayOpacity` differ are in separate groups, as in `F-NESTED-STRESS`.
+    - **Constant primvars:** a material reads them through an Attribute node of type Instancer, not Object, which M9's translation must choose by representation. The check reads the evaluated attributes, not shading. A primvar no attribute type holds (a string, an array of more than one value) keeps its copy an object; no fixture has one.
+    - **Correspondence:** an instance holds only its element, so its source and instance context are the plan's, by element.
+  - **Ad hoc probes** (the Blender binary, one run each):
+    - a ray cast that hits an instance returns the prototype and the instance's world matrix, but not its index, which Q2's pick resolution (D3) must recover;
+    - a depsgraph instance's `persistent_id[1]` is its index on the carrier, which the check uses.
+
 ### Phase E — Time-sampled data
 
 1. **Per-time-code snapshots against animation data:** keyframed transforms, mesh cache modifiers, and Geometry Nodes baking, on the bridge's animation case and a scaled fixture. Playback, construction, memory, and `.blend` size are measured separately.

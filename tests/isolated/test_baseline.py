@@ -1,5 +1,7 @@
 """M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and apply.py build in Blender.
 
+Phase D's batched alternative (D1, batch.py) is held to the same checks, read from Blender's evaluated instances.
+
 One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag,
 materials, and world transform, on the two feasibility fixtures; and each case's appearance values where the
 baseline stores them (B4). Expected values come from how the fixtures are built and from UsdGeom and UsdShade.
@@ -56,10 +58,26 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[BaselineS
             yield BaselineScene(stress.root, stress.stage, shown, stress)
 
 
+# The baseline's one object per copy (apply.py), and Phase D's batched alternative (batch.py), which must display
+# the same: each test holds for both, except where a test names the difference.
+@pytest.fixture(params=["objects", "batched"])
+def representation(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
 @pytest.fixture
-def result(scene: BaselineScene, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> dict[str, Any]:
-    result = run_isolated(wheel, BODY, "apply_scene", tmp_path, module_dir=str(hydra_bridge), scene=str(scene.root))
+def result(
+    scene: BaselineScene, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "module_dir": str(hydra_bridge),
+        "scene": str(scene.root),
+        "representation": representation,
+    }
+    result = run_isolated(wheel, BODY, "apply_scene", tmp_path, **kwargs)
     assert result["errors"] == []
+    if representation == "batched":
+        assert result["batches"] > 0  # the fixture's shared copies are instances
     return result
 
 
@@ -223,7 +241,7 @@ def _sheared(world: Gf.Matrix4d) -> bool:
 
 def test_blender_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
     # What Blender composes once the depsgraph evaluates each object: a sheared copy through its parent empty,
-    # which only sheared copies have (XFORM-03).
+    # which only sheared copies have (XFORM-03). An instance's own 4x4 transform holds shear, with no parent.
     drawn = _drawn(scene.stage)
     cache = UsdGeom.XformCache()
     wrong = []
@@ -231,7 +249,8 @@ def test_blender_world_transforms_match_usdgeom(scene: BaselineScene, applied: l
         usd = cache.GetLocalToWorldTransform(drawn[obj["source"]])
         if not Gf.IsClose(Gf.Matrix4d(obj["world"]), usd, 1e-5):
             wrong.append(obj["source"])
-        assert obj["shear_parent"] == (obj["source"] if _sheared(usd) else None), obj["source"]
+        parented = _sheared(usd) and not obj["instance"]
+        assert obj["shear_parent"] == (obj["source"] if parented else None), obj["source"]
     assert not wrong
 
 

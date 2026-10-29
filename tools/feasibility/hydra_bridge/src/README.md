@@ -96,6 +96,7 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 | `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
 | `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`) |
+| `../batch.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one carrier object per group of copies that differ only in transform and constant primvars, which are its point attributes |
 | `../update.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
 | `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties and keeps everything else |
 | `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |

@@ -24,14 +24,21 @@ ELEMENT_VALUES = {
     "INT": "value",
 }
 
+# Instance attributes on a batched carrier that aren't constant primvars: Blender's position, and the bridge's.
+INSTANCE_ATTRIBUTES = {"position", "proscenium_element"}
+
 
 def _native(module_dir: str) -> Any:
     sys.path[:0] = [str(BRIDGE), module_dir]
     return importlib.import_module("_hydra_bridge")
 
 
-def apply_scene(module_dir: str, scene: str) -> dict[str, Any]:
-    """Capture, plan, and apply `scene` at default time; each object as Blender holds it, in plan order."""
+def apply_scene(module_dir: str, scene: str, representation: str = "objects") -> dict[str, Any]:
+    """Capture, plan, and apply `scene` at default time; each plan object as Blender displays it, in plan order.
+
+    `representation` is the baseline's "objects" (apply.py) or Phase D's "batched" (batch.py), where an instance
+    reports its prototype's mesh and materials, its carrier's destinations, and its own transform and attributes.
+    """
     native = _native(module_dir)
     apply = importlib.import_module("apply")
 
@@ -39,27 +46,74 @@ def apply_scene(module_dir: str, scene: str) -> dict[str, Any]:
     bridge = native.Bridge(stage)
     snapshot = bridge.capture()
     plan = native.build_plan(snapshot)
+    records = plan.objects
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    objects = apply.apply(plan, collection).objects
-    reported = [_object(record, obj) for record, obj in zip(plan.objects, objects, strict=True)]
+    if representation == "objects":
+        objects = dict(enumerate(apply.apply(plan, collection).objects))
+        batches = []
+    else:
+        display = importlib.import_module("batch").apply_batched(plan, collection)
+        objects, batches = display.objects, display.batches
+    reported: dict[int, dict[str, Any]] = {}
+    for element, obj in objects.items():
+        reported[element] = _object(records[element], obj)
     # The depsgraph evaluates only objects shown in the viewport, so every object is shown before Blender's world
     # transforms are read, once its hide flags are reported.
+    shown = {b.carrier.name: (not b.carrier.hide_viewport, not b.carrier.hide_render) for b in batches}
     for obj in collection.objects:
         obj.hide_viewport = False
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     view_layer.update()
-    for entry, obj in zip(reported, objects, strict=True):
-        entry["world"] = _rows(obj.matrix_world.transposed())  # USD's row-vector convention
-        entry["shear_parent"] = None if obj.parent is None else obj.parent.get(apply.SHEAR_PARENT)
+    for element, obj in objects.items():
+        reported[element]["world"] = _rows(obj.matrix_world.transposed())  # USD's row-vector convention
+        reported[element]["shear_parent"] = None if obj.parent is None else obj.parent.get(apply.SHEAR_PARENT)
+        reported[element]["instance"] = False
+    for element, entry in _instances(view_layer, batches, shown).items():
+        assert element not in reported, element  # each element is displayed once
+        reported[element] = {"source": records[element]["source"], "plan_world": _rows(records[element]["matrix"])}
+        reported[element] |= {"instance_context": list(records[element]["instance_context"]), **entry}
     result = {
-        "objects": reported,
+        "objects": [reported[element] for element in range(len(records))],
+        "batches": len(batches),
         "hydra_world": _hydra_world(snapshot),
         "errors": [d for d in plan.diagnostics if d["severity"] == "error"],
     }
     bridge.release()
     return result
+
+
+def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool, bool]]) -> dict[int, dict[str, Any]]:
+    """Each carrier's evaluated instances, by the element its instance attributes name."""
+    depsgraph = view_layer.depsgraph
+    attributes = {}
+    for batch in batches:
+        # The instances' point cloud lives only as long as the geometry set that holds it.
+        geometry = batch.carrier.evaluated_get(depsgraph).evaluated_geometry()
+        attributes[batch.carrier.name] = _attributes(geometry.instances_pointcloud())
+    prototypes = {b.carrier.name: b.prototype for b in batches}
+    found = {}
+    for instance in depsgraph.object_instances:
+        carrier = instance.parent.original if instance.is_instance and instance.parent else None
+        if carrier is None or carrier.name not in prototypes:
+            continue
+        held = attributes[carrier.name]
+        index = instance.persistent_id[1]  # the instance's index in its carrier's instances (ad hoc, Blender 5.2)
+        element = held["proscenium_element"]["values"][index]
+        viewport, render = shown[carrier.name]
+        found[element] = {
+            **_shown(instance.instance_object.original),
+            "placeholder": None,
+            "viewport": viewport,
+            "render": render,
+            "world": _rows(instance.matrix_world.transposed()),
+            "shear_parent": None,
+            "instance": True,
+            # The instance attributes the bridge didn't add for itself: constant primvars by name.
+            "properties": {name: a["values"][index] for name, a in held.items() if name not in INSTANCE_ATTRIBUTES},
+        }
+    return found
 
 
 def _rows(matrix: Any) -> list[list[float]]:
@@ -88,22 +142,29 @@ def _hydra_world(snapshot: Any) -> dict[str, list[list[float]]]:
 
 
 def _object(record: Any, obj: Any) -> dict[str, Any]:
-    mesh = obj.data if obj.type == "MESH" else None
     return {
         "source": obj["proscenium_source"],
         "plan_world": _rows(record["matrix"]),  # USD's row-vector convention
         "instance_context": list(obj["proscenium_instance_context"]),
         "placeholder": obj.get("proscenium_placeholder"),
-        # Blender's own name for the mesh data, so objects that share it report the same name.
-        "mesh": None if mesh is None else mesh.name,
         "viewport": not obj.hide_viewport,
         "render": not obj.hide_render,
+        # The ID properties the bridge didn't add for itself: constant primvars by name.
+        "properties": {k: _plain(obj[k]) for k in obj.keys() if not k.startswith("proscenium_")},
+        **_shown(obj),
+    }
+
+
+def _shown(obj: Any) -> dict[str, Any]:
+    """What an object shows of its mesh and materials."""
+    mesh = obj.data if obj.type == "MESH" else None
+    return {
+        # Blender's own name for the mesh data, so objects that share it report the same name.
+        "mesh": None if mesh is None else mesh.name,
         # Per material slot, the USD sources of the material it shows (None for none).
         "slots": [None if s.material is None else list(s.material["proscenium_sources"]) for s in obj.material_slots],
         "face_slots": [] if mesh is None else [p.material_index for p in mesh.polygons],
         "color": list(obj.color),
-        # The ID properties the bridge didn't add for itself: constant primvars by name.
-        "properties": {k: _plain(obj[k]) for k in obj.keys() if not k.startswith("proscenium_")},
         "attributes": {} if mesh is None else _attributes(mesh),
         "uv_maps": [] if mesh is None else [layer.name for layer in mesh.uv_layers],
         "corner_verts": [] if mesh is None else [loop.vertex_index for loop in mesh.loops],
