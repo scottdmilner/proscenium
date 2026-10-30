@@ -119,3 +119,25 @@ def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_br
     if fixture == "appearance":
         # An edit rebuilds only the meshes of the prims it recaptured, far fewer than a plan from scratch.
         assert all(by_edit[edit]["built"] < by_edit[edit]["fresh_built"] for edit in ("transform", "material"))
+
+
+@pytest.mark.parametrize("fixture", ["appearance", "stress", "point_instancers"])
+def test_separate_processes_plan_the_same_content(
+    fixture: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    """Plans of one scene from separate processes hold the same records, in whatever order each gives them."""
+    generators = {
+        "appearance": appearance.appearance_cases,
+        "stress": appearance.nested_stress,
+        "point_instancers": appearance.point_instancers,
+    }
+    with generators[fixture](tmp_path / "scene") as built:
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root)}
+        kwargs["point_instancers"] = fixture == "point_instancers"
+        digests = []
+        # Several processes, since two often order a fixture's records the same.
+        for run in range(4):
+            (tmp_path / str(run)).mkdir()
+            digests.append(run_isolated(wheel, BODY, "plan_content", tmp_path / str(run), **kwargs))
+    assert digests[0]["objects"] > 0
+    assert len({(d["objects"], d["content"]) for d in digests}) == 1

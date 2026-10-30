@@ -6,8 +6,10 @@ to the session layer of the caller's stage, and the bridge recaptures incrementa
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -69,6 +71,12 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             vertex.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1)])
         elif edit == "uncolor":  # leaves the one copy of a mesh that holds its displayColor without one (D10)
             UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("displayColor").GetAttr().Block()
+        elif edit == "merge-batches":  # one group from two batches, of two lids and three tags (D4's matching)
+            tag = stage.GetPrimAtPath("/Prototypes/Tag/Geom")
+            lid = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Lid"))
+            UsdGeom.Mesh(tag).GetPointsAttr().Set(lid.GetPointsAttr().Get())
+            UsdShade.MaterialBindingAPI.Apply(tag).Bind(UsdShade.Material(stage.GetPrimAtPath("/World/Looks/Blue")))
+            stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
         elif edit == "holes":  # a build problem, which later plans reuse with the build (D9)
             UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetHoleIndicesAttr().Set([0])
         elif edit == "subset":  # moves face 2 between Partitioned's subsets, which alone change
@@ -152,6 +160,39 @@ def _plain(value: Any) -> Any:
         return value
 
 
+def plan_content(module_dir: str, scene: str, point_instancers: bool = False) -> dict[str, Any]:
+    """Digests of `scene`'s plan at default time: of its content in any order, and of its objects' order.
+
+    Plans from separate processes may order their records differently, since the planner keys some maps by
+    SdfPath's hash. The content digest is the same for plans whose records are the same in some order: each object
+    by its mesh's and materials' content, not their indices, and every list a plan doesn't order, sorted.
+    """
+    sys.path[:0] = [str(BRIDGE), module_dir]
+    native = importlib.import_module("_hydra_bridge")
+    stage = Usd.Stage.Open(scene, Usd.Stage.LoadAll)
+    bridge = native.Bridge(stage)
+    plan = native.build_plan(bridge.capture(), point_instancers=point_instancers)
+    meshes = [_digest(_plain(mesh)) for mesh in plan.meshes]
+    materials = [_digest(_plain({**m, "sources": sorted(m["sources"])})) for m in plan.materials]
+    objects = []
+    for record in plan.objects:
+        mesh, slots = record["mesh"], record["material_slots"]
+        content = {**record, "mesh": None if mesh is None else meshes[mesh]}
+        content["material_slots"] = [None if m is None else materials[m] for m in slots]
+        objects.append(_digest(_plain(content)))
+    diagnostics = sorted(_digest(_plain(d)) for d in plan.diagnostics)
+    content = [sorted(objects), sorted(meshes), sorted(materials), diagnostics, list(plan.universe)]
+    order = [[record["source"], list(record["instance_context"])] for record in plan.objects]
+    bridge.release()
+    return {"objects": len(objects), "content": _digest(content), "order": _digest(order)}
+
+
+def _digest(value: Any) -> str:
+    """A digest of plain data (_plain's), with bytes by their hex and any other value by its repr."""
+    text = json.dumps(value, sort_keys=True, default=lambda v: v.hex() if isinstance(v, bytes) else repr(v))
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
 def _objects(plan: Any) -> list[dict[str, Any]]:
     return [{"source": o["source"], "mesh": o["mesh"], "slots": list(o["material_slots"])} for o in plan.objects]
 
@@ -165,8 +206,55 @@ def _baseline() -> Any:
     return module
 
 
-def update_edits(
-    module_dir: str, scene: str, edits: list[str], users: str, representation: str = "objects"
+class _InjectedFailureError(Exception):
+    pass
+
+
+class _FailingCollection:
+    """A collection whose link or unlink number `fail_at`, counting from 0, raises; every other one goes through."""
+
+    fail_at: int
+    operations: int  # the links and unlinks so far
+
+    def __init__(self, collection: Any, fail_at: int) -> None:
+        self._collection = collection
+        self.fail_at = fail_at
+        self.operations = 0
+
+    @property
+    def objects(self) -> _FailingObjects:
+        return _FailingObjects(self, self._collection.objects)
+
+    def operate(self) -> None:
+        self.operations += 1
+        if self.operations - 1 == self.fail_at:
+            raise _InjectedFailureError(self.fail_at)
+
+
+class _FailingObjects:
+    def __init__(self, owner: _FailingCollection, objects: Any) -> None:
+        self._owner = owner
+        self._objects = objects
+
+    def link(self, obj: Any) -> None:
+        self._owner.operate()
+        self._objects.link(obj)
+
+    def unlink(self, obj: Any) -> None:
+        self._owner.operate()
+        self._objects.unlink(obj)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._objects
+
+
+def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update runs
+    module_dir: str,
+    scene: str,
+    edits: list[str],
+    users: str,
+    representation: str = "objects",
+    fail_publication: bool = False,
 ) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
@@ -174,6 +262,10 @@ def update_edits(
     batch_update.py). Every element is selected before each edit. Each step reports the diff, what the display
     held before and after, what the updated display holds against a fresh application of the same plan, and
     Blender's data counts for each.
+
+    With `fail_publication`, each publication first fails at each of its collection links and unlinks in turn,
+    and the step reports whether each failure left the display as it was published, before publishing again,
+    and how many links and unlinks the publication that succeeded made.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
@@ -202,7 +294,20 @@ def update_edits(
         following = native.build_plan(bridge.capture(incremental=True))
         diff = native.diff_plans(plan, following)
         prepared = update.prepare(following, diff, display, policy)
-        display = update.publish(prepared, display, collection)
+        restored, operations = [], None
+        if fail_publication:
+            published = _linked(collection)
+            failing = _FailingCollection(collection, 0)
+            while True:
+                try:
+                    updated = update.publish(prepared, display, failing)
+                    break
+                except _InjectedFailureError:
+                    restored.append(held_by(display, plan.objects) == before and _linked(collection) == published)
+                    failing = _FailingCollection(collection, failing.fail_at + 1)
+            display, operations = updated, failing.operations
+        else:
+            display = update.publish(prepared, display, collection)
         linked = {"published": _linked(collection), "expected": _published(display, batched)}
         update.retire(prepared)
         records = following.objects
@@ -228,6 +333,8 @@ def update_edits(
                 "counts": counts,
                 "fresh_counts": {kind: fresh_counts[kind] - counts[kind] for kind in counts},
                 "written": _written(prepared, batched),
+                "restored": restored,
+                "operations": operations,  # the links and unlinks of the publication that succeeded
             }
         )
         plan = following

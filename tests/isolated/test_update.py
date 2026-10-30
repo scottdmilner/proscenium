@@ -107,7 +107,7 @@ DIFF_BODY = Path(__file__).parent / "bodies/plan_diff.py"
 APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "reshape", "visibility"]
 APPEARANCE_EDITS += ["structure"]
 APPEARANCE_EDITS += ["instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
-APPEARANCE_EDITS += ["instance-color", "color-interpolation", "uncolor"]
+APPEARANCE_EDITS += ["instance-color", "color-interpolation", "uncolor", "merge-batches"]
 
 
 @pytest.mark.parametrize("representation", ["objects", "batched"])
@@ -141,6 +141,7 @@ def test_update_follows_edits(
             if held.get("mesh_index") in new_meshes:
                 assert held["modifiers"] == fresh["modifiers"], (edit, held["source"])
         assert step["counts"] == step["fresh_counts"], edit  # nothing left over
+        assert step["restored"] == [], edit  # no failure injected
         # From publication on, the collection links exactly the published display.
         assert step["linked"]["published"] == step["linked"]["expected"], edit
         for kind in ("meshes", "materials"):
@@ -161,6 +162,29 @@ def test_update_follows_edits(
             if representation == "batched":
                 nothing |= {"added": 0, "dropped": 0, "points": 0, "reprototyped": 0, "renumbered batches": 0}
             assert step["written"] == nothing
+
+
+@pytest.mark.parametrize("representation", ["objects", "batched"])
+@pytest.mark.parametrize("users", ["repoint", "replace"])
+def test_failed_publication_restores_the_display(
+    users: str, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    """B6 and D4: a publication that fails at any of its links or unlinks leaves the published display as it was.
+
+    Each update's publication fails at each of its collection links and unlinks in turn, after every change it
+    makes in place, then succeeds, and the display it publishes holds what a fresh application does.
+    """
+    with appearance.appearance_cases(tmp_path / "scene") as built:
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": APPEARANCE_EDITS}
+        kwargs |= {"users": users, "representation": representation, "fail_publication": True}
+        steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
+    for step in steps:
+        edit = step["edit"]
+        assert all(step["restored"]), (edit, step["restored"])
+        assert len(step["restored"]) == step["operations"], edit  # one failure at each link and unlink
+        assert _without_modifiers(step["held"]) == _without_modifiers(step["fresh"]), edit
+        assert step["counts"] == step["fresh_counts"], edit
+    assert sum(step["operations"] for step in steps) > len(steps)
 
 
 def _without_modifiers(objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -208,9 +232,20 @@ def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[st
         unchanged = olds == old["elements"] and moved.isdisjoint(batch["elements"])
         assert (batch["points"] == old["points"]) == unchanged, (edit, batch)
         kept |= {i for i, o in zip(batch["elements"], olds, strict=True) if o in old["elements"] and i not in moved}
+    # Each group keeps the batch of the same looks that holds the most of its members' old counterparts, of those
+    # no other group keeps: none of those left over holds more, nor any for a group with a new batch.
+    claimed = {batch["prototype"] for batch in after["batches"]} & old_batches.keys()
+    for batch in after["batches"]:
+        olds = {diff["objects"][index] for index in batch["elements"]}
+        old = old_batches.get(batch["prototype"])
+        most = 0 if old is None else len(olds.intersection(old["elements"]))
+        for other in before["batches"]:
+            if other["prototype"] not in claimed and other["looks"] == batch["looks"]:
+                assert len(olds.intersection(other["elements"])) <= most, (edit, batch, other)
     # A batch whose members are all unchanged, and were exactly one old batch's, is kept whole.
-    for old in before["batches"]:
-        news = [index for index, o in enumerate(diff["objects"]) if o in old["elements"]]
-        if [diff["objects"][index] for index in news] == old["elements"] and moved.isdisjoint(news):
-            assert any(batch["points"] == old["points"] for batch in after["batches"]), (edit, old)
+    for batch in after["batches"]:
+        olds = [diff["objects"][index] for index in batch["elements"]]
+        whole = [old for old in before["batches"] if old["elements"] == olds]
+        if whole and moved.isdisjoint(batch["elements"]):
+            assert batch["points"] == whole[0]["points"], (edit, batch)
     return kept

@@ -166,7 +166,7 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
     try:
         for index, repoint in prepared.repointed.items():
             obj = new.objects[index]
-            undo.append(_saved(obj))
+            undo.append(_saved(obj, DISPLAY_COLOR in obj))
             if repoint.data is not None:
                 # The same slot count, and the slots link to the object, so each keeps its place.
                 obj.data = repoint.data
@@ -181,7 +181,9 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
             batch = rebatch.batch
             if rebatch.reprototyped:
                 assert rebatch.record is not None  # prepare reads a member's record for a moved prototype
-                undo.append(_saved(batch.prototype))
+                # A batch's members share their primvars' kinds, which the batch it keeps shares too.
+                constant = any(name == DISPLAY_COLOR for name, _ in batch.key[5])
+                undo.append(_saved(batch.prototype, constant))
                 set_prototype(batch.prototype, rebatch.record, new.meshes, new.materials)
             if rebatch.points is not None:
                 for carrier in batch.carriers:
@@ -251,13 +253,17 @@ def _kept_objects(single: list[int], previous: list[int], display: BatchedDispla
     return {index for index in single if previous[index] in display.objects and index not in rebuilt}
 
 
-def _saved(obj: bpy.types.Object) -> Callable[[], None]:
-    """What puts back an object's data, each slot's material, and its display color modifier."""
+def _saved(obj: bpy.types.Object, constant: bool) -> Callable[[], None]:
+    """What puts back an object's data, each slot's material, and its display color modifier.
+
+    `constant` says whether the copies it shows have a constant displayColor. Their object color stays: a batch is
+    kept only by a group of its own color.
+    """
     data, slots = obj.data, [slot.material for slot in obj.material_slots]
 
     def restore() -> None:
         obj.data = data
-        show_display_color(obj, DISPLAY_COLOR in obj)
+        show_display_color(obj, constant)
         for slot, material in zip(obj.material_slots, slots, strict=True):
             slot.material = material
 

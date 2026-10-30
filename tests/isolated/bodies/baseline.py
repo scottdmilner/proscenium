@@ -387,6 +387,8 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
         "batches": [
             {
                 "elements": list(batch.elements),
+                # What a group must share with a batch to keep it, besides its mesh and materials (D4).
+                "looks": list(batch.key[2:-1]),
                 "carriers": [carrier.as_pointer() for carrier in batch.carriers],
                 "prototype": batch.prototype.as_pointer(),
                 "points": batch.points.as_pointer(),

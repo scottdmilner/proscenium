@@ -629,7 +629,7 @@ They held only after planning went parallel: with serial planning, the Hydra sta
     - **Other scenes** were unchanged within their ranges.
     - **The threads contend.** Mesh building's time, summed over threads, rose from 1.30 s to 2.00 s. This is recorded for the production core under [For production planning](#for-production-planning-m8).
     - **The plan is unchanged.** All 128 correctness checks pass. On ALab, a canonical digest of the plan is the same for the committed serial planner and for the new code, on one thread (`PXR_WORK_THREAD_LIMIT=1`) and on all threads. The digest covers every object with its mesh contents and materials, plus the diagnostics, in an order-free form.
-  - **The plan's order varies between processes,** even on one thread and with the committed planner, though its content doesn't (ad hoc, ALab). The cause was not investigated.
+  - **The plan's order varies between processes,** even on one thread and with the committed planner, though its content doesn't (ad hoc, ALab). See [Plans from separate processes](#plans-from-separate-processes).
   - **Duplicate meshes:** ALab's 3,945 plan meshes hold 3,369 distinct contents (same digest), so content deduplication would remove 576 more meshes (ad hoc).
 - **The prototype's extra peak is what the bridge holds while Blender data is built.**
   - On ALab the live heap is 3,031 MB after synchronization. Releasing the bridge, its snapshot and the plan frees 1,453 MB; the harness drops all three together. Dropping the stage frees 82 MB more, and deleting the Blender data frees the remaining 1,460 MB.
@@ -1041,7 +1041,7 @@ A batch is three carriers and a prototype, so it has fewer objects than its copi
 - **On ALab, batching changes little.** Its 657 batches leave 6,261 objects, synchronization and small updates take within a few percent of the baseline, and mirroring a box selection takes twice as long, 24.8 ms against 11.4 ms; that wasn't profiled. Every ALab interaction stays within its budget.
 - **Batching only large groups on ALab** leaves fewer objects than batching every group (5,450 at a minimum of 5), but changes little else. Against the baseline, initial synchronization's construction and evaluation are a little faster (by 60–80 ms and 10–20 ms), each small update's preparation is about 25 ms slower, and the small updates themselves are within their ranges. The ratios to a full rebuild are the same, so the budget is missed as much. A box selection's mirroring falls from 24.8 ms (every group, from the first sets) to 15.5 ms at 5 and 13.8 ms at 20, against the baseline's 11.7 ms, so it grows with the number of batches. The time step and payload changes are faster than the baseline's in this session, but this session's baseline was also slower than the first sets' (1.508 s against 1.247 s for the time step), so that isn't attributed to batching. The single pick in each set was of a copy kept as an object.
 - **Payload changes at 30,001 objects** fall from 19–27 s to 1.1–3.1 s, since they add or retire three batches instead of 20,000 objects. The unload's remaining time is mostly its capture (about 3.0 s).
-- **Unexplained:** each ALab set picked a different copy as the one inside the deepest instance context, which the timing chooses from the plan's order, the two baseline sets included. So the plan's object order may differ between processes. Not investigated.
+- **The single pick's copy:** each ALab set picked a different copy as the one inside the deepest instance context, which the timing chooses from the plan's order, the two baseline sets included. The plan's object order differs between processes, and its content doesn't ([Plans from separate processes](#plans-from-separate-processes)).
 
 #### ALab with point instancers, and viewport frame time
 
@@ -1213,6 +1213,15 @@ In an ad hoc count of the plan, 2,345 of ALab's 3,393 meshes hold their copies' 
 - **Colors only shown are still floats:** 8-bit colors held ALab's added peak memory to 13–55 MB, in another session, at about 60 ns an element to write, 0.6 s for ALab's 10.8M.
 - **The extra attributes** are ordinary Blender data that detach keeps: a mesh's held constant color and its uniform color's corners show in the attribute list, and an edit to a mesh's `displayColor` in Blender doesn't reach its corners.
 - **Measured only on ALab,** where one mesh has copies with differing constant colors, and only these viewpoints and view size. A scene whose copies of one mesh mostly differ in constant color would need a modifier on most of them.
+
+#### Plans from separate processes
+
+Plans of one scene from separate processes can order their records differently, and hold the same content (M4 Phase D, D11).
+
+- **The check:** `isolated/test_plan_diff.py::test_separate_processes_plan_the_same_content` plans `F-APPEARANCE-CASES`, `F-NESTED-STRESS`, and the point-instancer scene in four processes each. It compares a digest of each plan's content in any order: each object with its mesh's and materials' content in place of their indices, the meshes, the materials with their sources sorted, the diagnostics, and the universe.
+- **A shared mesh's name depended on the order.** The check first failed intermittently on `F-APPEARANCE-CASES`: a mesh that two prims share was named after whichever the planner reached first. It now takes the least of its uses' names. With that change reverted, the check failed in each of three runs.
+- **On ALab with its point instancers** (ad hoc, three processes of the Blender binary, at default time): every process planned 15,157 objects with the same content digest, and each in a different order.
+- **The likely cause** is that the planner keys some maps by `SdfPath`'s hash, which differs between processes. This is inferred from the code, not isolated.
 
 ### Distribution (M1b Phase F)
 

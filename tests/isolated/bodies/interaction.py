@@ -13,14 +13,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 
 import bpy
+from pxr import Usd
 
-from fixtures import interaction
+from fixtures import appearance, interaction
 from support.interaction_checks import CHECKS, Entity, NotApplicableError, Resolved, SourceSelection
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    from pxr import Usd
 
 BRIDGE = Path(__file__).resolve().parents[3] / "tools/feasibility/hydra_bridge"
 FIXTURES = {
@@ -41,13 +40,15 @@ class BaselineDisplay:
     stage: Usd.Stage
     view_layer: bpy.types.ViewLayer
     collection: bpy.types.Collection
+    point_instancers: bool  # the plan setting that translates point instancers' instances (D6)
 
-    def __init__(self, module_dir: str, stage: Usd.Stage) -> None:
+    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = False) -> None:
         sys.path[:0] = [str(BRIDGE), module_dir]
         self._native = importlib.import_module("_hydra_bridge")
         self._apply = importlib.import_module("apply")
         self._selection = importlib.import_module("selection")
         self.stage = stage
+        self.point_instancers = point_instancers
         self._bridge = self._native.Bridge(stage)
         scene: Any = bpy.context.scene  # never None in a running Blender
         self.view_layer = scene.view_layers[0]
@@ -55,18 +56,29 @@ class BaselineDisplay:
         scene.collection.children.link(self.collection)
         self._interaction: Any = None
         self._objects: list[bpy.types.Object] = []
+        self._records: list[Any] = []
 
     def publish(self, time: float) -> None:
         for obj in self._objects:
             bpy.data.objects.remove(obj)
-        plan = self._native.build_plan(self._bridge.capture(time))
+        plan = self._native.build_plan(self._bridge.capture(time), point_instancers=self.point_instancers)
         errors = [d for d in plan.diagnostics if d["severity"] == "error"]
         assert not errors, errors
         self._objects = self._apply.apply(plan, self.collection).objects
+        self._records = plan.objects
         self._interaction = self._native.Interaction(self.stage, plan)
 
     def managed_objects(self) -> list[bpy.types.Object]:
         return list(self._selection.managed(self.collection).values())
+
+    def drawn(self, element: int) -> tuple[str, list[str]]:
+        """The source and instance context the plan gives `element`."""
+        record = self._records[element]
+        return record["source"], list(record["instance_context"])
+
+    def elements(self, obj: bpy.types.Object) -> list[int]:
+        """The display elements `obj` shows in the viewport, in the order of its picks."""
+        return [] if obj.hide_viewport else [obj[self._selection.ELEMENT]]
 
     def picks(self, obj: bpy.types.Object) -> list[Any]:
         return [] if obj.hide_viewport else [obj[self._selection.ELEMENT]]
@@ -113,19 +125,18 @@ class BatchedDisplay(BaselineDisplay):
     to instance, so the mirroring checks see each carrier's coverage as drawn, not as batch_selection.py set it.
     """
 
-    def __init__(self, module_dir: str, stage: Usd.Stage) -> None:
-        super().__init__(module_dir, stage)
+    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = False) -> None:
+        super().__init__(module_dir, stage, point_instancers)
         self._batch = importlib.import_module("batch")
         self._batched = importlib.import_module("batch_selection")
         self._display: Any = None
-        self._records: list[Any] = []
 
     @override
     def publish(self, time: float) -> None:
         if self._display is not None:
             prototypes = [batch.prototype for batch in self._display.batches]
             bpy.data.batch_remove([*self._batched.managed(self._display), *prototypes])
-        plan = self._native.build_plan(self._bridge.capture(time))
+        plan = self._native.build_plan(self._bridge.capture(time), point_instancers=self.point_instancers)
         errors = [d for d in plan.diagnostics if d["severity"] == "error"]
         assert not errors, errors
         self._display = self._batch.apply_batched(plan, self.collection)
@@ -156,6 +167,12 @@ class BatchedDisplay(BaselineDisplay):
             for i in depsgraph.object_instances
             if i.is_instance and i.parent is not None and i.parent.original == carrier
         ]
+
+    @override
+    def elements(self, obj: bpy.types.Object) -> list[int]:
+        if self._kept(obj):
+            return super().elements(obj)
+        return [element for element, _, _ in self._drawn(obj)]
 
     @override
     def picks(self, obj: bpy.types.Object) -> list[Any]:
@@ -203,3 +220,41 @@ def run_check(module_dir: str, fixture: str, check: str, dest: str, representati
         finally:
             display.release()
     return "passed"
+
+
+def point_instancer_interaction(module_dir: str, dest: str, representation: str) -> dict[str, Any]:
+    """Picks and selection mirroring on point-instanced copies (D6), by display element.
+
+    Copies of one prototype mesh at different points share a source, so what each object shows is read by element.
+    Reports each pick with the element drawn there, the source and instance context the plan gives it, and what
+    the pick resolves to; and for a selection of every other element, the first one active, the elements the
+    selected objects show and the selection read back.
+    """
+    with appearance.point_instancers(Path(dest)) as scene:
+        display = DISPLAYS[representation](module_dir, scene.stage, point_instancers=True)
+        try:
+            display.publish(Usd.TimeCode.Default().GetValue())
+            picks = []
+            for obj in display.managed_objects():
+                for element, pick in zip(display.elements(obj), display.picks(obj), strict=True):
+                    resolved = display.resolve_pick(pick)
+                    entity = resolved.entity
+                    resolved_as = [entity.source, list(entity.instance_context)]
+                    picks.append(
+                        {"element": element, "drawn": list(display.drawn(element))}
+                        | {"resolved": resolved_as, "floor": resolved.floor}
+                    )
+            shown = sorted(pick["element"] for pick in picks)
+            targets, active = shown[::2], shown[:1]
+            display.apply_selection(targets, active)
+            view_layer = display.view_layer
+            selected = [o for o in display.managed_objects() if o.select_get(view_layer=view_layer)]
+            read = display.read_blender_selection()
+            return {
+                "picks": picks,
+                "targets": targets,
+                "selected": sorted(e for obj in selected for e in display.elements(obj)),
+                "read": {"selected": sorted(read.selected), "active": read.active},
+            }
+        finally:
+            display.release()

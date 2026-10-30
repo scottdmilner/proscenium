@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from fixtures.appearance import PointInstancerScene
 
 BODY = Path(__file__).parent / "bodies/baseline.py"
+INTERACTION_BODY = Path(__file__).parent / "bodies/interaction.py"
 POINT = "/__point_"  # what names a point in a copy's instance context
 CLOSE = 1e-5  # float32 storage in Blender
 
@@ -79,3 +80,27 @@ def test_without_the_setting_the_instancer_is_a_placeholder(
 ) -> None:
     objects = _applied(scattered, wheel, hydra_bridge, tmp_path)["objects"]
     assert [(o["source"], o["placeholder"]) for o in objects] == [(scattered.instancer, "PointInstancer")]
+
+
+@pytest.mark.parametrize("representation", ["objects", "batched"])
+def test_picks_and_selection_on_point_instanced_copies(
+    scattered: PointInstancerScene, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    """Q2, Q3, and Q5 on the copies of each point (D3's checks, by element, since a point's copies share sources).
+
+    Each shown copy is picked once and resolves to the mesh and point drawn there, with the instancer as its floor
+    (D6), and a selection mirrors into exactly the objects that show it, and reads back.
+    """
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "dest": str(tmp_path / "scene")}
+    result = run_isolated(
+        wheel, INTERACTION_BODY, "point_instancer_interaction", tmp_path, **kwargs, representation=representation
+    )
+    picks = result["picks"]
+    shown = {copy for copy in scattered.world if copy[1] not in scattered.invisible}
+    drawn = {(pick["drawn"][0], _point({"instance_context": pick["drawn"][1]})) for pick in picks}
+    assert len(picks) == len(drawn) and drawn == shown  # every shown copy, once
+    for pick in picks:
+        assert pick["resolved"] == pick["drawn"], pick
+        assert pick["floor"] == scattered.instancer, pick
+    assert result["selected"] == result["targets"]
+    assert result["read"] == {"selected": result["targets"], "active": result["targets"][0]}

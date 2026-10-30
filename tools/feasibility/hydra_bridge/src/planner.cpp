@@ -175,13 +175,16 @@ private:
         }
         const bool subdivided = mesh->subdivisionScheme == PxOsdOpenSubdivTokens->catmullClark ||
                                 mesh->subdivisionScheme == PxOsdOpenSubdivTokens->loop;
-        // A mesh whose content another already has shares it (M4, B5).
+        // A mesh whose content another already has shares it (M4, B5), with the least of its uses' names, so its
+        // name doesn't depend on the order prims are planned in.
         int index = contents_.Find(*mesh, built.contentHash, plan_->meshes);
         if (index == -1) {
             plan_->meshes.push_back(std::move(*mesh));
             plan_->meshHashes.push_back(built.contentHash);
             index = static_cast<int>(plan_->meshes.size() - 1);
             contents_.Add(built.contentHash, index);
+        } else if (mesh->name < plan_->meshes[index].name) {
+            plan_->meshes[index].name = std::move(mesh->name);
         }
         AddObjects(prim, index, TfToken(), slots);
         // A subset has no object of its own; its bindings are reported on the mesh's copies.
