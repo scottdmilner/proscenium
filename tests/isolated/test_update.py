@@ -132,14 +132,7 @@ def test_update_follows_edits(
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     for step in steps:
         edit, diff, before, after = step["edit"], step["diff"], step["before"], step["after"]
-        # A kept mesh holds the displayColor its copies shared when it was built (D10), so which copies need a
-        # display color modifier depends on what the mesh was built with, while what each shows doesn't
-        # (displayed_color). A new mesh is built with its copies' color, as a fresh application builds it.
-        assert _without_modifiers(step["held"]) == _without_modifiers(step["fresh"]), edit
-        new_meshes = {index for index, old in enumerate(diff["meshes"]) if old == -1}
-        for held, fresh in zip(step["held"], step["fresh"], strict=True):
-            if held.get("mesh_index") in new_meshes:
-                assert held["modifiers"] == fresh["modifiers"], (edit, held["source"])
+        assert step["held"] == step["fresh"], edit
         assert step["counts"] == step["fresh_counts"], edit  # nothing left over
         assert step["restored"] == [], edit  # no failure injected
         # From publication on, the collection links exactly the published display.
@@ -182,13 +175,9 @@ def test_failed_publication_restores_the_display(
         edit = step["edit"]
         assert all(step["restored"]), (edit, step["restored"])
         assert len(step["restored"]) == step["operations"], edit  # one failure at each link and unlink
-        assert _without_modifiers(step["held"]) == _without_modifiers(step["fresh"]), edit
+        assert step["held"] == step["fresh"], edit
         assert step["counts"] == step["fresh_counts"], edit
     assert sum(step["operations"] for step in steps) > len(steps)
-
-
-def _without_modifiers(objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [{key: value for key, value in obj.items() if key != "modifiers"} for obj in objects]
 
 
 def _kept_objects(

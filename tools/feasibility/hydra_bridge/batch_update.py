@@ -27,11 +27,11 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import DISPLAY_COLOR, new_object, set_mesh_colors, show_display_color
+from apply import new_object
 from batch import Batch, BatchedDisplay, groups, new_batch, new_points, set_prototype
 from batch_selection import states
 from selection import ELEMENT
-from update import Repoint, UserPolicy, new_data, new_meshes, retire_ids, with_parent
+from update import Repoint, UserPolicy, new_data, retire_ids, with_parent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -103,9 +103,6 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
         decided.append((olds, rebuild, reprototyped))
     order = sorted(needed)
     records = dict(zip(order, plan.objects_at(order), strict=True))
-    # A new mesh's copies are all added or changed: a kept batch on one is reprototyped, and its members share one
-    # color, so the records hold each of its colors.
-    set_mesh_colors(new_meshes(diff, meshes), records.values())
 
     serial = display.serial
     batches, added, kept = [], [], []
@@ -166,11 +163,10 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
     try:
         for index, repoint in prepared.repointed.items():
             obj = new.objects[index]
-            undo.append(_saved(obj, DISPLAY_COLOR in obj))
+            undo.append(_saved(obj))
             if repoint.data is not None:
                 # The same slot count, and the slots link to the object, so each keeps its place.
                 obj.data = repoint.data
-                show_display_color(obj, DISPLAY_COLOR in obj)
             for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
                 slot.material = material
         for index in prepared.renumbered:
@@ -181,9 +177,7 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
             batch = rebatch.batch
             if rebatch.reprototyped:
                 assert rebatch.record is not None  # prepare reads a member's record for a moved prototype
-                # A batch's members share their primvars' kinds, which the batch it keeps shares too.
-                constant = any(name == DISPLAY_COLOR for name, _ in batch.key[5])
-                undo.append(_saved(batch.prototype, constant))
+                undo.append(_saved(batch.prototype))
                 set_prototype(batch.prototype, rebatch.record, new.meshes, new.materials)
             if rebatch.points is not None:
                 for carrier in batch.carriers:
@@ -253,17 +247,12 @@ def _kept_objects(single: list[int], previous: list[int], display: BatchedDispla
     return {index for index in single if previous[index] in display.objects and index not in rebuilt}
 
 
-def _saved(obj: bpy.types.Object, constant: bool) -> Callable[[], None]:
-    """What puts back an object's data, each slot's material, and its display color modifier.
-
-    `constant` says whether the copies it shows have a constant displayColor. Their object color stays: a batch is
-    kept only by a group of its own color.
-    """
+def _saved(obj: bpy.types.Object) -> Callable[[], None]:
+    """What puts back an object's data and each slot's material."""
     data, slots = obj.data, [slot.material for slot in obj.material_slots]
 
     def restore() -> None:
         obj.data = data
-        show_display_color(obj, constant)
         for slot, material in zip(obj.material_slots, slots, strict=True):
             slot.material = material
 

@@ -5,6 +5,8 @@
 
 #include "plan.h"
 
+#include <pxr/base/gf/vec4f.h>
+
 #include <cstddef>
 #include <unordered_map>
 #include <vector>
@@ -12,8 +14,10 @@
 namespace hydra_bridge {
 
 // A mesh's content: positions, corners, faces, each face's material slot and the slot count, attributes (in
-// any order), subdivision scheme, and sidedness, byte for byte. Its name is left out.
+// any order), subdivision scheme, sidedness, and held display color, byte for byte. Its name is left out.
 std::size_t ContentHash(const MeshData &mesh);
+// The content hash of a mesh whose hash without its held color is `hash`, once it holds `color`.
+std::size_t WithHeldColor(std::size_t hash, const pxr::GfVec4f &color);
 bool SameContent(const MeshData &a, const MeshData &b);
 
 // The plan's meshes by content, as they are added.

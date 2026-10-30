@@ -11,6 +11,7 @@
 #include <pxr/pxr.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/range3d.h>
+#include <pxr/base/gf/vec4f.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/base/vt/types.h>
@@ -59,6 +60,10 @@ struct MeshData {
     std::vector<Attribute> attributes;
     pxr::TfToken subdivisionScheme;
     bool doubleSided = false;
+    // The constant display color, alpha its opacity, that every copy of this mesh has, if they share one, which
+    // Blender's mesh holds on points as displayColor, so Solid shading's Attribute color shows it (M4 Phase D).
+    // Part of the mesh's content, so a change in what its copies share gives the plan a new mesh.
+    std::optional<pxr::GfVec4f> heldColor;
 };
 
 struct MaterialData {

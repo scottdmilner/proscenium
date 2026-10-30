@@ -62,8 +62,9 @@ def scenes(groups: list[str], out: Path) -> dict[str, dict[str, Any]]:
         if group == "bespoke":
             for name in BESPOKE:
                 found[name] = {"path": str(CASES / f"{name}.usda"), "time": 1.0, "group": group}
-        elif group in ("stress", "smoke", "updates"):
-            for name in {"stress": stress.STRESS, "smoke": SMOKE, "updates": stress.UPDATES}[group]:
+        elif group in ("stress", "smoke", "updates", "colors"):
+            named = {"stress": stress.STRESS, "smoke": SMOKE, "updates": stress.UPDATES, "colors": stress.COLORS}
+            for name in named[group]:
                 path, parameters = stress.generate(name, out / "scenes")
                 found[name] = {
                     "path": str(path),
@@ -207,7 +208,7 @@ def main() -> int:
         nargs="+",
         default=["stress", "alab"],
         help="groups: bespoke, stress, alab, alab-instancers (its point instancers active, M4 Phase D), updates "
-        "(M4 Phase C), smoke (one small scene, for CI)",
+        "(M4 Phase C), colors (M4 Phase D's display color comparison), smoke (one small scene, for CI)",
     )
     parser.add_argument("--only", nargs="+", help="scene names within the groups")
     parser.add_argument("--repeats", type=int, default=3)

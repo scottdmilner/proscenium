@@ -209,9 +209,7 @@ def _shown(obj: Any) -> dict[str, Any]:
         "slots": [None if s.material is None else list(s.material["proscenium_sources"]) for s in obj.material_slots],
         "face_slots": [] if mesh is None else [p.material_index for p in mesh.polygons],
         "color": list(obj.color),
-        # A displayColor all the mesh's copies share, which displayed_color covers, depends on which copies the mesh
-        # had when it was built.
-        "attributes": {} if mesh is None else _attributes(mesh, held_color="proscenium_display_color" in mesh),
+        "attributes": {} if mesh is None else _attributes(mesh),
         "uv_maps": [] if mesh is None else [layer.name for layer in mesh.uv_layers],
         "corner_verts": [] if mesh is None else [loop.vertex_index for loop in mesh.loops],
     }
@@ -224,16 +222,11 @@ def _plain(value: Any) -> Any:
     return list(value) if isinstance(value, bpy.types.bpy_prop_array) else value
 
 
-def _attributes(mesh: Any, held_color: bool = False) -> dict[str, dict[str, Any]]:
-    """The mesh's named attributes, Blender's internal ones aside: domain, data type, and each element's value.
-
-    With `held_color`, its displayColor is left out too.
-    """
+def _attributes(mesh: Any) -> dict[str, dict[str, Any]]:
+    """The mesh's named attributes, Blender's internal ones aside: domain, data type, and each element's value."""
     result = {}
     for attribute in mesh.attributes:
         if attribute.name.startswith(".") or attribute.data_type not in ELEMENT_VALUES:
-            continue
-        if held_color and attribute.name == "displayColor":
             continue
         prop = ELEMENT_VALUES[attribute.data_type]
         values = [getattr(element, prop) for element in attribute.data]

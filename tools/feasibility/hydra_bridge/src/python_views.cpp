@@ -162,6 +162,9 @@ bp::dict MeshDict(const MeshData &mesh) {
     record["attributes"] = attributes;
     record["subdivision_scheme"] = mesh.subdivisionScheme.GetString();
     record["double_sided"] = mesh.doubleSided;
+    record["held_color"] = mesh.heldColor ? bp::object(bp::make_tuple((*mesh.heldColor)[0], (*mesh.heldColor)[1],
+                                                                      (*mesh.heldColor)[2], (*mesh.heldColor)[3]))
+                                          : bp::object();
     return record;
 }
 

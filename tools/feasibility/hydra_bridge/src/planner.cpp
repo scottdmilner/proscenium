@@ -86,6 +86,7 @@ public:
                 AddObjects(prim, -1, prim.usdTypeName);
         }
         for (const Diagnostic &diagnostic : snapshot_.diagnostics) MapToSources(diagnostic);
+        HoldDisplayColors();
         plan_->correspondence = BuildCorrespondence(*plan_);
         return plan_;
     }
@@ -277,6 +278,50 @@ private:
                           "Attributes that are neither primvars nor schema attributes are not transferred: " + names});
         }
         WarnBindingsWithoutApi(prim, prim.path, "");
+    }
+
+    // Each mesh whose copies all have one constant display color holds it (MeshData::heldColor).
+    void HoldDisplayColors() {
+        // Per mesh: the color its copies share so far, or nullopt once two differ or one has none.
+        std::vector<std::optional<std::optional<GfVec4f>>> shared(plan_->meshes.size());
+        for (const ObjectEntry &object : plan_->objects) {
+            if (object.mesh < 0) continue;
+            std::optional<std::optional<GfVec4f>> &held = shared[static_cast<std::size_t>(object.mesh)];
+            const std::optional<GfVec4f> color = ConstantDisplayColor(object);
+            if (!held)
+                held = color;
+            else if (*held != color)
+                *held = std::nullopt;
+        }
+        for (std::size_t i = 0; i < shared.size(); ++i) {
+            const std::optional<std::optional<GfVec4f>> &held = shared[i];
+            if (!held || !*held) continue;
+            plan_->meshes[i].heldColor = **held;
+            plan_->meshHashes[i] = WithHeldColor(plan_->meshHashes[i], **held);
+        }
+    }
+
+    // A copy's constant displayColor, with its constant displayOpacity as alpha, as apply.object_color reads them
+    // (opaque white for a value of another shape); nullopt for a copy with no constant displayColor.
+    static std::optional<GfVec4f> ConstantDisplayColor(const ObjectEntry &object) {
+        std::optional<GfVec4f> color;
+        float alpha = 1.0f;
+        for (const auto &[name, property] : object.properties) {
+            const VtValue &value = property.value;
+            if (name == HdTokens->displayColor.GetString()) {
+                color = GfVec4f(1.0f);
+                if (value.IsHolding<VtDoubleArray>() && property.tupleSize == 0) {
+                    const auto &rgb = value.UncheckedGet<VtDoubleArray>();
+                    if (rgb.size() == 3)
+                        color = GfVec4f(static_cast<float>(rgb[0]), static_cast<float>(rgb[1]),
+                                        static_cast<float>(rgb[2]), 1.0f);
+                }
+            } else if (name == HdTokens->displayOpacity.GetString() && value.IsHolding<double>()) {
+                alpha = static_cast<float>(value.UncheckedGet<double>());
+            }
+        }
+        if (color) (*color)[3] = alpha;
+        return color;
     }
 
     // UsdShade honors a binding authored without MaterialBindingAPI, but only for compatibility.

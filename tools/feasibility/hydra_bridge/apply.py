@@ -1,20 +1,19 @@
 """Apply a Hydra bridge plan to Blender. Plan arrays reach foreach_set as flat views of Vt arrays, never as lists.
 
-Every display color shows under one setting, Solid shading's Attribute color (M4 Phase D, D10), which shows a
-mesh's active color attribute, a point or corner one only. Vertex, uniform, and faceVarying values are color
-attributes on points and corners, a uniform one with each face's value on its corners, and the mesh's active
-color. A constant value is per copy, so a mesh whose copies
-all share one holds it as a point attribute named displayColor (set_mesh_colors). Otherwise a Geometry Nodes
-modifier on the copy's object (DISPLAY_COLOR_MODIFIER) changes the attribute on the evaluated mesh: it stores a
-copy's own constant value on points, or removes the mesh's from a copy with none. So copies keep sharing their
-mesh, and only those a modifier changes are evaluated apart.
+A mesh's displayColor shows under Solid shading's Attribute color (M4 Phase D, D10), which shows a mesh's active
+color attribute, a point or corner one only. Vertex, uniform, and faceVarying values are color attributes on points
+and corners, a uniform one with each face's value on its corners, and the mesh's active color. A constant value is
+per copy: a mesh whose copies all share one holds it on points (the plan's held_color), and every copy shows it as
+its object color, in Solid shading's Object color and through an Attribute node of type Object. The display keeps
+copies of one mesh together, so a copy whose constant color its mesh's other copies don't share shows it under
+neither Attribute color nor a split of its own (D13).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
-from typing import TYPE_CHECKING, Any, get_args
+from enum import StrEnum
+from typing import TYPE_CHECKING, get_args
 
 import bpy
 import numpy
@@ -22,7 +21,7 @@ from mathutils import Matrix
 from plan_types import PlanDataType, PlanDomain
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Sequence
 
     # bpy's attribute enums exist only as Literal aliases in the stubs; at run time they are RNA enum strings.
     from bpy.stub_internal.rna_enums import AttributeDomainItems, AttributeTypeItems
@@ -67,27 +66,9 @@ OBJECT_PROPERTIES = (
     SHEAR_PARENT,
 )
 MATERIAL_PROPERTIES = ("proscenium_sources",)
-MESH_PROPERTIES = ("proscenium_display_color",)
 DISPLAY_COLOR = "displayColor"
 # A uniform one is stored on corners, each face's value on its corners, which Solid shading's Attribute color shows.
 DISPLAY_PRIMVARS = (DISPLAY_COLOR, "displayOpacity")
-# A uniform displayColor's values on corners, which Solid shading's Attribute color shows, unlike face values.
-# The modifier that shows a copy's constant display color where its mesh doesn't, and its node group, which every
-# copy shares.
-DISPLAY_COLOR_MODIFIER = "Display Color"
-DISPLAY_COLOR_GROUP = "proscenium_display_color"
-# The node group's inputs: the copy's color and opacity, and which DisplayColorMode it applies.
-COLOR_INPUT = "Color"
-MODE_INPUT = "Mode"
-# On a mesh holding a constant displayColor for all its copies: that color, as Blender stores an object color.
-MESH_COLOR = MESH_PROPERTIES[0]
-
-
-class DisplayColorMode(IntEnum):
-    """What a copy's display color modifier does to its mesh's displayColor."""
-
-    POINT = 0  # stores the copy's constant value on points
-    REMOVE = 1  # removes the mesh's constant value, which the copy doesn't have
 
 
 def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
@@ -113,9 +94,7 @@ def apply(plan: Plan, collection: bpy.types.Collection) -> Display:
     """Create the plan's materials, meshes, and objects."""
     materials = [new_material(data) for data in plan.materials]
     meshes = [new_mesh(data) for data in plan.meshes]
-    records = plan.objects
-    set_mesh_colors(dict(enumerate(meshes)), records)
-    objects = [new_object(index, data, meshes, materials, collection) for index, data in enumerate(records)]
+    objects = [new_object(index, data, meshes, materials, collection) for index, data in enumerate(plan.objects)]
     return Display(objects, meshes, materials)
 
 
@@ -165,8 +144,13 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
             values = _on_corners(values, face_offsets, len(corner_verts))
             domain = "CORNER"
         _data(_new_attribute(mesh, attribute["name"], data_type, domain)).foreach_set(prop, values)
-    # Solid shading's Attribute color shows the active color: displayColor, whether the mesh holds it or a copy's
-    # modifier adds it.
+    held = data["held_color"]
+    if held is not None:  # the constant displayColor all its copies share, on every point
+        color = numpy.array(held, dtype=numpy.float32)
+        _data(_new_attribute(mesh, DISPLAY_COLOR, "FLOAT_COLOR", "POINT")).foreach_set(
+            "color", numpy.tile(color, len(mesh.vertices))
+        )
+    # Solid shading's Attribute color shows the active color.
     mesh.color_attributes.active_color_name = DISPLAY_COLOR
     return mesh
 
@@ -192,101 +176,6 @@ def _data(attribute: bpy.types.Attribute) -> bpy.types.bpy_prop_collection:
 def stored_color(data: ObjectRecord) -> list[float]:
     """A copy's object color as Blender stores it, in single precision."""
     return numpy.array(object_color(data), dtype=numpy.float32).tolist()
-
-
-def set_mesh_colors(meshes: Mapping[int, bpy.types.Mesh], records: Iterable[ObjectRecord]) -> None:
-    """Give each of `meshes`, by plan index, the constant displayColor all its copies in `records` share, if any.
-
-    `records` must hold every copy of those meshes. A copy with a constant displayColor has a mesh with none of its
-    own, since the mesh's comes first.
-    """
-    colors: dict[int, list[float] | None] = {}
-    for record in records:
-        mesh = record["mesh"]
-        if mesh is not None and mesh in meshes:
-            color = stored_color(record) if DISPLAY_COLOR in record["properties"] else None
-            if colors.setdefault(mesh, color) != color:
-                colors[mesh] = None
-    for index, color in colors.items():
-        mesh = meshes[index]
-        if color is None or DISPLAY_COLOR in mesh.attributes:
-            continue
-        attribute = _new_attribute(mesh, DISPLAY_COLOR, "FLOAT_COLOR", "POINT")
-        _data(attribute).foreach_set("color", numpy.tile(numpy.array(color, dtype=numpy.float32), len(mesh.vertices)))
-        mesh[MESH_COLOR] = color
-
-
-def show_display_color(obj: bpy.types.Object, constant: bool) -> None:
-    """Give a mesh copy the modifier that shows its display color, or take it away, changing only what differs.
-
-    `constant` says whether the copy has a constant displayColor, which its object color holds with its opacity.
-    The plan gives a copy none when its mesh has a displayColor of its own, which comes first and shows without a
-    modifier. A copy needs no modifier when its mesh already shows its color, nor does an object that isn't a
-    mesh's.
-    """
-    if obj.type != "MESH":
-        return
-    mesh: Any = obj.data
-    held = mesh.get(MESH_COLOR)
-    mode = None
-    if constant:
-        mode = None if held is not None and list(held) == list(obj.color) else DisplayColorMode.POINT
-    elif held is not None:
-        mode = DisplayColorMode.REMOVE
-    modifier: Any = obj.modifiers.get(DISPLAY_COLOR_MODIFIER)
-    if mode is None:
-        if modifier is not None:
-            obj.modifiers.remove(modifier)
-        return
-    tree = _display_color_group()
-    if modifier is None:
-        added: Any = obj.modifiers.new(DISPLAY_COLOR_MODIFIER, "NODES")
-        added.node_group = tree
-        modifier = added
-    sockets = tree.interface.items_tree
-    color = getattr(modifier.properties.inputs, sockets[COLOR_INPUT].identifier)
-    applied = getattr(modifier.properties.inputs, sockets[MODE_INPUT].identifier)
-    if applied.value == mode and list(color.value) == list(obj.color):
-        return
-    applied.value, color.value = mode, obj.color
-    # Setting a modifier's inputs doesn't tag its object for evaluation (Blender 5.2, ad hoc).
-    obj.update_tag()
-
-
-def _display_color_group() -> Any:
-    """The node group of every copy's display color modifier, created once.
-
-    It applies its Mode to the mesh's displayColor: stores the Color input on every point, or removes it.
-    """
-    found = bpy.data.node_groups.get(DISPLAY_COLOR_GROUP)
-    if found is not None:
-        return found
-    tree: Any = bpy.data.node_groups.new(DISPLAY_COLOR_GROUP, "GeometryNodeTree")
-    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    tree.interface.new_socket(COLOR_INPUT, in_out="INPUT", socket_type="NodeSocketColor")
-    tree.interface.new_socket(MODE_INPUT, in_out="INPUT", socket_type="NodeSocketInt")
-    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    nodes, links = tree.nodes, tree.links
-    group_in, group_out = nodes.new("NodeGroupInput"), nodes.new("NodeGroupOutput")
-    store = nodes.new("GeometryNodeStoreNamedAttribute")
-    store.data_type, store.domain = "FLOAT_COLOR", "POINT"
-    store.inputs["Name"].default_value = DISPLAY_COLOR
-    links.new(group_in.outputs["Geometry"], store.inputs["Geometry"])
-    links.new(group_in.outputs[COLOR_INPUT], store.inputs["Value"])
-    results = {DisplayColorMode.POINT: store.outputs["Geometry"]}
-    remove = nodes.new("GeometryNodeRemoveAttribute")
-    remove.inputs["Name"].default_value = DISPLAY_COLOR
-    links.new(group_in.outputs["Geometry"], remove.inputs["Geometry"])
-    results[DisplayColorMode.REMOVE] = remove.outputs["Geometry"]
-    switch = nodes.new("GeometryNodeIndexSwitch")
-    switch.data_type = "GEOMETRY"
-    while len(switch.index_switch_items) < len(DisplayColorMode):
-        switch.index_switch_items.new()
-    links.new(group_in.outputs[MODE_INPUT], switch.inputs["Index"])
-    for mode in DisplayColorMode:
-        links.new(results[mode], switch.inputs[str(mode.value)])
-    links.new(switch.outputs["Output"], group_out.inputs["Geometry"])
-    return tree
 
 
 def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> bpy.types.Mesh:
@@ -376,11 +265,8 @@ def new_object(
     for slot, material in zip(obj.material_slots, data["material_slots"], strict=True):
         slot.link = "OBJECT"
         slot.material = None if material is None else materials[material]
-    # The object color shows a constant displayColor and displayOpacity, in Solid shading's Object color, and
-    # the display color modifier in its Attribute color.
+    # The object color shows a constant displayColor and displayOpacity, in Solid shading's Object color.
     obj.color = object_color(data)
-    if data["mesh"] is not None:  # a placeholder's bounds show no color
-        show_display_color(obj, DISPLAY_COLOR in data["properties"])
     # Constant primvars by name, which an Attribute node of type Object reads; the plan converted them.
     for name, value in data["properties"].items():
         obj[name] = value

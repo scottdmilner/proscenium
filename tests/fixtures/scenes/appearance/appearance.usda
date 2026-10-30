@@ -5,7 +5,7 @@
 #   a display color its bound material must not show.
 # - EqualContent: meshes outside instances, two with equal content, one differing only in a constant
 #   displayColor, and one each only in its vertex st values, its subdivision scheme, and its sidedness
-#   (PVAR-05).
+#   (PVAR-05); the last also has a constant displayOpacity, which its mesh's held color carries (M4 D10).
 # - NamedUVs: typed UV sets (st faceVarying and indexed, perfuv faceVarying, st vertex) and float2[]
 #   primvars only UV-set names make UV sets of (ST, offset, and a constant uv_shift) (PVAR-06,
 #   GEOM-13, GEOM-14), with a texture read through perfuv (GRAM-09).
@@ -330,6 +330,9 @@ def Xform "World" (
             int[] faceVertexIndices = [0, 1, 2, 0, 2, 3]
             point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
             color3f[] primvars:displayColor = [(0.2, 0.4, 0.6)] (
+                interpolation = "constant"
+            )
+            float[] primvars:displayOpacity = [0.5] (
                 interpolation = "constant"
             )
             texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (

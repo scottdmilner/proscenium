@@ -62,7 +62,7 @@ std::size_t ContentHash(const MeshData &mesh) {
     // Binds every field, so a field added to MeshData fails to compile here until this hash and SameContent
     // cover it. The name is left out of the content.
     [[maybe_unused]] const auto &[name, positions, cornerVerts, faceOffsets, materialIndices, slotCount, attributes,
-                                  subdivisionScheme, doubleSided] = mesh;
+                                  subdivisionScheme, doubleSided, heldColor] = mesh;
     // Everything SameContent compares, so meshes differing in any of it rarely share a bucket.
     std::uint64_t hash = HashValue(slotCount, 0);
     hash = HashValue(subdivisionScheme.Hash(), hash);
@@ -77,14 +77,18 @@ std::size_t ContentHash(const MeshData &mesh) {
         hash = HashValue(attribute.type, hash);
         hash = Hash(Bytes(attribute.data), hash);
     }
-    return static_cast<std::size_t>(hash);
+    return heldColor ? WithHeldColor(static_cast<std::size_t>(hash), *heldColor) : static_cast<std::size_t>(hash);
+}
+
+std::size_t WithHeldColor(std::size_t hash, const GfVec4f &color) {
+    return static_cast<std::size_t>(HashValue(color, hash));
 }
 
 bool SameContent(const MeshData &a, const MeshData &b) {
     if (a.slotCount != b.slotCount || a.subdivisionScheme != b.subdivisionScheme || a.doubleSided != b.doubleSided ||
-        a.attributes.size() != b.attributes.size() || !Same(Bytes(a.positions), Bytes(b.positions)) ||
-        !Same(Bytes(a.cornerVerts), Bytes(b.cornerVerts)) || !Same(Bytes(a.faceOffsets), Bytes(b.faceOffsets)) ||
-        !Same(Bytes(a.materialIndices), Bytes(b.materialIndices)))
+        a.heldColor != b.heldColor || a.attributes.size() != b.attributes.size() ||
+        !Same(Bytes(a.positions), Bytes(b.positions)) || !Same(Bytes(a.cornerVerts), Bytes(b.cornerVerts)) ||
+        !Same(Bytes(a.faceOffsets), Bytes(b.faceOffsets)) || !Same(Bytes(a.materialIndices), Bytes(b.materialIndices)))
         return false;
     const AttributeRefs left = ByName(a), right = ByName(b);
     return std::equal(left.begin(), left.end(), right.begin(), [](const Attribute &x, const Attribute &y) {

@@ -1167,14 +1167,14 @@ The objects column is with reuse only; D8's objects set, from another session, t
 - **An instance-transform update** still misses the budget only on `updates-10000` (4.5×), where 0.094 s of preparation rebuilds the points of each batch a moved copy is in (D8).
 - **Tested only on these edits and scenes:** whether Hydra recaptures every prim an edit affects, as reuse assumes, is checked by the oracle test on its edits, not in general.
 
-#### Every display color under Solid shading's Attribute color
+#### Display colors under Solid shading's Attribute color
 
-[M4 plan](../plans/M04-prototypes.md), D10: Solid shading's Attribute color (`shading.color_type = "VERTEX"`) shows each mesh's active color attribute, a point or corner one only (ad hoc renders: a face or instance attribute doesn't show). So every display color shows under it:
+[M4 plan](../plans/M04-prototypes.md), D10: Solid shading's Attribute color (`shading.color_type = "VERTEX"`) shows each mesh's active color attribute, a point or corner one only (ad hoc renders: a face or instance attribute doesn't show). D10 measured this display:
 
 - **Vertex and faceVarying** `displayColor` are point and corner attributes already, and each mesh's active color.
 - **Uniform** `displayColor` is a corner attribute, each face's value on its corners ([D12](#uniform-display-colors-on-corners-only)).
 - **Constant** `displayColor` is per copy. A mesh whose copies all share one holds it, with the copy's `displayOpacity` as alpha, as a point attribute named `displayColor`.
-- **Any other copy** has a Geometry Nodes modifier that stores its own constant color on points, or removes the mesh's color from a copy without one. Blender evaluates such a copy apart from its mesh's other copies.
+- **Any other copy** had a Geometry Nodes modifier that stored its own constant color on points, or removed the mesh's color from a copy without one, which Blender evaluates apart from its mesh's other copies. D13 removed these ([No per-copy display color workarounds](#no-per-copy-display-color-workarounds)), and decides held colors in the planner.
 
 All are float colors. One session on 2026-10-29, on AC power in High Power mode throughout, 3 repeats of each mode, each pair running the previous commit's code (on its own build of the bridge) and then D10's:
 
@@ -1234,6 +1234,65 @@ r --modes prototype --representation objects --out build/hydra-bridge/measure-d1
 
 - **Peak memory falls 2–15 MB,** against the face attribute's 17 MB: ALab's uniform display colors are about 1.07M faces of float colors (D10's count).
 - **The times are within the runs' ranges,** which were wider in this session than in D10's. The viewport's frame time wasn't measured: Solid shading shows the same corner attribute as before.
+
+#### No per-copy display color workarounds
+
+[M4 plan](../plans/M04-prototypes.md), D13: D10 showed a copy's constant display color, where its mesh held another or none, with a Geometry Nodes modifier. Two ways were compared ad hoc: D10's modifiers, and a plan setting, since removed, that gave such copies meshes of their own, one per color, each holding its copies' color on every point. Neither was adopted (with the user): a copy whose color its mesh's other copies don't share shows it as its object color, and Solid shading's Attribute color shows none for it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, `measure/run.py --reuse-builds --repeats 3 --modes prototype viewport`, objects and batched at a minimum of 5. The modifier sets ran first, then the split sets.
+
+The generated scenes (`measure/stress.py`, `colors`) have 1,000 native instances of one unbound 32×32 grid mesh (1,089 points), each root with a constant `displayColor`: `colors-1000` gives each copy its own, `colors-1000-palette-8` one of 8 in turn.
+
+**The comparison, medians** (objects, then batched):
+
+| Scene | | Modifiers | Split |
+|---|---|---|---|
+| ALab with its point instancers | synchronization, s | 6.83; 4.49 | 6.26; 4.04 |
+| | peak memory, MB | 3,473; 3,432 | 3,492; 3,433 |
+| | Solid, orbiting frame, ms | 30.7; 16.7 | 30.4; 16.5 |
+| | Material preview, orbiting frame, ms | 35.5; 20.4 | 34.6; 20.2 |
+| `colors-1000-palette-8` | meshes; modifiers | 1; 1,000 objects, 8 batched | 8; none |
+| | peak memory, MB | 62; 19 | 52; 21 |
+| | Solid, first frame, ms | 93; 7.6 | 8.2; 8.4 |
+| | Material preview, orbiting frame, ms | 10.5; 8.3 | 8.3; 8.3 |
+| `colors-1000` | meshes; modifiers | 1; 1,000 | 1,000; none |
+| | synchronization, s | 0.17; 0.16 | 0.34; 0.31 |
+| | peak memory, MB | 56; 64 | 191; 199 |
+| | Solid, first frame, ms | 97; 92 | 168; 161 |
+| | Material preview, orbiting frame, ms | 10.5; 10.5 | 9.7; 9.7 |
+
+Solid's orbiting frames were at the display's refresh (8.33 ms) in every generated case. On `colors-1000-palette-8` batched, the batches already split copies by color, so the modifiers are on the 8 prototypes.
+
+- **Where a mesh's copies share a few colors, splitting is cheaper:** a few meshes instead of a modifier per copy, and no copy evaluated apart.
+- **Where every copy has its own color, splitting costs memory and time to build,** since each color is a whole mesh, where a modifier's copy shares its mesh's arrays (an inference from the memory measured). Drawing is no slower.
+- **ALab can't tell them apart:** only one of its meshes has copies of differing colors.
+
+**The decision measured:** no modifiers and no split meshes, with each mesh's held color decided by the planner, against the previous commit (D12's, on its own build of the bridge) on ALab, and against the comparison's modifier sets on the generated scenes, in the same session:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --modes prototype viewport "$@"; }
+r --scenes alab-instancers --representation objects --out build/hydra-bridge/measure-d13r-alab-objects
+r --scenes colors --representation objects --out build/hydra-bridge/measure-d13r-colors-objects
+# likewise batched (--batch-minimum 5)
+```
+
+| Scene | | Previous (modifiers) | D13 |
+|---|---|---|---|
+| ALab with its point instancers | display color modifiers | 5; 5 beside the batches' 1,137 | none |
+| | building the display, s | 3.49; 1.30 | 3.27; 1.18 |
+| | synchronization, s | 6.55; 4.32 | 6.11; 4.14 |
+| | peak memory, MB | 3,459; 3,452 | 3,476; 3,451 |
+| | Solid, orbiting frame, ms | 30.4; 16.4 | 28.9; 16.5 |
+| | Material preview, orbiting frame, ms | 32.5; 20.2 | 33.1; 19.6 |
+| `colors-1000` | Solid, first frame, ms | 97; 92 | 14; 8.1 |
+| | Material preview, orbiting frame, ms | 10.5; 10.5 | 8.3; 8.3 |
+| | peak memory, MB | 56; 64 | 53; 50 |
+| `colors-1000-palette-8` | Solid, first frame, ms | 93; 7.6 | 11; 8.9 |
+| | Material preview, orbiting frame, ms | 10.5; 8.3 | 8.3; 8.3 |
+
+The ALab frame times and peak memory are within the runs' ranges. On the generated scenes, Material Preview's frames are now at the display's refresh.
+
+**Findings:**
+- **Without per-copy workarounds, the display costs what D10's held colors do,** and nothing per copy whose color differs from its mesh's other copies.
+- **Under Solid shading's Attribute color, such a copy shows none of its own:** on ALab 5 copies of one 76-point mesh. Solid shading's Object color and Material Preview show it.
 
 #### Plans from separate processes
 

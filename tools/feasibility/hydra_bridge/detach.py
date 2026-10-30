@@ -2,19 +2,17 @@
 
 Detach releases what survives in the destination collection when it runs, Blender-side edits and deletions
 included, and reads no USD. The baseline ties Blender data to its binding only through ID properties
-(apply.OBJECT_PROPERTIES, MESH_PROPERTIES, and MATERIAL_PROPERTIES), so those are what detach removes. It has
-no handlers, drivers, or overlays; its modifiers and node group are ordinary Blender data; and its correspondence
-and selection associations live in the bridge's Interaction, not in Blender data.
+(apply.OBJECT_PROPERTIES and MATERIAL_PROPERTIES), so those are what detach removes. It has no handlers,
+drivers, modifiers, node groups, or overlays, and its correspondence and selection associations live in the
+bridge's Interaction, not in Blender data.
 
 Everything else is ordinary Blender data and stays:
-- meshes, shared where they were, with the displayColor a mesh holds for all its copies (apply.set_mesh_colors);
+- meshes, shared where they were, with the displayColor a mesh holds for all its copies (the plan's held_color);
 - objects, with their transforms, visibility per destination, object color, and constant primvars as ID
   properties, which an Attribute node reads;
 - shear parent empties, by ordinary parenting;
 - placeholders, as bounds boxes and empties;
 - materials, in object-linked slots;
-- the display color modifiers and their node group (apply.py), which with those show each copy's display color
-  under Solid shading's Attribute color;
 - collection links and the selection.
 So detaching changes no appearance, and there is nothing to report under DET-04.
 
@@ -30,7 +28,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from apply import MATERIAL_PROPERTIES, MESH_PROPERTIES, OBJECT_PROPERTIES
+from apply import MATERIAL_PROPERTIES, OBJECT_PROPERTIES
 from batch import prototype_of
 from selection import ELEMENT
 
@@ -61,18 +59,8 @@ def detach(collection: bpy.types.Collection) -> Detached:
         for slot in obj.material_slots
         if slot.material is not None and any(key in slot.material for key in MATERIAL_PROPERTIES)
     }
-    meshes = {
-        _mesh(obj).as_pointer(): _mesh(obj)
-        for obj in [*objects, *prototypes]
-        if obj.type == "MESH" and any(key in _mesh(obj) for key in MESH_PROPERTIES)
-    }
     removed = 0
-    released_ids: tuple[tuple[list[Any], tuple[str, ...]], ...] = (
-        (objects, OBJECT_PROPERTIES),
-        (list(meshes.values()), MESH_PROPERTIES),
-        (list(materials.values()), MATERIAL_PROPERTIES),
-    )
-    for ids, keys in released_ids:
+    for ids, keys in ((objects, OBJECT_PROPERTIES), (list(materials.values()), MATERIAL_PROPERTIES)):
         for released in ids:
             for key in keys:
                 if key in released:

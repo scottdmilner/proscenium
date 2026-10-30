@@ -239,6 +239,32 @@ def updates(path: Path, copies: int) -> dict[str, Any]:
     return parameters
 
 
+def colors(path: Path, copies: int, palette: int | None = None, side: int = 32) -> dict[str, Any]:
+    """M4 Phase D (D13): native instances of one unbound grid mesh, each root with a constant displayColor.
+
+    Every copy has its own color, or with `palette`, one of that many, in turn.
+    """
+    parameters = {"copies": copies, "colors": palette or copies, "grid side": side, "points": (side + 1) ** 2}
+    layer = _layer(path, "copies of one mesh with differing constant display colors", parameters)
+    count = palette or copies
+    # Evenly spread hues, so neighboring copies differ.
+    hues = np.arange(count) / count
+    rgb = np.stack([np.abs(hues * 6 - 3) - 1, 2 - np.abs(hues * 6 - 2), 2 - np.abs(hues * 6 - 4)], axis=1)
+    rgb = np.clip(rgb, 0, 1).astype(np.float32)
+    with Sdf.ChangeBlock():
+        assets = Sdf.PrimSpec(layer, "Assets", Sdf.SpecifierClass, "")
+        _mesh(_xform(assets, "Tile", specifier=Sdf.SpecifierClass), "Grid", _grid(side))
+        world = _xform(layer, "World")
+        for i in range(copies):
+            copy = _xform(world, f"Tile_{i}", (1.1 * (i % 50), 1.1 * (i // 50), 0))
+            copy.referenceList.explicitItems = [Sdf.Reference(primPath="/Assets/Tile")]
+            copy.instanceable = True
+            color = Vt.Vec3fArray([Gf.Vec3f(*rgb[i % count].tolist())])
+            _attribute(copy, "primvars:displayColor", Sdf.ValueTypeNames.Color3fArray, color, interpolation="constant")
+    layer.Save()
+    return parameters
+
+
 # Scene name -> (generator, time code imported). One small and one large size per dimension that matters;
 # instances-100 is the CI smoke scene.
 SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
@@ -251,9 +277,12 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "updates-100": (lambda p: updates(p, 100), 1.0),
     "updates-1000": (lambda p: updates(p, 1000), 1.0),
     "updates-10000": (lambda p: updates(p, 10000), 1.0),
+    "colors-1000": (lambda p: colors(p, 1000), 1.0),
+    "colors-1000-palette-8": (lambda p: colors(p, 1000, 8), 1.0),
 }
 STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
 UPDATES = ["updates-100", "updates-1000", "updates-10000"]  # M4 Phase C's sizes
+COLORS = ["colors-1000", "colors-1000-palette-8"]  # M4 Phase D's display color comparison (D13)
 
 
 def generate(name: str, directory: Path) -> tuple[Path, dict[str, Any]]:

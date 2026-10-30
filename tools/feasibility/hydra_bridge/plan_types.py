@@ -47,6 +47,9 @@ class MeshRecord(TypedDict):
     attributes: list[AttributeRecord]
     subdivision_scheme: str
     double_sided: bool
+    # The constant display color, with its opacity as alpha, that every copy of the mesh has, which the mesh holds
+    # on points as displayColor; None when they don't share one.
+    held_color: tuple[float, float, float, float] | None
 
 
 class MaterialRecord(TypedDict):
