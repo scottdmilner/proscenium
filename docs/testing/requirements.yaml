@@ -1189,7 +1189,7 @@ requirements:
         fixtures: [F-APPEARANCE-CASES]
         delivery: M8
       - id: PVAR-07
-        quote: "Without a material, the mesh shows its display color and opacity on its interpolation's domain."
+        quote: "Without a material, the mesh shows its display color and opacity, varying as their interpolation does."
         fixtures: [F-APPEARANCE-CASES]
         delivery: M8
       - id: PVAR-08

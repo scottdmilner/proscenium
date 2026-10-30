@@ -1,9 +1,9 @@
 """Apply a Hydra bridge plan to Blender. Plan arrays reach foreach_set as flat views of Vt arrays, never as lists.
 
 Every display color shows under one setting, Solid shading's Attribute color (M4 Phase D, D10), which shows a
-mesh's active color attribute, a point or corner one only. Vertex and faceVarying values are already color
-attributes on points and corners, and the mesh's active color. A uniform value is a face attribute, so the mesh
-also holds it on corners (DISPLAY_CORNERS), its active color. A constant value is per copy, so a mesh whose copies
+mesh's active color attribute, a point or corner one only. Vertex, uniform, and faceVarying values are color
+attributes on points and corners, a uniform one with each face's value on its corners, and the mesh's active
+color. A constant value is per copy, so a mesh whose copies
 all share one holds it as a point attribute named displayColor (set_mesh_colors). Otherwise a Geometry Nodes
 modifier on the copy's object (DISPLAY_COLOR_MODIFIER) changes the attribute on the evaluated mesh: it stores a
 copy's own constant value on points, or removes the mesh's from a copy with none. So copies keep sharing their
@@ -69,8 +69,9 @@ OBJECT_PROPERTIES = (
 MATERIAL_PROPERTIES = ("proscenium_sources",)
 MESH_PROPERTIES = ("proscenium_display_color",)
 DISPLAY_COLOR = "displayColor"
+# A uniform one is stored on corners, each face's value on its corners, which Solid shading's Attribute color shows.
+DISPLAY_PRIMVARS = (DISPLAY_COLOR, "displayOpacity")
 # A uniform displayColor's values on corners, which Solid shading's Attribute color shows, unlike face values.
-DISPLAY_CORNERS = "displayColor_corners"
 # The modifier that shows a copy's constant display color where its mesh doesn't, and its node group, which every
 # copy shares.
 DISPLAY_COLOR_MODIFIER = "Display Color"
@@ -157,23 +158,25 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
         if data_type not in ATTRIBUTE_FORMATS or domain not in PLAN_DOMAINS:
             raise ValueError(f"Unexpected attribute kind in the plan: {data_type} on {domain}")
         fmt, prop = ATTRIBUTE_FORMATS[data_type]
-        created = _new_attribute(mesh, attribute["name"], data_type, domain)
-        _data(created).foreach_set(prop, flat(attribute["data"], fmt))
-        if attribute["name"] == DISPLAY_COLOR and domain == "FACE":
-            _new_corner_colors(mesh, flat(attribute["data"], fmt), face_offsets, len(corner_verts))
+        values = flat(attribute["data"], fmt)
+        if attribute["name"] in DISPLAY_PRIMVARS and domain == "FACE":
+            # Each face's value on its corners, expanded here rather than in the plan, which then holds one value
+            # per face for every mesh until it is released.
+            values = _on_corners(values, face_offsets, len(corner_verts))
+            domain = "CORNER"
+        _data(_new_attribute(mesh, attribute["name"], data_type, domain)).foreach_set(prop, values)
     # Solid shading's Attribute color shows the active color: displayColor, whether the mesh holds it or a copy's
-    # modifier adds it, or its uniform values on corners.
-    shown = DISPLAY_CORNERS if DISPLAY_CORNERS in mesh.attributes else DISPLAY_COLOR
-    mesh.color_attributes.active_color_name = shown
+    # modifier adds it.
+    mesh.color_attributes.active_color_name = DISPLAY_COLOR
     return mesh
 
 
-def _new_corner_colors(mesh: bpy.types.Mesh, faces: memoryview, face_offsets: memoryview, corners: int) -> None:
-    """The mesh's DISPLAY_CORNERS: each face's displayColor on each of its corners."""
+def _on_corners(faces: memoryview, face_offsets: memoryview, corners: int) -> numpy.ndarray:
+    """Per-face float values, flat, as each face's value on each of its corners."""
     starts = numpy.frombuffer(face_offsets, dtype=numpy.int32)
     counts = numpy.diff(starts, append=corners)
-    values = numpy.repeat(numpy.frombuffer(faces, dtype=numpy.float32).reshape(-1, 4), counts, axis=0)
-    _data(_new_attribute(mesh, DISPLAY_CORNERS, "FLOAT_COLOR", "CORNER")).foreach_set("color", values.ravel())
+    values = numpy.frombuffer(faces, dtype=numpy.float32)
+    return numpy.repeat(values.reshape(len(starts), -1), counts, axis=0).ravel()
 
 
 def _new_attribute(

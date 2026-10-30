@@ -29,8 +29,9 @@ BODY = Path(__file__).parent / "bodies/baseline.py"
 MESH = Tf.Type.Find(UsdGeom.Mesh)
 # Each destination's material purpose, as GRAM-12 settles: preview in the viewport, full in the final render.
 PURPOSES = {"viewport": UsdShade.Tokens.preview, "render": UsdShade.Tokens.full}
-# Blender's domain for each primvar interpolation the cases use.
-DOMAINS = {"uniform": "FACE", "vertex": "POINT", "varying": "POINT", "faceVarying": "CORNER"}
+# Blender's domain for each display color interpolation the cases use: a uniform one has each face's value on its
+# corners, which Solid shading's Attribute color shows.
+DOMAINS = {"uniform": "CORNER", "vertex": "POINT", "varying": "POINT", "faceVarying": "CORNER"}
 # Tolerance for values that crossed Blender's float32 storage.
 CLOSE = 1e-6
 
@@ -286,7 +287,9 @@ def _rgb(values: list[list[float]]) -> list[list[float]]:
     return [v[:3] for v in values]
 
 
-def _check_primvar_storage(obj: dict[str, Any], name: str, authored: tuple[str, tuple[Any, ...]] | None) -> None:
+def _check_primvar_storage(
+    obj: dict[str, Any], prim: Usd.Prim, name: str, authored: tuple[str, tuple[Any, ...]] | None
+) -> None:
     """A constant value is an ID property of the copy's object; any other is a mesh attribute on its domain."""
     where = (obj["source"], name)
     if authored is None:
@@ -300,7 +303,16 @@ def _check_primvar_storage(obj: dict[str, Any], name: str, authored: tuple[str, 
     attribute = obj["attributes"].get(name)
     assert attribute is not None and attribute["domain"] == DOMAINS[interpolation], (where, attribute)
     stored = attribute["values"]
-    assert _close(_rgb(stored) if attribute["data_type"] == "FLOAT_COLOR" else stored, list(values)), where
+    expected = _per_element(prim, interpolation, values)
+    assert _close(_rgb(stored) if attribute["data_type"] == "FLOAT_COLOR" else stored, expected), where
+
+
+def _per_element(prim: Usd.Prim, interpolation: str, values: tuple[Any, ...]) -> list[Any]:
+    """A display primvar's values per element of its Blender domain: a uniform one's on each face's corners."""
+    if interpolation != "uniform":
+        return list(values)
+    counts = UsdGeom.Mesh(prim).GetFaceVertexCountsAttr().Get()
+    return [values[face] for face, count in enumerate(counts) for _ in range(count)]
 
 
 @pytest.mark.parametrize("scene", ["appearance"], indirect=True)
@@ -312,8 +324,9 @@ def test_display_color_and_opacity_where_stored(scene: BaselineScene, applied: l
     grouped = _by_source(applied)
     for mesh, color in facts.display_color.items():
         for obj in grouped[mesh]:
-            _check_primvar_storage(obj, "displayColor", color)
-            _check_primvar_storage(obj, "displayOpacity", facts.display_opacity[mesh])
+            prim = scene.stage.GetPrimAtPath(mesh)
+            _check_primvar_storage(obj, prim, "displayColor", color)
+            _check_primvar_storage(obj, prim, "displayOpacity", facts.display_opacity[mesh])
             if color[0] == "constant":
                 assert _close(obj["color"][:3], color[1][0]), (mesh, obj["color"])
             opacity = facts.display_opacity[mesh]
@@ -326,23 +339,19 @@ def _check_displayed_color(
 ) -> None:
     """Check that Solid shading's Attribute color shows the copy's displayColor.
 
-    Constant and vertex values are on its points, uniform and faceVarying values on its corners (uniform ones in a
-    copy beside the mesh's face values), and a constant color's opacity is its alpha.
+    Constant and vertex values are on its points, uniform and faceVarying values on its corners, and a constant
+    color's opacity is its alpha.
     """
     where = obj["source"]
     shown = obj["displayed_color"]
     interpolation, values = color
-    name = "displayColor_corners" if interpolation == "uniform" else "displayColor"
-    assert shown is not None and shown["name"] == name, (where, shown)
-    counts = UsdGeom.Mesh(prim).GetFaceVertexCountsAttr().Get()
+    assert shown is not None and shown["name"] == "displayColor", (where, shown)
     if interpolation == "constant":
         expected, domain = [values[0]] * len(UsdGeom.Mesh(prim).GetPointsAttr().Get()), "POINT"
-    elif interpolation == "uniform":
-        expected, domain = [values[face] for face, count in enumerate(counts) for _ in range(count)], "CORNER"
     else:
-        expected, domain = list(values), DOMAINS[interpolation]
+        expected, domain = _per_element(prim, interpolation, values), DOMAINS[interpolation]
     assert shown["domain"] == domain, (where, shown["domain"])
-    assert _close(_rgb(shown["values"]), [list(v) for v in expected]), where
+    assert _close(_rgb(shown["values"]), expected), where
     if interpolation == "constant":
         assert all(_close(v[3], alpha) for v in shown["values"]), where
 
@@ -490,7 +499,8 @@ def test_stress_display_color_per_copy(scene: BaselineScene, applied: list[dict[
     grouped = _by_source(applied)
     for mesh, color in facts.display_color.items():
         for obj in grouped[mesh]:
-            _check_primvar_storage(obj, "displayColor", None if color is None else ("constant", (color,)))
+            prim = scene.stage.GetPrimAtPath(mesh)
+            _check_primvar_storage(obj, prim, "displayColor", None if color is None else ("constant", (color,)))
             if color is None:
                 assert obj["displayed_color"] is None, mesh
             else:

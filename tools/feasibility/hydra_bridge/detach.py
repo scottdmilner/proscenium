@@ -7,8 +7,7 @@ no handlers, drivers, or overlays; its modifiers and node group are ordinary Ble
 and selection associations live in the bridge's Interaction, not in Blender data.
 
 Everything else is ordinary Blender data and stays:
-- meshes, shared where they were, with the displayColor a mesh holds for all its copies (apply.set_mesh_colors)
-  and a uniform displayColor's copy on corners (apply.DISPLAY_CORNERS);
+- meshes, shared where they were, with the displayColor a mesh holds for all its copies (apply.set_mesh_colors);
 - objects, with their transforms, visibility per destination, object color, and constant primvars as ID
   properties, which an Attribute node reads;
 - shear parent empties, by ordinary parenting;

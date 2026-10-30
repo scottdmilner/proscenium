@@ -1172,7 +1172,7 @@ The objects column is with reuse only; D8's objects set, from another session, t
 [M4 plan](../plans/M04-prototypes.md), D10: Solid shading's Attribute color (`shading.color_type = "VERTEX"`) shows each mesh's active color attribute, a point or corner one only (ad hoc renders: a face or instance attribute doesn't show). So every display color shows under it:
 
 - **Vertex and faceVarying** `displayColor` are point and corner attributes already, and each mesh's active color.
-- **Uniform** `displayColor` stays a face attribute, as the spec stores it, and the mesh also holds its values on corners, as `displayColor_corners`, its active color.
+- **Uniform** `displayColor` is a corner attribute, each face's value on its corners ([D12](#uniform-display-colors-on-corners-only)).
 - **Constant** `displayColor` is per copy. A mesh whose copies all share one holds it, with the copy's `displayOpacity` as alpha, as a point attribute named `displayColor`.
 - **Any other copy** has a Geometry Nodes modifier that stores its own constant color on points, or removes the mesh's color from a copy without one. Blender evaluates such a copy apart from its mesh's other copies.
 
@@ -1211,8 +1211,29 @@ In an ad hoc count of the plan, 2,345 of ALab's 3,393 meshes hold their copies' 
 - **Every display color shows under one setting at about the previous cost,** apart from memory: frame times, construction, evaluation, and updates are within the runs' ranges, and peak memory rises about 100–150 MB, the colors the meshes hold.
 - **A modifier on a copy costs it its mesh's sharing in the viewport.** Each modified copy is evaluated as its own mesh, which by the frame times and memory measured costs a whole mesh's evaluation and drawing per copy, not just its colors. Not measured directly.
 - **Colors only shown are still floats:** 8-bit colors held ALab's added peak memory to 13–55 MB, in another session, at about 60 ns an element to write, 0.6 s for ALab's 10.8M.
-- **The extra attributes** are ordinary Blender data that detach keeps: a mesh's held constant color and its uniform color's corners show in the attribute list, and an edit to a mesh's `displayColor` in Blender doesn't reach its corners.
+- **The extra attribute** is ordinary Blender data that detach keeps: a mesh's held constant color shows in the attribute list.
 - **Measured only on ALab,** where one mesh has copies with differing constant colors, and only these viewpoints and view size. A scene whose copies of one mesh mostly differ in constant color would need a modifier on most of them.
+
+#### Uniform display colors on corners only
+
+[M4 plan](../plans/M04-prototypes.md), D12: a uniform `displayColor` or `displayOpacity` is a corner attribute, each face's value on its corners, without the face attribute D10 kept beside it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, each pair running the previous commit's code (on its own build of the bridge) and then D12's:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds --repeats 3 "$@"; }
+r --modes prototype --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d12-batched
+r --modes prototype --representation objects --out build/hydra-bridge/measure-d12-objects
+```
+
+**ALab with its point instancers, the previous commit → D12** (medians, with ranges):
+
+| | Objects | Batched |
+|---|---|---|
+| Building the display, s | 3.89 (3.88–4.06) → 3.78 (3.71–3.80) | 1.46 (1.39–1.75) → 1.67 (1.53–1.70) |
+| First evaluation, s | 0.098 (0.096–0.125) → 0.114 (0.088–0.132) | 0.078 (0.063–0.090) → 0.091 (0.089–0.102) |
+| Peak memory during synchronization, MB | 3,509 → 3,494 | 3,476 → 3,473 |
+
+- **Peak memory falls 2–15 MB,** against the face attribute's 17 MB: ALab's uniform display colors are about 1.07M faces of float colors (D10's count).
+- **The times are within the runs' ranges,** which were wider in this session than in D10's. The viewport's frame time wasn't measured: Solid shading shows the same corner attribute as before.
 
 #### Plans from separate processes
 
