@@ -104,9 +104,10 @@ def _values(held: dict[str, Any]) -> dict[str, Any]:
 
 
 DIFF_BODY = Path(__file__).parent / "bodies/plan_diff.py"
-APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "visibility", "structure"]
+APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "reshape", "visibility"]
+APPEARANCE_EDITS += ["structure"]
 APPEARANCE_EDITS += ["instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
-APPEARANCE_EDITS += ["instance-color"]
+APPEARANCE_EDITS += ["instance-color", "color-interpolation", "uncolor"]
 
 
 @pytest.mark.parametrize("representation", ["objects", "batched"])
@@ -131,7 +132,14 @@ def test_update_follows_edits(
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     for step in steps:
         edit, diff, before, after = step["edit"], step["diff"], step["before"], step["after"]
-        assert step["held"] == step["fresh"], edit
+        # A kept mesh holds the displayColor its copies shared when it was built (D10), so which copies need a
+        # display color modifier depends on what the mesh was built with, while what each shows doesn't
+        # (displayed_color). A new mesh is built with its copies' color, as a fresh application builds it.
+        assert _without_modifiers(step["held"]) == _without_modifiers(step["fresh"]), edit
+        new_meshes = {index for index, old in enumerate(diff["meshes"]) if old == -1}
+        for held, fresh in zip(step["held"], step["fresh"], strict=True):
+            if held.get("mesh_index") in new_meshes:
+                assert held["modifiers"] == fresh["modifiers"], (edit, held["source"])
         assert step["counts"] == step["fresh_counts"], edit  # nothing left over
         # From publication on, the collection links exactly the published display.
         assert step["linked"]["published"] == step["linked"]["expected"], edit
@@ -153,6 +161,10 @@ def test_update_follows_edits(
             if representation == "batched":
                 nothing |= {"added": 0, "dropped": 0, "points": 0, "reprototyped": 0, "renumbered batches": 0}
             assert step["written"] == nothing
+
+
+def _without_modifiers(objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{key: value for key, value in obj.items() if key != "modifiers"} for obj in objects]
 
 
 def _kept_objects(

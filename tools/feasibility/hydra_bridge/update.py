@@ -23,7 +23,16 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object
+from apply import (
+    DISPLAY_COLOR,
+    SHEAR_PARENT,
+    Display,
+    new_material,
+    new_mesh,
+    new_object,
+    set_mesh_colors,
+    show_display_color,
+)
 from selection import ELEMENT
 
 if TYPE_CHECKING:
@@ -146,6 +155,8 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> 
     # Only the records the update builds from: reading the plan's whole list converts every record.
     needed = sorted({*added, *kept})
     records = dict(zip(needed, plan.objects_at(needed), strict=True))
+    # A new mesh's copies are all added or changed, so their records are among these.
+    set_mesh_colors(new_meshes(diff, meshes), records.values())
     staging = bpy.data.collections.new("Prepared") if added else None
     objects: list[bpy.types.Object] = []
     created: dict[int, bpy.types.Object] = {}
@@ -196,6 +207,11 @@ def new_data(
     )
 
 
+def new_meshes(diff: PlanDiff, meshes: list[bpy.types.Mesh]) -> dict[int, bpy.types.Mesh]:
+    """The meshes new_data built for the diff's plan, by plan index."""
+    return {index: meshes[index] for index, old in enumerate(diff["meshes"]) if old == -1}
+
+
 def publish(prepared: Prepared, display: Display, collection: bpy.types.Collection) -> Display:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
     new = prepared.display
@@ -203,12 +219,15 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
     try:
         for index in sorted(set(prepared.repointed) | set(prepared.renumbered)):
             obj = new.objects[index]
-            saved.append((obj, obj.data, [slot.material for slot in obj.material_slots], obj[ELEMENT]))
+            slots = [slot.material for slot in obj.material_slots]
+            saved.append((obj, obj.data, slots, obj[ELEMENT]))
             repoint = prepared.repointed.get(index)
             if repoint is not None:
                 if repoint.data is not None:
                     # The same slot count, and the slots link to the object, so each keeps its place.
                     obj.data = repoint.data
+                    # The rebuilt mesh may hold a constant display color the old one didn't, or another one.
+                    show_display_color(obj, DISPLAY_COLOR in obj)
                 for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
                     slot.material = material
             obj[ELEMENT] = index
@@ -258,6 +277,7 @@ def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[S
     """Put back what a failed publication changed; the prepared data stays for disposal."""
     for obj, data, slots, element in reversed(saved):
         obj.data = data
+        show_display_color(obj, DISPLAY_COLOR in obj)
         for slot, material in zip(obj.material_slots, slots, strict=True):
             slot.material = material
         obj[ELEMENT] = element

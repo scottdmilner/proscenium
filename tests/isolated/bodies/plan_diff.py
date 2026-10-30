@@ -37,6 +37,9 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).GetPrimvar("displayColor").Set(
                 [Gf.Vec3f(0.9, 0.9, 0.9)]
             )
+        elif edit == "reshape":  # gives MeshC, whose color its mesh's other copies don't share, a mesh of its own (D10)
+            points = UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshC")).GetPointsAttr()
+            points.Set([p * 2 for p in points.Get()])
         elif edit == "visibility":
             UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeInvisible()
         elif edit == "structure":
@@ -56,6 +59,16 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("displayColor").Set(
                 [Gf.Vec3f(0, 0, 1)]
             )
+        elif edit == "color-interpolation":  # swaps two meshes' displayColor between uniform and vertex (D10)
+            colors = "/World/MeshDisplayColor"
+            uniform = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Uniform")).GetPrimvar("displayColor")
+            uniform.SetInterpolation(UsdGeom.Tokens.vertex)
+            uniform.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 0, 0)])
+            vertex = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Vertex")).GetPrimvar("displayColor")
+            vertex.SetInterpolation(UsdGeom.Tokens.uniform)
+            vertex.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1)])
+        elif edit == "uncolor":  # leaves the one copy of a mesh that holds its displayColor without one (D10)
+            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("displayColor").GetAttr().Block()
         elif edit == "holes":  # a build problem, which later plans reuse with the build (D9)
             UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetHoleIndicesAttr().Set([0])
         elif edit == "subset":  # moves face 2 between Partitioned's subsets, which alone change

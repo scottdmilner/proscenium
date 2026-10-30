@@ -16,8 +16,8 @@ reads a string, so they neither split a group nor reach its batch.
   node of type Instancer reads them. Each carrier's Geometry Nodes modifier instances the prototype on the points
   of one state, so a selection can select exactly its instances (batch_selection.py). The carriers' hide flags
   are the group's destinations.
-- **Prototype:** an object no scene links, on the group's mesh, with the group's object-linked materials and
-  object color, which every instance shows.
+- **Prototype:** an object no scene links, on the group's mesh, with the group's object-linked materials,
+  object color, and display color modifier (apply.py), which every instance shows.
 """
 
 from __future__ import annotations
@@ -27,7 +27,16 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import new_material, new_mesh, new_object, object_color
+from apply import (
+    DISPLAY_COLOR,
+    new_material,
+    new_mesh,
+    new_object,
+    object_color,
+    set_mesh_colors,
+    show_display_color,
+    stored_color,
+)
 from selection import ELEMENT
 
 if TYPE_CHECKING:
@@ -125,6 +134,7 @@ def apply_batched(plan: Plan, collection: bpy.types.Collection, minimum: int = M
     records = dict(enumerate(plan.objects))
     materials = [new_material(data) for data in plan.materials]
     meshes = [new_mesh(data) for data in plan.meshes]
+    set_mesh_colors(dict(enumerate(meshes)), records.values())
     shared, single = groups(plan, minimum)
     nodes = _node_group()
     batches = [
@@ -187,7 +197,7 @@ def set_prototype(
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
 ) -> None:
-    """Put a group's mesh, object-linked materials, and object color on its prototype, changing only what differs."""
+    """Put a group's mesh, object-linked materials, and display color on its prototype, changing only what differs."""
     mesh = record["mesh"]
     assert mesh is not None  # the groups leave out placeholders
     if prototype.data != meshes[mesh]:
@@ -199,9 +209,9 @@ def set_prototype(
         wanted = None if material is None else materials[material]
         if slot.material != wanted:
             slot.material = wanted
-    color = object_color(record)
-    if list(prototype.color) != numpy.array(color, dtype=numpy.float32).tolist():  # as Blender stores it
-        prototype.color = color
+    if list(prototype.color) != stored_color(record):
+        prototype.color = object_color(record)
+    show_display_color(prototype, DISPLAY_COLOR in record["properties"])
 
 
 def new_points(number: int, members: list[int], records: Mapping[int, ObjectRecord], held: list[int]) -> bpy.types.Mesh:

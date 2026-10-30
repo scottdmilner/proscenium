@@ -1167,6 +1167,53 @@ The objects column is with reuse only; D8's objects set, from another session, t
 - **An instance-transform update** still misses the budget only on `updates-10000` (4.5×), where 0.094 s of preparation rebuilds the points of each batch a moved copy is in (D8).
 - **Tested only on these edits and scenes:** whether Hydra recaptures every prim an edit affects, as reuse assumes, is checked by the oracle test on its edits, not in general.
 
+#### Every display color under Solid shading's Attribute color
+
+[M4 plan](../plans/M04-prototypes.md), D10: Solid shading's Attribute color (`shading.color_type = "VERTEX"`) shows each mesh's active color attribute, a point or corner one only (ad hoc renders: a face or instance attribute doesn't show). So every display color shows under it:
+
+- **Vertex and faceVarying** `displayColor` are point and corner attributes already, and each mesh's active color.
+- **Uniform** `displayColor` stays a face attribute, as the spec stores it, and the mesh also holds its values on corners, as `displayColor_corners`, its active color.
+- **Constant** `displayColor` is per copy. A mesh whose copies all share one holds it, with the copy's `displayOpacity` as alpha, as a point attribute named `displayColor`.
+- **Any other copy** has a Geometry Nodes modifier that stores its own constant color on points, or removes the mesh's color from a copy without one. Blender evaluates such a copy apart from its mesh's other copies.
+
+All are float colors. One session on 2026-10-29, on AC power in High Power mode throughout, 3 repeats of each mode, each pair running the previous commit's code (on its own build of the bridge) and then D10's:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds "$@"; }
+r --modes prototype --scenarios payload-load payload-unload --representation batched --batch-minimum 5 \
+    --out build/hydra-bridge/measure-d10d-batched
+r --modes viewport --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d10d-viewport-batched
+# likewise with --representation objects (measure-d10d-objects, measure-d10d-viewport-objects)
+```
+
+`isolated/test_baseline.py` checks, on both representations and on `F-APPEARANCE-CASES` and `F-NESTED-STRESS`, that each copy's evaluated mesh has its display color as its active color attribute, on its interpolation's domain (corners for uniform), with a constant color's opacity as alpha. It also checks that only a copy whose constant color its mesh doesn't hold has a modifier. `isolated/test_update.py` checks that after each edit, each copy shows what a fresh application shows, with a fresh application's modifiers on the meshes the update builds. A mesh the update keeps keeps the color its copies shared when it was built. In an ad hoc mutation run, 13 of 14 single changes failed them. The survivor leaves out tagging an object for evaluation when its modifier's inputs change: no update changes an existing modifier's inputs, since an object's color is set only when it is created.
+
+**ALab with its point instancers, the previous commit → D10** (medians):
+
+| | Objects | Batched |
+|---|---|---|
+| Display color modifiers | 0 → 5 | 0 → 5, beside the batches' 1,137 |
+| Building the display, s | 3.28 → 3.36 | 1.26 → 1.28 |
+| First evaluation, s | 0.085 → 0.086 | 0.064 → 0.055 |
+| Peak memory during synchronization, MB | 3,398 → 3,496 | 3,313 → 3,465 |
+| Solid, orbiting frame, ms | 30.0 → 29.9 | 16.6 → 16.4 |
+| Material preview, orbiting frame, ms | 34.2 → 34.7 | 20.4 → 20.4 |
+| Payload load and unload updates, s | 5.86 and 3.12 → 5.55 and 3.08 | 3.53 and 2.10 → 3.37 and 2.05 |
+
+In an ad hoc count of the plan, 2,345 of ALab's 3,393 meshes hold their copies' constant color (3.65M points), and 341 hold a uniform one on corners (4.25M corners). Together they are about 126 MB of float colors, against the 98–152 MB that peak memory rose.
+
+**The other ways measured** (same harness, against the previous commit's code in the same session):
+- **A modifier on every copy with a constant or uniform color**, on AC power: 7,734 modifiers as objects. Solid's orbiting frames took 24% longer in both representations, and material preview's 33% as objects and 24% batched. Peak memory rose 150–240 MB.
+- **Uniform colors through the modifier, constant colors held by meshes**, on battery in High Power mode: 1,518 modifiers as objects, 1,513 of them for uniform colors, on copies holding 3.05M points. Solid's orbiting frames took 7% longer, and material preview's 22% as objects and 9% batched.
+- **8-bit colors** (`BYTE_COLOR`) for `displayColor` and its copies, on AC power in High Power mode: frame times as the previous commit's, and peak memory 13–55 MB higher, but building the display took 0.70 s longer batched and 1.44 s as objects. Blender converts each element of an 8-bit color attribute, at about 60 ns, from linear floats or from sRGB alike, against 2 ns for a float color (ad hoc), and ALab writes about 10.8M.
+
+**Findings:**
+- **Every display color shows under one setting at about the previous cost,** apart from memory: frame times, construction, evaluation, and updates are within the runs' ranges, and peak memory rises about 100–150 MB, the colors the meshes hold.
+- **A modifier on a copy costs it its mesh's sharing in the viewport.** Each modified copy is evaluated as its own mesh, which by the frame times and memory measured costs a whole mesh's evaluation and drawing per copy, not just its colors. Not measured directly.
+- **Colors only shown are still floats:** 8-bit colors held ALab's added peak memory to 13–55 MB, in another session, at about 60 ns an element to write, 0.6 s for ALab's 10.8M.
+- **The extra attributes** are ordinary Blender data that detach keeps: a mesh's held constant color and its uniform color's corners show in the attribute list, and an edit to a mesh's `displayColor` in Blender doesn't reach its corners.
+- **Measured only on ALab,** where one mesh has copies with differing constant colors, and only these viewpoints and view size. A scene whose copies of one mesh mostly differ in constant color would need a modifier on most of them.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

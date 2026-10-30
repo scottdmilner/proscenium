@@ -27,11 +27,11 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import new_object
+from apply import DISPLAY_COLOR, new_object, set_mesh_colors, show_display_color
 from batch import Batch, BatchedDisplay, groups, new_batch, new_points, set_prototype
 from batch_selection import states
 from selection import ELEMENT
-from update import Repoint, UserPolicy, new_data, retire_ids, with_parent
+from update import Repoint, UserPolicy, new_data, new_meshes, retire_ids, with_parent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -103,6 +103,9 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
         decided.append((olds, rebuild, reprototyped))
     order = sorted(needed)
     records = dict(zip(order, plan.objects_at(order), strict=True))
+    # A new mesh's copies are all added or changed: a kept batch on one is reprototyped, and its members share one
+    # color, so the records hold each of its colors.
+    set_mesh_colors(new_meshes(diff, meshes), records.values())
 
     serial = display.serial
     batches, added, kept = [], [], []
@@ -167,6 +170,7 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
             if repoint.data is not None:
                 # The same slot count, and the slots link to the object, so each keeps its place.
                 obj.data = repoint.data
+                show_display_color(obj, DISPLAY_COLOR in obj)
             for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
                 slot.material = material
         for index in prepared.renumbered:
@@ -248,11 +252,12 @@ def _kept_objects(single: list[int], previous: list[int], display: BatchedDispla
 
 
 def _saved(obj: bpy.types.Object) -> Callable[[], None]:
-    """What puts back an object's data and each slot's material."""
+    """What puts back an object's data, each slot's material, and its display color modifier."""
     data, slots = obj.data, [slot.material for slot in obj.material_slots]
 
     def restore() -> None:
         obj.data = data
+        show_display_color(obj, DISPLAY_COLOR in obj)
         for slot, material in zip(obj.material_slots, slots, strict=True):
             slot.material = material
 

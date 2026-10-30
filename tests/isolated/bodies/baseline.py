@@ -70,6 +70,8 @@ def apply_scene(
     view_layer.update()
     for element, obj in objects.items():
         reported[element]["world"] = _rows(obj.matrix_world.transposed())  # USD's row-vector convention
+        reported[element]["displayed_color"] = _displayed_color(obj.evaluated_get(view_layer.depsgraph))
+        reported[element]["modifiers"] = [_modifier(modifier) for modifier in obj.modifiers]
         reported[element]["shear_parent"] = None if obj.parent is None else obj.parent.get(apply.SHEAR_PARENT)
         reported[element]["instance"] = False
     for element, entry in _instances(view_layer, batches, shown).items():
@@ -116,6 +118,8 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
             "shear_parent": None,
             "instance": True,
             "carrier": carrier.name,
+            "displayed_color": _displayed_color(instance.instance_object),
+            "modifiers": [_modifier(modifier) for modifier in instance.instance_object.original.modifiers],
             # The instance attributes the bridge didn't add for itself, constant primvars by name, and the
             # prototype's ID properties.
             "properties": {
@@ -126,6 +130,28 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
             | _object_properties(instance.instance_object.original),
         }
     return found
+
+
+def _displayed_colors(objects: list[Any]) -> list[dict[str, Any] | None]:
+    """Each object's _displayed_color, with each shown while it is read, since the depsgraph evaluates only those."""
+    hidden = [obj.hide_viewport for obj in objects]
+    for obj in objects:
+        obj.hide_viewport = False
+    view_layer: Any = bpy.context.view_layer  # never None in a running Blender
+    view_layer.update()
+    displayed = [_displayed_color(obj.evaluated_get(view_layer.depsgraph)) for obj in objects]
+    for obj, hide in zip(objects, hidden, strict=True):
+        obj.hide_viewport = hide
+    view_layer.update()
+    return displayed
+
+
+def _displayed_color(evaluated: Any) -> dict[str, Any] | None:
+    """What Solid shading's Attribute color shows of an evaluated object: its mesh's active color attribute."""
+    attribute = evaluated.data.color_attributes.active_color if evaluated.type == "MESH" else None
+    if attribute is None:
+        return None
+    return {"name": attribute.name, "domain": attribute.domain, "values": [list(d.color) for d in attribute.data]}
 
 
 def _rows(matrix: Any) -> list[list[float]]:
@@ -183,22 +209,31 @@ def _shown(obj: Any) -> dict[str, Any]:
         "slots": [None if s.material is None else list(s.material["proscenium_sources"]) for s in obj.material_slots],
         "face_slots": [] if mesh is None else [p.material_index for p in mesh.polygons],
         "color": list(obj.color),
-        "attributes": {} if mesh is None else _attributes(mesh),
+        # A displayColor all the mesh's copies share, which displayed_color covers, depends on which copies the mesh
+        # had when it was built.
+        "attributes": {} if mesh is None else _attributes(mesh, held_color="proscenium_display_color" in mesh),
         "uv_maps": [] if mesh is None else [layer.name for layer in mesh.uv_layers],
         "corner_verts": [] if mesh is None else [loop.vertex_index for loop in mesh.loops],
     }
 
 
 def _plain(value: Any) -> Any:
-    """An ID property value as JSON: arrays as (nested) lists."""
-    return value.to_list() if hasattr(value, "to_list") else value
+    """An ID property or socket value as JSON: arrays as (nested) lists."""
+    if hasattr(value, "to_list"):
+        return value.to_list()
+    return list(value) if isinstance(value, bpy.types.bpy_prop_array) else value
 
 
-def _attributes(mesh: Any) -> dict[str, dict[str, Any]]:
-    """The mesh's named attributes, Blender's internal ones aside: domain, data type, and each element's value."""
+def _attributes(mesh: Any, held_color: bool = False) -> dict[str, dict[str, Any]]:
+    """The mesh's named attributes, Blender's internal ones aside: domain, data type, and each element's value.
+
+    With `held_color`, its displayColor is left out too.
+    """
     result = {}
     for attribute in mesh.attributes:
         if attribute.name.startswith(".") or attribute.data_type not in ELEMENT_VALUES:
+            continue
+        if held_color and attribute.name == "displayColor":
             continue
         prop = ELEMENT_VALUES[attribute.data_type]
         values = [getattr(element, prop) for element in attribute.data]
@@ -284,7 +319,11 @@ def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: 
 def _held(display: Any, records: Any) -> dict[str, Any]:
     """Each object as Blender holds it (mesh by plan index), and the pointers of the display's data."""
     meshes = {mesh.as_pointer(): index for index, mesh in enumerate(display.meshes)}
+    # Read once evaluated, as a shear parent's world matrix is, after an earlier update or not.
+    displayed = _displayed_colors(display.objects)
     objects = [_held_object(record, obj, meshes) for record, obj in zip(records, display.objects, strict=True)]
+    for facts, color in zip(objects, displayed, strict=True):
+        facts["displayed_color"] = color
     return {
         "objects": objects,
         "meshes": [mesh.as_pointer() for mesh in display.meshes],
@@ -307,6 +346,7 @@ def _held_object(record: Any, obj: Any, meshes: dict[int, int]) -> dict[str, Any
         "parent_world": None if parent is None else _rows(parent.matrix_world.transposed()),
         "pointer": obj.as_pointer(),
         "data_pointer": None if obj.data is None else obj.data.as_pointer(),
+        "modifiers": [_modifier(modifier) for modifier in obj.modifiers],  # the display color modifier (D10)
     }
 
 
@@ -326,6 +366,8 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
     view_layer.update()
     # Read once evaluated, as a shear parent's world matrix is, after an earlier update or not.
     held = {element: _held_object(records[element], obj, meshes) for element, obj in display.objects.items()}
+    for element, displayed in zip(held, _displayed_colors(list(display.objects.values())), strict=True):
+        held[element]["displayed_color"] = displayed
     names = {mesh.name: index for index, mesh in enumerate(display.meshes)}
     # Selected: an object selected in Blender, or an instance in the viewport on a carrier other than the
     # unselected one. Blender's selection holds no object hidden in the viewport.

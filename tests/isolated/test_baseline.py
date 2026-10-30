@@ -321,6 +321,74 @@ def test_display_color_and_opacity_where_stored(scene: BaselineScene, applied: l
             assert _close(obj["color"][3], alpha), (mesh, obj["color"])
 
 
+def _check_displayed_color(
+    obj: dict[str, Any], prim: Usd.Prim, color: tuple[str, tuple[Any, ...]], alpha: float
+) -> None:
+    """Check that Solid shading's Attribute color shows the copy's displayColor.
+
+    Constant and vertex values are on its points, uniform and faceVarying values on its corners (uniform ones in a
+    copy beside the mesh's face values), and a constant color's opacity is its alpha.
+    """
+    where = obj["source"]
+    shown = obj["displayed_color"]
+    interpolation, values = color
+    name = "displayColor_corners" if interpolation == "uniform" else "displayColor"
+    assert shown is not None and shown["name"] == name, (where, shown)
+    counts = UsdGeom.Mesh(prim).GetFaceVertexCountsAttr().Get()
+    if interpolation == "constant":
+        expected, domain = [values[0]] * len(UsdGeom.Mesh(prim).GetPointsAttr().Get()), "POINT"
+    elif interpolation == "uniform":
+        expected, domain = [values[face] for face, count in enumerate(counts) for _ in range(count)], "CORNER"
+    else:
+        expected, domain = list(values), DOMAINS[interpolation]
+    assert shown["domain"] == domain, (where, shown["domain"])
+    assert _close(_rgb(shown["values"]), [list(v) for v in expected]), where
+    if interpolation == "constant":
+        assert all(_close(v[3], alpha) for v in shown["values"]), where
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_every_display_color_under_one_setting(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # D10: each copy's displayColor, its mesh's or inherited, whatever its interpolation, is the active color
+    # attribute of the mesh Blender evaluates for it, which Solid shading's Attribute color shows. Copies still
+    # share their meshes as before (test_meshes_shared_exactly_among_equal_content).
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    drawn = _drawn(scene.stage)
+    grouped = _by_source(applied)
+    for mesh, color in facts.display_color.items():
+        opacity = facts.display_opacity[mesh]
+        alpha = opacity[1][0] if opacity is not None and opacity[0] == "constant" else 1.0
+        for obj in grouped[mesh]:
+            _check_displayed_color(obj, drawn[mesh], color, alpha)
+
+
+@pytest.mark.parametrize("scene", ["appearance", "stress"], indirect=True)
+def test_display_color_modifiers_only_where_meshes_differ(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # D10: a mesh whose copies all share one constant displayColor holds it, so a copy has a display color
+    # modifier, which Blender evaluates apart from its mesh's other copies, only when its constant color isn't the
+    # one its mesh holds. A mesh's own displayColor, whatever its interpolation, shows without one.
+    drawn = _drawn(scene.stage)
+    copies: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for obj in applied:
+        if obj["source"] in drawn:  # a placeholder's bounds show no color
+            copies[obj["mesh"]].append(obj)
+    for objs in copies.values():
+        colors = {_constant_color(obj) for obj in objs}
+        held = colors.pop() if len(colors) == 1 else None
+        for obj in objs:
+            constant = _constant_color(obj)
+            expected = constant is not None and constant != held
+            modified = any(m.get("node_group") == "proscenium_display_color" for m in obj["modifiers"])
+            assert modified == expected, (obj["source"], obj["modifiers"])
+    assert any(len({_constant_color(obj) for obj in objs}) > 1 for objs in copies.values())  # a mesh's copies differ
+
+
+def _constant_color(obj: dict[str, Any]) -> tuple[float, ...] | None:
+    """A copy's constant displayColor with its opacity, as its object color holds them; None for none."""
+    return tuple(obj["color"]) if "displayColor" in obj["properties"] else None
+
+
 @pytest.mark.parametrize("scene", ["appearance"], indirect=True)
 def test_reader_primvars_reach_each_copy(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
     # Instance primvars for materials (PVAR-09, GRAM-08, GRAM-11): each copy's own value, inherited from its
@@ -414,10 +482,16 @@ def test_uv_maps(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
 
 @pytest.mark.parametrize("scene", ["stress"], indirect=True)
 def test_stress_display_color_per_copy(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
-    # Nested instances with differing appearance (F-NESTED-STRESS): each copy's inherited constant color.
+    # Nested instances with differing appearance (F-NESTED-STRESS): each copy's inherited constant color, which
+    # Solid shading's Attribute color shows too (D10).
     facts = scene.facts
     assert isinstance(facts, appearance.StressScene)
+    drawn = _drawn(scene.stage)
     grouped = _by_source(applied)
     for mesh, color in facts.display_color.items():
         for obj in grouped[mesh]:
             _check_primvar_storage(obj, "displayColor", None if color is None else ("constant", (color,)))
+            if color is None:
+                assert obj["displayed_color"] is None, mesh
+            else:
+                _check_displayed_color(obj, drawn[mesh], ("constant", (color,)), 1.0)
