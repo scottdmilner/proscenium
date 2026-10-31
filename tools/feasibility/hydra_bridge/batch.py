@@ -3,19 +3,20 @@
 Plan objects that look the same except for their transform and constant primvars become instances on one
 carrier object: those with the same mesh, material slots, destinations, and object color, and constant primvars
 of the same names and kinds, and no two with the same transform. Only a group of at least a minimum size becomes
-a batch, since a batch is four Blender objects. A smaller group, a placeholder, and a copy with a primvar no
+a batch, since a batch is at least two Blender objects. A smaller group, a placeholder, and a copy with a primvar no
 attribute can hold stay objects, as apply.py builds them. The bridge's module forms the groups (`plan.batch_groups`,
 batch_groups.h), so an update needn't convert and regroup every plan record in Python.
 
 Instances leave out constant string primvars, which apply.py keeps on an object as ID properties: no shading node
 reads a string, so they neither split a group nor reach its batch.
 
-- **Carriers:** three objects on one mesh of one point per instance. Its point attributes are each instance's
-  world transform (a 4x4 matrix, so shear needs no parent), its element (`proscenium_element`, its plan index),
-  its selection state, and its constant primvars by name, which reach the instance domain, where an Attribute
-  node of type Instancer reads them. Each carrier's Geometry Nodes modifier instances the prototype on the points
-  of one state, so a selection can select exactly its instances (batch_selection.py). The carriers' hide flags
-  are the group's destinations.
+- **Carriers:** objects on one mesh of one point per instance, one per selection state its points hold, so an
+  unselected batch has one. The mesh's point attributes are each instance's world transform (a 4x4 matrix, so
+  shear needs no parent), its element (`proscenium_element`, its plan index), its selection state, and its
+  constant primvars by name, which reach the instance domain, where an Attribute node of type Instancer reads
+  them. Each carrier's Geometry Nodes modifier instances the prototype on the points of its state, so a
+  selection can select exactly its instances (batch_selection.py). The carriers' hide flags are the group's
+  destinations.
 - **Prototype:** an object no scene links, on the group's mesh, with the group's object-linked materials and
   object color, which every instance shows.
 """
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 # Carrier point attributes, besides each instance's element (ELEMENT): its world transform and selection state.
 TRANSFORM = "proscenium_transform"
 STATE = "proscenium_state"
-# The selection states, by value: each batch has a carrier per state, which shows the instances in it.
+# The selection states, by value: a batch has a carrier for each state its points hold, which shows them.
 STATES = ("unselected", "selected", "active")
 # The smallest group that becomes a batch, unless a caller asks for larger ones.
 MINIMUM = 2
@@ -62,7 +63,7 @@ POINT_ATTRIBUTES = {
 class Batch:
     """A group's carriers and the prototype they instance, with the element of each point in point order."""
 
-    carriers: list[bpy.types.Object]  # by state, on one points mesh
+    carriers: dict[int, bpy.types.Object]  # by state, one for each its points hold, all on one points mesh
     prototype: bpy.types.Object
     elements: list[int]
     key: tuple[Any, ...]  # its group's key in the plan it was applied from (plan.batch_groups)
@@ -70,7 +71,7 @@ class Batch:
     @property
     def points(self) -> bpy.types.Mesh:
         """The carriers' mesh."""
-        return self.carriers[0].data  # ty: ignore[invalid-return-type] - Object.data is every kind of data
+        return next(iter(self.carriers.values())).data  # ty: ignore[invalid-return-type] - every kind of data
 
 
 @dataclass(frozen=True)
@@ -165,20 +166,84 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     prototype = bpy.data.objects.new(f"Prototype {number:06d}", meshes[mesh])
     set_prototype(prototype, first, meshes, materials)
     points = new_points(number, members, records, [0] * len(members))
-    carriers = []
-    # Created in name order, so each sorts after the last: the unselected carrier, then "active", then "selected".
-    for state, suffix in ((0, ""), (2, " active"), (1, " selected")):
-        carrier = bpy.data.objects.new(f"Carrier {number:06d}{suffix}", points)
-        collection.objects.link(carrier)
-        carrier.hide_viewport = not first["viewport"]
-        carrier.hide_render = not first["render"]
-        modifier: Any = carrier.modifiers.new("Batch", "NODES")
-        modifier.node_group = nodes.tree
-        # Blender 5's modifier inputs are structs by socket identifier, each holding its value, not ID properties.
-        getattr(modifier.properties.inputs, nodes.prototype_input).value = prototype
-        getattr(modifier.properties.inputs, nodes.state_input).value = state
-        carriers.append((state, carrier))
-    return Batch([carrier for _, carrier in sorted(carriers, key=lambda pair: pair[0])], prototype, members, key)
+    # Every point is unselected, so the batch has one carrier, for that state.
+    carrier = bpy.data.objects.new(f"Carrier {number:06d}", points)
+    collection.objects.link(carrier)
+    carrier.hide_viewport = not first["viewport"]
+    carrier.hide_render = not first["render"]
+    modifier: Any = carrier.modifiers.new("Batch", "NODES")
+    modifier.node_group = nodes.tree
+    # Blender 5's modifier inputs are structs by socket identifier, each holding its value, not ID properties.
+    getattr(modifier.properties.inputs, nodes.prototype_input).value = prototype
+    getattr(modifier.properties.inputs, nodes.state_input).value = 0
+    return Batch({0: carrier}, prototype, members, key)
+
+
+def new_carrier(like: bpy.types.Object, state: int, nodes: NodeGroup) -> bpy.types.Object:
+    """Another carrier of `like`'s batch, for `state`: on its points, instancing its prototype, placed as it is.
+
+    It is in no collection; `like`'s are where it belongs.
+    """
+    carrier = bpy.data.objects.new(f"{like.data.name} {STATES[state]}", like.data)  # ty: ignore[unresolved-attribute]
+    carrier.parent = like.parent
+    carrier.matrix_parent_inverse = like.matrix_parent_inverse
+    carrier.matrix_basis = like.matrix_basis
+    carrier.hide_viewport, carrier.hide_render = like.hide_viewport, like.hide_render
+    modifier: Any = carrier.modifiers.new("Batch", "NODES")
+    modifier.node_group = nodes.tree
+    getattr(modifier.properties.inputs, nodes.prototype_input).value = prototype_of(like)
+    getattr(modifier.properties.inputs, nodes.state_input).value = state
+    return carrier
+
+
+def carrier_state(carrier: bpy.types.Object, nodes: NodeGroup) -> int:
+    """The state whose points a carrier instances."""
+    modifier: Any = carrier.modifiers["Batch"]
+    return getattr(modifier.properties.inputs, nodes.state_input).value
+
+
+def set_carrier_state(carrier: bpy.types.Object, state: int, nodes: NodeGroup) -> None:
+    """Have a carrier instance the points of `state`.
+
+    Setting a modifier's input doesn't tag its object for evaluation (Blender 5.2, ad hoc), but a carrier's state
+    changes only with its points' states, whose write tags every carrier on them.
+    """
+    modifier: Any = carrier.modifiers["Batch"]
+    getattr(modifier.properties.inputs, nodes.state_input).value = state
+
+
+@dataclass(frozen=True)
+class CarrierChanges:
+    """How a batch's carriers become one per state in `wanted` (fit_carriers)."""
+
+    carriers: dict[int, bpy.types.Object]  # by state, once the changes are made
+    restated: list[tuple[bpy.types.Object, int, int]]  # kept carriers moved from one state to another
+    created: list[bpy.types.Object]  # new carriers, in no collection
+    removed: list[bpy.types.Object]  # carriers no state needs
+
+
+def fit_carriers(batch: Batch, wanted: set[int], nodes: NodeGroup) -> CarrierChanges:
+    """The changes that give a batch a carrier for each state in `wanted`, and only those.
+
+    A carrier keeps its state if it is wanted. Carriers whose state isn't take the wanted states that have none,
+    so objects are created or removed only when the number of states changes. Nothing is changed yet, except that
+    the new carriers exist.
+    """
+    carriers = {state: carrier for state, carrier in batch.carriers.items() if state in wanted}
+    spare = [carrier for state, carrier in batch.carriers.items() if state not in wanted]
+    missing = sorted(wanted - carriers.keys())
+    restated = []
+    like = next(iter(batch.carriers.values()))
+    created = []
+    for state in missing:
+        if spare:
+            carrier = spare.pop(0)
+            restated.append((carrier, carrier_state(carrier, nodes), state))
+        else:
+            carrier = new_carrier(like, state, nodes)
+            created.append(carrier)
+        carriers[state] = carrier
+    return CarrierChanges(dict(sorted(carriers.items())), restated, created, spare)
 
 
 def set_prototype(

@@ -117,7 +117,8 @@ def check_picks(display: Display, scene: InteractionScene) -> None:
 def check_picks_ignore_names_and_parenting(display: Display, scene: InteractionScene) -> None:
     """ICON-17: picks resolve to the same entities after the display objects are renamed and reparented.
 
-    The new parent is offset, so reparenting moves every object, and a pick's own data changes with it.
+    The new parent is offset, so reparenting moves every object, and a pick's own data changes with it. Mirroring
+    a selection afterwards, which may change which objects show what, leaves picks resolving to the same entities.
     """
     import bpy
 
@@ -135,6 +136,12 @@ def check_picks_ignore_names_and_parenting(display: Display, scene: InteractionS
         obj.name = name
         obj.parent = parent
     assert [[display.resolve_pick(pick) for pick in display.picks(obj)] for obj in objects] == before
+    resolved = [r for picks in before for r in picks]
+    if resolved:
+        chosen = display.highlight_targets([resolved[0].floor])
+        display.apply_selection(chosen, chosen[:1])
+        after = [display.resolve_pick(pick) for obj in display.managed_objects() for pick in display.picks(obj)]
+        assert sorted(map(repr, after)) == sorted(map(repr, resolved))
 
 
 def check_displayed(display: Display, scene: InteractionScene) -> None:

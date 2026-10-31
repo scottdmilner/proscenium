@@ -50,6 +50,12 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
             Sdf.CopySpec(stage.GetRootLayer(), f"{EQUAL}/MeshA", session, f"{EQUAL}/MeshNew")
         elif edit == "instance-transform":  # moves one copy of each of the kit's batches
             stage.GetPrimAtPath(f"{KITS}/KitB").GetAttribute("xformOp:translate").Set(Gf.Vec3d(3, 2, 0))
+        elif edit == "kits-move":  # moves every copy of the kit's batches, which change state together (D3)
+            UsdGeom.Xformable(stage.GetPrimAtPath(KITS)).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
+        elif edit == "purpose-move":  # moves one copy of each purpose binding batch, one shown only in the render
+            UsdGeom.Xformable(stage.GetPrimAtPath("/World/PurposeBindings/Both")).AddTranslateOp(opSuffix="moved").Set(
+                Gf.Vec3d(0, 0, 1)
+            )
         elif edit == "instance-remove":  # leaves two copies in each of the kit's batches
             stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
         elif edit == "instance-remove-another":  # leaves one copy of each of the kit's meshes, so no batch
@@ -255,11 +261,13 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     users: str,
     representation: str = "objects",
     fail_publication: bool = False,
+    select: str = "all",
 ) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
     `representation` is the baseline's "objects" (apply.py and update.py) or Phase D's "batched" (batch.py and
-    batch_update.py). Every element is selected before each edit. Each step reports the diff, what the display
+    batch_update.py). Before each edit, the elements `select` names are selected: "all", or "odd", those of odd
+    plan index. Each step reports the diff, what the display
     held before and after, what the updated display holds against a fresh application of the same plan, and
     Blender's data counts for each.
 
@@ -287,7 +295,7 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     display = (apply.apply_batched if batched else apply.apply)(plan, collection)
     steps = []
     for edit in edits:
-        selected = set(range(len(plan.objects)))
+        selected = {index for index in range(len(plan.objects)) if select == "all" or index % 2}
         selection.apply_selection(view_layer, display if batched else collection, selected, set())
         before = held_by(display, plan.objects)
         _edit(stage, edit)
@@ -361,7 +369,7 @@ def _published(display: Any, batched: bool) -> list[int]:
     objects = _objects_of(display)
     linked = [*objects, *(obj.parent for obj in objects if obj.parent is not None)]
     if batched:
-        linked += [carrier for batch in display.batches for carrier in batch.carriers]
+        linked += [carrier for batch in display.batches for carrier in batch.carriers.values()]
     return sorted(obj.as_pointer() for obj in linked)
 
 

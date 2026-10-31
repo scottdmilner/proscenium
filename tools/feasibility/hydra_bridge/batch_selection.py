@@ -1,9 +1,11 @@
 """The batched display's Python display component (M4, Phase D): Blender's selection state, to and from elements.
 
 batch.py's counterparts of selection.py's functions, and the pick resolution an instance needs:
-- **Partial coverage:** none arises. Each batch has a carrier per selection state, which instances only the
-  points in that state, so `apply_selection` moves a selection's instances onto the selected and active carriers
-  and selects exactly those. Each object then shows elements wholly in or out of the selection.
+- **Partial coverage:** none arises. A batch has a carrier for each selection state its points hold, which
+  instances only the points in that state, so `apply_selection` moves a selection's instances onto the selected
+  and active carriers and selects exactly those. Each object then shows elements wholly in or out of the
+  selection. A batch whose points all have one state has one carrier: `apply_selection` gives a carrier no state
+  needs to one that has none, and creates or removes carriers only when the number of states changes.
 - **What a pick supplies (Q2):** what a ray cast returns, the hit object and its world matrix. For an instance,
   that is the prototype and the instance's matrix, so the instance is the batch's point whose world transform it
   is. Blender's own selection tools select a whole carrier, all the instances in its state.
@@ -13,14 +15,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import bpy
 import numpy
-from batch import STATE, TRANSFORM
+from batch import STATE, TRANSFORM, fit_carriers, set_carrier_state
 from selection import ELEMENT, BlenderSelection
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    import bpy
     from batch import Batch, BatchedDisplay
     from mathutils import Matrix
 
@@ -31,7 +33,7 @@ SELECTED, ACTIVE = 1, 2
 
 def managed(display: BatchedDisplay) -> list[bpy.types.Object]:
     """The display's objects: those kept as objects, and every carrier."""
-    return [*display.objects.values(), *(carrier for batch in display.batches for carrier in batch.carriers)]
+    return [*display.objects.values(), *(c for batch in display.batches for c in batch.carriers.values())]
 
 
 def states(batch: Batch) -> numpy.ndarray:
@@ -52,7 +54,7 @@ def pick_element(display: BatchedDisplay, obj: bpy.types.Object, matrix: Matrix)
     _data(batch.points.attributes[TRANSFORM]).foreach_get("value", transforms.ravel())
     hit = numpy.array(matrix, dtype=numpy.float64)
     best, distance = None, numpy.inf
-    for carrier in batch.carriers:
+    for carrier in batch.carriers.values():
         # A point's transform is USD's row-vector matrix, so Blender's is its transpose.
         worlds = numpy.array(carrier.matrix_world) @ transforms.transpose(0, 2, 1)
         errors = numpy.abs(worlds - hit).max(axis=(1, 2))
@@ -70,7 +72,8 @@ def apply_selection(
     """Mirror display targets into Blender, as selection.apply_selection does, moving points between carriers.
 
     Each batch's points move onto the carrier of their state: the active entry's, the rest of the selection's, or
-    neither's.
+    neither's. A batch's carriers change to one per state its points then hold (batch.fit_carriers), in place in
+    `display`.
     """
     showing = []  # the active entry's display objects
     for element, obj in display.objects.items():
@@ -84,9 +87,12 @@ def apply_selection(
         if not numpy.array_equal(wanted, states(batch)):
             # Writing an attribute tags the mesh, so the carriers' instances follow.
             _data(batch.points.attributes[STATE]).foreach_set("value", wanted)
-        for state, carrier in enumerate(batch.carriers):
-            carrier.select_set(state != 0 and bool((wanted == state).any()), view_layer=view_layer)
-        if (wanted == ACTIVE).any():
+        held = set(numpy.unique(wanted).tolist())
+        if held != batch.carriers.keys():
+            _fit(batch, held, display)
+        for state, carrier in batch.carriers.items():
+            carrier.select_set(state != 0, view_layer=view_layer)
+        if ACTIVE in batch.carriers:
             showing.append(batch.carriers[ACTIVE])
     objects = managed(display)
     if len(showing) == 1:
@@ -110,13 +116,29 @@ def read_blender_selection(view_layer: bpy.types.ViewLayer, display: BatchedDisp
             active = element
     for batch in display.batches:
         held = states(batch)
-        for state, carrier in enumerate(batch.carriers):
+        for state, carrier in batch.carriers.items():
             shown = [e for e, s in zip(batch.elements, held, strict=True) if s == state]
             if carrier.select_get(view_layer=view_layer):
                 selected.update(shown)
             if carrier == current and shown:
                 active = shown[0]
     return BlenderSelection(sorted(selected), active)
+
+
+def _fit(batch: Batch, wanted: set[int], display: BatchedDisplay) -> None:
+    """Give a batch a carrier for each state in `wanted`, and only those, in the collections its carriers are in."""
+    changes = fit_carriers(batch, wanted, display.nodes)
+    collections = list(next(iter(batch.carriers.values())).users_collection)
+    for carrier in changes.created:
+        for collection in collections:
+            collection.objects.link(carrier)
+    for carrier, _, state in changes.restated:
+        set_carrier_state(carrier, state, display.nodes)
+    if changes.removed:
+        bpy.data.batch_remove(changes.removed)
+    # A Batch is frozen, but the display's batches hold its carriers by state, as they now are.
+    batch.carriers.clear()
+    batch.carriers.update(changes.carriers)
 
 
 def _data(attribute: bpy.types.Attribute) -> Any:

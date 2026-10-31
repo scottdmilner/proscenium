@@ -964,7 +964,7 @@ The full statistics go to the `summary.md` in each of those directories under `b
 | ALab, minimum 5 | 7,018 | 169 | 2,244 | 5,450 | 7,018 |
 | ALab, minimum 20 | 7,018 | 30 | 1,012 | 6,126 | 7,018 |
 
-A batch is three carriers and a prototype, so it has fewer objects than its copies only from 5 copies up. 6,997 of ALab's 7,018 copies show in one destination only (C1 and D2), and its largest groups are of 77 copies. The `updates-N` scenes' batches are all larger than 20, so a minimum up to 20 doesn't change them.
+A batch was three carriers and a prototype, so it had fewer objects than its copies only from 5 copies up ([D14](#carriers-per-selection-state) gives an unselected batch one carrier). 6,997 of ALab's 7,018 copies show in one destination only (C1 and D2), and its largest groups are of 77 copies. The `updates-N` scenes' batches are all larger than 20, so a minimum up to 20 doesn't change them.
 
 **Budgets** (ratios of medians, each against the matched importer and the full rebuild of its own set; baseline in brackets):
 
@@ -1293,6 +1293,61 @@ The ALab frame times and peak memory are within the runs' ranges. On the generat
 **Findings:**
 - **Without per-copy workarounds, the display costs what D10's held colors do,** and nothing per copy whose color differs from its mesh's other copies.
 - **Under Solid shading's Attribute color, such a copy shows none of its own:** on ALab 5 copies of one 76-point mesh. Solid shading's Object color and Material Preview show it.
+
+#### Carriers per selection state
+
+[M4 plan](../plans/M04-prototypes.md), D14: a batch has a carrier for each selection state its points hold, so an unselected batch has one, against D3's three carriers per batch. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, the previous commit's code (on its own build of the bridge) and then D14's, batched:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --representation batched \
+    --modes prototype interaction viewport --scenarios instance-transform "$@"; }
+r --scenes alab-instancers --batch-minimum 5 --out build/hydra-bridge/measure-d14-alab-after
+r --scenes updates --only updates-10000 --out build/hydra-bridge/measure-d14-updates-after
+```
+
+The interaction timing clears the selection before each mirroring, so a mirroring creates the carriers it needs.
+
+**Medians, three carriers → D14:**
+
+| | ALab with its point instancers (minimum 5) | `updates-10000` |
+|---|---|---|
+| Blender objects | 6,981 → 6,223 | 13 → 7 |
+| Carriers | 1,137 → 379 | 9 → 3 |
+| Building the display, s | 1.23 → 1.19 | 0.038 → 0.040 |
+| First evaluation, s | 0.067 → 0.051 | 0.002 → 0.002 |
+| Peak memory during synchronization, MB | 3,428 → 3,404 | 562 → 562 |
+| Solid, orbiting frame, ms | 16.6 → 15.1 | 8.6 → 8.3 |
+| Material preview, orbiting frame, ms | 21.0 → 18.6 | 14.5 → 14.9 |
+| A pick's `apply_selection`, with the depsgraph update, ms | 13.1 → 10.4 | 2.4 → 2.8 |
+| A box selection's `apply_selection`, ms | 19.0 → 27.0 | 3.1 → 3.3 |
+| `read_blender_selection`, ms | 6.1 → 3.8 | 6.0 → 3.7 |
+| Instance-transform update: preparation, evaluation, s | 0.032, 0.041 → 0.034, 0.037 | 0.098, 0.001 → 0.097, 0.001 |
+
+Synchronization was 3.98 s (3.83–5.78) and 4.17 s (3.93–4.32) on ALab, within each other's range.
+
+**Findings:**
+- **Unselected batches cost one carrier,** which on ALab removes 758 objects and shortens the orbiting frames by 9–12%.
+- **A selection that spans many batches creates their carriers,** so a box selection's mirroring is slower, within its budget (250 ms). A single pick's is faster, since it evaluates fewer carriers.
+
+**Batch minimums with per-state carriers** (the same session, batched, medians; the transform scenario at a minimum of 5 in a run of its own):
+
+```sh
+r --scenes alab-instancers --batch-minimum 3 --scenarios instance-transform transform --out build/hydra-bridge/measure-d14-alab-min3
+```
+
+| ALab with its point instancers | 5 | 3 | 2 |
+|---|---|---|---|
+| Batches; Blender objects | 379; 6,223 | 600; 5,896 | 1,040; 5,896 |
+| Synchronization, s | 4.17 | 4.03 | 4.16 |
+| Peak memory during synchronization, MB | 3,404 | 3,438 | 3,439 |
+| Solid, orbiting frame, ms | 15.1 | 14.2 | 13.9 |
+| Material preview, orbiting frame, ms | 18.6 | 17.9 | 17.7 |
+| A pick's `apply_selection`, ms | 10.4 | 11.3 | 42.8 (14.0–43.8) |
+| A box selection's `apply_selection`, ms | 27.0 | 34.6 | 70.4 |
+| Transform and instance-transform updates against a full rebuild | 16.6×, 11.3× | 16.4×, 11.4× | 16.0×, 12.2× |
+
+- **A minimum of 3 removes 327 more objects than 5,** for shorter frames and a little longer mirroring, within the budgets.
+- **A minimum of 2 removes none more than 3,** since a batch of two copies is two objects, and its 440 more batches put a pick's mirroring near its budget.
 
 #### Plans from separate processes
 

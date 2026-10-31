@@ -62,7 +62,7 @@ def apply_scene(
         reported[element] = _object(records[element], obj)
     # The depsgraph evaluates only objects shown in the viewport, so every object is shown before Blender's world
     # transforms are read, once its hide flags are reported.
-    carriers = [carrier for batch in batches for carrier in batch.carriers]
+    carriers = [carrier for batch in batches for carrier in batch.carriers.values()]
     shown = {c.name: (not c.hide_viewport, not c.hide_render) for c in carriers}
     for obj in collection.objects:
         obj.hide_viewport = False
@@ -93,7 +93,7 @@ def _instances(view_layer: Any, batches: list[Any], shown: dict[str, tuple[bool,
     """Each carrier's evaluated instances, by the element its instance attributes name."""
     depsgraph = view_layer.depsgraph
     attributes = {}
-    for carrier in (carrier for batch in batches for carrier in batch.carriers):
+    for carrier in (carrier for batch in batches for carrier in batch.carriers.values()):
         # The instances' point cloud lives only as long as the geometry set that holds it.
         geometry = carrier.evaluated_get(depsgraph).evaluated_geometry()
         instances = geometry.instances_pointcloud()  # None for a carrier with no instances
@@ -350,7 +350,7 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
     by plan index. The carriers are shown while the display is read, then hidden again as they were.
     """
     meshes = {mesh.as_pointer(): index for index, mesh in enumerate(display.meshes)}
-    carriers = [carrier for batch in display.batches for carrier in batch.carriers]
+    carriers = [carrier for batch in display.batches for carrier in batch.carriers.values()]
     shown = {c.name: (not c.hide_viewport, not c.hide_render) for c in carriers}
     hidden = [(carrier, carrier.hide_viewport) for carrier in carriers]
     for carrier in carriers:
@@ -365,7 +365,7 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
     # Selected: an object selected in Blender, or an instance in the viewport on a carrier other than the
     # unselected one. Blender's selection holds no object hidden in the viewport.
     selected = [element for element, obj in display.objects.items() if obj.select_get(view_layer=view_layer)]
-    states = {carrier.name: state for batch in display.batches for state, carrier in enumerate(batch.carriers)}
+    states = {carrier.name: state for batch in display.batches for state, carrier in batch.carriers.items()}
     for element, entry in _instances(view_layer, display.batches, shown).items():
         assert element not in held, element  # each element is displayed once
         mesh = entry.pop("mesh")
@@ -382,7 +382,17 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
                 "elements": list(batch.elements),
                 # What a group must share with a batch to keep it, besides its mesh and materials (D4).
                 "looks": list(batch.key[2:-1]),
-                "carriers": [carrier.as_pointer() for carrier in batch.carriers],
+                # By state, and the states its points hold and whose carriers Blender has selected.
+                "carriers": {str(state): carrier.as_pointer() for state, carrier in batch.carriers.items()},
+                "states": sorted(set(_point_states(batch).tolist())),
+                "selected_carriers": [s for s, c in batch.carriers.items() if c.select_get(view_layer=view_layer)],
+                # Each carrier's destinations and placement, as they were before the display was read.
+                "carrier_looks": sorted(
+                    {
+                        (*shown[c.name], *(round(v, 6) for row in _rows(c.matrix_world) for v in row))
+                        for c in batch.carriers.values()
+                    }
+                ),
                 "prototype": batch.prototype.as_pointer(),
                 "points": batch.points.as_pointer(),
             }
@@ -392,6 +402,11 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
         "materials": [material.as_pointer() for material in display.materials],
         "selected": sorted(selected),
     }
+
+
+def _point_states(batch: Any) -> Any:
+    """Each of a batch's points' selection states."""
+    return importlib.import_module("batch_selection").states(batch)
 
 
 # A mesh object's data, read through Any: its Object.data is typed as every kind of object data.
@@ -422,7 +437,8 @@ def detach_scene(module_dir: str, scene: str, blend: str, representation: str = 
 
     The edits come before detach, which must keep them: an object whose mesh others share is deleted, another
     is moved, and a material is recolored. In the batched display (`representation` "batched", D4), the first
-    batch's unselected carrier, if there is one, is deleted too.
+    batch's first instance is selected, which gives the batch a selected carrier, and its unselected carrier is
+    deleted too.
     """
     native = _native(module_dir)
     detach = importlib.import_module("detach")
@@ -440,7 +456,11 @@ def detach_scene(module_dir: str, scene: str, blend: str, representation: str = 
         display = importlib.import_module("batch").apply_batched(plan, collection)
         objects = list(display.objects.values())
         if display.batches:
-            bpy.data.objects.remove(display.batches[0].carriers[0])
+            # Selecting one instance gives its batch a second carrier, so deleting the unselected one leaves it one.
+            first = display.batches[0]
+            view_layer: Any = bpy.context.view_layer  # never None in a running Blender
+            importlib.import_module("batch_selection").apply_selection(view_layer, display, {first.elements[0]}, set())
+            bpy.data.objects.remove(first.carriers[0])
     shared: list[Any] = [obj for obj in objects if obj.type == "MESH" and obj.data.users > 1]
     deleted = shared[0].name
     bpy.data.objects.remove(shared[0])

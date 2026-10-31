@@ -106,20 +106,25 @@ def _values(held: dict[str, Any]) -> dict[str, Any]:
 DIFF_BODY = Path(__file__).parent / "bodies/plan_diff.py"
 APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "reshape", "visibility"]
 APPEARANCE_EDITS += ["structure"]
-APPEARANCE_EDITS += ["instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
+APPEARANCE_EDITS += ["instance-transform", "kits-move", "purpose-move"]
+APPEARANCE_EDITS += ["instance-remove", "instance-remove-another", "instance-restore"]
 APPEARANCE_EDITS += ["instance-color", "color-interpolation", "uncolor", "merge-batches"]
 
 
+@pytest.mark.parametrize("selection", ["all", "odd"])
 @pytest.mark.parametrize("representation", ["objects", "batched"])
 @pytest.mark.parametrize("users", ["repoint", "replace"])
 @pytest.mark.parametrize("fixture", ["appearance", "universe", "stress"])
-def test_update_follows_edits(
-    fixture: str, users: str, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtures
+    fixture: str, users: str, representation: str, selection: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
 ) -> None:
     """C2 and D4: after each edit, the display updated by the plan diff holds what a fresh application does.
 
-    On both representations: the baseline (update.py) and the batched display (batch_update.py).
+    On both representations: the baseline (update.py) and the batched display (batch_update.py). Before each edit
+    every element is selected, or on the appearance edits, those of odd plan index, so a batch holds two states.
     """
+    if selection == "odd" and fixture != "appearance":
+        pytest.skip("the appearance edits move some of a batch's copies")
     generators = {
         "appearance": (appearance.appearance_cases, APPEARANCE_EDITS),
         "universe": (interaction.universe_membership, ["unchanged", "unload", "load"]),
@@ -128,12 +133,12 @@ def test_update_follows_edits(
     generator, edits = generators[fixture]
     with generator(tmp_path / "scene") as built:
         kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
-        kwargs |= {"users": users, "representation": representation}
+        kwargs |= {"users": users, "representation": representation, "select": selection}
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     for step in steps:
         edit, diff, before, after = step["edit"], step["diff"], step["before"], step["after"]
         assert step["held"] == step["fresh"], edit
-        assert step["counts"] == step["fresh_counts"], edit  # nothing left over
+        assert step["counts"] == _fresh_counts(step), edit  # nothing left over
         assert step["restored"] == [], edit  # no failure injected
         # From publication on, the collection links exactly the published display.
         assert step["linked"]["published"] == step["linked"]["expected"], edit
@@ -148,8 +153,10 @@ def test_update_follows_edits(
         else:
             assert step["elements"] == [i for i, p in enumerate(after["objects"]) if p is not None], edit
             kept = _kept_objects(diff, before, after, rebuilt, edit) | _kept_instances(diff, before, after, edit)
-        # Every element was selected before the edit, and only those the update kept still are, in the viewport.
-        assert step["selected"] == sorted(i for i in kept if step["held"][i]["viewport"]), edit
+        # Of the elements selected before the edit, only those the update kept still are, in the viewport.
+        was = {old for old in range(len(before["objects"])) if selection == "all" or old % 2}
+        expected = sorted(i for i in kept if diff["objects"][i] in was and step["held"][i]["viewport"])
+        assert step["selected"] == expected, edit
         if edit == "unchanged":
             nothing = {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0, "staged": False}
             if representation == "batched":
@@ -176,8 +183,18 @@ def test_failed_publication_restores_the_display(
         assert all(step["restored"]), (edit, step["restored"])
         assert len(step["restored"]) == step["operations"], edit  # one failure at each link and unlink
         assert step["held"] == step["fresh"], edit
-        assert step["counts"] == step["fresh_counts"], edit
+        assert step["counts"] == _fresh_counts(step), edit
     assert sum(step["operations"] for step in steps) > len(steps)
+
+
+def _fresh_counts(step: dict[str, Any]) -> dict[str, int]:
+    """What the updated display should hold, by kind: a fresh application's, with its selection's carriers.
+
+    A fresh application selects nothing, so each batch has one carrier; the updated display keeps its members'
+    selection, with a carrier for each state a batch's points hold (D3).
+    """
+    extra = sum(len(batch["carriers"]) - 1 for batch in step["after"]["batches"])
+    return {**step["fresh_counts"], "objects": step["fresh_counts"]["objects"] + extra}
 
 
 def _kept_objects(
@@ -204,19 +221,36 @@ def _kept_objects(
 def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[str, Any], edit: str) -> set[int]:
     """Check what an update kept of each batch; returns the new plan indices of the instances it kept.
 
-    A batch that keeps its prototype keeps its carriers, and also its points unless a member changed other than
-    in its mesh or materials, or its members did. Its members kept from the old batch are the kept instances.
+    Every batch has a carrier for each state its points hold, and only those, selected exactly when the state is.
+    A batch that keeps its prototype keeps its carriers of the states it still holds, gives a carrier of a state it
+    no longer holds to one it newly holds, and creates one only for each state beyond those; it keeps its points
+    unless a member changed other than in its mesh or materials, or its members did. Its members kept from the old
+    batch are the kept instances.
     """
     moved = set(diff["changed"]) - set(diff["repointable"])
     old_batches = {batch["prototype"]: batch for batch in before["batches"]}
-    previous = {p for batch in before["batches"] for p in [*batch["carriers"], batch["prototype"], batch["points"]]}
+    previous = {
+        p for batch in before["batches"] for p in [*batch["carriers"].values(), batch["prototype"], batch["points"]]
+    }
     kept = set()
     for batch in after["batches"]:
+        carriers = {int(state): pointer for state, pointer in batch["carriers"].items()}
+        assert sorted(carriers) == batch["states"], (edit, batch)
+        if batch["looks"][0]:  # Blender selects no object hidden in the viewport
+            assert batch["selected_carriers"] == [state for state in batch["states"] if state != 0], (edit, batch)
+        # Its carriers show in its destinations and are placed alike.
+        assert len(batch["carrier_looks"]) == 1, (edit, batch)
+        assert batch["carrier_looks"][0][:2] == batch["looks"][:2], (edit, batch)
         old = old_batches.get(batch["prototype"])
         if old is None:
-            assert previous.isdisjoint([*batch["carriers"], batch["points"]]), (edit, batch)
+            assert previous.isdisjoint([*carriers.values(), batch["points"]]), (edit, batch)
             continue
-        assert batch["carriers"] == old["carriers"], (edit, batch)
+        before_carriers = {int(state): pointer for state, pointer in old["carriers"].items()}
+        for state in carriers.keys() & before_carriers.keys():
+            assert carriers[state] == before_carriers[state], (edit, batch)
+        fresh = [pointer for pointer in carriers.values() if pointer not in before_carriers.values()]
+        assert previous.isdisjoint(fresh), (edit, batch)
+        assert len(fresh) == max(0, len(carriers) - len(before_carriers)), (edit, batch)
         olds = [diff["objects"][index] for index in batch["elements"]]
         unchanged = olds == old["elements"] and moved.isdisjoint(batch["elements"])
         assert (batch["points"] == old["points"]) == unchanged, (edit, batch)

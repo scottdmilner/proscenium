@@ -199,7 +199,22 @@ class BatchedDisplay(BaselineDisplay):
 
     @override
     def apply_selection(self, display_targets: Any, active: Any) -> None:
+        before = [dict(batch.carriers) for batch in self._display.batches]
         self._batched.apply_selection(self.view_layer, self._display, set(display_targets), set(active))
+        # A batch has a carrier for each state its points hold, and only those. It keeps those of the states it
+        # still holds, and creates objects only for states beyond its earlier number (D3).
+        self.view_layer.update()  # a new carrier's world matrix is evaluated from its parent
+        for batch, old in zip(self._display.batches, before, strict=True):
+            carriers = batch.carriers
+            assert set(carriers) == set(self._batched.states(batch).tolist()), carriers
+            assert all(carriers[state] == old[state] for state in carriers.keys() & old.keys()), (carriers, old)
+            fresh = [c for c in carriers.values() if all(c != o for o in old.values())]
+            assert len(fresh) == max(0, len(carriers) - len(old)), (carriers, old)
+            # Placed, parented, and shown alike.
+            looks = {
+                (c.parent, tuple(map(tuple, c.matrix_world)), c.hide_viewport, c.hide_render) for c in carriers.values()
+            }
+            assert len(looks) == 1, looks
 
     @override
     def read_blender_selection(self) -> Any:

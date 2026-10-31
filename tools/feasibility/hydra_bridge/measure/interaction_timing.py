@@ -109,7 +109,7 @@ def _hit(display: Any, element: int, record: Any) -> tuple[Any, Matrix]:
     matrix = record["matrix"]
     # USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
     world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
-    return batch.prototype, batch.carriers[0].matrix_world @ world
+    return batch.prototype, next(iter(batch.carriers.values())).matrix_world @ world
 
 
 def _entry(  # noqa: PLR0913 - the chain's whole context

@@ -14,7 +14,8 @@ Publication then makes the change in one call (TXN-06), and undoes all of it if 
 - it moves a matched batch's carriers onto its new points, or else renumbers its points' elements in place;
 - it moves a matched batch's prototype onto its group's mesh and materials, and the kept objects as update.py does.
 
-A matched batch keeps its carriers and prototype under either user policy, which applies to the objects the
+A matched batch keeps its prototype, and its carriers, which with new points change to one per state those hold
+(batch.fit_carriers), under either user policy, which applies to the objects the
 display keeps as objects: an instance has no identity outside its batch. Retirement removes the old objects and
 batches, and the old data nothing uses once they are gone (OWN-08).
 """
@@ -28,7 +29,17 @@ from typing import TYPE_CHECKING, Any
 import bpy
 import numpy
 from apply import new_object
-from batch import Batch, BatchedDisplay, groups, new_batch, new_points, set_prototype
+from batch import (
+    Batch,
+    BatchedDisplay,
+    CarrierChanges,
+    fit_carriers,
+    groups,
+    new_batch,
+    new_points,
+    set_carrier_state,
+    set_prototype,
+)
 from batch_selection import states
 from selection import ELEMENT
 from update import Repoint, UserPolicy, new_data, retire_ids, with_parent
@@ -49,6 +60,7 @@ class Rebatch:
     points: bpy.types.Mesh | None  # new points the carriers move onto, or None to keep theirs
     previous: bpy.types.Mesh  # the points the carriers are on before publication
     renumbered: bool  # whether the kept points' elements change in place
+    carriers: CarrierChanges | None  # with new points, how the carriers change to one per state they hold
 
 
 @dataclass
@@ -115,7 +127,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
             batches.append(batch)
             continue
         olds, rebuild, reprototyped = decision
-        points = None
+        points, changes = None, None
         if rebuild:
             # The members kept from this batch keep their state, so an update keeps their selection.
             position = {element: point for point, element in enumerate(old.elements)}
@@ -126,10 +138,17 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
             ]
             points = new_points(serial, members, records, carried)
             serial += 1
+            if set(carried) != old.carriers.keys():
+                changes = fit_carriers(old, set(carried), display.nodes)
+                if changes.created and staging is None:
+                    staging = bpy.data.collections.new("Prepared")
+                for carrier in changes.created:
+                    assert staging is not None
+                    staging.objects.link(carrier)
         record = records[members[0]] if reprototyped else None
         renumbered = points is None and not numpy.array_equal(olds, members)
-        batch = Batch(old.carriers, old.prototype, members, key)
-        kept.append(Rebatch(batch, record, reprototyped, points, old.points, renumbered))
+        batch = Batch(dict(old.carriers if changes is None else changes.carriers), old.prototype, members, key)
+        kept.append(Rebatch(batch, record, reprototyped, points, old.points, renumbered, changes))
         batches.append(batch)
     claimed = {old.prototype.as_pointer() for old in matched if old is not None}
     dropped = [old for old in display.batches if old.prototype.as_pointer() not in claimed]
@@ -179,8 +198,12 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
                 assert rebatch.record is not None  # prepare reads a member's record for a moved prototype
                 undo.append(_saved(batch.prototype))
                 set_prototype(batch.prototype, rebatch.record, new.meshes, new.materials)
+            if rebatch.carriers is not None:
+                for carrier, before, after in rebatch.carriers.restated:
+                    undo.append(partial(set_carrier_state, carrier, before, new.nodes))
+                    set_carrier_state(carrier, after, new.nodes)
             if rebatch.points is not None:
-                for carrier in batch.carriers:
+                for carrier in batch.carriers.values():
                     undo.append(partial(setattr, carrier, "data", carrier.data))
                     carrier.data = rebatch.points
             elif rebatch.renumbered:
@@ -191,7 +214,8 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
                 elements.foreach_set("value", numpy.array(batch.elements, dtype=numpy.int32))
         staging = prepared.staging
         arriving = [o for obj in prepared.created.values() for o in with_parent(obj)]
-        arriving += [carrier for batch in prepared.added for carrier in batch.carriers]
+        arriving += [carrier for batch in prepared.added for carrier in batch.carriers.values()]
+        arriving += [carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.created]
         for obj in arriving:
             assert staging is not None
             collection.objects.link(obj)
@@ -199,10 +223,21 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
             staging.objects.unlink(obj)
             undo.append(partial(staging.objects.link, obj))
         departing = [o for obj in prepared.leaving for o in with_parent(obj)]
-        departing += [carrier for batch in prepared.dropped for carrier in batch.carriers]
+        departing += [carrier for batch in prepared.dropped for carrier in batch.carriers.values()]
+        departing += [carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.removed]
         for obj in departing:
             collection.objects.unlink(obj)
             undo.append(partial(collection.objects.link, obj))
+        # A kept batch's carriers that changed state, or are new, are selected as their state is.
+        view_layer: Any = bpy.context.view_layer  # the one the display's selection is mirrored into
+        for rebatch in prepared.kept:
+            if rebatch.carriers is None:
+                continue
+            for state, carrier in rebatch.batch.carriers.items():
+                was = carrier.select_get(view_layer=view_layer)
+                if was != (state != 0):
+                    undo.append(partial(carrier.select_set, was, view_layer=view_layer))
+                    carrier.select_set(state != 0, view_layer=view_layer)
     except BaseException:
         for reverse in reversed(undo):
             reverse()
@@ -268,8 +303,9 @@ def _retired(prepared: Prepared, display: BatchedDisplay) -> list[bpy.types.ID]:
         if old.data is not None and old.data.as_pointer() not in planned:  # a placeholder's own bounds
             retired.append(old.data)
     for batch in prepared.dropped:
-        retired.extend([*batch.carriers, batch.prototype, batch.points])
+        retired.extend([*batch.carriers.values(), batch.prototype, batch.points])
     retired.extend(rebatch.previous for rebatch in prepared.kept if rebatch.points is not None)
+    retired.extend(carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.removed)
     new = prepared.display
     meshes = {mesh.as_pointer() for mesh in new.meshes}
     materials = {material.as_pointer() for material in new.materials}
