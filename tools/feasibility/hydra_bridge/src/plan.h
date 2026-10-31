@@ -89,7 +89,8 @@ struct ObjectEntry {
     // The prim's own constant primvars, then inherited per-instance values it doesn't shadow,
     // innermost instance first, as USD authored them.
     ConstantPrimvars constantPrimvars;
-    // The same primvars as the ID properties Blender holds, by primvar name; those it can't hold are diagnosed.
+    // The same primvars as the ID properties Blender holds, by primvar name; strings, and those it
+    // can't hold, are diagnosed.
     std::vector<std::pair<std::string, PropertyValue>> properties;
 };
 

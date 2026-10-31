@@ -71,7 +71,6 @@ BatchGroups GroupForBatches(const Plan &plan, std::size_t minimum) {
         bool batchable = object.mesh >= 0;
         for (const auto &[name, property] : object.properties) {
             if (!batchable) break;
-            if (property.value.IsHolding<std::string>()) continue;
             if (std::optional<std::string> type = AttributeType(property))
                 group.kinds.emplace_back(name, std::move(*type));
             else

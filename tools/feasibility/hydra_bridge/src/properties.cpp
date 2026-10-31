@@ -33,7 +33,7 @@ namespace hydra_bridge {
 
 namespace {
 
-enum class Kind : std::uint8_t { None, Bool, Int, Float, String };
+enum class Kind : std::uint8_t { None, Bool, Int, Float };
 
 // A value's elements, flattened, all of one kind.
 struct Flat {
@@ -41,7 +41,6 @@ struct Flat {
     VtBoolArray bools;
     VtIntArray ints;
     VtDoubleArray doubles;
-    VtStringArray strings;
     size_t tuple = 0;       // elements per vector or matrix row
     bool matrix = false;    // the elements are matrix rows
     std::string why;        // set when an element can't be held
@@ -82,13 +81,6 @@ void Add(Flat &flat, GfHalf value) { AddFloat(flat, value); }
 void Add(Flat &flat, float value) { AddFloat(flat, value); }
 void Add(Flat &flat, double value) { AddFloat(flat, value); }
 
-void Add(Flat &flat, const std::string &value) {
-    flat.kind = Kind::String;
-    flat.strings.push_back(value);
-}
-
-void Add(Flat &flat, const TfToken &value) { Add(flat, value.GetString()); }
-
 template <class Vec>
 void AddVector(Flat &flat, const Vec &value) {
     flat.tuple = Vec::dimension;
@@ -128,10 +120,9 @@ void Add(Flat &flat, const GfMatrix4d &value) { AddMatrix(flat, value); }
 template <class... Types>
 struct TypeList {};
 
-using Supported =
-    TypeList<bool, int, unsigned char, unsigned int, int64_t, uint64_t, GfHalf, float, double, std::string, TfToken,
-             GfVec2i, GfVec3i, GfVec4i, GfVec2h, GfVec3h, GfVec4h, GfVec2f, GfVec3f, GfVec4f, GfVec2d, GfVec3d, GfVec4d,
-             GfMatrix2f, GfMatrix3f, GfMatrix4f, GfMatrix2d, GfMatrix3d, GfMatrix4d>;
+using Supported = TypeList<bool, int, unsigned char, unsigned int, int64_t, uint64_t, GfHalf, float, double, GfVec2i,
+                           GfVec3i, GfVec4i, GfVec2h, GfVec3h, GfVec4h, GfVec2f, GfVec3f, GfVec4f, GfVec2d, GfVec3d,
+                           GfVec4d, GfMatrix2f, GfMatrix3f, GfMatrix4f, GfMatrix2d, GfMatrix3d, GfMatrix4d>;
 
 // Fills `flat` from a value of a supported type, or a VtArray of one; `array` is whether the result stays an
 // array (a one-element array doesn't). False for any other type.
@@ -184,15 +175,17 @@ std::optional<PropertyValue> ToProperty(const VtValue &value, std::string &why, 
     case Kind::Float:
         property.value = scalar ? VtValue(flat.doubles[0]) : VtValue(flat.doubles);
         break;
-    case Kind::String:
-        property.value = scalar ? VtValue(flat.strings[0]) : VtValue(flat.strings);
-        break;
     case Kind::None:
         // An empty array: its element kind decides nothing Blender keeps, so it becomes an empty float array.
         property.value = VtValue(VtDoubleArray());
         break;
     }
     return property;
+}
+
+bool IsText(const VtValue &value) {
+    return value.IsHolding<std::string>() || value.IsHolding<TfToken>() || value.IsHolding<VtStringArray>() ||
+           value.IsHolding<VtTokenArray>();
 }
 
 bool PropertyNameUsable(const std::string &name, std::string &why) {

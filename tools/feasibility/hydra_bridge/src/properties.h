@@ -11,9 +11,9 @@
 
 namespace hydra_bridge {
 
-// What Blender's ID properties hold: a bool, int, double, or std::string, or a VtBoolArray, VtIntArray,
-// VtDoubleArray, or VtStringArray. `tupleSize` > 0 when the array holds tuples of that size (an array of
-// vectors, or a matrix's rows), which Blender keeps as nested arrays.
+// What Blender's ID properties hold: a bool, int, or double, or a VtBoolArray, VtIntArray, or VtDoubleArray.
+// `tupleSize` > 0 when the array holds tuples of that size (an array of vectors, or a matrix's rows), which
+// Blender keeps as nested arrays.
 struct PropertyValue {
     pxr::VtValue value;
     size_t tupleSize = 0;
@@ -24,6 +24,10 @@ struct PropertyValue {
 // A one-element array becomes its element, as USD's constant primvars are conventionally authored
 // (displayColor = [(r, g, b)]).
 std::optional<PropertyValue> ToProperty(const pxr::VtValue &value, std::string &why, std::string &warning);
+
+// Whether a value is a string or token, or an array of them, which aren't transferred: no Blender shading node
+// reads a string.
+bool IsText(const pxr::VtValue &value);
 
 // Blender limits ID-property names to 63 bytes, and the bridge's own properties use the proscenium_ prefix.
 bool PropertyNameUsable(const std::string &name, std::string &why);

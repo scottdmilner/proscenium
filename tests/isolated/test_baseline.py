@@ -429,19 +429,19 @@ def test_reader_primvars_reach_each_copy(scene: BaselineScene, applied: list[dic
 
 
 @pytest.mark.parametrize("scene", ["appearance"], indirect=True)
-def test_string_primvars_reach_each_object(
+def test_string_primvars_are_not_transferred(
     scene: BaselineScene, representation: str, applied: list[dict[str, Any]]
 ) -> None:
-    # A constant string primvar, as ALab's renderer settings are, is an ID property of each copy's object. The
-    # batched display leaves strings out of its instances, so copies with different strings still share a batch.
+    # No Blender shading node reads a string, so a constant string primvar, as ALab's renderer settings are,
+    # reaches no object or instance, and copies with different strings still share a batch.
     facts = scene.facts
     assert isinstance(facts, appearance.AppearanceScene)
     assert len(set(facts.string_values.values())) > 1
     grouped = _by_source(applied)
-    for (mesh, name), value in facts.string_values.items():
+    for mesh, name in facts.string_values:
         for obj in grouped[mesh]:
             assert obj["instance"] == (representation == "batched"), mesh
-            assert obj["properties"].get(name) == (None if obj["instance"] else value), (mesh, name)
+            assert name not in obj["properties"], (mesh, name)
 
 
 @pytest.mark.parametrize("scene", ["appearance"], indirect=True)

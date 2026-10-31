@@ -7,9 +7,6 @@ a batch, since a batch is at least two Blender objects. A smaller group, a place
 attribute can hold stay objects, as apply.py builds them. The bridge's module forms the groups (`plan.batch_groups`,
 batch_groups.h), so an update needn't convert and regroup every plan record in Python.
 
-Instances leave out constant string primvars, which apply.py keeps on an object as ID properties: no shading node
-reads a string, so they neither split a group nor reach its batch.
-
 - **Carriers:** objects on one mesh of one point per instance, one per selection state its points hold, so an
   unselected batch has one. The mesh's point attributes are each instance's world transform (a 4x4 matrix, so
   shear needs no parent), its element (`proscenium_element`, its plan index), its selection state, and its
@@ -277,16 +274,11 @@ def new_points(number: int, members: list[int], records: Mapping[int, ObjectReco
     _point_attribute(points, TRANSFORM, "FLOAT4X4", [records[i]["matrix"] for i in members])
     _point_attribute(points, ELEMENT, "INT", members)
     _point_attribute(points, STATE, "INT", held)
-    for name, value in _primvars(records[members[0]]).items():
+    for name, value in records[members[0]]["properties"].items():
         data_type = attribute_type(value)
         assert data_type is not None  # the groups leave out copies with any other primvar
         _point_attribute(points, name, data_type, [records[i]["properties"][name] for i in members])
     return points
-
-
-def _primvars(record: ObjectRecord) -> dict[str, PropertyValue]:
-    """A copy's constant primvars that instances hold: all but its strings."""
-    return {name: value for name, value in record["properties"].items() if not isinstance(value, str)}
 
 
 def _point_attribute(points: bpy.types.Mesh, name: str, data_type: str, values: list[Any]) -> None:

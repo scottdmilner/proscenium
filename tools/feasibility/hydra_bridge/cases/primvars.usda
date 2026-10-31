@@ -12,7 +12,8 @@
 #   stay a generic attribute and are warned. Clash also has a primvar named velocity, which keeps the name.
 # - Holder's constant primvars become ID properties on its object, one of each kind Blender holds, and
 #   three it can't: an asset path, a name over Blender's 63 bytes, and the bridge's own proscenium_
-#   prefix. Integers outside Blender's 32 bits (serial, and two elements of ids, one each way) keep
+#   prefix. Its strings, a token, and a string array aren't transferred, since no Blender shading node
+#   reads a string, and are noted. Integers outside Blender's 32 bits (serial, and two elements of ids, one each way) keep
 #   their low 32 bits, two's complement, with a warning.
 # - KitA and KitB are native instances of Kit: each Part object gets its instance root's tint, and keeps
 #   its own gloss over KitB's.
@@ -148,7 +149,7 @@ def Xform "World"
         int64[] primvars:ids = [1, 5000000000, -5000000000]
         asset primvars:decal = @decal.png@
         float primvars:a_primvar_name_that_is_longer_than_the_sixty_three_bytes_blender_allows = 1
-        string primvars:proscenium_source = "/Elsewhere"
+        float primvars:proscenium_source = 1
     }
 
     def Xform "KitA" (

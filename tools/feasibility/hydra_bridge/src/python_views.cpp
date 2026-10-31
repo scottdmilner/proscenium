@@ -119,7 +119,7 @@ bp::list ListOf(const VtArray<T> &values, size_t tuple) {
     return result;
 }
 
-// Python values Blender assigns as ID properties directly: bool, int, float, str, or (nested) lists of them.
+// Python values Blender assigns as ID properties directly: bool, int, float, or (nested) lists of them.
 bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &properties) {
     bp::dict result;
     for (const auto &[name, property] : properties) {
@@ -130,8 +130,6 @@ bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &pr
             result[name] = ListOf(value.UncheckedGet<VtIntArray>(), property.tupleSize);
         else if (value.IsHolding<VtDoubleArray>())
             result[name] = ListOf(value.UncheckedGet<VtDoubleArray>(), property.tupleSize);
-        else if (value.IsHolding<VtStringArray>())
-            result[name] = ListOf(value.UncheckedGet<VtStringArray>(), property.tupleSize);
         else
             result[name] = bp::object(value);
     }

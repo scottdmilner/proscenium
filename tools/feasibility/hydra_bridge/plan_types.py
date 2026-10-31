@@ -25,7 +25,7 @@ Severity = Literal["info", "warning", "error"]
 # The Vt array types plan arrays arrive as, one value per element. Lazy aliases, so this module loads without pxr.
 type AttributeArray = Vt.FloatArray | Vt.Vec2fArray | Vt.Vec3fArray | Vt.Vec4fArray | Vt.IntArray
 type PlanArray = AttributeArray
-type PropertyScalar = bool | int | float | str
+type PropertyScalar = bool | int | float
 type PropertyValue = PropertyScalar | list[PropertyScalar] | list[list[PropertyScalar]]
 type PathLike = Sdf.Path | str  # what Interaction takes as a path
 
@@ -75,7 +75,7 @@ class ObjectRecord(TypedDict):
     material_slots: list[int | None]  # per mesh slot, into Plan.materials; None for no material
     purpose: str  # Hydra's name: "geometry" for USD's default
     primvars: dict[str, Any]  # constant primvars as USD authored them (Gf and Vt values)
-    # The same primvars as ID properties: bool, int, float, str, or lists (nested by vector or matrix row)
+    # The same primvars as ID properties, all but strings: bool, int, float, or lists (nested by vector or matrix row)
     properties: dict[str, PropertyValue]
 
 

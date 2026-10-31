@@ -361,10 +361,18 @@ private:
         return constants;
     }
 
-    // The object's constant primvars as ID properties. One that Blender can't hold is warned once per source.
+    // The object's constant primvars as ID properties. One that Blender can't hold is warned once per source, and
+    // a string is noted once per source.
     std::vector<std::pair<std::string, PropertyValue>> Properties(const ObjectEntry &object) {
         std::vector<std::pair<std::string, PropertyValue>> properties;
         for (const auto &[name, value] : object.constantPrimvars) {
+            if (IsText(value)) {
+                if (unconverted_.emplace(object.source, name).second)
+                    plan_->diagnostics.push_back({Severity::Info, "untransferred-primvar", object.source,
+                                                  "Constant primvar '" + name.GetString() +
+                                                      "' is not transferred: no Blender shading node reads a string"});
+                continue;
+            }
             std::string why, warning;
             if (PropertyNameUsable(name.GetString(), why))
                 if (std::optional<PropertyValue> property = ToProperty(value, why, warning)) {
