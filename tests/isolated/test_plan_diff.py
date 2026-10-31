@@ -108,7 +108,6 @@ def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_br
     generator, edits = generators[fixture]
     with generator(tmp_path / "scene") as built:
         kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
-        kwargs["point_instancers"] = fixture == "point_instancers"
         steps = run_isolated(wheel, BODY, "reuse_edits", tmp_path, **kwargs)
     for step in steps:
         assert step["differing"] == [], step["edit"]
@@ -133,7 +132,6 @@ def test_separate_processes_plan_the_same_content(
     }
     with generators[fixture](tmp_path / "scene") as built:
         kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root)}
-        kwargs["point_instancers"] = fixture == "point_instancers"
         digests = []
         # Several processes, since two often order a fixture's records the same.
         for run in range(4):

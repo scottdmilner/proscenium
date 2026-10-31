@@ -196,7 +196,7 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     done("capture")
     stage("planning")
     # Point instancers' instances as objects, for the scenes that keep them (M4 Phase D).
-    point_instancers = config.get("point_instancers", False)
+    point_instancers = config.get("point_instancers", True)
     plan = native.build_plan(snapshot, point_instancers=point_instancers)
     done("planning")
     stage("transfer")

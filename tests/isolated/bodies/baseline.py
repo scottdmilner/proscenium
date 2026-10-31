@@ -31,14 +31,18 @@ def _native(module_dir: str) -> Any:
 
 
 def apply_scene(
-    module_dir: str, scene: str, representation: str = "objects", minimum: int = 2, point_instancers: bool = False
+    module_dir: str,
+    scene: str,
+    representation: str = "objects",
+    minimum: int = 2,
+    point_instancers: bool | None = None,
 ) -> dict[str, Any]:
     """Capture, plan, and apply `scene` at default time; each plan object as Blender displays it, in plan order.
 
     `representation` is the baseline's "objects" (apply.py) or Phase D's "batched" (batch.py), where an instance
     reports its prototype's mesh and materials, its carrier's destinations, and its own transform and attributes.
     `minimum` is the batched display's smallest batch, and `point_instancers` the plan setting that translates
-    point instancers' instances.
+    point instancers' instances, or None for the plan's default.
     """
     native = _native(module_dir)
     apply = importlib.import_module("apply")
@@ -46,7 +50,8 @@ def apply_scene(
     stage = Usd.Stage.Open(scene)
     bridge = native.Bridge(stage)
     snapshot = bridge.capture()
-    plan = native.build_plan(snapshot, point_instancers=point_instancers)
+    settings = {} if point_instancers is None else {"point_instancers": point_instancers}
+    plan = native.build_plan(snapshot, **settings)
     records = plan.objects
     collection = bpy.data.collections.new("Baseline")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender

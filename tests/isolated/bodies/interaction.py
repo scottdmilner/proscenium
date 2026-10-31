@@ -42,7 +42,7 @@ class BaselineDisplay:
     collection: bpy.types.Collection
     point_instancers: bool  # the plan setting that translates point instancers' instances (D6)
 
-    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = False) -> None:
+    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         sys.path[:0] = [str(BRIDGE), module_dir]
         self._native = importlib.import_module("_hydra_bridge")
         self._apply = importlib.import_module("apply")
@@ -125,7 +125,7 @@ class BatchedDisplay(BaselineDisplay):
     to instance, so the mirroring checks see each carrier's coverage as drawn, not as batch_selection.py set it.
     """
 
-    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = False) -> None:
+    def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         super().__init__(module_dir, stage, point_instancers)
         self._batch = importlib.import_module("batch")
         self._batched = importlib.import_module("batch_selection")
@@ -246,7 +246,7 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
     selected objects show and the selection read back.
     """
     with appearance.point_instancers(Path(dest)) as scene:
-        display = DISPLAYS[representation](module_dir, scene.stage, point_instancers=True)
+        display = DISPLAYS[representation](module_dir, scene.stage)
         try:
             display.publish(Usd.TimeCode.Default().GetValue())
             picks = []

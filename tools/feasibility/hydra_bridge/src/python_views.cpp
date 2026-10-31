@@ -622,7 +622,7 @@ void WrapViews() {
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
-             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = false,
+             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = true,
              bp::arg("previous") = bp::object()));
     bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
     bp::def("rebuild_correspondence", RebuildCorrespondence, bp::arg("plan"));

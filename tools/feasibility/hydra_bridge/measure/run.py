@@ -132,7 +132,7 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
         "work": str(work),
         "representation": args.representation,
         "batch_minimum": args.batch_minimum,
-        "point_instancers": scene.get("point_instancers", False),
+        "point_instancers": scene.get("point_instancers", True),
         "reuse_builds": args.reuse_builds,
     }
     if mode.startswith("update:"):

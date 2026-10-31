@@ -1,7 +1,8 @@
 """Point instancers planned for measurement (M04-prototypes plan, D6), in both representations.
 
-The spec defers point instancers, so the bridge plans their instances only when asked (`build_plan`'s
-`point_instancers`); otherwise each point instancer is one placeholder, as M1b decided. Each point's prototype
+The spec defers point instancers, so the identity the bridge gives their instances is provisional. It plans them
+by default (`build_plan`'s `point_instancers`); with the setting off, each point instancer is one placeholder, as
+M1b decided. Each point's prototype
 meshes are then one object or instance each, with the point's world transform as USD composes it, the mask's
 visibility, the instancer's per-point and constant primvars, and USD's bound materials. Expected values come
 from how the fixture is built (fixtures/appearance.py, point_instancers).
@@ -50,7 +51,7 @@ def _point(obj: dict[str, Any]) -> int:
 def test_each_point_draws_its_prototype(
     scattered: PointInstancerScene, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
 ) -> None:
-    result = _applied(scattered, wheel, hydra_bridge, tmp_path, representation=representation, point_instancers=True)
+    result = _applied(scattered, wheel, hydra_bridge, tmp_path, representation=representation)
     objects = result["objects"]
     copies = {(o["source"], _point(o)): o for o in objects}
     assert len(copies) == len(objects)  # one per mesh and point
@@ -75,10 +76,10 @@ def test_each_point_draws_its_prototype(
         assert instanced == {(leaves, 0), (leaves, 2), (rocks, 1), (rocks, 5)}
 
 
-def test_without_the_setting_the_instancer_is_a_placeholder(
+def test_with_the_setting_off_the_instancer_is_a_placeholder(
     scattered: PointInstancerScene, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
 ) -> None:
-    objects = _applied(scattered, wheel, hydra_bridge, tmp_path)["objects"]
+    objects = _applied(scattered, wheel, hydra_bridge, tmp_path, point_instancers=False)["objects"]
     assert [(o["source"], o["placeholder"]) for o in objects] == [(scattered.instancer, "PointInstancer")]
 
 

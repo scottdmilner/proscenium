@@ -123,7 +123,7 @@ def diff_edits(module_dir: str, scene: str, edits: list[str]) -> list[dict[str, 
     return steps
 
 
-def reuse_edits(module_dir: str, scene: str, edits: list[str], point_instancers: bool = False) -> list[dict[str, Any]]:
+def reuse_edits(module_dir: str, scene: str, edits: list[str], point_instancers: bool = True) -> list[dict[str, Any]]:
     """Plan `scene`, then after each edit plan it twice: from scratch, and reusing the previous plan's builds (D9).
 
     Each step reports whether the two plans are the same in everything Python reads, and how many meshes each
@@ -166,7 +166,7 @@ def _plain(value: Any) -> Any:
         return value
 
 
-def plan_content(module_dir: str, scene: str, point_instancers: bool = False) -> dict[str, Any]:
+def plan_content(module_dir: str, scene: str, point_instancers: bool = True) -> dict[str, Any]:
     """Digests of `scene`'s plan at default time: of its content in any order, and of its objects' order.
 
     Plans from separate processes may order their records differently, since the planner keys some maps by
