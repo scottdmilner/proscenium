@@ -461,12 +461,18 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
 
 1. **Frame capture:** every frame of a range captured incrementally, with what varies between frames, and its cost at scale.
 2. **Per-time-code snapshots:** each frame synchronized through the update path, so playback is a frame step's update.
-3. **Keyframed transforms and visibility:** keys on each object whose transform or visibility varies, shear parents included.
-4. **Baked meshes (with the user):** Geometry Nodes baking, packed in the `.blend`, for every mesh whose content varies, topology included. A mesh whose points alone vary rebuilds only its points (with the user), in planning, where a build dirtied only in its points reuses the previous build's other arrays, and in Blender, where a frame sets positions on one base mesh through Geometry Nodes, so the bake can share the arrays frames don't change. Whether the bake shares them, and whether Hydra hands over unchanged arrays as the same buffers, are measured.
-5. **Point instancers (with the user):** a batch whose source is a point instancer that varies animates its carrier; any other varying copy stays an object.
-6. **Mesh cache, for comparison (with the user):** the USD-reading mesh cache modifier, measured with the unsaved layers it can't see written to a temporary file for it to read, against the four M1b conflicts.
-7. **Measurements** of each approach against the others.
-8. **The decision** in the row "Time-sampled data representation" (XFORM-08), with the time-code-to-frame mapping for any approach adopted and how it meets the requirements in that row.
+3. **A cached display (with the user):** the display's structure is built once, as the composed stage's prims don't vary with time, and each synchronization at a frame not yet cached streams that frame's varying values into caches the display holds, so a cached frame plays back without synchronizing and the core holds only the current plan.
+   - **What to cache** is predicted before any frame arrives, from `ValueMightBeTimeVarying` on each prim and its ancestors, with what Hydra computes from other prims (a skeleton's animation behind skinned points), and confirmed by the frames.
+   - **Transforms, visibility, and properties** are cached as keyframes, one per synchronized frame.
+   - **Any source edit invalidates every cache** (with the user). Invalidating only the caches of the prims an edit affects is a later optimization.
+4. **Mesh caches (with the user):** for every mesh whose content varies, topology included.
+   - **Points alone:** a mesh whose points alone vary caches each synchronized frame's positions as a point attribute on its shared mesh, which a Geometry Nodes modifier on each copy reads by the frame's name (E4 log).
+   - **Topology:** a mesh whose topology changes caches its frames in a Geometry Nodes bake filled on disk and packed once filling ends, or as a mesh per frame, compared when built.
+   - **Points-only reuse in planning (with the user):** a build dirtied only in its points reuses the previous build's other arrays. Whether Hydra hands over unchanged arrays as the same buffers is measured.
+5. **Point instancers (with the user):** a batch whose source is a point instancer that varies caches its carrier's points; any other varying copy stays an object.
+6. **Mesh cache modifier, for comparison (with the user):** a temporary USD file of the synchronized frames, read by Blender's mesh sequence cache modifier, against the four M1b conflicts.
+7. **Measurements** of each approach against the others and against E2's snapshots: playback at a frame's first visit and at a revisit, construction, memory, and `.blend` size.
+8. **The decision** in the row "Time-sampled data representation" (XFORM-08), with the time-code-to-frame mapping for any approach adopted and how it meets the requirements in that row. Settled with the user there: a published generation holding several frames, the undo step of each synchronization that fills a cache during playback, and which frame interaction answers for while Blender plays a cached one.
 
 #### Phase E log
 
