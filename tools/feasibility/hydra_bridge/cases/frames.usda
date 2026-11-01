@@ -15,6 +15,11 @@
 # - Lean's matrix is the identity at 1 and a shear at 3, so it is sheared from just after 1.
 # - Guides animates guideVisibility (invisible at 2 only), so Guided, a guide below it, varies through an
 #   ancestor's purpose visibility, which Hydra doesn't flatten.
+# - Bud's points move at 2, and its face is rewound at 3, so its corners alone change, and a cache of its points
+#   becomes one of its whole meshes.
+# - TwinA and TwinB are one triangle at 1, the one Hand, the Blades, and Wave share there, and gain a point and
+#   a face at 2, alike in their own spaces, so they share a mesh at both; at 3 TwinB's points move, so the cache
+#   of their whole meshes splits.
 
 over "World"
 {
@@ -89,5 +94,58 @@ over "World"
             uniform token purpose = "guide"
             uniform token subdivisionScheme = "none"
         }
+    }
+
+    def Mesh "Bud"
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2],
+            3: [0, 2, 1],
+        }
+        point3f[] points.timeSamples = {
+            1: [(12, 14, 0), (13, 14, 0), (12, 15, 0)],
+            2: [(12, 14, 1), (13, 14, 1), (12, 15, 1)],
+        }
+        uniform token subdivisionScheme = "none"
+    }
+
+    def Mesh "TwinA"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            1: [3],
+            2: [3, 3],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2],
+            2: [0, 1, 2, 1, 3, 2],
+        }
+        point3f[] points.timeSamples = {
+            1: [(0, 0, 0), (1, 0, 0), (0, 1, 0)],
+            2: [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)],
+        }
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (14, 14, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "TwinB"
+    {
+        int[] faceVertexCounts.timeSamples = {
+            1: [3],
+            2: [3, 3],
+        }
+        int[] faceVertexIndices.timeSamples = {
+            1: [0, 1, 2],
+            2: [0, 1, 2, 1, 3, 2],
+        }
+        point3f[] points.timeSamples = {
+            1: [(0, 0, 0), (1, 0, 0), (0, 1, 0)],
+            2: [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0)],
+            3: [(0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)],
+        }
+        uniform token subdivisionScheme = "none"
+        double3 xformOp:translate = (16, 14, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
     }
 }

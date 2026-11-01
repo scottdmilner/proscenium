@@ -20,6 +20,9 @@ code at or before it, as keys hold until the next.
   where it has one (E4: a sample appends in constant time). That input is keyed like the transforms, so the
   modifier and the keys always show the same time; it is -1, the mesh's own values, at the times cached before
   the mesh first varied. A placeholder's bounds are cached the same way, on its bounds mesh.
+- **A mesh whose topology varies** (E4) caches a whole mesh per sample instead (topology.py), from the first
+  time its topology differs from its own, its earlier samples rebuilt from its attributes: a mesh per sample,
+  whose geometry its objects' modifiers show by their keyed `Sample` input. Its samples don't blend.
 - **Blending (an option, off by default):** with `blend`, a time between two of a mesh's samples shows its float
   attributes (positions, float primvars, colors, bounds) mixed linearly between them, as USD interpolates
   continuous values, and its integer attributes held. The modifier's inputs are then each object's surrounding
@@ -30,8 +33,8 @@ code at or before it, as keys hold until the next.
   part keeping the frames cached so far. With `predict`, the build's capture dirties what depends on time as a time
   change would (capture.h), and copies the plan finds dirtied in their meshes are split from the others before
   any other time arrives, by the prim whose values they show, so only a misprediction splits later.
-- **Not cached here:** a mesh whose topology varies (step 4), a track whose materials vary while it shows, and a
-  property that can't be keyed raise UncachedError.
+- **Not cached here:** a mesh whose material slots vary, a placeholder's bounds that appear or vanish, a track
+  whose materials vary while it shows, and a property that can't be keyed raise UncachedError.
 - **Any source edit invalidates every cache:** an edit to the stage (Usd.Notice.ObjectsChanged) marks the display,
   and its next synchronization rebuilds it at that time code.
 """
@@ -59,28 +62,34 @@ from apply import (
     sheared,
     world,
 )
+from attribute_samples import (
+    BASE,
+    FRAME_SEPARATOR,
+    MODIFIER,
+    NEXT,
+    NEXT_TIME,
+    SAMPLE,
+    TIME,
+    Signature,
+    frames_group,
+    input_path,
+    remove_samples,
+    sample_mesh,
+    stored,
+)
 from bpy_extras import anim_utils
 from frames import Aspect, TrackKey, copy_of, place
 from pxr import Tf, Usd
+from topology import MeshSamples, samples_group
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from plan_types import ObjectRecord, Plan
+    from plan_types import MeshRecord, ObjectRecord, Plan
 
-FRAME_SEPARATOR = "@"  # a sample's attribute is <name>@<sample>
-MODIFIER = "proscenium frames"
-BASE = -1  # the sample of a mesh's own values, which no attribute has
-# The modifier inputs, in order after the geometry: the sample shown, and with blending the next one and both their
-# time codes. Each is keyed constant through its socket identifier, which follows the order.
-SAMPLE, NEXT, TIME, NEXT_TIME = "Sample", "Next sample", "Time", "Next time"
-INPUTS = {name: f"Socket_{i}" for i, name in enumerate((SAMPLE, NEXT, TIME, NEXT_TIME), start=1)}
-# A data type's in a mix, for the types that blend.
-BLENDED = {"FLOAT": "FLOAT", "FLOAT2": "VECTOR", "FLOAT_VECTOR": "VECTOR", "FLOAT_COLOR": "RGBA"}
 TRANSFORM_PATHS = ("location", "rotation_euler", "scale")
 
 type ContentKey = tuple[str, Any]  # ("mesh", plan mesh index) or ("bounds", its bounds)
-type Signature = tuple[tuple[str, str, str], ...]  # the varying attributes: name, data type, domain
 
 
 class UncachedError(Exception):
@@ -89,11 +98,16 @@ class UncachedError(Exception):
 
 @dataclass
 class MeshCache:
-    """What a mesh with cached frames holds: its own values, the latest frame's, and which attributes vary."""
+    """What a mesh with cached frames holds: its own values, the latest frame's, and which attributes vary.
+
+    Once its topology varies, its whole meshes, and no attributes.
+    """
 
     base: dict[str, Layer]  # the values the mesh itself holds, by attribute
     latest: dict[str, Layer]  # its values at the latest synchronization that wrote it
     varying: dict[str, Layer] = field(default_factory=dict)  # by attribute, a layer of its kind
+    whole: MeshSamples | None = None  # its whole meshes, once its topology varies, which split parts share
+    shown: int = BASE  # of those, the sample at its latest synchronization
 
 
 @dataclass
@@ -133,6 +147,7 @@ class CachedDisplay:
     users: dict[int, set[TrackKey]]  # by mesh session_uid, the tracks whose objects use it
     caches: dict[int, MeshCache]  # by mesh session_uid, the meshes that hold frames
     groups: dict[Signature, bpy.types.NodeTree]  # the frames' node group for each set of varying attributes
+    whole_group: bpy.types.NodeTree | None  # the whole meshes' node group, once a mesh's topology varies
     _channels: dict[int, Any]  # by object session_uid, its action's channelbag
     _timelines: dict[int, dict[float, int]]  # by object session_uid, the sample keyed at each time
     _listener: Any
@@ -155,6 +170,7 @@ class CachedDisplay:
         self.settings = settings
         self.bridge = native.Bridge(stage)
         self.groups = {}
+        self.whole_group = None
         self.synchronized = []
         self._listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, self._on_edit, stage)
         start = clock.perf_counter()
@@ -207,7 +223,7 @@ class CachedDisplay:
             aspects = found.setdefault(key[:2], set())
             aspects |= self.keyed.get(key, set())
             cache = self.caches.get(_uid(obj.data)) if obj.data is not None else None
-            if cache is not None and cache.varying:
+            if cache is not None and (cache.varying or cache.whole is not None):
                 aspects.add(Aspect.BOUNDS if self.latest[key]["placeholder_type"] is not None else Aspect.MESH)
         return found
 
@@ -263,11 +279,13 @@ class CachedDisplay:
             self.meshes[_uid(copy)] = copy
             self.users[_uid(copy)] = part
             self.users[uid] -= part
-            if uid in self.caches:
-                cache = self.caches[uid]
-                self.caches[_uid(copy)] = MeshCache(cache.base, cache.latest, dict(cache.varying))
+            cache = self.caches.get(uid)
+            if cache is not None:
+                self.caches[_uid(copy)] = MeshCache(
+                    cache.base, cache.latest, dict(cache.varying), cache.whole, cache.shown
+                )
             for key in part:
-                self.objects[key].data = copy
+                self.objects[key].data = copy  # shown its store when it is next written, as every part is
         return len(parts) - 1
 
     def _cache(self, time: float, plan: Plan, diff: Any, result: Synchronization) -> None:
@@ -283,10 +301,10 @@ class CachedDisplay:
             key: index for key, index in zip(fresh, records, strict=True)
         }
         self.materials = [self.materials[old] if old != -1 else None for old in diff["materials"]]
-        for key in fresh.keys() - self.objects.keys():
-            self._add_track(key, fresh[key], plan)
         old_meshes = {old: new for new, old in enumerate(diff["meshes"]) if old != -1}
         mesh_index = {key: fresh[key]["mesh"] if key in fresh else self._kept_mesh(key, old_meshes) for key in present}
+        for key in sorted(fresh.keys() - self.objects.keys()):
+            self._add_track(key, fresh[key], plan, mesh_index)
         result.split, result.written = self._cache_meshes((time, sample), plan, diff, present, fresh, mesh_index)
         result.keyed = self._key_tracks(time, present, fresh)
         self.latest |= fresh
@@ -297,12 +315,17 @@ class CachedDisplay:
         old = self.mesh_index[key]
         return None if old is None else old_meshes[old]
 
-    def _add_track(self, key: TrackKey, record: ObjectRecord, plan: Plan) -> None:
-        """An object for a track first present now, hidden at the frames cached before."""
+    def _add_track(
+        self, key: TrackKey, record: ObjectRecord, plan: Plan, mesh_index: dict[TrackKey, int | None]
+    ) -> None:
+        """An object for a track first present now, hidden at the frames cached before.
+
+        `mesh_index` holds the present tracks' meshes in `plan`.
+        """
         mesh = None
         if record["mesh"] is not None:
-            # A mesh a present track shows the same content on, or a new one.
-            shared = [k for k, i in self.mesh_index.items() if i == record["mesh"] and k in self.current]
+            # A mesh another track shows the same content on now, or a new one.
+            shared = [k for k, i in mesh_index.items() if i == record["mesh"] and k in self.objects]
             mesh = self.objects[shared[0]].data if shared else new_mesh(plan.meshes_at([record["mesh"]])[0])
         slots: list[Any] = [None if m is None else self._material(m, plan) for m in record["material_slots"]]
         data: Any = {
@@ -349,7 +372,7 @@ class CachedDisplay:
             return diff["meshes"][index] == self.mesh_index[key]
 
         touched = {_uid(self.objects[key].data) for key in present if not same(key)} & self.meshes.keys()
-        touched |= {uid for uid, cache in self.caches.items() if cache.varying}
+        touched |= {uid for uid, cache in self.caches.items() if cache.varying or cache.whole is not None}
         split = written = 0
         for uid in touched:
             users = sorted(k for k in self.users[uid] if k in present)
@@ -364,13 +387,22 @@ class CachedDisplay:
             for content, keys in ordered:
                 part_uid = _uid(self.objects[keys[0]].data)
                 cache = self.caches.get(part_uid)
+                record = None
                 if all(same(k) for k in keys):
                     if cache is None:
                         continue  # what the mesh holds
                     values = cache.latest
                 else:
-                    values = self._content(content, keys[0], plan, fresh)
-                    cache = cache or self._new_cache(part_uid, values, keys[0])
+                    values, record = self._content(content, keys[0], plan, fresh)
+                if record is not None and (
+                    (cache is not None and cache.whole is not None) or not self._same_topology(keys[0], values, record)
+                ):
+                    cache = self._whole(part_uid, cache)
+                if cache is not None and cache.whole is not None:
+                    self._write_whole(part_uid, cache, record, at[0])
+                    written += 1
+                    continue
+                cache = cache or self._new_cache(part_uid, values, keys[0])
                 if self._write(part_uid, cache, values, at):
                     written += 1
         return split, written
@@ -378,18 +410,19 @@ class CachedDisplay:
     def _record(self, key: TrackKey, fresh: dict[TrackKey, ObjectRecord]) -> ObjectRecord:
         return fresh.get(key) or self.latest[key]
 
-    def _content(self, content: ContentKey, key: TrackKey, plan: Plan, fresh: dict[TrackKey, Any]) -> dict[str, Layer]:
+    def _content(
+        self, content: ContentKey, key: TrackKey, plan: Plan, fresh: dict[TrackKey, Any]
+    ) -> tuple[dict[str, Layer], MeshRecord | None]:
+        """A content's attributes, and for a mesh its plan record; a placeholder's are its bounds."""
         kind, index = content
         if kind == "mesh":
             record = plan.meshes_at([index])[0]
-            found = {layer.name: layer for layer in layers(record)}
-            topology = (flat(record["corner_verts"], BufferFormat.INT), flat(record["face_offsets"], BufferFormat.INT))
-            self._check_topology(key, found, topology, record["slot_count"])
-            return found
-        return {"position": _bounds_layer(self._record(key, fresh)["bounds"])}
+            return {layer.name: layer for layer in layers(record)}, record
+        return {"position": _bounds_layer(self._record(key, fresh)["bounds"])}, None
 
-    def _check_topology(self, key: TrackKey, found: dict[str, Layer], topology: tuple[Any, Any], slots: int) -> None:
-        """Raise UncachedError unless content has the faces, corners, and attributes of the mesh it would cache on."""
+    def _same_topology(self, key: TrackKey, found: dict[str, Layer], record: MeshRecord) -> bool:
+        """Whether content has the faces, corners, material slots, and attributes of the mesh it would cache on."""
+        topology = (flat(record["corner_verts"], BufferFormat.INT), flat(record["face_offsets"], BufferFormat.INT))
         mesh: Any = self.objects[key].data
         corners = numpy.empty(len(mesh.loops), numpy.int32)
         starts = numpy.empty(len(mesh.polygons), numpy.int32)
@@ -397,15 +430,65 @@ class CachedDisplay:
             mesh.attributes[".corner_vert"].data.foreach_get("value", corners)
         mesh.polygons.foreach_get("loop_start", starts)
         names = {a.name for a in mesh.attributes if FRAME_SEPARATOR not in a.name and not a.name.startswith(".")}
-        same = (
+        return (
             len(found["position"].values) == 3 * len(mesh.vertices)
             and numpy.array_equal(corners, numpy.frombuffer(topology[0], numpy.int32))
             and numpy.array_equal(starts, numpy.frombuffer(topology[1], numpy.int32))
-            and slots == len(mesh.materials)
+            and record["slot_count"] == len(mesh.materials)
             and found.keys() <= names
         )
-        if not same:
-            raise UncachedError(f"{key[0]}: its topology varies, which E4 caches")
+
+    def _whole_group(self) -> bpy.types.NodeTree:
+        if self.whole_group is None:
+            self.whole_group = samples_group()
+        return self.whole_group
+
+    def _whole(self, uid: int, cache: MeshCache | None) -> MeshCache:
+        """The cache of whole meshes of a mesh whose topology first varies, holding the samples shown so far.
+
+        Each time cached before shows what the mesh showed there: its own values, or a sample of its attributes,
+        which the mesh then no longer holds.
+        """
+        if cache is not None and cache.whole is not None:
+            return cache
+        mesh: Any = self.meshes[uid]
+        store = MeshSamples(mesh.name)
+        objects = [self.objects[key] for key in sorted(self.users[uid])]
+        timeline = self._timelines.get(_uid(objects[0]), {})
+        for obj in objects:
+            self._unkey_inputs(obj)
+            store.show(_modifier(obj), self._whole_group())
+        varying = cache.varying if cache is not None else {}
+        added: dict[int, int] = {}  # by sample of its attributes, the store's
+        for time in sorted(self.cached):
+            sample = timeline.get(time, BASE)
+            if sample not in added:
+                added[sample] = store.add(sample_mesh(mesh, sample, varying))
+            for obj in objects:
+                self._insert(obj, input_path(SAMPLE), 0, time, added[sample])
+        remove_samples(mesh)
+        whole = self.caches[uid] = MeshCache({}, {}, whole=store)
+        return whole
+
+    def _unkey_inputs(self, obj: bpy.types.Object) -> None:
+        """Remove the keys of `obj`'s modifier inputs, which an attribute cache keyed."""
+        channels = self._channels.get(_uid(obj))
+        curves = channels.fcurves if channels is not None else []
+        for curve in [c for c in curves if c.data_path.startswith(f'modifiers["{MODIFIER}"]')]:
+            curves.remove(curve)
+        self._timelines.pop(_uid(obj), None)
+
+    def _write_whole(self, uid: int, cache: MeshCache, record: MeshRecord | None, time: float) -> None:
+        """Add the whole mesh `record` as the sample of `time`, or for None the one shown at the latest again."""
+        assert cache.whole is not None  # noqa: S101 - a whole cache
+        if record is not None and record["slot_count"] != len(self.meshes[uid].materials):
+            raise UncachedError(f"{self.meshes[uid].name}: its material slots vary")
+        if record is not None:
+            cache.shown = cache.whole.add(new_mesh(record))
+        for key in self.users[uid]:
+            obj = self.objects[key]
+            cache.whole.show(_modifier(obj), self._whole_group())
+            self._insert(obj, input_path(SAMPLE), 0, time, cache.shown)
 
     def _new_cache(self, uid: int, content: dict[str, Layer], key: TrackKey) -> MeshCache:
         """The cache of a mesh first found to vary, whose own values are the frames' before."""
@@ -443,9 +526,9 @@ class CachedDisplay:
                     self._key_sample(obj, cached, BASE)
         for name in cache.varying:
             layer = content[name]
-            stored = _stored(layer)
-            attribute = mesh.attributes.new(f"{name}{FRAME_SEPARATOR}{sample}", stored.data_type, layer.domain)
-            attribute.data.foreach_set(stored.prop, stored.values)
+            held = stored(layer)
+            attribute = mesh.attributes.new(f"{name}{FRAME_SEPARATOR}{sample}", held.data_type, layer.domain)
+            attribute.data.foreach_set(held.prop, held.values)
         if cache.varying:
             for obj in objects:
                 self._key_sample(obj, time, sample)
@@ -456,18 +539,18 @@ class CachedDisplay:
         """Key `obj` to show `sample` from `time`, and with blending, to mix it with the next as time passes."""
         timeline = self._timelines.setdefault(_uid(obj), {})
         timeline[time] = sample
-        self._insert(obj, _input_path(SAMPLE), 0, time, sample)
+        self._insert(obj, input_path(SAMPLE), 0, time, sample)
         if not self.blend:
             return
         later = [t for t in timeline if t > time]
         after = min(later) if later else time
-        self._insert(obj, _input_path(TIME), 0, time, time)
-        self._insert(obj, _input_path(NEXT), 0, time, timeline[after])
-        self._insert(obj, _input_path(NEXT_TIME), 0, time, after)
+        self._insert(obj, input_path(TIME), 0, time, time)
+        self._insert(obj, input_path(NEXT), 0, time, timeline[after])
+        self._insert(obj, input_path(NEXT_TIME), 0, time, after)
         earlier = [t for t in timeline if t < time]
         if earlier:  # the sample before now mixes into this one
-            self._insert(obj, _input_path(NEXT), 0, max(earlier), sample)
-            self._insert(obj, _input_path(NEXT_TIME), 0, max(earlier), time)
+            self._insert(obj, input_path(NEXT), 0, max(earlier), sample)
+            self._insert(obj, input_path(NEXT_TIME), 0, max(earlier), time)
 
     def _group(self, cache: MeshCache) -> bpy.types.NodeTree:
         signature: Signature = tuple((n, layer.data_type, layer.domain) for n, layer in sorted(cache.varying.items()))
@@ -570,115 +653,14 @@ class CachedDisplay:
     def _remove(self) -> None:
         """Remove everything the display made but its node groups."""
         objects = list(self.collection.all_objects)
-        data = {o.data for o in objects if o.data is not None} | set(self.meshes.values())
+        data: set[Any] = {o.data for o in objects if o.data is not None} | set(self.meshes.values())
+        for cache in self.caches.values():
+            if cache.whole is not None:
+                data |= set(cache.whole.datablocks())
         materials = {m for m in self.materials if m is not None}
         materials |= {s.material for o in objects for s in o.material_slots if s.material is not None}
         actions = {o.animation_data.action for o in objects if o.animation_data and o.animation_data.action}
         bpy.data.batch_remove([*objects, *data, *materials, *actions])
-
-
-def frames_group(signature: Signature, blend: bool = False) -> bpy.types.NodeTree:
-    """A node group storing each attribute of `signature` from its attribute for the `Sample` input.
-
-    Only where that sample has one; it then removes the attribute's samples. With `blend`, a float attribute is
-    mixed with the next sample's by the scene's time between their time codes, either side taking the mesh's own
-    values where its sample has none.
-    """
-    tree: Any = bpy.data.node_groups.new("Proscenium frames", "GeometryNodeTree")
-    tree["proscenium_frames"] = [name for name, _, _ in signature]
-    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    for name in (SAMPLE, NEXT, TIME, NEXT_TIME) if blend else (SAMPLE,):
-        kind = "NodeSocketInt" if name in (SAMPLE, NEXT) else "NodeSocketFloat"
-        socket = tree.interface.new_socket(name, in_out="INPUT", socket_type=kind)
-        if socket.identifier != INPUTS[name]:  # the keys name it
-            raise RuntimeError(f"Expected input {name} to be {INPUTS[name]}, not {socket.identifier}")
-    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    nodes, links = tree.nodes, tree.links
-    group_input = nodes.new("NodeGroupInput")
-    geometry = group_input.outputs[0]
-    texts = {}
-    for name in (SAMPLE, NEXT) if blend else (SAMPLE,):
-        texts[name] = nodes.new("FunctionNodeValueToString")
-        links.new(group_input.outputs[name], next(i for i in texts[name].inputs if i.enabled))
-    weight = _weight(tree, group_input) if blend else None
-    for name, data_type, domain in signature:
-        prefix = nodes.new("FunctionNodeInputString")
-        prefix.string = f"{name}{FRAME_SEPARATOR}"
-
-        def read(sample: str, name: str = name, data_type: str = data_type, prefix: Any = prefix) -> Any:
-            join = nodes.new("GeometryNodeStringJoin")
-            links.new(texts[sample].outputs[0], join.inputs["Strings"])  # Join Strings puts its newest link first
-            links.new(prefix.outputs[0], join.inputs["Strings"])
-            named = nodes.new("GeometryNodeInputNamedAttribute")
-            named.data_type = _stored_type(data_type)
-            links.new(join.outputs[0], named.inputs["Name"])
-            return named
-
-        named = read(SAMPLE)
-        store = nodes.new("GeometryNodeStoreNamedAttribute")
-        store.data_type, store.domain = data_type, domain
-        store.inputs["Name"].default_value = name
-        links.new(geometry, store.inputs["Geometry"])
-        if weight is not None and data_type in BLENDED:
-            own = nodes.new("GeometryNodeInputNamedAttribute")
-            own.data_type = _stored_type(data_type)
-            own.inputs["Name"].default_value = name
-            mix = nodes.new("ShaderNodeMix")
-            mix.data_type = BLENDED[data_type]
-            sides = [i for i in mix.inputs if i.enabled]  # the factor, then A and B
-            links.new(weight, sides[0])
-            for side, sample in zip(sides[1:], (named, read(NEXT)), strict=True):
-                switch = nodes.new("GeometryNodeSwitch")
-                switch.input_type = BLENDED[data_type]
-                links.new(sample.outputs["Exists"], switch.inputs["Switch"])
-                links.new(own.outputs["Attribute"], switch.inputs["False"])
-                links.new(sample.outputs["Attribute"], switch.inputs["True"])
-                links.new(switch.outputs[0], side)
-            links.new(next(o for o in mix.outputs if o.enabled), store.inputs["Value"])
-        else:
-            links.new(named.outputs["Exists"], store.inputs["Selection"])
-            links.new(named.outputs["Attribute"], store.inputs["Value"])
-        # Then its samples: a wildcard pattern holds one asterisk.
-        remove = nodes.new("GeometryNodeRemoveAttribute")
-        remove.inputs["Pattern Mode"].default_value = "Wildcard"
-        remove.inputs["Name"].default_value = f"{name}{FRAME_SEPARATOR}*"
-        links.new(store.outputs[0], remove.inputs["Geometry"])
-        geometry = remove.outputs[0]
-    links.new(geometry, nodes.new("NodeGroupOutput").inputs[0])
-    return tree
-
-
-def _weight(tree: Any, group_input: Any) -> Any:
-    """The scene's time between the sample's time code and the next's, from 0 to 1; 0 when they are one."""
-    nodes, links = tree.nodes, tree.links
-    since, span, ratio = (nodes.new("ShaderNodeMath") for _ in range(3))
-    since.operation, span.operation, ratio.operation = "SUBTRACT", "SUBTRACT", "DIVIDE"  # divide by 0 gives 0
-    ratio.use_clamp = True
-    links.new(nodes.new("GeometryNodeInputSceneTime").outputs["Frame"], since.inputs[0])
-    links.new(group_input.outputs[TIME], since.inputs[1])
-    links.new(group_input.outputs[NEXT_TIME], span.inputs[0])
-    links.new(group_input.outputs[TIME], span.inputs[1])
-    links.new(since.outputs[0], ratio.inputs[0])
-    links.new(span.outputs[0], ratio.inputs[1])
-    return ratio.outputs[0]
-
-
-def _input_path(name: str) -> str:
-    return f'modifiers["{MODIFIER}"].properties.inputs.{INPUTS[name]}.value'
-
-
-def _stored_type(data_type: str) -> str:
-    # A 2D vector on corners would be a UV map, so a sample's is stored as a 3D vector.
-    return "FLOAT_VECTOR" if data_type == "FLOAT2" else data_type
-
-
-def _stored(layer: Layer) -> Layer:
-    """A layer as its sample attribute holds it."""
-    if layer.data_type != "FLOAT2":
-        return layer
-    padded = numpy.zeros((len(layer.values) // 2, 3), numpy.float32)
-    padded[:, :2] = layer.values.reshape(-1, 2)
-    return Layer(layer.name, "FLOAT_VECTOR", layer.domain, layer.prop, padded.ravel())
 
 
 def _modifier(obj: bpy.types.Object) -> Any:

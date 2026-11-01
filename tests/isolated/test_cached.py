@@ -1,7 +1,7 @@
-"""A cached display (M04-prototypes plan, E3): structure built once, each frame's varying values cached as it comes.
+"""A cached display (M04-prototypes plan, E3, E4): structure built once, each frame's varying values cached as it comes.
 
-The scene is the bridge's frames.usda over M1b's animation case, without Morph, whose topology varies (E4). At
-each frame visited, the display as Blender evaluates it holds what a fresh plan at that frame does; each frame
+The scene is the bridge's frames.usda over M1b's animation case. At each frame visited, the display as Blender
+evaluates it holds what a fresh plan at that frame does, meshes whose topology varies included (E4); each frame
 synchronizes at its first visit only, until an edit to the stage, after which the display is rebuilt.
 """
 
@@ -43,7 +43,13 @@ CONFIRMED: dict[Copy, list[str]] = {
     ("/World/Roam", ()): ["mesh", "transform"],
     ("/World/Lean", ()): ["transform"],
     ("/World/Guides/Guided", ()): ["visibility"],
+    ("/World/Morph", ()): ["mesh"],  # gains a face
+    ("/World/Bud", ()): ["mesh"],  # its points move, then its face is rewound
+    ("/World/TwinA", ()): ["mesh"],
+    ("/World/TwinB", ()): ["mesh"],
 }
+# The copies whose meshes the frames find varying in topology, so they cache whole meshes.
+WHOLE = ["/World/Bud", "/World/Morph", "/World/TwinA", "/World/TwinB"]
 # USD reports Steady's points, two equal samples, as time-varying; the frames find them unchanged.
 PREDICTED = CONFIRMED | {("/World/Steady", ()): ["mesh"]}
 
@@ -75,8 +81,10 @@ def test_cached_frames_match_fresh_plans(
     assert result["cached"] == [1, 2, 3]
     assert result["confirmed"] == _copies(CONFIRMED)
     assert result["predicted"] == (_copies(PREDICTED) if predict else [])
-    # Wave shares Hand's and Blade's mesh at 1, then deforms: predicted, its mesh is its own from the start.
-    assert result["split"] == (1 if start == 1 and not predict else 0)
+    assert result["whole"] == WHOLE
+    # Wave and the twins share Hand's and the Blades' mesh at 1; Wave deforms at 2, and the twins gain a face,
+    # sharing theirs until TwinB's points move at 3. Predicted, their meshes are their own from the start.
+    assert result["split"] == (0 if predict else 3 if start == 1 else 1)
     # An edit invalidates every cache: the next frame rebuilds, and every other frame synchronizes again.
     assert result["edited"]
     edited = result["edited_visits"]
@@ -88,8 +96,9 @@ def test_cached_frames_match_fresh_plans(
 SUBFRAME_VISITS = [1.5, 2.0, 2.5, 1.25, 1.5, 3.0, 2.5, 1.25, 2.0]
 
 
+@pytest.mark.parametrize("predict", [True, False], ids=["predicted", "unpredicted"])
 @pytest.mark.parametrize("subframes", [True, False], ids=["subframes", "frames"])
-def test_cached_subframes(wheel: Runtime, hydra_bridge: Path, tmp_path: Path, subframes: bool) -> None:
+def test_cached_subframes(wheel: Runtime, hydra_bridge: Path, tmp_path: Path, subframes: bool, predict: bool) -> None:
     dest = tmp_path / "scene"
     dest.mkdir()
     result = run_isolated(
@@ -101,7 +110,7 @@ def test_cached_subframes(wheel: Runtime, hydra_bridge: Path, tmp_path: Path, su
         dest=str(dest),
         start=1.0,
         visits=SUBFRAME_VISITS,
-        predict=True,
+        predict=predict,
         edited_visits=[],
         subframes=subframes,
     )
@@ -127,9 +136,11 @@ def test_blending_mixes_samples(wheel: Runtime, hydra_bridge: Path, tmp_path: Pa
         synchronized=synchronized,
         shown=[1.5, 2.25, 1.75, 2.75],
     )
-    # Between cached frames, float attributes mix linearly and the rest hold; built at 1, Wave's samples
-    # mix with its own values, as it first varies at 2. Shown times aren't synchronized.
+    # Between cached frames, float attributes mix linearly and the rest hold, and so do meshes cached whole;
+    # built at 1, Wave's samples mix with its own values, as it first varies at 2. Shown times aren't synchronized.
     assert result["synchronized"] == []
+    assert result["whole"] == WHOLE
+    assert result["unresolved"] == []  # no key left on an input that a whole mesh's group lacks
     for visit in result["visits"]:
         assert visit["mismatches"] == [], visit["time"]
     assert [v["between"] for v in result["visits"]] == [[1, 2], [2, 3], [1, 2], [2, 3]]
@@ -161,10 +172,3 @@ def test_prediction_leaves_capture_unchanged(wheel: Runtime, hydra_bridge: Path,
     assert result["plain_dirtied_aspects"] == []
     # Hydra still dirties the same locators when the time changes next.
     assert result["same_dirtied_locators"]
-
-
-def test_varying_topology_is_not_cached(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
-    dest = tmp_path / "scene"
-    dest.mkdir()
-    error = run_isolated(wheel, BODY, "uncached", tmp_path, module_dir=str(hydra_bridge), dest=str(dest))
-    assert error.startswith("/World/Morph: its topology varies"), error

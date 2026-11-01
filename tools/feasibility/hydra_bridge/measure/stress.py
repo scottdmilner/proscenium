@@ -196,6 +196,29 @@ def animation(path: Path, side: int = 256, movers: int = 1000) -> dict[str, Any]
     return parameters
 
 
+def topology(path: Path, meshes: int = 355, side: int = 32) -> dict[str, Any]:
+    """M4 Phase E (E4): meshes whose topology changes every frame, as many as ALab's range deforms.
+
+    Each is a grid whose side cycles through side - 2 to side + 2, so about as many points as ALab's deforming
+    meshes have on average (ad hoc, E1), each at its own phase.
+    """
+    parameters = {"meshes": meshes, "grid sides": (side - 2, side + 2), "frames": FRAMES}
+    layer = _layer(path, "meshes whose topology changes every frame", parameters, FRAMES)
+    grids = {s: _grid(s) for s in range(side - 2, side + 3)}
+    names = ("points", "faceVertexCounts", "faceVertexIndices")
+    arrays = (Vt.Vec3fArray, Vt.IntArray, Vt.IntArray)
+    with Sdf.ChangeBlock():
+        world = _xform(layer, "World")
+        for i in range(meshes):
+            mesh = _mesh(_xform(world, f"Morph_{i}", (1.5 * (i % 20), 1.5 * (i // 20), 0)), "Mesh", grids[side])
+            for frame in range(FRAMES[0], FRAMES[1] + 1):
+                grid = grids[side - 2 + (frame + i) % 5]
+                for name, array, values in zip(names, arrays, grid, strict=True):
+                    layer.SetTimeSample(mesh.attributes[name].path, frame, array.FromNumpy(values))
+    layer.Save()
+    return parameters
+
+
 def updates(path: Path, copies: int) -> dict[str, Any]:
     """M4 Phase C: every update scenario at one size.
 
@@ -274,6 +297,7 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "instances-100": (lambda p: instancing(p, 100), 1.0),
     "instances-1000": (lambda p: instancing(p, 1000), 1.0),
     "animation": (animation, 1.0),
+    "topology": (topology, 1.0),
     "updates-100": (lambda p: updates(p, 100), 1.0),
     "updates-1000": (lambda p: updates(p, 1000), 1.0),
     "updates-10000": (lambda p: updates(p, 10000), 1.0),

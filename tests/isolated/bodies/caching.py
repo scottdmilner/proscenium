@@ -1,4 +1,4 @@
-"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached.py, E3).
+"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached.py, E3 and E4).
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_cached.py.
 """
@@ -29,18 +29,17 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     edited_visits: list[float],
     subframes: bool = False,
 ) -> dict[str, Any]:
-    """Build a cached display of frames.usda at `start`, without Morph, and visit each of `visits` by `frame_set`.
+    """Build a cached display of frames.usda at `start`, and visit each of `visits` by `frame_set`.
 
     A visit's fraction is its subframe, which the display synchronizes at only with `subframes`. Then edit Still's
-    points and visit each of `edited_visits`. Each visit reports whether it synchronized, whether that rebuilt the
-    display, and where the display differs from a fresh plan at the time it shows: the visit's, or with no
-    `subframes`, its frame's.
+    points and visit each of `edited_visits`.
+    Each visit reports whether it synchronized, whether that rebuilt the display, and where the display differs
+    from a fresh plan at the time it shows: the visit's, or with no `subframes`, its frame's.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
     cached = importlib.import_module("cached")
     stage = _stage(dest)
-    stage.GetPrimAtPath("/World/Morph").SetActive(False)  # its topology varies, which E4 caches
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
     scene.collection.children.link(collection)
@@ -55,6 +54,7 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
         result["predicted"] = _copies(display.predicted)
         result["confirmed"] = _copies(display.confirmed())
         result["cached"] = sorted(display.cached)
+        result["whole"] = _whole(display)
         points = UsdGeom.Mesh(stage.GetPrimAtPath("/World/Still")).GetPointsAttr()
         points.Set([(6, 0, 1), (7, 0, 1), (6, 1, 1)])
         result["edited"] = display.edited
@@ -65,30 +65,35 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     return result
 
 
-def uncached(module_dir: str, dest: str) -> str:
-    """The error synchronizing frames.usda at 3 raises after building it at 1, where Morph gains a face."""
-    sys.path[:0] = [str(BRIDGE), module_dir]
-    native = importlib.import_module("_hydra_bridge")
-    cached = importlib.import_module("cached")
-    stage = _stage(dest)
-    collection = bpy.data.collections.new("Cached")
-    display = cached.CachedDisplay(native, stage, collection, 1.0)
-    try:
-        display.synchronize(3.0)
-    except cached.UncachedError as error:
-        return str(error)
-    finally:
-        display.release()
-    return ""
+def _unresolved(display: Any) -> list[str]:
+    """The display's objects' keyed paths that resolve to nothing."""
+    found = []
+    for key, obj in display.objects.items():
+        action = obj.animation_data.action if obj.animation_data else None
+        for curve in action.layers[0].strips[0].channelbags[0].fcurves if action and action.layers else []:
+            try:
+                obj.path_resolve(curve.data_path)
+            except ValueError:
+                found.append(f"{key[0]}: {curve.data_path}")
+    return sorted(found)
+
+
+def _whole(display: Any) -> list[str]:
+    """The sources of the objects whose meshes cache whole meshes, sorted."""
+    return sorted(
+        key[0]
+        for key, obj in display.objects.items()
+        if obj.data is not None and getattr(display.caches.get(obj.data.session_uid), "whole", None) is not None
+    )
 
 
 def blended(module_dir: str, dest: str, synchronized: list[float], shown: list[float]) -> dict[str, Any]:
     """Synchronize a blending cached display of frames.usda at `synchronized`, then show each of `shown`.
 
-    The display is built at the first, without Morph, and follows `frame_set` without `subframes`, so a shown
-    time isn't synchronized. At each shown time, between cached time codes a and b, reports where the display
-    differs from fresh plans at a and b: a viewport object's float mesh attributes mixed linearly by the time
-    between a and b, its integer ones and its transform as at a.
+    The display is built at the first, and follows `frame_set` without `subframes`, so a shown time isn't
+    synchronized. At each shown time, between cached time codes a and b, reports where the display differs from
+    fresh plans at a and b: a viewport object's float mesh attributes mixed linearly by the time between a and b,
+    its integer ones and its transform as at a, and a mesh cached whole as at a.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
@@ -96,7 +101,6 @@ def blended(module_dir: str, dest: str, synchronized: list[float], shown: list[f
     apply = importlib.import_module("apply")
     frames = importlib.import_module("frames")
     stage = _stage(dest)
-    stage.GetPrimAtPath("/World/Morph").SetActive(False)  # its topology varies, which E4 caches
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
     scene.collection.children.link(collection)
@@ -122,6 +126,7 @@ def blended(module_dir: str, dest: str, synchronized: list[float], shown: list[f
         for time in synchronized[1:]:
             scene.frame_set(int(time))
         count = len(display.synchronized)
+        whole = set(_whole(display))
         for time in shown:
             scene.frame_set(int(time), subframe=time % 1)
             a = max(t for t in display.cached if t <= time)
@@ -141,14 +146,23 @@ def blended(module_dir: str, dest: str, synchronized: list[float], shown: list[f
                 geometry = obj.evaluated_get(depsgraph).evaluated_geometry()  # read while referenced
                 for layer in layers:
                     values = numpy.empty_like(layer.values)
-                    geometry.mesh.attributes[layer.name].data.foreach_get(layer.prop, values)
+                    try:
+                        geometry.mesh.attributes[layer.name].data.foreach_get(layer.prop, values)
+                    except (RuntimeError, TypeError):  # of another size
+                        found.append(f"{key}: no {layer.name} of its size")
+                        continue
                     mixed = layer.values
-                    if layer.data_type != "INT":
+                    if layer.data_type != "INT" and key[0] not in whole:
                         mixed = (1 - weight) * layer.values + weight * after[layer.name].values
                     if not numpy.allclose(values, mixed, atol=TOLERANCE):
                         found.append(f"{key}: {layer.name}")
             visits.append({"time": time, "between": [a, b], "mismatches": found})
-        return {"visits": visits, "synchronized": [s.time for s in display.synchronized[count:]]}
+        return {
+            "visits": visits,
+            "synchronized": [s.time for s in display.synchronized[count:]],
+            "whole": sorted(whole),
+            "unresolved": _unresolved(display),
+        }
     finally:
         bpy.app.handlers.frame_change_pre.remove(handler)
         display.release()
@@ -263,6 +277,7 @@ def _mismatches(native: Any, stage: Usd.Stage, display: Any, time: float) -> lis
             found.append(f"{key}: materials {held}, not {names}")
         if shown[0]:  # Blender evaluates the viewport's objects only
             found += _content_mismatches(apply, key, obj.evaluated_get(depsgraph), record, plan)
+            found += _topology_mismatches(key, obj.evaluated_get(depsgraph), record, plan)
     return found
 
 
@@ -283,7 +298,7 @@ def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan:
         values = numpy.empty_like(layer.values)
         try:
             attribute.data.foreach_get(layer.prop, values)
-        except (AttributeError, RuntimeError):  # missing, or of another size
+        except (AttributeError, RuntimeError, TypeError):  # missing, or of another size
             found.append(f"{key}: no {layer.name} of its size")
             continue
         if not numpy.array_equal(values, layer.values):
@@ -292,6 +307,24 @@ def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan:
     if leftover:
         found.append(f"{key}: frame attributes {leftover}")
     return found
+
+
+def _topology_mismatches(key: Any, evaluated: Any, record: Any, plan: Any) -> list[str]:
+    """Where an evaluated mesh's faces and corners differ from its plan mesh's."""
+    if record["mesh"] is None:
+        return []
+    expected = plan.meshes_at([record["mesh"]])[0]
+    geometry = evaluated.evaluated_geometry()  # its mesh is read while this is referenced
+    mesh = geometry.mesh
+    corners = numpy.empty(len(mesh.loops), numpy.int32)
+    starts = numpy.empty(len(mesh.polygons), numpy.int32)
+    if len(corners):
+        mesh.attributes[".corner_vert"].data.foreach_get("value", corners)
+    mesh.polygons.foreach_get("loop_start", starts)
+    same = numpy.array_equal(corners, numpy.array(expected["corner_verts"], numpy.int32)) and numpy.array_equal(
+        starts, numpy.array(expected["face_offsets"], numpy.int32)
+    )
+    return [] if same else [f"{key}: topology"]
 
 
 def _plain(value: Any) -> Any:

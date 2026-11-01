@@ -37,6 +37,9 @@ VARYING = {
     ("/World/Roam", (), 0): {"mesh", "transform"},
     ("/World/Lean", (), 0): {"transform"},  # sheared from just after 1
     ("/World/Guides/Guided", (), 0): {"visibility"},  # an ancestor's guideVisibility
+    ("/World/Bud", (), 0): {"mesh"},  # points, then corners
+    ("/World/TwinA", (), 0): {"mesh"},  # topology
+    ("/World/TwinB", (), 0): {"mesh"},  # topology, then points
     ("/World/Steady", (), 0): set(),  # two equal samples
     ("/World/Single", (), 0): set(),  # one sample
     ("/World/Still", (), 0): set(),
