@@ -10,8 +10,11 @@
 # objects add over its prims:
 # - Dual binds Red for preview and Blue for full, so it is two objects, the viewport's and the render's, and is
 #   invisible at 2 only, when it is one hidden object: its render object is absent at 2.
-# - Roam's translation and points both vary, so an update that keeps it moves and repoints it.
+# - Roam's translation and points both vary, so an update that keeps it moves and repoints it, and so does its
+#   vertex primvar heat, so a cache of its frames holds two attributes.
 # - Lean's matrix is the identity at 1 and a shear at 3, so it is sheared from just after 1.
+# - Guides animates guideVisibility (invisible at 2 only), so Guided, a guide below it, varies through an
+#   ancestor's purpose visibility, which Hydra doesn't flatten.
 
 over "World"
 {
@@ -40,6 +43,13 @@ over "World"
             1: [(6, 14, 0), (7, 14, 0), (6, 15, 0)],
             3: [(6, 14, 1), (7, 14, 1), (6, 15, 1)],
         }
+        float[] primvars:heat (
+            interpolation = "vertex"
+        )
+        float[] primvars:heat.timeSamples = {
+            1: [0, 0, 0],
+            3: [1, 2, 3],
+        }
         uniform token subdivisionScheme = "none"
         double3 xformOp:translate.timeSamples = {
             1: (0, 0, 0),
@@ -59,5 +69,25 @@ over "World"
             3: ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) ),
         }
         uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def Xform "Guides" (
+        prepend apiSchemas = ["VisibilityAPI"]
+    )
+    {
+        token guideVisibility.timeSamples = {
+            1: "visible",
+            2: "invisible",
+            3: "visible",
+        }
+
+        def Mesh "Guided"
+        {
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(10, 14, 0), (11, 14, 0), (10, 15, 0)]
+            uniform token purpose = "guide"
+            uniform token subdivisionScheme = "none"
+        }
     }
 }

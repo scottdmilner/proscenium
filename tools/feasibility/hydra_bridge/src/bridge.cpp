@@ -25,9 +25,10 @@ Bridge::Bridge(const UsdStagePtr &stage)
     RaiseTfErrors(mark);
 }
 
-SnapshotPtr Bridge::Capture(UsdTimeCode time, bool incremental) {
+SnapshotPtr Bridge::Capture(UsdTimeCode time, bool incremental, bool timeDependencies) {
     if (!graph_) throw std::runtime_error("Bridge has been released");
-    last_ = hydra_bridge::Capture(*graph_, time, incremental ? last_.get() : nullptr, std::move(pending_));
+    last_ = hydra_bridge::Capture(*graph_, time, incremental ? last_.get() : nullptr, std::move(pending_),
+                                  timeDependencies);
     pending_.clear();
     return last_;
 }

@@ -27,10 +27,12 @@ namespace hydra_bridge {
 // instance root, so each point adds two context entries: the instancer's path, then a child of it named
 // PointName(point), which no prim has. The instancer is then the copy's floor, which interaction resolves, and
 // each point's copies keep their own identity (source, instance context).
-struct Frame {
+struct DrawnCopy {
     pxr::SdfPath hydraRoot = pxr::SdfPath::AbsoluteRootPath();
     pxr::SdfPath usdRoot = pxr::SdfPath::AbsoluteRootPath();
     pxr::SdfPathVector context;  // instance roots, or a point instancer and its point, outermost first
+    // The Hydra prim behind each context entry: an instance root's, or for both of a point's entries its instancer.
+    pxr::SdfPathVector hydraContext;
     pxr::GfMatrix4d world{1.0};
     bool visible = true;
     ConstantPrimvars instancePrimvars;  // innermost instance first, one entry per name
@@ -51,9 +53,9 @@ struct Frame {
 // opinion for their purpose, in the prototype then up through the instance roots. With none, guides are
 // invisible and proxy and render prims visible. Hydra doesn't image UsdGeomVisibilityAPI, so the opinions
 // come from the source-info filter.
-bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Frame &frame);
+bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const DrawnCopy &copy);
 
-// The material bound to a prim drawn in `frame`, for `purpose` falling back to allPurpose as UsdShade does.
+// The material bound to a prim drawn in `copy`, for `purpose` falling back to allPurpose as UsdShade does.
 // Hydra's flattened bindings aren't used: inside prototypes they miss collection bindings and, from a v26.03
 // propagation bug (also in dev 5bc38c9), re-root an inner instance root's binding to a material in the
 // enclosing prototype into the inner prototype, naming a missing material or a different one that shares its
@@ -66,45 +68,46 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Fr
 // M1b plan, Phase C log: "Nested-instance binding bug"; checked by cases/instances.py.
 // This misses collections that name paths inside an instance (OpenUSD #3690): the planner resolves the copies
 // they reach through the workaround in copy_bindings.h instead.
-pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame,
+pxr::SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const DrawnCopy &copy,
                            const pxr::TfToken &purpose);
 
 // WORKAROUND for OpenUSD #862: true if `path` or an ancestor below `prototypeRoot` resets the transform stack.
 // In UsdGeom a reset inside an instance drops every ancestor's transform, the instance roots' included, but
 // Hydra's instancers apply the instance's transform anyway, and its flattening marks every transform as
-// resetting the stack, so the reset comes from the source-info filter. A drawn copy in a frame then takes its
+// resetting the stack, so the reset comes from the source-info filter. A prim drawn in a copy then takes its
 // own flattened transform alone. Checked by tests/isolated/test_baseline.py, which also asserts the gap.
 bool ResetsBelow(const PrimTable &table, pxr::SdfPath path, const pxr::SdfPath &prototypeRoot);
 
-// The name of a point instancer's point `point` in a copy's instance context (see Frame).
+// The name of a point instancer's point `point` in a copy's instance context (see DrawnCopy).
 pxr::TfToken PointName(size_t point);
 
 class InstanceResolver {
 public:
     // Diagnostics about malformed or unsupported instancers go to `diagnostics`. A point instancer's instances
-    // have frames only with `pointInstancers` (PlanSettings).
+    // have copies only with `pointInstancers` (PlanSettings).
     InstanceResolver(const PrimTable &table, Diagnostics &diagnostics, bool pointInstancers);
 
-    // Every drawn copy of `prim`: one identity frame outside instancing, none when unresolvable.
-    const std::vector<Frame> &FramesOf(const PrimRecord &prim);
+    // Every drawn copy of `prim`: outside instancing one, the identity, and none when unresolvable.
+    const std::vector<DrawnCopy> &CopiesOf(const PrimRecord &prim);
 
 private:
-    const std::vector<Frame> &FramesOf(const PrimRecord &prim, int depth);
-    // The frames of everything under `prototypeRoot`, one per instance of each frame of `instancer`.
-    const std::vector<Frame> &FramesUnder(const pxr::SdfPath &instancer, const pxr::SdfPath &prototypeRoot, int depth);
-    std::vector<Frame> Expand(const PrimRecord &instancer, const pxr::SdfPath &prototypeRoot, int depth);
-    // Expand for a point instancer, whose topology is `topology`: one frame per point of prototype `prototype`,
-    // in each frame of the instancer.
-    std::vector<Frame> ExpandPoints(const PrimRecord &instancer, const InstancerRecord &topology, size_t prototype,
-                                    int depth);
+    const std::vector<DrawnCopy> &CopiesOf(const PrimRecord &prim, int depth);
+    // The copies of everything under `prototypeRoot`, one per instance of each copy of `instancer`.
+    const std::vector<DrawnCopy> &CopiesUnder(const pxr::SdfPath &instancer, const pxr::SdfPath &prototypeRoot,
+                                              int depth);
+    std::vector<DrawnCopy> Expand(const PrimRecord &instancer, const pxr::SdfPath &prototypeRoot, int depth);
+    // Expand for a point instancer, whose topology is `topology`: one copy per point of prototype `prototype`,
+    // in each copy of the instancer.
+    std::vector<DrawnCopy> ExpandPoints(const PrimRecord &instancer, const InstancerRecord &topology, size_t prototype,
+                                        int depth);
     void Report(const PrimRecord &prim, const std::string &code, const std::string &message);
 
     const PrimTable &table_;
     Diagnostics &diagnostics_;
     bool pointInstancers_;
-    const std::vector<Frame> top_{Frame()};
-    const std::vector<Frame> none_;
-    std::unordered_map<pxr::SdfPath, std::vector<Frame>, pxr::SdfPath::Hash> cache_;  // by prototype root
+    const std::vector<DrawnCopy> top_{DrawnCopy()};
+    const std::vector<DrawnCopy> none_;
+    std::unordered_map<pxr::SdfPath, std::vector<DrawnCopy>, pxr::SdfPath::Hash> cache_;  // by prototype root
 };
 
 }  // namespace hydra_bridge

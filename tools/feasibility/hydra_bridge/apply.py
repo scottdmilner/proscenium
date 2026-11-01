@@ -70,6 +70,8 @@ MATERIAL_PROPERTIES = ("proscenium_sources",)
 DISPLAY_COLOR = "displayColor"
 # A uniform one is stored on corners, each face's value on its corners, which Solid shading's Attribute color shows.
 DISPLAY_PRIMVARS = (DISPLAY_COLOR, "displayOpacity")
+POSITION = "position"
+MATERIAL_INDEX = "material_index"
 
 
 def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
@@ -113,15 +115,15 @@ def new_material(data: MaterialRecord) -> bpy.types.Material:
 def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
     """A plan mesh, with empty material slots for its objects to fill."""
     mesh = bpy.data.meshes.new(data["name"])
-    positions = flat(data["positions"], BufferFormat.FLOAT)
+    position, *others = layers(data)
     corner_verts = flat(data["corner_verts"], BufferFormat.INT)
     face_offsets = flat(data["face_offsets"], BufferFormat.INT)
-    mesh.vertices.add(len(positions) // 3)
+    mesh.vertices.add(len(position.values) // 3)
     mesh.loops.add(len(corner_verts))
     mesh.polygons.add(len(face_offsets))
     # A mesh with no points has no position layer, and one with no faces no corner layer.
-    if len(positions):
-        _data(mesh.attributes["position"]).foreach_set(ForeachProperty.VECTOR, positions)
+    if len(position.values):
+        _data(mesh.attributes[POSITION]).foreach_set(position.prop, position.values)
     if len(corner_verts):
         _data(mesh.attributes[".corner_vert"]).foreach_set(ForeachProperty.VALUE, corner_verts)
     # Unlike the attribute transfers, Blender copies this buffer into a temporary, 4 bytes per face.
@@ -130,38 +132,63 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
     # Empty slots: each object links its own materials, so one mesh serves the viewport and the render.
     for _ in range(data["slot_count"]):
         mesh.materials.append(None)
-    material_index = _new_attribute(mesh, "material_index", "INT", "FACE")
-    _data(material_index).foreach_set(ForeachProperty.VALUE, flat(data["material_indices"], BufferFormat.INT))
+    for layer in others:
+        _data(_new_attribute(mesh, layer.name, layer.data_type, layer.domain)).foreach_set(layer.prop, layer.values)
+    # Solid shading's Attribute color shows the active color.
+    mesh.color_attributes.active_color_name = DISPLAY_COLOR
+    return mesh
+
+
+@dataclass(frozen=True)
+class Layer:
+    """One attribute of a plan mesh as Blender holds it: its name, type, and domain, and its values, flat."""
+
+    name: str
+    data_type: PlanDataType
+    domain: AttributeDomainItems
+    prop: ForeachProperty  # what foreach_set writes
+    values: numpy.ndarray
+
+
+def layers(data: MeshRecord) -> list[Layer]:
+    """The attributes new_mesh writes for a plan mesh, positions first; its faces and corners are the rest."""
+    face_offsets = flat(data["face_offsets"], BufferFormat.INT)
+    corners = len(data["corner_verts"])
+    found = [
+        Layer(POSITION, "FLOAT_VECTOR", "POINT", ForeachProperty.VECTOR, _array(data["positions"], BufferFormat.FLOAT)),
+        Layer(MATERIAL_INDEX, "INT", "FACE", ForeachProperty.VALUE, _array(data["material_indices"], BufferFormat.INT)),
+    ]
     for attribute in data["attributes"]:
         data_type, domain = attribute["data_type"], attribute["domain"]
         # A name the plan shouldn't produce raises here rather than reaching Blender.
         if data_type not in ATTRIBUTE_FORMATS or domain not in PLAN_DOMAINS:
             raise ValueError(f"Unexpected attribute kind in the plan: {data_type} on {domain}")
         fmt, prop = ATTRIBUTE_FORMATS[data_type]
-        values = flat(attribute["data"], fmt)
+        values = _array(attribute["data"], fmt)
         if attribute["name"] in DISPLAY_PRIMVARS and domain == "FACE":
             # Each face's value on its corners, expanded here rather than in the plan, which then holds one value
             # per face for every mesh until it is released.
-            values = _on_corners(values, face_offsets, len(corner_verts))
+            values = _on_corners(values, face_offsets, corners)
             domain = "CORNER"
-        _data(_new_attribute(mesh, attribute["name"], data_type, domain)).foreach_set(prop, values)
+        found.append(Layer(attribute["name"], data_type, domain, prop, values))
     held = data["held_color"]
     if held is not None:  # the constant displayColor all its copies share, on every point
         color = numpy.array(held, dtype=numpy.float32)
-        _data(_new_attribute(mesh, DISPLAY_COLOR, "FLOAT_COLOR", "POINT")).foreach_set(
-            "color", numpy.tile(color, len(mesh.vertices))
-        )
-    # Solid shading's Attribute color shows the active color.
-    mesh.color_attributes.active_color_name = DISPLAY_COLOR
-    return mesh
+        points = len(data["positions"])
+        found.append(Layer(DISPLAY_COLOR, "FLOAT_COLOR", "POINT", ForeachProperty.COLOR, numpy.tile(color, points)))
+    return found
 
 
-def _on_corners(faces: memoryview, face_offsets: memoryview, corners: int) -> numpy.ndarray:
+def _array(array: PlanArray, fmt: BufferFormat) -> numpy.ndarray:
+    """A Vt array as a flat numpy array over its memory, read-only. No data is copied."""
+    return numpy.frombuffer(flat(array, fmt), dtype=numpy.float32 if fmt == BufferFormat.FLOAT else numpy.int32)
+
+
+def _on_corners(faces: numpy.ndarray, face_offsets: memoryview, corners: int) -> numpy.ndarray:
     """Per-face float values, flat, as each face's value on each of its corners."""
     starts = numpy.frombuffer(face_offsets, dtype=numpy.int32)
     counts = numpy.diff(starts, append=corners)
-    values = numpy.frombuffer(faces, dtype=numpy.float32)
-    return numpy.repeat(values.reshape(len(starts), -1), counts, axis=0).ravel()
+    return numpy.repeat(faces.reshape(len(starts), -1), counts, axis=0).ravel()
 
 
 def _new_attribute(
@@ -206,12 +233,12 @@ def sheared(world: Matrix) -> bool:
     )
 
 
-def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection: bpy.types.Collection) -> None:
-    """Give `obj` the sheared `world` through a parent empty, which Blender composes back to float precision.
+def shear_split(world: Matrix) -> tuple[Matrix, Matrix]:
+    """A sheared `world` as a parent's world matrix and its child's basis, neither sheared.
 
-    The linear part splits by SVD into rotation x scale x rotation: the parent takes the first rotation, the
-    scale, and the translation, and the object the second rotation, so neither holds shear. A reflection in
-    either rotation moves into a negative scale. The parent can't be selected, so a pick lands on the object.
+    Blender composes them back to float precision. The linear part splits by SVD into rotation x scale x
+    rotation: the parent takes the first rotation, the scale, and the translation, and the child the second
+    rotation. A reflection in either rotation moves into a negative scale.
     """
     u, scale, vt = numpy.linalg.svd(numpy.array(world.to_3x3()))
     if numpy.linalg.det(u) < 0:
@@ -220,15 +247,29 @@ def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection:
     if numpy.linalg.det(vt) < 0:
         vt[-1, :] *= -1
         scale[-1] *= -1
-    parent = bpy.data.objects.new(f"{obj.name} shear", None)
-    collection.objects.link(parent)
     parent_world = Matrix((u * scale).tolist()).to_4x4()
     parent_world.translation = world.translation
-    parent.matrix_world = parent_world
+    return parent_world, Matrix(vt.tolist()).to_4x4()
+
+
+def shear_parent(obj: bpy.types.Object, source: str, collection: bpy.types.Collection) -> bpy.types.Object:
+    """A parent empty for `obj`, which carries the shear of `source`'s copy.
+
+    It can't be selected, so a pick lands on the object.
+    """
+    parent = bpy.data.objects.new(f"{obj.name} shear", None)
+    collection.objects.link(parent)
     parent.hide_select = True
     parent[SHEAR_PARENT] = source
     obj.parent = parent
-    obj.matrix_basis = Matrix(vt.tolist()).to_4x4()
+    return parent
+
+
+def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection: bpy.types.Collection) -> None:
+    """Give `obj` the sheared `world` through a parent empty (shear_split)."""
+    parent_world, basis = shear_split(world)
+    shear_parent(obj, source, collection).matrix_world = parent_world
+    obj.matrix_basis = basis
 
 
 def object_color(data: ObjectRecord) -> tuple[float, float, float, float]:

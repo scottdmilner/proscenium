@@ -186,6 +186,9 @@ bp::dict ObjectDict(const Plan &plan, std::size_t i) {
     record["material_slots"] = slots;
     record["primvars"] = Parameters(object.constantPrimvars);
     record["properties"] = Properties(object.properties);
+    bp::list dirtiedAspects;
+    for (const Aspect aspect : object.dirtiedAspects) dirtiedAspects.append(AspectName(aspect));
+    record["dirtied_aspects"] = dirtiedAspects;
     return record;
 }
 

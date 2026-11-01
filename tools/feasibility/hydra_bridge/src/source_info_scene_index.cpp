@@ -81,8 +81,8 @@ std::shared_ptr<const CopyBindings> SourceInfoSceneIndex::CurrentCopyBindings() 
     return copyBindings_;
 }
 
-void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
-    if (time == time_) return;
+void SourceInfoSceneIndex::SetTime(UsdTimeCode time, bool force) {
+    if (time == time_ && !force) return;
     time_ = time;
     HdSceneIndexObserver::DirtiedPrimEntries dirtied;
     {

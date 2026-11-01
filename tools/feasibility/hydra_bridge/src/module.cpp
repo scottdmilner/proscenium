@@ -39,13 +39,13 @@ UsdTimeCode ToTimeCode(const bp::object &time) {
 }
 
 // SetTime, ApplyPendingUpdates, and the parallel read pass run without the GIL.
-SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental) {
+SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental, bool timeDependencies) {
     const TfErrorMark mark;
     const UsdTimeCode code = ToTimeCode(time);
     SnapshotPtr snapshot;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        snapshot = bridge.Capture(code, incremental);
+        snapshot = bridge.Capture(code, incremental, timeDependencies);
     }
     RaiseTfErrors(mark);
     return SnapshotView{snapshot};
@@ -72,7 +72,8 @@ PXR_BOOST_PYTHON_MODULE(_hydra_bridge) {
     using namespace hydra_bridge;
     bp::class_<Bridge, bp::noncopyable>("Bridge", bp::init<UsdStagePtr>())
         .def("stage", &Stage)
-        .def("capture", &Capture, (bp::arg("time") = bp::object(), bp::arg("incremental") = false))
+        .def("capture", &Capture,
+             (bp::arg("time") = bp::object(), bp::arg("incremental") = false, bp::arg("time_dependencies") = false))
         .def("release", &Bridge::Release);
     WrapViews();
     bp::def("take_filter_timings", &TakeFilterTimings);

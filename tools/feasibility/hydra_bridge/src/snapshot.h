@@ -37,8 +37,10 @@ struct Snapshot {
     // Every prim, with the planned schemas sampled at the capture time. Never modified after capture.
     // An incremental capture shares the previous snapshot's containers for prims no notice named.
     pxr::HdRetainedSceneIndexRefPtr scene;
-    std::vector<Event> events;  // notices delivered since the previous capture
-    size_t copied = 0;          // prims copied by this capture, rather than shared with the previous one
+    // Notices delivered since the previous capture, and a capture's own notices dirtying what depends on time
+    // (capture.h).
+    std::vector<Event> events;
+    size_t copied = 0;  // prims copied by this capture, rather than shared with the previous one
     // Errors and warnings posted while copying each prim, kept so a shared prim keeps its diagnostics.
     std::unordered_map<pxr::SdfPath, Diagnostics, pxr::SdfPath::Hash> primDiagnostics;
     Diagnostics diagnostics;  // all of them, without duplicates; sources are Hydra paths

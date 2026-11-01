@@ -30,8 +30,9 @@ public:
         last_.reset();
     }
 
-    // Call without the GIL. Incremental captures share unchanged prims with the previous capture.
-    SnapshotPtr Capture(pxr::UsdTimeCode time, bool incremental = false);
+    // Call without the GIL. Incremental captures share unchanged prims with the previous capture;
+    // `timeDependencies` adds the locators a time change would dirty (capture.h).
+    SnapshotPtr Capture(pxr::UsdTimeCode time, bool incremental = false, bool timeDependencies = false);
 
 private:
     pxr::UsdStagePtr stage_;

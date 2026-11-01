@@ -140,20 +140,20 @@ const TfToken *Inherited(const PurposeVisibility &opinions, const TfToken &purpo
     return nullptr;
 }
 
-// What a frame inherits from its outer frame, once its own values are set: for each purpose, the nearest
+// What a copy inherits from its outer copy, once its own values are set: for each purpose, the nearest
 // visibility opinion at or above `root` (its instance root or point instancer) inside the outer prototype, else
-// the outer frame's; and each of the outer frame's instance primvars the frame doesn't set, since an inner
+// the outer copy's; and each of the outer copy's instance primvars the copy doesn't set, since an inner
 // instance root is nearer the prim than an outer one.
-void Inherit(const PrimTable &table, const SdfPath &root, const Frame &outer, Frame &frame) {
+void Inherit(const PrimTable &table, const SdfPath &root, const DrawnCopy &outer, DrawnCopy &copy) {
     for (const TfToken &purpose : Purposes()) {
         const TfToken *opinion = NearestOpinion(table, root, outer.hydraRoot, purpose);
         if (!opinion) opinion = Inherited(outer.purposeVisibility, purpose);
-        if (opinion) frame.purposeVisibility.emplace_back(purpose, *opinion);
+        if (opinion) copy.purposeVisibility.emplace_back(purpose, *opinion);
     }
     for (const auto &inherited : outer.instancePrimvars) {
         auto same = [&](const auto &entry) { return entry.first == inherited.first; };
-        if (std::none_of(frame.instancePrimvars.begin(), frame.instancePrimvars.end(), same))
-            frame.instancePrimvars.push_back(inherited);
+        if (std::none_of(copy.instancePrimvars.begin(), copy.instancePrimvars.end(), same))
+            copy.instancePrimvars.push_back(inherited);
     }
 }
 
@@ -180,12 +180,12 @@ bool AuthoredBelow(const PrimTable &table, SdfPath path, const SdfPath &stop, co
 
 // The binding for exactly `purpose`, without the allPurpose fallback, as BoundMaterial describes; nullopt
 // when nothing binds that purpose. A value can be an empty path, which binds nothing and ends the search.
-std::optional<SdfPath> CorrectedBinding(const PrimTable &, const PrimRecord &prim, const Frame &frame,
+std::optional<SdfPath> CorrectedBinding(const PrimTable &, const PrimRecord &prim, const DrawnCopy &copy,
                                         const TfToken &purpose) {
     const SdfPath *own = FindBinding(prim.usdBindings, purpose);
-    const SdfPath *fromRoot = frame.context.empty() ? nullptr : FindBinding(frame.bindings, purpose);
+    const SdfPath *fromRoot = copy.context.empty() ? nullptr : FindBinding(copy.bindings, purpose);
     // A strong binding at or above the instance root beats anything the prototype authors.
-    if (fromRoot && Contains(frame.strongPurposes, purpose)) return *fromRoot;
+    if (fromRoot && Contains(copy.strongPurposes, purpose)) return *fromRoot;
     if (own) return *own;
     if (fromRoot) return *fromRoot;
     return std::nullopt;
@@ -193,19 +193,19 @@ std::optional<SdfPath> CorrectedBinding(const PrimTable &, const PrimRecord &pri
 
 }  // namespace
 
-SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const Frame &frame, const TfToken &purpose) {
+SdfPath BoundMaterial(const PrimTable &table, const PrimRecord &prim, const DrawnCopy &copy, const TfToken &purpose) {
     // As UsdShade: the purpose across the whole hierarchy first, then allPurpose.
     for (const TfToken &tried : {purpose, TfToken()})
-        if (std::optional<SdfPath> material = CorrectedBinding(table, prim, frame, tried)) return *material;
+        if (std::optional<SdfPath> material = CorrectedBinding(table, prim, copy, tried)) return *material;
     return {};
 }
 
-bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Frame &frame) {
-    if (!prim.visible || !frame.visible) return false;
+bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const DrawnCopy &copy) {
+    if (!prim.visible || !copy.visible) return false;
     const TfToken &purpose = prim.purpose;
     if (std::find(Purposes().begin(), Purposes().end(), purpose) == Purposes().end()) return true;
-    const TfToken *opinion = NearestOpinion(table, prim.path, frame.hydraRoot, purpose);
-    if (!opinion) opinion = Inherited(frame.purposeVisibility, purpose);
+    const TfToken *opinion = NearestOpinion(table, prim.path, copy.hydraRoot, purpose);
+    if (!opinion) opinion = Inherited(copy.purposeVisibility, purpose);
     if (!opinion) return purpose != HdRenderTagTokens->guide;
     // The nearest authored opinion decides, "inherited" included, as in UsdGeom. A guide displays only when
     // it is explicitly visible (spec VIS-04); proxy and render prims unless invisible.
@@ -226,11 +226,11 @@ InstanceResolver::InstanceResolver(const PrimTable &table, Diagnostics &diagnost
       diagnostics_(diagnostics),
       pointInstancers_(pointInstancers) {}
 
-const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim) { return FramesOf(prim, 0); }
+const std::vector<DrawnCopy> &InstanceResolver::CopiesOf(const PrimRecord &prim) { return CopiesOf(prim, 0); }
 
-// FramesOf, FramesUnder, and Expand recurse once per nesting level, bounded by kMaxDepth.
-const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim,  // NOLINT(misc-no-recursion)
-                                                     int depth) {
+// CopiesOf, CopiesUnder, and Expand recurse once per nesting level, bounded by kMaxDepth.
+const std::vector<DrawnCopy> &InstanceResolver::CopiesOf(const PrimRecord &prim,  // NOLINT(misc-no-recursion)
+                                                         int depth) {
     if (!prim.instancedBy) return top_;
     const InstancedByRecord &by = *prim.instancedBy;
     // Native instancing gives each prototype copy exactly one instancer.
@@ -238,15 +238,15 @@ const std::vector<Frame> &InstanceResolver::FramesOf(const PrimRecord &prim,  //
         Report(prim, "unsupported-instancing", "Prims instanced by several instancers are not translated");
         return none_;
     }
-    return FramesUnder(by.instancers[0], by.prototypeRoots[0], depth);
+    return CopiesUnder(by.instancers[0], by.prototypeRoots[0], depth);
 }
 
-const std::vector<Frame> &InstanceResolver::FramesUnder(  // NOLINT(misc-no-recursion)
+const std::vector<DrawnCopy> &InstanceResolver::CopiesUnder(  // NOLINT(misc-no-recursion)
     const SdfPath &instancerPath, const SdfPath &prototypeRoot, int depth) {
     if (auto found = cache_.find(prototypeRoot); found != cache_.end()) return found->second;
-    // Inserted before expanding, so a cycle in malformed data ends with no frames. References into
+    // Inserted before expanding, so a cycle in malformed data ends with no copies. References into
     // an unordered_map survive later insertions.
-    std::vector<Frame> &frames = cache_[prototypeRoot];
+    std::vector<DrawnCopy> &copies = cache_[prototypeRoot];
     const PrimRecord *instancer = table_.Find(instancerPath);
     if (!instancer || !instancer->instancer) {
         diagnostics_.push_back({Severity::Error, "invalid-instancer", SdfPath(),
@@ -254,12 +254,12 @@ const std::vector<Frame> &InstanceResolver::FramesUnder(  // NOLINT(misc-no-recu
     } else if (depth > kMaxDepth) {
         Report(*instancer, "invalid-instancer", "Instancing nests too deeply");
     } else {
-        frames = Expand(*instancer, prototypeRoot, depth);
+        copies = Expand(*instancer, prototypeRoot, depth);
     }
-    return frames;
+    return copies;
 }
 
-std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
+std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
     const PrimRecord &instancer, const SdfPath &prototypeRoot, int depth) {
     const InstancerRecord &topology = *instancer.instancer;
     auto prototype = std::find(topology.prototypes.begin(), topology.prototypes.end(), prototypeRoot);
@@ -277,9 +277,9 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
         Report(instancer, "invalid-instancer", "Native instancer has no instance transforms");
         return {};
     }
-    std::vector<Frame> frames;
+    std::vector<DrawnCopy> copies;
     bool invalidIndex = false, invalidPrimvar = false;
-    for (const Frame &outer : FramesOf(instancer, depth + 1)) {
+    for (const DrawnCopy &outer : CopiesOf(instancer, depth + 1)) {
         for (const int k : topology.instanceIndices[p]) {
             const auto index = static_cast<size_t>(k);
             if (k < 0 || index >= topology.instanceLocations.size() || index >= transforms->size()) {
@@ -287,16 +287,18 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                 continue;
             }
             const SdfPath &location = topology.instanceLocations[index];
-            Frame frame;
-            frame.hydraRoot = prototypeRoot;
-            frame.usdRoot = outer.Map(location);
-            frame.context = outer.context;
-            frame.context.push_back(frame.usdRoot);
-            // Row vectors: the instance's own transform first, then the frame it sits in, unless the instance root
+            DrawnCopy copy;
+            copy.hydraRoot = prototypeRoot;
+            copy.usdRoot = outer.Map(location);
+            copy.context = outer.context;
+            copy.context.push_back(copy.usdRoot);
+            copy.hydraContext = outer.hydraContext;
+            copy.hydraContext.push_back(location);
+            // Row vectors: the instance's own transform first, then the outer copy's, unless the instance root
             // or an ancestor inside the outer prototype resets the stack (WORKAROUND for OpenUSD #862).
-            frame.world = ResetsBelow(table_, location, outer.hydraRoot) ? (*transforms)[index]
-                                                                         : (*transforms)[index] * outer.world;
-            frame.visible =
+            copy.world = ResetsBelow(table_, location, outer.hydraRoot) ? (*transforms)[index]
+                                                                        : (*transforms)[index] * outer.world;
+            copy.visible =
                 outer.visible && (topology.mask.empty() || (index < topology.mask.size() && topology.mask[index]));
             // The instance root's own constant primvars, flattened within its namespace, with the type and
             // shape USD authored. Hydra's instancer has them too, as instance-rate primvars, but its
@@ -308,7 +310,7 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                     VtValue value;
                     std::string error;
                     if (FlattenedConstant(primvar, value, error))
-                        frame.instancePrimvars.emplace_back(primvar.name, std::move(value));
+                        copy.instancePrimvars.emplace_back(primvar.name, std::move(value));
                     else
                         invalidPrimvar = true;
                 }
@@ -317,25 +319,25 @@ std::vector<Frame> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
             if (const PrimRecord *root = table_.Find(location)) {
                 for (const TfToken &purpose : kPurposesBound) {
                     if (std::optional<SdfPath> material = CorrectedBinding(table_, *root, outer, purpose))
-                        frame.bindings.emplace_back(purpose, std::move(*material));
+                        copy.bindings.emplace_back(purpose, std::move(*material));
                     // Strong at the instance root or above it inside the outer prototype, or above that.
                     if (Contains(outer.strongPurposes, purpose) ||
                         AuthoredBelow(table_, location, outer.hydraRoot, purpose, &PrimRecord::strongBindingPurposes))
-                        frame.strongPurposes.push_back(purpose);
+                        copy.strongPurposes.push_back(purpose);
                 }
             }
             // The mask already folds in the instance root's flattened visibility, its ancestors included.
-            Inherit(table_, location, outer, frame);
-            frames.push_back(std::move(frame));
+            Inherit(table_, location, outer, copy);
+            copies.push_back(std::move(copy));
         }
     }
     if (invalidIndex) Report(instancer, "invalid-instancer", "Instance indices out of range were skipped");
     if (invalidPrimvar)
         Report(instancer, "invalid-primvar", "Instance-root primvars with invalid indices were skipped");
-    return frames;
+    return copies;
 }
 
-std::vector<Frame> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recursion)
+std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recursion)
     const PrimRecord &instancer, const InstancerRecord &topology, size_t prototype, int depth) {
     const SdfPath &prototypeRoot = topology.prototypes[prototype];
     // Hydra copies each prototype under its original, as ForInstancer<hash>, so the original is its source.
@@ -364,12 +366,12 @@ std::vector<Frame> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recursion)
         else
             invalidPrimvar = true;
     }
-    std::vector<Frame> frames;
+    std::vector<DrawnCopy> copies;
     bool invalidIndex = false;
-    for (const Frame &outer : FramesOf(instancer, depth + 1)) {
+    for (const DrawnCopy &outer : CopiesOf(instancer, depth + 1)) {
         const SdfPath instancerPath = outer.Map(instancer.path);
         const SdfPath usdRoot = outer.Map(prototypeRoot.GetParentPath());
-        // The instancer's world transform in this frame, unless it or an ancestor inside the outer prototype resets
+        // The instancer's world transform in the outer copy, unless it or an ancestor inside the outer prototype resets
         // the stack (WORKAROUND for OpenUSD #862).
         const GfMatrix4d local = instancer.matrix.value_or(GfMatrix4d(1.0));
         const GfMatrix4d world = ResetsBelow(table_, instancer.path, outer.hydraRoot) ? local : local * outer.world;
@@ -379,34 +381,36 @@ std::vector<Frame> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recursion)
                 invalidIndex = true;
                 continue;
             }
-            Frame frame;
-            frame.hydraRoot = prototypeRoot;
-            frame.usdRoot = usdRoot;
-            frame.context = outer.context;
-            frame.context.push_back(instancerPath);
-            frame.context.push_back(instancerPath.AppendChild(PointName(point)));
-            frame.world = transforms[point] * world;
-            frame.visible = outer.visible && instancer.visible &&
-                            (topology.mask.empty() || (point < topology.mask.size() && topology.mask[point]));
+            DrawnCopy copy;
+            copy.hydraRoot = prototypeRoot;
+            copy.usdRoot = usdRoot;
+            copy.context = outer.context;
+            copy.context.push_back(instancerPath);
+            copy.context.push_back(instancerPath.AppendChild(PointName(point)));
+            copy.hydraContext = outer.hydraContext;
+            copy.hydraContext.insert(copy.hydraContext.end(), 2, instancer.path);
+            copy.world = transforms[point] * world;
+            copy.visible = outer.visible && instancer.visible &&
+                           (topology.mask.empty() || (point < topology.mask.size() && topology.mask[point]));
             for (const auto &[name, values] : perPoint) {
                 VtValue value;
                 if (PointValue(values, point, value, PointTypes{}))
-                    frame.instancePrimvars.emplace_back(name, std::move(value));
+                    copy.instancePrimvars.emplace_back(name, std::move(value));
                 else
                     invalidPrimvar = true;
             }
             // The prototypes are the instancer's descendants, so the bindings UsdShade resolves on them already
-            // include the instancer's and its ancestors' inside the outer prototype; above that, the outer frame's.
-            frame.bindings = outer.bindings;
-            frame.strongPurposes = outer.strongPurposes;
-            Inherit(table_, instancer.path, outer, frame);
-            frames.push_back(std::move(frame));
+            // include the instancer's and its ancestors' inside the outer prototype; above that, the outer copy's.
+            copy.bindings = outer.bindings;
+            copy.strongPurposes = outer.strongPurposes;
+            Inherit(table_, instancer.path, outer, copy);
+            copies.push_back(std::move(copy));
         }
     }
     if (invalidIndex) Report(instancer, "invalid-instancer", "Point indices out of range were skipped");
     if (invalidPrimvar)
         Report(instancer, "invalid-primvar", "Point instancer primvars with invalid indices or types were skipped");
-    return frames;
+    return copies;
 }
 
 // Instancers are reported by Hydra path: a native instancer has no USD counterpart.

@@ -17,6 +17,7 @@ No bpy import: this is the layer above capture that the animation-data represent
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -26,13 +27,19 @@ if TYPE_CHECKING:
 
 type TrackKey = tuple[str, tuple[str, ...], int]  # source, instance context, place among the copy's objects
 
-# What can vary along a track, by the record fields compared.
-TRANSFORM = "transform"  # matrix
-VISIBILITY = "visibility"  # the destinations it shows in, or whether the copy has this object at all
-MESH = "mesh"  # its mesh's content (B5), held color included
-MATERIALS = "materials"  # the material each slot holds, by content
-PROPERTIES = "properties"  # constant primvars as ID properties
-BOUNDS = "bounds"  # a placeholder's bounds
+
+class Aspect(StrEnum):
+    """An aspect of an object that can vary along a track, by the record fields compared.
+
+    The values are the core's names for them (plan.h's AspectName).
+    """
+
+    TRANSFORM = "transform"  # matrix
+    VISIBILITY = "visibility"  # the destinations it shows in, or whether the copy has this object at all
+    MESH = "mesh"  # its mesh's content (B5), held color included
+    MATERIALS = "materials"  # the material each slot holds, by content
+    PROPERTIES = "properties"  # constant primvars as ID properties
+    BOUNDS = "bounds"  # a placeholder's bounds
 
 
 @dataclass
@@ -44,7 +51,7 @@ class Frames:
     tracks: dict[TrackKey, list[int | None]]  # per track, per frame: its object's plan index, None when absent
     # Per track, by frame: its record wherever it changed (always at its first frame), held until the next.
     samples: dict[TrackKey, dict[int, ObjectRecord]]
-    varying: dict[TrackKey, set[str]]  # per track, what varies anywhere in the range; empty if it holds still
+    varying: dict[TrackKey, set[Aspect]]  # per track, the aspects that vary anywhere in the range; empty if none
     # Per frame, per mesh and per material: an identifier of its content, equal across frames for equal content.
     mesh_content: list[list[int]]
     material_content: list[list[int]]
@@ -87,20 +94,20 @@ def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings:
         records = dict(zip(read, plan.objects_at(read), strict=True))
         current = {key: index for index, key in kept.items()}
         for index, record in records.items():
-            key = (*_copy(record), _place(index, records, kept))
+            key = (*copy_of(record), place(index, records, kept))
             samples = frames.samples.setdefault(key, {})
             if samples:
                 last = max(samples)
                 frames.varying[key] |= _differences(frames, last, samples[last], frame, record)
             else:
                 frames.tracks[key] = [None] * frame
-                frames.varying[key] = {VISIBILITY} if frame else set()  # a copy's object that appears mid-range
+                frames.varying[key] = {Aspect.VISIBILITY} if frame else set()  # a copy's object that appears mid-range
             samples[frame] = record
             current[key] = index
         for key, track in frames.tracks.items():
             track.append(current.get(key))
             if key not in current:
-                frames.varying[key].add(VISIBILITY)  # the copy has no such object at this frame
+                frames.varying[key].add(Aspect.VISIBILITY)  # the copy has no such object at this frame
         previous = plan
     return frames
 
@@ -137,19 +144,20 @@ def _materials_at(plan: Plan) -> Any:
     return at
 
 
-def _copy(record: ObjectRecord) -> tuple[str, tuple[str, ...]]:
+def copy_of(record: ObjectRecord) -> tuple[str, tuple[str, ...]]:
+    """The drawn copy an object belongs to: its source and instance context."""
     return record["source"], tuple(record["instance_context"])
 
 
-def _place(index: int, records: dict[int, ObjectRecord], kept: dict[int, TrackKey]) -> int:
+def place(index: int, records: dict[int, ObjectRecord], kept: dict[int, TrackKey]) -> int:
     """1 for the second of a copy's two objects, else 0: the planner puts a copy's objects next to each other."""
     if index == 0:
         return 0
-    before = kept[index - 1][:2] if index - 1 in kept else _copy(records[index - 1])
-    return 1 if before == _copy(records[index]) else 0
+    before = kept[index - 1][:2] if index - 1 in kept else copy_of(records[index - 1])
+    return 1 if before == copy_of(records[index]) else 0
 
 
-def _differences(frames: Frames, then: int, old: ObjectRecord, frame: int, new: ObjectRecord) -> set[str]:
+def _differences(frames: Frames, then: int, old: ObjectRecord, frame: int, new: ObjectRecord) -> set[Aspect]:
     """What differs between a track's record at frame `then` and at `frame`, meshes and materials by content."""
 
     def mesh(at: int, record: ObjectRecord) -> int | None:
@@ -158,17 +166,17 @@ def _differences(frames: Frames, then: int, old: ObjectRecord, frame: int, new: 
     def slots(at: int, record: ObjectRecord) -> list[int | None]:
         return [None if m is None else frames.material_content[at][m] for m in record["material_slots"]]
 
-    found = set()
+    found: set[Aspect] = set()
     if old["matrix"] != new["matrix"]:
-        found.add(TRANSFORM)
+        found.add(Aspect.TRANSFORM)
     if (old["viewport"], old["render"]) != (new["viewport"], new["render"]):
-        found.add(VISIBILITY)
+        found.add(Aspect.VISIBILITY)
     if mesh(then, old) != mesh(frame, new):
-        found.add(MESH)
+        found.add(Aspect.MESH)
     if slots(then, old) != slots(frame, new):
-        found.add(MATERIALS)
+        found.add(Aspect.MATERIALS)
     if old["properties"] != new["properties"]:
-        found.add(PROPERTIES)
+        found.add(Aspect.PROPERTIES)
     if old["bounds"] != new["bounds"]:
-        found.add(BOUNDS)
+        found.add(Aspect.BOUNDS)
     return found

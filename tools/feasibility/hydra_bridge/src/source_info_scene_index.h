@@ -64,8 +64,9 @@ public:
     SourceInfoSceneIndex(SourceInfoSceneIndex &&) = delete;
     SourceInfoSceneIndex &operator=(SourceInfoSceneIndex &&) = delete;
 
-    // Call before the stage scene index's SetTime, never alongside reads.
-    void SetTime(pxr::UsdTimeCode time);
+    // Call before the stage scene index's SetTime, never alongside reads. With `force`, dirties what depends on
+    // time even at the current time, as the stage scene index's forceDirtyingTimeDeps does.
+    void SetTime(pxr::UsdTimeCode time, bool force = false);
     // Dirties the prims whose added values stage edits since the last call may have changed. Call after the
     // stage scene index's ApplyPendingUpdates, never alongside reads.
     void ApplyPendingUpdates();

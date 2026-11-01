@@ -14,8 +14,11 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <set>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,6 +35,28 @@ bool Approximated(const TfToken &usdTypeName) {
     static const std::array kTypes{TfToken("Sphere"), TfToken("Cone"), TfToken("Cylinder"), TfToken("Capsule"),
                                    TfToken("NurbsPatch")};
     return std::find(kTypes.begin(), kTypes.end(), usdTypeName) != kTypes.end();
+}
+
+// M4 Phase E: a set of aspects, one bit each.
+using Aspects = std::uint8_t;
+constexpr std::array kAspects{Aspect::Transform, Aspect::Visibility, Aspect::Mesh,
+                              Aspect::Materials, Aspect::Properties, Aspect::Bounds};
+constexpr Aspects Bit(Aspect aspect) { return static_cast<Aspects>(1U << static_cast<unsigned>(aspect)); }
+// Locator prefixes: primvars, a point instancer's per-instance transforms, and the source-info filter's container,
+// which holds authored purpose visibility.
+constexpr std::string_view kPrimvars("primvars/"), kInstanceTransforms("primvars/hydra:instance"),
+    kSource("prosceniumSource/");
+
+bool StartsWith(const std::string &locator, std::string_view prefix) {
+    return locator.compare(0, prefix.size(), prefix) == 0;
+}
+
+// The purpose whose authored visibility `locator` names (the filter's prosceniumSource/<purpose>), or nullopt.
+std::optional<TfToken> PurposeVisibility(const std::string &locator) {
+    if (!StartsWith(locator, kSource)) return std::nullopt;
+    for (const TfToken &purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
+        if (locator.compare(kSource.size(), std::string::npos, purpose.GetString()) == 0) return purpose;
+    return std::nullopt;
 }
 
 // Geometry the prototype draws only as a placeholder.
@@ -52,6 +77,21 @@ public:
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
         plan_->time = snapshot.time;
+        // M4 Phase E: the two lookups DirtiedAspects maps to objects, from the snapshot's dirty notices.
+        for (const Event &event : snapshot.events) {
+            if (event.kind != EventKind::Dirtied) continue;  // added, removed, and renamed prims say nothing of time
+            // Each prim's dirtied locators, once each: several notices can dirty one prim in a capture (the
+            // filter's and UsdImaging's, and the time dependencies the previous capture handed on).
+            std::vector<std::string> &locators = dirtiedLocators_[event.path];
+            for (const std::string &locator : event.locators) {
+                if (std::find(locators.begin(), locators.end(), locator) != locators.end()) continue;
+                locators.push_back(locator);
+                // The prims whose own purpose visibility is dirtied, with the purpose: Hydra doesn't flatten it,
+                // so DirtiedAspects finds an object's ancestors among these rather than walking up to each.
+                if (const std::optional<TfToken> purpose = PurposeVisibility(locator))
+                    dirtiedPurposeVisibility_.emplace_back(event.path, *purpose);
+            }
+        }
     }
 
     PlanPtr Run() {
@@ -166,7 +206,7 @@ private:
     }
 
     void AddMesh(const PrimRecord &prim, BuiltMesh &built) {
-        if (resolver_.FramesOf(prim).empty()) return;
+        if (resolver_.CopiesOf(prim).empty()) return;
         std::optional<MeshData> &mesh = built.mesh;
         const PrimRefs &slots = built.slots;
         for (const Diagnostic &problem : built.problems) MapToSources(problem);
@@ -209,28 +249,30 @@ private:
     // each of the mesh's material slots takes; a placeholder has none.
     void AddObjects(const PrimRecord &prim, int mesh, const TfToken &placeholderType, const PrimRefs &slots = {}) {
         const ScopedFactTiming timing(FactTiming::PlanObjects);
-        const std::vector<Frame> &frames = resolver_.FramesOf(prim);
-        const ConstantPrimvars own = OwnConstants(prim);
+        const std::vector<DrawnCopy> &copies = resolver_.CopiesOf(prim);
+        const ConstantPrimvars constants = OwnConstants(prim);
         // An unimaged prim can lack a purpose; USD's default is Hydra's "geometry".
         const TfToken purpose = prim.purpose.IsEmpty() ? HdRenderTagTokens->geometry : prim.purpose;
         auto includes = [&](const Destination &destination) {
             const TfTokenVector &purposes = destination.purposes;
             return std::find(purposes.begin(), purposes.end(), purpose) != purposes.end();
         };
-        for (const Frame &frame : frames) {
+        const Aspects own = dirtiedLocators_.empty() ? 0 : OwnDirtiedAspects(prim, mesh == -1, purpose);
+        for (const DrawnCopy &copy : copies) {
             ObjectEntry object;
-            object.source = frame.Map(prim.path);
-            object.instanceContext = frame.context;
+            object.source = copy.Map(prim.path);
+            object.instanceContext = copy.context;
             object.mesh = mesh;
             object.placeholderType = placeholderType;
             if (mesh == -1) object.bounds = prim.extent;
             object.matrix = prim.matrix.value_or(GfMatrix4d(1.0));
             // A reset inside the prototype drops the instance's transform too (WORKAROUND for OpenUSD #862).
-            if (!ResetsBelow(table_, prim.path, frame.hydraRoot)) object.matrix *= frame.world;
-            object.visible = EffectivelyVisible(table_, prim, frame);
+            if (!ResetsBelow(table_, prim.path, copy.hydraRoot)) object.matrix *= copy.world;
+            object.visible = EffectivelyVisible(table_, prim, copy);
             object.purpose = purpose;
-            object.constantPrimvars = Constants(prim, own, frame);
+            object.constantPrimvars = Constants(prim, constants, copy);
             object.properties = Properties(object);
+            if (!dirtiedLocators_.empty()) object.dirtiedAspects = DirtiedAspects(prim, copy, own, purpose);
             object.inViewport = object.visible && includes(settings_.viewport);
             object.inRender = object.visible && includes(settings_.render);
             if (!slots.empty()) {
@@ -242,8 +284,8 @@ private:
                 // A copy in neither keeps the viewport's, for correspondence.
                 const bool forViewport = object.inViewport || !object.inRender;
                 std::vector<int> viewport, render;
-                if (forViewport) viewport = Materials(slots, frame, settings_.viewport.materialPurpose);
-                if (object.inRender) render = Materials(slots, frame, settings_.render.materialPurpose);
+                if (forViewport) viewport = Materials(slots, copy, settings_.viewport.materialPurpose);
+                if (object.inRender) render = Materials(slots, copy, settings_.render.materialPurpose);
                 if (object.inViewport && object.inRender && viewport != render) {
                     ObjectEntry forRender = object;
                     object.inRender = false;
@@ -278,6 +320,107 @@ private:
                           "Attributes that are neither primvars nor schema attributes are not transferred: " + names});
         }
         WarnBindingsWithoutApi(prim, prim.path, "");
+    }
+
+    // M4 Phase E (E3): the aspects the snapshot's dirtied locators reach in an object of `prim` drawn in `copy`, from
+    // those of the prim, its subsets, and its instance roots or point instancers, and, for purpose visibility, which
+    // Hydra doesn't flatten, their ancestors. Hydra forwards an ancestor's transform and visibility to its descendants'
+    // and to instance roots, and a skeleton's animation to the points it skins. `own` is the prim's
+    // (OwnDirtiedAspects), the same for each of its copies; the instance roots' are memoized, and the ancestors'
+    // purpose visibility is found by prefix among the few prims dirtied in one, so an object costs a lookup per
+    // instance root.
+    std::vector<Aspect> DirtiedAspects(const PrimRecord &prim, const DrawnCopy &copy, Aspects own,
+                                       const TfToken &purpose) {
+        Aspects found = own;
+        for (std::size_t i = 0; i < copy.hydraContext.size(); ++i) {
+            const SdfPath &path = copy.hydraContext[i];
+            if (i == 0 || path != copy.hydraContext[i - 1])
+                found |= ContextDirtiedAspects(path);  // a point's two entries
+        }
+        for (const auto &visibility : dirtiedPurposeVisibility_) {
+            const SdfPath &path = visibility.first;  // a lambda can't capture a structured binding before C++20
+            if (visibility.second != purpose) continue;
+            const bool above = (prim.path != path && prim.path.HasPrefix(path)) ||
+                               std::any_of(copy.hydraContext.begin(), copy.hydraContext.end(),
+                                           [&](const SdfPath &root) { return root.HasPrefix(path); });
+            if (above) found |= Bit(Aspect::Visibility);
+        }
+        std::vector<Aspect> aspects;
+        for (const Aspect aspect : kAspects)
+            if (found & Bit(aspect)) aspects.push_back(aspect);
+        return aspects;
+    }
+
+    // The aspects the locators dirtied on `prim` and its subsets reach in each of its objects. A constant primvar is a
+    // property, and a display color or opacity also the mesh's, which may hold it (D13); any other value is the
+    // mesh's, or a placeholder's bounds.
+    Aspects OwnDirtiedAspects(const PrimRecord &prim, bool placeholder, const TfToken &purpose) const {
+        const Aspects shape = Bit(placeholder ? Aspect::Bounds : Aspect::Mesh);
+        Aspects found = 0;
+        if (const auto dirtied = dirtiedLocators_.find(prim.path); dirtied != dirtiedLocators_.end()) {
+            for (const std::string &locator : dirtied->second) {
+                if (const std::optional<Aspects> placed = Placement(locator, purpose)) {
+                    found |= *placed;
+                } else if (!StartsWith(locator, kPrimvars)) {
+                    found |= shape;
+                } else {
+                    const std::string name = PrimvarName(locator);
+                    const auto constant = std::find_if(prim.primvars.begin(), prim.primvars.end(), [&](const auto &p) {
+                        return p.name.GetString() == name && p.interpolation == HdPrimvarSchemaTokens->constant;
+                    });
+                    if (constant == prim.primvars.end()) {
+                        found |= shape;
+                        continue;
+                    }
+                    found |= Bit(Aspect::Properties);
+                    if (!placeholder &&
+                        (name == HdTokens->displayColor.GetString() || name == HdTokens->displayOpacity.GetString()))
+                        found |= Bit(Aspect::Mesh);
+                }
+            }
+        }
+        if (const auto subsets = subsets_.find(prim.path); subsets != subsets_.end())
+            for (const PrimRecord &subset : subsets->second)
+                if (dirtiedLocators_.count(subset.path)) found |= shape;
+        return found;
+    }
+
+    // The aspects the locators dirtied on an instance root or point instancer reach in the objects drawn through it,
+    // memoized.
+    // On a point instancer, per-instance transforms and its topology are every copy's: Hydra doesn't say which
+    // instances vary. Purpose visibility is DirtiedAspects'.
+    Aspects ContextDirtiedAspects(const SdfPath &path) {
+        if (const auto known = contextAspects_.find(path); known != contextAspects_.end()) return known->second;
+        Aspects found = 0;
+        if (const auto dirtied = dirtiedLocators_.find(path); dirtied != dirtiedLocators_.end()) {
+            for (const std::string &locator : dirtied->second) {
+                if (const std::optional<Aspects> placed = Placement(locator, TfToken()))
+                    found |= *placed;
+                else if (StartsWith(locator, "instancerTopology"))
+                    found |= Bit(Aspect::Visibility);
+                else if (StartsWith(locator, kInstanceTransforms))
+                    found |= Bit(Aspect::Transform);
+                else if (StartsWith(locator, kPrimvars))
+                    found |= Bit(Aspect::Properties);  // an instance's primvars, which its contents inherit
+            }
+        }
+        contextAspects_.emplace(path, found);
+        return found;
+    }
+
+    // Transform and visibility, on any prim, and `purpose`'s visibility; nullopt for any other locator. Another
+    // purpose's visibility reaches nothing.
+    static std::optional<Aspects> Placement(const std::string &locator, const TfToken &purpose) {
+        if (locator == "xform") return Bit(Aspect::Transform);
+        if (locator == "visibility") return Bit(Aspect::Visibility);
+        if (!StartsWith(locator, kSource)) return std::nullopt;
+        return locator.compare(kSource.size(), std::string::npos, purpose.GetString()) == 0 ? Bit(Aspect::Visibility)
+                                                                                            : Aspects{0};
+    }
+
+    static std::string PrimvarName(const std::string &locator) {
+        const std::size_t end = locator.find('/', kPrimvars.size());
+        return locator.substr(kPrimvars.size(), end - kPrimvars.size());
     }
 
     // Each mesh whose copies all have one constant display color holds it (MeshData::heldColor).
@@ -354,9 +497,9 @@ private:
     }
 
     // A primvar on the prim itself, of any interpolation, shadows an inherited instance value.
-    static ConstantPrimvars Constants(const PrimRecord &prim, const ConstantPrimvars &own, const Frame &frame) {
+    static ConstantPrimvars Constants(const PrimRecord &prim, const ConstantPrimvars &own, const DrawnCopy &copy) {
         ConstantPrimvars constants = own;
-        for (const auto &[name, value] : frame.instancePrimvars)
+        for (const auto &[name, value] : copy.instancePrimvars)
             if (!prim.FindPrimvar(name)) constants.emplace_back(name, value);
         return constants;
     }
@@ -391,24 +534,24 @@ private:
     }
 
     // The plan material of each slot's binding, for `purpose`.
-    std::vector<int> Materials(const PrimRefs &slots, const Frame &frame, const TfToken &purpose) {
+    std::vector<int> Materials(const PrimRefs &slots, const DrawnCopy &copy, const TfToken &purpose) {
         std::vector<int> materials;
         materials.reserve(slots.size());
-        for (const PrimRecord &slot : slots) materials.push_back(MaterialIndex(SlotMaterial(slot, frame, purpose)));
+        for (const PrimRecord &slot : slots) materials.push_back(MaterialIndex(SlotMaterial(slot, copy, purpose)));
         return materials;
     }
 
     // The Hydra material a slot binds in one drawn copy.
-    SdfPath SlotMaterial(const PrimRecord &slot, const Frame &frame, const TfToken &purpose) {
+    SdfPath SlotMaterial(const PrimRecord &slot, const DrawnCopy &copy, const TfToken &purpose) {
         // WORKAROUND for OpenUSD #3690 (copy_bindings.h): a copy a binding collection reaches takes
         // UsdShade's own answer for its instance-proxy path.
-        const CopyBindings *copies = snapshot_.copyBindings.get();
-        if (copies && !frame.context.empty()) {
+        const CopyBindings *bindings = snapshot_.copyBindings.get();
+        if (bindings && !copy.context.empty()) {
             const std::optional<size_t> index = MaterialPurposeIndex(purpose);
-            const auto found = copies->materials.find(frame.Map(slot.path));
-            if (index && found != copies->materials.end()) return HydraMaterial(found->second[*index]);
+            const auto found = bindings->materials.find(copy.Map(slot.path));
+            if (index && found != bindings->materials.end()) return HydraMaterial(found->second[*index]);
         }
-        return BoundMaterial(table_, slot, frame, purpose);
+        return BoundMaterial(table_, slot, copy, purpose);
     }
 
     // The Hydra material prim that draws USD material `usdPath` (an instance proxy for a material inside an
@@ -420,8 +563,8 @@ private:
             materialsByUsdPath_.emplace();
             for (const PrimRecord &prim : table_.prims)
                 if (prim.material)
-                    for (const Frame &frame : resolver_.FramesOf(prim))
-                        materialsByUsdPath_->emplace(frame.Map(prim.path), prim.path);
+                    for (const DrawnCopy &copy : resolver_.CopiesOf(prim))
+                        materialsByUsdPath_->emplace(copy.Map(prim.path), prim.path);
         }
         const auto found = materialsByUsdPath_->find(usdPath);
         return found != materialsByUsdPath_->end() ? found->second : usdPath;
@@ -440,7 +583,7 @@ private:
         }
         MaterialData material;
         material.name = path.GetName();
-        for (const Frame &frame : resolver_.FramesOf(*prim)) material.sources.push_back(frame.Map(path));
+        for (const DrawnCopy &copy : resolver_.CopiesOf(*prim)) material.sources.push_back(copy.Map(path));
         material.surfaceIdentifier = prim->material->surfaceIdentifier;
         material.surfaceParameters = prim->material->surfaceParameters;
         plan_->materials.push_back(std::move(material));
@@ -452,16 +595,16 @@ private:
     void MapToSources(const Diagnostic &diagnostic) {
         // Null for a diagnostic without a source, or one naming a prim the snapshot doesn't hold.
         const PrimRecord *prim = diagnostic.source.IsEmpty() ? nullptr : table_.Find(diagnostic.source);
-        if (!prim || resolver_.FramesOf(*prim).empty()) {
+        if (!prim || resolver_.CopiesOf(*prim).empty()) {
             Diagnostic unmapped = diagnostic;
             unmapped.source = SdfPath();
             if (!diagnostic.source.IsEmpty()) unmapped.message += " (Hydra prim " + diagnostic.source.GetString() + ")";
             plan_->diagnostics.push_back(std::move(unmapped));
             return;
         }
-        for (const Frame &frame : resolver_.FramesOf(*prim)) {
+        for (const DrawnCopy &copy : resolver_.CopiesOf(*prim)) {
             Diagnostic mapped = diagnostic;
-            mapped.source = frame.Map(diagnostic.source);
+            mapped.source = copy.Map(diagnostic.source);
             plan_->diagnostics.push_back(std::move(mapped));
         }
     }
@@ -473,6 +616,11 @@ private:
     std::shared_ptr<Plan> plan_;
     InstanceResolver resolver_;
     std::unordered_map<SdfPath, PrimRefs, SdfPath::Hash> subsets_;  // by mesh path
+    // M4 Phase E: by Hydra path, the locators the snapshot's events dirty; the paths whose purpose visibility is
+    // dirtied, with the purpose; and ContextDirtiedAspects' memo.
+    std::unordered_map<SdfPath, std::vector<std::string>, SdfPath::Hash> dirtiedLocators_;
+    std::vector<std::pair<SdfPath, TfToken>> dirtiedPurposeVisibility_;
+    std::unordered_map<SdfPath, Aspects, SdfPath::Hash> contextAspects_;
     MeshContents contents_;
     std::unordered_map<SdfPath, int, SdfPath::Hash> materials_;
     std::optional<std::unordered_map<SdfPath, SdfPath, SdfPath::Hash>> materialsByUsdPath_;  // see HydraMaterial
@@ -507,6 +655,24 @@ const char *DataTypeName(DataType type) {
         return "INT";
     }
     return "FLOAT";
+}
+
+const char *AspectName(Aspect aspect) {
+    switch (aspect) {
+    case Aspect::Transform:
+        return "transform";
+    case Aspect::Visibility:
+        return "visibility";
+    case Aspect::Mesh:
+        return "mesh";
+    case Aspect::Materials:
+        return "materials";
+    case Aspect::Properties:
+        return "properties";
+    case Aspect::Bounds:
+        return "bounds";
+    }
+    return "";
 }
 
 PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings, const Plan *previous) {

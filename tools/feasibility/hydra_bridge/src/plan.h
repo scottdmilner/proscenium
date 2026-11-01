@@ -73,6 +73,11 @@ struct MaterialData {
     std::vector<std::pair<pxr::TfToken, pxr::VtValue>> surfaceParameters;
 };
 
+// M4 Phase E: an aspect of an object that can vary over time, as frames.py's Aspect names it.
+enum class Aspect : std::uint8_t { Transform, Visibility, Mesh, Materials, Properties, Bounds };
+
+const char *AspectName(Aspect aspect);  // "transform", "visibility", "mesh", "materials", "properties", "bounds"
+
 struct ObjectEntry {
     pxr::SdfPath source;
     pxr::SdfPathVector instanceContext;    // native instance roots, outermost first
@@ -92,6 +97,9 @@ struct ObjectEntry {
     // The same primvars as the ID properties Blender holds, by primvar name; strings, and those it
     // can't hold, are diagnosed.
     std::vector<std::pair<std::string, PropertyValue>> properties;
+    // M4 Phase E (E3): the aspects the snapshot's dirtied locators reach in the object, in the enum's order. After a
+    // time change, or a capture with its time dependencies, those that depend on time. The plan diff ignores it.
+    std::vector<Aspect> dirtiedAspects;
 };
 
 // M4 Phase D (D9, a probe): a mesh prim's build, kept with the captured containers of the prim and its subsets

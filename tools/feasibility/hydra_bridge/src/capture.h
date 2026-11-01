@@ -17,7 +17,15 @@ namespace hydra_bridge {
 //
 // `carried` are diagnostics posted before this capture, outside any capture (while the graph was built). They
 // join the graph's own, unattributed to a prim.
+//
+// With `timeDependencies` (M4 Phase E, E3), the snapshot's events also dirty everything that depends on time, as a
+// time change would, so a plan of this one time code says what may vary over others. The read pass registers each
+// value UsdImaging finds might vary (ValueMightBeTimeVarying, equal samples included) with the stage scene index,
+// which dirties exactly those on a time change, or when forced at the current one, and Hydra forwards each dirtied
+// locator to the values it computes from it (flattened transforms and visibility, instance roots, skinned points,
+// extents). Those dirtied locators make Hydra's flattening forget what they name until it is read again, so the next
+// capture is handed them too, and copies those prims again.
 SnapshotPtr Capture(SceneIndexGraph &graph, pxr::UsdTimeCode time, const Snapshot *previous = nullptr,
-                    Diagnostics carried = {});
+                    Diagnostics carried = {}, bool timeDependencies = false);
 
 }  // namespace hydra_bridge

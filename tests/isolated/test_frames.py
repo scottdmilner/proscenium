@@ -36,6 +36,7 @@ VARYING = {
     ("/World/Dual", (), 1): {"visibility"},  # its render object, absent at 2
     ("/World/Roam", (), 0): {"mesh", "transform"},
     ("/World/Lean", (), 0): {"transform"},  # sheared from just after 1
+    ("/World/Guides/Guided", (), 0): {"visibility"},  # an ancestor's guideVisibility
     ("/World/Steady", (), 0): set(),  # two equal samples
     ("/World/Single", (), 0): set(),  # one sample
     ("/World/Still", (), 0): set(),

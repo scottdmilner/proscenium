@@ -96,7 +96,8 @@ private:
 
 }  // namespace
 
-SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous, Diagnostics carried) {
+SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous, Diagnostics carried,
+                    bool timeDependencies) {
     auto snapshot = std::make_shared<Snapshot>();
     snapshot->time = time;
     WarningCollector warnings;
@@ -141,6 +142,14 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
             HarvestErrors(mark, paths[i], errors[i]);
         }
     });
+    if (timeDependencies) {
+        const TfErrorMark mark;
+        graph.DirtyTimeDependencies();
+        std::vector<Event> dirtied = graph.TakeEvents();
+        snapshot->events.insert(snapshot->events.end(), dirtied.begin(), dirtied.end());
+        graph.RequeueEvents(std::move(dirtied));
+        HarvestErrors(mark, SdfPath(), graphDiagnostics);
+    }
 
     snapshot->scene = HdRetainedSceneIndex::New();
     snapshot->scene->AddPrims(entries);

@@ -56,6 +56,11 @@ void RecordingObserver::PrimsRenamed(const HdSceneIndexBase &, const RenamedPrim
     for (const auto &entry : entries) events_.push_back({EventKind::Renamed, entry.newPrimPath, entry.oldPrimPath, {}});
 }
 
+void RecordingObserver::Requeue(std::vector<Event> events) {
+    events.insert(events.end(), std::make_move_iterator(events_.begin()), std::make_move_iterator(events_.end()));
+    events_.swap(events);
+}
+
 std::vector<Event> RecordingObserver::Take() {
     std::vector<Event> taken;
     taken.swap(events_);
@@ -104,11 +109,18 @@ SceneIndexGraph::~SceneIndexGraph() {
 }
 
 void SceneIndexGraph::Advance(UsdTimeCode time) {
+    time_ = time;
     if (sourceInfo_) sourceInfo_->SetTime(time);
     indices_.stageSceneIndex->SetTime(time);
     indices_.stageSceneIndex->ApplyPendingUpdates();
     if (sourceInfo_) sourceInfo_->ApplyPendingUpdates();
     // The batching scene index is empty until its first flush, and holds notices until each one.
+    batching_->Flush();
+}
+
+void SceneIndexGraph::DirtyTimeDependencies() {
+    if (sourceInfo_) sourceInfo_->SetTime(time_, /*force=*/true);
+    indices_.stageSceneIndex->SetTime(time_, /*forceDirtyingTimeDeps=*/true);
     batching_->Flush();
 }
 
