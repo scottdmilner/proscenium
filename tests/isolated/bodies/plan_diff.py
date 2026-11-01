@@ -1,7 +1,8 @@
-"""Isolated body: M4's plan diff (C1), and the updates it drives (C2), after edits to a fixture's stage.
+"""Isolated body: M4's plan diff (C1), and the updates it drives (C2), after edits to a fixture's stage or frames.
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_plan_diff.py and test_update.py. Edits go
-to the session layer of the caller's stage, and the bridge recaptures incrementally, as a refresh would.
+to the session layer of the caller's stage, and the bridge recaptures incrementally, as a refresh would. Frame
+steps (E2) recapture at each frame's time code.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -42,6 +44,11 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
         elif edit == "reshape":  # gives MeshC, whose color its mesh's other copies don't share, a mesh of its own (D10)
             points = UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshC")).GetPointsAttr()
             points.Set([p * 2 for p in points.Get()])
+        elif edit == "turn-and-show":  # a move and a link in one update, after "visibility" hid MeshA
+            UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).AddRotateZOp(opSuffix="turned").Set(30.0)
+            UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeVisible()
+        elif edit == "move-world":  # every copy, F-NESTED-STRESS's sheared ones among them
+            UsdGeom.Xformable(stage.GetPrimAtPath("/World")).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
         elif edit == "visibility":
             UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeInvisible()
         elif edit == "structure":
@@ -262,14 +269,15 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     representation: str = "objects",
     fail_publication: bool = False,
     select: str = "all",
+    moves: bool = False,
 ) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
     `representation` is the baseline's "objects" (apply.py and update.py) or Phase D's "batched" (batch.py and
     batch_update.py). Before each edit, the elements `select` names are selected: "all", or "odd", those of odd
-    plan index. Each step reports the diff, what the display
-    held before and after, what the updated display holds against a fresh application of the same plan, and
-    Blender's data counts for each.
+    plan index. With `moves`, updates keep moved objects and set their matrices. Each step reports the diff, what
+    the display held before and after, what the updated display holds against a fresh application of the same
+    plan, and Blender's data counts for each.
 
     With `fail_publication`, each publication first fails at each of its collection links and unlinks in turn,
     and the step reports whether each failure left the display as it was published, before publishing again,
@@ -301,7 +309,7 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
         _edit(stage, edit)
         following = native.build_plan(bridge.capture(incremental=True))
         diff = native.diff_plans(plan, following)
-        prepared = update.prepare(following, diff, display, policy)
+        prepared = update.prepare(following, diff, display, policy, moves)
         restored, operations = [], None
         if fail_publication:
             published = _linked(collection)
@@ -318,28 +326,12 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
             display = update.publish(prepared, display, collection)
         linked = {"published": _linked(collection), "expected": _published(display, batched)}
         update.retire(prepared)
-        records = following.objects
-        held = held_by(display, records)
-        counts = baseline._counts()  # noqa: SLF001
-        fresh_collection = bpy.data.collections.new("Fresh")
-        blender_scene.collection.children.link(fresh_collection)  # so the depsgraph evaluates its carriers
-        fresh = (apply.apply_batched if batched else apply.apply)(following, fresh_collection)
-        fresh_held = held_by(fresh, records)
-        fresh_counts = baseline._counts()  # noqa: SLF001
-        _remove(fresh, fresh_collection, batched)
+        report = _report(following, display, batched)
         steps.append(
-            {
-                "edit": edit,
-                "diff": diff,
-                "before": _pointers(before),
-                "after": _pointers(held),
-                "held": [_values(o) for o in held["objects"]],
-                "fresh": [_values(o) for o in fresh_held["objects"]],
-                "elements": [obj["proscenium_element"] for obj in _objects_of(display)],
-                "selected": held["selected"],
-                "linked": linked,
-                "counts": counts,
-                "fresh_counts": {kind: fresh_counts[kind] - counts[kind] for kind in counts},
+            {"edit": edit, "diff": diff, "before": _pointers(before), "before_values": _values_of(before)}
+            | {"linked": linked}
+            | report
+            | {
                 "written": _written(prepared, batched),
                 "restored": restored,
                 "operations": operations,  # the links and unlinks of the publication that succeeded
@@ -348,6 +340,88 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
         plan = following
     bridge.release()
     return steps
+
+
+def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update runs
+    module_dir: str,
+    dest: str,
+    times: list[int],
+    representation: str = "objects",
+    users: str = "repoint",
+    moves: bool = False,
+) -> list[dict[str, Any]]:
+    """Follow the frames of the bridge's frames.usda with per-time-code snapshots (E2), as update_edits reports.
+
+    The display is synchronized at the first of `times`, then follows each later frame that `frame_set` sets,
+    stepped by a Snapshots frame-change handler under `users` and `moves`. Before each frame every element is
+    selected. A step's edit is its frame.
+    """
+    sys.path[:0] = [str(BRIDGE), module_dir]
+    native = importlib.import_module("_hydra_bridge")
+    snapshots = importlib.import_module("snapshots")
+    batched = representation == "batched"
+    selection = importlib.import_module("batch_selection" if batched else "selection")
+    baseline = _baseline()
+    held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
+    for name in ("animation.usda", "frames.usda"):  # frames.usda sublayers M1b's animation case
+        shutil.copy(BRIDGE / "cases" / name, dest)
+    stage = Usd.Stage.Open(str(Path(dest) / "frames.usda"))
+    collection = bpy.data.collections.new("Baseline")
+    blender_scene: Any = bpy.context.scene  # never None in a running Blender
+    blender_scene.collection.children.link(collection)
+    view_layer = blender_scene.view_layers[0]
+    blender_scene.frame_set(times[0])
+    policy = importlib.import_module("update").UserPolicy(users)
+    followed = snapshots.Snapshots(native, stage, collection, float(times[0]), representation, policy, moves)
+    handler = followed.follow(blender_scene)
+    steps = []
+    try:
+        for frame in times[1:]:
+            plan = followed.plan
+            display = followed.display
+            selection.apply_selection(
+                view_layer, display if batched else collection, set(range(len(plan.objects))), set()
+            )
+            before = held_by(display, plan.objects)
+            blender_scene.frame_set(frame)
+            step = followed.last
+            assert step is not None and step.time == frame, (frame, step)
+            linked = {"published": _linked(collection), "expected": _published(followed.display, batched)}
+            report = _report(step.plan, followed.display, batched)
+            written = _written(step.prepared, batched)
+            steps.append({"edit": f"frame {frame}", "diff": step.diff, "before": _pointers(before), "linked": linked})
+            steps[-1]["before_values"] = _values_of(before)
+            steps[-1] |= report | {"written": written, "restored": [], "operations": None}
+    finally:
+        bpy.app.handlers.frame_change_pre.remove(handler)
+        followed.release()
+    return steps
+
+
+def _report(plan: Any, display: Any, batched: bool) -> dict[str, Any]:
+    """What an updated display holds against a fresh application of its plan, with Blender's data counts for each."""
+    apply = importlib.import_module("batch" if batched else "apply")
+    baseline = _baseline()
+    held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
+    records = plan.objects
+    held = held_by(display, records)
+    counts = baseline._counts()  # noqa: SLF001
+    fresh_collection = bpy.data.collections.new("Fresh")
+    blender_scene: Any = bpy.context.scene  # never None in a running Blender
+    blender_scene.collection.children.link(fresh_collection)  # so the depsgraph evaluates its carriers
+    fresh = (apply.apply_batched if batched else apply.apply)(plan, fresh_collection)
+    fresh_held = held_by(fresh, records)
+    fresh_counts = baseline._counts()  # noqa: SLF001
+    _remove(fresh, fresh_collection, batched)
+    return {
+        "after": _pointers(held),
+        "held": [_values(o) for o in held["objects"]],
+        "fresh": [_values(o) for o in fresh_held["objects"]],
+        "elements": [obj["proscenium_element"] for obj in _objects_of(display)],
+        "selected": held["selected"],
+        "counts": counts,
+        "fresh_counts": {kind: fresh_counts[kind] - counts[kind] for kind in counts},
+    }
 
 
 def _remove(fresh: Any, collection: Any, batched: bool) -> None:
@@ -407,6 +481,11 @@ def _pointers(held: dict[str, Any]) -> dict[str, Any]:
         "materials": held["materials"],
         "batches": held.get("batches", []),
     }
+
+
+def _values_of(held: dict[str, Any]) -> list[dict[str, Any] | None]:
+    """Each published object's values, by old plan index; None for an instance of a batched display."""
+    return [None if o.get("pointer") is None else _values(o) for o in held["objects"]]
 
 
 def _values(held: dict[str, Any]) -> dict[str, Any]:

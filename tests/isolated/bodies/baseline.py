@@ -224,6 +224,8 @@ def _plain(value: Any) -> Any:
     """An ID property or socket value as JSON: arrays as (nested) lists."""
     if hasattr(value, "to_list"):
         return value.to_list()
+    if isinstance(value, list):  # a nested array, such as a matrix's rows, is a list of ID property arrays
+        return [_plain(element) for element in value]
     return list(value) if isinstance(value, bpy.types.bpy_prop_array) else value
 
 

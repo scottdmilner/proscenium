@@ -483,6 +483,48 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
     - 695 of 15,159 tracks vary: all 695 in transform, 693 in mesh, and 1 placeholder in bounds.
     - The frames hold 2,806 MB of live heap above the first frame's, 52 MB a frame; whole plans held 5,770 MB. Each frame's 355 new meshes carry 52.8 MB of arrays, only 4.6 MB of them positions, since a rebuilt mesh's unchanged topology and UVs are new arrays.
     - On the harness's `animation` scene (24 frames of a 66k-point grid and 1,000 cubes): 0.95 s and 116 MB.
+- **E2, per-time-code snapshots.** `snapshots.py` keeps a display synchronized at one time code and steps it to another through the update path: an incremental capture, a plan reusing the previous plan's mesh builds (D9), the plan diff, and an update by it, in either representation, under either user policy, with or without moves. `Snapshots.follow` steps it from a frame-change handler before Blender evaluates the frame, taking a frame's time code to be its frame number, so `frame_set` and playback step it. The display holds no animation data.
+  - **Moves (with the user), an update option.** Without them, an object whose transform changes isn't repointable (C2), so the update replaces it whether or not its mesh changed.
+    - **In the diff:** `diff_plans` lists as **moved** the changed objects whose world matrix differs and otherwise at most their mesh or materials.
+    - **In the update:** `prepare(..., moves=True)`, in `update.py` and `batch_update.py`, keeps a moved object and sets its matrix at publication. It is repointed too if its data changed, under repointing; under replacement, one whose data changed is replaced. One that needs a shear parent before or after is replaced, since the parent's decomposition would change too.
+    - **On failure:** publication restores a moved object's location, rotation, and scale as Blender stored them. Setting the old matrix back would decompose it again, which needn't give back the same components; a negative scale can come back under another sign convention.
+  - **The checks:**
+    - `test_update.py` follows `cases/frames.usda` through frames 1, 2, 3, 3, and 1, set by `frame_set`, in both representations, under both policies, with and without moves, with every element selected before each. Each step is held to the edits' checks: the display holds what a fresh application does, keeps exactly what the diff matches and the selection of what it keeps, and links exactly the published display. The step to the same frame changes and writes nothing, and every other step changes something.
+    - With moves, the update keeps exactly the moved objects that are objects before and after, have a shear parent in neither display, and, under replacement, keep their mesh. `frames.usda` gains Roam, whose transform and points both vary, so it is repointed under repointing and replaced under replacement, and Lean, which becomes sheared, so it is replaced.
+    - The edit checks run with and without moves. `F-NESTED-STRESS` gains an edit moving every copy, so moves keep the unsheared ones only. `F-APPEARANCE-CASES` gains one that turns an object and shows a hidden one, so a publication that fails at the link comes after a move, and must restore it. `test_plan_diff.py` checks that a translation is moved.
+    - In an ad hoc mutation run, each of these single changes failed them: in `snapshots.py`, capturing at the published time, no handler installed, nothing retired, the published plan or display not kept, the policy or moves ignored, and the baseline's updater for the batched display; for moves, an old or a new shear ignored, a data change kept under replacement, no matrix set or no transform restored in either representation, no rotation restored, moved objects not repointed in either, batched moves ignored, and in the diff, every other change counted as moved, or nothing.
+  - **Cost** (ad hoc, the bpy wheel, one run of each, every frame of the range set in turn; a median per frame, with its range):
+
+    | Scene | Objects | Objects, with moves | Batched | Batched, with moves |
+    |---|---|---|---|---|
+    | ALab with its point instancers, 53 steps | 2.37 s (2.19–3.99 s) | 0.80 s (0.77–0.95 s) | 0.99 s (0.89–1.30 s) | 0.57 s (0.53–1.57 s) |
+    | The harness's `animation` scene, 23 steps | 0.138 s | 0.076 s | 0.042 s | 0.043 s |
+
+    - **On ALab:** capture, planning, and the diff take 0.25 s of each step. Without moves, preparing and retiring the 695 changed objects take 1.12 s and 0.86 s for objects. With moves, one object is replaced, and preparation (0.41 s for objects, 0.21 s batched) is mostly building the 355 meshes whose points changed. Playing ALab at 24 frames a second (42 ms a frame) would take 19 times less with moves for objects, and 14 times less batched.
+    - **On the `animation` scene,** the 1,000 cubes are one batch, whose points an update rewrites with or without moves.
+
+- **E4, mesh cache storage (with the user): per-frame position attributes, and a bake only where topology changes.** Probed ahead of the cached display, ad hoc in the bpy wheel, one run each.
+  - **Geometry Nodes bakes can't take a frame at a time through Blender's API.**
+    - **The bake operator rebakes its whole range:** baking one frame alone replaced the frames baked before it.
+    - **Python doesn't expose a packed bake's contents:** a bake's `data_blocks` are references to the IDs it uses.
+    - **The disk format can be appended to.** A bake on disk is a JSON file per frame describing its geometry, with each array a slice of a blob file, and Blender shares unchanged arrays across frames: a later frame of a deforming grid stored only its positions. A frame appended by hand, its JSON and a positions blob, played back once Blender reread the bake.
+    - **Blender rereads a bake only when the file is reopened, the bake is packed, or the modifier's node group is reassigned,** which also resets the bake's settings. Unpacking, writing a frame, and packing again worked within one session.
+    - **The bake operators need a saved `.blend`** (the bake directory is relative to it) and refuse a hidden object.
+  - **Per-frame position attributes work:** a point attribute `P_<frame>` on the shared mesh holds a frame's positions, and a Geometry Nodes modifier on each copy builds the name from the scene's frame and sets positions only where the attribute exists. Cached frames kept their values as later ones were added and after the file was reopened.
+  - **On ALab's range** (`measure/mesh_caches.py`, ad hoc): the object baseline synchronized at 1004, then each frame to 1057 streamed through the bridge, and its 355 deforming meshes' new positions (shown by 693 copies) appended to a cache. The bakes use a holder object per mesh, whose geometry its copies show. Each sampled mesh matched the plan's positions at 1005, 1030, and 1057 in both.
+
+    | Per frame, median | Position attributes | Bake on disk, packed at the end |
+    |---|---|---|
+    | Stream from the bridge | 0.25 s | 0.24 s |
+    | Append | 2.3 ms, flat | 0.55 s, rising from 0.61 s to 0.79 s; 355 first bakes of 0.08 s each |
+    | Evaluate the new frame | 12 ms | 0.29 s |
+    | Undo push | 45 ms, 3.8 MB of footprint | 46 ms, 1.1 MB |
+    | Playback of a cached frame | 6.0 ms (8.6 ms at most) | 11.9 ms (80 ms at most) |
+
+    - **Once:** packing the bakes took 53.8 s and left their 352 MB of files on disk. Filling grew the live heap by 616 MB with attributes and 769 MB with bakes. The `.blend` saved to 1,424 MB and 1,532 MB uncompressed; the attributes' cache adds about 4.7 MB a frame, near E1's 4.6 MB of positions.
+    - **Repacking each frame,** unpacking and repacking all 355 bakes, took 84–149 s a frame over the first four frames, so it wasn't run further.
+  - **The decision (with the user):** a mesh whose points alone vary caches position attributes, which append in constant time, stay in the `.blend`, and are shared by every copy of the mesh. A bake, filled on disk and packed once, or a mesh per frame, is for a mesh whose topology changes, which attributes can't hold; ALab has none.
+  - **For points-only reuse:** with either cache, a frame's first visit is mostly the stream's 0.25 s, which still builds each deformed mesh whole before the cache keeps its positions.
 
 ### Phase F — Decisions and finalization
 

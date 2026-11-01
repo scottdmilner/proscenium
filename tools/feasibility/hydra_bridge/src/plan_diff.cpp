@@ -59,11 +59,10 @@ bool SameData(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff &d
     return true;
 }
 
-// Everything else apply.py sets from an object entry. A placeholder and a mesh object differ here too.
-bool SameRest(const ObjectEntry &next, const ObjectEntry &old) {
-    return std::tie(next.placeholderType, next.bounds, next.matrix, next.visible, next.purpose,
-                    next.constantPrimvars) ==
-               std::tie(old.placeholderType, old.bounds, old.matrix, old.visible, old.purpose, old.constantPrimvars) &&
+// Everything else apply.py sets from an object entry but its matrix. A placeholder and a mesh object differ here.
+bool SameRestButMatrix(const ObjectEntry &next, const ObjectEntry &old) {
+    return std::tie(next.placeholderType, next.bounds, next.visible, next.purpose, next.constantPrimvars) ==
+               std::tie(old.placeholderType, old.bounds, old.visible, old.purpose, old.constantPrimvars) &&
            (next.mesh == -1) == (old.mesh == -1) && next.materialSlots.size() == old.materialSlots.size() &&
            SameProperties(next, old);
 }
@@ -107,10 +106,14 @@ PlanDiff DiffPlans(const Plan &published, const Plan &next) {
         matched[static_cast<std::size_t>(old)] = true;
         const ObjectEntry &entry = next.objects[i];
         const ObjectEntry &before = published.objects[static_cast<std::size_t>(old)];
-        const bool rest = SameRest(entry, before);
+        const bool others = SameRestButMatrix(entry, before);
+        const bool rest = others && entry.matrix == before.matrix;
         if (rest && SameData(entry, before, diff)) continue;
         diff.changed.push_back(static_cast<int>(i));
-        if (rest) diff.repointable.push_back(static_cast<int>(i));
+        if (rest)
+            diff.repointable.push_back(static_cast<int>(i));
+        else if (others)
+            diff.moved.push_back(static_cast<int>(i));
     }
     for (std::size_t i = 0; i < matched.size(); ++i)
         if (!matched[i]) diff.removed.push_back(static_cast<int>(i));

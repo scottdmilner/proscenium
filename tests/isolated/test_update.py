@@ -105,37 +105,103 @@ def _values(held: dict[str, Any]) -> dict[str, Any]:
 
 DIFF_BODY = Path(__file__).parent / "bodies/plan_diff.py"
 APPEARANCE_EDITS = ["unchanged", "transform", "shared-geometry", "material", "primvar", "reshape", "visibility"]
-APPEARANCE_EDITS += ["structure"]
+APPEARANCE_EDITS += ["turn-and-show", "structure"]
 APPEARANCE_EDITS += ["instance-transform", "kits-move", "purpose-move"]
 APPEARANCE_EDITS += ["instance-remove", "instance-remove-another", "instance-restore"]
 APPEARANCE_EDITS += ["instance-color", "color-interpolation", "uncolor", "merge-batches"]
 
 
+@pytest.mark.parametrize("moves", [False, True])
 @pytest.mark.parametrize("selection", ["all", "odd"])
 @pytest.mark.parametrize("representation", ["objects", "batched"])
 @pytest.mark.parametrize("users", ["repoint", "replace"])
 @pytest.mark.parametrize("fixture", ["appearance", "universe", "stress"])
 def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtures
-    fixture: str, users: str, representation: str, selection: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+    fixture: str,
+    users: str,
+    representation: str,
+    selection: str,
+    moves: bool,
+    wheel: Runtime,
+    hydra_bridge: Path,
+    tmp_path: Path,
 ) -> None:
     """C2 and D4: after each edit, the display updated by the plan diff holds what a fresh application does.
 
     On both representations: the baseline (update.py) and the batched display (batch_update.py). Before each edit
     every element is selected, or on the appearance edits, those of odd plan index, so a batch holds two states.
+    With moves (E2), updates keep moved objects and set their matrices.
     """
     if selection == "odd" and fixture != "appearance":
         pytest.skip("the appearance edits move some of a batch's copies")
     generators = {
         "appearance": (appearance.appearance_cases, APPEARANCE_EDITS),
         "universe": (interaction.universe_membership, ["unchanged", "unload", "load"]),
-        "stress": (appearance.nested_stress, ["unchanged"]),
+        "stress": (appearance.nested_stress, ["unchanged", "move-world"]),
     }
     generator, edits = generators[fixture]
     with generator(tmp_path / "scene") as built:
         kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
-        kwargs |= {"users": users, "representation": representation, "select": selection}
+        kwargs |= {"users": users, "representation": representation, "select": selection, "moves": moves}
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
-    for step in steps:
+    _check_steps(steps, users, representation, selection, {edits.index("unchanged")}, moves)
+    if fixture == "stress":
+        # Moving every copy moves sheared ones, which keep their shear parents, so moves keep only the others.
+        (step,) = (step for step in steps if step["edit"] == "move-world")
+        kept = _kept_moves(step, users)
+        assert set(step["diff"]["moved"]) > kept
+
+
+# M1b's animation case varies every kind of value its plan holds over [1, 3]; the repeated 3 changes nothing.
+FRAMES = [1, 2, 3, 3, 1]
+
+
+@pytest.mark.parametrize("moves", [False, True])
+@pytest.mark.parametrize("users", ["repoint", "replace"])
+@pytest.mark.parametrize("representation", ["objects", "batched"])
+def test_update_follows_frames(  # noqa: PLR0913 - pytest's parameters and fixtures
+    representation: str, users: str, moves: bool, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    """E2: per-time-code snapshots, stepped by a frame-change handler, hold what a fresh application does.
+
+    On the bridge's frames.usda, each frame set after the first is synchronized through the update path, with
+    every element selected before it, and checked as an edit is, under each user policy, with and without moves.
+    """
+    dest = tmp_path / "scene"
+    dest.mkdir()
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "dest": str(dest), "times": FRAMES}
+    kwargs |= {"representation": representation, "users": users, "moves": moves}
+    steps = run_isolated(wheel, DIFF_BODY, "frame_steps", tmp_path, **kwargs)
+    assert [step["edit"] for step in steps] == [f"frame {frame}" for frame in FRAMES[1:]]
+    repeat = FRAMES.index(3, FRAMES.index(3) + 1) - 1  # the step to frame 3 again
+    for index, step in enumerate(steps):
+        diff = step["diff"]
+        changes = diff["changed"] or diff["removed"] or -1 in diff["objects"]
+        assert bool(changes) == (index != repeat), step["edit"]
+    _check_steps(steps, users, representation, "all", {repeat}, moves)
+    if moves:
+        # From 1 to 2 and 2 to 3, Comb, a placeholder, moves; so does Hand on its mesh, which it shares with the
+        # Blades, so the batched display batches it; and Roam moves and changes its points, so it is kept and
+        # repointed under repointing, and replaced under replacement.
+        for step in steps[:2]:
+            kept = {step["held"][index]["source"] for index in _kept_moves(step, users)}
+            assert "/World/Comb" in kept, step["edit"]
+            assert ("/World/Rig/Arm/Hand" in kept) == (representation == "objects"), step["edit"]
+            assert ("/World/Roam" in kept) == (users == "repoint"), step["edit"]
+        # Lean is sheared at 2, so it needs a shear parent there and is replaced; from 2 to 3 it has one throughout.
+        lean = {step["held"][index]["source"] for step in steps[:2] for index in _kept_moves(step, users)}
+        assert "/World/Lean" not in lean
+
+
+def _check_steps(  # noqa: PLR0913 - the steps and how they were run
+    steps: list[dict[str, Any]], users: str, representation: str, selection: str, unchanged: set[int], moves: bool
+) -> None:
+    """Each update's display against a fresh application, and what it kept, selected, and wrote.
+
+    The steps at the positions `unchanged` names change nothing, so their updates must write nothing. With
+    `moves`, the updates kept the moved objects _kept_moves names.
+    """
+    for position, step in enumerate(steps):
         edit, diff, before, after = step["edit"], step["diff"], step["before"], step["after"]
         assert step["held"] == step["fresh"], edit
         assert step["counts"] == _fresh_counts(step), edit  # nothing left over
@@ -147,6 +213,8 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
                 kept = old != -1 and after[kind][index] == before[kind][old]
                 assert kept == (old != -1), (edit, kind, index)
         rebuilt = set(diff["changed"]) - (set(diff["repointable"]) if users == "repoint" else set())
+        if moves:
+            rebuilt -= _kept_moves(step, users)
         if representation == "objects":
             assert step["elements"] == list(range(len(after["objects"]))), edit  # each object names its plan index
             kept = _kept_objects(diff, before, after, rebuilt, edit)
@@ -157,26 +225,28 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
         was = {old for old in range(len(before["objects"])) if selection == "all" or old % 2}
         expected = sorted(i for i in kept if diff["objects"][i] in was and step["held"][i]["viewport"])
         assert step["selected"] == expected, edit
-        if edit == "unchanged":
+        if position in unchanged:
             nothing = {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0, "staged": False}
             if representation == "batched":
                 nothing |= {"added": 0, "dropped": 0, "points": 0, "reprototyped": 0, "renumbered batches": 0}
             assert step["written"] == nothing
 
 
+@pytest.mark.parametrize("moves", [False, True])
 @pytest.mark.parametrize("representation", ["objects", "batched"])
 @pytest.mark.parametrize("users", ["repoint", "replace"])
-def test_failed_publication_restores_the_display(
-    users: str, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+def test_failed_publication_restores_the_display(  # noqa: PLR0913 - pytest's parameters and fixtures
+    users: str, representation: str, moves: bool, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
 ) -> None:
     """B6 and D4: a publication that fails at any of its links or unlinks leaves the published display as it was.
 
     Each update's publication fails at each of its collection links and unlinks in turn, after every change it
-    makes in place, then succeeds, and the display it publishes holds what a fresh application does.
+    makes in place, then succeeds, and the display it publishes holds what a fresh application does. With moves,
+    the changes in place include the moved objects' transforms.
     """
     with appearance.appearance_cases(tmp_path / "scene") as built:
         kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": APPEARANCE_EDITS}
-        kwargs |= {"users": users, "representation": representation, "fail_publication": True}
+        kwargs |= {"users": users, "representation": representation, "fail_publication": True, "moves": moves}
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     for step in steps:
         edit = step["edit"]
@@ -185,6 +255,26 @@ def test_failed_publication_restores_the_display(
         assert step["held"] == step["fresh"], edit
         assert step["counts"] == _fresh_counts(step), edit
     assert sum(step["operations"] for step in steps) > len(steps)
+
+
+def _kept_moves(step: dict[str, Any], users: str) -> set[int]:
+    """The moved objects an update with moves keeps, by new plan index.
+
+    Each is an object before and after, with a shear parent in neither display, and under replacement on the mesh
+    it had. The fixtures change no moved object's materials.
+    """
+    diff, kept = step["diff"], set()
+    for index in diff["moved"]:
+        was, now = step["before_values"][diff["objects"][index]], step["held"][index]
+        if was is None or step["after"]["objects"][index] is None:
+            continue  # an instance of a batch, before or after
+        if was["parent_world"] is not None or now["parent_world"] is not None:
+            continue
+        mesh = now["mesh_index"]
+        same = was["mesh_index"] is None if mesh is None else diff["meshes"][mesh] == was["mesh_index"]
+        if same or users == "repoint":
+            kept.add(index)
+    return kept
 
 
 def _fresh_counts(step: dict[str, Any]) -> dict[str, int]:

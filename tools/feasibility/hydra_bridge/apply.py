@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     # bpy's attribute enums exist only as Literal aliases in the stubs; at run time they are RNA enum strings.
     from bpy.stub_internal.rna_enums import AttributeDomainItems, AttributeTypeItems
     from plan_types import MaterialRecord, MeshRecord, ObjectRecord, Plan, PlanArray
+    from pxr import Gf
 
 
 class BufferFormat(StrEnum):
@@ -187,7 +188,15 @@ def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> 
     return mesh
 
 
-def _sheared(world: Matrix) -> bool:
+def world(matrix: Gf.Matrix4d) -> Matrix:
+    """A plan matrix as Blender's world matrix.
+
+    USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
+    """
+    return Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+
+
+def sheared(world: Matrix) -> bool:
     linear = world.to_3x3()
     # mathutils, not numpy: about 20 times faster for one small matrix.
     axes = [linear.col[i] for i in range(3)]  # ty: ignore[not-subscriptable] - the stubs omit MatrixAccess indexing
@@ -252,13 +261,11 @@ def new_object(
         obj_data = None
     obj = bpy.data.objects.new(name, obj_data)
     collection.objects.link(obj)
-    matrix = data["matrix"]
-    # USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
-    world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
-    if _sheared(world):
-        _shear_parent(obj, data["source"], world, collection)
+    placed = world(data["matrix"])
+    if sheared(placed):
+        _shear_parent(obj, data["source"], placed, collection)
     else:
-        obj.matrix_world = world
+        obj.matrix_world = placed
     # Each destination shows its own prim purposes; an object can be in one, both, or neither.
     obj.hide_viewport = not data["viewport"]
     obj.hide_render = not data["render"]

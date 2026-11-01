@@ -41,12 +41,13 @@ def _changes(step: dict[str, Any]) -> dict[str, Any]:
         "added": {new[i]["source"] for i, m in enumerate(diff["objects"]) if m == -1},
         "removed": {old[i]["source"] for i in diff["removed"]},
         "changed": {new[i]["source"] for i in diff["changed"]},
+        "moved": {new[i]["source"] for i in diff["moved"]},
         "new meshes": sum(1 for m in diff["meshes"] if m == -1),
         "new materials": [step["materials"][i] for i, m in enumerate(diff["materials"]) if m == -1],
     }
 
 
-NOTHING = {"added": set(), "removed": set(), "changed": set(), "new meshes": 0, "new materials": []}
+NOTHING = {"added": set(), "removed": set(), "changed": set(), "moved": set(), "new meshes": 0, "new materials": []}
 
 
 def test_diff_follows_edits(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
@@ -54,7 +55,7 @@ def test_diff_follows_edits(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) 
     with appearance.appearance_cases(tmp_path / "scene") as cases:
         steps = _steps(cases.root, edits, wheel, hydra_bridge, tmp_path)
     assert _changes(steps["unchanged"]) == NOTHING
-    assert _changes(steps["transform"]) == {**NOTHING, "changed": {f"{EQUAL}/MeshD"}}
+    assert _changes(steps["transform"]) == {**NOTHING, "changed": {f"{EQUAL}/MeshD"}, "moved": {f"{EQUAL}/MeshD"}}
     (bodies,) = (uses for uses in cases.shared if any(path.endswith("/Body") for path in uses))
     assert _changes(steps["shared-geometry"]) == {**NOTHING, "changed": set(bodies), "new meshes": 1}
 

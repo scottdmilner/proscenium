@@ -5,11 +5,12 @@ Preparation builds the rest beside the display, in a collection no scene links, 
 display uses (TXN-05):
 - each new mesh and material;
 - each added object, and each changed one. Under repointing, a changed object that differs only in its mesh or
-  materials is kept instead.
+  materials is kept instead. With moves (M4 Phase E), so is one whose world matrix differs, if neither its old
+  nor its new transform needs a shear parent, and under replacement, if it keeps its data.
 
 Publication then makes the change in one call (TXN-06):
 - it links the new objects in place of the old ones, and unlinks the removed ones;
-- it moves the kept users of a rebuilt mesh or material onto it;
+- it moves the kept users of a rebuilt mesh or material onto it, and sets each kept moved object's matrix;
 - it renumbers the kept objects whose plan index changed.
 
 It undoes all of that if any step fails. Retirement removes the old objects, and the old meshes and materials
@@ -23,12 +24,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object
+from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object, sheared, world
 from selection import ELEMENT
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
+    from mathutils import Matrix
     from plan_types import ObjectRecord, Plan, PlanDiff
 
 
@@ -50,10 +52,11 @@ class Unit:
 
 @dataclass
 class Repoint:
-    """A kept object's data and slots, as publication sets them."""
+    """A kept object's data and slots, and its world matrix when it moved, as publication sets them."""
 
     data: Any  # the object's new mesh; Object.data is typed as every kind of object data
     materials: list[bpy.types.Material | None]
+    matrix: Matrix | None = None  # Blender's world matrix, for a moved object
 
 
 @dataclass
@@ -65,13 +68,45 @@ class Prepared:
     display: Display  # the display once published, in the new plan's order
     created: dict[int, bpy.types.Object]  # by new plan index: the new objects
     leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
-    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data
+    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data or a new matrix
     renumbered: list[int]  # new plan indices of kept objects whose index changed
     retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
 
-# A kept object's state before publication: its data, each slot's material, and its element.
-Saved = tuple[bpy.types.Object, Any, list[bpy.types.Material | None], int]
+# A kept object's state before publication: its data, each slot's material, its element, and its transform if
+# publication moves it.
+Saved = tuple[bpy.types.Object, Any, list[bpy.types.Material | None], int, "Transform | None"]
+
+
+@dataclass(frozen=True)
+class Transform:
+    """An object's own transform as Blender stores it, which restores exactly.
+
+    Setting a matrix decomposes it again, which needn't give back the same components: a negative scale can
+    return under another sign convention.
+    """
+
+    # Copies of Blender's values, typed Any: the bpy stubs type mathutils' Vector as a property descriptor.
+    location: Any
+    rotation_mode: str
+    rotation: Any  # rotation_mode's own property: an Euler, a Quaternion, or the axis-angle values
+    scale: Any
+
+    @staticmethod
+    def of(obj: bpy.types.Object) -> Transform:
+        mode = obj.rotation_mode
+        rotation = getattr(obj, _ROTATIONS.get(mode, "rotation_euler"))
+        copied = rotation.copy() if hasattr(rotation, "copy") else tuple(rotation)
+        return Transform(obj.location.copy(), mode, copied, obj.scale.copy())
+
+    def restore(self, obj: bpy.types.Object) -> None:
+        obj.rotation_mode = self.rotation_mode  # ty: ignore[invalid-assignment] - a mode read from an object
+        obj.location = self.location
+        setattr(obj, _ROTATIONS.get(self.rotation_mode, "rotation_euler"), self.rotation)
+        obj.scale = self.scale
+
+
+_ROTATIONS = {"QUATERNION": "rotation_quaternion", "AXIS_ANGLE": "rotation_axis_angle"}  # else Euler
 
 
 def unit_diff(plan: Plan, unit: Unit) -> PlanDiff:
@@ -91,6 +126,7 @@ def unit_diff(plan: Plan, unit: Unit) -> PlanDiff:
         "objects": list(range(len(records))),
         "changed": sorted(unit.objects | users),
         "repointable": sorted(users - unit.objects),
+        "moved": [],
         "removed": [],
     }
 
@@ -137,11 +173,17 @@ def sample_units(records: Sequence[ObjectRecord]) -> dict[str, Unit]:
     return units
 
 
-def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> Prepared:
-    """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links."""
+def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy, moves: bool = False) -> Prepared:
+    """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links.
+
+    With `moves`, the moved objects that kept_moves keeps are moved at publication rather than replaced.
+    """
     meshes, materials = new_data(plan, diff, display.meshes, display.materials)
+    moving = (
+        kept_moves(plan, diff, diff["moved"], display.objects.__getitem__, (meshes, materials), users) if moves else {}
+    )
     kept = set(diff["repointable"]) if users is UserPolicy.REPOINT else set()
-    rebuilt = set(diff["changed"]) - kept
+    rebuilt = set(diff["changed"]) - kept - set(moving)
     added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
     # Only the records the update builds from: reading the plan's whole list converts every record.
     needed = sorted({*added, *kept})
@@ -168,7 +210,44 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy) -> 
         mesh = record["mesh"]
         slots = [None if m is None else materials[m] for m in record["material_slots"]]
         repointed[index] = Repoint(None if mesh is None else meshes[mesh], slots)
+    repointed |= moving
     return Prepared(staging, Display(objects, meshes, materials), created, leaving, repointed, renumbered)
+
+
+def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the published objects, the data, the policy
+    plan: Plan,
+    diff: PlanDiff,
+    moved: list[int],
+    published: Callable[[int], bpy.types.Object],
+    data: tuple[list[bpy.types.Mesh], list[bpy.types.Material]],
+    users: UserPolicy,
+) -> dict[int, Repoint]:
+    """By new plan index, the objects of `moved` (from the diff's) an update keeps, with new matrix, data, and slots.
+
+    `published(old)` is the published object of old plan index `old`, and `data` the new plan's meshes and
+    materials. A moved object is kept unless its old or new transform needs a shear parent, whose decomposition
+    would change too, or, under replacement, its data changed. Only the moved objects' records are read.
+    """
+    meshes, materials = data
+    kept = {}
+    for index, record in zip(moved, plan.objects_at(moved), strict=True):
+        obj = published(diff["objects"][index])
+        matrix = world(record["matrix"])
+        if obj.parent is not None or sheared(matrix):
+            continue
+        mesh = record["mesh"]
+        # A placeholder keeps its own bounds mesh: its bounds are the same, or it wouldn't have moved.
+        moving = Repoint(
+            None if mesh is None else meshes[mesh],
+            [None if m is None else materials[m] for m in record["material_slots"]],
+            matrix,
+        )
+        same = (moving.data is None or moving.data == obj.data) and moving.materials == [
+            slot.material for slot in obj.material_slots
+        ]
+        if same or users is UserPolicy.REPOINT:
+            kept[index] = moving
+    return kept
 
 
 def new_data(
@@ -203,14 +282,18 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
     try:
         for index in sorted(set(prepared.repointed) | set(prepared.renumbered)):
             obj = new.objects[index]
-            saved.append((obj, obj.data, [slot.material for slot in obj.material_slots], obj[ELEMENT]))
+            slots = [slot.material for slot in obj.material_slots]
             repoint = prepared.repointed.get(index)
+            moving = repoint is not None and repoint.matrix is not None
+            saved.append((obj, obj.data, slots, obj[ELEMENT], Transform.of(obj) if moving else None))
             if repoint is not None:
                 if repoint.data is not None:
                     # The same slot count, and the slots link to the object, so each keeps its place.
                     obj.data = repoint.data
                 for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
                     slot.material = material
+                if repoint.matrix is not None:
+                    obj.matrix_world = repoint.matrix
             obj[ELEMENT] = index
         for obj in prepared.created.values():
             for created in with_parent(obj):
@@ -256,11 +339,13 @@ def with_parent(obj: bpy.types.Object) -> list[bpy.types.Object]:
 
 def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[Saved]) -> None:
     """Put back what a failed publication changed; the prepared data stays for disposal."""
-    for obj, data, slots, element in reversed(saved):
+    for obj, data, slots, element, transform in reversed(saved):
         obj.data = data
         for slot, material in zip(obj.material_slots, slots, strict=True):
             slot.material = material
         obj[ELEMENT] = element
+        if transform is not None:
+            transform.restore(obj)
     for obj in prepared.created.values():
         for created in with_parent(obj):
             if created.name in collection.objects:

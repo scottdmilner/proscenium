@@ -122,6 +122,8 @@ class PlanDiff(TypedDict):
     objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
     changed: list[int]  # new objects whose old counterpart differs, in plan order
     repointable: list[int]  # changed objects that differ only in their mesh or materials, in plan order
+    # Changed objects whose matrix differs, and otherwise at most their mesh or materials, in plan order (Phase E)
+    moved: list[int]
     removed: list[int]  # old objects with no new counterpart, in plan order
 
 

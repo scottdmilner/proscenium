@@ -12,7 +12,8 @@ Preparation builds, beside the display in a collection no scene links (TXN-05):
 Publication then makes the change in one call (TXN-06), and undoes all of it if any step fails:
 - it links the new objects and carriers in place of the old ones, and unlinks the removed ones;
 - it moves a matched batch's carriers onto its new points, or else renumbers its points' elements in place;
-- it moves a matched batch's prototype onto its group's mesh and materials, and the kept objects as update.py does.
+- it moves a matched batch's prototype onto its group's mesh and materials, and the kept objects as update.py
+  does, moves included.
 
 A matched batch keeps its prototype, and its carriers, which with new points change to one per state those hold
 (batch.fit_carriers), under either user policy, which applies to the objects the
@@ -42,7 +43,7 @@ from batch import (
 )
 from batch_selection import states
 from selection import ELEMENT
-from update import Repoint, UserPolicy, new_data, retire_ids, with_parent
+from update import Repoint, Transform, UserPolicy, kept_moves, new_data, retire_ids, with_parent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -75,13 +76,16 @@ class Prepared:
     kept: list[Rebatch]
     dropped: list[Batch]  # the published batches no group matched
     leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
-    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data
+    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data or a new matrix
     renumbered: list[int]  # new plan indices of kept objects whose index changed
     retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
 
-def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPolicy) -> Prepared:
-    """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links."""
+def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPolicy, moves: bool = False) -> Prepared:
+    """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links.
+
+    With `moves`, a moved object that stays an object is kept and moved as update.prepare keeps one (M4 Phase E).
+    """
     meshes, materials = new_data(plan, diff, display.meshes, display.materials)
     previous = diff["objects"]
     olds_of = numpy.array(previous, dtype=numpy.int64)  # per new plan index: its old index, or -1
@@ -90,6 +94,13 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
     moved = set(diff["changed"]) - repointable
     rebuilt = set(diff["changed"]) - (repointable if users is UserPolicy.REPOINT else set())
     shared, single = groups(plan, display.minimum)
+    if moves:
+        alone = set(single)
+        candidates = [index for index in diff["moved"] if index in alone and previous[index] in display.objects]
+        moving = kept_moves(plan, diff, candidates, display.objects.__getitem__, (meshes, materials), users)
+        rebuilt -= set(moving)
+    else:
+        moving = {}
     matched = _matches(shared, olds_of, display.batches)
     kept_objects = _kept_objects(single, previous, display, rebuilt)
     made = [index for index in single if index not in kept_objects]
@@ -166,6 +177,8 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
                 mesh = record["mesh"]
                 slots = [None if m is None else materials[m] for m in record["material_slots"]]
                 repointed[index] = Repoint(None if mesh is None else meshes[mesh], slots)
+            elif index in moving:
+                repointed[index] = moving[index]
             continue
         assert staging is not None  # an added or rebuilt object, so there is a staging collection
         objects[index] = created[index] = new_object(index, records[index], meshes, materials, staging)
@@ -188,6 +201,9 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
                 obj.data = repoint.data
             for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
                 slot.material = material
+            if repoint.matrix is not None:
+                undo.append(partial(Transform.of(obj).restore, obj))
+                obj.matrix_world = repoint.matrix
         for index in prepared.renumbered:
             obj = new.objects[index]
             undo.append(partial(obj.__setitem__, ELEMENT, obj[ELEMENT]))
