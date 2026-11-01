@@ -457,8 +457,32 @@ Phases B and C left one failing question a representation can answer: above abou
 
 ### Phase E — Time-sampled data
 
-1. **Per-time-code snapshots against animation data:** keyframed transforms, mesh cache modifiers, and Geometry Nodes baking, on the bridge's animation case and a scaled fixture. Playback, construction, memory, and `.blend` size are measured separately.
-2. **The decision** in the row "Time-sampled data representation" (XFORM-08), with the time-code-to-frame mapping for any approach adopted and how it meets the requirements in that row. A mesh cache modifier that reads the USD file first reconciles the requirements listed in M1b.
+Per-time-code snapshots against animation data: keyframed transforms, mesh cache modifiers, and Geometry Nodes baking, on the bridge's animation case, the harness's `animation` scene, and ALab's range (1004 to 1057, which animates 355 meshes' points and 10 prims' transforms, ad hoc survey). Playback, construction, memory, and `.blend` size are measured separately.
+
+1. **Frame capture:** every frame of a range captured incrementally, with what varies between frames, and its cost at scale.
+2. **Per-time-code snapshots:** each frame synchronized through the update path, so playback is a frame step's update.
+3. **Keyframed transforms and visibility:** keys on each object whose transform or visibility varies, shear parents included.
+4. **Baked meshes (with the user):** Geometry Nodes baking, packed in the `.blend`, for every mesh whose content varies, topology included. A mesh whose points alone vary rebuilds only its points (with the user), in planning, where a build dirtied only in its points reuses the previous build's other arrays, and in Blender, where a frame sets positions on one base mesh through Geometry Nodes, so the bake can share the arrays frames don't change. Whether the bake shares them, and whether Hydra hands over unchanged arrays as the same buffers, are measured.
+5. **Point instancers (with the user):** a batch whose source is a point instancer that varies animates its carrier; any other varying copy stays an object.
+6. **Mesh cache, for comparison (with the user):** the USD-reading mesh cache modifier, measured with the unsaved layers it can't see written to a temporary file for it to read, against the four M1b conflicts.
+7. **Measurements** of each approach against the others.
+8. **The decision** in the row "Time-sampled data representation" (XFORM-08), with the time-code-to-frame mapping for any approach adopted and how it meets the requirements in that row.
+
+#### Phase E log
+
+- **E1, frame capture.** `frames.py` captures each time code of a range on one bridge, incrementally after the first, each plan reusing the previous frame's mesh builds (D9). It follows each drawn copy's objects across frames as **tracks**, keyed by source, instance context, and place among the copy's objects, so a copy's object stays one track while its destinations change, which changes its identity in the plan diff.
+  - **What it reads:** only the objects the diff doesn't keep unchanged, and it keeps a track's record only where it changes. Only the first plan is kept, with later frames' new meshes and materials.
+  - **What varies along a track:** its transform, its visibility (its destinations, or the copy having no such object), its mesh's content (held color included), its materials by content, its constant primvars as properties, and a placeholder's bounds.
+  - **The check:** `isolated/test_frames.py` on the bridge's `cases/frames.usda`, a layer over M1b's animation case that adds a copy shown in both destinations with different materials, invisible at 2, so its render object is absent there. At 1, 2, and 3:
+    - what varies along each track is what the scene is built to vary, and equal samples vary nothing;
+    - at each frame the tracks' objects are exactly a fresh bridge's, each with the record its track holds there.
+
+    In an ad hoc mutation run, each of eleven single changes failed it: a copy's second object keyed as its first, absence not counted as visibility, meshes compared by plan index, content never matched across frames, changed objects taken as kept, no comparison of matrices, destinations, properties, or bounds, changes not kept, and a held record read from the first change. Comparing with a track's first record instead of its latest survived; it is equivalent, since a track varies somewhere exactly when some frame differs from its first.
+  - **Cost** (ad hoc, the bpy wheel, three runs on ALab with its point instancers, 1004 to 1057, 54 frames): 16.0–17.3 s in all.
+    - The first frame's capture and plan took 1.3–1.6 s. Each later frame took a median of 0.09 s to capture, 0.15 s to plan, and 0.011 s to diff, and the tracking in Python 1.7 s in all.
+    - 695 of 15,159 tracks vary: all 695 in transform, 693 in mesh, and 1 placeholder in bounds.
+    - The frames hold 2,806 MB of live heap above the first frame's, 52 MB a frame; whole plans held 5,770 MB. Each frame's 355 new meshes carry 52.8 MB of arrays, only 4.6 MB of them positions, since a rebuilt mesh's unchanged topology and UVs are new arrays.
+    - On the harness's `animation` scene (24 frames of a 66k-point grid and 1,000 cubes): 0.95 s and 116 MB.
 
 ### Phase F — Decisions and finalization
 

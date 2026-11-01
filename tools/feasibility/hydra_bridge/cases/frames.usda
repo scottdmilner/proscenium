@@ -1,0 +1,32 @@
+#usda 1.0
+(
+    startTimeCode = 1
+    endTimeCode = 3
+    subLayers = [@animation.usda@]
+    upAxis = "Z"
+)
+# Purpose: M4 Phase E, frames captured over a range and the animation data built from them. M1b's animation
+# case (animation.usda, unchanged) supplies what varies by kind of value; this layer adds what a display's
+# objects add over its prims:
+# - Dual binds Red for preview and Blue for full, so it is two objects, the viewport's and the render's, and is
+#   invisible at 2 only, when it is one hidden object: its render object is absent at 2.
+
+over "World"
+{
+    def Mesh "Dual" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(4, 14, 0), (5, 14, 0), (4, 15, 0)]
+        rel material:binding:preview = </World/Looks/Red>
+        rel material:binding:full = </World/Looks/Blue>
+        uniform token subdivisionScheme = "none"
+        token visibility.timeSamples = {
+            1: "inherited",
+            2: "invisible",
+            3: "inherited",
+        }
+    }
+}
