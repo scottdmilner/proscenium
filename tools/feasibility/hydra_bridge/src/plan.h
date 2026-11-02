@@ -5,6 +5,7 @@
 
 #include "correspondence.h"
 #include "diagnostics.h"
+#include "prim_record.h"
 #include "properties.h"
 #include "snapshot.h"
 
@@ -17,6 +18,7 @@
 #include <pxr/base/vt/types.h>
 #include <pxr/base/vt/value.h>
 #include <pxr/imaging/hd/dataSource.h>
+#include <pxr/imaging/pxOsd/meshTopology.h>
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/timeCode.h>
 
@@ -102,12 +104,22 @@ struct ObjectEntry {
     std::vector<Aspect> dirtiedAspects;
 };
 
+// M4 Phase E (E4): what BuildMesh finds from a mesh's topology and point count alone.
+struct TopologyWork {
+    std::vector<bool> leftOut;  // per captured face, whether Blender would delete it; empty for none
+    Diagnostics problems;       // the topology's own, which come first among the build's
+};
+
 // M4 Phase D (D9, a probe): a mesh prim's build, kept with the captured containers of the prim and its subsets
 // it was built from. BuildMesh reads only those, and an incremental capture shares the container of every prim
-// no notice named, so a later plan whose prim and subsets have the same containers can reuse the build.
+// no notice named, so a later plan whose prim and subsets have the same containers can reuse the build. A later
+// build of the prim with a new container reuses what its topology and primvars still give (E4, BuildMesh).
 struct MeshBuild {
     pxr::HdContainerDataSourceHandle prim;
     std::vector<pxr::HdContainerDataSourceHandle> subsets;
+    pxr::PxOsdMeshTopology topology;      // what it was built from (E4)
+    std::vector<PrimvarRecord> primvars;  // likewise
+    TopologyWork topologyWork;
     std::optional<MeshData> mesh;
     std::size_t contentHash = 0;
     Diagnostics problems;
@@ -149,8 +161,9 @@ struct PlanSettings {
 };
 
 // Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception. With
-// `previous`, a mesh whose prim and subsets are the containers `previous` built it from reuses that build (D9);
-// the plan is the same either way.
+// `previous`, a mesh whose prim and subsets are the containers `previous` built it from reuses that build (D9), and
+// any other mesh `previous` built reuses what its topology and primvars still give (E4); the plan is the same
+// either way.
 PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings = {}, const Plan *previous = nullptr);
 
 }  // namespace hydra_bridge

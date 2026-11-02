@@ -90,16 +90,20 @@ def test_unchanged_stress_plan_matches_everything(wheel: Runtime, hydra_bridge: 
 
 
 # The update tests' edits on F-APPEARANCE-CASES (test_update.py), each a different kind of change, after a mesh
-# gains a build problem that every later plan reuses, and with an edit to a mesh's subsets alone.
-REUSE_EDITS = ["unchanged", "holes", "transform", "shared-geometry", "material", "primvar", "visibility", "subset"]
-REUSE_EDITS += ["structure", "instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
-REUSE_EDITS += ["instance-color"]
+# gains build problems that every later plan reuses (holes, and a face Blender deletes), then edits to a mesh's
+# subsets alone and to what its UVs are built from, the problem mesh moved, and a mesh's points cut short of its
+# corners, so it doesn't build, and restored.
+REUSE_EDITS = ["unchanged", "holes", "degenerate", "transform", "shared-geometry", "material", "primvar"]
+REUSE_EDITS += ["visibility", "subset", "uv", "uv-role", "rewind", "uv-interpolation", "structure"]
+REUSE_EDITS += ["instance-transform", "instance-remove", "instance-remove-another", "instance-restore"]
+REUSE_EDITS += ["instance-color", "degenerate-move", "points-dropped", "points-restored"]
 
 
 @pytest.mark.parametrize("fixture", ["appearance", "universe", "stress", "point_instancers"])
 def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
     # D9's probe: a plan that reuses the previous plan's mesh builds, where its prims' captured containers are
-    # the ones built from, is the plan built from scratch, after every kind of edit, chained over the edits.
+    # the ones built from, or what still holds of them otherwise (E4), is the plan built from scratch, after every
+    # kind of edit, chained over the edits.
     generators = {
         "appearance": (appearance.appearance_cases, REUSE_EDITS),
         "universe": (interaction.universe_membership, ["unchanged", "unload", "load"]),
@@ -119,6 +123,19 @@ def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_br
     if fixture == "appearance":
         # An edit rebuilds only the meshes of the prims it recaptured, far fewer than a plan from scratch.
         assert all(by_edit[edit]["built"] < by_edit[edit]["fresh_built"] for edit in ("transform", "material"))
+        # Each of these edits rebuilds one mesh. Its build takes the previous build's topology work where its
+        # topology and point count are unchanged, with the problems the topology gave, and its attributes where
+        # their primvars are: MeshD's UVs when it moves, but not when their values or role change, and the Body's
+        # not when their interpolation does. A new topology, points no longer matching the corners, and a mesh that
+        # didn't build before are built anew.
+        reused = {"transform": (1, 1), "shared-geometry": (1, 0), "subset": (1, 0), "degenerate-move": (1, 1)}
+        reused |= {"uv": (1, 0), "uv-role": (1, 0), "uv-interpolation": (1, 0)}
+        reused |= {"holes": (0, 0), "degenerate": (0, 0), "rewind": (0, 0), "points-dropped": (0, 0)}
+        reused |= {"points-restored": (0, 0)}
+        for edit, counts in reused.items():
+            assert (by_edit[edit]["built"], by_edit[edit]["topology"], by_edit[edit]["attributes"]) == (1, *counts), (
+                edit
+            )
 
 
 @pytest.mark.parametrize("fixture", ["appearance", "stress", "point_instancers"])

@@ -144,7 +144,8 @@ private:
     // adds to the plan (meshes, objects, materials, diagnostics, and the instance resolver's cache) runs
     // after, in prim order, so the plan is the one a serial build makes. A mesh with no drawn copy is built
     // and then dropped, as deciding that first would move the resolver's diagnostics. Each build goes into
-    // `builds`, and one the previous plan made from the same containers is reused (D9).
+    // `builds`, and one the previous plan made from the same containers is reused (D9); any other build the
+    // previous plan made of the prim gives BuildMesh what still holds (E4).
     std::vector<BuiltMesh> BuildMeshes(MeshBuilds &builds) const {
         std::vector<BuiltMesh> built(table_.prims.size());
         std::vector<std::optional<MeshBuild>> kept(table_.prims.size());
@@ -159,10 +160,13 @@ private:
                 MeshBuild build;
                 build.prim = scene.GetPrim(prim.path).dataSource;
                 for (const PrimRecord &subset : subsets) build.subsets.push_back(scene.GetPrim(subset.path).dataSource);
+                build.topology = prim.mesh->topology;
+                build.primvars = prim.primvars;
                 BuiltMesh &result = built[i];
                 if (!Reuse(prim.path, build, result)) {
                     const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
-                    result.mesh = BuildMesh(prim, subsets, result.problems, result.slots);
+                    result.mesh = BuildMesh(prim, subsets, result.problems, result.slots, build.topologyWork,
+                                            Previous(prim.path));
                     if (result.mesh) result.contentHash = ContentHash(*result.mesh);
                 }
                 build.mesh = result.mesh;
@@ -179,24 +183,29 @@ private:
         return built;
     }
 
-    // Fills `result` from the previous plan's build of the mesh at `path`, if it was made from the containers
-    // `build` names; false otherwise.
-    bool Reuse(const SdfPath &path, const MeshBuild &build, BuiltMesh &result) const {
-        if (!previous_ || !build.prim) return false;
+    // The previous plan's build of the mesh at `path`; null for none.
+    const MeshBuild *Previous(const SdfPath &path) const {
+        if (!previous_) return nullptr;
         const auto found = previous_->find(path);
-        if (found == previous_->end()) return false;
-        const MeshBuild &old = found->second;
-        if (old.prim != build.prim || old.subsets != build.subsets) return false;
+        return found == previous_->end() ? nullptr : &found->second;
+    }
+
+    // Fills `result` and `build` from the previous plan's build of the mesh at `path`, if it was made from the
+    // containers `build` names; false otherwise.
+    bool Reuse(const SdfPath &path, MeshBuild &build, BuiltMesh &result) const {
+        const MeshBuild *old = Previous(path);
+        if (!old || !build.prim || old->prim != build.prim || old->subsets != build.subsets) return false;
         PrimRefs slots;
-        for (const SdfPath &slot : old.slots) {
+        for (const SdfPath &slot : old->slots) {
             const PrimRecord *record = table_.Find(slot);
             if (!record) return false;
             slots.emplace_back(*record);
         }
-        result.mesh = old.mesh;
-        result.contentHash = old.contentHash;
-        result.problems = old.problems;
+        result.mesh = old->mesh;
+        result.contentHash = old->contentHash;
+        result.problems = old->problems;
         result.slots = std::move(slots);
+        build.topologyWork = old->topologyWork;
         return true;
     }
 

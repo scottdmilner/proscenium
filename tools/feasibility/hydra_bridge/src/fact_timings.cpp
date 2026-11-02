@@ -9,10 +9,11 @@ namespace {
 
 constexpr size_t kKinds = static_cast<size_t>(FactTiming::Count);
 const std::array<const char *, kKinds> kNames = {
-    "build",           "bindings",           "strong purposes",     "family verdict",   "dropped attributes",
-    "computed extent", "plan: run",          "plan: read prims",    "plan: build mesh", "plan: objects",
-    "mesh: validate",  "mesh: usd validate", "mesh: deleted faces", "mesh: layout",     "mesh: slots",
-    "mesh: primvars",  "copy bindings"};
+    "build",           "bindings",           "strong purposes",       "family verdict",     "dropped attributes",
+    "computed extent", "plan: run",          "plan: read prims",      "plan: build mesh",   "plan: objects",
+    "mesh: validate",  "mesh: usd validate", "mesh: deleted faces",   "mesh: layout",       "mesh: slots",
+    "mesh: primvars",  "mesh: compare",      "mesh: topology reused", "mesh: same buffers", "mesh: attributes reused",
+    "copy bindings"};
 
 struct Counter {
     std::atomic<uint64_t> calls{0};

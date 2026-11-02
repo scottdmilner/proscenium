@@ -34,6 +34,34 @@ def _edit(stage: Usd.Stage, edit: str) -> None:
         elif edit == "shared-geometry":
             points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
             points.Set([p * 2 for p in points.Get()])
+        elif edit == "points-dropped":  # leaves a corner of the kit's Body with no point, so it doesn't build
+            points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
+            points.Set(points.Get()[:3])
+        elif edit == "points-restored":
+            points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
+            points.Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 1, 0)])
+        elif edit == "uv":  # new values for MeshD's vertex UVs
+            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").Set(
+                [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
+            )
+        elif edit == "uv-role":  # MeshD's UVs as plain float pairs, which Blender keeps on points
+            uvs = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").GetAttr()
+            uvs.SetTypeName(Sdf.ValueTypeNames.Float2Array)
+        elif edit == "rewind":  # the kit's Body face rewound, so its corners aren't its points, with vertex UVs
+            body = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body"))
+            body.GetFaceVertexIndicesAttr().Set([0, 3, 2, 1])
+            uvs = [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
+            UsdGeom.PrimvarsAPI(body).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, "vertex").Set(uvs)
+        elif edit == "uv-interpolation":  # the same UVs, now one per corner of the Body's rewound face
+            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("st").SetInterpolation(
+                UsdGeom.Tokens.faceVarying
+            )
+        elif edit == "degenerate":  # MeshE's first face on one point twice, which Blender deletes
+            UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetFaceVertexIndicesAttr().Set([0, 1, 1, 0, 2, 3])
+        elif edit == "degenerate-move":
+            UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).AddTranslateOp(opSuffix="moved").Set(
+                Gf.Vec3d(0, 1, 0)
+            )
         elif edit == "material":
             shader = UsdShade.Shader(stage.GetPrimAtPath("/World/Looks/Red/Surface"))
             shader.GetInput("diffuseColor").Set(Gf.Vec3f(0.9, 0.2, 0.2))
@@ -133,8 +161,9 @@ def diff_edits(module_dir: str, scene: str, edits: list[str]) -> list[dict[str, 
 def reuse_edits(module_dir: str, scene: str, edits: list[str], point_instancers: bool = True) -> list[dict[str, Any]]:
     """Plan `scene`, then after each edit plan it twice: from scratch, and reusing the previous plan's builds (D9).
 
-    Each step reports whether the two plans are the same in everything Python reads, and how many meshes each
-    built, from the planner's own count. The reusing plans chain: each step reuses the previous step's.
+    Each step reports whether the two plans are the same in everything Python reads, how many meshes each built,
+    and how many topologies and attributes the reusing plan's builds took from the previous plan's (E4), from the
+    planner's own counts. The reusing plans chain: each step reuses the previous step's.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
@@ -149,9 +178,12 @@ def reuse_edits(module_dir: str, scene: str, edits: list[str], point_instancers:
         fresh = native.build_plan(snapshot, point_instancers=point_instancers)
         fresh_built = native.take_filter_timings()["plan: build mesh"][0]
         reused = native.build_plan(snapshot, point_instancers=point_instancers, previous=plan)
-        built = native.take_filter_timings()["plan: build mesh"][0]
+        counts = {name: calls for name, (calls, _) in native.take_filter_timings().items()}
         differing = [name for name in PLAN_FIELDS if _plain(getattr(fresh, name)) != _plain(getattr(reused, name))]
-        steps.append({"edit": edit, "differing": differing, "built": built, "fresh_built": fresh_built})
+        step = {"edit": edit, "differing": differing, "built": counts["plan: build mesh"], "fresh_built": fresh_built}
+        steps.append(
+            step | {"topology": counts["mesh: topology reused"], "attributes": counts["mesh: attributes reused"]}
+        )
         plan = reused
     bridge.release()
     return steps

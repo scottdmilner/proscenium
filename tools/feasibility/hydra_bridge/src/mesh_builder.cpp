@@ -59,7 +59,7 @@ std::optional<VtVec3fArray> Positions(const PrimRecord &prim) {
 }
 
 // Blender winds every face right-handed; a left-handed face is reversed, keeping its first corner. Faces in
-// `drop` are left out.
+// `drop` are left out; an empty `drop` leaves out none.
 Layout MakeLayout(const PxOsdMeshTopology &topology, size_t pointCount, const std::vector<bool> &drop) {
     const VtIntArray &counts = topology.GetFaceVertexCounts();
     const VtIntArray &indices = topology.GetFaceVertexIndices();
@@ -75,7 +75,7 @@ Layout MakeLayout(const PxOsdMeshTopology &topology, size_t pointCount, const st
     size_t sourceOffset = 0;
     for (size_t face = 0; face < counts.size(); ++face) {
         const auto size = static_cast<size_t>(counts[face]);
-        if (!drop[face]) {
+        if (drop.empty() || !drop[face]) {
             layout.blenderFace[face] = static_cast<int>(layout.sourceFace.size());
             layout.sourceFace.push_back(face);
             layout.faceOffsets.push_back(static_cast<int>(layout.sourceCorner.size()));
@@ -155,6 +155,27 @@ std::optional<Attribute> ToAttribute(const PrimvarRecord &primvar, const std::st
     return attribute;
 }
 
+// The attribute `primvar` becomes: one of `earlier`, a mesh of the same layout built from `before`, when it was
+// made from an equal primvar (E4), else one gathered anew.
+std::optional<Attribute> AttributeOf(const PrimvarRecord &primvar, const std::string &name, const Layout &layout,
+                                     const MeshData *earlier, const std::vector<PrimvarRecord> &before) {
+    if (earlier) {
+        const auto same = std::find_if(before.begin(), before.end(), [&](const PrimvarRecord &p) {
+            // VtArray's equality is identity first, so arrays handed over as one buffer cost nothing to compare.
+            return p.name == primvar.name && p.interpolation == primvar.interpolation && p.role == primvar.role &&
+                   p.indices == primvar.indices && p.values == primvar.values;
+        });
+        if (same != before.end()) {
+            for (const Attribute &attribute : earlier->attributes) {
+                if (attribute.name != name) continue;
+                AddFactTiming(FactTiming::MeshAttributeReused, {});
+                return attribute;
+            }
+        }
+    }
+    return ToAttribute(primvar, name, layout);
+}
+
 // The Blender attribute a primvar becomes: authored normals are Blender's custom normals, which Blender 5.2
 // takes on points, faces or corners, and per-point velocities Blender's velocity, which is per point.
 // Others, velocities on another domain included, keep their name.
@@ -226,7 +247,8 @@ void AssignSlots(const PrimRecord &prim, const PrimRefs &subsets, const Layout &
 }  // namespace
 
 std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subsets, Diagnostics &problems,
-                                  PrimRefs &slots) {
+                                  PrimRefs &slots, TopologyWork &work, const MeshBuild *previous) {
+    work = {};
     if (!prim.mesh) return std::nullopt;  // the planner builds only meshes, so never taken
     const MeshRecord &mesh = *prim.mesh;
     auto fail = [&](const std::string &message) {
@@ -238,39 +260,63 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
     // UsdImaging reads a points attribute of another type as an empty array.
     if (positions->empty() && !mesh.topology.GetFaceVertexIndices().empty())
         return fail("No points (a points attribute that isn't point3f reads as empty)");
-    std::optional<ScopedFactTiming> validateTiming(std::in_place, FactTiming::MeshValidate);
-    if (const std::string problem = ValidateTopology(mesh.topology, positions->size()); !problem.empty())
-        return fail(problem);
-    validateTiming.reset();
-    // Valid USD that Blender's Mesh.validate() would repair by deleting faces: the same repair, warned.
-    std::optional<ScopedFactTiming> deletedTiming(std::in_place, FactTiming::MeshDeletedFaces);
-    const RejectedFaces rejected = FacesBlenderDeletes(mesh.topology);
-    deletedTiming.reset();
-    if (rejected.repeatedPoint + rejected.duplicate > 0)
-        problems.push_back({Severity::Warning, "faces-left-out", prim.path,
-                            std::to_string(rejected.repeatedPoint) + " face(s) using a point more than once and " +
-                                std::to_string(rejected.duplicate) +
-                                " face(s) on an earlier face's points are left out, as Blender's Mesh.validate() "
-                                "deletes them (" +
-                                rejected.example + ")"});
+    // E4: the earlier build's mesh, when its topology work holds for this one: the same topology and point count.
+    const MeshData *earlier = nullptr;
+    if (previous && previous->mesh && previous->mesh->positions.size() == positions->size()) {
+        const ScopedFactTiming timing(FactTiming::MeshCompare);
+        // VtArray's equality is identity first, so arrays handed over as one buffer cost nothing to compare.
+        if (previous->topology == mesh.topology) earlier = &*previous->mesh;
+    }
+    static const std::vector<PrimvarRecord> kNoPrimvars;
+    const std::vector<PrimvarRecord> &before = earlier ? previous->primvars : kNoPrimvars;
+    if (earlier) {
+        work = previous->topologyWork;
+        AddFactTiming(FactTiming::MeshTopologyReused, {});
+        const PxOsdMeshTopology &topology = previous->topology;
+        if (topology.GetFaceVertexCounts().IsIdentical(mesh.topology.GetFaceVertexCounts()) &&
+            topology.GetFaceVertexIndices().IsIdentical(mesh.topology.GetFaceVertexIndices()))
+            AddFactTiming(FactTiming::MeshSameBuffers, {});
+    } else {
+        std::optional<ScopedFactTiming> validateTiming(std::in_place, FactTiming::MeshValidate);
+        if (const std::string problem = ValidateTopology(mesh.topology, positions->size()); !problem.empty())
+            return fail(problem);
+        validateTiming.reset();
+        // Valid USD that Blender's Mesh.validate() would repair by deleting faces: the same repair, warned.
+        const ScopedFactTiming deletedTiming(FactTiming::MeshDeletedFaces);
+        const RejectedFaces rejected = FacesBlenderDeletes(mesh.topology);
+        if (rejected.repeatedPoint + rejected.duplicate > 0) {
+            work.leftOut = rejected.drop;
+            work.problems.push_back(
+                {Severity::Warning, "faces-left-out", prim.path,
+                 std::to_string(rejected.repeatedPoint) + " face(s) using a point more than once and " +
+                     std::to_string(rejected.duplicate) +
+                     " face(s) on an earlier face's points are left out, as Blender's Mesh.validate() deletes them (" +
+                     rejected.example + ")"});
+        }
+        if (!mesh.topology.GetHoleIndices().empty())
+            work.problems.push_back(
+                {Severity::Warning, "holes-ignored", prim.path, "Hole faces are kept as ordinary faces"});
+    }
+    problems.insert(problems.end(), work.problems.begin(), work.problems.end());
 
     std::optional<ScopedFactTiming> layoutTiming(std::in_place, FactTiming::MeshLayout);
-    const Layout layout = MakeLayout(mesh.topology, positions->size(), rejected.drop);
+    const Layout layout = MakeLayout(mesh.topology, positions->size(), work.leftOut);
     MeshData data;
     data.name = prim.path.GetName();
     data.positions = std::move(*positions);
-    data.cornerVerts = layout.cornerVerts;
-    data.faceOffsets = layout.faceOffsets;
+    // An earlier build's of the same layout are equal, so its buffers are shared.
+    data.cornerVerts = earlier ? earlier->cornerVerts : layout.cornerVerts;
+    data.faceOffsets = earlier ? earlier->faceOffsets : layout.faceOffsets;
     data.subdivisionScheme = mesh.topology.GetScheme();
     // USD's value where the source-info filter has it: the implicit-surface filter can lose an authored true
     // (M1b plan, Phase C log: "Results by case"; checked by cases/implicit.py).
     data.doubleSided = prim.sourceDoubleSided.value_or(mesh.doubleSided);
-    if (!mesh.topology.GetHoleIndices().empty())
-        problems.push_back({Severity::Warning, "holes-ignored", prim.path, "Hole faces are kept as ordinary faces"});
     layoutTiming.reset();
     {
         const ScopedFactTiming timing(FactTiming::MeshSlots);
         AssignSlots(prim, subsets, layout, data, problems, slots);
+        if (earlier && data.materialIndices == earlier->materialIndices)
+            data.materialIndices = earlier->materialIndices;
     }
     const ScopedFactTiming primvarTiming(FactTiming::MeshPrimvars);
 
@@ -295,7 +341,7 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
         } else if (primvar.name == HdTokens->normals && !primvar.values.IsHolding<VtVec3fArray>()) {
             skip(Severity::Warning, "untransferred-primvar",
                  "normals of type " + primvar.values.GetTypeName() + " are not transferred");
-        } else if (std::optional<Attribute> attribute = ToAttribute(primvar, name, layout)) {
+        } else if (std::optional<Attribute> attribute = AttributeOf(primvar, name, layout, earlier, before)) {
             data.attributes.push_back(std::move(*attribute));
             if (primvar.name == kAccelerations)
                 skip(Severity::Warning, "no-blender-equivalent",

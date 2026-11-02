@@ -30,6 +30,13 @@ enum class FactTiming : std::uint8_t {
     MeshLayout,
     MeshSlots,
     MeshPrimvars,
+    // E4: comparing a mesh's topology with an earlier build's; then, untimed, the builds reusing that build's
+    // topology work, those of them whose topology Hydra handed over as that build's buffers, and the attributes
+    // reused from it
+    MeshCompare,
+    MeshTopologyReused,
+    MeshSameBuffers,
+    MeshAttributeReused,
     CopyBindings,  // the OpenUSD #3690 workaround, when it recomputes (copy_bindings.h)
     Count
 };
