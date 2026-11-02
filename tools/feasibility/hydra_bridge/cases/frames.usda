@@ -20,6 +20,10 @@
 # - TwinA and TwinB are one triangle at 1, the one Hand, the Blades, and Wave share there, and gain a point and
 #   a face at 2, alike in their own spaces, so they share a mesh at both; at 3 TwinB's points move, so the cache
 #   of their whole meshes splits.
+# - Swarm is a point instancer of Pip and Pulse (E5). Point 1 switches from Pip to Pulse at 2 (protoIndices), so
+#   one copy of it vanishes and another appears; point 3 is invisible at 2 only (invisibleIds); point 4 appears at
+#   3; point 0 moves at 3 and point 2 turns there; and heat, a per-point primvar, changes at 3 for point 2. Pulse's
+#   own points move at 3, so every copy of it deforms alike.
 
 over "World"
 {
@@ -147,5 +151,62 @@ over "World"
         uniform token subdivisionScheme = "none"
         double3 xformOp:translate = (16, 14, 0)
         uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PointInstancer "Swarm"
+    {
+        double3 xformOp:translate = (0, 20, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/Swarm/Protos/Pip>, </World/Swarm/Protos/Pulse>]
+        int[] protoIndices.timeSamples = {
+            1: [0, 0, 1, 1],
+            2: [0, 1, 1, 1],
+            3: [0, 1, 1, 1, 0],
+        }
+        point3f[] positions.timeSamples = {
+            1: [(0, 0, 0), (2, 0, 0), (4, 0, 0), (6, 0, 0)],
+            2: [(0, 0, 0), (2, 0, 0), (4, 0, 0), (6, 0, 0)],
+            3: [(0, 1, 0), (2, 0, 0), (4, 0, 0), (6, 0, 0), (8, 0, 0)],
+        }
+        quath[] orientations.timeSamples = {
+            1: [(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)],
+            2: [(1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0), (1, 0, 0, 0)],
+            3: [(1, 0, 0, 0), (1, 0, 0, 0), (0.5, 0.5, 0.5, 0.5), (1, 0, 0, 0), (1, 0, 0, 0)],
+        }
+        int64[] invisibleIds.timeSamples = {
+            1: [],
+            2: [3],
+            3: [],
+        }
+        float[] primvars:heat (
+            interpolation = "varying"
+        )
+        float[] primvars:heat.timeSamples = {
+            1: [0, 1, 2, 3],
+            2: [0, 1, 2, 3],
+            3: [0, 1, 5, 3, 4],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "Pip"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0.5, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+
+            def Mesh "Pulse"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points.timeSamples = {
+                    1: [(0, 0, 0), (1, 0, 0), (1, 1, 0)],
+                    3: [(0, 0, 1), (1, 0, 1), (1, 1, 1)],
+                }
+                uniform token subdivisionScheme = "none"
+            }
+        }
     }
 }

@@ -142,7 +142,8 @@ def blended(module_dir: str, dest: str, synchronized: list[float], shown: list[f
                 basis = obj.matrix_basis if obj.parent is None else obj.parent.matrix_basis @ obj.matrix_basis
                 if max(abs(basis[r][c] - expected[r][c]) for r in range(4) for c in range(4)) > TOLERANCE:
                     found.append(f"{key}: transform")
-                after = dict((layer.name, layer) for layer in fresh(b)[key][1])
+                # A track absent at b shows a's values: an absent track's object holds its mesh's own.
+                after = dict((layer.name, layer) for layer in fresh(b).get(key, fresh(a)[key])[1])
                 geometry = obj.evaluated_get(depsgraph).evaluated_geometry()  # read while referenced
                 for layer in layers:
                     values = numpy.empty_like(layer.values)

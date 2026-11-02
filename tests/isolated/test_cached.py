@@ -22,6 +22,7 @@ BODY = Path(__file__).parent / "bodies/caching.py"
 VISITS = {1: [2, 3, 2, 1, 3], 2: [1, 3, 1, 2, 3]}
 EDITED_VISITS = [1, 3, 1]
 type Copy = tuple[str, tuple[str, ...]]  # source, instance context
+SWARM, PIP, PULSE = "/World/Swarm", "/World/Swarm/Protos/Pip", "/World/Swarm/Protos/Pulse"
 # By copy: what animation.usda's and frames.usda's comments say varies.
 CONFIRMED: dict[Copy, list[str]] = {
     ("/World/Wave", ()): ["mesh"],
@@ -47,11 +48,35 @@ CONFIRMED: dict[Copy, list[str]] = {
     ("/World/Bud", ()): ["mesh"],  # its points move, then its face is rewound
     ("/World/TwinA", ()): ["mesh"],
     ("/World/TwinB", ()): ["mesh"],
+    # Swarm's copies (E5): point 0 moves, point 1 is a Pip at 1 and a Pulse from 2, point 3 is invisible at 2,
+    # point 4 appears at 3, and point 2 turns and changes heat at 3; Pulse's points move.
+    (PIP, (SWARM, f"{SWARM}/__point_0")): ["transform"],
+    (PIP, (SWARM, f"{SWARM}/__point_1")): ["visibility"],
+    (PULSE, (SWARM, f"{SWARM}/__point_1")): ["mesh", "visibility"],
+    (PULSE, (SWARM, f"{SWARM}/__point_2")): ["mesh", "properties", "transform"],
+    (PULSE, (SWARM, f"{SWARM}/__point_3")): ["mesh", "visibility"],
+    (PIP, (SWARM, f"{SWARM}/__point_4")): ["visibility"],
 }
 # The copies whose meshes the frames find varying in topology, so they cache whole meshes.
 WHOLE = ["/World/Bud", "/World/Morph", "/World/TwinA", "/World/TwinB"]
-# USD reports Steady's points, two equal samples, as time-varying; the frames find them unchanged.
-PREDICTED = CONFIRMED | {("/World/Steady", ()): ["mesh"]}
+
+
+# Swarm's prototype at each point, by time code.
+SWARM_POINTS = {1: [PIP, PIP, PULSE, PULSE], 2: [PIP, PULSE, PULSE, PULSE], 3: [PIP, PULSE, PULSE, PULSE, PIP]}
+
+
+def _predicted(start: float) -> dict[Copy, list[str]]:
+    """What a build at `start` predicts.
+
+    USD reports Steady's points, two equal samples, as time-varying, though the frames find them unchanged. A point
+    instancer's per-instance arrays are dirtied as a whole, so each of Swarm's copies at `start` is predicted in
+    every aspect its instancer varies in, and in its mesh for Pulse's.
+    """
+    predicted = {k: v for k, v in CONFIRMED.items() if k[0] not in (PIP, PULSE)} | {("/World/Steady", ()): ["mesh"]}
+    for point, source in enumerate(SWARM_POINTS[int(start)]):
+        aspects = ["properties", "transform", "visibility", *(["mesh"] if source == PULSE else [])]
+        predicted[(source, (SWARM, f"{SWARM}/__point_{point}"))] = sorted(aspects)
+    return predicted
 
 
 def _copies(aspects: dict[Copy, list[str]]) -> list[list[object]]:
@@ -80,7 +105,7 @@ def test_cached_frames_match_fresh_plans(
     _check_visits(result["visits"], start, lambda time: time)
     assert result["cached"] == [1, 2, 3]
     assert result["confirmed"] == _copies(CONFIRMED)
-    assert result["predicted"] == (_copies(PREDICTED) if predict else [])
+    assert result["predicted"] == (_copies(_predicted(start)) if predict else [])
     assert result["whole"] == WHOLE
     # Wave and the twins share Hand's and the Blades' mesh at 1; Wave deforms at 2, and the twins gain a face,
     # sharing theirs until TwinB's points move at 3. Predicted, their meshes are their own from the start.
@@ -167,8 +192,8 @@ def test_prediction_leaves_capture_unchanged(wheel: Runtime, hydra_bridge: Path,
     # The same plan but for its dirtied aspects: those that depend on time, Morph's topology included, which are
     # what a real time change dirties; a plain capture dirties nothing.
     assert result["same_plan"]
-    assert result["dirtied_aspects"] == _copies(PREDICTED | {("/World/Morph", ()): ["mesh"]})
-    assert result["later_dirtied_aspects"] == result["dirtied_aspects"]
+    assert result["dirtied_aspects"] == _copies(_predicted(time) | {("/World/Morph", ()): ["mesh"]})
+    assert result["later_dirtied_aspects"] == _copies(_predicted(3.0) | {("/World/Morph", ()): ["mesh"]})
     assert result["plain_dirtied_aspects"] == []
     # Hydra still dirties the same locators when the time changes next.
     assert result["same_dirtied_locators"]

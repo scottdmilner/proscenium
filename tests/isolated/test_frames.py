@@ -13,6 +13,7 @@ from .harness import Runtime, run_isolated
 
 BODY = Path(__file__).parent / "bodies/animation.py"
 TIMES = [1.0, 2.0, 3.0]
+SWARM, PIP, PULSE = "/World/Swarm", "/World/Swarm/Protos/Pip", "/World/Swarm/Protos/Pulse"
 # By track (source, instance context, place among the copy's objects): what varies over the frames.
 VARYING = {
     ("/World/Wave", (), 0): {"mesh"},  # points
@@ -40,6 +41,14 @@ VARYING = {
     ("/World/Bud", (), 0): {"mesh"},  # points, then corners
     ("/World/TwinA", (), 0): {"mesh"},  # topology
     ("/World/TwinB", (), 0): {"mesh"},  # topology, then points
+    # Swarm's copies, by point (E5): point 1's Pip and Pulse copies come and go with protoIndices, point 3 is
+    # invisible at 2, point 4 appears at 3, and Pulse's points move.
+    (PIP, (SWARM, f"{SWARM}/__point_0"), 0): {"transform"},
+    (PIP, (SWARM, f"{SWARM}/__point_1"), 0): {"visibility"},
+    (PULSE, (SWARM, f"{SWARM}/__point_1"), 0): {"mesh", "visibility"},
+    (PULSE, (SWARM, f"{SWARM}/__point_2"), 0): {"mesh", "properties", "transform"},
+    (PULSE, (SWARM, f"{SWARM}/__point_3"), 0): {"mesh", "visibility"},
+    (PIP, (SWARM, f"{SWARM}/__point_4"), 0): {"visibility"},
     ("/World/Steady", (), 0): set(),  # two equal samples
     ("/World/Single", (), 0): set(),  # one sample
     ("/World/Still", (), 0): set(),

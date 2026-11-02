@@ -519,11 +519,15 @@ class CachedDisplay:
         if added:
             first = not cache.varying
             cache.varying |= added
-            group = self._group(cache)
             for obj in objects:
-                _modifier(obj).node_group = group
                 for cached in self.cached if first else ():  # the mesh's own values, before it varied
                     self._key_sample(obj, cached, BASE)
+        if cache.varying:
+            group = self._group(cache)
+            for obj in objects:  # a track first present now may share the mesh, with no modifier yet
+                modifier = _modifier(obj)
+                if modifier.node_group != group:
+                    modifier.node_group = group
         for name in cache.varying:
             layer = content[name]
             held = stored(layer)

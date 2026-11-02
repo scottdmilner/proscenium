@@ -568,6 +568,10 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
       - **Heap** (the bpy wheel, one run each): with every frame's plan kept, the plans held 4,247 MB of heap above the first frame's, against 6,673 MB.
       - At every tenth frame the plan matched one built from scratch. None of the 356 topologies arrived as the previous capture's buffers: they are equal in content, so comparing them took 0.8 ms a frame, summed over threads.
 
+- **E5, point instancers (with the user): the batched representation in the cached display.** ALab's 21 point instancers don't vary over its range (ad hoc: none of their attributes is time-varying to USD, and neither is their own or an ancestor's transform), so the checks use a bespoke instancer.
+  - **The scene:** `frames.usda` gains Swarm, a point instancer of Pip and Pulse whose point 1 switches prototype at 2 (`protoIndices`), so one of its copies vanishes as another appears; whose point 3 is invisible at 2 only (`invisibleIds`) and point 4 appears at 3; whose point 0 moves and point 2 turns and changes its per-point primvar at 3; and whose Pulse deforms, so every copy of it does alike. A point's copies are tracks like any other, keyed by the prototype's path and the point, so the object baseline's cached display shows them as it shows any copy that comes and goes. Each of its copies at the build is predicted in every aspect the instancer varies in, as Hydra dirties its per-instance arrays as a whole.
+  - **A track first present after a mesh varies:** Swarm showed that such a track, sharing a mesh that caches samples, showed the mesh's own values, as only the objects present when the mesh first varied had the frames modifier. Every object of a cached mesh now gets it when the mesh is written.
+
 ### Phase F — Decisions and finalization
 
 1. **The partitioning decision record:** the partition unit, what a partition owns, and how it is replaced as a whole, in DECISIONS.md "Partition unit" and the Glossary.
