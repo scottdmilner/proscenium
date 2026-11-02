@@ -21,6 +21,7 @@ namespace hydra_bridge {
 // With `previous`, an earlier build of the prim (E4): when its topology and point count are this one's, the
 // topology isn't checked again, and the mesh shares its corners, faces, equal material slots, and the attributes
 // of its equal primvars, rather than building them anew. The mesh and problems are the same either way.
+// Null: the topology is checked and everything built anew.
 std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subsets, Diagnostics &problems,
                                   PrimRefs &slots, TopologyWork &work, const MeshBuild *previous = nullptr);
 

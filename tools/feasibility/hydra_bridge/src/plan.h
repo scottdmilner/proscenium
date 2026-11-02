@@ -134,9 +134,9 @@ struct Plan {
     std::vector<std::size_t> meshHashes;  // per mesh, its ContentHash, which a later plan's diff looks up (M4)
     std::vector<MaterialData> materials;
     std::vector<ObjectEntry> objects;
-    Correspondence correspondence;             // derived from the objects once they are all planned
-    Diagnostics diagnostics;                   // sources are USD paths
-    std::shared_ptr<const MeshBuilds> builds;  // by mesh prim path: what the next plan may reuse (D9)
+    Correspondence correspondence;  // derived from the objects once they are all planned
+    Diagnostics diagnostics;        // sources are USD paths
+    MeshBuilds builds;              // by mesh prim path: what the next plan may reuse (D9)
 };
 
 using PlanPtr = std::shared_ptr<const Plan>;
@@ -163,7 +163,7 @@ struct PlanSettings {
 // Call without the GIL. Invalid geometry becomes a placeholder and a diagnostic, never an exception. With
 // `previous`, a mesh whose prim and subsets are the containers `previous` built it from reuses that build (D9), and
 // any other mesh `previous` built reuses what its topology and primvars still give (E4); the plan is the same
-// either way.
+// either way. Null: every mesh is built anew.
 PlanPtr BuildPlan(const Snapshot &snapshot, const PlanSettings &settings = {}, const Plan *previous = nullptr);
 
 }  // namespace hydra_bridge

@@ -72,7 +72,7 @@ public:
     Planner(const Snapshot &snapshot, PlanSettings settings, const Plan *previous)
         : snapshot_(snapshot),
           settings_(std::move(settings)),
-          previous_(previous ? previous->builds.get() : nullptr),
+          previous_(previous ? &previous->builds : nullptr),
           table_(TimedRead(snapshot.scene)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
@@ -109,9 +109,7 @@ public:
             }
             return false;
         };
-        auto builds = std::make_shared<MeshBuilds>();
-        std::vector<BuiltMesh> built = BuildMeshes(*builds);
-        plan_->builds = std::move(builds);
+        std::vector<BuiltMesh> built = BuildMeshes(plan_->builds);
         for (size_t i = 0; i < table_.prims.size(); ++i) {
             const PrimRecord &prim = table_.prims[i];
             if (prim.type == HdPrimTypeTokens->mesh && prim.mesh)
