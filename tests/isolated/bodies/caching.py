@@ -30,8 +30,11 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     edited_visits: list[float],
     subframes: bool = False,
     minimum: int | None = None,
+    sequence: bool = False,
 ) -> dict[str, Any]:
     """Build a cached display of frames.usda at `start`, batched with `minimum`, and visit each of `visits`.
+
+    With `sequence`, its meshes cache in a USD file beside the scene, read by Mesh Sequence Cache modifiers (E6).
 
     Visits are by `frame_set`.
     A visit's fraction is its subframe, which the display synchronizes at only with `subframes`. Then edit Still's
@@ -47,7 +50,9 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     scene: Any = bpy.context.scene  # never None in a running Blender
     scene.collection.children.link(collection)
     scene.frame_set(int(start), subframe=start % 1)
-    display = cached.CachedDisplay(native, stage, collection, start, predict=predict, minimum=minimum)
+    display = cached.CachedDisplay(
+        native, stage, collection, start, predict=predict, minimum=minimum, sequence=_sequence(dest, sequence)
+    )
     handler = display.follow(scene, subframes)
     result: dict[str, Any] = {"visits": []}
     try:
@@ -67,6 +72,10 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
         bpy.app.handlers.frame_change_pre.remove(handler)
         display.release()
     return result
+
+
+def _sequence(dest: str, sequence: bool) -> str | None:
+    return str(Path(dest) / "frames_cache.usdc") if sequence else None
 
 
 def _unresolved(display: Any) -> list[str]:
@@ -123,17 +132,24 @@ def _batched(display: Any) -> list[dict[str, Any]]:
     return sorted(found, key=lambda b: b["tracks"])
 
 
-def blended(
-    module_dir: str, dest: str, synchronized: list[float], shown: list[float], minimum: int | None = None
+def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
+    module_dir: str,
+    dest: str,
+    synchronized: list[float],
+    shown: list[float],
+    minimum: int | None = None,
+    sequence: bool = False,
 ) -> dict[str, Any]:
     """Synchronize a blending cached display of frames.usda at `synchronized`, then show each of `shown`.
 
-    With `minimum`, the display is batched.
+    With `minimum`, the display is batched; with `sequence`, its meshes cache in a USD file, which USD interpolates
+    as it does, holding an attribute whose sizes at a and b differ.
 
     The display is built at the first, and follows `frame_set` without `subframes`, so a shown time isn't
     synchronized. At each shown time, between cached time codes a and b, reports where the display differs from
     fresh plans at a and b: a viewport object's float mesh attributes mixed linearly by the time between a and b,
-    its integer ones and its transform as at a, and a mesh cached whole as at a.
+    its integer ones and its transform as at a, and a mesh cached whole, or a track another mesh shows at b (as one
+    leaving its batch onto a mesh of its own), as at a.
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
@@ -145,7 +161,9 @@ def blended(
     scene: Any = bpy.context.scene  # never None in a running Blender
     scene.collection.children.link(collection)
     scene.frame_set(int(synchronized[0]))
-    display = cached.CachedDisplay(native, stage, collection, synchronized[0], blend=True, minimum=minimum)
+    display = cached.CachedDisplay(
+        native, stage, collection, synchronized[0], blend=True, minimum=minimum, sequence=_sequence(dest, sequence)
+    )
     handler = display.follow(scene)
     plans: dict[float, dict[Any, tuple[Any, Any]]] = {}
 
@@ -167,6 +185,14 @@ def blended(
             scene.frame_set(int(time))
         count = len(display.synchronized)
         whole = set(_whole(display))
+        shown_by: dict[float, dict[Any, str]] = {}  # by cached time code, the mesh showing each track there
+        for time in sorted(display.cached):
+            scene.frame_set(int(time), subframe=time % 1)
+            shown_by[time] = {
+                key: showing[0]["object"].data.name
+                for key, held in _holders(display).items()
+                if (showing := [h for h in held if h["viewport"]])
+            }
         for time in shown:
             scene.frame_set(int(time), subframe=time % 1)
             a = max(t for t in display.cached if t <= time)
@@ -197,7 +223,10 @@ def blended(
                     if layer.name not in after:
                         continue  # nothing to mix toward, as for a held display color b's mesh lacks (D13)
                     mixed = layer.values
-                    if layer.data_type != "INT" and key[0] not in whole:
+                    sized = not sequence or after[layer.name].values.size == layer.values.size
+                    moved = shown_by[b].get(key, shown_by[a].get(key)) != shown_by[a].get(key)
+                    held = key[0] in whole or moved
+                    if layer.data_type != "INT" and not held and sized:
                         mixed = (1 - weight) * layer.values + weight * after[layer.name].values
                     if not numpy.allclose(values, mixed, atol=TOLERANCE):
                         found.append(f"{key}: {layer.name}")

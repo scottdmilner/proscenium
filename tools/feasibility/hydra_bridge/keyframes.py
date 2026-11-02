@@ -7,7 +7,7 @@ both their time codes; each object's timeline holds the sample it is keyed to at
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import bpy
 from attribute_samples import MODIFIER, NEXT, NEXT_TIME, SAMPLE, TIME, input_path
@@ -28,18 +28,26 @@ class Keys:
         self._channels = {}
         self._timelines = {}
 
-    def insert(self, obj: bpy.types.Object, path: str, index: int, time: float, value: float) -> None:
-        """A constant key, which holds until the next."""
-        channels = self._channels.get(obj.session_uid)
+    def insert(  # noqa: PLR0913 - the property keyed, and its key
+        self,
+        owner: Any,
+        path: str,
+        index: int,
+        time: float,
+        value: float,
+        interpolation: Literal["CONSTANT", "LINEAR"] = "CONSTANT",
+    ) -> None:
+        """A key on an object or another ID, constant by default, so it holds until the next."""
+        channels = self._channels.get(owner.session_uid)
         if channels is None:
-            action = bpy.data.actions.new(f"{obj.name} frames")
-            slot = action.slots.new(id_type="OBJECT", name=obj.name)
-            animation = obj.animation_data_create()
+            action = bpy.data.actions.new(f"{owner.name} frames")
+            slot = action.slots.new(id_type=owner.id_type, name=owner.name)
+            animation = owner.animation_data_create()
             animation.action, animation.action_slot = action, slot
-            channels = self._channels[obj.session_uid] = anim_utils.action_ensure_channelbag_for_slot(action, slot)
+            channels = self._channels[owner.session_uid] = anim_utils.action_ensure_channelbag_for_slot(action, slot)
         curve = channels.fcurves.find(path, index=index) or channels.fcurves.new(path, index=index)
         point = curve.keyframe_points.insert(time, value, options={"FAST"})
-        point.interpolation = "CONSTANT"
+        point.interpolation = interpolation
 
     def insert_transform(self, obj: bpy.types.Object, time: float) -> None:
         """Key `obj`'s transform as it is."""

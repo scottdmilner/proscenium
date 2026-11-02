@@ -132,26 +132,8 @@ class MeshCaches:
 
         Returns the meshes split, and those written.
         """
-
-        def content_key(key: HolderKey) -> ContentKey:
-            index = now.mesh_index[key]
-            return ("mesh", index) if index is not None else ("bounds", bounds_key(record(key)))
-
-        def record(key: HolderKey) -> ObjectRecord:
-            return now.fresh.get(key) or now.latest[key]
-
-        def same(key: HolderKey) -> bool:  # whether its content is what it was at the current plan
-            if key not in now.fresh:
-                return True
-            if key not in now.previous:
-                return False
-            index = now.mesh_index[key]
-            if index is None:
-                return bounds_key(now.fresh[key]) == bounds_key(now.latest[key])
-            return now.diff["meshes"][index] == now.previous[key]
-
         present = now.present
-        touched = {_uid(self.holder(key)) for key in present if not same(key)} & self.meshes.keys()
+        touched = {_uid(self.holder(key)) for key in present if not same(now, key)} & self.meshes.keys()
         touched |= {uid for uid, cache in self.caches.items() if cache.varying or cache.whole is not None}
         split = written = 0
         for uid in touched:
@@ -160,20 +142,19 @@ class MeshCaches:
                 continue  # hidden here, so it shows what it holds
             parts: dict[ContentKey, list[HolderKey]] = {}
             for key in users:
-                parts.setdefault(content_key(key), []).append(key)
-            # The part whose content is unchanged keeps the mesh, so a mesh with no cache stays one.
-            ordered = sorted(parts.items(), key=lambda item: (not all(same(k) for k in item[1]), -len(item[1])))
+                parts.setdefault(content_key(now, key), []).append(key)
+            ordered = ordered_parts(now, parts)
             split += self.split(uid, [set(keys) for _, keys in ordered])
             for content, keys in ordered:
                 part_uid = _uid(self.holder(keys[0]))
                 cache = self.caches.get(part_uid)
                 mesh_record = None
-                if all(same(k) for k in keys):
+                if all(same(now, k) for k in keys):
                     if cache is None:
                         continue  # what the mesh holds
                     values = cache.latest
                 else:
-                    values, mesh_record = self._content(content, record(keys[0]), now.plan)
+                    values, mesh_record = self._content(content, record(now, keys[0]), now.plan)
                 if mesh_record is not None and (
                     (cache is not None and cache.whole is not None)
                     or not self._same_topology(keys[0], values, mesh_record)
@@ -328,6 +309,38 @@ class MeshCaches:
             if cache.whole is not None:
                 data |= set(cache.whole.datablocks())
         return data
+
+
+def content_key(now: Synchronized, key: HolderKey) -> ContentKey:
+    index = now.mesh_index[key]
+    return ("mesh", index) if index is not None else ("bounds", bounds_key(record(now, key)))
+
+
+def record(now: Synchronized, key: HolderKey) -> ObjectRecord:
+    """A present holder's record there."""
+    return now.fresh.get(key) or now.latest[key]
+
+
+def same(now: Synchronized, key: HolderKey) -> bool:
+    """Whether a present holder's content is what it was at the current plan."""
+    if key not in now.fresh:
+        return True
+    if key not in now.previous:
+        return False
+    index = now.mesh_index[key]
+    if index is None:
+        return bounds_key(now.fresh[key]) == bounds_key(now.latest[key])
+    return now.diff["meshes"][index] == now.previous[key]
+
+
+def ordered_parts(
+    now: Synchronized, parts: dict[ContentKey, list[HolderKey]]
+) -> list[tuple[ContentKey, list[HolderKey]]]:
+    """A mesh's holders by content, the part that keeps the mesh first.
+
+    That is the part whose content is unchanged, so a mesh with no cache stays one, else the largest.
+    """
+    return sorted(parts.items(), key=lambda item: (not all(same(now, k) for k in item[1]), -len(item[1])))
 
 
 def new_cache(mesh: bpy.types.Mesh, content: dict[str, Layer]) -> MeshCache:

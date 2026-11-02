@@ -1,8 +1,9 @@
-"""A cached display (M04-prototypes plan, E3, E4): structure built once, each frame's varying values cached as it comes.
+"""A cached display (M04-prototypes plan, E3 to E6): structure built once, each frame's values cached as it comes.
 
 The scene is the bridge's frames.usda over M1b's animation case. At each frame visited, the display as Blender
 evaluates it holds what a fresh plan at that frame does, meshes whose topology varies included (E4); each frame
-synchronizes at its first visit only, until an edit to the stage, after which the display is rebuilt.
+synchronizes at its first visit only, until an edit to the stage, after which the display is rebuilt. Every check
+runs with the meshes' caches as sample attributes and as a USD file that Mesh Sequence Cache modifiers read (E6).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 BODY = Path(__file__).parent / "bodies/caching.py"
+REOPENING = Path(__file__).parent / "bodies/cache_reopening.py"
 # Each frame after the start, revisited, so every frame is cached before it is shown again.
 VISITS = {1: [2, 3, 2, 1, 3], 2: [1, 3, 1, 2, 3]}
 EDITED_VISITS = [1, 3, 1]
@@ -142,11 +144,18 @@ def _batches(start: int, predict: bool) -> list[dict[str, Any]]:
     return sorted(found, key=lambda b: b["tracks"])
 
 
+@pytest.mark.parametrize("sequence", [False, True], ids=["attributes", "sequence"])
 @pytest.mark.parametrize("minimum", [None, MINIMUM], ids=["objects", "batched"])
 @pytest.mark.parametrize("predict", [True, False], ids=["predicted", "unpredicted"])
 @pytest.mark.parametrize("start", [1, 2])
-def test_cached_frames_match_fresh_plans(
-    wheel: Runtime, hydra_bridge: Path, tmp_path: Path, start: int, predict: bool, minimum: int | None
+def test_cached_frames_match_fresh_plans(  # noqa: PLR0913 - the fixtures, and the display's options
+    wheel: Runtime,
+    hydra_bridge: Path,
+    tmp_path: Path,
+    start: int,
+    predict: bool,
+    minimum: int | None,
+    sequence: bool,
 ) -> None:
     dest = tmp_path / "scene"
     dest.mkdir()
@@ -162,13 +171,14 @@ def test_cached_frames_match_fresh_plans(
         predict=predict,
         edited_visits=EDITED_VISITS,
         minimum=minimum,
+        sequence=sequence,
     )
     _check_visits(result["visits"], start, lambda time: time)
     assert result["cached"] == [1, 2, 3]
     assert result["confirmed"] == _copies(CONFIRMED)
     assert result["predicted"] == (_copies(_predicted(start)) if predict else [])
     if minimum is None:
-        assert result["whole"] == WHOLE
+        assert result["whole"] == ([] if sequence else WHOLE)  # a USD mesh's topology varies with time
         # Wave and the twins share Hand's and the Blades' mesh at 1; Wave deforms at 2, and the twins gain a face,
         # sharing theirs until TwinB's points move at 3. Predicted, their meshes are their own from the start.
         assert result["split"] == (0 if predict else 3 if start == 1 else 1)
@@ -178,7 +188,7 @@ def test_cached_frames_match_fresh_plans(
         # Unpredicted, the twins leave the triangle's batch at 2 as objects of their new topology, which then
         # holds, so they split at 3; built at 2, TwinA's batch caches whole meshes, as their topology at 1 differs.
         unpredicted = ["/World/Bud", "/World/Morph", *([] if start == 1 else ["/World/TwinA"])]
-        assert result["whole"] == (WHOLE if predict else unpredicted)
+        assert result["whole"] == ([] if sequence else WHOLE if predict else unpredicted)
         assert result["split"] == (1 if not predict and start == 1 else 0)
     # An edit invalidates every cache: the next frame rebuilds, and every other frame synchronizes again.
     assert result["edited"]
@@ -191,11 +201,18 @@ def test_cached_frames_match_fresh_plans(
 SUBFRAME_VISITS = [1.5, 2.0, 2.5, 1.25, 1.5, 3.0, 2.5, 1.25, 2.0]
 
 
+@pytest.mark.parametrize("sequence", [False, True], ids=["attributes", "sequence"])
 @pytest.mark.parametrize("minimum", [None, MINIMUM], ids=["objects", "batched"])
 @pytest.mark.parametrize("predict", [True, False], ids=["predicted", "unpredicted"])
 @pytest.mark.parametrize("subframes", [True, False], ids=["subframes", "frames"])
 def test_cached_subframes(  # noqa: PLR0913 - the fixtures, and the display's options
-    wheel: Runtime, hydra_bridge: Path, tmp_path: Path, subframes: bool, predict: bool, minimum: int | None
+    wheel: Runtime,
+    hydra_bridge: Path,
+    tmp_path: Path,
+    subframes: bool,
+    predict: bool,
+    minimum: int | None,
+    sequence: bool,
 ) -> None:
     dest = tmp_path / "scene"
     dest.mkdir()
@@ -212,6 +229,7 @@ def test_cached_subframes(  # noqa: PLR0913 - the fixtures, and the display's op
         edited_visits=[],
         subframes=subframes,
         minimum=minimum,
+        sequence=sequence,
     )
     # With subframes, each is synchronized and shows its own time, between keys of whole frames; without, a
     # subframe synchronizes and shows its frame.
@@ -220,10 +238,11 @@ def test_cached_subframes(  # noqa: PLR0913 - the fixtures, and the display's op
     assert result["cached"] == sorted({1.0, *map(shown, SUBFRAME_VISITS)})
 
 
+@pytest.mark.parametrize("sequence", [False, True], ids=["attributes", "sequence"])
 @pytest.mark.parametrize("minimum", [None, MINIMUM], ids=["objects", "batched"])
 @pytest.mark.parametrize("start", [1.0, 2.0])
-def test_blending_mixes_samples(
-    wheel: Runtime, hydra_bridge: Path, tmp_path: Path, start: float, minimum: int | None
+def test_blending_mixes_samples(  # noqa: PLR0913 - the fixtures, and the display's options
+    wheel: Runtime, hydra_bridge: Path, tmp_path: Path, start: float, minimum: int | None, sequence: bool
 ) -> None:
     dest = tmp_path / "scene"
     dest.mkdir()
@@ -238,13 +257,15 @@ def test_blending_mixes_samples(
         synchronized=synchronized,
         shown=[1.5, 2.25, 1.75, 2.75],
         minimum=minimum,
+        sequence=sequence,
     )
-    # Between cached frames, float attributes mix linearly and the rest hold, and so do meshes cached whole;
-    # built at 1, Wave's samples mix with its own values, as it first varies at 2. Shown times aren't synchronized.
+    # Between cached frames, float attributes mix linearly and the rest hold, and so do meshes cached whole, and
+    # in a USD file, an attribute whose sizes differ; built at 1, Wave's samples mix with its own values, as it
+    # first varies at 2. Shown times aren't synchronized.
     assert result["synchronized"] == []
     # Batched and built at 1, Flicker's copies leave their batch at 3, onto a mesh holding no color; at 2 it holds
     # their color, an attribute it lacks, so it caches whole meshes.
-    assert result["whole"] == sorted(WHOLE + ([BULB] if minimum and start == 1 else []))
+    assert result["whole"] == ([] if sequence else sorted(WHOLE + ([BULB] if minimum and start == 1 else [])))
     assert result["unresolved"] == []  # no key left on an input that a whole mesh's group lacks
     for visit in result["visits"]:
         assert visit["mismatches"] == [], visit["time"]
@@ -277,3 +298,33 @@ def test_prediction_leaves_capture_unchanged(wheel: Runtime, hydra_bridge: Path,
     assert result["plain_dirtied_aspects"] == []
     # Hydra still dirties the same locators when the time changes next.
     assert result["same_dirtied_locators"]
+
+
+@pytest.mark.parametrize("sequence", [False, True], ids=["attributes", "sequence"])
+def test_reopened_cached_display(wheel: Runtime, hydra_bridge: Path, tmp_path: Path, sequence: bool) -> None:
+    dest = tmp_path / "scene"
+    dest.mkdir()
+    blend = str(tmp_path / "cached.blend")
+    times = [1.0, 2.0, 3.0]
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "dest": str(dest), "blend": blend, "times": times}
+    for run in ("saved", "reopened", "missing"):  # each process's own directory
+        (tmp_path / run).mkdir()
+    saved = run_isolated(wheel, REOPENING, "save", tmp_path / "saved", **kwargs, sequence=sequence)
+    kwargs["objects"] = saved["objects"]
+    # Reopened with no bridge, the display plays back its cached frames: from the .blend, or with sequence, from
+    # its USD file as well.
+    reopened = run_isolated(wheel, REOPENING, "reopen", tmp_path / "reopened", **kwargs, remove=None)
+    assert reopened["mismatches"] == {str(t): [] for t in times}
+    if not sequence:
+        return
+    # Without the file, each mesh that varies shows its own content, the build's, at every time, and the rest of
+    # the display is unchanged.
+    missing = run_isolated(wheel, REOPENING, "reopen", tmp_path / "missing", **kwargs, remove=saved["cache"])
+    assert missing["mismatches"]["1.0"] == []
+    varying = {copy[0] for copy, aspects in CONFIRMED.items() if {"mesh", "bounds"} & set(aspects)}
+    differing = set()
+    for time in times[1:]:
+        found = missing["mismatches"][str(time)]
+        assert not [m for m in found if m.endswith(": transform") or ": shown" in m or ": no object" in m], time
+        differing |= {m.split("'")[1] for m in found}
+    assert differing == varying - {"/World/Skinned/Skel"}  # whose mesh shows in neither destination

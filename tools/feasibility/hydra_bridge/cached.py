@@ -25,6 +25,8 @@ code at or before it, as keys hold until the next.
   where it has one (E4: a sample appends in constant time). That input is keyed like the transforms, so the
   modifier and the keys always show the same time; it is -1, the mesh's own values, at the times cached before
   the mesh first varied. A placeholder's bounds are cached the same way, on its bounds mesh.
+- **Mesh Sequence Cache modifiers, for comparison (E6):** with `sequence`, a USD file's path, the holders' meshes
+  that vary are cached in a USD layer instead, which their modifiers read (sequence_caches.py).
 - **A mesh whose topology varies** (E4) caches a whole mesh per sample instead (topology.py), from the first
   time its topology differs from its own, its earlier samples rebuilt from its attributes: a mesh per sample,
   whose geometry its objects' modifiers show by their keyed `Sample` input. Its samples don't blend.
@@ -58,6 +60,7 @@ from frames import Aspect, TrackKey, copy_of, place
 from keyframes import Keys
 from mesh_caches import MeshCaches, Synchronized, UncachedError
 from pxr import Tf, Usd
+from sequence_caches import SequenceCaches
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -116,9 +119,13 @@ class CachedDisplay:
         predict: bool = True,
         blend: bool = False,
         minimum: int | None = None,
+        sequence: str | None = None,
         **settings: Any,
     ) -> None:
-        """With `minimum`, copies alike but for their placement are batched, in groups of at least that many."""
+        """With `minimum`, copies alike but for their placement are batched, in groups of at least that many.
+
+        With `sequence`, a USD file's path, meshes cache there, for Mesh Sequence Cache modifiers to read.
+        """
         self.native = native
         self.stage = stage
         self.collection = collection
@@ -127,7 +134,7 @@ class CachedDisplay:
         self.settings = settings
         self.bridge = native.Bridge(stage)
         self.batches = None if minimum is None else Batches(minimum)
-        self.meshes = MeshCaches(self._holder)
+        self.meshes = MeshCaches(self._holder) if sequence is None else SequenceCaches(self._holder, sequence)
         self.synchronized = []
         self._listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, self._on_edit, stage)
         start = clock.perf_counter()
