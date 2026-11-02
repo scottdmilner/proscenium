@@ -49,6 +49,9 @@ VARYING = {
     (PULSE, (SWARM, f"{SWARM}/__point_2"), 0): {"mesh", "properties", "transform"},
     (PULSE, (SWARM, f"{SWARM}/__point_3"), 0): {"mesh", "visibility"},
     (PIP, (SWARM, f"{SWARM}/__point_4"), 0): {"visibility"},
+    # Flicker's copies change color, which their mesh holds until they differ at 3.
+    ("/World/Flicker/Protos/Bulb", ("/World/Flicker", "/World/Flicker/__point_0"), 0): {"mesh", "properties"},
+    ("/World/Flicker/Protos/Bulb", ("/World/Flicker", "/World/Flicker/__point_1"), 0): {"mesh", "properties"},
     ("/World/Steady", (), 0): set(),  # two equal samples
     ("/World/Single", (), 0): set(),  # one sample
     ("/World/Still", (), 0): set(),

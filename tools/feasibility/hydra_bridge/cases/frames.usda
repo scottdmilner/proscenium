@@ -23,7 +23,11 @@
 # - Swarm is a point instancer of Pip and Pulse (E5). Point 1 switches from Pip to Pulse at 2 (protoIndices), so
 #   one copy of it vanishes and another appears; point 3 is invisible at 2 only (invisibleIds); point 4 appears at
 #   3; point 0 moves at 3 and point 2 turns there; and heat, a per-point primvar, changes at 3 for point 2. Pulse's
-#   own points move at 3, so every copy of it deforms alike.
+#   own points move at 3, so every copy of it deforms alike. Pip is a proxy, so its copies show in the viewport
+#   only. Every point is red but point 2, blue from 3 (a per-point displayColor), so its copy's color changes
+#   while its mesh holds.
+# - Flicker is a point instancer of Bulb at two points, red at 1 and green at 2, so Bulb's one mesh holds their
+#   color (D13), which varies; at 3 point 1 is blue, so it holds none.
 
 over "World"
 {
@@ -153,6 +157,34 @@ over "World"
         uniform token[] xformOpOrder = ["xformOp:translate"]
     }
 
+    def PointInstancer "Flicker"
+    {
+        double3 xformOp:translate = (0, 24, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = </World/Flicker/Protos/Bulb>
+        int[] protoIndices = [0, 0]
+        point3f[] positions = [(0, 0, 0), (2, 0, 0)]
+        color3f[] primvars:displayColor (
+            interpolation = "varying"
+        )
+        color3f[] primvars:displayColor.timeSamples = {
+            1: [(1, 0, 0), (1, 0, 0)],
+            2: [(0, 1, 0), (0, 1, 0)],
+            3: [(0, 1, 0), (0, 0, 1)],
+        }
+
+        def Scope "Protos"
+        {
+            def Mesh "Bulb"
+            {
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0.5, 0.5, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+
     def PointInstancer "Swarm"
     {
         double3 xformOp:translate = (0, 20, 0)
@@ -178,6 +210,14 @@ over "World"
             2: [3],
             3: [],
         }
+        color3f[] primvars:displayColor (
+            interpolation = "varying"
+        )
+        color3f[] primvars:displayColor.timeSamples = {
+            1: [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)],
+            2: [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)],
+            3: [(1, 0, 0), (1, 0, 0), (0, 0, 1), (1, 0, 0), (1, 0, 0)],
+        }
         float[] primvars:heat (
             interpolation = "varying"
         )
@@ -194,6 +234,7 @@ over "World"
                 int[] faceVertexCounts = [3]
                 int[] faceVertexIndices = [0, 1, 2]
                 point3f[] points = [(0, 0, 0), (1, 0, 0), (0.5, 1, 0)]
+                uniform token purpose = "proxy"
                 uniform token subdivisionScheme = "none"
             }
 
