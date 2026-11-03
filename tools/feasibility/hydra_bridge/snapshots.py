@@ -60,8 +60,10 @@ class Snapshots:
         representation: str = "objects",
         users: update.UserPolicy = update.UserPolicy.REPOINT,
         moves: bool = False,
+        minimum: int = batch.MINIMUM,
         **settings: Any,
     ) -> None:
+        """Batched, copies alike but for their placement batch in groups of at least `minimum`."""
         self.native = native
         self.users = users
         self.moves = moves
@@ -70,7 +72,9 @@ class Snapshots:
         self.plan = native.build_plan(self.bridge.capture(time), **settings)
         self.collection = collection
         self.batched = representation == "batched"
-        self.display = batch.apply_batched(self.plan, collection) if self.batched else apply(self.plan, collection)
+        self.display = (
+            batch.apply_batched(self.plan, collection, minimum) if self.batched else apply(self.plan, collection)
+        )
         self.last = None
 
     def step(self, time: float) -> Step:

@@ -288,6 +288,45 @@ def colors(path: Path, copies: int, palette: int | None = None, side: int = 32) 
     return parameters
 
 
+def scatter(path: Path, points: int, side: int = 16, seed: int = 7) -> dict[str, Any]:
+    """M4 Phase E (E5): a point instancer of `points` points over four side x side grids, varying every frame.
+
+    Every point moves every frame, 5% of the points switch prototype each frame (protoIndices), and the last
+    prototype's own points move every frame.
+    """
+    parameters = {"points": points, "prototypes": 4, "grid side": side, "switching": 0.05, "frames": FRAMES}
+    layer = _layer(path, "a point instancer whose instances move and switch prototype", parameters, FRAMES)
+    grid, counts, indices = _grid(side)
+    rng = np.random.default_rng(seed)
+    with Sdf.ChangeBlock():
+        instancer = Sdf.PrimSpec(_xform(layer, "World"), "Scatter", Sdf.SpecifierDef, "PointInstancer")
+        protos = Sdf.PrimSpec(instancer, "Protos", Sdf.SpecifierDef, "Scope")
+        prototypes = [_mesh(protos, f"P{p}", (grid * (1 + p * 0.1), counts, indices)) for p in range(4)]
+        deforming = prototypes[-1].attributes["points"]
+        for frame in range(FRAMES[0], FRAMES[1] + 1):
+            moved = grid.copy()
+            moved[:, 2] = 0.1 * np.sin(moved[:, 0] * 6 + frame)
+            layer.SetTimeSample(deforming.path, frame, Vt.Vec3fArray.FromNumpy(moved))
+        relationship = Sdf.RelationshipSpec(instancer, "prototypes")
+        for prototype in prototypes:
+            relationship.targetPathList.Append(prototype.path)
+        chosen = rng.integers(0, 4, points).astype(np.int32)
+        base = np.stack([rng.uniform(0, 200, points), rng.uniform(0, 200, points), np.zeros(points)], axis=1)
+        base = base.astype(np.float32)
+        positions = _attribute(instancer, "positions", Sdf.ValueTypeNames.Point3fArray, None)
+        proto_indices = _attribute(instancer, "protoIndices", Sdf.ValueTypeNames.IntArray, None)
+        for frame in range(FRAMES[0], FRAMES[1] + 1):
+            moved = base + np.array([0, 0, 0.5 * frame], np.float32)
+            layer.SetTimeSample(positions.path, frame, Vt.Vec3fArray.FromNumpy(moved))
+            if frame > FRAMES[0]:
+                switching = rng.choice(points, points // 20, replace=False)
+                chosen = chosen.copy()
+                chosen[switching] = (chosen[switching] + 1) % 4
+            layer.SetTimeSample(proto_indices.path, frame, Vt.IntArray.FromNumpy(chosen))
+    layer.Save()
+    return parameters
+
+
 # Scene name -> (generator, time code imported). One small and one large size per dimension that matters;
 # instances-100 is the CI smoke scene.
 SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
@@ -303,6 +342,7 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "updates-10000": (lambda p: updates(p, 10000), 1.0),
     "colors-1000": (lambda p: colors(p, 1000), 1.0),
     "colors-1000-palette-8": (lambda p: colors(p, 1000, 8), 1.0),
+    "scatter-10000": (lambda p: scatter(p, 10000), 1.0),
 }
 STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
 UPDATES = ["updates-100", "updates-1000", "updates-10000"]  # M4 Phase C's sizes

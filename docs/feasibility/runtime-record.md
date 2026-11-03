@@ -1358,6 +1358,54 @@ Plans of one scene from separate processes can order their records differently, 
 - **On ALab with its point instancers** (ad hoc, three processes of the Blender binary, at default time): every process planned 15,157 objects with the same content digest, and each in a different order.
 - **The likely cause** is that the planner keys some maps by `SdfPath`'s hash, which differs between processes. This is inferred from the code, not isolated.
 
+### Playback of time-sampled data (M4 Phase E)
+
+M4 Phase E's representations of time-sampled data ([M4 plan](../plans/M04-prototypes.md), E2–E7) played back in the same session: E2's per-time-code snapshots (with moves), and the cached display with its meshes' samples as attributes (E3–E5) or in a USD file read by Mesh Sequence Cache modifiers (E6), each as the object baseline and batched at a minimum of 3. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-11-02, three runs each in fresh processes. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --repeats 3 --check
+# The sequence caches on ALab, writing what the reader alters
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --scenes alab --approaches sequence --repeats 3 \
+    --check --lossy --out build/hydra-bridge/playback-lossy
+```
+
+Each run builds the display at the scene's first frame, sets each later frame in turn (its first visit), then sets every frame again (a revisit), and saves the `.blend` uncompressed. The scenes are ALab with its point instancers, 1004 to 1057; the harness's `animation` scene (frames 1 to 24 of a 66k-point deforming grid and 1,000 moving cubes); and `scatter-10000`, a point instancer of 10,000 points over four 16 × 16 grids, frames 1 to 24, every point moving every frame, 5% switching prototype each frame, and one prototype deforming. With `--check`, each cached display matched fresh plans at its second, middle, and last frames, after the timings, in every run. On ALab the sequence caches refuse meshes holding `st` on points, which Blender's reader gives back on corners, at the first frame after the build; with `--lossy` they write them anyway (`st` as a vertex float2, a display color without its opacity), and then six display colors differ from fresh plans at each frame checked, their opacity lost.
+
+Medians over the three runs, with their range: a frame's first visit and a revisit are each run's median, and the heap is its live heap once every frame has been visited, above the empty scene's.
+
+| ALab | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 5.60 (5.23–6.14) | 0.79 (0.78–0.82) | 799 (769–816) | 3,064 | 1,171 |
+| Snapshots, batched | 3.39 (3.32–3.39) | 0.53 (0.52–0.55) | 529 (520–562) | 2,991 | 1,139 |
+| Attributes, objects | 5.61 (5.55–6.04) | 0.37 (0.36–0.40) | 10.1 (10.0–10.7) | 3,567 | 1,534 |
+| Attributes, batched | 3.53 (3.47–3.70) | 0.38 (0.37–0.39) | 10.2 (10.2–10.6) | 3,561 | 1,502 |
+| Sequence, objects (lossy) | 6.29 (5.61–6.50) | 0.43 (0.41–0.47) | 26.5 (20.7–34.8) | 6,517 | 1,198, and 295 of USD |
+| Sequence, batched (lossy) | 3.83 (3.49–3.93) | 0.43 (0.42–0.43) | 23.6 (21.5–26.2) | 6,511 | 1,166, and 295 of USD |
+
+| Scatter | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 0.36 (0.36–0.37) | 1.30 (1.27–1.34) | 1,346 (1,337–1,359) | 308 | 27 |
+| Snapshots, batched | 0.06 | 0.052 (0.052–0.055) | 51.7 (49.6–52.6) | 16 | 1 |
+| Attributes, objects | 0.48 (0.47–0.49) | 4.09 (3.72–4.12) | 212 (212–223) | 1,628 | 449 |
+| Attributes, batched | 0.11 | 0.33 (0.32–0.33) | 0.5 (0.4–0.7) | 59 | 33 |
+| Sequence, objects | 0.47 (0.45–0.52) | 3.76 (3.51–4.19) | 216 (216–224) | 1,572 | 437 |
+| Sequence, batched | 0.12 (0.12–0.14) | 0.33 (0.31–0.33) | 0.5 (0.5–0.6) | 59 | 33 |
+
+| `animation` | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 0.09 | 0.076 (0.073–0.077) | 73.1 (71.7–75.5) | 64 | 9 |
+| Snapshots, batched | 0.06 | 0.038 | 37.5 (36.7–38.0) | 36 | 7 |
+| Attributes, objects | 0.11 | 0.089 (0.088–0.090) | 3.9 (3.8–4.1) | 129 | 45 |
+| Attributes, batched | 0.08 | 0.042 | 0.2 | 60 | 26 |
+| Sequence, objects | 0.12 | 0.096 | 10.0 (9.9–10.2) | 225 | 28, and 20 of USD |
+| Sequence, batched | 0.09 | 0.048 | 6.7 (6.7–7.0) | 156 | 8, and 20 of USD |
+
+- **A revisit** is a step through the update path for snapshots, so it costs as much as a first visit, and for the cached display no synchronization at all: on ALab, 10 ms against 0.53 to 0.80 s, and a revisit of the sequence caches 24 to 27 ms, as each varying mesh is read from USD at each frame change.
+- **A first visit** of the cached display on ALab took 0.37 to 0.43 s, against a snapshot step's 0.79 s as objects and 0.53 s batched. On the scatter, where every track moves every frame, a snapshot step is faster than caching the frame: 1.30 s against 4.09 and 3.76 s as objects, and 52 ms against 0.33 s batched; each revisit costs a step again. In the cached display the first visit after the build is the slowest (in the first of the three runs: 11.4 s and 10.5 s for the scatter's objects, attribute and sequence caches, against 5.4 s and 4.7 s for the next slowest; 1.0 to 1.6 s on ALab, against 0.4 to 0.8 s).
+- **Memory:** snapshots hold one frame, so the least heap and the smallest `.blend`. On ALab once filled, the attribute caches held about 500 MB more heap than snapshots, and the sequence caches about 2,950 MB more than the attribute caches (not broken down), with a USD file of 295 MB beside the `.blend`, which took 2.7 and 2.3 s to save (objects, batched). Batched, the scatter's cached display holds 59 MB against 1.6 GB as objects.
+- **Not measured:** viewport frame time while playing, and Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
