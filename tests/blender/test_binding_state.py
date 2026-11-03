@@ -48,7 +48,8 @@ def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 
 def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:
-    return Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, time, (DIRTY,))
+    cached = (13.0, 14.5) if time is not None else ()  # a generation at the default time code caches nothing
+    return Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, time, (DIRTY,), cached)
 
 
 def _attempt(time: float | None = 20.0) -> LastAttempt:
@@ -57,13 +58,24 @@ def _attempt(time: float | None = 20.0) -> LastAttempt:
 
 @pytest.mark.parametrize("time", [12.5, None], ids=["numeric", "default"])
 def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path, time: float | None) -> None:
-    # Diagnostics come back with their enums and their layers as a tuple.
+    # Diagnostics come back with their enums and their layers as a tuple, and cached time codes as a tuple.
     handle = _binding(bindings, tmp_path)
     binding_state.write_generation(bpy.data.collections["Shot"], _generation(handle, time))
     binding_state.write_last_attempt(_scene(), handle.binding_id, _attempt(time))
     save_and_reopen(tmp_path / "state.blend")
     assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(_generation(handle, time), 1)
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(_attempt(time), 1)
+
+
+def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindings, tmp_path: Path) -> None:
+    handle = _binding(bindings, tmp_path)
+    destination = bpy.data.collections["Shot"]
+    binding_state.write_generation(destination, _generation(handle))
+    stored = destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict()
+    del stored["cached_time_codes"]
+    destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
+    expected = Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, 12.5, (DIRTY,))
+    assert binding_state.read_generation(destination) == Loaded(expected, 1)
 
 
 def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
@@ -115,6 +127,9 @@ def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindin
         ({VERSION_KEY: 2}, RefusalReason.NEWER),
         ({"payload_policy": "load_some"}, RefusalReason.INVALID),
         ({"time_code": "twelve"}, RefusalReason.INVALID),
+        ({"cached_time_codes": [14.5, 13.0]}, RefusalReason.INVALID),
+        ({"cached_time_codes": [12.5, 13.0]}, RefusalReason.INVALID),
+        ({"time_code": None}, RefusalReason.INVALID),  # cached time codes, without a time code to vary from
         (
             {"diagnostics": [{"category": "nonsense", "severity": "info", "message": "m", "layers": []}]},
             RefusalReason.INVALID,

@@ -646,6 +646,20 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
   - **Q11, kinds outside a valid model hierarchy:** a kind level matches a prim's authored kind (with the user, Phase B).
   - **Kept as written (with the user):** picks never reach inside a native instance. **Deferred:** a point instance's identity, with point instancers; until then its floor is its instancer (D6).
   - **The matrix:** ICON-30 quotes the tool's selection; ICON-35 to ICON-41 trace the new guarantees (loading correspondence, a pick's data and a batch's instance, no partly covered object, view layers, the box, Blender's own tools), and ARCH-06, INSP-06, and ITEST-02, which M4 qualifies, cite the finalized contract.
+- **F3, the compatibility review of M3's identifiers and schemas.** Each was checked against the finalized interaction contract, the partition unit (F1), the display representation, and cached time codes (E8).
+
+  | M3's | Against | Finding |
+  |---|---|---|
+  | Binding identifiers, source-entity identifiers (composed-stage paths, instance proxies included) | Correspondence, picks, the floor rule | Compatible. A floor and its kind targets are paths on the composed stage; a pick inside a native instance resolves to the instance root, which the identifier already names. |
+  | Persistent selection (`SelectionEntry`: binding, path; the active entry) | Q4, Q7, Q8, Q10 | Compatible. It stores targets, never Blender objects, so the tool, the view layer mirrored into, and the time code shown don't reach it. A point instance can't be an entry: its floor is its instancer until its identity is settled (D6). |
+  | Ownership manifest (`ManifestEntry`: datablock, covers, role, uses) | The partition unit, batches | Compatible. A partition's resources are entries; a batch's carriers, points mesh, and prototype each have one, covering their elements, with `uses` linking them. The roles are M5's to define. |
+  | Generation record | Cached time codes | **Changed:** `Generation` gains `cached_time_codes`, sorted, without its own time code, and none at the default time code, as [Binding State](../spec/lifecycle.md#binding-state) lists. A record stored without the field reads as none, so version 1 needs no migration; nothing writes the record before M5. |
+  | Last attempt | Cached time codes | Compatible as it stands; whether a failed `cache` call records one is M5's. |
+  | Requested settings (payload policy) | A3 | UV-set names, conversion, and purpose join it in the milestones that implement them (M8 for UV-set names), each with a migration of the binding record. |
+
+  - **For M5:** a batch's `covers` follows its points' order, so an element's instance is its position in them, the order picks read (D3); resource identities and roles come from the partitions (F1).
+  - **For M7:** the destination collection's `hide_select` and the 3D views' hidden overlay settings are changed while Source Select is active, and a file saved then keeps them; whatever owns the display restores or ignores them on load.
+  - **The check:** `blender/test_binding_state.py` round-trips cached time codes through a save and reopen, reads a record without them as none, and refuses unsorted ones, one at the generation's own time code, and any at the default time code.
 
 ## Risk matrix
 
