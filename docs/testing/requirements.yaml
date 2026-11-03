@@ -333,6 +333,10 @@ requirements:
         quote: "Callers reach a binding through a binding handle: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state."
         fixtures: [F-BINDING-STATE]
         oracle: "A handle compares equal to one built from the same identifier, and stays usable across undo, redo, and save/reopen while its binding exists."
+      - id: API-10
+        quote: "create_binding(scene, key, *, payload_policy=LOAD_ALL, name=None) creates an unattached binding with a nonempty string source key"
+        fixtures: [F-BINDING-STATE]
+        oracle: "Creation stores the given key and requested payload policy, creates a dedicated destination named for name or the key, and has no live or evaluation stage until attachment or acquisition. Empty and non-string keys raise before any Blender data is created."
       - id: API-02
         quote: "The time code is the attempt's, not a setting of the binding"
         fixtures: [F-BINDING-STATE]
@@ -482,7 +486,7 @@ requirements:
         quote: "The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a .blend is reopened."
         note: "Every source is attached (2026-11-03); SRC-01 is retired. MEM-01, MEM-02, MEM-04 to MEM-08, FILE-04, and FILE-08 remain retired from the 2026-10-18 source-contract consolidation."
         fixtures: [F-REATTACH]
-        oracle: "Creating a binding stores a source key and optional last attached root-layer identifier, with no source kind or file-opening path, and opens no source stage. Synchronizing before attachment reports an unavailable source, including after reopening; attaching a caller-opened stage makes that exact stage live without opening a source file."
+        oracle: "Creating a binding stores a source key and optional last attached root-layer identifier and opens no source stage. Synchronizing before attachment reports an unavailable source, including after reopening; attaching a caller-opened stage makes that exact stage live without opening a source file."
       - id: SRC-02
         quote: "The binding holds the attached stage until the caller releases it with release(key)"
         fixtures: [F-REATTACH]

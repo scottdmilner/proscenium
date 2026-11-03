@@ -31,6 +31,7 @@ from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,10 +102,10 @@ def _check_kept(
     assert _saved(handle) == saved
 
 
-def test_moved_file_source(bindings: Bindings, tmp_path: Path) -> None:
+def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -> None:
     # F-OFFLINE "moved-file": the binding synchronized before saving, so the source was open; reopening drops it.
     with source_access.offline(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         scene.move_away()
@@ -120,7 +121,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
     # leaves nothing attached under the key.
     with source_access.offline(tmp_path) as scene:
         caller = scene.open_caller()
-        handle = bindings.create_attached_binding(_scene(), scene.key, name="Shot")
+        handle = bindings.create_binding(_scene(), scene.key, name="Shot")
         bindings.attach(scene.key, caller)
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
@@ -147,13 +148,15 @@ def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConf
     # DEST-04: no manifest, so no resources, and the object it displayed claims no owner.
     assert runtime.manifest(handle.binding_id) is None
     assert runtime.ownership(bpy.data.objects["Managed"]).claims == ()
-    # DEST-02: a fatal failure, with no source made for it and no destination created.
+    # DEST-02: a fatal failure, with no evaluation stage made and no destination created.
     collections = set(bpy.data.collections.keys())
+    stages = bindings.stages.get(handle.binding_id)
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
     assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
-    assert bindings.stages.get(handle.binding_id) is None
+    assert bindings.stages.get(handle.binding_id) is stages
+    assert stages is None or stages.evaluation_stage is None
     assert set(bpy.data.collections.keys()) == collections
 
 
@@ -161,7 +164,7 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
     # F-BINDING-STATE "removed-destination": the destination held a managed object that something else
     # also uses, so the object outlives it. Checked once it's removed, and again after save and reopen.
     with source_access.binding_state(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         obj = bpy.data.objects.new("Managed", None)
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)

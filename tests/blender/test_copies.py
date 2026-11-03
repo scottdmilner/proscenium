@@ -28,7 +28,7 @@ from proscenium.runtime import DisabledBindingError
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
-from support.usd import open_fresh
+from support.usd import binding_on_file, open_fresh
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,7 +43,7 @@ def _scene() -> bpy.types.Scene:
 
 def _published(bindings: Bindings, root: Path) -> BindingHandle:
     """The binding every route copies: "Shot" on "Scene", its manifest naming "Managed"."""
-    handle = bindings.create_file_binding(_scene(), root, name="Shot")
+    handle = binding_on_file(bindings, _scene(), root, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
@@ -95,7 +95,9 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
-        assert bindings.stages.get(handle.binding_id) is None
+        stages = bindings.stages.get(handle.binding_id)
+        assert stages is None or stages.evaluation_stage is None
+        assert handle.live_stage() is None
         with pytest.raises(DisabledBindingError):
             handle.requested_settings()
         assert handle.live_stage() is None
@@ -117,6 +119,9 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
     with copies.ownership_ambiguity(tmp_path) as scene:
         expected = scene.routes[route]
         handle = _published(bindings, scene.root)
+        found = runtime.find_binding(handle.binding_id)
+        assert found is not None
+        key = found.usable_config().source_key
         routes.run(route, tmp_path)
         before = routes.records_by_name()
         reported = _check(bindings, handle, expected.outcome)
@@ -128,6 +133,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         if expected.index_untouched:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
+        bindings.attach(key, open_fresh(scene.root))
         reopened = _check(bindings, handle, expected.reopened or expected.outcome)
         oracle.assert_agrees()
         if expected.reopened is None:
@@ -203,7 +209,7 @@ def test_a_cleared_entry_is_kept(bindings: Bindings, tmp_path: Path) -> None:
 def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) -> None:
     # COPY-16: attaching writes the configuration, which a binding with no canonical candidate refuses.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = bindings.create_attached_binding(_scene(), "shot", name="Shot")
+        handle = bindings.create_binding(_scene(), "shot", name="Shot")
         routes.run("index-lost", tmp_path)
         assert bindings.copied()[0].disabled
         caller = open_fresh(scene.root)

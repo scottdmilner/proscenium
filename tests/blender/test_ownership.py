@@ -27,6 +27,7 @@ from proscenium.persistence.records import (
 from proscenium.runtime import Claim
 from support import ownership as oracle
 from support.blend import save_and_reopen
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -42,7 +43,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[BindingHandle, Manifest]:
     """A binding whose destination holds two managed objects sharing a managed mesh, and its manifest."""
     with source_access.binding_state(tmp_path / name) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root, name=name)
+        handle = binding_on_file(bindings, _scene(), scene.root, name=name)
     destination = bpy.data.collections[name]
     mesh = bpy.data.meshes.new(f"{name}Mesh")
     objects = [bpy.data.objects.new(f"{name}{i}", mesh) for i in range(2)]
@@ -180,7 +181,7 @@ def test_a_bindings_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
     second, _ = _managed(bindings, tmp_path, "Second")
     assert runtime.manifest(first.binding_id) == Loaded(manifest, 1)
     assert runtime.manifest(second.binding_id) != runtime.manifest(first.binding_id)
-    without = bindings.create_attached_binding(_scene(), "shot")
+    without = bindings.create_binding(_scene(), "shot")
     assert runtime.manifest(without.binding_id) is None  # nothing managed yet
     with pytest.raises(KeyError):
         runtime.manifest(BindingId("not-a-binding"))

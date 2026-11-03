@@ -117,7 +117,7 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 
 | Module | Use it to |
 |---|---|
-| `usd.py` | `open_fresh(path, load)`: open a stage that no stage cache can hand back. |
+| `usd.py` | `open_fresh(path, load)`: open a stage that no stage cache can hand back. `binding_on_file(bindings, scene, root, ...)`: open a copied fixture and attach its stage under an independent key through `create_binding`. |
 | `blend.py` | `save_and_reopen(path)`: save and reopen the open file. Any bpy reference held across it is invalid afterwards. `collection_content(collection)`: a collection's objects as plain data (world matrices, parents, mesh geometry, and materials), read with bpy alone, to compare across a reopen or a process. |
 | `copies.py` | `run(route, tmp_path)`: run one of `F-OWNERSHIP-AMBIGUITY`'s copy routes on a published binding "Shot". `records_by_name()`: every record in the file, with ID pointers as names, and each collection's objects, to check that detection changed nothing. |
 | `display.py` | `publish_by_hand(binding_id, destination, display)`: build `F-OFFLINE`'s saved display and record it as a publication would, since nothing publishes until M5. `expected_content(display)` is what `collection_content` reads from it. |

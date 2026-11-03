@@ -14,7 +14,7 @@ Everything the extension saves in the `.blend`: versioned records in Blender ID 
 ## How records work
 
 - **Where they are:** each ID that carries records holds them in one ID-property group, `id_["proscenium"]`, one record per key. `addon.py` registers that group's name as a property group, so Blender's Custom Properties panel hides it, but the records are plain ID properties, readable with the extension disabled.
-- **Versions:** every record stores its schema version, and every schema is at version 1. Reading migrates an older record in memory, and the next write stores it at the current version.
+- **Versions:** every record stores its schema version, and every schema is at version 1. Reading migrates an older supported record in memory, and the next write stores it at the current version. Binding configuration stores a source key, last attached root-layer identifier, destination, and settings.
 - **Refusals:** a record that can't be read, being newer, damaged, or failed in migration, loads as a `RefusedRecord` value, never an exception, so its binding keeps its display and reports why. Writers read before writing and refuse on any refusal, and writing itself refuses to replace an unreadable or newer record ([Schema Versions](../../../docs/spec/lifecycle.md#schema-versions)).
 - **Pointers:** a record names datablocks by ID pointer, not by name. Blender clears a pointer when its datablock is removed, and a full-copy scene or an append rewrites the copies' pointers to each other, while `Collection.copy()` keeps them naming the originals ([copy routes](../../../docs/feasibility/runtime-record.md#copy-routes-m3)).
 

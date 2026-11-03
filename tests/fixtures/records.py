@@ -10,7 +10,7 @@ they have older versions of their own:
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
 derived from the migrations above. It also yields binding configurations (proscenium.persistence.binding_records) a
-newer extension or damage could leave; binding configuration has no older version yet. M5 adds
+newer extension or damage could leave; binding configuration has no older version. M5 adds
 pending-cleanup records once it defines their schema.
 """
 
@@ -74,12 +74,10 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     The records are values, not files: tests store them in ID properties or load them directly.
     """
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
-    # A valid version 1 file-source configuration whose destination was removed (a cleared pointer).
+    # A valid configuration whose destination was removed (a cleared pointer).
     binding = {
-        "source_kind": "file",
-        "path": "//shot.usda",
-        "source_key": None,
-        "root_layer_identifier": None,
+        "source_key": "shot",
+        "root_layer_identifier": "/shot.usda",
         "destination": None,
         "settings": {"payload_policy": "load_all"},
     }
@@ -111,27 +109,23 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         },
         bindings={
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
-            "no-path": {VERSION_KEY: 1, **binding, "path": None},
+            "no-key": {VERSION_KEY: 1, **binding, "source_key": None},
             "unknown-policy": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_some"}},
-            # Version 1 with its settings beside the other fields, as before they were a group: never released.
-            "flat-settings": {
+            "no-settings": {
                 VERSION_KEY: 1,
                 **{k: v for k, v in binding.items() if k != "settings"},
-                "payload_policy": "load_all",
             },
-            # Version 1 under the field names it had before source_kind and source_key: never released, so refused.
-            "old-field-names": {
+            "unknown-field": {
                 VERSION_KEY: 1,
-                **{k: v for k, v in binding.items() if k not in ("source_kind", "source_key")},
-                "source": "file",
-                "key": None,
+                **binding,
+                "unexpected": True,
             },
         },
         bindings_refused={
             "newer": RefusalReason.NEWER,
-            "no-path": RefusalReason.INVALID,
+            "no-key": RefusalReason.INVALID,
             "unknown-policy": RefusalReason.INVALID,
-            "old-field-names": RefusalReason.INVALID,
-            "flat-settings": RefusalReason.INVALID,
+            "unknown-field": RefusalReason.INVALID,
+            "no-settings": RefusalReason.INVALID,
         },
     )

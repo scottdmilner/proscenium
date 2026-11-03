@@ -145,10 +145,9 @@ FIXTURES: dict[str, Fixture] = {
             ("M3", "M5"),
             records.schema_versions,
             (
-                # Older sample records load at the current version; binding configuration has no older version yet.
+                # Older sample records load at the current version; binding configuration has no older version.
                 Case("older", SYNC, SUCCESS, ("SCHEMA-02",), 1),
                 # A binding whose configuration is newer or damaged keeps it, refuses to synchronize, and says why.
-                # A failed migration is checked on sample records only, until binding configuration has a version 2.
                 Case("unsupported", SYNC, FAILURE, ("SCHEMA-03",), 1),
                 # Unreadable records are preserved and never overwritten; sample records stand in for
                 # pending-cleanup records until M5 defines their schema.
@@ -162,7 +161,7 @@ FIXTURES: dict[str, Fixture] = {
             source_access.binding_state,
             (
                 # Handles by identifier, across undo and reopening; settings change only through set_settings.
-                Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07"), 1),
+                Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07", "API-10"), 1),
                 # The configuration and the index entry creation writes, through save and reopen.
                 Case("configuration", SYNC, SUCCESS, ("STATE-01", "COPY-07"), 1),
                 # Reopening synchronizes nothing; attachment availability is covered by F-REATTACH.

@@ -210,14 +210,15 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     scene: Any = bpy.context.scene
     binding_id = None
     if config["mode"] == "ownership":
-        # The display goes into a file binding's destination, made through M3's API, whose manifest C5 writes.
+        # The display goes into a binding's destination, with the measured stage attached; C5 writes its manifest.
         sys.path.insert(0, str(HERE.parents[3] / "src"))
         import proscenium
         from proscenium import runtime
         from proscenium.api.bindings import BINDINGS
 
         proscenium.register()
-        binding_id = BINDINGS.create_file_binding(scene, config["scene"], name="Prototype").binding_id
+        binding_id = BINDINGS.create_binding(scene, "prototype", name="Prototype").binding_id
+        BINDINGS.attach("prototype", usd_stage)
         found = runtime.find_binding(binding_id)
         assert found is not None and found.config is not None and found.config.destination is not None
         collection = found.config.destination

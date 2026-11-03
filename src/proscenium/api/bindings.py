@@ -24,10 +24,8 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-import bpy
 from pxr import Usd
 
 from .. import runtime
@@ -35,19 +33,19 @@ from ..core.requested_settings import RequestedSettings
 from ..core.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
 from ..core.source_access import (
     PayloadPolicy,
-    SourceKind,
     SourceUnavailableError,
     dirty_layers,
 )
 from ..persistence.binding_records import BindingConfig
-from ..runtime import BindingStatus, CurrentStages
+from ..runtime import CurrentStages
 
 if TYPE_CHECKING:
-    import os
     from collections.abc import Iterable
 
+    import bpy
+
     from ..core.binding_ids import BindingId
-    from ..core.source_access import AttachedBindingStages, FileBindingStages
+    from ..core.source_access import AttachedBindingStages
     from ..runtime import CopiedBinding, FoundBinding
 
 
@@ -108,24 +106,7 @@ class Bindings:
     def __init__(self) -> None:
         self.stages = CurrentStages()
 
-    def create_file_binding(
-        self,
-        scene: bpy.types.Scene,
-        root: str | os.PathLike[str],
-        *,
-        payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
-        name: str | None = None,
-    ) -> BindingHandle:
-        """A binding on scene whose source is the file root, with a new destination named name (or root's stem).
-
-        A "//" path is relative to the .blend, so it raises ValueError in a file that was never saved.
-        """
-        if str(root).startswith("//") and not bpy.data.filepath:
-            raise ValueError(f"{root} is relative to the .blend, which hasn't been saved")
-        config = BindingConfig.file(str(root), RequestedSettings(payload_policy))
-        return self._create(scene, config, name or Path(root).stem)
-
-    def create_attached_binding(
+    def create_binding(
         self,
         scene: bpy.types.Scene,
         key: str,
@@ -134,7 +115,7 @@ class Bindings:
         name: str | None = None,
     ) -> BindingHandle:
         """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
-        config = BindingConfig.attached(key, RequestedSettings(payload_policy))
+        config = BindingConfig(key, RequestedSettings(payload_policy))
         return self._create(scene, config, name or key)
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
@@ -235,8 +216,8 @@ class Bindings:
         return Result(ResultState.SUCCESS)
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
-        """None before the first synchronization, and for a binding with copies and no canonical candidate."""
-        if self._found(binding_id).status is BindingStatus.DISABLED:
+        """The caller's attached stage, or None when unattached or the configuration is unusable."""
+        if not self._found(binding_id).usable:
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
@@ -257,28 +238,15 @@ class Bindings:
             raise BindingNotFoundError(binding_id)
         return found
 
-    def _stages(self, binding_id: BindingId, config: BindingConfig) -> FileBindingStages | AttachedBindingStages:
-        """The binding's stages, made from its configuration on first use.
-
-        A file source's path is resolved each time: a "//" path follows the .blend when it is saved
-        elsewhere, and stages whose resolved file changed open the new one.
-        """
-        # BindingConfig checks that a file source has a path and an attached source a key.
-        if config.source_kind is SourceKind.FILE:
-            assert config.path is not None
-            return self.stages.file(binding_id, bpy.path.abspath(config.path))
-        assert config.source_key is not None
+    def _stages(self, binding_id: BindingId, config: BindingConfig) -> AttachedBindingStages:
+        """The binding's stages, made from its source key on first use."""
         return self.stages.attached(binding_id, config.source_key)
 
 
 def _attached_with_key(key: str) -> list[tuple[BindingId, BindingConfig]]:
     """The usable bindings whose attached source has this exact key, with their configurations."""
     configs = [(found.binding_id, found.usable_config()) for found in runtime.find_bindings() if found.usable]
-    return [
-        (binding_id, config)
-        for binding_id, config in configs
-        if config.source_kind is SourceKind.ATTACHED and config.source_key == key
-    ]
+    return [(binding_id, config) for binding_id, config in configs if config.source_key == key]
 
 
 def _unavailable(error: SourceUnavailableError) -> Result:

@@ -21,7 +21,6 @@ import bpy
 
 from ..core.binding_ids import BindingId
 from ..core.requested_settings import RequestedSettings
-from ..core.source_access import SourceKind
 from . import records
 from .records import RefusedRecord, RefusedRecordError, Schema
 
@@ -40,48 +39,20 @@ INDEX_NAME = ".proscenium"
 class BindingConfig:
     """A binding's configuration: its source, its destination, and its requested settings."""
 
-    source_kind: SourceKind
-    path: str | None  # a file source's root-layer path, as given: a "//" path is relative to the .blend
-    source_key: str | None  # an attached source's source key
-    root_layer_identifier: str | None  # of the stage last attached; informative only
-    destination: bpy.types.Collection | None  # None once the destination is removed
+    source_key: str
     settings: RequestedSettings
-
-    @classmethod
-    def file(
-        cls, path: str, settings: RequestedSettings, *, destination: bpy.types.Collection | None = None
-    ) -> BindingConfig:
-        """A file source's configuration: its root-layer path, as given."""
-        return cls(SourceKind.FILE, path, None, None, destination, settings)
-
-    @classmethod
-    def attached(
-        cls,
-        key: str,
-        settings: RequestedSettings,
-        *,
-        root_layer_identifier: str | None = None,
-        destination: bpy.types.Collection | None = None,
-    ) -> BindingConfig:
-        """An attached source's configuration: its source key, and the root-layer identifier last attached."""
-        return cls(SourceKind.ATTACHED, None, key, root_layer_identifier, destination, settings)
+    root_layer_identifier: str | None = None  # of the stage last attached; informative only
+    destination: bpy.types.Collection | None = None  # None once the destination is removed
 
     def __post_init__(self) -> None:
-        # A record stores the enum's value as a plain string, and the settings as a group of plain values. One that
-        # isn't a member raises ValueError.
-        object.__setattr__(self, "source_kind", SourceKind(self.source_kind))
         if isinstance(self.settings, Mapping):
             object.__setattr__(self, "settings", RequestedSettings(**self.settings))
         if not isinstance(self.settings, RequestedSettings):
             raise TypeError("the requested settings are not a group")
-        if self.source_kind is SourceKind.FILE:
-            if type(self.path) is not str or self.source_key is not None or self.root_layer_identifier is not None:
-                raise ValueError("a file source has a path, and no key or root-layer identifier")
-        else:
-            if self.path is not None or type(self.source_key) is not str or not self.source_key:
-                raise ValueError("an attached source has a key, and no path")
-            if not isinstance(self.root_layer_identifier, str | None):
-                raise TypeError("the root-layer identifier is not a string")
+        if type(self.source_key) is not str or not self.source_key:
+            raise ValueError("a source key must be a nonempty string")
+        if not isinstance(self.root_layer_identifier, str | None):
+            raise TypeError("the root-layer identifier is not a string")
         if not isinstance(self.destination, bpy.types.Collection | None):
             raise TypeError("the destination is not a collection")
 

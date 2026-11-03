@@ -8,13 +8,6 @@ from enum import StrEnum
 from pxr import Tf, Usd
 
 
-class SourceKind(StrEnum):
-    """The two kinds of source a binding has: a FileSource or an AttachedSource."""
-
-    FILE = "file"
-    ATTACHED = "attached"
-
-
 class PayloadPolicy(StrEnum):
     """A binding's payload policy: every payload loaded, or none (source-access.md#source-scope).
 

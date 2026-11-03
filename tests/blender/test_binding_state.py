@@ -26,6 +26,7 @@ from proscenium.persistence.records import (
     RefusedRecordError,
 )
 from support.blend import save_and_reopen
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -44,7 +45,7 @@ def _scene() -> bpy.types.Scene:
 
 def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     with source_access.binding_state(tmp_path) as scene:
-        return bindings.create_file_binding(_scene(), scene.root, name="Shot")
+        return binding_on_file(bindings, _scene(), scene.root, name="Shot")
 
 
 def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:

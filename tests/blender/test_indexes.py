@@ -25,6 +25,7 @@ from proscenium.runtime import Claim, ownership_index, state
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,7 +41,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     """A binding on F-BINDING-STATE whose destination holds one managed object, resource "a"."""
     with source_access.binding_state(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
@@ -119,7 +120,7 @@ def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], l
     """
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
     runtime.set_manifest(other.binding_id, _entries(*(bpy.data.objects.new(name, None) for name in ("A", "B"))))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a", "b"]
     assert _ownership_view(ids, names)
@@ -269,7 +270,7 @@ def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monk
 
 def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
     assert runtime.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     runtime.set_manifest_entries(handle.binding_id, {"a": _entry(obj)})
@@ -426,7 +427,7 @@ def test_publications_replace_only_their_share(
     # from the records gives, including for a destination a linked copy shares.
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
     a, b, c = (bpy.data.objects.new(name, None) for name in ("A", "B", "C"))
     runtime.set_manifest(other.binding_id, _entries(a))
     _copy_scene("LINK_COPY")
@@ -452,7 +453,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     # it has no copy there and stays unique.
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = bindings.create_file_binding(_scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
     bpy.data.collections.remove(bpy.data.collections["Other"])
     runtime.set_config(other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"]))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
@@ -470,7 +471,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
 def test_a_removed_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        handle = bindings.create_file_binding(other, scene.root)
+        handle = binding_on_file(bindings, other, scene.root)
     assert _binding_ids() == [handle.binding_id]
     address = other.as_pointer()
     bpy.data.scenes.remove(other)
@@ -485,8 +486,8 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
     # A binding on another scene can't change the answer; one on the scene listed can.
     other_scene = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        elsewhere = bindings.create_file_binding(other_scene, scene.root, name="Elsewhere")
-        here = bindings.create_file_binding(_scene(), scene.root, name="Here")
+        elsewhere = binding_on_file(bindings, other_scene, scene.root, name="Elsewhere")
+        here = binding_on_file(bindings, _scene(), scene.root, name="Here")
     assert bindings.in_scene(_scene()) == [here]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
     rebuilds = runtime.rebuild_count()
@@ -502,15 +503,14 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
     assert _config(here).destination is None
 
 
-def test_the_bindings_with_a_key(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_bindings_with_a_key(bindings: Bindings, monkeypatch: pytest.MonkeyPatch) -> None:
     # One pass over the state: the scenes are compared once, and each binding's configuration checked.
     other_scene = bpy.data.scenes.new("Other")
-    a = bindings.create_attached_binding(_scene(), "shot", name="A")
-    b = bindings.create_attached_binding(other_scene, "shot", name="B")
-    bindings.create_attached_binding(_scene(), "other", name="C")
-    unreadable = bindings.create_attached_binding(_scene(), "shot", name="D")
-    with source_access.binding_state(tmp_path) as scene:
-        bindings.create_file_binding(_scene(), scene.root, name="F")
+    a = bindings.create_binding(_scene(), "shot", name="A")
+    b = bindings.create_binding(other_scene, "shot", name="B")
+    bindings.create_binding(_scene(), "other", name="C")
+    unreadable = bindings.create_binding(_scene(), "shot", name="D")
+    bindings.create_binding(_scene(), "fixture", name="F")
     _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
@@ -526,8 +526,8 @@ def test_the_bindings_with_a_key(bindings: Bindings, tmp_path: Path, monkeypatch
 
 def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
-    readable = bindings.create_attached_binding(_scene(), "shot", name="A")
-    unreadable = bindings.create_attached_binding(_scene(), "shot", name="B")
+    readable = bindings.create_binding(_scene(), "shot", name="A")
+    unreadable = bindings.create_binding(_scene(), "shot", name="B")
     _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
     found = runtime.find_bindings()
@@ -629,15 +629,15 @@ def test_creation_needs_the_extension_registered(tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         before = _file_data()
         with pytest.raises(runtime.NotRegisteredError):
-            Bindings().create_file_binding(_scene(), scene.root)
+            binding_on_file(Bindings(), _scene(), scene.root)
         with pytest.raises(runtime.NotRegisteredError):
-            Bindings().create_attached_binding(_scene(), "shot")
+            Bindings().create_binding(_scene(), "shot")
     assert _file_data() == before
 
 
 def test_writes_need_the_extension_registered(bindings: Bindings, tmp_path: Path) -> None:
     handle = _managed(bindings, tmp_path)
-    bindings.create_attached_binding(_scene(), "shot")
+    bindings.create_binding(_scene(), "shot")
     addon.unregister()
     before = _file_data()
     with pytest.raises(runtime.NotRegisteredError):

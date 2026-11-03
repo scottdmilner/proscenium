@@ -44,7 +44,7 @@ src/proscenium/
     canonical_candidate.py     the canonical-candidate rule
     source_entities.py
     source_access/
-      sources.py               FileSource, AttachedSource, PayloadPolicy, SourceKind
+      sources.py               FileSource, AttachedSource, PayloadPolicy
       binding_stages.py        BindingStages and its two kinds
       stage_registry.py        StageRegistry
 ```
@@ -55,7 +55,7 @@ Module names are unique across the tiers, and named for the spec section they im
 
 These go in AGENTS.md's Style section:
 
-- **One concept per word, the Glossary's where it has one.** A bare `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_kind`, `candidate` for one record or copy of a binding identity.
+- **One concept per word, the Glossary's where it has one.** A bare `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_key`, `candidate` for one record or copy of a binding identity.
 - **Spec terms keep their meaning.** *Generation* is a published generation, *layer* a USD layer or a pipeline layer, *synchronization* one attempt, and *claim* and *candidate* what the spec defines. None names anything else.
 - **Exceptions end in `Error`**, so they aren't mistaken for values (ruff's N818, without `noqa`).
 - **A type names its domain:** `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
@@ -71,7 +71,6 @@ These go in AGENTS.md's Style section:
 | `BindingSource`, `FileBindingSource`, `AttachedBindingSource` | `BindingStages`, `FileBindingStages`, `AttachedBindingStages` | It holds a binding's source stage and evaluation stage; its `source` is the source |
 | `SourceRegistry`, `Synchronization.sources` | `StageRegistry`, `Bindings.stages` | |
 | `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(synchronizable)` | One mapping of every binding that exists to whether it can synchronize, disabled ones included |
-| `BindingConfig.source`, `.key` | `.source_kind`, `.source_key` | `source_key` is the spec's term; see [Stored field names](#stored-field-names) |
 | `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |
 | `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `DecisionReason`, `UNREADABLE_INDEX_ENTRY` | |
@@ -91,7 +90,7 @@ These go in AGENTS.md's Style section:
 
 ### Stored field names
 
-A record's field names are its stored keys, so renaming `BindingConfig.source` and `.key` changes what the binding record stores. The binding record stays at version 1 with the new keys (with the user): it has no released files to migrate, and a version 1 record stored with the old keys is refused as invalid. No other renamed name is stored.
+A record's field names are its stored keys. Binding configuration version 1 stores `source_key`, `root_layer_identifier`, `destination`, and `settings`.
 
 ## Semantics
 
@@ -118,7 +117,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 10. **`DiagnosticCategory`.**
 11. **A disabled binding reported in band** by runtime lookups.
 12. **The API:** `api/synchronization.py` to `api/bindings.py`, its class, instance, and methods, with the spec, matrix, and DECISIONS.md changes above.
-13. **The binding record's `source_kind` and `source_key`**, at version 1.
+13. **The binding record**, at version 1, with its source key, last attached root-layer identifier, destination, and requested settings.
 14. **AGENTS.md's Style section** gains the conventions.
 
 ## Decision log

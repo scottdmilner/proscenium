@@ -26,6 +26,7 @@ from proscenium.persistence.selection import (
 )
 from support import interaction_oracle
 from support.blend import save_and_reopen
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,8 +41,8 @@ def _scene() -> bpy.types.Scene:
 def test_a_selection_from_two_bindings_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
     # ICON-24 on F-BINDING-STATE: the same entries, in order, and the same active entry.
     with source_access.binding_state(tmp_path) as scene:
-        first = bindings.create_file_binding(_scene(), scene.root)
-        second = bindings.create_attached_binding(_scene(), scene.key)
+        first = binding_on_file(bindings, _scene(), scene.root)
+        second = bindings.create_binding(_scene(), scene.key)
     entries = (
         SelectionEntry(second.binding_id, "/World/Ref"),
         SelectionEntry(first.binding_id, "/World/PayA"),
@@ -86,7 +87,7 @@ def test_the_oracles_targets_are_stored_exactly(tmp_path: Path) -> None:
 def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, tmp_path: Path) -> None:
     # SID-07 on F-REATTACH: the entries are stored apart from the attachment, so replacing the stage,
     # even with a confirmed different root layer, leaves them; they resolve against the next generation.
-    handle = bindings.create_attached_binding(_scene(), "shot")
+    handle = bindings.create_binding(_scene(), "shot")
     selection = PersistentSelection((SelectionEntry(handle.binding_id, "/World/Ref"),), None)
     write_selection(_scene(), selection)
     with source_access.reattach(tmp_path) as scene:
@@ -98,7 +99,7 @@ def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, t
 
 def test_entries_for_a_binding_that_is_gone_stay_stored(bindings: Bindings, tmp_path: Path) -> None:
     # The extension's load handlers and a rebuild of the bindings' state run in between, beside a binding that exists.
-    handle = bindings.create_attached_binding(_scene(), "shot")
+    handle = bindings.create_binding(_scene(), "shot")
     entries = (SelectionEntry(BindingId("not-a-binding"), "/World"), SelectionEntry(handle.binding_id, "/World"))
     selection = PersistentSelection(entries, entries[0])
     write_selection(_scene(), selection)

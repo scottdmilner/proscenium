@@ -36,6 +36,8 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 
 Operations that span bindings belong to the process's bindings, not to a handle: creating a binding, finding a scene's bindings, reporting copied bindings ([Copied Bindings](#copied-bindings)), and attaching a stage under a source key or releasing it ([Source Identity](#source-identity), [Source Stages](#source-stages)).
 
+`create_binding(scene, key, *, payload_policy=LOAD_ALL, name=None)` creates an unattached binding with a nonempty string source key and a dedicated destination named for `name`, or the key when no name is given. It opens no source stage; the caller attaches one separately.
+
 Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
 ## Source Consistency
@@ -89,7 +91,7 @@ An attached binding has a **source stage**: the caller-supplied stage its source
 
 Requirements:
 
-- The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a `.blend` is reopened. Binding configuration stores a source key and the last attached root-layer identifier, with no source-kind discriminator or file-opening path; a binding never opens or restores its source stage itself.
+- The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a `.blend` is reopened. Binding configuration identifies its source by a source key and the last attached root-layer identifier; a binding never opens or restores its source stage itself.
 - The binding holds the attached stage until the caller releases it with `release(key)`, which releases it from every binding with that key, or attaches another stage under the key; loading a `.blend` releases it too. The caller dropping its own references doesn't release it: until then the stage stays alive with its layers and their unsaved edits, which a stage opened on the same files sees. A released binding is unattached. A binding that no longer exists, as after undo of its creation, keeps its attachment until then, so redo brings it back attached, and `release(key)` still releases it; its other runtime stages are dropped. Replacing the stage follows the [Source Identity](#source-identity) rules.
 - After a `.blend` is reopened, every binding reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
 - Do not author changes to an attached stage's layers or change its stage settings, including load state, population mask, layer muting, and edit target. A reload the caller requests is the one change to its layers ([Layer State and Reloading](#layer-state-and-reloading)).
