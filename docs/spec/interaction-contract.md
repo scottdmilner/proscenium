@@ -17,7 +17,7 @@ The core's Python bindings expose the interaction functions, and the core routes
 
 The inspection layer is read-only. It never authors USD, loads or unloads payloads, changes the population mask, or changes any other stage setting.
 
-A binding's live stage is its source stage ([Source Stages](source-access.md#source-stages)): for a file source, the stage the binding opened and reuses across refreshes, and for an attached source, the caller's stage. A binding with a file source has no live stage until its first synchronization, including after a `.blend` is reopened. Callers get a binding's live stage from the binding, which never places it in a stage cache.
+A binding's live stage is its source stage ([Source Stages](source-access.md#source-stages)): the caller's attached stage, available as soon as it is attached, before any synchronization. An unattached binding has no live stage, including after release or reopening a `.blend`. Callers get a binding's live stage from the binding, which never places it in a stage cache. The caller may supply a stage it acquired from a stage cache.
 
 The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the time code it shows ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)).
 

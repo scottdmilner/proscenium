@@ -95,13 +95,13 @@ Keep these distinct:
 | Last attempt | Settings and time code attempted, result state, and diagnostics | Yes |
 | Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
 | Binding index | One entry per binding identity, naming its destination, held outside every binding's own datablocks ([Canonical Candidate](source-access.md#canonical-candidate)) | Yes |
-| Runtime source attachment | The caller's stage attached to a binding with an attached source | No |
-| Runtime source stage | The source stage a binding with a file source opened and reuses across refreshes, and every binding's evaluation stage | No; after a `.blend` is reopened, the next refresh opens it |
+| Runtime source attachment | The caller's stage attached under the binding's source key | No; after reopening, the caller must attach a stage again |
+| Runtime evaluation stage | Each binding's own stage composing the attached source's root and session layers | No; opened on demand once a source stage is attached |
 | Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt |
 
-A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed. This applies equally to changed source paths, changed conversion settings, and undo restoring an older display.
+A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed. This applies equally to replaced source attachments, changed conversion settings, and undo restoring an older display.
 
-Source information is a file source's path, or an attached source's reattachment information (see [Source Identity](source-access.md#source-identity)).
+Source information is the source key and the root-layer identifier of the stage last attached (see [Source Identity](source-access.md#source-identity)).
 
 ### Pending Cleanup
 

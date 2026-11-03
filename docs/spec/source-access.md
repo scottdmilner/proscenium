@@ -8,7 +8,7 @@ A synchronization binding associates a source with a dedicated managed destinati
 
 Support:
 
-- Root-layer files: `.usd`, `.usda`, `.usdc`.
+- Caller-supplied stages opened from `.usd`, `.usda`, and `.usdc` root-layer files.
 - Caller-supplied in-memory stages without requiring file reopening.
 - Load-all or load-no-payload policy.
 - An evaluation time code, by default the target scene's current frame's, including the USD default time code, and the time codes cached since ([Cached Time Codes](pipeline.md#cached-time-codes)).
@@ -46,7 +46,7 @@ Design note (settled by M3; M5 settles the result's fields): the API is `proscen
 
 ## Source Identity
 
-Source identity is persisted separately from source availability. A binding's source is a **file source**, named by the path of its root-layer file, or an **attached source**, named by a **source key**: a string the caller chooses when it creates the binding, under which it attaches the source stage ([Source Stages](#source-stages)). A binding with an attached source also stores the root-layer identifier of the stage last attached to it.
+Source identity is persisted separately from source availability. Every binding has an **attached source**, named by a **source key**: a string the caller chooses when it creates the binding, under which it attaches the source stage ([Source Stages](#source-stages)). A binding also stores the root-layer identifier of the stage last attached to it.
 
 - A source key names one attached source within a `.blend`. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key.
 - Reattachment requires an exact key match.
@@ -85,24 +85,21 @@ Each `.blend` holds a **binding index**, with one entry per binding identity nam
 
 ## Source Stages
 
-Every binding has a **source stage**: the stage its source is composed on. A binding with a file source opens its source stage itself; for an attached source, the caller supplies it. The source stage is also the binding's live stage ([Two Layers and the Live Stage](interaction-contract.md#two-layers-and-the-live-stage)). In USD, layers hold opinions and exist once per process, while each stage has its own settings stored in no layer: load set, population mask, muted layers, interpolation type, and edit target.
+An attached binding has a **source stage**: the caller-supplied stage its source is composed on. The source stage is also the binding's live stage ([Two Layers and the Live Stage](interaction-contract.md#two-layers-and-the-live-stage)). In USD, layers hold opinions and exist once per process, while each stage has its own settings stored in no layer: load set, population mask, muted layers, interpolation type, and edit target.
 
 Requirements:
 
-- A binding with a file source opens its source stage outside every USD stage cache, at its first synchronization, including the first after a `.blend` is reopened, and keeps and reuses it across synchronizations. It never takes the stage from a stage cache, places it in one, or shares it with other bindings or tools.
+- The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a `.blend` is reopened. Binding configuration stores a source key and the last attached root-layer identifier, with no source-kind discriminator or file-opening path; a binding never opens or restores its source stage itself.
 - The binding holds the attached stage until the caller releases it with `release(key)`, which releases it from every binding with that key, or attaches another stage under the key; loading a `.blend` releases it too. The caller dropping its own references doesn't release it: until then the stage stays alive with its layers and their unsaved edits, which a stage opened on the same files sees. A released binding is unattached. A binding that no longer exists, as after undo of its creation, keeps its attachment until then, so redo brings it back attached, and `release(key)` still releases it; its other runtime stages are dropped. Replacing the stage follows the [Source Identity](#source-identity) rules.
-- After a `.blend` is reopened, a binding with an attached source reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
+- After a `.blend` is reopened, every binding reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
 - Do not author changes to an attached stage's layers or change its stage settings, including load state, population mask, layer muting, and edit target. A reload the caller requests is the one change to its layers ([Layer State and Reloading](#layer-state-and-reloading)).
 - Evaluate the source stage's composed content as the source stage presents it, including the opinions in its session layer and the anonymous layers beneath it, except that the binding's payload policy replaces the source stage's load rules.
 - Each binding evaluates an **evaluation stage**, which composes the source stage's root and session layers and is opened outside every USD stage cache with the source stage's resolver context. Because the layers are shared, the source stage's unsaved layer edits and session-layer opinions are seen live.
+- The evaluation stage is distinct from the source stage and every other binding's evaluation stage, is never placed in a stage cache or shared with callers, and is reused across synchronizations while the attached stage's root and session layers stay the same. Replacing those layers opens a new evaluation stage; release drops both stages, and undo of binding creation drops the evaluation stage while retaining the attachment.
 - At each synchronization, the evaluation stage's population mask, muted layers, and interpolation type match the source stage's. The source stage's edit target does not affect composition and is not reproduced.
 - Multiple bindings on the same source may use different payload policies without affecting each other or the source stage.
 
-Tools may author in the source stage's session layer and the anonymous layers beneath it, through the live stage, to show unsaved edits; synchronization never does. A source stage the binding opened, and the attachment of a caller's stage, are runtime state: neither is saved in the `.blend`, and the opened stage starts with an empty session layer. USD shares opened layers across the whole process, so bindings on the same files can see each other's layer state.
-
-Design note (settled by M3): when the binding opened its source stage itself, there are no caller's settings to protect, so its evaluation stage is the source stage, under the binding's payload policy. For an attached source, the binding keeps its evaluation stage across synchronizations while the attached stage's root and session layers stay the same, and opens a new one otherwise.
-
-Design note (suggested, settled by M3): persist the kind of source, its path or source key, and the root-layer identifier.
+Tools may author in the source stage's session layer and the anonymous layers beneath it, through the live stage, to show unsaved edits; synchronization never does. The source attachment and evaluation stage are runtime state: neither is saved in the `.blend`. USD shares opened layers across the whole process, so bindings on the same files can see each other's layer state.
 
 ## Layer State and Reloading
 
