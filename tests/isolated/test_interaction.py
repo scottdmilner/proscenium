@@ -31,3 +31,10 @@ def test_interaction(  # noqa: PLR0913 - pytest's parameters and fixtures
     if result == "not applicable":
         pytest.skip(f"{fixture} has no case for {check}")
     assert result == "passed"
+
+
+def test_select_tool_session(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
+    # The source selection tool (select_tool.py, F2's Q4), headless: picks by what a ray cast returns, the modes,
+    # a box's element centers, and following Blender's own selection.
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "dest": str(tmp_path / "scene")}
+    assert run_isolated(wheel, BODY, "select_tool_session", tmp_path, **kwargs) == []

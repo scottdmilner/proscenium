@@ -273,3 +273,92 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
             }
         finally:
             display.release()
+
+
+def select_tool_session(module_dir: str, dest: str) -> list[str]:
+    """The source selection tool's session (select_tool.py, F2's Q4) on F-KIND-HIERARCHY's batched display.
+
+    Each pick supplies what a ray cast returns there: an object kept as an object, or a batch's prototype and the
+    instance's world matrix. Reports where the session differs from the scene's construction: each element picked
+    at each level the fixture names selects its kind target, made active, and Blender shows exactly its elements;
+    set, toggle, extend, and subtract combine prim-level picks, and a pick on nothing clears the selection; each
+    viewport element's center is its prim's world bounds' centroid as USD computes it; and Blender's own selection,
+    followed, becomes the source selection selection_from_blender gives.
+    """
+    from pxr import UsdGeom
+
+    with interaction.kind_hierarchy(Path(dest)) as scene:
+        display = BatchedDisplay(module_dir, scene.stage)  # puts the bridge on sys.path
+        select_tool = importlib.import_module("select_tool")
+        try:
+            display.publish(0.0)
+            records = display._records  # noqa: SLF001 - the plan the display was built from
+            session = select_tool.Session(display._interaction, display._display, display.view_layer)  # noqa: SLF001
+            picks: dict[str, Any] = {}  # by source, a pick on one of its elements
+            for obj in display.managed_objects():
+                for element, pick in zip(display.elements(obj), display.picks(obj), strict=True):
+                    picks.setdefault(records[element]["source"], (element, pick))
+            found: list[str] = []
+
+            def pick(source: str | None, mode: str) -> None:
+                if source is None:
+                    session.pick(None, None, mode)
+                    return
+                obj, matrix = picks[source][1] if isinstance(picks[source][1], tuple) else (None, None)
+                if obj is None:  # an object kept as an object supplies itself
+                    obj = next(o for o in display.managed_objects() if o.get("proscenium_element") == picks[source][0])
+                    matrix = obj.matrix_world
+                session.pick(obj, matrix, mode)
+
+            def shown() -> set[int]:
+                selected = [o for o in display.managed_objects() if o.select_get(view_layer=display.view_layer)]
+                return {e for o in selected for e in display.elements(o)}
+
+            for (entity, level), target in scene.kind_targets.items():
+                if entity not in picks:
+                    continue
+                session.level = level
+                pick(entity, "SET")
+                if (session.targets, session.active) != ([target], target):
+                    found.append(f"{entity} at {level}: {session.targets}, active {session.active}, not {target}")
+                if shown() != set(display.highlight_targets([target])):
+                    found.append(f"{entity} at {level}: Blender shows {sorted(shown())}")
+            session.level = None
+            seat, back, top = "/World/Props/Chair/Geom/Seat", "/World/Props/Chair/Geom/Back", "/World/Table/Top"
+            for source, mode, targets, active in (
+                (seat, "SET", [seat], seat),
+                (top, "TOGGLE", [seat, top], top),
+                (seat, "TOGGLE", [top], top),
+                (back, "EXTEND", [top, back], back),
+                (top, "SUBTRACT", [back], back),
+                (back, "SUBTRACT", [], None),
+                (top, "SET", [top], top),
+                (None, "SET", [], None),
+            ):
+                pick(source, mode)
+                if (session.targets, session.active) != (targets, active):
+                    found.append(
+                        f"{mode} {source}: {session.targets}, active {session.active}, not {targets}, {active}"
+                    )
+            if shown():
+                found.append(f"cleared, Blender still shows {sorted(shown())}")
+            cache = UsdGeom.BBoxCache(0.0, [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy])
+            for element, center in session.centers().items():
+                prim = scene.stage.GetPrimAtPath(records[element]["source"])
+                centroid = cache.ComputeWorldBound(prim).ComputeCentroid()
+                expected = [centroid[0], centroid[1], centroid[2]]
+                if max(abs(a - b) for a, b in zip(center[:3], expected, strict=True)) > 1e-4:
+                    found.append(f"{records[element]['source']}: center {list(center[:3])}, not {expected}")
+            # Blender's own selection, followed: one object kept as an object, selected and active, at a kind level.
+            kept = next(iter(display._display.objects.values()))  # noqa: SLF001
+            for obj in display.managed_objects():
+                obj.select_set(obj == kept, view_layer=display.view_layer)
+            display.view_layer.objects.active = kept
+            session.level = "component"
+            expected = display.selection_from_blender(display.read_blender_selection(), "component")
+            session.follow_blender()
+            if (session.targets, session.active) != (list(expected.targets), expected.active):
+                found.append(f"followed: {session.targets}, active {session.active}, not {expected}")
+            return found
+        finally:
+            display.release()
