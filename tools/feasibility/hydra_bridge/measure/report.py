@@ -18,6 +18,10 @@ SYNC = {
 }
 # Blender construction plus the first evaluation; for the importer only its whole operator is separable.
 HYDRA = ["bridge construction", "capture", "planning", "transfer"]
+# M4 Phase C: an update after its edit, from the incremental capture to the depsgraph evaluation.
+UPDATE = ["capture", "planning", "diff", "prepare", "publish", "retire", "evaluate"]
+# While both generations' data exist: from preparation until retirement has removed the old.
+COEXIST = ("prepare", "retire")
 
 
 def _primary(samples: list[dict[str, Any]]) -> str:
@@ -98,6 +102,13 @@ def analyze(run: dict[str, Any]) -> dict[str, Any]:
         totals["blender wall s"] = stages["construction"]["wall s"] + stages["evaluate"]["wall s"]
     else:
         totals["blender wall s"] = None
+    if "update:prepare" in stages:
+        totals["update wall s"] = sum(stages[f"update:{name}"]["wall s"] for name in UPDATE)
+        # The extra memory both generations hold, over the level just before preparation.
+        begin, end = by_name[f"begin:update:{COEXIST[0]}"]["t"], by_name[f"end:update:{COEXIST[1]}"]["t"]
+        before = [s[key] for s in samples if s["t"] <= begin]
+        window = _window(samples, begin, end, key)
+        totals["coexist MB"] = (max(window) - before[-1]) / MB if window and before else None
     return {
         "counter": key,
         "baseline MB": baseline / MB,
@@ -165,7 +176,31 @@ def summarize(runs_dir: Path, scenes: dict[str, dict[str, Any]], environment: di
             "log warnings": runs[0]["warnings"],
             "log errors": runs[0]["errors"],
         }
+        if mode in ("interaction", "ownership", "viewport"):
+            entry["modes"][mode][mode] = _interaction([run["result"]["plan"][mode] for run in runs])
+        if mode == "importer-viewport":
+            entry["modes"][mode][mode] = _interaction([run["result"]["viewport"] for run in runs])
     return summary
+
+
+# M4's provisional interaction budgets: each function, with the Blender updates it triggers (M04 plan, item 4).
+INTERACTION_BUDGETS = {"single": 0.050, "assembly": 0.250}
+
+
+def _interaction(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Each operation's per-run medians, as a median and range over the runs, and the first run's sizes."""
+    first = runs[0]["timings"]
+
+    def median(value: Any) -> float:  # a single timing, or one repeated within the run
+        return value["median"] if isinstance(value, dict) else value
+
+    timings = {
+        name: (_stats([median(run["timings"][name]) for run in runs]) or {})
+        | {"repeats": first[name]["repeats"] if isinstance(first[name], dict) else 1}
+        for name in first
+    }
+    facts = {key: value for key, value in runs[0].items() if key != "timings"}
+    return {"runs": len(runs), "timings": timings, "sizes": facts.get("sizes", facts)}
 
 
 def _fmt(stat: dict[str, float | None] | None, digits: int = 3) -> str:
@@ -177,9 +212,90 @@ def _fmt(stat: dict[str, float | None] | None, digits: int = 3) -> str:
     return f"{median:.{digits}f} ({low:.{digits}f}–{high:.{digits}f})"
 
 
+def _budgets(entry: dict[str, Any]) -> list[str]:
+    """M4's provisional budgets against one scene's runs, where it has them (M04 plan, settled item 4)."""
+    modes = entry["modes"]
+
+    def median(mode: str, total: str) -> float | None:
+        stat = modes.get(mode, {}).get("totals", {}).get(total)
+        return None if not stat else stat["median"]
+
+    sync = median("update:initial", "sync wall s") or median("prototype", "sync wall s")
+    peak = median("update:initial", "sync peak MB") or median("prototype", "sync peak MB")
+    importer, importer_peak = median("importer-matched", "sync wall s"), median("importer-matched", "sync peak MB")
+    rows = []
+    if sync and importer and peak and importer_peak:
+        rows.append(f"| Initial synchronization | at most 1.5× the importer's time | {sync / importer:.2f}× |")
+        rows.append(
+            f"| Initial synchronization | at most 2× the importer's peak memory | {peak / importer_peak:.2f}× |"
+        )
+    unchanged = median("update:unchanged", "update wall s")
+    if sync and unchanged:
+        rows.append(f"| Unchanged refresh | no slower than initial synchronization | {unchanged / sync:.2f}× |")
+    for scenario in ("transform", "instance-transform", "shared-geometry", "material"):
+        update = median(f"update:{scenario}", "update wall s")
+        if sync and update:
+            rows.append(f"| {scenario} update | at least 10× faster than a full rebuild | {sync / update:.1f}× |")
+    if not rows:
+        return []
+    return ["", "| Budget | Provisional | Measured (medians) |", "|---|---|---|", *rows]
+
+
+def _updates(entry: dict[str, Any]) -> list[str]:
+    updates = {mode: data for mode, data in entry["modes"].items() if mode.startswith("update:")}
+    lines = []
+    if any("update wall s" in data["totals"] for data in updates.values()):
+        lines += [
+            "",
+            "| Scenario | Update s | " + " | ".join(f"{name} s" for name in UPDATE) + " | Coexist MB | Changes |",
+            "|---|---|" + "---|" * len(UPDATE) + "---|---|",
+        ]
+        for mode, data in updates.items():
+            if "update wall s" not in data["totals"]:
+                continue
+            stages = " | ".join(_fmt(data["stages"][f"update:{name}"]["wall s"]) for name in UPDATE)
+            facts = data["result"]["plan"]["update"]
+            changes = {**facts["diff"], **facts["written"]}
+            lines.append(
+                f"| {mode.removeprefix('update:')} | {_fmt(data['totals']['update wall s'])} | {stages} | "
+                f"{_fmt(data['totals']['coexist MB'], 1)} | `{json.dumps(changes)}` |"
+            )
+    initial = updates.get("update:initial")
+    if initial:
+        size = initial["result"]["plan"]["blend bytes"] / MB
+        lines += [
+            "",
+            f".blend size after synchronization (uncompressed): {size:.1f} MB; saving took "
+            f"{_fmt(initial['stages']['save']['wall s'])} s.",
+        ]
+    return lines
+
+
+def _interaction_lines(entry: dict[str, Any], mode: str) -> list[str]:
+    data = entry["modes"].get(mode, {}).get(mode)
+    if not data:
+        return []
+    lines = [
+        "",
+        f"{mode.capitalize()} ({data['runs']} runs; each run's median of its repeats, as a median and range over "
+        "the runs):",
+        "",
+        "| Operation | Repeats per run | ms | Budget ms |",
+        "|---|---|---|---|",
+    ]
+    for name, stat in data["timings"].items():
+        budget = INTERACTION_BUDGETS.get("single" if name.startswith("first ownership") else name.split(":")[0])
+        scaled = {key: value * 1000 for key, value in stat.items() if key in ("median", "min", "max")}
+        lines.append(
+            f"| {name} | {stat['repeats']} | {_fmt(scaled, 3)} | {'—' if budget is None else f'{budget * 1000:.0f}'} |"
+        )
+    lines += ["", f"Sizes: `{json.dumps(data['sizes'])}`"]
+    return lines
+
+
 def markdown(summary: dict[str, Any]) -> str:
     lines = [
-        "# Phase E measurements",
+        "# Measurements (M1b Phase E, M4 Phase C)",
         "",
         "Medians over the runs, with ranges. Memory is relative to each run's "
         "baseline window (the empty factory-startup process). The live heap is what malloc has handed out and not "
@@ -224,10 +340,17 @@ def markdown(summary: dict[str, Any]) -> str:
                 f"{_fmt(totals['sync peak MB'], 1)} | {_fmt(totals.get('hydra wall s'))} | "
                 f"{_fmt(totals.get('blender wall s'))} | {_fmt(data['baseline MB'], 1)} | {rest} | {heap} |"
             )
+        lines += _budgets(entry) + _updates(entry)
+        lines += _interaction_lines(entry, "interaction") + _interaction_lines(entry, "ownership")
+        lines += _interaction_lines(entry, "viewport") + _interaction_lines(entry, "importer-viewport")
         lines += ["", "| Mode | Built (first run) |", "|---|---|"]
         for mode, data in entry["modes"].items():
             built = dict(data["result"]["blender"])
             if "plan" in data["result"]:
-                built["plan"] = data["result"]["plan"]
+                built["plan"] = {
+                    k: v
+                    for k, v in data["result"]["plan"].items()
+                    if k not in ("update", "interaction", "ownership", "viewport")
+                }
             lines.append(f"| {mode} | `{json.dumps(built)}` |")
     return "\n".join(lines) + "\n"

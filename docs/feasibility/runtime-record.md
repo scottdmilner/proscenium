@@ -1,6 +1,6 @@
 # Runtime Feasibility Record (M1)
 
-Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate, plus later milestones' probes ([Buffer transfer](#buffer-transfer) for M1b, [Copy routes](#copy-routes-m3) for M3). Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
+Evidence for the [M1](../milestones/M01-runtime.md) stop/go gate, plus later milestones' probes ([Buffer transfer](#buffer-transfer) for M1b, [Copy routes](#copy-routes-m3) for M3) and M4's [measurements](#measurements-m4-phase-c). Each finding is produced by a probe in `tools/feasibility/` and reproduced with:
 
 ```sh
 uv run python tools/feasibility/run_all.py          # writes build/feasibility/<platform>-*.json
@@ -629,7 +629,7 @@ They held only after planning went parallel: with serial planning, the Hydra sta
     - **Other scenes** were unchanged within their ranges.
     - **The threads contend.** Mesh building's time, summed over threads, rose from 1.30 s to 2.00 s. This is recorded for the production core under [For production planning](#for-production-planning-m8).
     - **The plan is unchanged.** All 128 correctness checks pass. On ALab, a canonical digest of the plan is the same for the committed serial planner and for the new code, on one thread (`PXR_WORK_THREAD_LIMIT=1`) and on all threads. The digest covers every object with its mesh contents and materials, plus the diagnostics, in an order-free form.
-  - **The plan's order varies between processes,** even on one thread and with the committed planner, though its content doesn't (ad hoc, ALab). The cause was not investigated.
+  - **The plan's order varies between processes,** even on one thread and with the committed planner, though its content doesn't (ad hoc, ALab). See [Plans from separate processes](#plans-from-separate-processes).
   - **Duplicate meshes:** ALab's 3,945 plan meshes hold 3,369 distinct contents (same digest), so content deduplication would remove 576 more meshes (ad hoc).
 - **The prototype's extra peak is what the bridge holds while Blender data is built.**
   - On ALab the live heap is 3,031 MB after synchronization. Releasing the bridge, its snapshot and the plan frees 1,453 MB; the harness drops all three together. Dropping the stage frees 82 MB more, and deleting the Blender data frees the remaining 1,460 MB.
@@ -719,6 +719,739 @@ What the prototype's planner leaves for a production core to address:
 
   A production core should profile the parallel pass, for example with Instruments' Time Profiler and System Trace, before tuning it. Reusing buffers, and skipping the source tables when the layout is the identity, are candidates.
 - **One large mesh is still built on one thread.** Half of it is USD's validation, a single call. The M1b plan's Phase E log lists the options.
+
+### Measurements (M4 Phase C)
+
+The object baseline's synchronization and updates against M4's provisional budgets ([M4 plan](../plans/M04-prototypes.md), settled item 4), recorded as baselines, not gates. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-10-28. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes importer-matched --scenarios all
+```
+
+The full statistics go to `build/hydra-bridge/measure/summary.md` (not committed).
+
+**Method:** as in [M1b Phase E](#measurements-m1b-phase-e), with these differences:
+- **Runs:** each scene first gets one unrecorded warmup run of the matched importer and of the prototype, for the file cache and the loader. Then come three runs of each mode, alternating. Figures are medians, with ranges.
+- **Update modes:** each is a fresh synchronization followed by one scenario from `measure/scenarios.py`:
+  - the scenario's edit;
+  - an incremental capture, planning, and the plan diff;
+  - the update by that diff (`update.py`), under the repoint policy: preparation, publication, and retirement;
+  - a depsgraph evaluation.
+
+  The update's time is those steps, without the edit.
+- **Coexisting memory:** the most footprint above the level just before preparation, until retirement ends, while both generations' data exist.
+- **Scenarios** (acceptance.md, Performance), each target chosen from the plan:
+  - an unchanged refresh;
+  - a translation of the first mesh object outside instances;
+  - the points of the instanced mesh with the most copies;
+  - a constant input of the material in the most slots outside instances;
+  - the next time code;
+  - every payload unloaded, or loaded into a stage opened without them.
+
+  The initial scenario also saves the file uncompressed.
+- **ALab's shared-geometry edit:** instance contents take no session-layer opinion, so this edit changes the layer that defines the mesh, in memory only; no layer is saved.
+- **Generated scenes:** `updates-N` (`measure/stress.py`) has N native copies of a two-mesh, two-material asset behind one payload; N cubes outside instances, alternating between the materials; and a grid whose topology changes between time codes 1 and 2. They give 301, 3,001, and 30,001 objects.
+- **Not measured:**
+  - undo overhead: in background mode Blender pushes no undo steps;
+  - cold source acquisition: dropping the OS file cache needs root;
+  - the interaction functions (M4 C4);
+  - the replace policy (B6 measured both).
+
+**Budgets:**
+
+| Budget (provisional) | ALab | updates-100 | updates-1000 | updates-10000 |
+|---|---|---|---|---|
+| Initial synchronization, at most 1.5× the matched importer's time | 1.09× | 1.27× | 1.20× | **4.37×** |
+| Initial synchronization, at most 2× its peak memory | 1.56× | 0.74× | 1.49× | 1.24× |
+| Unchanged refresh, no slower than initial synchronization | 0.15× | 0.04× | 0.07× | 0.03× |
+| Transform update, at least 10× faster than a full rebuild | **5.3×** | 10.3× | **3.5×** | **8.8×** |
+| Shared-geometry update, likewise | **6.0×** | **8.4×** | **2.9×** | **7.7×** |
+| Material update, likewise | **6.8×** | **7.2×** | **2.9×** | **7.0×** |
+
+The ratios are of medians; the full rebuild is the prototype's initial synchronization in the same set.
+
+**ALab** (7,018 objects; synchronization 3.823 s (3.336–4.004 s), the matched importer 3.501 s (3.190–3.615 s); peak 2,829 MB (2,828–2,829) against 1,808 MB (1,803–1,812)):
+
+| Scenario | Update s | Capture s | Planning s | Diff s | Prepare s | Publish s | Retire s | Evaluate s | Coexisting MB | Objects created / repointed / retired IDs |
+|---|---|---|---|---|---|---|---|---|---|---|
+| unchanged | 0.556 (0.436–0.653) | 0.024 (0.024–0.026) | 0.325 (0.284–0.355) | 0.091 (0.070–0.114) | 0.053 (0.050–0.181) | 0.005 (0.004–0.006) | 0.002 (0.002–0.010) | 0.002 (0.002–0.016) | 25 (19–33) | 0 / 0 / 0 |
+| transform | 0.721 (0.577–0.767) | 0.022 (0.021–0.027) | 0.366 (0.355–0.433) | 0.123 (0.074–0.144) | 0.057 (0.049–0.137) | 0.005 (0.005–0.006) | 0.013 (0.010–0.021) | 0.067 (0.057–0.074) | 23 (23–27) | 2 / 0 / 2 |
+| shared-geometry | 0.636 (0.515–0.715) | 0.025 (0.024–0.026) | 0.353 (0.315–0.377) | 0.100 (0.052–0.211) | 0.052 (0.046–0.053) | 0.006 (0.005–0.008) | 0.011 | 0.060 (0.058–0.060) | 22 (21–23) | 0 / 169 / 1 |
+| material | 0.561 (0.549–0.790) | 0.024 (0.023–0.027) | 0.338 (0.332–0.453) | 0.076 (0.056–0.136) | 0.049 (0.047–0.060) | 0.008 (0.007–0.009) | 0.012 | 0.062 (0.061–0.096) | 19 (16–22) | 0 / 244 / 1 |
+| time-step | 1.701 (1.694–2.032) | 0.087 (0.083–0.125) | 0.429 (0.390–0.439) | 0.106 (0.094–0.126) | 0.644 (0.593–0.803) | 0.010 (0.008–0.010) | 0.398 (0.360–0.462) | 0.087 (0.077–0.096) | 62 (60–73) | 695 / 0 / 1,051 |
+| payload-unload | 1.573 (1.482–1.579) | 0.904 (0.870–0.931) | 0.006 | 0.004 (0.003–0.004) | 0.002 | 0.019 (0.018–0.021) | 0.582 (0.556–0.616) | 0.028 (0.023–0.030) | 0 (0–0) | 0 / 0 / 11,185 |
+| payload-load | 2.963 (2.717–2.966) | 0.921 (0.835–0.925) | 0.258 (0.245–0.263) | 0.001 | 1.670 (1.521–1.673) | 0.021 (0.020–0.023) | 0.011 (0.010–0.012) | 0.076 (0.075–0.084) | 1,073 (1,069–1,077) | 7,018 / 0 / 0 |
+
+Time 1004 to 1005 changes 695 objects' transforms or points, with 355 new meshes. The diff finds no repointable objects, so each changed object is replaced. The file saves to 1,059 MB uncompressed in 0.842 s (0.532–0.864 s).
+
+**Against size** (each updates-N scene, and ALab between them by object count):
+
+| Scene | Objects | Importer sync s | Sync s | Construction s | Unchanged s | Transform s | Its evaluation s | Material s |
+|---|---|---|---|---|---|---|---|---|
+| updates-100 | 301 | 0.063 (0.062–0.091) | 0.079 (0.044–0.080) | 0.008 | 0.003 | 0.008 (0.007–0.010) | 0.004 (0.004–0.005) | 0.011 (0.009–0.011) |
+| updates-1000 | 3,001 | 0.273 (0.258–0.330) | 0.327 (0.312–0.350) | 0.097 (0.094–0.099) | 0.022 (0.021–0.025) | 0.092 (0.092–0.093) | 0.068 (0.064–0.068) | 0.114 (0.112–0.120) |
+| alab | 7,018 | 3.501 (3.190–3.615) | 3.823 (3.336–4.004) | 1.612 (1.497–1.787) | 0.556 (0.436–0.653) | 0.721 (0.577–0.767) | 0.067 (0.057–0.074) | 0.561 (0.549–0.790) |
+| updates-10000 | 30,001 | 2.009 (1.981–2.058) | 8.776 (8.219–8.790) | 6.680 (6.267–6.743) | 0.231 (0.224–0.231) | 0.993 (0.992–1.064) | 0.761 (0.760–0.800) | 1.249 (1.223–1.310) |
+
+| Scene | Objects added or removed | Payload load s | Its preparation s | Payload unload s | Its retirement s |
+|---|---|---|---|---|---|
+| updates-100 | 200 | 0.023 (0.022–0.027) | 0.006 | 0.015 (0.014–0.020) | 0.002 |
+| updates-1000 | 2,000 | 0.265 (0.255–0.266) | 0.096 (0.095–0.102) | 0.169 (0.167–0.182) | 0.056 (0.054–0.057) |
+| alab | 7,018 | 2.963 (2.717–2.966) | 1.670 (1.521–1.673) | 1.573 (1.482–1.579) | 0.582 (0.556–0.616) |
+| updates-10000 | 20,000 | 27.061 (26.534–28.687) | 25.281 (24.757–26.744) | 20.174 (19.561–20.315) | 16.890 (16.328–17.033) |
+
+The files save to 1.3, 8.0, and 74.5 MB uncompressed.
+
+**Findings:**
+- **Blender inserts each new datablock into a list sorted by name,** and the cost grows with how far from the end it lands. Ad hoc probes, in the same binary, created empties in batches of 1,000:
+  - names created in sort order (zero-padded): 15–20 ms per batch throughout;
+  - reversed: rising to 782 ms per batch by 15,000;
+  - random: rising to 354 ms per batch.
+
+  The same held for mesh objects and `Object.copy()`. Only objects slowed: 10,000 meshes in the file didn't. Plain numbered names (`O_9999`, `O_10000`) went from about 12 ms to about 500 ms per batch at 10,000 objects, where their sort order stops matching creation order. Blender's own `.NNNN` suffixes behave the same way. The baseline names each object for its prim, so `updates-10000`'s 10,000 each of `Mesh`, `Body`, and `Lid` cross that point; ALab's names are varied.
+  - **Measured variant** (ad hoc, a scratch copy of `apply.py` naming each object with its zero-padded plan index first, three runs per mode on the same scenes):
+    - construction fell from 6.680 s to 1.064 s (1.055–1.139 s) on `updates-10000`, putting synchronization at 3.294 s (3.107–3.419 s), 1.64× the importer's 2.009 s;
+    - on ALab, construction took 1.428 s (1.337–1.489 s) against 1.612 s; synchronization's run-to-run spread between the two sets is as large as the difference;
+    - preparing the payload load still took 11.474 s (9.378–13.311 s) on `updates-10000`, since the loaded objects' plan indices come before those already in the file.
+
+    The names users see are M6's design, which must create objects so that their names land at the end of the list. This also applies to batching such as Geometry Nodes instancing, which changes which objects are created at all.
+- **The depsgraph's evaluation after an update grows with the scene,** whenever objects were linked, unlinked, or repointed: 4 ms at 301 objects, 68 ms at 3,001, 67 ms on ALab, and 761 ms at 30,001. An unchanged refresh writes nothing to Blender, and its evaluation takes 2 ms on ALab and on `updates-10000`.
+- **Retirement grows faster than the IDs it removes:** 0.056 s for 2,001 at 3,001 objects, 0.582 s for 11,185 on ALab, and 16.890 s for 20,001 at 30,001 objects. Names don't cause it: the variant's retirement was the same, 16.749 s. The cause wasn't investigated.
+- **Planning and the diff cost more inside an update than alone:**
+  - on ALab, planning took 0.33–0.43 s in updates against 0.25 s in the initial synchronization;
+  - the diff took 76–123 ms here, against 38 ms in the bpy wheel ([M4 plan](../plans/M04-prototypes.md), C1).
+
+  Not investigated. Together they are most of every small update on ALab.
+- **Coexisting memory** for ALab's small updates is 19–25 MB, and 62 MB for the time step. Loading every payload builds the whole display beside an almost empty one: 1,073 MB.
+
+#### Interaction at scale (M4 Phase C)
+
+The baseline's interaction functions after a synchronization, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes interaction`.
+
+**Method** (`measure/interaction_timing.py`): each process synchronizes, then times each operation in process with a monotonic clock. Each operation is repeated 20 times, or 5 for whole-browser and whole-assembly ones, and takes its median. The tables give the median and range of those medians over three processes, after one unrecorded warmup per scene.
+- **The pick:** a viewport element inside the deepest instance context.
+- **The box selection:** every viewport element under the top-level prim with the most of them; on ALab that is `/root`, kind `assembly`, with 1,886 elements.
+- **The chain,** as the contract has it:
+  - `select_targets` at the prim level and at the `component` and `assembly` levels;
+  - `highlight_targets` (`component` for the pick, `assembly` for the box selection);
+  - `apply_selection`, timed with the depsgraph update it triggers;
+  - `read_blender_selection`;
+  - `selection_from_blender` at each level.
+
+  The box selection's `resolve_pick` is one call per element.
+- **The other payload policy:** the universe without payloads comes from a capture after unloading every payload.
+- **Budgets:** the provisional ones are 50 ms for each function on a single pick or entry and 250 ms on a whole-assembly selection, with their Blender updates ([M4 plan](../plans/M04-prototypes.md), settled item 4).
+
+| | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Objects | 301 | 3,001 | 7,018 | 30,001 |
+| Universe, payloads loaded | 305 | 3,005 | 2,020 | 30,005 |
+| Universe, no payloads | 204 | 2,004 | 0 | 20,004 |
+| Stage browser prims | 310 | 3,010 | 2,962 | 30,010 |
+| Stage browser prims, with instance proxies | 610 | 6,010 | 38,197 | 60,010 |
+| Children of the widest prim | 100 | 1,000 | 178 | 10,000 |
+| Viewport elements in the box selection | 301 | 3,001 | 1,886 | 30,001 |
+
+ALab's payloads hold all of its displayed content, so without them nothing is displayed.
+
+| Operation (ms) | Repeats | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|---|
+| derive the universe | 20 | 0.104 (0.093–0.127) | 1.290 (1.276–1.298) | 1.884 (1.864–2.206) | 19.122 (18.363–19.939) |
+| `displayed`, every prim | 5 | 0.382 (0.259–0.421) | 3.577 (3.064–3.599) | 8.381 (7.944–8.981) | 36.087 (35.697–42.060) |
+| `displayed`, with instance proxies | 5 | 0.658 (0.638–0.804) | 6.813 (6.679–7.021) | 135.080 (134.669–137.192) | 81.783 (80.886–85.461) |
+| expand the widest prim | 20 | 0.254 (0.241–0.265) | 2.703 (2.625–2.973) | 0.823 (0.748–0.837) | 32.323 (31.515–32.947) |
+| pick: `resolve_pick` | 20 | 0.001 | 0.001 | 0.001 | 0.001 |
+| pick: `select_targets`, prim level | 20 | 0.003 | 0.002 | 0.005 | 0.002 |
+| pick: `select_targets`, component | 20 | 0.003 | 0.003 | 0.005 (0.005–0.006) | 0.003 |
+| pick: `select_targets`, assembly | 20 | 0.003 | 0.003 | 0.007 (0.006–0.007) | 0.003 |
+| pick: `highlight_targets` | 20 | 0.001 | 0.001 | 0.003 | 0.001 |
+| pick: `apply_selection`, with the depsgraph update | 20 | 0.594 (0.556–0.622) | 9.984 (9.957–10.120) | 12.258 (12.210–12.301) | **129.475 (125.632–131.329)** |
+| pick: `read_blender_selection` | 20 | 0.140 (0.137–0.150) | 1.448 (1.398–1.937) | 4.036 (4.008–4.382) | 22.590 (22.031–24.704) |
+| pick: `selection_from_blender`, prim level | 20 | 0.001 | 0.001 | 0.001 | 0.001 |
+| pick: `selection_from_blender`, component | 20 | 0.002 | 0.002 | 0.002 | 0.002 |
+| pick: `selection_from_blender`, assembly | 20 | 0.002 | 0.002 | 0.003 (0.002–0.005) | 0.002 |
+| box: `resolve_pick`, per element | 5 | 0.225 (0.221–0.225) | 2.322 (2.290–2.430) | 1.917 (1.649–1.921) | 32.189 (28.483–35.264) |
+| box: `select_targets`, prim level | 5 | 0.543 (0.528–0.898) | 5.498 (5.413–5.593) | 9.478 (9.010–10.821) | 72.594 (71.416–73.056) |
+| box: `select_targets`, component | 5 | 0.725 (0.698–0.935) | 7.340 (7.041–8.495) | 13.047 (12.342–13.135) | 96.808 (94.137–104.429) |
+| box: `select_targets`, assembly | 5 | 0.701 (0.681–0.729) | 7.132 (7.036–7.647) | 14.277 (13.944–15.061) | 95.723 (92.386–112.540) |
+| box: `highlight_targets` | 5 | 0.290 (0.277–0.301) | 3.114 (3.062–3.512) | 15.863 (15.526–16.114) | 42.927 (41.558–47.298) |
+| box: `apply_selection`, with the depsgraph update | 5 | 0.491 (0.476–0.606) | 9.545 (9.200–11.580) | 12.642 (12.167–12.703) | 122.474 (121.890–136.204) |
+| box: `read_blender_selection` | 5 | 0.150 (0.145–0.171) | 1.942 (1.480–2.033) | 4.159 (4.107–4.580) | 23.259 (22.781–25.991) |
+| box: `selection_from_blender`, prim level | 5 | 0.053 (0.050–0.060) | 0.516 (0.502–0.708) | 0.438 (0.416–0.567) | 6.218 (6.136–8.597) |
+| box: `selection_from_blender`, component | 5 | 0.224 (0.223–0.227) | 2.746 (2.585–3.016) | 2.379 (2.018–2.872) | 32.324 (31.245–37.427) |
+| box: `selection_from_blender`, assembly | 5 | 0.226 (0.224–0.230) | 2.721 (2.597–2.766) | 4.977 (4.340–5.426) | 30.456 (30.456–36.391) |
+
+**Findings:**
+- **On ALab every function is within its budget.** A pick's slowest function is `apply_selection` with its depsgraph update, 12.3 ms, against 50 ms. A box selection's slowest is `highlight_targets`, 15.9 ms, against 250 ms. The box selection's chain from Blender's selection back to Blender takes about 38 ms in all: `read_blender_selection`, `selection_from_blender` at the assembly level, `highlight_targets`, and `apply_selection`.
+- **Kind promotion's share** of `selection_from_blender` on ALab's box selection: 1.9 ms at the component level and 4.5 ms at the assembly level, over 0.4 ms at the prim level.
+- **The universe is small beside the display:** ALab's 7,018 objects are 2,020 universe prims, since instance contents are not in it. Deriving it takes 1.9 ms on ALab and grows with the display: 19.1 ms at 30,001 objects.
+- **The whole stage browser** takes 8.4 ms on ALab without instance proxies. With them, 38,197 paths, it takes 135 ms, about 3.5 µs a path. Expanding one prim is a fraction of that.
+- **Mirroring a selection grows with the display:** a pick's `apply_selection` takes 129 ms at 30,001 objects, over the budget. In an ad hoc probe in the same binary, with 30,000 objects in one collection:
+  - the depsgraph update after one `select_set` took 102 ms (91–108 ms) by itself;
+  - `apply_selection`, which sets every managed object's selection, took 26 ms, 9 ms of it collecting the managed objects.
+
+  `read_blender_selection` likewise reads every managed object: 23 ms at 30,001.
+
+#### Ownership lookup after undo (M4 Phase C)
+
+The first ownership lookup after an undo or redo, with the baseline's display as a binding's manifest, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes ownership`.
+
+**Method** (`measure/ownership_timing.py`):
+- **The manifest:** the child applies the display into a file binding's destination, made through M3's API (`create_file_binding`), and writes its manifest with `runtime.set_manifest`. There is one entry per object, shear parent, placeholder mesh, mesh, and material. An object's entry covers its source and uses its mesh and materials; a mesh's or material's covers its users' sources.
+- **The undo steps:** with global undo on, it pushes a step, then five times moves one object, pushes a step, undoes it, and redoes it.
+- **The lookups:** after each undo and redo it times `runtime.ownership()` of an object no step changed, found by name before the clock starts, then again, cached. Each undo and redo dropped the bindings' state, so each first lookup rebuilt it: `rebuild_count` changed three times per undo or redo in every run.
+- **Statistics:** three processes per scene after a warmup; each process's median of its repeats, as a median and range over the processes.
+
+| Operation (ms) | Repeats per run | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|---|
+| Manifest entries | | 306 | 3,006 | 11,185 | 30,006 |
+| build the manifest | 1 | 3.878 (0.953–7.681) | 12.464 (11.978–12.565) | 37.516 (28.914–42.367) | 96.384 (88.286–107.658) |
+| `set_manifest` | 1 | 2.017 (1.921–3.178) | 17.105 (16.908–27.657) | 58.463 (56.344–59.863) | 166.580 (164.135–172.193) |
+| ownership after the write | 1 | 0.251 (0.250–0.256) | 2.419 (2.358–3.093) | 9.759 (9.513–10.196) | 25.479 (25.423–26.877) |
+| undo push | 6 | 1.179 (1.156–1.219) | 8.568 (8.530–8.616) | 48.529 (46.509–48.971) | 96.234 (93.331–96.363) |
+| undo | 5 | 9.588 (9.254–9.602) | 87.753 (87.696–87.855) | 350.961 (341.752–363.524) | 1,056.177 (1,041.535–1,074.516) |
+| redo | 5 | 9.379 (9.098–9.616) | 86.511 (85.831–88.356) | 355.716 (334.683–357.616) | 1,036.296 (1,017.067–1,066.851) |
+| **first ownership after undo or redo** | 10 | 1.116 (1.108–1.119) | 11.045 (10.958–11.194) | **43.886 (43.845–45.447)** | **158.042 (156.328–163.547)** |
+| cached ownership | 10 | 0.004 | 0.006 | 0.010 (0.010–0.011) | 0.012 (0.011–0.012) |
+
+**Findings:**
+- **Against the 50 ms budget:**
+  - ALab's median first lookup is under it, at 43.9 ms, about 39 ms per 10,000 entries;
+  - each ALab run had one lookup at 85–90 ms, over it;
+  - 30,006 entries take 158 ms.
+
+  M3 measured 21–35 ms per 10,000 resources in the bpy wheel ([M3 plan](../plans/M03-bindings.md), D8).
+- **The outliers are mostly garbage collection.** In one more ALab run, nine of ten first lookups took 42.6–43.8 ms and one 97.8 ms. With Python's garbage collector off for the loop (ad hoc, two runs), all twenty took 37.4–40.4 ms, but one 59.9 ms. So the rebuild's allocations set off a full collection now and then, and the collector costs about 5 ms of a typical rebuild.
+- **Blender's undo** at this scale takes about 350 ms on ALab and 1.05 s at 30,001 objects, an undo push 49 ms and 96 ms: an undo step's own cost, beside the lookup that follows it.
+
+### Measurements (M4 Phase D)
+
+Phase D's batched display (`batch.py`, Geometry Nodes instances; [M4 plan](../plans/M04-prototypes.md), D1–D4) against the object baseline, both measured in the same session, in the environment of [Phase C](#measurements-m4-phase-c) (2026-10-28, AC power throughout). Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+    --modes prototype importer-matched interaction --scenarios all --representation batched
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+    --modes prototype importer-matched interaction --scenarios all --out build/hydra-bridge/measure-d5-objects
+# Batching only large groups, on ALab, with the baseline again (2026-10-29)
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab --modes prototype importer-matched \
+    interaction --scenarios all --repeats 3 --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-min5
+# likewise with --batch-minimum 20 (measure-min20), and --representation objects (measure-min-objects)
+```
+
+The full statistics go to the `summary.md` in each of those directories under `build/hydra-bridge/` (not committed).
+
+**Method:** as in Phase C and [C4](#interaction-at-scale-m4-phase-c), with these differences:
+- **The batched display:** `--representation batched` applies the plan with `batch.py`, updates it with `batch_update.py`, and mirrors selections with `batch_selection.py`. The interaction timing also times `pick_element` on what a ray cast at the picked copy returns.
+- **A new scenario,** in both sets: a translation of the first instanced copy's outermost instance root, which moves one copy of each of its meshes (`instance-transform`). Phase C's transform scenario moves a mesh object outside instances, which on `updates-N` is the morph grid, an object in both representations.
+- **Two fixes before the final runs,** both found by these measurements. Every figure below is from after them.
+  - `batch_update.prepare` rebuilt its set of kept objects once per object, quadratic in the objects a batched display keeps (3,633 on ALab).
+  - Both representations read each copy's object color by indexing the record's `Vt` array from Python, about 48 µs per record (ad hoc, ALab). They now read the converted ID-property values. On ALab that was about 0.34 s of the baseline's construction, which Phase C's figures include.
+- **String primvars:** batches leave them out, so they never split a group. The first sets ran with copies grouped also by their strings' values, which groups every scene here the same (ALab's 657 batches either way, ad hoc), and puts each batch's strings on its prototype.
+- **Batching only large groups:** `--batch-minimum N` batches only groups of at least N copies, and keeps smaller ones as objects; the first sets batch every group of two or more. ALab ran at minimums of 5, the smallest at which a batch has fewer objects than its copies, and 20, with the baseline again, in one session of 3 repeats each. A first run of those three sets, in that order, had every update stage of the first two slower, the native capture and diff included, which don't depend on the representation; an ad hoc rerun of two scenarios in the reverse order showed no such difference, so those sets were rerun in full and only the rerun is reported.
+- **Not measured:** the ownership mode (C5), which writes the baseline's manifest; the replace policy; undo.
+
+**Grouping** (each plan's batches as `batch.py` forms them):
+
+| Scene | Plan objects | Batches | Instances | Blender objects, batched | Blender objects, baseline |
+|---|---|---|---|---|---|
+| updates-100 | 301 | 3 (150, 100, 50) | 300 | 13 | 301 |
+| updates-1000 | 3,001 | 3 | 3,000 | 13 | 3,001 |
+| updates-10000 | 30,001 | 3 (15,000, 10,000, 5,000) | 30,000 | 13 | 30,001 |
+| ALab | 7,018 | 657 (382 of 2 copies; at most 77) | 3,385 | 6,261 | 7,018 |
+| ALab, minimum 5 | 7,018 | 169 | 2,244 | 5,450 | 7,018 |
+| ALab, minimum 20 | 7,018 | 30 | 1,012 | 6,126 | 7,018 |
+
+A batch was three carriers and a prototype, so it had fewer objects than its copies only from 5 copies up ([D14](#carriers-per-selection-state) gives an unselected batch one carrier). 6,997 of ALab's 7,018 copies show in one destination only (C1 and D2), and its largest groups are of 77 copies. The `updates-N` scenes' batches are all larger than 20, so a minimum up to 20 doesn't change them.
+
+**Budgets** (ratios of medians, each against the matched importer and the full rebuild of its own set; baseline in brackets):
+
+| Budget (provisional) | ALab | updates-100 | updates-1000 | updates-10000 |
+|---|---|---|---|---|
+| Initial synchronization, at most 1.5× the importer's time | 0.90× [0.88×] | 1.15× [1.41×] | 0.76× [1.27×] | 0.62× [**4.01×**] |
+| Initial synchronization, at most 2× its peak memory | 1.56× [1.55×] | 0.67× [0.84×] | 0.63× [1.45×] | 0.50× [1.25×] |
+| Unchanged refresh, no slower than initial synchronization | 0.16× [0.14×] | 0.07× [0.05×] | 0.14× [0.07×] | 0.20× [0.02×] |
+| Transform update, at least 10× faster than a full rebuild | **6.2×** [**6.3×**] | **8.7×** [**9.6×**] | **7.0×** [**3.6×**] | **4.7×** [**8.6×**] |
+| Instance-transform update, likewise | **5.9×** [**5.8×**] | **8.5×** [**7.8×**] | **5.6×** [**3.1×**] | **3.7×** [**7.0×**] |
+| Shared-geometry update, likewise | **6.2×** [**5.9×**] | 11.8× [**8.1×**] | **6.5×** [**3.3×**] | **4.6×** [**7.6×**] |
+| Material update, likewise | **6.1×** [**6.2×**] | 12.6× [**7.1×**] | **6.8×** [**3.2×**] | **4.2×** [**6.8×**] |
+
+**updates-10000** (30,001 objects; medians with ranges, seconds unless marked):
+
+| | Batched | Baseline |
+|---|---|---|
+| Initial synchronization (importer 2.242 / 2.034) | 1.386 (1.372–1.397) | 8.145 (8.114–8.397) |
+| Its construction | 0.120 (0.114–0.120) | 6.204 (6.201–6.389) |
+| Peak MB (importer 1,111 / 1,093) | 557 (556–558) | 1,367 (1,359–1,373) |
+| `.blend` MB, uncompressed | 3.1 | 71.1 |
+| Unchanged refresh | 0.284 (0.276–0.285) | 0.199 (0.195–0.214) |
+| Transform | 0.297 (0.297–0.312) | 0.947 (0.938–0.947) |
+| Instance transform | 0.372 (0.361–0.442) | 1.169 (1.099–1.336) |
+| Shared geometry | 0.300 (0.299–0.306) | 1.077 (1.073–1.201) |
+| Material | 0.326 (0.286–0.335) | 1.199 (1.150–1.279) |
+| Time step | 0.306 (0.264–0.323) | 0.946 (0.917–0.988) |
+| Payload unload | 3.126 (2.877–3.551) | 19.189 (18.978–19.688) |
+| Payload load | 1.118 (1.003–1.200) | 27.063 (26.213–27.210) |
+| Each small update's preparation | 0.162–0.178 | 0.076–0.104 |
+| Each small update's evaluation | 0.001–0.003 | 0.711–0.868 |
+| Pick: `pick_element`, a batch of 15,000, ms | 3.2 (3.2–3.5) | — |
+| Pick: `apply_selection` with its depsgraph update, ms | 2.7 (2.6–2.7) | 119.1 (115.0–119.5) |
+| Box selection of 30,001 elements: `apply_selection`, ms | 3.3 | 118.7 (115.5–120.7) |
+| `read_blender_selection`, pick and box, ms | 6.3, 7.0 | 22.4, 23.7 |
+
+**ALab** (7,018 objects):
+
+| | Batched | Baseline |
+|---|---|---|
+| Initial synchronization (importer 3.134 / 3.133) | 2.824 (2.731–2.893) | 2.748 (2.700–2.833) |
+| Its construction | 1.052 (0.990–1.067) | 1.030 (1.021–1.059) |
+| Peak MB (importer 1,799 / 1,804) | 2,814 (2,806–2,815) | 2,797 (2,796–2,818) |
+| Small updates (unchanged to material) | 0.457–0.483 | 0.393–0.477 |
+| Their preparation | 0.074–0.075 | 0.044–0.047 |
+| Their evaluation | 0.002–0.043 | 0.002–0.054 |
+| Time step, payload unload, payload load | 1.184, 1.360, 2.247 | 1.247, 1.382, 2.208 |
+| Pick: `apply_selection` with its depsgraph update, ms | 14.1 (13.7–17.6) | 11.3 (11.2–11.4) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 24.8 (24.7–25.4) | 11.4 (11.1–12.5) |
+| `read_blender_selection`, pick and box, ms | 5.1, 5.2 | 3.7, 3.8 |
+
+**ALab, batching only large groups** (one session; medians with ranges, seconds unless marked):
+
+| | Minimum 5 | Minimum 20 | Baseline |
+|---|---|---|---|
+| Blender objects | 5,450 | 6,126 | 7,018 |
+| Initial synchronization against the importer (budget 1.5×) | 0.85× | 0.88× | 0.87× |
+| Its construction | 0.940 (0.929–0.964) | 0.966 (0.947–1.057) | 1.024 (1.021–1.046) |
+| Its evaluation | 0.048 (0.047–0.049) | 0.055 (0.055–0.062) | 0.067 (0.064–0.079) |
+| Peak memory against the importer (budget 2×) | 1.55× | 1.55× | 1.57× |
+| Small updates (unchanged to material) | 0.416–0.492 | 0.427–0.498 | 0.403–0.506 |
+| Their preparation | 0.070–0.072 | 0.071 | 0.043–0.047 |
+| Their evaluation | 0.002–0.038 | 0.002–0.046 | 0.002–0.058 |
+| Small updates against a full rebuild (budget 10×) | 5.4–6.1× | 5.4–6.1× | 5.4–6.3× |
+| Time step, payload unload, payload load | 1.028, 1.252, 2.108 | 1.232, 1.311, 2.150 | 1.508, 1.558, 2.357 |
+| Pick of a copy kept as an object: `apply_selection` with its depsgraph update, ms | 8.6 (8.5–11.8) | 8.4 (8.2–8.5) | 11.5 (11.4–12.6) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 15.5 (15.4–15.6) | 13.8 (13.2–14.1) | 11.7 (11.6–12.3) |
+| `read_blender_selection`, pick and box, ms | 3.0, 3.1 | 2.5, 2.6 | 3.7, 3.8 |
+
+**Findings:**
+- **Batching removes Blender's per-object costs where copies batch.** At 30,001 objects, construction falls from 6.2 s to 0.12 s, the evaluation after an update from 0.71–0.87 s to 1–3 ms, and a selection's mirroring from 119 ms to 3 ms. Initial synchronization meets its budget there (0.62× the importer), and peak memory and file size halve or better.
+- **Small updates still miss ten times faster than a full rebuild,** and by more than the baseline at 30,001 objects, though each takes about a third as long (0.28–0.37 s): the full rebuild fell further. Preparation is most of each, and in an ad hoc profile of one instance-transform update it was reading the plan's 30,001 records (52 ms) and regrouping them all in Python (110 ms), against 14 ms to build the two batches' new points. Grouping in the planner, or only what the diff changed, would remove most of it (not built).
+- **`pick_element` grows with its batch:** 3.2 ms for a batch of 15,000, against 0.3 ms for 1,500.
+- **On ALab, batching changes little.** Its 657 batches leave 6,261 objects, synchronization and small updates take within a few percent of the baseline, and mirroring a box selection takes twice as long, 24.8 ms against 11.4 ms; that wasn't profiled. Every ALab interaction stays within its budget.
+- **Batching only large groups on ALab** leaves fewer objects than batching every group (5,450 at a minimum of 5), but changes little else. Against the baseline, initial synchronization's construction and evaluation are a little faster (by 60–80 ms and 10–20 ms), each small update's preparation is about 25 ms slower, and the small updates themselves are within their ranges. The ratios to a full rebuild are the same, so the budget is missed as much. A box selection's mirroring falls from 24.8 ms (every group, from the first sets) to 15.5 ms at 5 and 13.8 ms at 20, against the baseline's 11.7 ms, so it grows with the number of batches. The time step and payload changes are faster than the baseline's in this session, but this session's baseline was also slower than the first sets' (1.508 s against 1.247 s for the time step), so that isn't attributed to batching. The single pick in each set was of a copy kept as an object.
+- **Payload changes at 30,001 objects** fall from 19–27 s to 1.1–3.1 s, since they add or retire three batches instead of 20,000 objects. The unload's remaining time is mostly its capture (about 3.0 s).
+- **The single pick's copy:** each ALab set picked a different copy as the one inside the deepest instance context, which the timing chooses from the plan's order, the two baseline sets included. The plan's object order differs between processes, and its content doesn't ([Plans from separate processes](#plans-from-separate-processes)).
+
+#### ALab with point instancers, and viewport frame time
+
+Two further sets ([M4 plan](../plans/M04-prototypes.md), D6 and D7), in one session on 2026-10-29, on AC power throughout, in the environment above:
+
+```sh
+# ALab with its point instancers planned (D6), batched at minimums of 5 and 20, then the baseline
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers \
+    --modes prototype importer-matched interaction --scenarios all --representation batched --batch-minimum 5 \
+    --out build/hydra-bridge/measure-pi-min5
+# likewise with --batch-minimum 20 (measure-pi-min20), and --representation objects (measure-pi-objects)
+# Viewport frame time, in windows on the screen: batched with the importer, then the baseline
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes viewport importer-viewport --representation batched \
+    --batch-minimum 5 --out build/hydra-bridge/measure-viewport-batched
+# likewise with --modes viewport --representation objects (measure-viewport-objects)
+```
+
+**ALab with point instancers** (`alab-instancers`): ALab's measurement entry layer without deactivating its 21 point instancers, which the plan translates with `point_instancers` (D6), and which Blender's importer imports too, as 21 point-cloud objects with Geometry Nodes instancing. Its plan has 15,159 objects, 8,141 of them point-instanced, against `alab`'s 7,018. Its update scenarios are `alab`'s, except that `instance-transform` moves a native instance root, and `shared-geometry` edits the mesh with the most copies, which here is a point instancer's prototype (2,407 copies). The matched importer's time rose through the session, 3.685, 3.852, then 4.197 s, so differences between the sets of about 15% or less aren't attributed to the representation.
+
+| | Minimum 5 | Minimum 20 | Baseline |
+|---|---|---|---|
+| Batches → Blender objects | 379 → 6,981 | 78 → 8,087 | 15,159 |
+| Initial synchronization against the importer (budget 1.5×) | 1.09× | 1.23× | 1.47× |
+| Its construction | 1.224 (1.207–1.247) | 1.297 (1.266–1.431) | 3.514 (3.244–3.580) |
+| Peak memory against the importer (budget 2×) | 1.58× | 1.59× | 1.59× |
+| Small updates (unchanged to material) | 0.61–0.75 | 0.72–0.86 | 0.62–0.81 |
+| Their preparation | 0.18–0.19 | 0.19–0.21 | 0.10–0.13 |
+| Small updates against a full rebuild (budget 10×) | 5.3–6.2× | 5.5–6.5× | 7.6–10.0× |
+| Time step, payload unload, payload load | 1.468, 2.015, 3.392 | 1.775, 2.195, 3.435 | 2.577, 3.147, 5.706 |
+| Pick of a copy kept as an object: `apply_selection` with its depsgraph update, ms | 12.1 (12.0–12.4) | 11.7 (10.6–11.9) | 23.2 (22.6–23.5) |
+| Box selection of 1,886 elements: `apply_selection`, ms | 19.7 (19.6–20.0) | 18.7 (16.8–20.2) | 22.7 (22.4–23.6) |
+| `read_blender_selection`, pick and box, ms | 6.0, 6.3 | 5.1, 4.9 | 11.1, 11.0 |
+
+**Viewport frame time** (`--modes viewport importer-viewport`): the run's synchronization, then `viewport_timing.py` in a windowed Blender, its window 1,600 × 1,000 points and its 3D view 2,622 × 1,758 pixels, on an Apple M1 Max through Metal. The view is framed on everything, with nothing selected. Each frame turns the view a degree about Z and redraws the window with a swap, so every frame draws the scene, as orbiting does; a still view would redisplay its converged samples. The swap waits for the display's refresh, so no frame is shorter than 8.3 ms (120 Hz), and one at that floor can't be told from a faster one. Each run's median over 5 repeats of 20 frames, as a median and range over 3 runs, in ms:
+
+| Orbiting frame | Batched (minimum 5) | Baseline | Importer |
+|---|---|---|---|
+| `updates-10000`, Solid | 8.5 (8.4–8.6), at the floor | 59.9 (58.1–59.9) | 71.0 (68.2–73.4) |
+| `updates-10000`, Material Preview | 15.6 (15.5–15.6) | 77.1 (75.4–77.9) | 129.5 (126.8–131.1) |
+| `alab-instancers`, Solid | 16.7 (15.9–16.9) | 30.7 (29.8–33.0) | 35.7 (35.7–38.4) |
+| `alab-instancers`, Material Preview | 21.2 (20.6–22.2) | 34.4 (33.8–39.7) | 60.5 (59.7–64.0) |
+
+The importer is a reference only: its matched options import no preview materials (no node trees), so its Material Preview shades something else. Each run's first frame and its wait for shader compilation were recorded too, but after each set's unrecorded warmup run, with the shaders already in the system's cache, so they aren't cold-start figures; Material Preview's wait was under 0.1 ms in every run.
+
+**Findings:**
+- **With its point instancers, ALab batches, and batching pays.** At a minimum of 5, its 15,159 plan objects become 6,981 Blender objects. Construction falls from 3.5 s to 1.2 s, and initial synchronization from 1.47× the importer's time, at its budget's edge, to 1.09×. A time step and the payload changes take about 40% less time, and a pick's mirroring and the reading of Blender's selection about half.
+- **The viewport draws faster batched in every case measured:** at 30,001 objects, Solid orbits at the display's refresh against 59.9 ms, and Material Preview at 15.6 ms against 77.1 ms; on ALab with its point instancers, 16.7 ms against 30.7 ms, and 21.2 ms against 34.4 ms.
+- **Small updates take as long either way,** about 0.6–0.8 s on ALab with its point instancers, so their ratio to the now faster full rebuild is lower batched: 5.3–6.2× against 7.6–10.0×, where the baseline's shared-geometry update just reaches 10×. A batched update's preparation is 60–80 ms slower; on `updates-10000` an ad hoc profile put that in reading and regrouping every plan record, and it wasn't profiled here.
+- **A minimum of 5 did no worse than 20 anywhere,** and better in initial synchronization (1.09× against 1.23×, each against its own set's importer) and the time step (1.47 s against 1.78 s); the other differences are within the session's drift. At 20, 7,775 copies stay objects, against 5,465 at 5.
+- **Not measured:** frame time on other GPUs or at other view sizes, other orbits or viewpoints, frames below the display's refresh, render (Cycles or EEVEE final renders), and the cold-start shader compilation.
+
+#### Small updates without Python's whole-plan work
+
+[M4 plan](../plans/M04-prototypes.md), D8: the bridge's module forms the batched display's groups (`plan.batch_groups`), and both representations' updates read only the plan records and meshes they build from (`plan.objects_at`, `plan.meshes_at`), where they read every record before. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all \
+    --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d8-batched
+# likewise with --representation objects (measure-d8-objects)
+```
+
+The groups are those the Python grouping formed: on every scene measured here and the bridge's test fixtures, at minimums of 2, 5, and 20, the same keys, members, and order (ad hoc). In an ad hoc profile of one transform update, `batch_update.prepare` took 0.027 s on ALab with its point instancers and 0.017 s on `updates-10000`, against 0.18 s and 0.16 s before.
+
+**Batched small updates** (seconds, medians; the earlier sets' in brackets, from other sessions: D5 for `updates-10000` and D7 for ALab with its point instancers):
+
+| | `updates-10000` | ALab with point instancers |
+|---|---|---|
+| Unchanged refresh | 0.144 [0.284] | 0.585 [0.608] |
+| Transform | 0.143 [0.297] | 0.503 [0.675] |
+| Instance transform | 0.294 [0.372] | 0.748 [0.753] |
+| Shared geometry | 0.202 [0.300] | 0.532 [0.646] |
+| Material | 0.159 [0.326] | 0.507 [0.655] |
+| Their preparation | 0.020–0.103 [0.163–0.178] | 0.026–0.037 [0.178–0.185] |
+| Against a full rebuild (budget 10×), transform to material | 4.2–8.6× [3.7–4.7×] | 5.4–8.0× [5.3–6.2×] |
+
+**Where a batched transform update's time goes now** (seconds): on `updates-10000`, capture 0.032, planning 0.083, diff 0.005, preparation 0.020, and Blender's publication, retirement, and evaluation 0.003; on ALab with its point instancers, capture 0.038, planning 0.309, diff 0.071, preparation 0.029, and Blender's 0.058.
+
+**The baseline in the same session:** on `updates-10000`, its small updates take 0.88–1.19 s, most of it the depsgraph's evaluation (0.72–0.91 s), and its ratios are 7.1–9.6×. On ALab with its point instancers, they take 0.50–0.63 s, as the batched display's do, and its ratios reach the budget, 9.8–12.3×, since its full rebuild is the slower one: 1.65× the importer's time here, against the batched display's 1.08×.
+
+**Findings:**
+- **Python's whole-plan work is gone,** and with it most of preparation. On `updates-10000`, the unchanged refresh and the transform and material updates take about half as long, the shared-geometry update a third less, and the instance-transform update a fifth less. On ALab with its point instancers, the transform, shared-geometry, and material updates take 18–25% less, and the unchanged refresh and instance-transform update about as long, within the difference between sessions.
+- **Planning is now most of each batched update:** 58% of a transform update on `updates-10000` and 61% on ALab with its point instancers, where the diff adds 14%. Both still rebuild and compare the whole plan, so no batched update reaches the budget; the closest are transform updates, at 8.6× and 8.0×.
+- **An instance-transform update on `updates-10000` still rebuilds two batches' points whole** (15,000 and 10,000 instances), 0.10 s of preparation, though one copy of each moved.
+- **The capture of an instance-transform edit** takes 0.08–0.12 s, against 0.03–0.04 s for the other edits. Not profiled.
+
+#### Plans that reuse the previous plan's mesh builds
+
+[M4 plan](../plans/M04-prototypes.md), D9, a probe of incremental planning: with `build_plan(snapshot, previous=plan)`, a mesh prim whose captured container, and its subsets', are the ones the previous plan built it from reuses that build (its mesh, content hash, diagnostics, and slots' prims). An incremental capture shares the container of every prim no notice named, so Hydra's own invalidation decides what is rebuilt. Everything else is planned as before, from the whole snapshot. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all "$@"; }
+r --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d9-batched
+r --representation batched --batch-minimum 5 --reuse-builds --out build/hydra-bridge/measure-d9-batched-reuse
+r --representation objects --reuse-builds --out build/hydra-bridge/measure-d9-objects-reuse
+```
+
+`test_plan_diff.py`'s `test_reused_builds_give_the_same_plan` checks that a plan reusing builds equals the plan built from scratch in every field, after each of 14 chained edits on `F-APPEARANCE-CASES` and on the payload, nested-stress, and point-instancer fixtures, and that an unchanged refresh rebuilds no mesh. In an ad hoc mutation run, four of five single changes failed it: reusing regardless of the prim's container, or without a reused build's diagnostics, slots, or content hash. Comparing the subsets' containers survived, since Hydra recaptures a mesh prim whenever its subsets change, on the edits tested; it's kept.
+
+**Small updates, without and with reuse** (seconds, medians):
+
+| | `updates-10000`, batched | ALab with point instancers, batched | ALab with point instancers, objects |
+|---|---|---|---|
+| Unchanged refresh | 0.135 → 0.128 | 0.492 → 0.198 | 0.234 |
+| Transform | 0.139 → 0.137 | 0.493 → 0.250 | 0.283 |
+| Instance transform | 0.269 → 0.256 | 0.567 → 0.356 | 0.445 |
+| Shared geometry | 0.187 → 0.182 | 0.531 → 0.242 | 0.329 |
+| Material | 0.145 → 0.138 | 0.531 → 0.252 | 0.362 |
+| Time step | 0.139 → 0.131 | 1.389 → 1.065 | 2.288 |
+| A transform update's planning and diff | 0.079 and 0.005 → 0.077 and 0.005 | 0.299 and 0.066 → 0.113 and 0.013 | 0.140 and 0.013 |
+| Against a full rebuild (budget 10×), transform to material | 4.3–8.4× → 4.5–8.4× | 6.8–7.9× → 10.6–15.7× | 13.4–21.1× |
+
+The objects column is with reuse only; D8's objects set, from another session, took 0.50–0.63 s for these updates, at 9.8–12.3×. On `updates-10000`, the baseline's small updates with reuse take 0.85–1.16 s, most of it the depsgraph's evaluation (0.71–0.88 s), at 7.1–9.3×. Reuse doesn't change initial synchronization, which builds with no previous plan: 1.04–1.07× the importer's time batched on ALab with its point instancers, and 1.63× for the baseline, as in D8's session (1.65×).
+
+**Where a batched transform update's time goes with reuse** (seconds): on ALab with its point instancers, capture 0.037, planning 0.113, diff 0.013, preparation 0.029, and Blender's publication, retirement, and evaluation 0.056; on `updates-10000`, capture 0.033, planning 0.077, diff 0.005, preparation 0.019, and Blender's 0.003. In an ad hoc profile of the planning that remains, reading every prim's record from the snapshot took 0.033 s on ALab with its point instancers and 0.025 s on `updates-10000`, and planning every object 0.027 s and 0.013 s.
+
+**Findings:**
+- **Reused builds put ALab with its point instancers within the small-update budget** in both representations: batched, its updates take about half as long, at 10.6–15.7×, and the baseline's reach 13.4–21.1×. Planning falls to 45% of a batched transform update, and the diff to a fifth of its time, since its unchanged meshes now share their arrays with the previous plan's.
+- **`updates-10000` gains nothing:** its three meshes were never the cost. Its planning reads 30,017 prims and plans 30,001 objects either way, so its batched updates stay at 4.5–8.4×.
+- **What remains of planning is per prim and per object,** read and planned again on every update. Reusing them too would need a table that shares its records with the previous plan's, and dependency tracking for what an object takes from other prims (its frame, its instance context, its materials), which mesh reuse doesn't need.
+- **An instance-transform update** still misses the budget only on `updates-10000` (4.5×), where 0.094 s of preparation rebuilds the points of each batch a moved copy is in (D8).
+- **Tested only on these edits and scenes:** whether Hydra recaptures every prim an edit affects, as reuse assumes, is checked by the oracle test on its edits, not in general.
+
+#### Display colors under Solid shading's Attribute color
+
+[M4 plan](../plans/M04-prototypes.md), D10: Solid shading's Attribute color (`shading.color_type = "VERTEX"`) shows each mesh's active color attribute, a point or corner one only (ad hoc renders: a face or instance attribute doesn't show). D10 measured this display:
+
+- **Vertex and faceVarying** `displayColor` are point and corner attributes already, and each mesh's active color.
+- **Uniform** `displayColor` is a corner attribute, each face's value on its corners ([D12](#uniform-display-colors-on-corners-only)).
+- **Constant** `displayColor` is per copy. A mesh whose copies all share one holds it, with the copy's `displayOpacity` as alpha, as a point attribute named `displayColor`.
+- **Any other copy** had a Geometry Nodes modifier that stored its own constant color on points, or removed the mesh's color from a copy without one, which Blender evaluates apart from its mesh's other copies. D13 removed these ([No per-copy display color workarounds](#no-per-copy-display-color-workarounds)), and decides held colors in the planner.
+
+All are float colors. One session on 2026-10-29, on AC power in High Power mode throughout, 3 repeats of each mode, each pair running the previous commit's code (on its own build of the bridge) and then D10's:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds "$@"; }
+r --modes prototype --scenarios payload-load payload-unload --representation batched --batch-minimum 5 \
+    --out build/hydra-bridge/measure-d10d-batched
+r --modes viewport --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d10d-viewport-batched
+# likewise with --representation objects (measure-d10d-objects, measure-d10d-viewport-objects)
+```
+
+`isolated/test_baseline.py` checks, on both representations and on `F-APPEARANCE-CASES` and `F-NESTED-STRESS`, that each copy's evaluated mesh has its display color as its active color attribute, on its interpolation's domain (corners for uniform), with a constant color's opacity as alpha. It also checks that only a copy whose constant color its mesh doesn't hold has a modifier. `isolated/test_update.py` checks that after each edit, each copy shows what a fresh application shows, with a fresh application's modifiers on the meshes the update builds. A mesh the update keeps keeps the color its copies shared when it was built. In an ad hoc mutation run, 13 of 14 single changes failed them. The survivor leaves out tagging an object for evaluation when its modifier's inputs change: no update changes an existing modifier's inputs, since an object's color is set only when it is created.
+
+**ALab with its point instancers, the previous commit → D10** (medians):
+
+| | Objects | Batched |
+|---|---|---|
+| Display color modifiers | 0 → 5 | 0 → 5, beside the batches' 1,137 |
+| Building the display, s | 3.28 → 3.36 | 1.26 → 1.28 |
+| First evaluation, s | 0.085 → 0.086 | 0.064 → 0.055 |
+| Peak memory during synchronization, MB | 3,398 → 3,496 | 3,313 → 3,465 |
+| Solid, orbiting frame, ms | 30.0 → 29.9 | 16.6 → 16.4 |
+| Material preview, orbiting frame, ms | 34.2 → 34.7 | 20.4 → 20.4 |
+| Payload load and unload updates, s | 5.86 and 3.12 → 5.55 and 3.08 | 3.53 and 2.10 → 3.37 and 2.05 |
+
+In an ad hoc count of the plan, 2,345 of ALab's 3,393 meshes hold their copies' constant color (3.65M points), and 341 hold a uniform one on corners (4.25M corners). Together they are about 126 MB of float colors, against the 98–152 MB that peak memory rose.
+
+**The other ways measured** (same harness, against the previous commit's code in the same session):
+- **A modifier on every copy with a constant or uniform color**, on AC power: 7,734 modifiers as objects. Solid's orbiting frames took 24% longer in both representations, and material preview's 33% as objects and 24% batched. Peak memory rose 150–240 MB.
+- **Uniform colors through the modifier, constant colors held by meshes**, on battery in High Power mode: 1,518 modifiers as objects, 1,513 of them for uniform colors, on copies holding 3.05M points. Solid's orbiting frames took 7% longer, and material preview's 22% as objects and 9% batched.
+- **8-bit colors** (`BYTE_COLOR`) for `displayColor` and its copies, on AC power in High Power mode: frame times as the previous commit's, and peak memory 13–55 MB higher, but building the display took 0.70 s longer batched and 1.44 s as objects. Blender converts each element of an 8-bit color attribute, at about 60 ns, from linear floats or from sRGB alike, against 2 ns for a float color (ad hoc), and ALab writes about 10.8M.
+
+**Findings:**
+- **Every display color shows under one setting at about the previous cost,** apart from memory: frame times, construction, evaluation, and updates are within the runs' ranges, and peak memory rises about 100–150 MB, the colors the meshes hold.
+- **A modifier on a copy costs it its mesh's sharing in the viewport.** Each modified copy is evaluated as its own mesh, which by the frame times and memory measured costs a whole mesh's evaluation and drawing per copy, not just its colors. Not measured directly.
+- **Colors only shown are still floats:** 8-bit colors held ALab's added peak memory to 13–55 MB, in another session, at about 60 ns an element to write, 0.6 s for ALab's 10.8M.
+- **The extra attribute** is ordinary Blender data that detach keeps: a mesh's held constant color shows in the attribute list.
+- **Measured only on ALab,** where one mesh has copies with differing constant colors, and only these viewpoints and view size. A scene whose copies of one mesh mostly differ in constant color would need a modifier on most of them.
+
+#### Uniform display colors on corners only
+
+[M4 plan](../plans/M04-prototypes.md), D12: a uniform `displayColor` or `displayOpacity` is a corner attribute, each face's value on its corners, without the face attribute D10 kept beside it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, each pair running the previous commit's code (on its own build of the bridge) and then D12's:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds --repeats 3 "$@"; }
+r --modes prototype --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d12-batched
+r --modes prototype --representation objects --out build/hydra-bridge/measure-d12-objects
+```
+
+**ALab with its point instancers, the previous commit → D12** (medians, with ranges):
+
+| | Objects | Batched |
+|---|---|---|
+| Building the display, s | 3.89 (3.88–4.06) → 3.78 (3.71–3.80) | 1.46 (1.39–1.75) → 1.67 (1.53–1.70) |
+| First evaluation, s | 0.098 (0.096–0.125) → 0.114 (0.088–0.132) | 0.078 (0.063–0.090) → 0.091 (0.089–0.102) |
+| Peak memory during synchronization, MB | 3,509 → 3,494 | 3,476 → 3,473 |
+
+- **Peak memory falls 2–15 MB,** against the face attribute's 17 MB: ALab's uniform display colors are about 1.07M faces of float colors (D10's count).
+- **The times are within the runs' ranges,** which were wider in this session than in D10's. The viewport's frame time wasn't measured: Solid shading shows the same corner attribute as before.
+
+#### No per-copy display color workarounds
+
+[M4 plan](../plans/M04-prototypes.md), D13: D10 showed a copy's constant display color, where its mesh held another or none, with a Geometry Nodes modifier. Two ways were compared ad hoc: D10's modifiers, and a plan setting, since removed, that gave such copies meshes of their own, one per color, each holding its copies' color on every point. Neither was adopted (with the user): a copy whose color its mesh's other copies don't share shows it as its object color, and Solid shading's Attribute color shows none for it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, `measure/run.py --reuse-builds --repeats 3 --modes prototype viewport`, objects and batched at a minimum of 5. The modifier sets ran first, then the split sets.
+
+The generated scenes (`measure/stress.py`, `colors`) have 1,000 native instances of one unbound 32×32 grid mesh (1,089 points), each root with a constant `displayColor`: `colors-1000` gives each copy its own, `colors-1000-palette-8` one of 8 in turn.
+
+**The comparison, medians** (objects, then batched):
+
+| Scene | | Modifiers | Split |
+|---|---|---|---|
+| ALab with its point instancers | synchronization, s | 6.83; 4.49 | 6.26; 4.04 |
+| | peak memory, MB | 3,473; 3,432 | 3,492; 3,433 |
+| | Solid, orbiting frame, ms | 30.7; 16.7 | 30.4; 16.5 |
+| | Material preview, orbiting frame, ms | 35.5; 20.4 | 34.6; 20.2 |
+| `colors-1000-palette-8` | meshes; modifiers | 1; 1,000 objects, 8 batched | 8; none |
+| | peak memory, MB | 62; 19 | 52; 21 |
+| | Solid, first frame, ms | 93; 7.6 | 8.2; 8.4 |
+| | Material preview, orbiting frame, ms | 10.5; 8.3 | 8.3; 8.3 |
+| `colors-1000` | meshes; modifiers | 1; 1,000 | 1,000; none |
+| | synchronization, s | 0.17; 0.16 | 0.34; 0.31 |
+| | peak memory, MB | 56; 64 | 191; 199 |
+| | Solid, first frame, ms | 97; 92 | 168; 161 |
+| | Material preview, orbiting frame, ms | 10.5; 10.5 | 9.7; 9.7 |
+
+Solid's orbiting frames were at the display's refresh (8.33 ms) in every generated case. On `colors-1000-palette-8` batched, the batches already split copies by color, so the modifiers are on the 8 prototypes.
+
+- **Where a mesh's copies share a few colors, splitting is cheaper:** a few meshes instead of a modifier per copy, and no copy evaluated apart.
+- **Where every copy has its own color, splitting costs memory and time to build,** since each color is a whole mesh, where a modifier's copy shares its mesh's arrays (an inference from the memory measured). Drawing is no slower.
+- **ALab can't tell them apart:** only one of its meshes has copies of differing colors.
+
+**The decision measured:** no modifiers and no split meshes, with each mesh's held color decided by the planner, against the previous commit (D12's, on its own build of the bridge) on ALab, and against the comparison's modifier sets on the generated scenes, in the same session:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --modes prototype viewport "$@"; }
+r --scenes alab-instancers --representation objects --out build/hydra-bridge/measure-d13r-alab-objects
+r --scenes colors --representation objects --out build/hydra-bridge/measure-d13r-colors-objects
+# likewise batched (--batch-minimum 5)
+```
+
+| Scene | | Previous (modifiers) | D13 |
+|---|---|---|---|
+| ALab with its point instancers | display color modifiers | 5; 5 beside the batches' 1,137 | none |
+| | building the display, s | 3.49; 1.30 | 3.27; 1.18 |
+| | synchronization, s | 6.55; 4.32 | 6.11; 4.14 |
+| | peak memory, MB | 3,459; 3,452 | 3,476; 3,451 |
+| | Solid, orbiting frame, ms | 30.4; 16.4 | 28.9; 16.5 |
+| | Material preview, orbiting frame, ms | 32.5; 20.2 | 33.1; 19.6 |
+| `colors-1000` | Solid, first frame, ms | 97; 92 | 14; 8.1 |
+| | Material preview, orbiting frame, ms | 10.5; 10.5 | 8.3; 8.3 |
+| | peak memory, MB | 56; 64 | 53; 50 |
+| `colors-1000-palette-8` | Solid, first frame, ms | 93; 7.6 | 11; 8.9 |
+| | Material preview, orbiting frame, ms | 10.5; 8.3 | 8.3; 8.3 |
+
+The ALab frame times and peak memory are within the runs' ranges. On the generated scenes, Material Preview's frames are now at the display's refresh.
+
+**Findings:**
+- **Without per-copy workarounds, the display costs what D10's held colors do,** and nothing per copy whose color differs from its mesh's other copies.
+- **Under Solid shading's Attribute color, such a copy shows none of its own:** on ALab 5 copies of one 76-point mesh. Solid shading's Object color and Material Preview show it.
+
+#### Carriers per selection state
+
+[M4 plan](../plans/M04-prototypes.md), D14: a batch has a carrier for each selection state its points hold, so an unselected batch has one, against D3's three carriers per batch. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, the previous commit's code (on its own build of the bridge) and then D14's, batched:
+
+```sh
+r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --representation batched \
+    --modes prototype interaction viewport --scenarios instance-transform "$@"; }
+r --scenes alab-instancers --batch-minimum 5 --out build/hydra-bridge/measure-d14-alab-after
+r --scenes updates --only updates-10000 --out build/hydra-bridge/measure-d14-updates-after
+```
+
+The interaction timing clears the selection before each mirroring, so a mirroring creates the carriers it needs.
+
+**Medians, three carriers → D14:**
+
+| | ALab with its point instancers (minimum 5) | `updates-10000` |
+|---|---|---|
+| Blender objects | 6,981 → 6,223 | 13 → 7 |
+| Carriers | 1,137 → 379 | 9 → 3 |
+| Building the display, s | 1.23 → 1.19 | 0.038 → 0.040 |
+| First evaluation, s | 0.067 → 0.051 | 0.002 → 0.002 |
+| Peak memory during synchronization, MB | 3,428 → 3,404 | 562 → 562 |
+| Solid, orbiting frame, ms | 16.6 → 15.1 | 8.6 → 8.3 |
+| Material preview, orbiting frame, ms | 21.0 → 18.6 | 14.5 → 14.9 |
+| A pick's `apply_selection`, with the depsgraph update, ms | 13.1 → 10.4 | 2.4 → 2.8 |
+| A box selection's `apply_selection`, ms | 19.0 → 27.0 | 3.1 → 3.3 |
+| `read_blender_selection`, ms | 6.1 → 3.8 | 6.0 → 3.7 |
+| Instance-transform update: preparation, evaluation, s | 0.032, 0.041 → 0.034, 0.037 | 0.098, 0.001 → 0.097, 0.001 |
+
+Synchronization was 3.98 s (3.83–5.78) and 4.17 s (3.93–4.32) on ALab, within each other's range.
+
+**Findings:**
+- **Unselected batches cost one carrier,** which on ALab removes 758 objects and shortens the orbiting frames by 9–12%.
+- **A selection that spans many batches creates their carriers,** so a box selection's mirroring is slower, within its budget (250 ms). A single pick's is faster, since it evaluates fewer carriers.
+
+**Batch minimums with per-state carriers** (the same session, batched, medians; the transform scenario at a minimum of 5 in a run of its own):
+
+```sh
+r --scenes alab-instancers --batch-minimum 3 --scenarios instance-transform transform --out build/hydra-bridge/measure-d14-alab-min3
+```
+
+| ALab with its point instancers | 5 | 3 | 2 |
+|---|---|---|---|
+| Batches; Blender objects | 379; 6,223 | 600; 5,896 | 1,040; 5,896 |
+| Synchronization, s | 4.17 | 4.03 | 4.16 |
+| Peak memory during synchronization, MB | 3,404 | 3,438 | 3,439 |
+| Solid, orbiting frame, ms | 15.1 | 14.2 | 13.9 |
+| Material preview, orbiting frame, ms | 18.6 | 17.9 | 17.7 |
+| A pick's `apply_selection`, ms | 10.4 | 11.3 | 42.8 (14.0–43.8) |
+| A box selection's `apply_selection`, ms | 27.0 | 34.6 | 70.4 |
+| Transform and instance-transform updates against a full rebuild | 16.6×, 11.3× | 16.4×, 11.4× | 16.0×, 12.2× |
+
+- **A minimum of 3 removes 327 more objects than 5,** for shorter frames and a little longer mirroring, within the budgets.
+- **A minimum of 2 removes none more than 3,** since a batch of two copies is two objects, and its 440 more batches put a pick's mirroring near its budget.
+
+#### Plans from separate processes
+
+Plans of one scene from separate processes can order their records differently, and hold the same content (M4 Phase D, D11).
+
+- **The check:** `isolated/test_plan_diff.py::test_separate_processes_plan_the_same_content` plans `F-APPEARANCE-CASES`, `F-NESTED-STRESS`, and the point-instancer scene in four processes each. It compares a digest of each plan's content in any order: each object with its mesh's and materials' content in place of their indices, the meshes, the materials with their sources sorted, the diagnostics, and the universe.
+- **A shared mesh's name depended on the order.** The check first failed intermittently on `F-APPEARANCE-CASES`: a mesh that two prims share was named after whichever the planner reached first. It now takes the least of its uses' names. With that change reverted, the check failed in each of three runs.
+- **On ALab with its point instancers** (ad hoc, three processes of the Blender binary, at default time): every process planned 15,157 objects with the same content digest, and each in a different order.
+- **The likely cause** is that the planner keys some maps by `SdfPath`'s hash, which differs between processes. This is inferred from the code, not isolated.
+
+### Playback of time-sampled data (M4 Phase E)
+
+M4 Phase E's representations of time-sampled data ([M4 plan](../plans/M04-prototypes.md), E2–E7) played back in the same session: E2's per-time-code snapshots (with moves), and the cached display with its meshes' samples as attributes (E3–E5) or in a USD file read by Mesh Sequence Cache modifiers (E6), each as the object baseline and batched at a minimum of 3. Run on the reference hardware (M1 Max, 32 GB, macOS 26.5.1, AC power) in the Blender 5.2.2 binary (`d13f752e3b9c`), 2026-11-02, three runs each in fresh processes. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/build.py
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --repeats 3 --check
+# The sequence caches on ALab, writing what the reader alters
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --scenes alab --approaches sequence --repeats 3 \
+    --check --lossy --out build/hydra-bridge/playback-lossy
+```
+
+Each run builds the display at the scene's first frame, sets each later frame in turn (its first visit), then sets every frame again (a revisit), and saves the `.blend` uncompressed. The scenes are ALab with its point instancers, 1004 to 1057; the harness's `animation` scene (frames 1 to 24 of a 66k-point deforming grid and 1,000 moving cubes); and `scatter-10000`, a point instancer of 10,000 points over four 16 × 16 grids, frames 1 to 24, every point moving every frame, 5% switching prototype each frame, and one prototype deforming. With `--check`, each cached display matched fresh plans at its second, middle, and last frames, after the timings, in every run. On ALab the sequence caches refuse meshes holding `st` on points, which Blender's reader gives back on corners, at the first frame after the build; with `--lossy` they write them anyway (`st` as a vertex float2, a display color without its opacity), and then six display colors differ from fresh plans at each frame checked, their opacity lost.
+
+Medians over the three runs, with their range: a frame's first visit and a revisit are each run's median, and the heap is its live heap once every frame has been visited, above the empty scene's.
+
+| ALab | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 5.60 (5.23–6.14) | 0.79 (0.78–0.82) | 799 (769–816) | 3,064 | 1,171 |
+| Snapshots, batched | 3.39 (3.32–3.39) | 0.53 (0.52–0.55) | 529 (520–562) | 2,991 | 1,139 |
+| Attributes, objects | 5.61 (5.55–6.04) | 0.37 (0.36–0.40) | 10.1 (10.0–10.7) | 3,567 | 1,534 |
+| Attributes, batched | 3.53 (3.47–3.70) | 0.38 (0.37–0.39) | 10.2 (10.2–10.6) | 3,561 | 1,502 |
+| Sequence, objects (lossy) | 6.29 (5.61–6.50) | 0.43 (0.41–0.47) | 26.5 (20.7–34.8) | 6,517 | 1,198, and 295 of USD |
+| Sequence, batched (lossy) | 3.83 (3.49–3.93) | 0.43 (0.42–0.43) | 23.6 (21.5–26.2) | 6,511 | 1,166, and 295 of USD |
+
+| Scatter | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 0.36 (0.36–0.37) | 1.30 (1.27–1.34) | 1,346 (1,337–1,359) | 308 | 27 |
+| Snapshots, batched | 0.06 | 0.052 (0.052–0.055) | 51.7 (49.6–52.6) | 16 | 1 |
+| Attributes, objects | 0.48 (0.47–0.49) | 4.09 (3.72–4.12) | 212 (212–223) | 1,628 | 449 |
+| Attributes, batched | 0.11 | 0.33 (0.32–0.33) | 0.5 (0.4–0.7) | 59 | 33 |
+| Sequence, objects | 0.47 (0.45–0.52) | 3.76 (3.51–4.19) | 216 (216–224) | 1,572 | 437 |
+| Sequence, batched | 0.12 (0.12–0.14) | 0.33 (0.31–0.33) | 0.5 (0.5–0.6) | 59 | 33 |
+
+| `animation` | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | `.blend` (MB) |
+|---|---|---|---|---|---|
+| Snapshots, objects | 0.09 | 0.076 (0.073–0.077) | 73.1 (71.7–75.5) | 64 | 9 |
+| Snapshots, batched | 0.06 | 0.038 | 37.5 (36.7–38.0) | 36 | 7 |
+| Attributes, objects | 0.11 | 0.089 (0.088–0.090) | 3.9 (3.8–4.1) | 129 | 45 |
+| Attributes, batched | 0.08 | 0.042 | 0.2 | 60 | 26 |
+| Sequence, objects | 0.12 | 0.096 | 10.0 (9.9–10.2) | 225 | 28, and 20 of USD |
+| Sequence, batched | 0.09 | 0.048 | 6.7 (6.7–7.0) | 156 | 8, and 20 of USD |
+
+- **A revisit** is a step through the update path for snapshots, so it costs as much as a first visit, and for the cached display no synchronization at all: on ALab, 10 ms against 0.53 to 0.80 s, and a revisit of the sequence caches 24 to 27 ms, as each varying mesh is read from USD at each frame change.
+- **A first visit** of the cached display on ALab took 0.37 to 0.43 s, against a snapshot step's 0.79 s as objects and 0.53 s batched. On the scatter, where every track moves every frame, a snapshot step is faster than caching the frame: 1.30 s against 4.09 and 3.76 s as objects, and 52 ms against 0.33 s batched; each revisit costs a step again. In the cached display the first visit after the build is the slowest (in the first of the three runs: 11.4 s and 10.5 s for the scatter's objects, attribute and sequence caches, against 5.4 s and 4.7 s for the next slowest; 1.0 to 1.6 s on ALab, against 0.4 to 0.8 s).
+- **Memory:** snapshots hold one frame, so the least heap and the smallest `.blend`. On ALab once filled, the attribute caches held about 500 MB more heap than snapshots, and the sequence caches about 2,950 MB more than the attribute caches (not broken down), with a USD file of 295 MB beside the `.blend`, which took 2.7 and 2.3 s to save (objects, batched). Batched, the scatter's cached display holds 59 MB against 1.6 GB as objects.
+- **Not measured:** viewport frame time while playing, and Linux and Windows.
+
+### Batch minimum (M4 Phase F)
+
+The smallest group of copies that the display batches ([M4 plan](../plans/M04-prototypes.md), F2), measured through the cached display with attribute caches (E3–E5), as objects and batched, in the environment of [Playback of time-sampled data](#playback-of-time-sampled-data-m4-phase-e) (2026-11-02, AC power), three runs each in fresh processes. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes groups-1 groups-2 groups-3 groups-4 groups-5 groups-6 groups-8 groups-10 groups-12 groups-20 \
+    --batch-minimum 2 --out build/hydra-bridge/playback-groups
+# Real scenes, as objects, then batched at each minimum (2, 3, 5, 8 for ALab only, and 10)
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes alab alab-objects SCENE.usd ... --representations objects --out build/hydra-bridge/playback-real-objects
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes alab alab-objects SCENE.usd ... --representations batched --batch-minimum 5 --out build/hydra-bridge/playback-real-min5
+```
+
+`groups-N` (`measure/stress.py`) is 6,000 copies of 4 × 4 grids, in groups of N copies of equal content, unlike any other group's, every copy moving every frame, frames 1 to 24: the worst case for batches, whose points cache every copy's transform each frame. The real scenes are ALab with and without its point instancers, Pixar's Kitchen set (`Kitchen_set_instanced.usd`), the OpenPBR Shader Playground (`ShdrPlygrnd_OpenPBR.usda`), and Intel's Moore Lane (`4004MooreLane_Assembly.usda`), each visited for at most 24 frames after its first. Every cached display matched fresh plans at its checked frames, but one Moore Lane mesh in every run, as objects and batched alike: its primvar `custom_normal` takes the name of Blender's custom normals, and Blender alters what is written to it.
+
+Medians over the three runs; a frame's first visit and a revisit are each run's median, and the heap is the live heap once every frame has been visited.
+
+| Group size | Build (s), objects / batched | First visit (s) | Revisit (ms) | Heap (MB) | Blender objects |
+|---|---|---|---|---|---|
+| 1 | 0.84 / 0.82 | 0.52 / 0.53 | 33.7 / 33.8 | 712 / 711 | 6,000 / 6,000 |
+| 2 | 0.68 / 1.01 | 0.59 / 0.44 | 39.1 / 71.5 | 639 / 656 | 6,000 / 3,000 |
+| 3 | 0.65 / 0.70 | 0.58 / 0.37 | 32.2 / 46.6 | 616 / 488 | 6,000 / 2,000 |
+| 4 | 0.64 / 0.60 | 0.52 / 0.34 | 30.2 / 34.6 | 606 / 406 | 6,000 / 1,500 |
+| 5 | 0.62 / 0.56 | 0.53 / 0.36 | 31.3 / 28.1 | 599 / 356 | 6,000 / 1,200 |
+| 6 | 0.67 / 0.54 | 0.53 / 0.31 | 31.5 / 23.4 | 594 / 319 | 6,000 / 1,000 |
+| 10 | 0.60 / 0.45 | 0.52 / 0.27 | 30.0 / 12.7 | 584 / 253 | 6,000 / 600 |
+| 20 | 0.61 / 0.41 | 0.53 / 0.26 | 30.3 / 6.5 | 577 / 204 | 6,000 / 300 |
+
+| ALab with its point instancers | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | Blender objects |
+|---|---|---|---|---|---|
+| Objects | 6.15 | 0.37 | 8.3 | 3,333 | 15,159 |
+| Batched, minimum 2 | 3.73 | 0.40 | 10.8 | 3,368 | 4,845 |
+| Minimum 3 | 4.28 | 0.39 | 8.7 | 3,326 | 5,286 |
+| Minimum 5 | 3.58 | 0.36 | 7.4 | 3,303 | 5,842 |
+| Minimum 8 | 3.92 | 0.38 | 7.4 | 3,292 | 6,734 |
+| Minimum 10 | 3.60 | 0.35 | 6.7 | 3,289 | 7,159 |
+
+- **Where batching pays:** from groups of 5, a batch costs less than its copies as objects in every measure. Batches of 2 and 3 cost more to revisit, the cost of playing a cached frame (71.5 and 46.6 ms against 39.1 and 32.2 ms), and those of 2 more to build; groups of 4 are about even. On ALab, every minimum builds faster than objects (3.6–4.3 s against 6.2 s), and from 5 each revisits faster too.
+- **Where it doesn't matter:** on ALab without its point instancers (7,018 copies), the Kitchen set (1,788, groups up to 174), the Shader Playground (346), and Moore Lane (707, groups up to 18), no minimum differs consistently from objects: their figures move both ways between minimums, mostly within their runs' spread, as few of their copies are in groups.
+- **Not measured:** viewport frame time, selection on the cached display's batches, copies that hold still, and other hardware.
+
+#### Moana Island at scale
+
+Disney's Moana Island scene (`island/usd/island.usda`, 16 GB) exhausted this machine's 32 GB through the bridge when opened whole (by the user), so it was surveyed one element at a time, each in a child process killed past 8 GB of resident memory (ad hoc, one run). Every element is a native instance of a prototype, and its point instancers hold about 31 million instances, 23.0 million in `isBeach` alone. The bridge plans each point instance as a copy (D6): the elements small enough to plan with their instances took about 13 KB of resident memory per planned copy, meshes included (`isBayCedarA1`: 219,005 copies at a 2.9 GB peak), so the whole island's instances would need hundreds of GB. `isDunesB` (65,228 prims, 5.5 million mesh points) passed 8 GB even with its point instancers left out, for a cause not investigated. So scenes of millions of point instances can't be planned instance by instance at all; their batches would need to come from an instancer's arrays without a record per instance.
 
 ### Distribution (M1b Phase F)
 

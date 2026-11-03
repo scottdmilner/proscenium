@@ -25,15 +25,14 @@
 #   fixtures      Bespoke fixtures from tests/fixtures/registry.py.
 #   oracle        What the test or check asserts, from the spec or the fixture's construction.
 #   note          Optional clarification shown with the oracle.
-#
-# M4 adds a field marking the high-risk rows from its risk matrix.
+#   risk          high: a row M4's risk matrix marks (docs/plans/M04-prototypes.md#risk-matrix).
 #
 # Fixtures and oracles are recorded once known: today, the named contract fixtures
 # and M1's own rows. The delivering milestone fills in the rest before implementing
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2, M3]
+started: [M1, M1b, M2, M3, M4]
 
 requirements:
 
@@ -56,9 +55,10 @@ requirements:
         kind: contract
         delivery: M2
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log. M4 finalizes it."
+        oracle: "The M2 decision record: the interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log; M4 finalized it (M4 plan, F2)."
       - id: ARCH-08
         quote: "Keep the performance tests around for later"
+        oracle: "The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M14 its Phase 2 targets."
         kind: process
         delivery: M4
         qualified_by: M14
@@ -85,6 +85,7 @@ requirements:
         quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
       - id: PH2-04
         quote: "Establish and meet representative performance targets"
+        risk: high
 
   - section: PROJECT.md#compatibility-and-development
     kind: process
@@ -185,9 +186,11 @@ requirements:
       - id: TXN-05
         quote: "Preparation never mutates resources reachable from the published generation unless a complete rollback mechanism covers the mutation."
         fixtures: [F-SHARED-MATERIAL-FAILURE]
+        risk: high
       - id: TXN-06
         quote: "Publication switches the whole generation together"
         fixtures: [F-PUBLICATION-FAILURE]
+        risk: high
       - id: TXN-07
         quote: "After publication, retirement failures do not fail the synchronization."
         fixtures: [F-RETIREMENT-FAILURE]
@@ -204,6 +207,35 @@ requirements:
         quote: "These guarantees apply equally to incremental mutations in Phase 2."
         delivery: M14
         phase: 2
+
+  - section: spec/pipeline.md#cached-time-codes
+    delivery: M5
+    phase: 1
+    rows:
+      - id: CACHE-01
+        quote: "evaluates the source at each given time code not yet cached, under the generation's settings, and adds the values that vary"
+        delivery: M7
+        oracle: "Synchronized at one sampled time code and cached at the others, in more than one order, the display at each sampled time code's frame passes the standard end-to-end checks against a clean synchronization there, content that appears or vanishes included; a frame between cached time codes shows the latest one before it."
+      - id: CACHE-09
+        quote: "One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping."
+        delivery: M7
+      - id: CACHE-02
+        quote: "Caching publishes no new generation."
+      - id: CACHE-03
+        quote: "A call that fails caches none of its time codes and leaves the published generation as it was"
+        risk: high
+      - id: CACHE-10
+        quote: "A call never fails because of how content varies"
+        delivery: M7
+      - id: CACHE-05
+        quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
+      - id: CACHE-06
+        quote: "A generation synchronized at the USD default time code has no time-varying values"
+      - id: CACHE-07
+        quote: "Synchronizing again produces a new generation, holding only its own time code."
+      - id: CACHE-08
+        quote: "The display never synchronizes or caches on its own."
+        delivery: M7
 
   - section: spec/pipeline.md#diagnostics
     delivery: M5
@@ -261,15 +293,18 @@ requirements:
         fixtures: [F-MULTI-BINDING]
         oracle: "A load-all and a load-none binding on the same file compose the fixture's payload content by their own policy."
       - id: BIND-05
-        quote: "Explicit evaluation time code, including the USD default time code."
+        quote: "An evaluation time code, by default the target scene's current frame's, including the USD default time code"
         fixtures: [F-MULTI-BINDING]
-        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and the attempt is made at exactly that time code, as its last attempt records."
+        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and the attempt is made at exactly that time code, as its last attempt records; without one, at the target scene's current frame, its subframe included."
         delivery: M5
       - id: BIND-06
         quote: "Coordinate-conversion and purpose/display settings."
         fixtures: [F-MULTI-BINDING]
         oracle: "Each binding keeps its own units, up-axis, and purpose settings: setting one binding's leaves the others' as they were."
         delivery: M6
+      - id: BIND-11
+        quote: "UV-set names, which decide which untyped primvars display as UV sets"
+        delivery: M8
       - id: BIND-07
         quote: "Multiple independent bindings, including bindings using the same source."
         fixtures: [F-MULTI-BINDING]
@@ -300,7 +335,7 @@ requirements:
         fixtures: [F-BINDING-STATE]
         oracle: "After synchronize(t) for any t, the default time code included, the binding's configuration is unchanged, and the attempt used the binding's requested settings, such as its payload policy."
       - id: API-03
-        quote: "The requested settings (payload policy, conversion, purpose) change only through set_settings(...), which records them without synchronizing."
+        quote: "The requested settings (payload policy, conversion, purpose, UV-set names) change only through set_settings(...), which records them without synchronizing."
         fixtures: [F-BINDING-STATE]
         oracle: "set_settings changes the requested settings and nothing else: the published generation, last attempt, and live stage are unchanged, and no synchronization runs."
       - id: API-06
@@ -317,6 +352,9 @@ requirements:
         quote: "reload(layers=None) rereads the binding's source layers from disk on request"
         fixtures: [F-BINDING-STATE]
         oracle: "reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers."
+      - id: API-09
+        quote: "cache(time_codes) caches the published generation's time-varying values at each given time code without synchronizing"
+        delivery: M5
       - id: API-04
         quote: "An expected failure, such as an unavailable source, is a result, not an exception."
         delivery: M5
@@ -543,6 +581,7 @@ requirements:
         quote: "Refresh does not mutate a managed resource that unmanaged content uses."
         delivery: M7
         fixtures: [F-UNMANAGED-USER]
+        risk: high
       - id: OWN-09
         quote: "Content without sufficient ownership evidence is treated as unmanaged. Ambiguous candidates are reported, not automatically claimed or deleted."
         fixtures: [F-OWNERSHIP-AMBIGUITY]
@@ -589,11 +628,13 @@ requirements:
         quote: "Remove the binding's ownership metadata, source correspondence and selection associations, and binding-specific runtime controls, callbacks, and display helpers."
       - id: DET-03
         quote: "Keep ordinary geometry, transforms, materials, collection links, and Blender dependencies"
+        risk: high
       - id: DET-04
         quote: "Changes in appearance caused by removing binding-specific mechanisms are permitted and reported"
       - id: DET-05
         quote: "Later refresh or removal must not mutate or delete the detached result."
         fixtures: [F-DETACH-AS-IS, F-DETACH-SHARED]
+        risk: high
       - id: DET-06
         quote: "Release this binding's surviving pending-cleanup resources intact as well"
 
@@ -630,6 +671,9 @@ requirements:
         fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
       - id: UNDO-04
         quote: "With global undo disabled or in background mode, synchronization behaves the same but pushes no step."
+        delivery: M5
+      - id: UNDO-09
+        quote: "pushes no undo step. Undo and redo restore a generation's cached time codes with the rest of it."
         delivery: M5
       - id: UNDO-05
         quote: "When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source."
@@ -788,22 +832,26 @@ requirements:
     rows:
       - id: INSP-01
         quote: "Display selection resolves to a binding and source entity, including instance context where applicable."
+        risk: high
       - id: INSP-02
         quote: "Source selection of a prim or subtree resolves to its associated display elements."
+        risk: high
       - id: INSP-03
         quote: "Source inspection works independently of Blender parenting."
       - id: INSP-04
         quote: "Native instance roots are selectable and source-identifiable."
         delivery: M10
+        risk: high
       - id: INSP-05
         quote: "Source correspondence survives any batching, reordering, or geometry partitioning."
         delivery: M8
+        risk: high
       - id: INSP-06
         quote: "The browsing universe: which of the populated composed hierarchy"
         kind: contract
         delivery: M2
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md) settles each item, and the M2 plan's Phase A log records why. M4 answers its feasibility questions and finalizes it."
+        oracle: "The M2 decision record: the interaction contract (spec/interaction-contract.md) settles each item, and the M2 plan's Phase A log records why; M4 answered its feasibility questions and finalized it (M4 plan, F2)."
       - id: INSP-10
         quote: "Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection."
         fixtures: [F-OFFLINE]
@@ -819,10 +867,10 @@ requirements:
         quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
         kind: contract
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 records what a real pick is assumed to supply."
+        oracle: "The M2 decision record: the interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 recorded what a real pick is assumed to supply, what a ray cast returns, as an accepted risk (Picking; M4 plan, F2)."
 
   # --- spec/interaction-contract.md -----------------------------------------------------------
-  # Draft contract settled by M2 (INSP-06); M4 finalizes it, and its rows may change then.
+  # Contract drafted by M2 (INSP-06) and finalized by M4 (M4 plan, F2).
 
   - section: spec/interaction-contract.md#two-layers-and-the-live-stage
     delivery: M7
@@ -868,6 +916,8 @@ requirements:
         delivery: M3
         fixtures: [F-CACHED-STAGE]
         oracle: "After synchronization, the stage the binding handle returns as live for a file source is the source stage the binding opened, is not in UsdUtils.StageCache, and is not the ambient stage."
+      - id: ICON-35
+        quote: "the core loads it from Blender data once the binding has a live stage, without synchronizing"
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
@@ -897,7 +947,7 @@ requirements:
       - id: ICON-11
         quote: "every prim outside native-instance contents that has a viewport display element of its own"
         fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
-        oracle: "displayed is true exactly for the prims the oracle finds with a viewport display element in their subtree (including placeholders, empty markers, and native instances), from UsdGeomImageable visibility and purpose and instance traversal."
+        oracle: "displayed is true exactly for the prims the oracle finds with a viewport display element in their subtree (including placeholders, empty markers, and native instances), from UsdGeomImageable effective visibility for each prim's purpose (an explicitly visible guide included) and instance traversal."
       - id: ICON-12
         quote: "Content displayed only in the final render destination is not in the universe."
         fixtures: [F-UNIVERSE-MEMBERSHIP]
@@ -925,6 +975,11 @@ requirements:
         quote: "Resolution uses only the published generation's correspondence, never Blender names or parenting."
         fixtures: [F-KIND-HIERARCHY]
         oracle: "resolve_pick returns the same entity after the display objects are renamed and reparented in Blender."
+      - id: ICON-36
+        quote: "A pick supplies what a ray cast returns: the object hit and its world matrix."
+      - id: ICON-37
+        quote: "for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is"
+        delivery: M8
 
   - section: spec/interaction-contract.md#selection
     delivery: M7
@@ -946,7 +1001,7 @@ requirements:
       - id: ICON-21
         quote: "At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
-        oracle: "At a kind level, targets match the oracle's nearest ancestor-or-self with that kind or one derived from it (Kind.Registry.IsA), falling back to the floor when none exists or the floor is absent from the stage."
+        oracle: "At a kind level, targets match the oracle's nearest ancestor-or-self whose authored kind is that kind or one derived from it (Kind.Registry.IsA), including prims outside a valid model hierarchy (a component inside a component, and one under a prim with no kind), falling back to the floor when none exists or the floor is absent from the stage."
       - id: ICON-22
         quote: "Selecting a target selects its subtree"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
@@ -955,6 +1010,10 @@ requirements:
         quote: "Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "highlight_targets covers every display element of the expanded entities and no other."
+        risk: high
+      - id: ICON-38
+        quote: "No display object covers both selected and unselected viewport elements"
+        delivery: M8
 
   - section: spec/interaction-contract.md#persistent-selection
     delivery: M7
@@ -982,6 +1041,7 @@ requirements:
         quote: "A managed display object whose source coverage lies entirely within the expanded selection is selected"
         fixtures: [F-KIND-HIERARCHY]
         oracle: "After apply_selection, display objects covering only selected entities are selected and those covering none are not."
+        risk: high
       - id: ICON-28
         quote: "When the active entry has exactly one display object, it is the active Blender object. When it has several, such as a component shown by several objects, all of them are selected and there is no active object."
         fixtures: [F-KIND-HIERARCHY]
@@ -991,9 +1051,16 @@ requirements:
         fixtures: [F-KIND-HIERARCHY]
         oracle: "apply_selection leaves the selection of unmanaged objects unchanged."
       - id: ICON-30
-        quote: "Selecting displayed content in Blender produces a source selection"
+        quote: "Selecting displayed content produces a source selection through a selection tool the extension provides"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "selection_from_blender, given read_blender_selection's result, returns the targets at the given level of the selected display objects' entities."
+        risk: high
+      - id: ICON-39
+        quote: "in the active view layer, and into a view layer again when it becomes active"
+      - id: ICON-40
+        quote: "A box identifies the viewport display elements whose world bounds' centers lie inside it."
+      - id: ICON-41
+        quote: "Blender's own selection tools don't select managed content"
 
   - section: spec/interaction-contract.md#interfaces-for-future-tools
     delivery: M7
@@ -1036,10 +1103,12 @@ requirements:
         quote: "Source-affected entities: source state actually changed."
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
+        risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
         delivery: M14
         fixtures: [F-NO-OP-REFRESH]
+        risk: high
 
   # --- spec/support/transforms.md -------------------------------------------------------------
 
@@ -1051,27 +1120,43 @@ requirements:
         quote: "Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes."
       - id: XFORM-02
         quote: "Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting."
+        fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: XFORM-03
         quote: "Support matrix transforms, negative and nonuniform scale, and shear."
         fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: XFORM-05
         quote: "Diagnose approximations when exact representation is unavailable."
       - id: XFORM-06
-        quote: "Evaluate supported time-varying values at the supplied time code, including topology changes."
+        quote: "Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes."
+        risk: high
       - id: XFORM-07
         quote: "including topology changes."
         delivery: M8
       - id: XFORM-08
-        quote: "This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses."
+        quote: "the DECISIONS.md row \"Time-sampled data representation\" records the animation data used and why"
+        oracle: "The M4 decision record: the DECISIONS.md row \"Time-sampled data representation\" states the representation adopted for cached time codes and the animation data it authors, and why, with the M4 plan's Phase E measurements of playback, construction, memory, and .blend size."
         kind: contract
         delivery: M4
         qualified_by: M4
       - id: XFORM-09
         quote: "Authored animation data and its caches are managed content"
         delivery: M7
-        note: "Applies if M4 adopts animation data."
       - id: XFORM-10
         quote: "Do not change the target scene's frame rate or playback range."
+        delivery: M7
+      - id: XFORM-11
+        quote: "USD time code t is Blender frame t, its fraction a subframe"
+        delivery: M7
+      - id: XFORM-12
+        quote: "Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included."
+        delivery: M5
+      - id: XFORM-13
+        quote: "A display shows each time code cached in its generation"
+        delivery: M7
+      - id: XFORM-14
+        quote: "Interaction answers for the time code the display shows."
         delivery: M7
 
   - section: spec/support/transforms.md#coordinate-conversion
@@ -1085,6 +1170,7 @@ requirements:
         delivery: M7
       - id: CONV-03
         quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
+        risk: high
       - id: CONV-07
         quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
         delivery: M7
@@ -1105,6 +1191,12 @@ requirements:
         quote: "Orientation/winding and documented double-sidedness behavior."
       - id: GEOM-04
         quote: "Supported UV sets with their names and meaningful domains."
+      - id: GEOM-13
+        quote: "A binding's UV-set names, a list of globs, also make a UV set of a float2[] primvar with vertex, varying, or faceVarying interpolation whose whole name matches one of them, case-insensitively."
+        fixtures: [F-APPEARANCE-CASES]
+      - id: GEOM-14
+        quote: "The default is an empty list, so only texCoord2f[] primvars are UV sets."
+        fixtures: [F-APPEARANCE-CASES]
       - id: GEOM-05
         quote: "displayColor and displayOpacity."
       - id: GEOM-06
@@ -1132,13 +1224,50 @@ requirements:
         qualified_by: M8
       - id: PVAR-02
         quote: "Before choosing a display backend, M4 defines and freezes concrete cases"
+        oracle: "The M4 decision record: Representation Feasibility Cases in geometry.md, the M4 plan's A3 log, and the DECISIONS.md row \"Support cases for backend feasibility\". F-APPEARANCE-CASES builds each case, and the chosen representation displays every one before M4 closes."
         delivery: M4
         qualified_by: M4
       - id: PVAR-03
         quote: "Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes"
+        oracle: "A change to a primvar feasibility case, or to the partition unit, lands with a rerun of the affected M4 prototypes and an updated decision record; M12 checks that no case changed without one."
         kind: process
         delivery: M4
         qualified_by: M12
+
+  # The representation feasibility cases PVAR-02 asks M4 for; the milestones that deliver each display them.
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    phase: 1
+    rows:
+      - id: PVAR-04
+        quote: "Every drawn copy of an instance prototype's mesh, whatever its transform, uses one geometry resource."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+      - id: PVAR-05
+        quote: "Meshes outside instances with equal topology, points, and primvars are equivalent uses and share one geometry resource."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M8
+      - id: PVAR-06
+        quote: "Each UV set displays as a UV map with its primvar's name, so a primvar reader selects it by name"
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M8
+      - id: PVAR-07
+        quote: "Without a material, the mesh shows its display color and opacity, varying as their interpolation does."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M8
+      - id: PVAR-08
+        quote: "Copies of one prototype show their own roots' values, through nested instances, without collapsing into one appearance."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+        risk: high
+      - id: PVAR-09
+        quote: "A material that reads them through primvar readers shows each copy's own values"
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+        risk: high
+      - id: PVAR-10
+        quote: "Each face shows its subset's bound material, and an unassigned face the mesh's own binding"
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
 
   - section: spec/support/geometry.md#mesh-classification
     delivery: M8
@@ -1160,8 +1289,10 @@ requirements:
       - id: INST-01
         quote: "Native and nested native instances."
         fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: INST-02
         quote: "Multi-mesh, multi-material instance contents."
+        risk: high
       - id: INST-04
         quote: "Effective instance transforms, visibility, and purpose."
       - id: INST-05
@@ -1171,6 +1302,7 @@ requirements:
       - id: INST-07
         quote: "Per-instance displayColor, inherited material assignments, and named primvars driving supported material inputs."
         fixtures: [F-NESTED-STRESS]
+        risk: high
 
   - section: spec/support/instancing.md#geometry-sharing
     delivery: M10
@@ -1179,14 +1311,18 @@ requirements:
       - id: SHARE-01
         quote: "Within a binding, deduplicate geometry whenever sharing preserves correct display."
         delivery: M8
+        risk: high
       - id: SHARE-02
         quote: "Per-instance appearance must not collapse into a single shared appearance."
+        risk: high
       - id: SHARE-04
         quote: "Uses with equivalent geometry-resource requirements remain shared, including equivalent variants within cases that require distinct resources."
+        risk: high
       - id: SHARE-05
         quote: "Separate bindings do not share managed geometry resources."
       - id: SHARE-06
         quote: "M4 records sharing criteria and the display state that requires each distinct-resource case"
+        oracle: "The M4 decision record: the sharing criteria (M4 plan, B5) in the DECISIONS.md row \"Geometry sharing\", each distinct-resource case with the display state that requires it, its correctness case in F-APPEARANCE-CASES or F-NESTED-STRESS, and its measured cost."
         kind: contract
         delivery: M4
         qualified_by: M4
@@ -1210,12 +1346,14 @@ requirements:
       - id: MAT-06
         quote: "Required per-instance variation."
         delivery: M10
+        risk: high
       - id: MAT-07
         quote: "Supported displacement signals through the material displacement path, without baking into mesh geometry."
       - id: MAT-08
         quote: "Target the Principled BSDF subset usable in Eevee and Cycles, with documented displacement exceptions."
       - id: MAT-09
         quote: "Display batching must not collapse distinct material assignments or attribute meanings."
+        risk: high
 
   - section: spec/support/materials.md#connection-grammar
     kind: contract
@@ -1231,13 +1369,56 @@ requirements:
         qualified_by: M9
       - id: GRAM-03
         quote: "Before choosing a display backend, M4 defines and freezes concrete connection cases"
+        oracle: "The M4 decision record: Representation Feasibility Cases in materials.md, the M4 plan's A4 log, and the DECISIONS.md row \"Support cases for backend feasibility\". F-APPEARANCE-CASES builds each case, and the chosen representation displays every one before M4 closes."
         delivery: M4
         qualified_by: M4
       - id: GRAM-04
         quote: "A chosen backend does not authorize silently narrowing required support."
+        oracle: "A case the chosen representation can't display is recorded as a failure in the M4 decision record, never removed or narrowed; M12 checks that every feasibility case row still traces its spec text and passes."
         kind: process
         delivery: M4
         qualified_by: M12
+
+  # The representation feasibility cases GRAM-03 asks M4 for; the milestones that deliver each display them.
+  - section: spec/support/materials.md#representation-feasibility-cases
+    phase: 1
+    rows:
+      - id: GRAM-05
+        quote: "A copy with no bound material shows its display color and opacity."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M9
+      - id: GRAM-06
+        quote: "A bound material shows its own inputs, whatever the mesh's display color."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M9
+      - id: GRAM-07
+        quote: "Each copy shows the material its own instance root binds."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+        risk: high
+      - id: GRAM-08
+        quote: "Each copy shows its own primvar values, and the reader's fallback where the copy has none."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+        risk: high
+      - id: GRAM-09
+        quote: "The texture is sampled through the UV map the reader names, never another."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M9
+      - id: GRAM-10
+        quote: "Each face shows its subset's material, and unassigned faces each copy's own fallback."
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+        risk: high
+      - id: GRAM-11
+        quote: "Every use shows that material with its own primvar values"
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M10
+      - id: GRAM-12
+        quote: "The viewport shows the preview binding's material and the final render the full binding's"
+        fixtures: [F-APPEARANCE-CASES]
+        delivery: M9
+        risk: high
 
   - section: spec/support/materials.md#ownership-and-diagnostics
     delivery: M9
@@ -1264,8 +1445,11 @@ requirements:
         quote: "Viewport | default, proxy"
       - id: VIS-03
         quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
+        fixtures: [F-NESTED-STRESS]
+        risk: high
       - id: VIS-04
         quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
 
   - section: spec/support/visibility.md#models-and-unsupported-content
     delivery: M6
@@ -1384,10 +1568,12 @@ requirements:
         quote: "Synchronization completes without a fatal failure."
       - id: ASTD-02
         quote: "World bounds of each model's display match USD-computed bounds under the bounds comparison contract."
+        risk: high
       - id: ASTD-03
         quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
       - id: ASTD-04
         quote: "Save and reopen preserves the display and correspondence without accessing the source."
+        risk: high
 
   - section: testing/acceptance.md#expected-failure-checks
     kind: process
@@ -1430,7 +1616,7 @@ requirements:
     qualified_by: M12
     rows:
       - id: ATIME-01
-        quote: "Synchronization must work at any time code."
+        quote: "Synchronization and caching must work at any time code."
         delivery: M6
       - id: ATIME-02
         quote: "Each time-varying fixture declares its topology and visibility transitions from how it is built"
@@ -1444,11 +1630,40 @@ requirements:
     rows:
       - id: ABND-01
         quote: "M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints"
+        oracle: "The M4 decision record: the Bounds Comparison Contract in acceptance.md states, for the chosen representation, each item this row lists (M4 plan, F4)."
         kind: contract
         delivery: M4
         qualified_by: M4
       - id: ABND-02
         quote: "The bounds check reuses decisions made elsewhere rather than making its own."
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-03
+        quote: "each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-04
+        quote: "each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-05
+        quote: "a subdivision surface is compared as its control cage on both sides"
+        delivery: M8
+        qualified_by: M12
+      - id: ABND-06
+        quote: "lies within its USD-computed extent under its world transform and spans at least 90% of it on every axis"
+        delivery: M8
+        qualified_by: M12
+      - id: ABND-07
+        quote: "a bounding-box placeholder's eight corners are its usable bounds' corners under its world transform, compared corner by corner"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-08
+        quote: "empty markers and content without usable bounds are excluded from both sides"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-09
+        quote: "each face of a display box is within 1e-6 + 1e-5 × m of the expected box's in Blender world units"
         delivery: M7
         qualified_by: M12
 
@@ -1486,12 +1701,16 @@ requirements:
         oracle: "The feasibility record's macOS environment table lists the machine, memory, OS build, and Blender build."
       - id: APERF-06
         quote: "Measurements run in the Blender binary on AC power"
+        oracle: "Every measurement M4 records names the Blender binary and build hash, the OS version, and that it ran on AC power."
       - id: APERF-01
         quote: "Record repeated-run statistics, not single timings."
+        oracle: "Every measurement M4 records gives repeated-run statistics: the number of runs, the median, and the range."
       - id: APERF-02
         quote: "ALab provides production-scale numbers. Generated fixtures of controlled size show how each cost scales."
+        oracle: "M4's measurements cover ALab and generated fixtures at several controlled sizes, and report each cost against size."
       - id: APERF-03
         quote: "M4 sets provisional budgets for comparing representations. Phase 1 records baselines on the reference hardware, not gates."
+        oracle: "The provisional budgets settled in the M4 plan (item 4), and Phase C's measurements against them, recorded as baselines rather than gates."
 
   - section: testing/acceptance.md#where-it-runs
     kind: process
@@ -1534,8 +1753,8 @@ excluded:
       - "That preserves freedom to optimize the display later"
     reason: "Definitions and rationale for the separation that ARCH-01, ARCH-05, and ARCH-06 require."
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
-    quotes: ["Synchronize supported content at an explicit USD time code supplied as a function parameter."]
-    restates: [BIND-05]
+    quotes: ["Synchronize supported content at a USD time code supplied as an optional function parameter"]
+    restates: [BIND-05, API-09, CACHE-01]
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
     quotes: ["Full traversal and rebuilding are acceptable.", "Blender object identities need not survive refresh."]
     reason: "Phase 1 permissions."
@@ -1558,7 +1777,7 @@ excluded:
     quotes: ["Phase 2 must be complete before Phase 3 begins."]
     reason: "Phase 3 ordering, outside Phases 1 and 2."
   - section: PROJECT.md#phase-3--usd-stage-editor
-    quotes: ["Tools author USD changes and use the synchronizer", "Automatic timeline synchronization is a stretch goal."]
+    quotes: ["Tools author USD changes and use the synchronizer", "Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal."]
     reason: "Phase 3, outside Phases 1 and 2."
   - section: PROJECT.md#compatibility-and-development
     quotes: ["If additional compiled components become necessary, all three platforms remain required."]
@@ -1626,11 +1845,11 @@ excluded:
       - "Measuring viewport drawing performance."
     reason: "Rationale and out-of-scope future work."
   - section: spec/interaction.md#source-inspection-and-interaction
-    quotes: ["The draft Interaction Contract settles these items."]
+    quotes: ["The Interaction Contract settles these items."]
     restates: [INSP-06]
   - section: spec/interaction-contract.md
     quotes:
-      - "The draft interaction contract that Source Inspection and Interaction requires"
+      - "The interaction contract that Source Inspection and Interaction requires"
       - "The contract defines what the display layer provides, not its Blender structure."
     reason: "File introduction."
   - section: spec/interaction-contract.md#two-layers-and-the-live-stage
@@ -1648,6 +1867,9 @@ excluded:
   - section: spec/interaction-contract.md#picking
     quotes: ["A pick resolves to the binding and source entity of the display element hit"]
     restates: [INSP-01, ITEST-02]
+  - section: spec/interaction-contract.md#picking
+    quotes: ["That a real viewport pick supplies this is assumed, not verified: an accepted risk"]
+    restates: [ITEST-02]
   - section: spec/interaction-contract.md#blender-selection
     quotes: ["Blender's transform tools are not USD authoring tools."]
     reason: "Scope limit; the lifecycle permission that generated content is USD-authoritative covers edits."
@@ -1792,6 +2014,15 @@ excluded:
   - section: spec/support/geometry.md#primvar-support-matrix
     quotes: ["For each supported primvar category, record USD value types"]
     restates: [PVAR-01]
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    quotes: ["Per drawn copy, the representation chooses where a value is stored"]
+    restates: [SHARE-06]
+  - section: spec/support/geometry.md#representation-feasibility-cases
+    quotes: ["Cases whose display depends on the representation."]
+    restates: [PVAR-02, PVAR-03]
+  - section: spec/support/materials.md#representation-feasibility-cases
+    quotes: ["Cases whose display depends on the representation."]
+    restates: [GRAM-03]
   - section: spec/support/instancing.md
     quotes: ["Part of the supported scene state."]
     reason: "File introduction."
@@ -1890,6 +2121,9 @@ excluded:
       - "An unchanged second synchronization keeps active display resource counts"
       - "Changing the time code or payload policy and resynchronizing gives the same result"
     restates: [ASTD-01]
+  - section: testing/acceptance.md#standard-end-to-end-checks
+    quotes: ["Each sampled time code cached in a generation synchronized at another displays what a clean synchronization at it does"]
+    restates: [CACHE-01]
   - section: testing/acceptance.md#expected-failure-checks
     quotes:
       - "For synchronization cases expected to fail before publication"
@@ -1948,12 +2182,21 @@ excluded:
   - section: spec/pipeline.md#why-the-boundary-is-enforced
     quotes: ["Planning tests can assert every source-semantic diagnostic without Blender."]
     reason: "Consequence of BND-02, not a separate behavior."
+  - section: spec/pipeline.md#cached-time-codes
+    quotes: ["A published generation displays the time code it was synchronized at, and each time code cached in it since."]
+    restates: [CACHE-01]
+  - section: spec/pipeline.md#cached-time-codes
+    quotes: ["a call is one operation over all its time codes, so an implementation may evaluate them in any order or concurrently"]
+    reason: "Design guidance for caching's implementation (M5 to M7); CACHE-09 checks the result is the same."
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["time_codes is a collection of USD time codes, such as a frame range; one time code is a collection of one."]
+    restates: [API-09]
   - section: spec/pipeline.md#synchronization-transaction
     quotes: ["Failure safety covers recoverable failures."]
     reason: "Scope limit of failure safety."
   - section: spec/source-access.md#synchronization-api
-    quotes: ["synchronizes the binding at an explicit USD time code, which may be the default time code."]
-    restates: [BIND-05]
+    quotes: ["synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame"]
+    restates: [BIND-05, XFORM-12]
   - section: spec/source-access.md#synchronization-api
     quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
     restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
@@ -2006,7 +2249,7 @@ excluded:
     quotes: ["Keep development dependencies separate from distributable runtime dependencies; do not inadvertently bundle another OpenUSD build."]
     reason: "True by construction: tools/build_extension.py bundles only the runtime lock's wheels."
   - section: spec/pipeline.md#synchronization-layer-boundaries
-    quotes: ["USD stage + explicit time code + binding settings + planning context"]
+    quotes: ["USD stage + time code + binding settings + planning context"]
     reason: "Architecture outline of the layer inputs; PLAN-09 and APP-08 cover the boundaries."
   - section: spec/pipeline.md#evaluated-source-snapshot
     quotes: ["Source hierarchy, identities, and metadata."]

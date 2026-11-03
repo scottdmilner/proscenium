@@ -2,7 +2,9 @@
 
 Both sides then import the same content: lights, cameras, curves, points, point instancers, volumes and
 ALab's audio prims would otherwise be translated by the importer and only marked with placeholders by the
-prototype. The pinned ALab tree is untouched; the layer is written under the output directory.
+prototype. With `point_instancers`, point instancers stay active (M4 Phase D: the prototype translates them for
+measurement), and so does what their prototypes hold. The pinned ALab tree is untouched; the layer is written
+under the output directory.
 
 Opinions on instance proxies are ignored, so prims inside native-instance prototypes can't be deactivated
 from here. What remains of each type there is counted and recorded.
@@ -34,8 +36,10 @@ STAGE_METADATA = (
 )
 
 
-def untranslated(prim: Usd.Prim) -> bool:
+def untranslated(prim: Usd.Prim, point_instancers: bool = False) -> bool:
     type_name = str(prim.GetTypeName())
+    if point_instancers and type_name == "PointInstancer":
+        return False
     if type_name in UNTRANSLATED_OTHER:
         return True
     # HasAPI and IsA also take a schema class, which the stubs don't declare.
@@ -44,20 +48,20 @@ def untranslated(prim: Usd.Prim) -> bool:
     return lights or (imageable and type_name not in TRANSLATED)
 
 
-def write(entry: Path, out: Path) -> dict[str, Any]:
+def write(entry: Path, out: Path, point_instancers: bool = False) -> dict[str, Any]:
     """Write the layer, returning what it deactivated and what remains inside prototypes."""
     stage = Usd.Stage.Open(str(entry), Usd.Stage.LoadAll)
     deactivated: list[Usd.Prim] = []
     iterator = iter(Usd.PrimRange(stage.GetPseudoRoot()))
     for prim in iterator:
-        if untranslated(prim):
+        if untranslated(prim, point_instancers):
             deactivated.append(prim)
             iterator.PruneChildren()
     remaining = Counter(
         str(prim.GetTypeName())
         for prototype in stage.GetPrototypes()
         for prim in Usd.PrimRange(prototype)
-        if untranslated(prim)
+        if untranslated(prim, point_instancers)
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     layer = Sdf.Layer.CreateNew(str(out))

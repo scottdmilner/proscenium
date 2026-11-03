@@ -14,6 +14,7 @@ checks below catch drift in either direction:
 - Fields, milestones, and fixtures (tests/fixtures/registry.py) are consistent.
 - Rows of milestones listed in `started` have an oracle, and their behavior rows a fixture.
   Rows of later milestones may leave both for their milestone to fill in.
+- A row's `risk`, when set, is one M4's risk matrix assigns.
 """
 
 from __future__ import annotations
@@ -39,10 +40,11 @@ SOURCES = ["PROJECT.md", "spec/*.md", "spec/support/*.md", "testing/*.md"]
 NOT_SCANNED = {INVARIANTS, "testing/requirements-matrix.md"}
 
 KINDS = {"behavior", "contract", "process"}
+RISKS = {"high"}  # M4's risk matrix (docs/plans/M04-prototypes.md#risk-matrix)
 QUALIFIER = {1: "M12", 2: "M14"}  # behavior rows qualify in their phase's qualification milestone
 ID = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{2}$")  # AREA-NN, e.g. FILE-03 or PH1-01
 # Fields a row may set, and fields a section group may set as defaults for its rows.
-ROW_FIELDS = {"id", "quote", "kind", "delivery", "phase", "fixtures", "oracle", "qualified_by", "note"}
+ROW_FIELDS = {"id", "quote", "kind", "delivery", "phase", "fixtures", "oracle", "qualified_by", "note", "risk"}
 SECTION_FIELDS = {"section", "kind", "delivery", "phase", "fixtures", "qualified_by", "note", "rows"}
 
 
@@ -188,6 +190,7 @@ class Row:
     oracle: str
     qualified_by: str
     note: str = ""
+    risk: str = ""  # "high" for the rows M4's risk matrix marks
 
     @property
     def doc(self) -> str:
@@ -235,6 +238,7 @@ def load(path: Path = MATRIX) -> Matrix:
                 oracle=raw.get("oracle", ""),
                 qualified_by=values["qualified_by"] or (QUALIFIER.get(phase, "?") if kind == "behavior" else ""),
                 note=values["note"] or "",
+                risk=raw.get("risk", ""),
             )
             matrix.rows.append(row)
     return matrix
@@ -285,6 +289,8 @@ def check(matrix: Matrix) -> list[str]:
                 problems.append(f"{where}: {name} {value!r} is not a milestone")
         if not r.quote:
             problems.append(f"{where}: no quote")
+        if r.risk and r.risk not in RISKS:
+            problems.append(f"{where}: risk must be one of {sorted(RISKS)}")
         if r.delivery in matrix.started:
             if not r.oracle:
                 problems.append(f"{where}: {r.delivery} has started, so the row needs an oracle")
@@ -408,13 +414,15 @@ def render(matrix: Matrix) -> str:
         "Each row quotes the requirement it traces; the linked section is authoritative.",
         "Kinds: **behavior** rows are checked by bespoke fixture tests; **contract** rows by the decision record",
         "of the milestone that settles them; **process** rows by tooling or CI. A row without fixtures or oracle",
-        "is filled in by its delivering milestone before implementation.",
+        "is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's",
+        "[risk matrix](../plans/M04-prototypes.md#risk-matrix) names.",
         "",
     ]
     total = {k: sum(r.kind == k for r in matrix.rows) for k in sorted(KINDS)}
     lines.append(
         f"{len(matrix.rows)} rows: "
         + ", ".join(f"{n} {k}" for k, n in total.items())
+        + f"; {sum(r.risk == 'high' for r in matrix.rows)} high risk"
         + f"; milestones started: {', '.join(sorted(matrix.started))}."
     )
     lines.append("")
@@ -425,15 +433,16 @@ def render(matrix: Matrix) -> str:
             lines += [
                 f"## {current_doc}",
                 "",
-                "| ID | Requirement | Kind | Delivery | Phase / qualified by | Fixtures | Test or oracle |",
-                "|---|---|---|---|---|---|---|",
+                "| ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |",
+                "|---|---|---|---|---|---|---|---|",
             ]
         link = f"[{r.id}](../{r.section})"  # sections are docs-relative; the view is in docs/testing/
         # "|" would end a table cell; rows of milestones not yet started show who fills them in.
         quote = r.quote.replace("|", "\\|")
         oracle = (r.oracle or f"Set by {r.delivery}.").replace("|", "\\|") + (f" *{r.note}*" if r.note else "")
         fixtures = ", ".join(f"`{f}`" for f in r.fixtures) or "—"
-        cells = [link, quote, r.kind, r.delivery, f"{r.phase} / {r.qualified_by}", fixtures, oracle]
+        risk = "**high**" if r.risk == "high" else ""
+        cells = [link, quote, r.kind, risk, r.delivery, f"{r.phase} / {r.qualified_by}", fixtures, oracle]
         lines.append(f"| {' | '.join(cells)} |")
     lines.append("")
     return "\n".join(lines)

@@ -26,6 +26,8 @@ public:
     void PrimsRenamed(const pxr::HdSceneIndexBase &, const RenamedPrimEntries &entries) override;
 
     std::vector<Event> Take();
+    // Puts `events` before any not yet taken, for the next Take.
+    void Requeue(std::vector<Event> events);
 
 private:
     std::vector<Event> events_;
@@ -37,12 +39,18 @@ public:
     ~SceneIndexGraph();
     SceneIndexGraph(const SceneIndexGraph &) = delete;
     SceneIndexGraph &operator=(const SceneIndexGraph &) = delete;
+    SceneIndexGraph(SceneIndexGraph &&) = delete;
+    SceneIndexGraph &operator=(SceneIndexGraph &&) = delete;
 
     // Moves the graph to `time` and processes pending stage edits; notices reach the observer.
     // Must not overlap reads of the terminal.
     void Advance(pxr::UsdTimeCode time);
+    // M4 Phase E (E3): dirties every value that depends on time, as a time change would, without changing it
+    // (UsdImagingStageSceneIndex's forceDirtyingTimeDeps). Notices reach the observer. Must not overlap reads.
+    void DirtyTimeDependencies();
     const pxr::HdSceneIndexBaseRefPtr &Terminal() const { return terminal_; }
     std::vector<Event> TakeEvents() { return observer_.Take(); }
+    void RequeueEvents(std::vector<Event> events) { observer_.Requeue(std::move(events)); }
     // WORKAROUND for OpenUSD #3690 (copy_bindings.h). Call between advances, never alongside reads.
     std::shared_ptr<const CopyBindings> CopyBindingsNow() { return sourceInfo_->CurrentCopyBindings(); }
 
@@ -52,6 +60,7 @@ private:
     pxr::HdsiPrimTypeNoticeBatchingSceneIndexRefPtr batching_;
     pxr::HdSceneIndexBaseRefPtr terminal_;
     RecordingObserver observer_;
+    pxr::UsdTimeCode time_;  // the latest Advance's
 };
 
 }  // namespace hydra_bridge

@@ -1,6 +1,6 @@
 # Interaction Contract
 
-The draft interaction contract that [Source Inspection and Interaction](interaction.md#source-inspection-and-interaction) requires: what source inspection exposes, how selections resolve, and how they reach Blender. **Draft (M2):** M4 answers the open feasibility questions in the [M2 plan](../plans/M02-contracts.md#feasibility-questions-for-m4) and finalizes this contract; M7, M8, and M10 implement it. Cross-cutting guarantees are summarized in [invariants.md](invariants.md).
+The interaction contract that [Source Inspection and Interaction](interaction.md#source-inspection-and-interaction) requires: what source inspection exposes, how selections resolve, and how they reach Blender. M2 drafted it, and M4 finalized it with its answers to the [M2 plan](../plans/M02-contracts.md#feasibility-questions-for-m4)'s feasibility questions ([M4 plan](../plans/M04-prototypes.md), F2); M7, M8, and M10 implement it. Cross-cutting guarantees are summarized in [invariants.md](invariants.md).
 
 The contract defines what the display layer provides, not its Blender structure. Each requirement is stated as the result of a headless function (see [Headless Functions](#headless-functions)), so it can be checked against any display representation.
 
@@ -8,7 +8,7 @@ The contract defines what the display layer provides, not its Blender structure.
 
 Callers of the contract have the binding's live USD stage. They browse and inspect it through the USD API: hierarchy, prims, attributes, metadata, and composition. The contract provides no browsing or inspection functions of its own, only what the stage cannot answer: what is displayed, and how display and source map to each other. Two layers share that work:
 
-- The **correspondence layer** says what is displayed and which source entity each displayed thing came from. The compiled core maintains it, from Hydra's scene indices and the composed stage, as part of planning; application only records which Blender resources realize each correspondence entry. It is persisted with the published generation. It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected. It stores no inspection data.
+- The **correspondence layer** says what is displayed and which source entity each displayed thing came from. The compiled core maintains it, from Hydra's scene indices and the composed stage, as part of planning; application only records which Blender resources realize each correspondence entry. It is persisted with the published generation, and after a `.blend` is reopened, the core loads it from Blender data once the binding has a live stage, without synchronizing. It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected. It stores no inspection data.
 - The **inspection layer** maps picked prims to selection targets by model kind on the live stage. It never reads the display, the plan, or the snapshot, and it is not needed to display anything or to select at the prim level.
 
 The inspection layer is a C++ library that does not touch Blender. It does not depend on the compiled core: it shares no code with it, and uses none of the core's scene indices, snapshot, or plan. Its inputs are a USD stage, source paths, and model kinds. The core calls it; it has no Python bindings of its own.
@@ -19,7 +19,7 @@ The inspection layer is read-only. It never authors USD, loads or unloads payloa
 
 A binding's live stage is its source stage ([Source Stages](source-access.md#source-stages)): for a file source, the stage the binding opened and reuses across refreshes, and for an attached source, the caller's stage. A binding with a file source has no live stage until its first synchronization, including after a `.blend` is reopened. Callers get a binding's live stage from the binding, which never places it in a stage cache.
 
-The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the published generation's time code.
+The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the time code it shows ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)).
 
 ## Without a Live Stage
 
@@ -35,7 +35,7 @@ The source hierarchy is the composed stage's: an entity's ancestors are the pref
 
 The browsing universe of a published generation is every prim outside native-instance contents that has a viewport display element of its own, or has one beneath it in the source hierarchy, including through native instances. Display elements include placeholders and empty markers for unsupported geometry. A source inspector browses the live stage and uses the universe to tell which prims are displayed and selectable.
 
-- Membership uses the viewport destination's included purposes and evaluated visibility at the generation's time code. Content displayed only in the final render destination is not in the universe.
+- Membership uses the viewport destination's included purposes and evaluated visibility at the time code the display shows. Content displayed only in the final render destination is not in the universe.
 - Ancestors of displayed content are in the universe, including organizational prims that Hydra does not keep.
 - Prims with nothing displayed in their subtree are not in the universe: materials, shaders, empty organizational prims, and types without display support.
 - Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe. A later scene-graph inspector (Phase 3) may expose them; this contract does not.
@@ -43,7 +43,7 @@ The browsing universe of a published generation is every prim outside native-ins
 
 ## Picking
 
-A pick resolves to the binding and source entity of the display element hit, including its instance context when it lies inside native-instance contents. Resolution uses only the published generation's correspondence, never Blender names or parenting. What a real viewport pick supplies for each representation is recorded by M4 as an accepted risk ([Interaction Testing](interaction.md#interaction-testing)).
+A pick resolves to the binding and source entity of the display element hit, including its instance context when it lies inside native-instance contents. Resolution uses only the published generation's correspondence, never Blender names or parenting. A pick supplies what a ray cast returns: the object hit and its world matrix. For an object that shows one display element, the object names it; for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is. That a real viewport pick supplies this is assumed, not verified: an accepted risk ([Interaction Testing](interaction.md#interaction-testing)).
 
 ## Selection
 
@@ -53,28 +53,28 @@ The caller supplies a selection level: either the prim level or a model kind.
 
 - The floor of an entity is the outermost native-instance root enclosing it, or the entity itself when it is not inside instance contents. The correspondence layer derives it from the entity's instance context. Nothing inside instance contents is a selection target.
 - At the prim level, the target is the floor.
-- At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage whose kind is that kind or derives from it. When no such ancestor exists, or the floor is absent from the live stage, the target is the floor.
+- At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage whose kind is that kind or derives from it. A prim's kind is the one authored on it, whether or not its ancestors place it in a valid model hierarchy (`UsdPrim::IsModel`). When no such ancestor exists, or the floor is absent from the live stage, the target is the floor.
 
 Selecting a target selects its subtree: the target and every entity in the universe beneath it in the source hierarchy. The display elements of a selection are those of its expanded entities, found through correspondence, independent of how Hydra or the display representation groups them.
 
-Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities: none outside it and none missing. Where a display resource covers both selected and unselected entities, M4 settles how it is highlighted.
+Highlighting a source selection resolves to display targets that cover exactly the viewport display elements of its expanded entities: none outside it and none missing. No display object covers both selected and unselected viewport elements: a batch shows its instances through one object for each selection state they hold.
 
 ## Persistent Selection
 
 A persistent selection is an ordered set of (binding identifier, USD path) entries plus an optional active entry, stored in Blender data per scene. It may hold entries from several bindings. It stores targets, not their expanded members.
 
-- Resolution checks each entry against its binding's published generation, and expands the entries that are in its universe.
+- Resolution checks each entry against its binding's published generation, at the time code the display shows ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)), and expands the entries that are in its universe.
 - An entry whose path is not in that generation's universe stays stored and is reported unresolved. It resolves again when a later generation displays it.
 
 ## Blender Selection
 
-A source selection is mirrored into Blender's selection state:
+A source selection is mirrored into Blender's selection state, in the active view layer, and into a view layer again when it becomes active:
 
-- A managed display object whose source coverage lies entirely within the expanded selection is selected, and one covering none of it is deselected. M4 settles partial coverage.
+- A managed display object whose source coverage lies entirely within the expanded selection is selected, and one covering none of it is deselected. None covers part of it (see [Selection](#selection)).
 - When the active entry has exactly one display object, it is the active Blender object. When it has several, such as a component shown by several objects, all of them are selected and there is no active object.
 - The selection state of unmanaged objects is never changed.
 
-Selecting displayed content in Blender produces a source selection: the targets, at the current selection level, of the source entities the Blender selection identifies. Whether this uses Blender's native selection tools or a selection tool the extension provides is settled by M4.
+Selecting displayed content produces a source selection through a selection tool the extension provides: the targets, at the current selection level, of the source entities its pick or box identifies. A box identifies the viewport display elements whose world bounds' centers lie inside it. Blender's own selection tools don't select managed content: while another tool is active, managed objects are unselectable, and the source selection is mirrored back once the extension's tool is active again. `selection_from_blender` gives the source selection that Blender's selection of managed objects identifies.
 
 Blender's transform tools are not USD authoring tools. Edits to managed content are not authoritative, and refresh restores the published representation.
 
@@ -103,4 +103,4 @@ Python display component:
 
 ## Interfaces for Future Tools
 
-Future USD manipulation tools receive: the live stage, source/display resolution in both directions (`resolve_pick`, `displayed`, `highlight_targets`), getting and setting the source selection, notification when the source selection changes, and the published generation's time code and settings. Phases 1 and 2 provide no authoring interfaces.
+Future USD manipulation tools receive: the live stage, source/display resolution in both directions (`resolve_pick`, `displayed`, `highlight_targets`), getting and setting the source selection, notification when the source selection changes, the time code the display shows, and the published generation's settings. Phases 1 and 2 provide no authoring interfaces.

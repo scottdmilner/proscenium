@@ -15,8 +15,14 @@ namespace hydra_bridge {
 
 // nullopt when the mesh is invalid. Problems go to `problems` with the mesh's Hydra path as source;
 // an invalid primvar or subset is skipped with a diagnostic and the mesh still builds. `slots` receives the
-// prim whose binding each material slot takes: the mesh, then each materialBind subset used.
-std::optional<MeshData> BuildMesh(const PrimRecord &prim, const std::vector<const PrimRecord *> &subsets,
-                                  Diagnostics &problems, std::vector<const PrimRecord *> &slots);
+// prim whose binding each material slot takes: the mesh, then each materialBind subset used, and `work` what the
+// topology alone gave.
+//
+// With `previous`, an earlier build of the prim (E4): when its topology and point count are this one's, the
+// topology isn't checked again, and the mesh shares its corners, faces, equal material slots, and the attributes
+// of its equal primvars, rather than building them anew. The mesh and problems are the same either way.
+// Null: the topology is checked and everything built anew.
+std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subsets, Diagnostics &problems,
+                                  PrimRefs &slots, TopologyWork &work, const MeshBuild *previous = nullptr);
 
 }  // namespace hydra_bridge

@@ -1,5 +1,8 @@
 #include "python_views.h"
 
+#include "batch_groups.h"
+#include "correspondence.h"
+#include "plan_diff.h"
 #include "prim_reader.h"
 
 #include <pxr/base/tf/pyLock.h>
@@ -7,14 +10,54 @@
 #include <pxr/imaging/hd/sceneIndexPrimView.h>
 #include <pxr/imaging/hd/tokens.h>
 
+#include <array>
+#include <cstddef>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
 namespace {
+
+[[noreturn]] void Raise(PyObject *type, const std::string &message) {
+    PyErr_SetString(type, message.c_str());
+    bp::throw_error_already_set();
+    throw std::logic_error("unreachable");
+}
+
+std::string String(const bp::object &value, const char *what) {
+    const bp::extract<std::string> text(value);
+    if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
+    return text();
+}
+
+// The absolute root or an absolute prim path, from an Sdf.Path or a string through Sdf's own converter; any other
+// path raises ValueError, unless `lenient`, when it is the empty path.
+SdfPath PrimPath(const bp::object &value, bool lenient = false) {
+    // Sdf's converter prints a warning for a malformed string, so strings are checked first.
+    const bp::extract<std::string> text(value);
+    const bool wellFormed = !text.check() || SdfPath::IsValidPathString(text());
+    const bp::extract<SdfPath> path(value);
+    if (!path.check()) Raise(PyExc_TypeError, "a path must be an Sdf.Path or a string");
+    if (wellFormed) {
+        SdfPath result = path();
+        if (result.IsAbsolutePath() && result.IsAbsoluteRootOrPrimPath()) return result;
+    }
+    if (lenient) return {};
+    Raise(PyExc_ValueError,
+          "'" + bp::extract<std::string>(bp::str(value))() + "' is not the absolute root or an absolute prim path");
+}
+
+SdfPathVector PrimPaths(const bp::object &values, bool lenient = false) {
+    const bp::list list(values);  // any iterable
+    SdfPathVector paths;
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) paths.push_back(PrimPath(list[i], lenient));
+    return paths;
+}
 
 template <class Paths>
 bp::list PathList(const Paths &paths) {
@@ -76,7 +119,7 @@ bp::list ListOf(const VtArray<T> &values, size_t tuple) {
     return result;
 }
 
-// Python values Blender assigns as ID properties directly: bool, int, float, str, or (nested) lists of them.
+// Python values Blender assigns as ID properties directly: bool, int, float, or (nested) lists of them.
 bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &properties) {
     bp::dict result;
     for (const auto &[name, property] : properties) {
@@ -87,8 +130,6 @@ bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &pr
             result[name] = ListOf(value.UncheckedGet<VtIntArray>(), property.tupleSize);
         else if (value.IsHolding<VtDoubleArray>())
             result[name] = ListOf(value.UncheckedGet<VtDoubleArray>(), property.tupleSize);
-        else if (value.IsHolding<VtStringArray>())
-            result[name] = ListOf(value.UncheckedGet<VtStringArray>(), property.tupleSize);
         else
             result[name] = bp::object(value);
     }
@@ -97,6 +138,58 @@ bp::dict Properties(const std::vector<std::pair<std::string, PropertyValue>> &pr
 
 bp::object RangeOrNone(const std::optional<GfRange3d> &range) {
     return range ? bp::object(bp::make_tuple(range->GetMin(), range->GetMax())) : bp::object();
+}
+
+bp::dict MeshDict(const MeshData &mesh) {
+    bp::dict record;
+    record["name"] = mesh.name;
+    record["positions"] = mesh.positions;
+    record["corner_verts"] = mesh.cornerVerts;
+    record["face_offsets"] = mesh.faceOffsets;
+    record["material_indices"] = mesh.materialIndices;
+    record["slot_count"] = mesh.slotCount;
+    bp::list attributes;
+    for (const Attribute &attribute : mesh.attributes) {
+        bp::dict entry;
+        entry["name"] = attribute.name;
+        entry["domain"] = DomainName(attribute.domain);
+        entry["data_type"] = DataTypeName(attribute.type);
+        entry["data"] = bp::object(attribute.data);
+        attributes.append(entry);
+    }
+    record["attributes"] = attributes;
+    record["subdivision_scheme"] = mesh.subdivisionScheme.GetString();
+    record["double_sided"] = mesh.doubleSided;
+    record["held_color"] = mesh.heldColor ? bp::object(bp::make_tuple((*mesh.heldColor)[0], (*mesh.heldColor)[1],
+                                                                      (*mesh.heldColor)[2], (*mesh.heldColor)[3]))
+                                          : bp::object();
+    return record;
+}
+
+bp::dict ObjectDict(const Plan &plan, std::size_t i) {
+    const ObjectEntry &object = plan.objects[i];
+    bp::dict record;
+    record["source"] = object.source.GetString();
+    record["instance_context"] = bp::tuple(PathList(object.instanceContext));
+    record["floor"] = plan.correspondence.floors[i].GetString();
+    record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
+    record["placeholder_type"] =
+        object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
+    record["bounds"] = RangeOrNone(object.bounds);
+    record["matrix"] = object.matrix;
+    record["visible"] = object.visible;
+    record["viewport"] = object.inViewport;
+    record["render"] = object.inRender;
+    record["purpose"] = object.purpose.GetString();
+    bp::list slots;
+    for (const int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+    record["material_slots"] = slots;
+    record["primvars"] = Parameters(object.constantPrimvars);
+    record["properties"] = Properties(object.properties);
+    bp::list dirtiedAspects;
+    for (const Aspect aspect : object.dirtiedAspects) dirtiedAspects.append(AspectName(aspect));
+    record["dirtied_aspects"] = dirtiedAspects;
+    return record;
 }
 
 bp::dict PrimDict(const PrimRecord &prim) {
@@ -115,7 +208,8 @@ bp::dict PrimDict(const PrimRecord &prim) {
     for (const auto &[purpose, material] : prim.usdBindings) usdBindings[purpose.GetString()] = material.GetString();
     record["usd_bindings"] = usdBindings;  // UsdShade's, per exact purpose, from the source-info filter
     bp::dict purposeVisibility;
-    for (const auto &[purpose, visibility] : prim.purposeVisibility) purposeVisibility[purpose.GetString()] = visibility.GetString();
+    for (const auto &[purpose, visibility] : prim.purposeVisibility)
+        purposeVisibility[purpose.GetString()] = visibility.GetString();
     record["purpose_visibility"] = purposeVisibility;  // authored opinions on this prim
     record["source_double_sided"] = prim.sourceDoubleSided ? bp::object(*prim.sourceDoubleSided) : bp::object();
     record["extent"] = RangeOrNone(prim.extent);
@@ -173,16 +267,18 @@ bp::list SnapshotView::Paths() const {
     return result;
 }
 
-bp::object SnapshotView::Prim(const std::string &path) const {
+bp::object SnapshotView::Prim(const bp::object &path) const {
+    const SdfPath primPath = PrimPath(path, true);
     PrimRecord record;
-    if (!SdfPath::IsValidPathString(path) || !ReadPrim(*data->scene, SdfPath(path), record)) return bp::object();
+    if (primPath.IsEmpty() || !ReadPrim(*data->scene, primPath, record)) return {};
     return PrimDict(record);
 }
 
-bp::object SnapshotView::Dump(const std::string &path) const {
-    if (!SdfPath::IsValidPathString(path)) return bp::object();
-    HdSceneIndexPrim prim = data->scene->GetPrim(SdfPath(path));
-    if (!prim.dataSource) return bp::object();
+bp::object SnapshotView::Dump(const bp::object &path) const {
+    const SdfPath primPath = PrimPath(path, true);
+    if (primPath.IsEmpty()) return {};
+    const HdSceneIndexPrim prim = data->scene->GetPrim(primPath);
+    if (!prim.dataSource) return {};
     std::ostringstream out;
     HdDebugPrintDataSource(out, prim.dataSource);
     return bp::object(out.str());
@@ -221,7 +317,7 @@ bp::dict SnapshotView::CopyBindings() const {
     bp::dict materials;
     if (const auto &copies = data->copyBindings) {
         for (const SdfPath &path : copies->instances) instances.append(path.GetString());
-        static const char *const kPurposes[] = {"allPurpose", "preview", "full"};
+        static const std::array kPurposes{"allPurpose", "preview", "full"};
         for (const auto &[path, bound] : copies->materials) {
             bp::dict perPurpose;
             for (size_t p = 0; p < bound.size(); ++p) perPurpose[kPurposes[p]] = bound[p].GetString();
@@ -237,28 +333,7 @@ bp::object PlanView::Time() const { return TimeOrNone(data->time); }
 
 bp::list PlanView::Meshes() const {
     bp::list result;
-    for (const MeshData &mesh : data->meshes) {
-        bp::dict record;
-        record["name"] = mesh.name;
-        record["positions"] = mesh.positions;
-        record["corner_verts"] = mesh.cornerVerts;
-        record["face_offsets"] = mesh.faceOffsets;
-        record["material_indices"] = mesh.materialIndices;
-        record["slot_count"] = mesh.slotCount;
-        bp::list attributes;
-        for (const Attribute &attribute : mesh.attributes) {
-            bp::dict entry;
-            entry["name"] = attribute.name;
-            entry["domain"] = DomainName(attribute.domain);
-            entry["data_type"] = DataTypeName(attribute.type);
-            entry["data"] = bp::object(attribute.data);
-            attributes.append(entry);
-        }
-        record["attributes"] = attributes;
-        record["subdivision_scheme"] = mesh.subdivisionScheme.GetString();
-        record["double_sided"] = mesh.doubleSided;
-        result.append(record);
-    }
+    for (const MeshData &mesh : data->meshes) result.append(MeshDict(mesh));
     return result;
 }
 
@@ -277,42 +352,104 @@ bp::list PlanView::Materials() const {
 
 bp::list PlanView::Objects() const {
     bp::list result;
-    for (const ObjectEntry &object : data->objects) {
-        bp::dict record;
-        record["source"] = object.source.GetString();
-        record["instance_context"] = bp::tuple(PathList(object.instanceContext));
-        record["mesh"] = object.mesh < 0 ? bp::object() : bp::object(object.mesh);
-        record["placeholder_type"] = object.placeholderType.IsEmpty() ? bp::object() : bp::object(object.placeholderType.GetString());
-        record["bounds"] = RangeOrNone(object.bounds);
-        record["matrix"] = object.matrix;
-        record["visible"] = object.visible;
-        record["viewport"] = object.inViewport;
-        record["render"] = object.inRender;
-        record["purpose"] = object.purpose.GetString();
-        bp::list slots;
-        for (int slot : object.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
-        record["material_slots"] = slots;
-        record["primvars"] = Parameters(object.constantPrimvars);
-        record["properties"] = Properties(object.properties);
-        result.append(record);
+    for (size_t i = 0; i < data->objects.size(); ++i) result.append(ObjectDict(*data, i));
+    return result;
+}
+
+namespace {
+
+// Plan indices from Python, each checked against `size`.
+std::vector<std::size_t> Indices(const bp::object &indices, std::size_t size) {
+    std::vector<std::size_t> result;
+    const auto count = bp::len(indices);
+    result.reserve(static_cast<std::size_t>(count));
+    for (bp::ssize_t i = 0; i < count; ++i) {
+        const auto index = bp::extract<std::size_t>(indices[i])();
+        if (index >= size) {
+            PyErr_SetString(PyExc_IndexError, "plan index out of range");
+            bp::throw_error_already_set();
+        }
+        result.push_back(index);
     }
     return result;
 }
 
+}  // namespace
+
+bp::list PlanView::ObjectsAt(const bp::object &indices) const {
+    bp::list result;
+    for (const std::size_t index : Indices(indices, data->objects.size())) result.append(ObjectDict(*data, index));
+    return result;
+}
+
+bp::list PlanView::MeshesAt(const bp::object &indices) const {
+    bp::list result;
+    for (const std::size_t index : Indices(indices, data->meshes.size())) result.append(MeshDict(data->meshes[index]));
+    return result;
+}
+
+bp::tuple PlanView::BatchGroups(std::size_t minimum) const {
+    hydra_bridge::BatchGroups grouped;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        grouped = GroupForBatches(*data, minimum);
+    }
+    const auto list = [](const std::vector<int> &values) {
+        bp::list result;
+        for (const int value : values) result.append(value);
+        return result;
+    };
+    bp::list groups;
+    for (const BatchGroup &group : grouped.groups) {
+        bp::list slots, kinds;
+        for (const int slot : group.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
+        for (const auto &[name, type] : group.kinds) kinds.append(bp::make_tuple(name, type));
+        const auto &[r, g, b, a] = group.color;
+        const bp::tuple key = bp::make_tuple(group.mesh, bp::tuple(slots), group.inViewport, group.inRender,
+                                             bp::make_tuple(r, g, b, a), bp::tuple(kinds), group.repeat);
+        groups.append(bp::make_tuple(key, list(group.members)));
+    }
+    return bp::make_tuple(groups, list(grouped.single));
+}
+
 bp::list PlanView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
+
+bp::list PlanView::Universe() const { return PathList(data->correspondence.universe); }
 
 namespace {
 
-[[noreturn]] void Raise(PyObject *type, const std::string &message) {
-    PyErr_SetString(type, message.c_str());
-    bp::throw_error_already_set();
-    throw std::logic_error("unreachable");
+std::size_t Element(const bp::object &value) {
+    const bp::extract<std::size_t> element(value);
+    if (!element.check()) Raise(PyExc_TypeError, "an element must be a non-negative integer");
+    return element();
 }
 
-std::string String(const bp::object &value, const char *what) {
-    bp::extract<std::string> text(value);
-    if (!text.check()) Raise(PyExc_TypeError, std::string(what) + " must be a string");
-    return text();
+std::optional<TfToken> Level(const bp::object &value) {
+    if (value.is_none()) return std::nullopt;
+    TfToken level(String(value, "a level"));
+    try {
+        Interaction::CheckLevel(level);
+    } catch (const std::invalid_argument &error) {
+        Raise(PyExc_ValueError, error.what());
+    }
+    return level;
+}
+
+// Runs `call` without the GIL, and raises the source's unavailability as RuntimeError.
+template <class Call>
+auto Unlocked(const Call &call) {
+    std::optional<std::string> unavailable;
+    std::optional<decltype(call())> result;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        try {
+            result = call();
+        } catch (const SourceUnavailableError &error) {
+            unavailable = error.what();
+        }
+    }
+    if (unavailable) Raise(PyExc_RuntimeError, *unavailable);
+    return std::move(*result);
 }
 
 // Prim purposes by their USD names; Hydra calls USD's default "geometry".
@@ -337,10 +474,79 @@ void SetMaterialPurpose(const bp::object &name, TfToken &purpose) {
 
 }  // namespace
 
+InteractionView::InteractionView(const UsdStagePtr &stage, const PlanView &plan)
+    : interaction(stage, plan.data) {
+    if (!stage) Raise(PyExc_ValueError, "the live stage is invalid");
+}
+
+bp::object InteractionView::ResolvePick(std::size_t element) const {
+    const std::optional<Entity> entity = Unlocked([&] { return interaction.ResolvePick(element); });
+    if (!entity) return {};
+    bp::dict record;
+    record["source"] = entity->source.GetString();
+    record["instance_context"] = bp::tuple(PathList(entity->instanceContext));
+    record["floor"] = Floor(*entity).GetString();
+    return std::move(record);
+}
+
+bp::list InteractionView::SelectTargets(const bp::object &entities, const bp::object &level) const {
+    std::vector<Entity> values;
+    const bp::list list(entities);
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) {
+        const bp::tuple pair(list[i]);
+        if (bp::len(pair) != 2) Raise(PyExc_TypeError, "an entity must be a (source, instance context) pair");
+        values.push_back(Entity{PrimPath(pair[0]), PrimPaths(pair[1])});
+    }
+    const std::optional<TfToken> kind = Level(level);
+    return PathList(Unlocked([&] { return interaction.SelectTargets(values, kind); }));
+}
+
+bp::list InteractionView::Displayed(const bp::object &paths) const {
+    const SdfPathVector values = PrimPaths(paths, true);
+    bp::list result;
+    for (const bool displayed : Unlocked([&] { return interaction.Displayed(values); })) result.append(displayed);
+    return result;
+}
+
+bp::list InteractionView::HighlightTargets(const bp::object &targets) const {
+    const SdfPathVector values = PrimPaths(targets);
+    bp::list result;
+    for (const std::size_t element : Unlocked([&] { return interaction.HighlightTargets(values); }))
+        result.append(element);
+    return result;
+}
+
+bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const bp::object &active,
+                                               const bp::object &level) const {
+    std::vector<std::size_t> elements;
+    const bp::list list(selected);
+    for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) elements.push_back(Element(list[i]));
+    const std::optional<std::size_t> activeElement =
+        active.is_none() ? std::nullopt : std::optional<std::size_t>(Element(active));
+    const std::optional<TfToken> kind = Level(level);
+    const SourceSelection selection =
+        Unlocked([&] { return interaction.SelectionFromBlender(elements, activeElement, kind); });
+    bp::dict result;
+    result["targets"] = PathList(selection.targets);
+    result["active"] = PathOrNone(selection.active);
+    return result;
+}
+
 PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurposes,
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
-                  const bp::object &renderMaterialPurpose) {
+                  const bp::object &renderMaterialPurpose, bool pointInstancers, const bp::object &previous) {
     PlanSettings settings;
+    settings.pointInstancers = pointInstancers;
+    // Held until planning ends, so the builds it reuses stay alive.
+    PlanPtr reused;
+    if (!previous.is_none()) {
+        const bp::extract<PlanView> plan(previous);
+        if (!plan.check()) {
+            PyErr_SetString(PyExc_TypeError, "previous must be a Plan or None");
+            bp::throw_error_already_set();
+        }
+        reused = plan().data;
+    }
     SetPurposes(viewportPurposes, settings.viewport.purposes);
     SetMaterialPurpose(viewportMaterialPurpose, settings.viewport.materialPurpose);
     SetPurposes(renderPurposes, settings.render.purposes);
@@ -348,9 +554,40 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
     PlanPtr plan;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        plan = BuildPlan(*snapshot.data, settings);
+        plan = BuildPlan(*snapshot.data, settings, reused.get());
     }
     return PlanView{plan};
+}
+
+bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
+    PlanDiff diff;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        diff = DiffPlans(*published.data, *next.data);
+    }
+    const auto list = [](const std::vector<int> &values) {
+        bp::list result;
+        for (const int value : values) result.append(value);
+        return result;
+    };
+    bp::dict result;
+    result["meshes"] = list(diff.meshes);
+    result["materials"] = list(diff.materials);
+    result["objects"] = list(diff.objects);
+    result["changed"] = list(diff.changed);
+    result["repointable"] = list(diff.repointable);
+    result["moved"] = list(diff.moved);
+    result["removed"] = list(diff.removed);
+    return result;
+}
+
+std::size_t RebuildCorrespondence(const PlanView &plan) {
+    std::size_t size = 0;
+    {
+        TF_PY_ALLOW_THREADS_IN_SCOPE();
+        size = BuildCorrespondence(*plan.data).universe.size();
+    }
+    return size;
 }
 
 void WrapViews() {
@@ -360,7 +597,8 @@ void WrapViews() {
         .def("prim", &SnapshotView::Prim)
         .def("dump", &SnapshotView::Dump)
         .add_property("events", &SnapshotView::Events)
-        .add_property("copied", +[](const SnapshotView &view) { return view.data->copied; })
+        .add_property(
+            "copied", +[](const SnapshotView &view) { return view.data->copied; })
         .add_property("dirty_locators", &SnapshotView::DirtyLocators)
         .add_property("renames", &SnapshotView::Renames)
         .add_property("diagnostics", &SnapshotView::Diagnostics)
@@ -370,11 +608,28 @@ void WrapViews() {
         .add_property("meshes", &PlanView::Meshes)
         .add_property("materials", &PlanView::Materials)
         .add_property("objects", &PlanView::Objects)
+        .add_property("universe", &PlanView::Universe)
+        .add_property("object_count", &PlanView::ObjectCount)
+        .add_property("mesh_count", &PlanView::MeshCount)
+        .add_property("material_count", &PlanView::MaterialCount)
+        .def("objects_at", &PlanView::ObjectsAt, bp::arg("indices"))
+        .def("meshes_at", &PlanView::MeshesAt, bp::arg("indices"))
+        .def("batch_groups", &PlanView::BatchGroups, bp::arg("minimum"))
         .add_property("diagnostics", &PlanView::Diagnostics);
+    bp::class_<InteractionView>("Interaction", bp::init<UsdStagePtr, PlanView>())
+        .def("resolve_pick", &InteractionView::ResolvePick)
+        .def("select_targets", &InteractionView::SelectTargets, (bp::arg("entities"), bp::arg("level") = bp::object()))
+        .def("displayed", &InteractionView::Displayed)
+        .def("highlight_targets", &InteractionView::HighlightTargets)
+        .def("selection_from_blender", &InteractionView::SelectionFromBlender,
+             (bp::arg("selected"), bp::arg("active") = bp::object(), bp::arg("level") = bp::object()));
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),
              bp::arg("viewport_material_purpose") = bp::object(), bp::arg("render_purposes") = bp::object(),
-             bp::arg("render_material_purpose") = bp::object()));
+             bp::arg("render_material_purpose") = bp::object(), bp::arg("point_instancers") = true,
+             bp::arg("previous") = bp::object()));
+    bp::def("diff_plans", DiffPlanViews, (bp::arg("published"), bp::arg("next")));
+    bp::def("rebuild_correspondence", RebuildCorrespondence, bp::arg("plan"));
 }
 
 }  // namespace hydra_bridge

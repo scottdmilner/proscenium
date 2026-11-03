@@ -30,13 +30,14 @@ public:
         last_.reset();
     }
 
-    // Call without the GIL. Incremental captures share unchanged prims with the previous capture.
-    SnapshotPtr Capture(pxr::UsdTimeCode time, bool incremental = false);
+    // Call without the GIL. Incremental captures share unchanged prims with the previous capture;
+    // `timeDependencies` adds the locators a time change would dirty (capture.h).
+    SnapshotPtr Capture(pxr::UsdTimeCode time, bool incremental = false, bool timeDependencies = false);
 
 private:
     pxr::UsdStagePtr stage_;
     std::unique_ptr<SceneIndexGraph> graph_;
-    SnapshotPtr last_;  // the graph's notices since this capture are the ones not yet taken
+    SnapshotPtr last_;     // the graph's notices since this capture are the ones not yet taken
     Diagnostics pending_;  // warnings posted while building the graph, until the first capture takes them
 };
 

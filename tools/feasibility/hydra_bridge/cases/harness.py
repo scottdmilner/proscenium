@@ -61,7 +61,7 @@ class Case:
         Raises if a source has several objects (a prim shown in both destinations with different materials): use
         apply.apply then.
         """
-        objects = self.apply.apply(plan, self.collection())
+        objects = self.apply.apply(plan, self.collection()).objects
         sources = [o["source"] for o in plan.objects]
         repeated = sorted({s for s in sources if sources.count(s) > 1})
         if repeated:

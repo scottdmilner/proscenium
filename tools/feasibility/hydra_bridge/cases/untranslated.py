@@ -32,7 +32,8 @@ CONTEXTS = {s: (s.rsplit("/", 1)[0],) for s in PLACEHOLDERS if s.startswith(("/W
 
 def run(case: Case) -> None:
     stage = case.open("untranslated.usda")
-    plan = case.native.build_plan(case.native.Bridge(stage).capture(TIME))
+    # M1b's placeholder for a point instancer, which the plan gives with point instancers off.
+    plan = case.native.build_plan(case.native.Bridge(stage).capture(TIME), point_instancers=False)
     by_source = {o["source"]: o for o in plan.objects}
     unsupported = {s for s in oracle.drawn_gprims(stage) if not stage.GetPrimAtPath(s).IsA(UsdGeom.Mesh)}  # ty: ignore[no-matching-overload]
     case.check("the scene's unsupported gprims are the ones the case lists", unsupported == GPRIMS, unsupported)

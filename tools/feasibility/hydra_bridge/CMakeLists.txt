@@ -32,15 +32,21 @@ if(NOT EXISTS "${USD_LIBRARY}")
 endif()
 
 Python_add_library(_hydra_bridge MODULE WITH_SOABI
+  src/batch_groups.cpp
   src/bridge.cpp
   src/capture.cpp
   src/copy_bindings.cpp
+  src/correspondence.cpp
   src/diagnostics.cpp
   src/fact_timings.cpp
+  src/inspection.cpp
   src/instancing.cpp
+  src/interaction.cpp
   src/loaded_images.cpp
   src/mesh_builder.cpp
+  src/mesh_sharing.cpp
   src/module.cpp
+  src/plan_diff.cpp
   src/planner.cpp
   src/prim_reader.cpp
   src/prim_record.cpp

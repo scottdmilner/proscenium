@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from pxr import Kind, Usd
 
 from fixtures import interaction
 from support import interaction_oracle as oracle
@@ -47,6 +48,16 @@ def test_excluded_prims_are_composed_and_outside_every_universe(fixture_id: str,
             assert path in composed
             assert all(path not in members for members in scene.universe.values())
         assert not composed & set(scene.probes)
+
+
+def test_kinds_outside_a_valid_model_hierarchy(fixture_id: str, tmp_path: Path) -> None:
+    with GENERATORS[fixture_id](tmp_path) as scene:
+        if not scene.outside_model_hierarchy:
+            pytest.skip("no case outside a valid model hierarchy")
+        for path in scene.outside_model_hierarchy:
+            prim = scene.stage.GetPrimAtPath(path)
+            assert Kind.Registry.IsA(Usd.ModelAPI(prim).GetKind(), Kind.Tokens.model), path
+            assert not prim.IsModel(), path
 
 
 def test_absent_floor_is_a_displayed_floor(fixture_id: str, tmp_path: Path) -> None:

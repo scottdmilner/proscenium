@@ -1,15 +1,16 @@
 #include "diagnostics.h"
 
-#include <pxr/external/boost/python.hpp>
 #include <pxr/base/tf/pyError.h>
+#include <pxr/external/boost/python.hpp>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace hydra_bridge {
 
 namespace {
-// The prim the current thread is reading, if any.
-thread_local const SdfPath *currentSource = nullptr;
+// The prim the current thread is reading, or null when it reads none. Per-thread state by design: the
+// diagnostic delegate has no other way to know which prim a warning came from.
+thread_local const SdfPath *currentSource = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
 }  // namespace
 
 const char *SeverityName(Severity severity) {
@@ -29,8 +30,7 @@ void RaiseTfErrors(const TfErrorMark &mark) {
 }
 
 void HarvestErrors(const TfErrorMark &mark, const SdfPath &source, Diagnostics &out) {
-    for (auto it = mark.begin(); it != mark.end(); ++it)
-        out.push_back({Severity::Error, "tf-error", source, it->GetCommentary()});
+    for (auto &it : mark) out.push_back({Severity::Error, "tf-error", source, it.GetCommentary()});
     mark.Clear();
 }
 
@@ -51,18 +51,19 @@ void WarningCollector::IssueWarning(const TfWarning &warning) {
 
 Diagnostics WarningCollector::Take() {
     Diagnostics taken;
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     taken.swap(diagnostics_);
     return taken;
 }
 
 void WarningCollector::Add(Severity severity, const char *code, const std::string &message) {
     SdfPath source = currentSource ? *currentSource : SdfPath();
-    std::lock_guard<std::mutex> lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     diagnostics_.push_back({severity, code, std::move(source), message});
 }
 
-WarningCollector::ScopedSource::ScopedSource(const SdfPath &source) : previous_(currentSource) {
+WarningCollector::ScopedSource::ScopedSource(const SdfPath &source)
+    : previous_(currentSource) {
     currentSource = &source;
 }
 

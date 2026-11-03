@@ -1,0 +1,167 @@
+#usda 1.0
+# F-NESTED-STRESS (tests/fixtures/appearance.py): transforms objects can't hold, inside nested
+# instances with differing appearance and separate purposes. Three copies of the Unit prototype:
+# - UnitA under Sheared, a matrix transform with shear;
+# - UnitB under Mirrored, a negative, nonuniform scale (negative determinant);
+# - UnitC rotated under Skewed's nonuniform scale, which shears its world transform.
+# Each Unit holds a mesh with its own transform (Body), a reset transform stack (Pinned, whose Pin
+# ignores every ancestor, instance roots included), two nested Leaf instances (Inner inherits its
+# outer root's display color, InnerTinted authors its own) whose mesh mirrors again (so UnitB's Leaf
+# copies have a positive determinant), and one mesh each of proxy, render, and guide purpose.
+# UnitA's root authors red and UnitB's blue; UnitC's authors none.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World" (
+    kind = "assembly"
+)
+{
+    def Xform "Sheared"
+    {
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+
+        def Xform "UnitA" (
+            instanceable = true
+            references = </Prototypes/Unit>
+        )
+        {
+            color3f[] primvars:displayColor = [(1, 0, 0)] (
+                interpolation = "constant"
+            )
+        }
+    }
+
+    def Xform "Mirrored"
+    {
+        float3 xformOp:scale = (-1, 2, 0.5)
+        uniform token[] xformOpOrder = ["xformOp:scale"]
+
+        def Xform "UnitB" (
+            instanceable = true
+            references = </Prototypes/Unit>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 0, 1)] (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "Skewed"
+    {
+        float3 xformOp:scale = (3, 1, 1)
+        uniform token[] xformOpOrder = ["xformOp:scale"]
+
+        def Xform "UnitC" (
+            instanceable = true
+            references = </Prototypes/Unit>
+        )
+        {
+            double xformOp:rotateZ = 45
+            uniform token[] xformOpOrder = ["xformOp:rotateZ"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    class Xform "Unit"
+    {
+        def Mesh "Body"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (0, 0, 1)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "Pinned"
+        {
+            double3 xformOp:translate = (10, 0, 0)
+            uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate"]
+
+            def Mesh "Pin"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+
+        def Xform "Inner" (
+            instanceable = true
+            references = </Prototypes/Leaf>
+        )
+        {
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "InnerTinted" (
+            instanceable = true
+            references = </Prototypes/Leaf>
+        )
+        {
+            color3f[] primvars:displayColor = [(0, 1, 0)] (
+                interpolation = "constant"
+            )
+            double3 xformOp:translate = (0, 2, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Proxy"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token purpose = "proxy"
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Render"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token purpose = "render"
+            uniform token subdivisionScheme = "none"
+        }
+
+        def Mesh "Guide"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token purpose = "guide"
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    class Xform "Leaf"
+    {
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            uniform token subdivisionScheme = "none"
+            float3 xformOp:scale = (1, -1, 1)
+            uniform token[] xformOpOrder = ["xformOp:scale"]
+        }
+    }
+}

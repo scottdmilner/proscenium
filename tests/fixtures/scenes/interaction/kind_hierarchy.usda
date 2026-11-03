@@ -1,9 +1,11 @@
 #usda 1.0
 # F-KIND-HIERARCHY (tests/fixtures/interaction.py): a model-kind hierarchy for selection levels and
-# subtree expansion. Only the components and Debris author transforms; /World, Props, and Geom
+# subtree expansion. Only Chair, Lamp, Table, and Debris author transforms; /World, Props, and Geom
 # author nothing but kind, so nothing Hydra needs to keep them. Kind cases: a group level
 # reaches the assembly /World from Table (assembly derives from group), a subcomponent level
 # reaches Geom from Seat but nothing from Legs, and /Debris/Rock sits under no model at all.
+# Kinds outside a valid model hierarchy (UsdPrim::IsModel false) still match a kind level: Vase is a
+# component inside the component Table, and Crate a component under Debris, which has no kind.
 # Every mesh is one triangle, so any display representation shows it.
 (
     defaultPrim = "World"
@@ -85,6 +87,19 @@ def Xform "World" (
             int[] faceVertexIndices = [0, 1, 2]
             point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
         }
+
+        def Xform "Vase" (
+            kind = "component"
+        )
+        {
+            def Mesh "Body"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [3]
+                int[] faceVertexIndices = [0, 1, 2]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+            }
+        }
     }
 }
 
@@ -99,5 +114,18 @@ def Xform "Debris"
         int[] faceVertexCounts = [3]
         int[] faceVertexIndices = [0, 1, 2]
         point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    }
+
+    def Xform "Crate" (
+        kind = "component"
+    )
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [3]
+            int[] faceVertexIndices = [0, 1, 2]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        }
     }
 }

@@ -12,6 +12,9 @@
 **Decisions and deliverables:**
 
 - Extensions to the M5 plan envelope that carry evaluated content, with provisional instance and geometry descriptions labeled as such.
+- Objects created so their names land at the end of Blender's sorted ID lists, whatever names users see: prim-derived names cost 6.68 s against 1.06 s in creation order at 30,001 objects ([M4 plan](../plans/M04-prototypes.md), C3). This applies to batches' objects too.
+- Batch groups in the plan: copies alike but for placement, at least 5 to a group (DECISIONS.md "Display representation"), grouped in the core ([M4 plan](../plans/M04-prototypes.md), D8).
+- What depends on time, from Hydra's dirtying, for `cache` to add: each object's dirtied aspects after the capture dirties its time dependencies, which predicted every varying copy on ALab ([M4 plan](../plans/M04-prototypes.md), E3). A suggestion; the frames confirm what varies.
 - Snapshot capture from the scene-index chain (M1b adopted Hydra), following the [Hydra design note](../spec/pipeline.md#evaluated-source-snapshot). Imaging adapters and filters replace much custom display-semantic evaluation; source inspection and project validation remain.
 
 **Tests:**

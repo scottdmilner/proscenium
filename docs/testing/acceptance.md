@@ -23,6 +23,7 @@ Applied to every end-to-end synchronization case expected to complete successful
 - An unchanged second synchronization keeps active display resource counts and source/display diagnostics stable under [Resource Stability](../spec/lifecycle.md#resource-stability). When disposal succeeds, total managed-resource counts also remain stable. Count inactive pending-cleanup resources separately; disposal failures may increase only those tracked counts and their current cleanup diagnostics.
 - Save and reopen preserves the display and correspondence without accessing the source.
 - Changing the time code or payload policy and resynchronizing gives the same result as a clean synchronization at the new settings.
+- Each sampled time code cached in a generation synchronized at another displays what a clean synchronization at it does, whatever the order of caching; a frame between cached time codes displays the latest one before it.
 
 ### Expected-Failure Checks
 
@@ -52,7 +53,7 @@ Matching model bounds do not establish correctness inside a model. Targeted sour
 
 ## Sampled Time Codes
 
-Synchronization must work **at any time code**. That remains a behavioral guarantee; the sampled set is evidence, not exhaustive proof. For each time-varying fixture it covers at least:
+Synchronization and caching must work **at any time code**. That remains a behavioral guarantee; the sampled set is evidence, not exhaustive proof. For each time-varying fixture it covers at least:
 
 - The stage's start and end time codes.
 - Interior samples, including a non-integer time code.
@@ -69,6 +70,16 @@ Each time-varying fixture declares its topology and visibility transitions from 
 The bounds check reuses decisions made elsewhere rather than making its own. It compares each destination (viewport and render) separately, with visibility and purpose as evaluated under [Visibility and Purpose](../spec/support/visibility.md#visibility-and-purpose), in Blender world space after [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion).
 
 M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints; which geometry state is compared where the display approximates or extends USD geometry, such as subdivision and displacement; how bounding-box placeholders are compared; absolute and relative tolerances; and empty or unknown bounds. Deferred content without usable bounds is excluded rather than compared against empty markers.
+
+For the display representation M4 chose (objects, with batches of at least 5):
+
+- **Models:** each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too. Its display bounds in a destination are the axis-aligned box of the world-space positions of every vertex displayed there for it or its descendants, as correspondence assigns them: an object's mesh under the object's world matrix, and a batch's instance's prototype mesh under the instance's transform and its carriers' world matrix.
+- **Expected bounds come from evaluated geometry:** each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed. Authored extent hints are not used: `UsdGeom.BBoxCache` transforms them as a box, which is looser under rotation (a triangle rotated 45° gives a y extent of 1.414 against its points' 0.707, USD 0.26.3), and an authored extent may be stale.
+- **Geometry state:** a subdivision surface is compared as its control cage on both sides, as USD's points are, and the display's refinement of it isn't. Displacement through a material changes no mesh positions and isn't compared.
+- **Approximations:** a prim displayed as a diagnosed approximation of its geometry, such as an implicit shape's mesh or a NURBS patch's control hull, lies within its USD-computed extent under its world transform and spans at least 90% of it on every axis. A model holding approximations has display bounds that contain the box of its exactly displayed content and lie within that box joined with its approximations' transformed extents.
+- **Placeholders:** a bounding-box placeholder's eight corners are its usable bounds' corners under its world transform, compared corner by corner: its authored extent, used as given since it is what the placeholder shows, or else USD's computed extent for curves and points. The model's expected bounds include those corners.
+- **Empty and unknown bounds:** empty markers and content without usable bounds are excluded from both sides. A model with no compared content in a destination expects no displayed vertices there. A model whose expected bounds aren't finite, from nonfinite positions or transforms, isn't compared; its [classification](../spec/support/geometry.md#mesh-classification) is checked instead.
+- **Tolerance:** each face of a display box is within 1e-6 + 1e-5 × m of the expected box's in Blender world units, where m is the largest absolute coordinate of the model's expected box; Blender holds positions and matrices as 32-bit floats, and this is about a hundred of their units in the last place at that magnitude. A placeholder's corners use the same tolerance.
 
 ## Production-Scale Validation: ALab
 

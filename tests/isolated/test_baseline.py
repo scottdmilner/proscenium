@@ -1,0 +1,508 @@
+"""M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and apply.py build in Blender.
+
+Phase D's batched alternative (D1, batch.py) is held to the same checks, read from Blender's evaluated instances.
+
+One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag,
+materials, and world transform, on the two feasibility fixtures; and each case's appearance values where the
+baseline stores them (B4). Expected values come from how the fixtures are built and from UsdGeom and UsdShade.
+Values that need translation, such as reader fallbacks, non-constant opacity, and texture sampling, are M8's and M9's.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+import pytest
+from pxr import Gf, Sdf, Tf, Usd, UsdGeom, UsdShade
+
+from fixtures import appearance
+
+from .harness import Runtime, run_isolated
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+BODY = Path(__file__).parent / "bodies/baseline.py"
+MESH = Tf.Type.Find(UsdGeom.Mesh)
+# Each destination's material purpose, as GRAM-12 settles: preview in the viewport, full in the final render.
+PURPOSES = {"viewport": UsdShade.Tokens.preview, "render": UsdShade.Tokens.full}
+# Blender's domain for each display color interpolation the cases use: a uniform one has each face's value on its
+# corners, which Solid shading's Attribute color shows.
+DOMAINS = {"uniform": "CORNER", "vertex": "POINT", "varying": "POINT", "faceVarying": "CORNER"}
+# Tolerance for values that crossed Blender's float32 storage.
+CLOSE = 1e-6
+
+
+@dataclass(frozen=True)
+class BaselineScene:
+    """A fixture's scene, with the drawn meshes each destination shows, as the fixture is built."""
+
+    root: Path
+    stage: Usd.Stage
+    shown: dict[str, frozenset[str]]  # destination -> drawn meshes it shows
+    facts: appearance.AppearanceScene | appearance.StressScene  # the fixture's own
+
+
+@pytest.fixture(params=["appearance", "stress"])
+def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[BaselineScene]:
+    if request.param == "appearance":
+        with appearance.appearance_cases(tmp_path) as cases:
+            # Every mesh in the appearance scene is visible with default purpose.
+            drawn = frozenset(_drawn(cases.stage))
+            yield BaselineScene(cases.root, cases.stage, {"viewport": drawn, "render": drawn}, cases)
+    else:
+        with appearance.nested_stress(tmp_path) as stress:
+            shown = {"viewport": stress.viewport, "render": stress.render}
+            yield BaselineScene(stress.root, stress.stage, shown, stress)
+
+
+# The baseline's one object per copy (apply.py), and Phase D's batched alternative (batch.py), which must display
+# the same: each test holds for both, except where a test names the difference.
+@pytest.fixture(params=["objects", "batched"])
+def representation(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture
+def result(
+    scene: BaselineScene, representation: str, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "module_dir": str(hydra_bridge),
+        "scene": str(scene.root),
+        "representation": representation,
+    }
+    result = run_isolated(wheel, BODY, "apply_scene", tmp_path, **kwargs)
+    assert result["errors"] == []
+    if representation == "batched":
+        assert result["batches"] > 0  # the fixture's shared copies are instances
+    return result
+
+
+@pytest.fixture
+def applied(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return result["objects"]
+
+
+def _drawn(stage: Usd.Stage) -> dict[str, Usd.Prim]:
+    """Every mesh USD draws, one per copy: instance contents through their proxies."""
+    prims = Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
+    return {str(p.GetPath()): p for p in prims if p.IsA(MESH)}
+
+
+def _instance_context(prim: Usd.Prim) -> list[str]:
+    """The native instance roots above a drawn copy, outermost first."""
+    roots = [str(p.GetPath()) for p in _ancestors(prim) if p.IsInstance()]
+    return roots[::-1]
+
+
+def _ancestors(prim: Usd.Prim) -> Generator[Usd.Prim]:
+    prim = prim.GetParent()
+    while prim and not prim.IsPseudoRoot():
+        yield prim
+        prim = prim.GetParent()
+
+
+def _resets_in_instance(prim: Usd.Prim) -> bool:
+    """Whether a drawn copy or an ancestor below its nearest instance root resets the transform stack."""
+    while prim and not prim.IsPseudoRoot() and not prim.IsInstance():
+        if UsdGeom.Xformable(prim).GetResetXformStack():
+            return True
+        prim = prim.GetParent()
+    return False
+
+
+def _bound(prim: Usd.Prim, purpose: str) -> str | None:
+    material, _ = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial(purpose)
+    return str(material.GetPath()) if material else None
+
+
+def _face_materials(prim: Usd.Prim, purpose: str) -> list[str | None]:
+    """Each face's material for one material purpose: its materialBind subset's, or else the mesh's."""
+    faces = len(UsdGeom.Mesh(prim).GetFaceVertexCountsAttr().Get())
+    shown = [_bound(prim, purpose)] * faces
+    for subset in UsdShade.MaterialBindingAPI(prim).GetMaterialBindSubsets():
+        for face in subset.GetIndicesAttr().Get():
+            shown[face] = _bound(subset.GetPrim(), purpose)
+    return shown
+
+
+def _by_source(objects: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for obj in objects:
+        grouped[obj["source"]].append(obj)
+    return grouped
+
+
+def test_one_object_per_drawn_copy_and_destination(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    drawn = _drawn(scene.stage)
+    grouped = _by_source(applied)
+    assert set(grouped) == set(drawn)
+    for path, objects in grouped.items():
+        for destination, shown in scene.shown.items():
+            displaying = [o for o in objects if o[destination]]
+            assert len(displaying) == (1 if path in shown else 0), (path, destination)
+        if any(path in shown for shown in scene.shown.values()):
+            assert all(o["viewport"] or o["render"] for o in objects), path
+        else:  # a copy shown in neither destination still has one object, for correspondence
+            assert len(objects) == 1, path
+        for obj in objects:
+            assert obj["instance_context"] == _instance_context(drawn[path]), path
+            assert obj["placeholder"] is None, path
+            assert obj["mesh"] is not None, path
+
+
+def test_materials_per_destination(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    drawn = _drawn(scene.stage)
+    for obj in applied:
+        prim = drawn[obj["source"]]
+        for destination, purpose in PURPOSES.items():
+            if not obj[destination]:
+                continue
+            expected = _face_materials(prim, purpose)
+            shown = [obj["slots"][slot] for slot in obj["face_slots"]]
+            assert len(shown) == len(expected), obj["source"]
+            for face, (sources, material) in enumerate(zip(shown, expected, strict=True)):
+                assert (sources is None) == (material is None), (obj["source"], destination, face)
+                assert material is None or material in sources, (obj["source"], destination, face, sources)
+
+
+def _mesh_content(prim: Usd.Prim) -> tuple[object, ...]:
+    """What a drawn copy's Blender mesh holds, from USD: everything per copy is on its object instead.
+
+    Points, topology and orientation, each face's material slot (its first materialBind subset, by path, or the
+    mesh's own), the non-constant primvars and normals, and the subdivision scheme and sidedness.
+    """
+    mesh = UsdGeom.Mesh(prim)
+    faces = len(mesh.GetFaceVertexCountsAttr().Get())
+    subsets = sorted(UsdShade.MaterialBindingAPI(prim).GetMaterialBindSubsets(), key=lambda s: s.GetPrim().GetPath())
+    slots = [0] * faces
+    for slot, subset in enumerate(subsets, 1):
+        for face in subset.GetIndicesAttr().Get():
+            slots[face] = slots[face] or slot
+    primvars = sorted(
+        (pv.GetPrimvarName(), str(pv.GetTypeName()), pv.GetInterpolation(), tuple(pv.ComputeFlattened()))
+        for pv in UsdGeom.PrimvarsAPI(prim).GetPrimvars()
+        if pv.HasAuthoredValue() and pv.GetInterpolation() != UsdGeom.Tokens.constant
+    )
+    normals = mesh.GetNormalsAttr().Get()
+    return (
+        tuple(mesh.GetPointsAttr().Get()),
+        tuple(mesh.GetFaceVertexCountsAttr().Get()),
+        tuple(mesh.GetFaceVertexIndicesAttr().Get()),
+        mesh.GetOrientationAttr().Get(),
+        (len(subsets) + 1, tuple(slots)),
+        tuple(primvars),
+        None if normals is None else tuple(normals),
+        mesh.GetSubdivisionSchemeAttr().Get(),
+        mesh.GetDoubleSidedAttr().Get(),
+    )
+
+
+def test_meshes_shared_exactly_among_equal_content(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # The sharing criteria (B5, SHARE-06): copies share a mesh exactly when their mesh content is equal, so the
+    # fixture's equivalent uses share one (PVAR-04, PVAR-05), and so does a mesh differing only in a constant
+    # primvar, which is on its object.
+    drawn = _drawn(scene.stage)
+    content: dict[str, set[tuple[object, ...]]] = defaultdict(set)
+    for obj in applied:
+        content[obj["mesh"]].add(_mesh_content(drawn[obj["source"]]))
+    assert all(len(held) == 1 for held in content.values()), content  # a shared mesh holds one content
+    held = [next(iter(c)) for c in content.values()]
+    assert len(set(held)) == len(held)  # and no two meshes hold the same
+    if isinstance(scene.facts, appearance.AppearanceScene):
+        meshes = {obj["source"]: obj["mesh"] for obj in applied}
+        for uses in scene.facts.shared:
+            assert len({meshes[use] for use in uses}) == 1, uses
+
+
+def test_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Shear, negative and nonuniform scale, and a reset stack inside instances (XFORM-01 to XFORM-03), in the plan.
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    wrong = [
+        o["source"]
+        for o in applied
+        if not Gf.IsClose(Gf.Matrix4d(o["plan_world"]), cache.GetLocalToWorldTransform(drawn[o["source"]]), 1e-6)
+    ]
+    assert not wrong
+
+
+def _sheared(world: Gf.Matrix4d) -> bool:
+    """Whether a world transform's axes aren't orthogonal: its rows, in USD's row-vector convention."""
+    axes = [world.GetRow3(i) for i in range(3)]
+    return any(
+        abs(Gf.Dot(axes[i], axes[j])) > 1e-6 * axes[i].GetLength() * axes[j].GetLength()
+        for i, j in ((0, 1), (0, 2), (1, 2))
+    )
+
+
+def test_blender_world_transforms_match_usdgeom(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # What Blender composes once the depsgraph evaluates each object: a sheared copy through its parent empty,
+    # which only sheared copies have (XFORM-03). An instance's own 4x4 transform holds shear, with no parent.
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    wrong = []
+    for obj in applied:
+        usd = cache.GetLocalToWorldTransform(drawn[obj["source"]])
+        if not Gf.IsClose(Gf.Matrix4d(obj["world"]), usd, 1e-5):
+            wrong.append(obj["source"])
+        parented = _sheared(usd) and not obj["instance"]
+        assert obj["shear_parent"] == (obj["source"] if parented else None), obj["source"]
+    assert not wrong
+
+
+def test_known_gap_hydra_ignores_a_reset_inside_an_instance(scene: BaselineScene, result: dict[str, Any]) -> None:
+    # WORKAROUND for OpenUSD #862 (ResetsBelow in the bridge's instancing.h): Hydra's own composition, a copy's
+    # flattened transform then its instance's, is wrong exactly for the copies under a reset inside an instance.
+    # This fails once Hydra honors the reset, and the workaround can go.
+    drawn = _drawn(scene.stage)
+    cache = UsdGeom.XformCache()
+    hydra = result["hydra_world"]
+    wrong = {
+        s
+        for s, rows in hydra.items()
+        if not Gf.IsClose(Gf.Matrix4d(rows), cache.GetLocalToWorldTransform(drawn[s]), 1e-6)
+    }
+    assert hydra
+    assert wrong == {s for s in hydra if _resets_in_instance(drawn[s])}
+
+
+# --- Appearance values where the baseline stores them (B4) ---------------------------------------------------
+
+
+def _close(a: Any, b: Any) -> bool:
+    """Equal within CLOSE, element by element, for numbers and (nested) sequences."""
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return abs(a - b) <= CLOSE
+    if isinstance(a, (int, float)) or isinstance(b, (int, float)):
+        return False
+    return len(a) == len(b) and all(_close(x, y) for x, y in zip(a, b, strict=True))
+
+
+def _rgb(values: list[list[float]]) -> list[list[float]]:
+    return [v[:3] for v in values]
+
+
+def _check_primvar_storage(
+    obj: dict[str, Any], prim: Usd.Prim, name: str, authored: tuple[str, tuple[Any, ...]] | None
+) -> None:
+    """A constant value is an ID property of the copy's object; any other is a mesh attribute on its domain."""
+    where = (obj["source"], name)
+    if authored is None:
+        assert name not in obj["properties"] and name not in obj["attributes"], where
+        return
+    interpolation, values = authored
+    if interpolation == "constant":
+        assert _close(obj["properties"].get(name), values[0]), (where, obj["properties"].get(name))
+        # A displayColor every copy of the mesh has is also held on the mesh's points (D10).
+        held = obj["attributes"].get(name)
+        assert held is None or (name == "displayColor" and held["domain"] == "POINT"), where
+        return
+    attribute = obj["attributes"].get(name)
+    assert attribute is not None and attribute["domain"] == DOMAINS[interpolation], (where, attribute)
+    stored = attribute["values"]
+    expected = _per_element(prim, interpolation, values)
+    assert _close(_rgb(stored) if attribute["data_type"] == "FLOAT_COLOR" else stored, expected), where
+
+
+def _per_element(prim: Usd.Prim, interpolation: str, values: tuple[Any, ...]) -> list[Any]:
+    """A display primvar's values per element of its Blender domain: a uniform one's on each face's corners."""
+    if interpolation != "uniform":
+        return list(values)
+    counts = UsdGeom.Mesh(prim).GetFaceVertexCountsAttr().Get()
+    return [values[face] for face, count in enumerate(counts) for _ in range(count)]
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_display_color_and_opacity_where_stored(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Mesh and inherited display color (PVAR-07, PVAR-08, GRAM-05), through nested instances: each copy's own values.
+    # A constant color and opacity are also the object's color and alpha; nothing displays any other opacity yet (M8).
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    grouped = _by_source(applied)
+    for mesh, color in facts.display_color.items():
+        for obj in grouped[mesh]:
+            prim = scene.stage.GetPrimAtPath(mesh)
+            _check_primvar_storage(obj, prim, "displayColor", color)
+            _check_primvar_storage(obj, prim, "displayOpacity", facts.display_opacity[mesh])
+            if color[0] == "constant":
+                assert _close(obj["color"][:3], color[1][0]), (mesh, obj["color"])
+            opacity = facts.display_opacity[mesh]
+            alpha = opacity[1][0] if opacity is not None and opacity[0] == "constant" else 1.0
+            assert _close(obj["color"][3], alpha), (mesh, obj["color"])
+
+
+def _check_displayed_color(
+    obj: dict[str, Any], prim: Usd.Prim, color: tuple[str, tuple[Any, ...]], alpha: float
+) -> None:
+    """Check that Solid shading's Attribute color shows the copy's displayColor.
+
+    Constant and vertex values are on its points, uniform and faceVarying values on its corners, and a constant
+    color's opacity is its alpha.
+    """
+    where = obj["source"]
+    shown = obj["displayed_color"]
+    interpolation, values = color
+    assert shown is not None and shown["name"] == "displayColor", (where, shown)
+    if interpolation == "constant":
+        expected, domain = [values[0]] * len(UsdGeom.Mesh(prim).GetPointsAttr().Get()), "POINT"
+    else:
+        expected, domain = _per_element(prim, interpolation, values), DOMAINS[interpolation]
+    assert shown["domain"] == domain, (where, shown["domain"])
+    assert _close(_rgb(shown["values"]), expected), where
+    if interpolation == "constant":
+        assert all(_close(v[3], alpha) for v in shown["values"]), where
+
+
+@pytest.mark.parametrize("scene", ["appearance", "stress"], indirect=True)
+def test_display_colors_under_attribute_color(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # D10: a copy's evaluated mesh has its displayColor as its active color attribute, which Solid shading's
+    # Attribute color shows: its mesh's own at any interpolation, or a constant one when every copy of its mesh has
+    # that color, which the mesh holds. A copy whose constant color its mesh's other copies don't share shows none
+    # there, with no modifier and no mesh of its own (D13), only its object color.
+    drawn = _drawn(scene.stage)
+    shown = [obj for obj in applied if obj["source"] in drawn]  # a placeholder's bounds show no color
+    copies: dict[Any, list[dict[str, Any]]] = defaultdict(list)
+    for obj in shown:
+        copies[obj["mesh"]].append(obj)
+    colors = {mesh: {_constant_color(obj) for obj in objs} for mesh, objs in copies.items()}
+    held = {mesh: next(iter(shared)) for mesh, shared in colors.items() if len(shared) == 1}
+    for obj in shown:
+        assert obj["modifiers"] == [], (obj["source"], obj["modifiers"])
+        prim = drawn[obj["source"]]
+        color = _authored_color(prim)
+        if color is None or (color[0] == "constant" and held.get(obj["mesh"]) is None):
+            assert obj["displayed_color"] is None, obj["source"]
+        else:
+            _check_displayed_color(obj, prim, color, _constant_opacity(prim))
+    if isinstance(scene.facts, appearance.AppearanceScene):  # both cases arise here
+        assert any(color is not None for color in held.values())
+        assert any(len(shared) > 1 for shared in colors.values())
+
+
+def _authored_color(prim: Usd.Prim) -> tuple[str, tuple[Any, ...]] | None:
+    """A drawn copy's displayColor by USD: its own or the nearest inherited, interpolation and values; or None."""
+    primvar = UsdGeom.PrimvarsAPI(prim).FindPrimvarWithInheritance("displayColor")
+    if not primvar or not primvar.HasAuthoredValue():
+        return None
+    return str(primvar.GetInterpolation()), tuple(primvar.ComputeFlattened())
+
+
+def _constant_opacity(prim: Usd.Prim) -> float:
+    """A drawn copy's constant displayOpacity by USD, or 1."""
+    primvar = UsdGeom.PrimvarsAPI(prim).FindPrimvarWithInheritance("displayOpacity")
+    if not primvar or not primvar.HasAuthoredValue() or primvar.GetInterpolation() != UsdGeom.Tokens.constant:
+        return 1.0
+    return float(primvar.ComputeFlattened()[0])
+
+
+def _constant_color(obj: dict[str, Any]) -> tuple[float, ...] | None:
+    """A copy's constant displayColor with its opacity, as its object color holds them; None for none."""
+    return tuple(obj["color"]) if "displayColor" in obj["properties"] else None
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_reader_primvars_reach_each_copy(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Instance primvars for materials (PVAR-09, GRAM-08, GRAM-11): each copy's own value, inherited from its
+    # instance root, is an ID property of its object, which an Attribute node of type Object reads. A copy with
+    # none has no property, where its reader's fallback must come from the translated material (M9).
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    drawn = _drawn(scene.stage)
+    grouped = _by_source(applied)
+    for (mesh, name), shown in facts.reader_values.items():
+        primvar = UsdGeom.PrimvarsAPI(drawn[mesh]).FindPrimvarWithInheritance(name)
+        own = primvar.Get() if primvar and primvar.HasAuthoredValue() else None
+        if own is not None:
+            own = own[0] if name == "displayColor" else own  # displayColor is an array
+            assert _close(list(own) if not isinstance(own, float) else own, shown), (mesh, name)
+        for obj in grouped[mesh]:
+            stored = obj["properties"].get(name)
+            if own is None:
+                assert stored is None, (mesh, name, stored)
+            else:
+                assert _close(stored, shown), (mesh, name, stored)
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_string_primvars_are_not_transferred(
+    scene: BaselineScene, representation: str, applied: list[dict[str, Any]]
+) -> None:
+    # No Blender shading node reads a string, so a constant string primvar, as ALab's renderer settings are,
+    # reaches no object or instance, and copies with different strings still share a batch.
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    assert len(set(facts.string_values.values())) > 1
+    grouped = _by_source(applied)
+    for mesh, name in facts.string_values:
+        for obj in grouped[mesh]:
+            assert obj["instance"] == (representation == "batched"), mesh
+            assert name not in obj["properties"], (mesh, name)
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+@pytest.mark.parametrize("minimum", [3, 4])
+def test_groups_below_the_minimum_stay_objects(
+    scene: BaselineScene, minimum: int, wheel: Runtime, hydra_bridge: Path, tmp_path: Path
+) -> None:
+    # The fixture's tags are one group of three copies, which is a batch from a minimum of three, and at a larger
+    # minimum three objects, as the object baseline builds them.
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(scene.root), "minimum": minimum}
+    result = run_isolated(wheel, BODY, "apply_scene", tmp_path, representation="batched", **kwargs)
+    grouped = _by_source(result["objects"])
+    tags = [obj for mesh, _ in facts.string_values for obj in grouped[mesh]]
+    assert len(tags) == len(facts.string_values) == 3
+    assert {obj["instance"] for obj in tags} == {minimum <= len(tags)}
+
+
+def _usd_corners(prim: Usd.Prim, primvar: UsdGeom.Primvar) -> list[Any]:
+    """A primvar's flattened values, one per face corner, in USD's face-vertex order."""
+    values = primvar.ComputeFlattened()
+    if primvar.GetInterpolation() == "faceVarying":
+        return [list(v) for v in values]
+    indices = UsdGeom.Mesh(prim).GetFaceVertexIndicesAttr().Get()
+    return [list(values[i]) for i in indices]  # vertex or varying: by point
+
+
+@pytest.mark.parametrize("scene", ["appearance"], indirect=True)
+def test_uv_maps(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Named UVs (PVAR-06): each UV set is a UV map with its primvar's name and its values at every corner.
+    facts = scene.facts
+    assert isinstance(facts, appearance.AppearanceScene)
+    drawn = _drawn(scene.stage)
+    grouped = _by_source(applied)
+    for mesh, uv_sets in facts.uv_sets[()].items():
+        prim = drawn[mesh]
+        primvars = UsdGeom.PrimvarsAPI(prim)
+        # Known difference, M8's: the baseline makes every float2[] primvar with a per-corner or per-point
+        # interpolation a UV map, as UV-set names would, where USD's typing (the default) takes none.
+        extras = {
+            pv.GetPrimvarName()
+            for pv in primvars.GetPrimvars()
+            if pv.GetTypeName() == Sdf.ValueTypeNames.Float2Array and pv.GetInterpolation() in DOMAINS
+        }
+        for obj in grouped[mesh]:
+            assert obj["corner_verts"] == list(UsdGeom.Mesh(prim).GetFaceVertexIndicesAttr().Get()), mesh
+            assert set(obj["uv_maps"]) == set(uv_sets) | extras, (mesh, obj["uv_maps"])
+            for name in uv_sets:
+                stored = obj["attributes"][name]
+                assert stored["domain"] == "CORNER", (mesh, name)
+                assert _close(stored["values"], _usd_corners(prim, primvars.GetPrimvar(name))), (mesh, name)
+
+
+@pytest.mark.parametrize("scene", ["stress"], indirect=True)
+def test_stress_display_color_per_copy(scene: BaselineScene, applied: list[dict[str, Any]]) -> None:
+    # Nested instances with differing appearance (F-NESTED-STRESS): each copy's inherited constant color.
+    facts = scene.facts
+    assert isinstance(facts, appearance.StressScene)
+    grouped = _by_source(applied)
+    for mesh, color in facts.display_color.items():
+        for obj in grouped[mesh]:
+            prim = scene.stage.GetPrimAtPath(mesh)
+            _check_primvar_storage(obj, prim, "displayColor", None if color is None else ("constant", (color,)))

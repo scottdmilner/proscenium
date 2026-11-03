@@ -9,6 +9,7 @@
 #include <pxr/usd/usdShade/tokens.h>
 
 #include <algorithm>
+#include <array>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -63,7 +64,7 @@ CopyBindings ComputeCopyBindings(const UsdStagePtr &stage) {
         if (prim.IsInstance()) instances.push_back(prim);
         for (const UsdRelationship &rel : prim.GetRelationships()) {
             if (!UsdShadeMaterialBindingAPI::CollectionBinding::IsCollectionBindingRel(rel)) continue;
-            if (UsdCollectionAPI collection = UsdShadeMaterialBindingAPI::CollectionBinding(rel).GetCollection())
+            if (const UsdCollectionAPI collection = UsdShadeMaterialBindingAPI::CollectionBinding(rel).GetCollection())
                 queries.push_back(collection.ComputeMembershipQuery());
         }
     }
@@ -80,12 +81,14 @@ CopyBindings ComputeCopyBindings(const UsdStagePtr &stage) {
     }
     std::vector<UsdPrim> copies;
     for (const SdfPath &path : result.instances)
-        for (const UsdPrim &prim : UsdPrimRange(stage->GetPrimAtPath(path), UsdTraverseInstanceProxies(UsdPrimDefaultPredicate)))
+        for (const UsdPrim &prim :
+             UsdPrimRange(stage->GetPrimAtPath(path), UsdTraverseInstanceProxies(UsdPrimDefaultPredicate)))
             if (prim.IsA<UsdGeomImageable>() || prim.IsA<UsdGeomSubset>()) copies.push_back(prim);
-    const TfToken purposes[] = {UsdShadeTokens->allPurpose, UsdShadeTokens->preview, UsdShadeTokens->full};
-    for (size_t p = 0; p < std::size(purposes); ++p) {
+    const std::array purposes{UsdShadeTokens->allPurpose, UsdShadeTokens->preview, UsdShadeTokens->full};
+    for (size_t p = 0; p < purposes.size(); ++p) {
         // UsdShade's own resolution, in parallel; it falls back to allPurpose itself.
-        const std::vector<UsdShadeMaterial> bound = UsdShadeMaterialBindingAPI::ComputeBoundMaterials(copies, purposes[p]);
+        const std::vector<UsdShadeMaterial> bound =
+            UsdShadeMaterialBindingAPI::ComputeBoundMaterials(copies, purposes[p]);
         for (size_t i = 0; i < copies.size(); ++i)
             result.materials[copies[i].GetPath()][p] = bound[i] ? bound[i].GetPath() : SdfPath();
     }

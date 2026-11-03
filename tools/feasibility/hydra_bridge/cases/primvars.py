@@ -22,6 +22,8 @@ UNHELD = {
     "a_primvar_name_that_is_longer_than_the_sixty_three_bytes_blender_allows",
     "proscenium_source",
 }
+# Holder's strings, a token, and a string array, which aren't transferred.
+TEXT = {"label", "kind", "tags"}
 # Dropped attributes by source, from how the scene is built; Part is warned once per instance.
 DROPPED = {
     "/World/Custom/Tagged": {"myCustom", "userProp", "userProperties:note"},
@@ -126,7 +128,7 @@ def _expected_property(value: Any) -> Any:
         return (value + 2**31) % 2**32 - 2**31
     if hasattr(value, "GetRow"):  # Gf matrices don't iterate
         return [list(value.GetRow(row)) for row in range(len(value))]
-    if isinstance(value, str | bool | int | float):
+    if isinstance(value, bool | int | float):
         return value
     elements = list(value)
     if type(value).__name__.endswith("Array"):
@@ -155,23 +157,25 @@ def _properties(case: Case, stage: Any, plan: Any, created: dict[str, Any]) -> N
     wrong = {}
     for primvar in UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/World/Holder")).GetAuthoredPrimvars():
         name = primvar.GetPrimvarName()
-        if name in UNHELD:
+        if name in UNHELD | TEXT:
             continue
         expected = _expected_property(primvar.ComputeFlattened(TIME))
         found = _blender_value(holder.get(name))
         if not _same(found, expected):
             wrong[name] = (found, expected)
     case.check(
-        "constant primvars are ID properties on the object by name: scalars, strings, tokens, vectors, "
-        "one-element arrays as their element, arrays, string arrays, arrays of vectors and matrices as rows, "
+        "constant primvars are ID properties on the object by name: scalars, vectors, "
+        "one-element arrays as their element, arrays, arrays of vectors and matrices as rows, "
         "and integers beyond 32 bits wrapped to their low 32 bits",
         not wrong,
         wrong,
     )
 
-    def warned_for(code: str) -> set[str]:
+    def warned_for(code: str, severity: str = "warning") -> set[str]:
         return {
-            d["message"].split("'")[1] for d in plan.diagnostics if d["source"] == "/World/Holder" and d["code"] == code
+            d["message"].split("'")[1]
+            for d in plan.diagnostics
+            if d["source"] == "/World/Holder" and d["code"] == code and d["severity"] == severity
         }
 
     warned = warned_for("untransferred-primvar")
@@ -188,6 +192,13 @@ def _properties(case: Case, stage: Any, plan: Any, created: dict[str, Any]) -> N
         "warned and not authored",
         warned == UNHELD and not present and holder["proscenium_source"] == "/World/Holder",
         (warned, present),
+    )
+    noted = warned_for("untransferred-primvar", "info")
+    case.check(
+        "constant strings, tokens, and string arrays are noted and not authored, since no Blender shading node "
+        "reads a string",
+        noted == TEXT and not any(name in holder for name in TEXT),
+        (noted, [name for name in TEXT if name in holder]),
     )
     parts = {
         source: {name: _blender_value(created[source].get(name)) for name in ("tint", "gloss")}

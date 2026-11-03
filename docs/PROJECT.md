@@ -65,7 +65,7 @@ Objects, collection instancing, Geometry Nodes, batching, or a hybrid are implem
 
 ### Phase 1 — Correct Snapshot Synchronization
 
-Synchronize supported content at an **explicit USD time code supplied as a function parameter**. The USD default time code is permitted.
+Synchronize supported content at a **USD time code supplied as an optional function parameter**, by default the target scene's current frame's. The USD default time code is permitted. A synchronized display then **caches the time-varying values of further time codes on request**, so Blender plays each cached time code back at its frame without synchronizing again.
 
 - Manual refresh is required.
 - Full traversal and rebuilding are acceptable.
@@ -93,7 +93,7 @@ See [Incremental Synchronization](spec/incremental.md) for detailed requirements
 
 Tools author USD changes and use the synchronizer as their display layer. Actual USD authoring tools are outside Phases 1 and 2.
 
-Automatic timeline synchronization is a stretch goal. The evaluation time code may change between any two synchronizations.
+Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal. The evaluation time code may change between any two synchronizations.
 
 ## Compatibility and Development
 
@@ -124,7 +124,7 @@ Each entry links to the section that defines the term in full.
 | **Source coverage** | The set of source entities a display resource represents. It may contain many entities. |
 | **Representation role** | Why a display resource exists, such as shared geometry, a placeholder, or a material. Roles are defined in M5. |
 | **Canonical** | The single authoritative instance among duplicates: of a representation (same source coverage and role) or of a copied binding. Noncanonical resources are still tracked but excluded from the active display and correspondence. |
-| **Partition** | The unit of display replacement chosen in M4. A partition owns a set of display resources and is replaced as a whole. |
+| **Partition** | The unit of display replacement: a drawn copy's own resources, a batch's, or one shared datablock such as a mesh or material (DECISIONS.md "Partition unit"). A partition owns a set of display resources and is replaced as a whole. |
 | **Evaluated source snapshot** | The resolved USD semantics for one synchronization, with no Blender references. See [Evaluated Source Snapshot](spec/pipeline.md#evaluated-source-snapshot). |
 | **Display plan** | The description of how a snapshot will be represented in Blender. See [Display Plan](spec/pipeline.md#display-plan). |
 | **Planning context** | The immutable plain values, such as the target scene's unit scale, that planning depends on besides the snapshot and binding settings. See [Display Plan](spec/pipeline.md#display-plan). |

@@ -100,7 +100,7 @@ def run(case: Case) -> None:
     collection = case.collection()
     tracemalloc.start()
     start = time.perf_counter()
-    (obj,) = case.apply.apply(plan, collection)
+    (obj,) = case.apply.apply(plan, collection).objects
     timings["apply"] = time.perf_counter() - start
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()

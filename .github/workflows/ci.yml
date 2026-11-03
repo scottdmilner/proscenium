@@ -24,7 +24,8 @@ jobs:
 
   # The compiled core for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
   # manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
-  # tools/build_extension.py uses this module because its build record is current.
+  # tools/build_extension.py uses this module because its build record is current. The Hydra bridge, which M4's
+  # prototype tests run, is built here too, since its build audits the same floor.
   core-linux:
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_28_x86_64
@@ -44,12 +45,16 @@ jobs:
           key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       - name: Build the compiled core
         run: uv run python tools/build_extension.py
+      - name: Build the Hydra bridge
+        run: uv run python tools/feasibility/hydra_bridge/build.py
       - uses: actions/upload-artifact@v4
         with:
           name: core-linux-x64
           path: |
             build/core/build.json
             src/proscenium/core/_core.*.so
+            build/hydra-bridge/build.json
+            build/hydra-bridge/_hydra_bridge.*.so
           if-no-files-found: error
 
   test:
@@ -87,6 +92,8 @@ jobs:
       - name: Tests
         env:
           PROSCENIUM_REQUIRE_BLENDER: "1"  # fail, rather than skip, binary tests without a binary
+          # Linux uses core-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
+          PROSCENIUM_HYDRA_BRIDGE: ${{ runner.os == 'Linux' && 'build/hydra-bridge' || '' }}
         run: uv run pytest -n auto
 
       - uses: actions/upload-artifact@v4

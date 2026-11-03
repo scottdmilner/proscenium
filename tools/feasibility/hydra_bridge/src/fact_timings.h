@@ -10,7 +10,7 @@
 
 namespace hydra_bridge {
 
-enum class FactTiming {
+enum class FactTiming : std::uint8_t {
     Build,
     Bindings,
     StrongPurposes,
@@ -30,6 +30,13 @@ enum class FactTiming {
     MeshLayout,
     MeshSlots,
     MeshPrimvars,
+    // E4: comparing a mesh's topology with an earlier build's; then, untimed, the builds reusing that build's
+    // topology work, those of them whose topology Hydra handed over as that build's buffers, and the attributes
+    // reused from it
+    MeshCompare,
+    MeshTopologyReused,
+    MeshSameBuffers,
+    MeshAttributeReused,
     CopyBindings,  // the OpenUSD #3690 workaround, when it recomputes (copy_bindings.h)
     Count
 };
@@ -43,10 +50,14 @@ std::vector<std::tuple<std::string, uint64_t, double>> TakeFactTimings();
 // Times its scope as one call of `kind`.
 class ScopedFactTiming {
 public:
-    explicit ScopedFactTiming(FactTiming kind) : kind_(kind), start_(std::chrono::steady_clock::now()) {}
+    explicit ScopedFactTiming(FactTiming kind)
+        : kind_(kind),
+          start_(std::chrono::steady_clock::now()) {}
     ~ScopedFactTiming() { AddFactTiming(kind_, std::chrono::steady_clock::now() - start_); }
     ScopedFactTiming(const ScopedFactTiming &) = delete;
     ScopedFactTiming &operator=(const ScopedFactTiming &) = delete;
+    ScopedFactTiming(ScopedFactTiming &&) = delete;
+    ScopedFactTiming &operator=(ScopedFactTiming &&) = delete;
 
 private:
     FactTiming kind_;

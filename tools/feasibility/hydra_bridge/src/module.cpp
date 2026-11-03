@@ -6,28 +6,31 @@
 #include "python_views.h"
 
 #include <pxr/pxr.h>
-#include <pxr/external/boost/python.hpp>
 #include <pxr/base/tf/errorMark.h>
 #include <pxr/base/tf/pyLock.h>
+#include <pxr/external/boost/python.hpp>
 #include <pxr/usd/usd/timeCode.h>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
+// Only the preprocessor can turn a macro's value into a string literal.
+// NOLINTBEGIN(cppcoreguidelines-macro-usage)
 #define HYDRA_BRIDGE_STR2(x) #x
 #define HYDRA_BRIDGE_STR(x) HYDRA_BRIDGE_STR2(x)
+// NOLINTEND(cppcoreguidelines-macro-usage)
 
 namespace hydra_bridge {
 namespace {
 
 bp::object Stage(const Bridge &bridge) {
-    UsdStagePtr stage = bridge.Stage();
+    const UsdStagePtr stage = bridge.Stage();
     return stage ? bp::object(stage) : bp::object();
 }
 
 // None (or no argument) is default time; numbers and Usd.TimeCode convert through Usd's own converter.
 UsdTimeCode ToTimeCode(const bp::object &time) {
     if (time.is_none()) return UsdTimeCode::Default();
-    bp::extract<UsdTimeCode> code(time);
+    const bp::extract<UsdTimeCode> code(time);
     if (!code.check()) {
         PyErr_SetString(PyExc_TypeError, "time must be None, a number, or a Usd.TimeCode");
         bp::throw_error_already_set();
@@ -36,13 +39,13 @@ UsdTimeCode ToTimeCode(const bp::object &time) {
 }
 
 // SetTime, ApplyPendingUpdates, and the parallel read pass run without the GIL.
-SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental) {
-    TfErrorMark mark;
+SnapshotView Capture(Bridge &bridge, const bp::object &time, bool incremental, bool timeDependencies) {
+    const TfErrorMark mark;
     const UsdTimeCode code = ToTimeCode(time);
     SnapshotPtr snapshot;
     {
         TF_PY_ALLOW_THREADS_IN_SCOPE();
-        snapshot = bridge.Capture(code, incremental);
+        snapshot = bridge.Capture(code, incremental, timeDependencies);
     }
     RaiseTfErrors(mark);
     return SnapshotView{snapshot};
@@ -69,7 +72,8 @@ PXR_BOOST_PYTHON_MODULE(_hydra_bridge) {
     using namespace hydra_bridge;
     bp::class_<Bridge, bp::noncopyable>("Bridge", bp::init<UsdStagePtr>())
         .def("stage", &Stage)
-        .def("capture", &Capture, (bp::arg("time") = bp::object(), bp::arg("incremental") = false))
+        .def("capture", &Capture,
+             (bp::arg("time") = bp::object(), bp::arg("incremental") = false, bp::arg("time_dependencies") = false))
         .def("release", &Bridge::Release);
     WrapViews();
     bp::def("take_filter_timings", &TakeFilterTimings);

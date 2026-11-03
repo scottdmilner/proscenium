@@ -23,8 +23,8 @@ namespace {
 // has already seen; that is untested and undecided.
 class SinglePriority final : public HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctor {
 public:
-    size_t GetPriorityForPrimType(const TfToken &) const override { return 0; }
-    size_t GetNumPriorities() const override { return 1; }
+    [[nodiscard]] size_t GetPriorityForPrimType(const TfToken &) const override { return 0; }
+    [[nodiscard]] size_t GetNumPriorities() const override { return 1; }
 };
 
 HdContainerDataSourceHandle ImplicitSurfacesToMesh() {
@@ -56,6 +56,11 @@ void RecordingObserver::PrimsRenamed(const HdSceneIndexBase &, const RenamedPrim
     for (const auto &entry : entries) events_.push_back({EventKind::Renamed, entry.newPrimPath, entry.oldPrimPath, {}});
 }
 
+void RecordingObserver::Requeue(std::vector<Event> events) {
+    events.insert(events.end(), std::make_move_iterator(events_.begin()), std::make_move_iterator(events_.end()));
+    events_.swap(events);
+}
+
 std::vector<Event> RecordingObserver::Take() {
     std::vector<Event> taken;
     taken.swap(events_);
@@ -68,7 +73,8 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
     info.addDrawModeSceneIndex = false;
     // Right after the stage scene index, where paths are still USD paths.
     const UsdStagePtr weakStage(stage);
-    info.overridesSceneIndexCallback = [this, weakStage](const HdSceneIndexBaseRefPtr &input) -> HdSceneIndexBaseRefPtr {
+    info.overridesSceneIndexCallback = [this,
+                                        weakStage](const HdSceneIndexBaseRefPtr &input) -> HdSceneIndexBaseRefPtr {
         sourceInfo_ = SourceInfoSceneIndex::New(input, weakStage);
         return sourceInfo_;
     };
@@ -86,10 +92,11 @@ SceneIndexGraph::SceneIndexGraph(const UsdStageRefPtr &stage) {
     scene = HdDependencyForwardingSceneIndex::New(scene);
     auto priorities = std::make_shared<SinglePriority>();
     batching_ = HdsiPrimTypeNoticeBatchingSceneIndex::New(
-        scene, HdRetainedContainerDataSource::New(
-                   HdsiPrimTypeNoticeBatchingSceneIndexTokens->primTypePriorityFunctor,
-                   HdRetainedTypedSampledDataSource<
-                       HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctorHandle>::New(priorities)));
+        scene,
+        HdRetainedContainerDataSource::New(
+            HdsiPrimTypeNoticeBatchingSceneIndexTokens->primTypePriorityFunctor,
+            HdRetainedTypedSampledDataSource<HdsiPrimTypeNoticeBatchingSceneIndex::PrimTypePriorityFunctorHandle>::New(
+                priorities)));
     terminal_ = batching_;
     terminal_->AddObserver(HdSceneIndexObserverPtr(&observer_));
 }
@@ -102,11 +109,18 @@ SceneIndexGraph::~SceneIndexGraph() {
 }
 
 void SceneIndexGraph::Advance(UsdTimeCode time) {
+    time_ = time;
     if (sourceInfo_) sourceInfo_->SetTime(time);
     indices_.stageSceneIndex->SetTime(time);
     indices_.stageSceneIndex->ApplyPendingUpdates();
     if (sourceInfo_) sourceInfo_->ApplyPendingUpdates();
     // The batching scene index is empty until its first flush, and holds notices until each one.
+    batching_->Flush();
+}
+
+void SceneIndexGraph::DirtyTimeDependencies() {
+    if (sourceInfo_) sourceInfo_->SetTime(time_, /*force=*/true);
+    indices_.stageSceneIndex->SetTime(time_, /*forceDirtyingTimeDeps=*/true);
     batching_->Flush();
 }
 

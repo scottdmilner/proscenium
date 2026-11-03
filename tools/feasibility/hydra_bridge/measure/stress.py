@@ -1,4 +1,4 @@
-"""Generated stress scenes of controlled size for Phase E, each varying one dimension.
+"""Generated stress scenes of controlled size for M1b's Phase E, each varying one dimension, and M4's update scenes.
 
 Authored through Sdf into crate files under the output directory (not committed); every layer documents its
 purpose and parameters. Every mesh is a plain polygon mesh (subdivisionScheme none), so neither side
@@ -196,6 +196,161 @@ def animation(path: Path, side: int = 256, movers: int = 1000) -> dict[str, Any]
     return parameters
 
 
+def topology(path: Path, meshes: int = 355, side: int = 32) -> dict[str, Any]:
+    """M4 Phase E (E4): meshes whose topology changes every frame, as many as ALab's range deforms.
+
+    Each is a grid whose side cycles through side - 2 to side + 2, so about as many points as ALab's deforming
+    meshes have on average (ad hoc, E1), each at its own phase.
+    """
+    parameters = {"meshes": meshes, "grid sides": (side - 2, side + 2), "frames": FRAMES}
+    layer = _layer(path, "meshes whose topology changes every frame", parameters, FRAMES)
+    grids = {s: _grid(s) for s in range(side - 2, side + 3)}
+    names = ("points", "faceVertexCounts", "faceVertexIndices")
+    arrays = (Vt.Vec3fArray, Vt.IntArray, Vt.IntArray)
+    with Sdf.ChangeBlock():
+        world = _xform(layer, "World")
+        for i in range(meshes):
+            mesh = _mesh(_xform(world, f"Morph_{i}", (1.5 * (i % 20), 1.5 * (i // 20), 0)), "Mesh", grids[side])
+            for frame in range(FRAMES[0], FRAMES[1] + 1):
+                grid = grids[side - 2 + (frame + i) % 5]
+                for name, array, values in zip(names, arrays, grid, strict=True):
+                    layer.SetTimeSample(mesh.attributes[name].path, frame, array.FromNumpy(values))
+    layer.Save()
+    return parameters
+
+
+def updates(path: Path, copies: int) -> dict[str, Any]:
+    """M4 Phase C: every update scenario at one size.
+
+    `copies` native instances of a two-mesh, two-material asset, all behind one payload, and as many cubes
+    outside instances, alternating between the two materials; and a grid whose topology changes between time
+    codes 1 and 2.
+    """
+    sides = (16, 17)
+    parameters = {"asset copies": copies, "unique cubes": copies, "morph grid sides": sides, "frames": (1, 2)}
+    layer = _layer(path, "update scenarios: instances behind a payload, unique meshes, changing topology", parameters)
+    layer.startTimeCode, layer.endTimeCode = 1, 2
+    cube = _cube()
+    with Sdf.ChangeBlock():
+        _materials(layer, {"Red": (0.8, 0.1, 0.1), "Blue": (0.1, 0.1, 0.8)})
+        assets = Sdf.PrimSpec(layer, "Assets", Sdf.SpecifierClass, "")
+        asset = _xform(assets, "Asset", specifier=Sdf.SpecifierClass)
+        _bind(_mesh(asset, "Body", _grid(8)), "Red")
+        _bind(_mesh(_xform(asset, "Top", (0, 0, 1)), "Lid", cube), "Blue")
+        payloads = Sdf.PrimSpec(layer, "Payloads", Sdf.SpecifierClass, "")
+        held = _xform(payloads, "Copies", specifier=Sdf.SpecifierClass)
+        for i in range(copies):
+            copy = _xform(held, f"Copy_{i}", (2.0 * (i % 100), 2.0 * (i // 100), 0))
+            copy.referenceList.explicitItems = [Sdf.Reference(primPath="/Assets/Asset")]
+            copy.instanceable = True
+        world = _xform(layer, "World")
+        _xform(world, "Copies").payloadList.explicitItems = [Sdf.Payload(primPath="/Payloads/Copies")]
+        unique = _xform(world, "Unique", (0, 0, -4))
+        for i in range(copies):
+            holder = _xform(unique, f"Cube_{i}", (2.0 * (i % 100), 2.0 * (i // 100), 0))
+            _bind(_mesh(holder, "Mesh", cube), "Red" if i % 2 else "Blue")
+        morph = _mesh(_xform(world, "Morph", (0, 0, 4)), "Grid", _grid(sides[0]))
+        for frame, side in zip((1, 2), sides, strict=True):
+            points, counts, indices = _grid(side)
+            for name, value in (
+                ("points", Vt.Vec3fArray.FromNumpy(points)),
+                ("faceVertexCounts", Vt.IntArray.FromNumpy(counts)),
+                ("faceVertexIndices", Vt.IntArray.FromNumpy(indices)),
+            ):
+                layer.SetTimeSample(morph.attributes[name].path, frame, value)
+    layer.Save()
+    return parameters
+
+
+def colors(path: Path, copies: int, palette: int | None = None, side: int = 32) -> dict[str, Any]:
+    """M4 Phase D (D13): native instances of one unbound grid mesh, each root with a constant displayColor.
+
+    Every copy has its own color, or with `palette`, one of that many, in turn.
+    """
+    parameters = {"copies": copies, "colors": palette or copies, "grid side": side, "points": (side + 1) ** 2}
+    layer = _layer(path, "copies of one mesh with differing constant display colors", parameters)
+    count = palette or copies
+    # Evenly spread hues, so neighboring copies differ.
+    hues = np.arange(count) / count
+    rgb = np.stack([np.abs(hues * 6 - 3) - 1, 2 - np.abs(hues * 6 - 2), 2 - np.abs(hues * 6 - 4)], axis=1)
+    rgb = np.clip(rgb, 0, 1).astype(np.float32)
+    with Sdf.ChangeBlock():
+        assets = Sdf.PrimSpec(layer, "Assets", Sdf.SpecifierClass, "")
+        _mesh(_xform(assets, "Tile", specifier=Sdf.SpecifierClass), "Grid", _grid(side))
+        world = _xform(layer, "World")
+        for i in range(copies):
+            copy = _xform(world, f"Tile_{i}", (1.1 * (i % 50), 1.1 * (i // 50), 0))
+            copy.referenceList.explicitItems = [Sdf.Reference(primPath="/Assets/Tile")]
+            copy.instanceable = True
+            color = Vt.Vec3fArray([Gf.Vec3f(*rgb[i % count].tolist())])
+            _attribute(copy, "primvars:displayColor", Sdf.ValueTypeNames.Color3fArray, color, interpolation="constant")
+    layer.Save()
+    return parameters
+
+
+def scatter(path: Path, points: int, side: int = 16, seed: int = 7) -> dict[str, Any]:
+    """M4 Phase E (E5): a point instancer of `points` points over four side x side grids, varying every frame.
+
+    Every point moves every frame, 5% of the points switch prototype each frame (protoIndices), and the last
+    prototype's own points move every frame.
+    """
+    parameters = {"points": points, "prototypes": 4, "grid side": side, "switching": 0.05, "frames": FRAMES}
+    layer = _layer(path, "a point instancer whose instances move and switch prototype", parameters, FRAMES)
+    grid, counts, indices = _grid(side)
+    rng = np.random.default_rng(seed)
+    with Sdf.ChangeBlock():
+        instancer = Sdf.PrimSpec(_xform(layer, "World"), "Scatter", Sdf.SpecifierDef, "PointInstancer")
+        protos = Sdf.PrimSpec(instancer, "Protos", Sdf.SpecifierDef, "Scope")
+        prototypes = [_mesh(protos, f"P{p}", (grid * (1 + p * 0.1), counts, indices)) for p in range(4)]
+        deforming = prototypes[-1].attributes["points"]
+        for frame in range(FRAMES[0], FRAMES[1] + 1):
+            moved = grid.copy()
+            moved[:, 2] = 0.1 * np.sin(moved[:, 0] * 6 + frame)
+            layer.SetTimeSample(deforming.path, frame, Vt.Vec3fArray.FromNumpy(moved))
+        relationship = Sdf.RelationshipSpec(instancer, "prototypes")
+        for prototype in prototypes:
+            relationship.targetPathList.Append(prototype.path)
+        chosen = rng.integers(0, 4, points).astype(np.int32)
+        base = np.stack([rng.uniform(0, 200, points), rng.uniform(0, 200, points), np.zeros(points)], axis=1)
+        base = base.astype(np.float32)
+        positions = _attribute(instancer, "positions", Sdf.ValueTypeNames.Point3fArray, None)
+        proto_indices = _attribute(instancer, "protoIndices", Sdf.ValueTypeNames.IntArray, None)
+        for frame in range(FRAMES[0], FRAMES[1] + 1):
+            moved = base + np.array([0, 0, 0.5 * frame], np.float32)
+            layer.SetTimeSample(positions.path, frame, Vt.Vec3fArray.FromNumpy(moved))
+            if frame > FRAMES[0]:
+                switching = rng.choice(points, points // 20, replace=False)
+                chosen = chosen.copy()
+                chosen[switching] = (chosen[switching] + 1) % 4
+            layer.SetTimeSample(proto_indices.path, frame, Vt.IntArray.FromNumpy(chosen))
+    layer.Save()
+    return parameters
+
+
+def groups(path: Path, size: int, copies: int = 6000, side: int = 4) -> dict[str, Any]:
+    """M4 Phase F (F2): `copies` meshes in groups of `size` copies of one content, every copy moving every frame.
+
+    Each group's copies are side x side grids of equal content, unlike any other group's, so a batch's minimum
+    decides whether a group of `size` batches. Each copy is a mesh under its own Xform, whose translation changes
+    every frame.
+    """
+    parameters = {"copies": copies, "group size": size, "groups": copies // size, "grid side": side, "frames": FRAMES}
+    layer = _layer(path, "copies in groups of one size, each moving every frame", parameters, FRAMES)
+    points, counts, indices = _grid(side)
+    with Sdf.ChangeBlock():
+        world = _xform(layer, "World")
+        for i in range(copies):
+            group = i // size
+            content = (points + np.array([0, 0, 0.001 * group], np.float32), counts, indices)
+            holder = _xform(world, f"Copy_{i}", (1.5 * (i % 100), 1.5 * (i // 100), 0))
+            translate = holder.attributes["xformOp:translate"]
+            for frame in range(FRAMES[0], FRAMES[1] + 1):
+                layer.SetTimeSample(translate.path, frame, Gf.Vec3d(1.5 * (i % 100), 1.5 * (i // 100), 0.1 * frame))
+            _mesh(holder, "Mesh", content)
+    layer.Save()
+    return parameters
+
+
 # Scene name -> (generator, time code imported). One small and one large size per dimension that matters;
 # instances-100 is the CI smoke scene.
 SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
@@ -205,8 +360,19 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "instances-100": (lambda p: instancing(p, 100), 1.0),
     "instances-1000": (lambda p: instancing(p, 1000), 1.0),
     "animation": (animation, 1.0),
+    "topology": (topology, 1.0),
+    "updates-100": (lambda p: updates(p, 100), 1.0),
+    "updates-1000": (lambda p: updates(p, 1000), 1.0),
+    "updates-10000": (lambda p: updates(p, 10000), 1.0),
+    "colors-1000": (lambda p: colors(p, 1000), 1.0),
+    "colors-1000-palette-8": (lambda p: colors(p, 1000, 8), 1.0),
+    "scatter-10000": (lambda p: scatter(p, 10000), 1.0),
+    **{f"groups-{size}": (lambda p, size=size: groups(p, size), 1.0) for size in (1, 2, 3, 4, 5, 6, 8, 10, 12, 20)},
 }
+GROUPS = [f"groups-{size}" for size in (1, 2, 3, 4, 5, 6, 8, 10, 12, 20)]  # M4 Phase F's batch minimum probe
 STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
+UPDATES = ["updates-100", "updates-1000", "updates-10000"]  # M4 Phase C's sizes
+COLORS = ["colors-1000", "colors-1000-palette-8"]  # M4 Phase D's display color comparison (D13)
 
 
 def generate(name: str, directory: Path) -> tuple[Path, dict[str, Any]]:

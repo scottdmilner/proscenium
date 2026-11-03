@@ -25,5 +25,5 @@ The compiled core reads Hydra scene indices ([DECISIONS.md](../../../docs/DECISI
 | `errors.h`, `errors.cpp` | Error translation for every entry point: Tf errors and C++ exceptions become Python exceptions. |
 | `stage_handle.h`, `stage_handle.cpp` | `StageHandle`, the core's reference to a stage it was given, which it drops on `Release()` so the core never keeps a released stage alive. |
 | `CMakeLists.txt` | The build, against the locked Blender release's headers, linking only Blender's `usd_ms`. `tools/build_extension.py` runs it through `tools/native_build.py`. |
-| `.clang-format`, `.clang-tidy` | The C++ style and checks, run as pre-commit hooks. |
+| `.clang-format` | The C++ style, run as a pre-commit hook (the checks are the repository's root `.clang-tidy`). |
 | `.gitignore` | Ignores the built module, `_core.*.so` or `_core.*.pyd`, which the build puts in this directory and only the zip ships. |

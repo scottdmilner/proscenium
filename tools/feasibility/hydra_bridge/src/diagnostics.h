@@ -6,13 +6,14 @@
 #include <pxr/base/tf/errorMark.h>
 #include <pxr/usd/sdf/path.h>
 
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <vector>
 
 namespace hydra_bridge {
 
-enum class Severity { Info, Warning, Error };
+enum class Severity : std::uint8_t { Info, Warning, Error };
 
 const char *SeverityName(Severity severity);
 
@@ -41,6 +42,8 @@ public:
     ~WarningCollector() override;
     WarningCollector(const WarningCollector &) = delete;
     WarningCollector &operator=(const WarningCollector &) = delete;
+    WarningCollector(WarningCollector &&) = delete;
+    WarningCollector &operator=(WarningCollector &&) = delete;
 
     void IssueError(const pxr::TfError &error) override;
     void IssueFatalError(const pxr::TfCallContext &context, const std::string &message) override;
@@ -55,9 +58,11 @@ public:
         ~ScopedSource();
         ScopedSource(const ScopedSource &) = delete;
         ScopedSource &operator=(const ScopedSource &) = delete;
+        ScopedSource(ScopedSource &&) = delete;
+        ScopedSource &operator=(ScopedSource &&) = delete;
 
     private:
-        const pxr::SdfPath *previous_;
+        const pxr::SdfPath *previous_;  // the source the thread read before this scope; null for none
     };
 
 private:

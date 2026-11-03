@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from pxr import Gf, Vt
+    from pxr import Gf, Sdf, Vt
 
 # The subsets of bpy's AttributeDomainItems and AttributeTypeItems the planner produces (plan.h).
 PlanDomain = Literal["POINT", "FACE", "CORNER"]
@@ -25,8 +25,9 @@ Severity = Literal["info", "warning", "error"]
 # The Vt array types plan arrays arrive as, one value per element. Lazy aliases, so this module loads without pxr.
 type AttributeArray = Vt.FloatArray | Vt.Vec2fArray | Vt.Vec3fArray | Vt.Vec4fArray | Vt.IntArray
 type PlanArray = AttributeArray
-type PropertyScalar = bool | int | float | str
+type PropertyScalar = bool | int | float
 type PropertyValue = PropertyScalar | list[PropertyScalar] | list[list[PropertyScalar]]
+type PathLike = Sdf.Path | str  # what Interaction takes as a path
 
 
 class AttributeRecord(TypedDict):
@@ -46,6 +47,9 @@ class MeshRecord(TypedDict):
     attributes: list[AttributeRecord]
     subdivision_scheme: str
     double_sided: bool
+    # The constant display color, with its opacity as alpha, that every copy of the mesh has, which the mesh holds
+    # on points as displayColor; None when they don't share one.
+    held_color: tuple[float, float, float, float] | None
 
 
 class MaterialRecord(TypedDict):
@@ -58,6 +62,7 @@ class MaterialRecord(TypedDict):
 class ObjectRecord(TypedDict):
     source: str  # USD path
     instance_context: tuple[str, ...]  # native instance roots, outermost first
+    floor: str  # USD path: the outermost native instance root, or the source outside instance contents
     mesh: int | None  # into Plan.meshes; None for a placeholder
     placeholder_type: str | None  # the untranslated type, for a placeholder
     # A placeholder's local (min, max), when it has an extent. Gf.Vec3d at run time; Sequence because the
@@ -70,8 +75,11 @@ class ObjectRecord(TypedDict):
     material_slots: list[int | None]  # per mesh slot, into Plan.materials; None for no material
     purpose: str  # Hydra's name: "geometry" for USD's default
     primvars: dict[str, Any]  # constant primvars as USD authored them (Gf and Vt values)
-    # The same primvars as ID properties: bool, int, float, str, or lists (nested by vector or matrix row)
+    # The same primvars as ID properties, all but strings: bool, int, float, or lists (nested by vector or matrix row)
     properties: dict[str, PropertyValue]
+    # M4 Phase E (E3): the aspects (frames.Aspect's values) the snapshot's dirtied locators reach; after a time
+    # change, or from a capture with time_dependencies, those that depend on time
+    dirtied_aspects: list[str]
 
 
 class DiagnosticRecord(TypedDict):
@@ -93,4 +101,61 @@ class Plan(Protocol):
     @property
     def objects(self) -> list[ObjectRecord]: ...
     @property
+    def universe(self) -> list[str]: ...  # USD paths, sorted: the browsing universe
+    @property
     def diagnostics(self) -> list[DiagnosticRecord]: ...
+    # M4 Phase D (D8): counts, the records at given indices only, and the batched display's groups.
+    @property
+    def object_count(self) -> int: ...
+    @property
+    def mesh_count(self) -> int: ...
+    @property
+    def material_count(self) -> int: ...
+    def objects_at(self, indices: list[int]) -> list[ObjectRecord]: ...
+    def meshes_at(self, indices: list[int]) -> list[MeshRecord]: ...
+    # ((key, members), ...) for the groups of at least `minimum`, and the objects in none (batch_groups.h).
+    def batch_groups(self, minimum: int) -> tuple[list[tuple[tuple[Any, ...], list[int]]], list[int]]: ...
+
+
+class PlanDiff(TypedDict):
+    """What a plan changes from the published one, as diff_plans returns it (M4)."""
+
+    meshes: list[int]  # per new mesh: an old mesh with equal content, or -1
+    materials: list[int]  # per new material: an equal old material, or -1
+    objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
+    changed: list[int]  # new objects whose old counterpart differs, in plan order
+    repointable: list[int]  # changed objects that differ only in their mesh or materials, in plan order
+    # Changed objects whose matrix differs, and otherwise at most their mesh or materials, in plan order (Phase E)
+    moved: list[int]
+    removed: list[int]  # old objects with no new counterpart, in plan order
+
+
+class ResolvedEntity(TypedDict):
+    """An element's source entity, as Interaction.resolve_pick returns it."""
+
+    source: str
+    instance_context: tuple[str, ...]  # native instance roots, outermost first
+    floor: str
+
+
+class SourceSelection(TypedDict):
+    targets: list[str]  # USD paths, in the order of the selected elements, without repeats
+    active: str | None  # the active element's target
+
+
+class Interaction(Protocol):
+    """The module's Interaction (M4): the baseline's core interaction functions over a plan and the live stage.
+
+    Elements are plan object indices; a level is None (the prim level) or a registered kind. Paths are taken as
+    Sdf.Path or str and returned as str. Each raises RuntimeError once the live stage has expired.
+    """
+
+    def resolve_pick(self, element: int) -> ResolvedEntity | None: ...
+    def select_targets(
+        self, entities: Sequence[tuple[PathLike, Sequence[PathLike]]], level: str | None = None
+    ) -> list[str]: ...  # (source, instance context) pairs
+    def displayed(self, paths: Sequence[PathLike]) -> list[bool]: ...
+    def highlight_targets(self, targets: Sequence[PathLike]) -> list[int]: ...  # elements, in plan order
+    def selection_from_blender(
+        self, selected: Sequence[int], active: int | None = None, level: str | None = None
+    ) -> SourceSelection: ...

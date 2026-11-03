@@ -111,7 +111,7 @@ def run(case: Case) -> None:
         twins,
     )
 
-    created = case.apply.apply(plan, case.collection())
+    created = case.apply.apply(plan, case.collection()).objects
     wrong = {}
     by_mesh: dict[int, set[str]] = defaultdict(set)
     for obj, made in zip(plan.objects, created, strict=True):

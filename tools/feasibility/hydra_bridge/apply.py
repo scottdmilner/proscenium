@@ -1,11 +1,22 @@
-"""Apply a Hydra bridge plan to Blender. Plan arrays reach foreach_set as flat views of Vt arrays, never as lists."""
+"""Apply a Hydra bridge plan to Blender. Plan arrays reach foreach_set as flat views of Vt arrays, never as lists.
+
+A mesh's displayColor shows under Solid shading's Attribute color (M4 Phase D, D10), which shows a mesh's active
+color attribute, a point or corner one only. Vertex, uniform, and faceVarying values are color attributes on points
+and corners, a uniform one with each face's value on its corners, and the mesh's active color. A constant value is
+per copy: a mesh whose copies all share one holds it on points (the plan's held_color), and every copy shows it as
+its object color, in Solid shading's Object color and through an Attribute node of type Object. The display keeps
+copies of one mesh together, so a copy whose constant color its mesh's other copies don't share shows it under
+neither Attribute color nor a split of its own (D13).
+"""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, get_args
 
 import bpy
+import numpy
 from mathutils import Matrix
 from plan_types import PlanDataType, PlanDomain
 
@@ -15,6 +26,7 @@ if TYPE_CHECKING:
     # bpy's attribute enums exist only as Literal aliases in the stubs; at run time they are RNA enum strings.
     from bpy.stub_internal.rna_enums import AttributeDomainItems, AttributeTypeItems
     from plan_types import MaterialRecord, MeshRecord, ObjectRecord, Plan, PlanArray
+    from pxr import Gf
 
 
 class BufferFormat(StrEnum):
@@ -41,6 +53,25 @@ ATTRIBUTE_FORMATS: dict[PlanDataType, tuple[BufferFormat, ForeachProperty]] = {
     "INT": (BufferFormat.INT, ForeachProperty.VALUE),
 }
 PLAN_DOMAINS: frozenset[PlanDomain] = frozenset(get_args(PlanDomain))
+# Axes whose cosine is above this are not orthogonal, so an object's location, rotation, and scale can't hold them.
+SHEAR_TOLERANCE = 1e-6
+# On a parent empty (M4): the USD source of the copy whose shear it carries.
+SHEAR_PARENT = "proscenium_shear_of"
+# The ID properties that tie Blender data to the binding, which detach removes (M4, B7). Constant primvars keep
+# their own names, since an Attribute node reads them, so they aren't among these.
+OBJECT_PROPERTIES = (
+    "proscenium_source",
+    "proscenium_instance_context",
+    "proscenium_element",
+    "proscenium_placeholder",
+    SHEAR_PARENT,
+)
+MATERIAL_PROPERTIES = ("proscenium_sources",)
+DISPLAY_COLOR = "displayColor"
+# A uniform one is stored on corners, each face's value on its corners, which Solid shading's Attribute color shows.
+DISPLAY_PRIMVARS = (DISPLAY_COLOR, "displayOpacity")
+POSITION = "position"
+MATERIAL_INDEX = "material_index"
 
 
 def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
@@ -53,14 +84,25 @@ def flat(array: PlanArray, fmt: BufferFormat) -> memoryview:
     return view.cast("B").cast(fmt)  # ty: ignore[no-matching-overload] - stubs list only literal formats
 
 
-def apply(plan: Plan, collection: bpy.types.Collection) -> list[bpy.types.Object]:
-    """Create the plan's materials, meshes, and objects; returns the objects in plan order."""
-    materials = [_material(data) for data in plan.materials]
-    meshes = [_mesh(data) for data in plan.meshes]
-    return [_object(data, meshes, materials, collection) for data in plan.objects]
+@dataclass(frozen=True)
+class Display:
+    """What a plan's application holds, each list in plan order."""
+
+    objects: list[bpy.types.Object]
+    meshes: list[bpy.types.Mesh]
+    materials: list[bpy.types.Material]
 
 
-def _material(data: MaterialRecord) -> bpy.types.Material:
+def apply(plan: Plan, collection: bpy.types.Collection) -> Display:
+    """Create the plan's materials, meshes, and objects."""
+    materials = [new_material(data) for data in plan.materials]
+    meshes = [new_mesh(data) for data in plan.meshes]
+    objects = [new_object(index, data, meshes, materials, collection) for index, data in enumerate(plan.objects)]
+    return Display(objects, meshes, materials)
+
+
+def new_material(data: MaterialRecord) -> bpy.types.Material:
+    """A plan material's viewport stand-in."""
     material = bpy.data.materials.new(data["name"])
     material["proscenium_sources"] = data["sources"]
     # Viewport color only: shader translation is M9's.
@@ -70,17 +112,18 @@ def _material(data: MaterialRecord) -> bpy.types.Material:
     return material
 
 
-def _mesh(data: MeshRecord) -> bpy.types.Mesh:
+def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
+    """A plan mesh, with empty material slots for its objects to fill."""
     mesh = bpy.data.meshes.new(data["name"])
-    positions = flat(data["positions"], BufferFormat.FLOAT)
+    position, *others = layers(data)
     corner_verts = flat(data["corner_verts"], BufferFormat.INT)
     face_offsets = flat(data["face_offsets"], BufferFormat.INT)
-    mesh.vertices.add(len(positions) // 3)
+    mesh.vertices.add(len(position.values) // 3)
     mesh.loops.add(len(corner_verts))
     mesh.polygons.add(len(face_offsets))
     # A mesh with no points has no position layer, and one with no faces no corner layer.
-    if len(positions):
-        _data(mesh.attributes["position"]).foreach_set(ForeachProperty.VECTOR, positions)
+    if len(position.values):
+        _data(mesh.attributes[POSITION]).foreach_set(position.prop, position.values)
     if len(corner_verts):
         _data(mesh.attributes[".corner_vert"]).foreach_set(ForeachProperty.VALUE, corner_verts)
     # Unlike the attribute transfers, Blender copies this buffer into a temporary, 4 bytes per face.
@@ -89,17 +132,63 @@ def _mesh(data: MeshRecord) -> bpy.types.Mesh:
     # Empty slots: each object links its own materials, so one mesh serves the viewport and the render.
     for _ in range(data["slot_count"]):
         mesh.materials.append(None)
-    material_index = _new_attribute(mesh, "material_index", "INT", "FACE")
-    _data(material_index).foreach_set(ForeachProperty.VALUE, flat(data["material_indices"], BufferFormat.INT))
+    for layer in others:
+        _data(_new_attribute(mesh, layer.name, layer.data_type, layer.domain)).foreach_set(layer.prop, layer.values)
+    # Solid shading's Attribute color shows the active color.
+    mesh.color_attributes.active_color_name = DISPLAY_COLOR
+    return mesh
+
+
+@dataclass(frozen=True)
+class Layer:
+    """One attribute of a plan mesh as Blender holds it: its name, type, and domain, and its values, flat."""
+
+    name: str
+    data_type: PlanDataType
+    domain: AttributeDomainItems
+    prop: ForeachProperty  # what foreach_set writes
+    values: numpy.ndarray
+
+
+def layers(data: MeshRecord) -> list[Layer]:
+    """The attributes new_mesh writes for a plan mesh, positions first; its faces and corners are the rest."""
+    face_offsets = flat(data["face_offsets"], BufferFormat.INT)
+    corners = len(data["corner_verts"])
+    found = [
+        Layer(POSITION, "FLOAT_VECTOR", "POINT", ForeachProperty.VECTOR, _array(data["positions"], BufferFormat.FLOAT)),
+        Layer(MATERIAL_INDEX, "INT", "FACE", ForeachProperty.VALUE, _array(data["material_indices"], BufferFormat.INT)),
+    ]
     for attribute in data["attributes"]:
         data_type, domain = attribute["data_type"], attribute["domain"]
         # A name the plan shouldn't produce raises here rather than reaching Blender.
         if data_type not in ATTRIBUTE_FORMATS or domain not in PLAN_DOMAINS:
             raise ValueError(f"Unexpected attribute kind in the plan: {data_type} on {domain}")
         fmt, prop = ATTRIBUTE_FORMATS[data_type]
-        created = _new_attribute(mesh, attribute["name"], data_type, domain)
-        _data(created).foreach_set(prop, flat(attribute["data"], fmt))
-    return mesh
+        values = _array(attribute["data"], fmt)
+        if attribute["name"] in DISPLAY_PRIMVARS and domain == "FACE":
+            # Each face's value on its corners, expanded here rather than in the plan, which then holds one value
+            # per face for every mesh until it is released.
+            values = _on_corners(values, face_offsets, corners)
+            domain = "CORNER"
+        found.append(Layer(attribute["name"], data_type, domain, prop, values))
+    held = data["held_color"]
+    if held is not None:  # the constant displayColor all its copies share, on every point
+        color = numpy.array(held, dtype=numpy.float32)
+        points = len(data["positions"])
+        found.append(Layer(DISPLAY_COLOR, "FLOAT_COLOR", "POINT", ForeachProperty.COLOR, numpy.tile(color, points)))
+    return found
+
+
+def _array(array: PlanArray, fmt: BufferFormat) -> numpy.ndarray:
+    """A Vt array as a flat numpy array over its memory, read-only. No data is copied."""
+    return numpy.frombuffer(flat(array, fmt), dtype=numpy.float32 if fmt == BufferFormat.FLOAT else numpy.int32)
+
+
+def _on_corners(faces: numpy.ndarray, face_offsets: memoryview, corners: int) -> numpy.ndarray:
+    """Per-face float values, flat, as each face's value on each of its corners."""
+    starts = numpy.frombuffer(face_offsets, dtype=numpy.int32)
+    counts = numpy.diff(starts, append=corners)
+    return numpy.repeat(faces.reshape(len(starts), -1), counts, axis=0).ravel()
 
 
 def _new_attribute(
@@ -112,6 +201,11 @@ def _data(attribute: bpy.types.Attribute) -> bpy.types.bpy_prop_collection:
     return attribute.data  # ty: ignore[unresolved-attribute] - Attribute.data is missing from the stubs
 
 
+def stored_color(data: ObjectRecord) -> list[float]:
+    """A copy's object color as Blender stores it, in single precision."""
+    return numpy.array(object_color(data), dtype=numpy.float32).tolist()
+
+
 def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> bpy.types.Mesh:
     """The eight corners of a placeholder's local bounds; the object draws only its bounding box."""
     low, high = bounds
@@ -121,12 +215,83 @@ def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> 
     return mesh
 
 
-def _object(
+def world(matrix: Gf.Matrix4d) -> Matrix:
+    """A plan matrix as Blender's world matrix.
+
+    USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
+    """
+    return Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+
+
+def sheared(world: Matrix) -> bool:
+    linear = world.to_3x3()
+    # mathutils, not numpy: about 20 times faster for one small matrix.
+    axes = [linear.col[i] for i in range(3)]  # ty: ignore[not-subscriptable] - the stubs omit MatrixAccess indexing
+    return any(
+        abs(axes[i].dot(axes[j])) > SHEAR_TOLERANCE * axes[i].length * axes[j].length
+        for i, j in ((0, 1), (0, 2), (1, 2))
+    )
+
+
+def shear_split(world: Matrix) -> tuple[Matrix, Matrix]:
+    """A sheared `world` as a parent's world matrix and its child's basis, neither sheared.
+
+    Blender composes them back to float precision. The linear part splits by SVD into rotation x scale x
+    rotation: the parent takes the first rotation, the scale, and the translation, and the child the second
+    rotation. A reflection in either rotation moves into a negative scale.
+    """
+    u, scale, vt = numpy.linalg.svd(numpy.array(world.to_3x3()))
+    if numpy.linalg.det(u) < 0:
+        u[:, -1] *= -1
+        scale[-1] *= -1
+    if numpy.linalg.det(vt) < 0:
+        vt[-1, :] *= -1
+        scale[-1] *= -1
+    parent_world = Matrix((u * scale).tolist()).to_4x4()
+    parent_world.translation = world.translation
+    return parent_world, Matrix(vt.tolist()).to_4x4()
+
+
+def shear_parent(obj: bpy.types.Object, source: str, collection: bpy.types.Collection) -> bpy.types.Object:
+    """A parent empty for `obj`, which carries the shear of `source`'s copy.
+
+    It can't be selected, so a pick lands on the object.
+    """
+    parent = bpy.data.objects.new(f"{obj.name} shear", None)
+    collection.objects.link(parent)
+    parent.hide_select = True
+    parent[SHEAR_PARENT] = source
+    obj.parent = parent
+    return parent
+
+
+def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection: bpy.types.Collection) -> None:
+    """Give `obj` the sheared `world` through a parent empty (shear_split)."""
+    parent_world, basis = shear_split(world)
+    shear_parent(obj, source, collection).matrix_world = parent_world
+    obj.matrix_basis = basis
+
+
+def object_color(data: ObjectRecord) -> tuple[float, float, float, float]:
+    """A copy's object color: its constant displayColor and displayOpacity of one value each, or opaque white."""
+    # From the converted properties, where a one-value array is its value: indexing the Vt array in `primvars`
+    # from Python costs about 50 us (ad hoc, ALab).
+    color = data["properties"].get("displayColor")
+    opacity = data["properties"].get("displayOpacity")
+    channels = color if isinstance(color, list) else []
+    rgb = [c for c in channels if isinstance(c, float)]
+    r, g, b = rgb if len(rgb) == 3 == len(channels) else (1.0, 1.0, 1.0)
+    return (r, g, b, opacity if isinstance(opacity, float) else 1.0)
+
+
+def new_object(
+    index: int,
     data: ObjectRecord,
     meshes: list[bpy.types.Mesh],
     materials: list[bpy.types.Material],
     collection: bpy.types.Collection,
 ) -> bpy.types.Object:
+    """Plan object `index` in `collection`, on `meshes` and `materials`, with a shear parent if it needs one."""
     name = data["source"].rsplit("/", 1)[-1]
     bounds = data["bounds"]
     if data["mesh"] is not None:
@@ -137,23 +302,26 @@ def _object(
         obj_data = None
     obj = bpy.data.objects.new(name, obj_data)
     collection.objects.link(obj)
-    matrix = data["matrix"]
-    # USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
-    obj.matrix_world = Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+    placed = world(data["matrix"])
+    if sheared(placed):
+        _shear_parent(obj, data["source"], placed, collection)
+    else:
+        obj.matrix_world = placed
     # Each destination shows its own prim purposes; an object can be in one, both, or neither.
     obj.hide_viewport = not data["viewport"]
     obj.hide_render = not data["render"]
     for slot, material in zip(obj.material_slots, data["material_slots"], strict=True):
         slot.link = "OBJECT"
         slot.material = None if material is None else materials[material]
-    color = data["primvars"].get("displayColor")
-    if color is not None and len(color) == 1:
-        obj.color = (*color[0], 1.0)
+    # The object color shows a constant displayColor and displayOpacity, in Solid shading's Object color.
+    obj.color = object_color(data)
     # Constant primvars by name, which an Attribute node of type Object reads; the plan converted them.
     for name, value in data["properties"].items():
         obj[name] = value
     obj["proscenium_source"] = data["source"]
     obj["proscenium_instance_context"] = list(data["instance_context"])
+    # The display element it realizes (M4): its plan index, which the interaction functions take and return.
+    obj["proscenium_element"] = index
     if data["placeholder_type"] is not None:
         # A bounding box when the plan has bounds, otherwise an empty marker.
         if bounds is not None:

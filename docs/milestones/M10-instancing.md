@@ -11,6 +11,7 @@
 - Evaluation/planning: complete instancing, shared contents, instance context, and per-instance variation in the snapshot and plan, replacing M6's provisional descriptions. Since M1b adopted Hydra, verify that Hydra's native-instance aggregation, which regroups instances by inherited state, is compatible with M4's sharing criteria, and map Hydra instancers and instance indices back to instance context.
 - Application: shared and per-instance display behavior, and instance-root selection.
 - Dependency tracking between shared contents and their displayed uses.
+- From M4 ([M4 plan](../plans/M04-prototypes.md), F2, F5): point instancers at scale can't be planned a record per instance (Moana Island's ~31 million at about 13 KB a planned copy), so their batches would come from an instancer's arrays; a point instance's identity, deferred until then, has its instancer as its floor. A point instance's time-sampled `protoIndices` can change its prototype, and its materials with it, which cached time codes display (CACHE-10).
 
 **Tests:**
 

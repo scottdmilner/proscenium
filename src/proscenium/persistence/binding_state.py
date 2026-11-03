@@ -2,8 +2,9 @@
 
 The published generation is what the display was produced with: the generation record and the
 ownership manifest beside it on the destination collection (proscenium.persistence.manifests), and the
-correspondence M7 adds. It describes the destination's content, so it travels with the destination
-on copy routes, as the manifest does.
+correspondence M7 adds. The generation record holds the time code it was synchronized at and those M5's cache
+added to it since (pipeline.md#cached-time-codes). It describes the destination's content, so it travels with the
+destination on copy routes, as the manifest does.
 
 The last attempt is the most recent synchronization attempt and its result. It is on the target
 scene beside the binding's configuration, under its own key: it exists without a destination or a
@@ -62,11 +63,23 @@ class Generation:
     payload_policy: PayloadPolicy
     time_code: float | None  # see stored_time
     diagnostics: tuple[Diagnostic, ...]  # its source/display diagnostics
+    # The time codes cached in it since, sorted, without its own; one at the default time code has none to cache.
+    cached_time_codes: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         _settle(self)
         if type(self.binding_id) is not str:
             raise TypeError("a generation names its binding")
+        cached = tuple(self.cached_time_codes)  # a stored one comes back as an ID-property array
+        if not all(type(t) is float for t in cached):
+            raise TypeError("a cached time code is a float")
+        if list(cached) != sorted(set(cached)):
+            raise ValueError("cached time codes are sorted, each once")
+        if self.time_code in cached:
+            raise ValueError("a generation's own time code isn't one cached in it")
+        if cached and self.time_code is None:
+            raise ValueError("a generation synchronized at the default time code has no time codes to cache")
+        object.__setattr__(self, "cached_time_codes", cached)
 
 
 @dataclass(frozen=True, slots=True)
