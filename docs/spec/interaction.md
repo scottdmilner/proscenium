@@ -26,7 +26,7 @@ The interaction contract must settle:
 - Interfaces needed by future USD manipulation tools.
 - Whether any ordinary Blender selection/manipulation behavior is required.
 
-The draft [Interaction Contract](interaction-contract.md) settles these items. Callers browse and inspect the live stage through the USD API; the contract maps between source and display. Framing is not provided (see [Interaction Testing](#interaction-testing)).
+The [Interaction Contract](interaction-contract.md) settles these items. Callers browse and inspect the live stage through the USD API; the contract maps between source and display. Framing is not provided (see [Interaction Testing](#interaction-testing)).
 
 Do not assume every prim needs independent viewport picking or that standard Blender transform tools must become USD authoring tools.
 

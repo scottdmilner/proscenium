@@ -55,7 +55,7 @@ requirements:
         kind: contract
         delivery: M2
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log. M4 finalizes it."
+        oracle: "The M2 decision record: the interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log; M4 finalized it (M4 plan, F2)."
       - id: ARCH-08
         quote: "Keep the performance tests around for later"
         oracle: "The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M14 its Phase 2 targets."
@@ -851,7 +851,7 @@ requirements:
         kind: contract
         delivery: M2
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract (spec/interaction-contract.md) settles each item, and the M2 plan's Phase A log records why. M4 answers its feasibility questions and finalizes it."
+        oracle: "The M2 decision record: the interaction contract (spec/interaction-contract.md) settles each item, and the M2 plan's Phase A log records why; M4 answered its feasibility questions and finalized it (M4 plan, F2)."
       - id: INSP-10
         quote: "Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection."
         fixtures: [F-OFFLINE]
@@ -867,10 +867,10 @@ requirements:
         quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
         kind: contract
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 records what a real pick is assumed to supply."
+        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 recorded what a real pick is assumed to supply, what a ray cast returns, as an accepted risk (Picking; M4 plan, F2)."
 
   # --- spec/interaction-contract.md -----------------------------------------------------------
-  # Draft contract settled by M2 (INSP-06); M4 finalizes it, and its rows may change then.
+  # Contract drafted by M2 (INSP-06) and finalized by M4 (M4 plan, F2).
 
   - section: spec/interaction-contract.md#two-layers-and-the-live-stage
     delivery: M7
@@ -916,6 +916,8 @@ requirements:
         delivery: M3
         fixtures: [F-CACHED-STAGE]
         oracle: "After synchronization, the stage the binding handle returns as live for a file source is the source stage the binding opened, is not in UsdUtils.StageCache, and is not the ambient stage."
+      - id: ICON-35
+        quote: "the core loads it from Blender data once the binding has a live stage, without synchronizing"
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
@@ -973,6 +975,11 @@ requirements:
         quote: "Resolution uses only the published generation's correspondence, never Blender names or parenting."
         fixtures: [F-KIND-HIERARCHY]
         oracle: "resolve_pick returns the same entity after the display objects are renamed and reparented in Blender."
+      - id: ICON-36
+        quote: "A pick supplies what a ray cast returns: the object hit and its world matrix."
+      - id: ICON-37
+        quote: "for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is"
+        delivery: M8
 
   - section: spec/interaction-contract.md#selection
     delivery: M7
@@ -1004,6 +1011,9 @@ requirements:
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "highlight_targets covers every display element of the expanded entities and no other."
         risk: high
+      - id: ICON-38
+        quote: "No display object covers both selected and unselected viewport elements"
+        delivery: M8
 
   - section: spec/interaction-contract.md#persistent-selection
     delivery: M7
@@ -1041,10 +1051,16 @@ requirements:
         fixtures: [F-KIND-HIERARCHY]
         oracle: "apply_selection leaves the selection of unmanaged objects unchanged."
       - id: ICON-30
-        quote: "Selecting displayed content in Blender produces a source selection"
+        quote: "Selecting displayed content produces a source selection through a selection tool the extension provides"
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
         oracle: "selection_from_blender, given read_blender_selection's result, returns the targets at the given level of the selected display objects' entities."
         risk: high
+      - id: ICON-39
+        quote: "in the active view layer, and into a view layer again when it becomes active"
+      - id: ICON-40
+        quote: "A box identifies the viewport display elements whose world bounds' centers lie inside it."
+      - id: ICON-41
+        quote: "Blender's own selection tools don't select managed content"
 
   - section: spec/interaction-contract.md#interfaces-for-future-tools
     delivery: M7
@@ -1801,11 +1817,11 @@ excluded:
       - "Measuring viewport drawing performance."
     reason: "Rationale and out-of-scope future work."
   - section: spec/interaction.md#source-inspection-and-interaction
-    quotes: ["The draft Interaction Contract settles these items."]
+    quotes: ["The Interaction Contract settles these items."]
     restates: [INSP-06]
   - section: spec/interaction-contract.md
     quotes:
-      - "The draft interaction contract that Source Inspection and Interaction requires"
+      - "The interaction contract that Source Inspection and Interaction requires"
       - "The contract defines what the display layer provides, not its Blender structure."
     reason: "File introduction."
   - section: spec/interaction-contract.md#two-layers-and-the-live-stage
@@ -1823,6 +1839,9 @@ excluded:
   - section: spec/interaction-contract.md#picking
     quotes: ["A pick resolves to the binding and source entity of the display element hit"]
     restates: [INSP-01, ITEST-02]
+  - section: spec/interaction-contract.md#picking
+    quotes: ["That a real viewport pick supplies this is assumed, not verified: an accepted risk"]
+    restates: [ITEST-02]
   - section: spec/interaction-contract.md#blender-selection
     quotes: ["Blender's transform tools are not USD authoring tools."]
     reason: "Scope limit; the lifecycle permission that generated content is USD-authoritative covers edits."
