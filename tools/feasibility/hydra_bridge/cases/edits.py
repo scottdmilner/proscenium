@@ -252,9 +252,12 @@ def _record(record: Any) -> Any:
 def _plan(plan: Any) -> Any:
     if plan is None:
         return None
-    return normalized(
+    found = normalized(
         {"meshes": plan.meshes, "materials": plan.materials, "objects": plan.objects, "diagnostics": plan.diagnostics}
     )
+    # What the capture before it dirtied, not what the plan displays: a refresh after an edit dirties nothing.
+    found["objects"] = tuple({k: v for k, v in o.items() if k != "dirtied_aspects"} for o in found["objects"])
+    return found
 
 
 def _plan_difference(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
