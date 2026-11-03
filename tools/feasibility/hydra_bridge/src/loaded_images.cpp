@@ -53,7 +53,8 @@ std::string ModulePath(HMODULE module) {
 }
 #elif !defined(__APPLE__)
 int CollectImage(dl_phdr_info *info, size_t, void *data) {
-    if (info->dlpi_name && *info->dlpi_name) static_cast<std::vector<std::string> *>(data)->push_back(info->dlpi_name);
+    if (info->dlpi_name && *info->dlpi_name)
+        static_cast<std::vector<std::string> *>(data)->emplace_back(info->dlpi_name);
     return 0;
 }
 #endif
