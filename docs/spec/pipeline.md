@@ -5,7 +5,7 @@ Layer boundaries, the synchronization transaction, and diagnostics. Cross-cuttin
 ## Synchronization Layer Boundaries
 
 ```text
-USD stage + explicit time code + binding settings + planning context
+USD stage + time code + binding settings + planning context
                     ↓
         Evaluated source snapshot
                     ↓
@@ -117,6 +117,22 @@ Failure safety covers recoverable failures. Process termination, native crashes,
 These guarantees apply equally to incremental mutations in Phase 2.
 
 Undo grouping is **not** a substitute for failure-safe staging or rollback.
+
+## Cached Time Codes
+
+A published generation displays the time code it was synchronized at, and each time code cached in it since. Caching adds a time code's time-varying values to the display the generation already holds, rather than synchronizing again.
+
+- `cache(time_codes)` evaluates the source at each given time code not yet cached, under the generation's settings, and adds the values that vary: transforms, visibility, properties, mesh content including topology, and content that appears or vanishes. Each cached time code then displays what a clean synchronization at it would.
+- One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping.
+- Caching publishes no new generation. Correspondence and ownership gain only what a cached time code adds, such as an element that first appears there.
+- A call that fails caches none of its time codes and leaves the published generation as it was, its prepared work under the failure safety of the [Synchronization Transaction](#synchronization-transaction). Its source-semantic diagnostics exist before Blender data is mutated, as a synchronization's do, and variation the representation can't display is one that fails the call.
+- If the source has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different source states.
+- A generation synchronized at the USD default time code has no time-varying values: `cache` caches nothing and reports success.
+- Synchronizing again produces a new generation, holding only its own time code.
+
+The display never synchronizes or caches on its own. Following the timeline is a layer above it that calls `cache`.
+
+Design note (M5 to M7): a call is one operation over all its time codes, so an implementation may evaluate them in any order or concurrently, and arrange its work by time code or by content, such as capturing several time codes in parallel or writing one mesh's samples for every time code together. Callers that know ahead which time codes they need, such as a frame range to play, pass them in one call.
 
 ## Diagnostics
 

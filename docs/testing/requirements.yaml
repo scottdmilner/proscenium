@@ -208,6 +208,35 @@ requirements:
         delivery: M14
         phase: 2
 
+  - section: spec/pipeline.md#cached-time-codes
+    delivery: M5
+    phase: 1
+    rows:
+      - id: CACHE-01
+        quote: "evaluates the source at each given time code not yet cached, under the generation's settings, and adds the values that vary"
+        delivery: M7
+        oracle: "Synchronized at one sampled time code and cached at the others, in more than one order, the display at each sampled time code's frame passes the standard end-to-end checks against a clean synchronization there, content that appears or vanishes included; a frame between cached time codes shows the latest one before it."
+      - id: CACHE-09
+        quote: "One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping."
+        delivery: M7
+      - id: CACHE-02
+        quote: "Caching publishes no new generation."
+      - id: CACHE-03
+        quote: "A call that fails caches none of its time codes and leaves the published generation as it was"
+        risk: high
+      - id: CACHE-04
+        quote: "variation the representation can't display is one that fails the call"
+        delivery: M7
+      - id: CACHE-05
+        quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
+      - id: CACHE-06
+        quote: "A generation synchronized at the USD default time code has no time-varying values"
+      - id: CACHE-07
+        quote: "Synchronizing again produces a new generation, holding only its own time code."
+      - id: CACHE-08
+        quote: "The display never synchronizes or caches on its own."
+        delivery: M7
+
   - section: spec/pipeline.md#diagnostics
     delivery: M5
     phase: 1
@@ -264,9 +293,9 @@ requirements:
         fixtures: [F-MULTI-BINDING]
         oracle: "A load-all and a load-none binding on the same file compose the fixture's payload content by their own policy."
       - id: BIND-05
-        quote: "Explicit evaluation time code, including the USD default time code."
+        quote: "An evaluation time code, by default the target scene's current frame's, including the USD default time code"
         fixtures: [F-MULTI-BINDING]
-        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and the attempt is made at exactly that time code, as its last attempt records."
+        oracle: "synchronize accepts the USD default time code and numeric time codes, including a non-integer one, and the attempt is made at exactly that time code, as its last attempt records; without one, at the target scene's current frame, its subframe included."
         delivery: M5
       - id: BIND-06
         quote: "Coordinate-conversion and purpose/display settings."
@@ -323,6 +352,9 @@ requirements:
         quote: "reload(layers=None) rereads the binding's source layers from disk on request"
         fixtures: [F-BINDING-STATE]
         oracle: "reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers."
+      - id: API-09
+        quote: "cache(time_codes) caches the published generation's time-varying values at each given time code without synchronizing"
+        delivery: M5
       - id: API-04
         quote: "An expected failure, such as an unavailable source, is a result, not an exception."
         delivery: M5
@@ -639,6 +671,9 @@ requirements:
         fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
       - id: UNDO-04
         quote: "With global undo disabled or in background mode, synchronization behaves the same but pushes no step."
+        delivery: M5
+      - id: UNDO-09
+        quote: "pushes no undo step. Undo and redo restore a generation's cached time codes with the rest of it."
         delivery: M5
       - id: UNDO-05
         quote: "When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source."
@@ -1078,23 +1113,34 @@ requirements:
       - id: XFORM-05
         quote: "Diagnose approximations when exact representation is unavailable."
       - id: XFORM-06
-        quote: "Evaluate supported time-varying values at the supplied time code, including topology changes."
+        quote: "Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes."
         risk: high
       - id: XFORM-07
         quote: "including topology changes."
         delivery: M8
       - id: XFORM-08
-        quote: "This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses."
-        oracle: "The M4 decision record: the DECISIONS.md row \"Time-sampled data representation\" states whether and where animation data is used, and the time-code-to-frame mapping of any approach adopted, with the M4 plan's Phase E measurements of playback, construction, memory, and .blend size."
+        quote: "the DECISIONS.md row \"Time-sampled data representation\" records the animation data used and why"
+        oracle: "The M4 decision record: the DECISIONS.md row \"Time-sampled data representation\" states the representation adopted for cached time codes and the animation data it authors, and why, with the M4 plan's Phase E measurements of playback, construction, memory, and .blend size."
         kind: contract
         delivery: M4
         qualified_by: M4
       - id: XFORM-09
         quote: "Authored animation data and its caches are managed content"
         delivery: M7
-        note: "Applies if M4 adopts animation data."
       - id: XFORM-10
         quote: "Do not change the target scene's frame rate or playback range."
+        delivery: M7
+      - id: XFORM-11
+        quote: "USD time code t is Blender frame t, its fraction a subframe"
+        delivery: M7
+      - id: XFORM-12
+        quote: "Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included."
+        delivery: M5
+      - id: XFORM-13
+        quote: "A display shows each time code cached in its generation"
+        delivery: M7
+      - id: XFORM-14
+        quote: "Interaction answers for the time code the display shows."
         delivery: M7
 
   - section: spec/support/transforms.md#coordinate-conversion
@@ -1554,7 +1600,7 @@ requirements:
     qualified_by: M12
     rows:
       - id: ATIME-01
-        quote: "Synchronization must work at any time code."
+        quote: "Synchronization and caching must work at any time code."
         delivery: M6
       - id: ATIME-02
         quote: "Each time-varying fixture declares its topology and visibility transitions from how it is built"
@@ -1663,8 +1709,8 @@ excluded:
       - "That preserves freedom to optimize the display later"
     reason: "Definitions and rationale for the separation that ARCH-01, ARCH-05, and ARCH-06 require."
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
-    quotes: ["Synchronize supported content at an explicit USD time code supplied as a function parameter."]
-    restates: [BIND-05]
+    quotes: ["Synchronize supported content at a USD time code supplied as an optional function parameter"]
+    restates: [BIND-05, API-09, CACHE-01]
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
     quotes: ["Full traversal and rebuilding are acceptable.", "Blender object identities need not survive refresh."]
     reason: "Phase 1 permissions."
@@ -1687,7 +1733,7 @@ excluded:
     quotes: ["Phase 2 must be complete before Phase 3 begins."]
     reason: "Phase 3 ordering, outside Phases 1 and 2."
   - section: PROJECT.md#phase-3--usd-stage-editor
-    quotes: ["Tools author USD changes and use the synchronizer", "Automatic timeline synchronization is a stretch goal."]
+    quotes: ["Tools author USD changes and use the synchronizer", "Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal."]
     reason: "Phase 3, outside Phases 1 and 2."
   - section: PROJECT.md#compatibility-and-development
     quotes: ["If additional compiled components become necessary, all three platforms remain required."]
@@ -2028,6 +2074,9 @@ excluded:
       - "An unchanged second synchronization keeps active display resource counts"
       - "Changing the time code or payload policy and resynchronizing gives the same result"
     restates: [ASTD-01]
+  - section: testing/acceptance.md#standard-end-to-end-checks
+    quotes: ["Each sampled time code cached in a generation synchronized at another displays what a clean synchronization at it does"]
+    restates: [CACHE-01]
   - section: testing/acceptance.md#expected-failure-checks
     quotes:
       - "For synchronization cases expected to fail before publication"
@@ -2086,12 +2135,21 @@ excluded:
   - section: spec/pipeline.md#why-the-boundary-is-enforced
     quotes: ["Planning tests can assert every source-semantic diagnostic without Blender."]
     reason: "Consequence of BND-02, not a separate behavior."
+  - section: spec/pipeline.md#cached-time-codes
+    quotes: ["A published generation displays the time code it was synchronized at, and each time code cached in it since."]
+    restates: [CACHE-01]
+  - section: spec/pipeline.md#cached-time-codes
+    quotes: ["a call is one operation over all its time codes, so an implementation may evaluate them in any order or concurrently"]
+    reason: "Design guidance for caching's implementation (M5 to M7); CACHE-09 checks the result is the same."
+  - section: spec/source-access.md#synchronization-api
+    quotes: ["time_codes is a collection of USD time codes, such as a frame range; one time code is a collection of one."]
+    restates: [API-09]
   - section: spec/pipeline.md#synchronization-transaction
     quotes: ["Failure safety covers recoverable failures."]
     reason: "Scope limit of failure safety."
   - section: spec/source-access.md#synchronization-api
-    quotes: ["synchronizes the binding at an explicit USD time code, which may be the default time code."]
-    restates: [BIND-05]
+    quotes: ["synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame"]
+    restates: [BIND-05, XFORM-12]
   - section: spec/source-access.md#synchronization-api
     quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
     restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
@@ -2144,7 +2202,7 @@ excluded:
     quotes: ["Keep development dependencies separate from distributable runtime dependencies; do not inadvertently bundle another OpenUSD build."]
     reason: "True by construction: tools/build_extension.py bundles only the runtime lock's wheels."
   - section: spec/pipeline.md#synchronization-layer-boundaries
-    quotes: ["USD stage + explicit time code + binding settings + planning context"]
+    quotes: ["USD stage + time code + binding settings + planning context"]
     reason: "Architecture outline of the layer inputs; PLAN-09 and APP-08 cover the boundaries."
   - section: spec/pipeline.md#evaluated-source-snapshot
     quotes: ["Source hierarchy, identities, and metadata."]

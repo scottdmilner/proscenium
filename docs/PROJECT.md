@@ -65,7 +65,7 @@ Objects, collection instancing, Geometry Nodes, batching, or a hybrid are implem
 
 ### Phase 1 — Correct Snapshot Synchronization
 
-Synchronize supported content at an **explicit USD time code supplied as a function parameter**. The USD default time code is permitted.
+Synchronize supported content at a **USD time code supplied as an optional function parameter**, by default the target scene's current frame's. The USD default time code is permitted. A synchronized display then **caches the time-varying values of further time codes on request**, so Blender plays each cached time code back at its frame without synchronizing again.
 
 - Manual refresh is required.
 - Full traversal and rebuilding are acceptable.
@@ -93,7 +93,7 @@ See [Incremental Synchronization](spec/incremental.md) for detailed requirements
 
 Tools author USD changes and use the synchronizer as their display layer. Actual USD authoring tools are outside Phases 1 and 2.
 
-Automatic timeline synchronization is a stretch goal. The evaluation time code may change between any two synchronizations.
+Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal. The evaluation time code may change between any two synchronizations.
 
 ## Compatibility and Development
 

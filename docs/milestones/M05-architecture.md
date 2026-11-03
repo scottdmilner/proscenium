@@ -1,6 +1,6 @@
 # M5 — Synchronization architecture, diagnostics, and failure safety
 
-**Implements:** the interfaces and boundary rules in [Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries) (M6 and M7 implement the layers themselves), [Diagnostics](../spec/pipeline.md#diagnostics), [Synchronization Transaction](../spec/pipeline.md#synchronization-transaction) for full rebuilds (M14 covers incremental mutation), the synchronization undo policy in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state), and publication of the [Binding State](../spec/lifecycle.md#binding-state) model.
+**Implements:** the interfaces and boundary rules in [Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries) (M6 and M7 implement the layers themselves), [Diagnostics](../spec/pipeline.md#diagnostics), [Synchronization Transaction](../spec/pipeline.md#synchronization-transaction) for full rebuilds (M14 covers incremental mutation), the synchronization undo policy in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state), the API, failure safety, and undo policy of [Cached Time Codes](../spec/pipeline.md#cached-time-codes) (M7 applies cached values), and publication of the [Binding State](../spec/lifecycle.md#binding-state) model.
 
 **Depends on:** M3 (ownership metadata, binding-state schemas, and index rules), M4 (partitioning decision).
 
@@ -26,7 +26,8 @@
 - Failure-injection tests at each transaction boundary, run against the stub application layer and rerun unchanged against the real application layer in M7.
 - `F-FAILED-SETTINGS`, `F-PUBLICATION-FAILURE`, `F-PREPARATION-CLEANUP-FAILURE`, and `F-RETIREMENT-FAILURE`.
 - `F-SOURCE-CHANGE`: a contributing layer changed while the binding evaluates discards the attempt before publication (CONS-03).
-- `F-MULTI-BINDING`: synchronizing at the default time code and at numeric ones, a non-integer included, is attempted at exactly that time code, as the last attempt records (BIND-05).
+- `F-MULTI-BINDING`: synchronizing at the default time code and at numeric ones, a non-integer included, is attempted at exactly that time code, as the last attempt records, and without one at the target scene's current frame, its subframe included (BIND-05, XFORM-12).
+- Caching against the stub application layer: a failing `cache` call caches none of its time codes and leaves the published generation unchanged; after a source change it caches nothing and reports that the binding needs synchronizing; in a generation synchronized at the default time code it caches nothing; it publishes no new generation and pushes no undo step, and undo restores a generation's cached time codes with the rest of it (CACHE-02, CACHE-03, CACHE-05, CACHE-06, CACHE-07, UNDO-09).
 - `F-SCHEMA-VERSIONS`' unreadable and unsupported pending-cleanup records: cleanup and the other operations that interpret them refuse, report why, and dispose of nothing (SCHEMA-06).
 - Abort preparation, then fail disposal: assert the old generation is unchanged, prepared leftovers are inactive and persistently tracked, save/reopen preserves them without retrying cleanup (REOPEN-01), and explicit cleanup retry succeeds without USD access.
 - Undo: delete stub-created managed content, undo, and verify the M3 indexes are consistent again.

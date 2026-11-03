@@ -19,7 +19,7 @@ The inspection layer is read-only. It never authors USD, loads or unloads payloa
 
 A binding's live stage is its source stage ([Source Stages](source-access.md#source-stages)): for a file source, the stage the binding opened and reuses across refreshes, and for an attached source, the caller's stage. A binding with a file source has no live stage until its first synchronization, including after a `.blend` is reopened. Callers get a binding's live stage from the binding, which never places it in a stage cache.
 
-The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the published generation's time code.
+The live stage may differ from the display once the source has changed since synchronization. Callers that need values matching the display read them at the time code it shows ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)).
 
 ## Without a Live Stage
 
@@ -35,7 +35,7 @@ The source hierarchy is the composed stage's: an entity's ancestors are the pref
 
 The browsing universe of a published generation is every prim outside native-instance contents that has a viewport display element of its own, or has one beneath it in the source hierarchy, including through native instances. Display elements include placeholders and empty markers for unsupported geometry. A source inspector browses the live stage and uses the universe to tell which prims are displayed and selectable.
 
-- Membership uses the viewport destination's included purposes and evaluated visibility at the generation's time code. Content displayed only in the final render destination is not in the universe.
+- Membership uses the viewport destination's included purposes and evaluated visibility at the time code the display shows. Content displayed only in the final render destination is not in the universe.
 - Ancestors of displayed content are in the universe, including organizational prims that Hydra does not keep.
 - Prims with nothing displayed in their subtree are not in the universe: materials, shaders, empty organizational prims, and types without display support.
 - Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe. A later scene-graph inspector (Phase 3) may expose them; this contract does not.

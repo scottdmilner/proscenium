@@ -9,8 +9,10 @@ Part of the supported scene state. Cross-cutting guarantees are summarized in [i
 - Support matrix transforms, negative and nonuniform scale, and shear.
 - Preserve evaluated placement rather than reconstructing editable USD transform-operation stacks.
 - Diagnose approximations when exact representation is unavailable.
-- Evaluate supported time-varying values at the supplied time code, including topology changes.
-- A representation may treat USD time codes as Blender frames and may author Blender animation data, such as keyframes, mesh cache modifiers, or baked Geometry Nodes data, to display time-varying content. This is permitted, not preferred: M4 decides whether and where it is used, and records the time-code-to-frame mapping it uses.
+- Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes.
+- USD time code t is Blender frame t, its fraction a subframe, whatever the stage's time codes per second and the target scene's frame rate. Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included.
+- A display shows each time code cached in its generation ([Cached Time Codes](../pipeline.md#cached-time-codes)) at its frame, through Blender animation data, and at any other frame the latest cached time code before it, or before the earliest, the earliest. Interaction answers for the time code the display shows.
+- Design note (settled by M4): the DECISIONS.md row "Time-sampled data representation" records the animation data used and why.
 - Authored animation data and its caches are managed content under [Ownership and Lifecycle](../lifecycle.md#ownership-and-lifecycle).
 - Do not change the target scene's frame rate or playback range.
 

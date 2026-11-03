@@ -23,6 +23,7 @@ Applied to every end-to-end synchronization case expected to complete successful
 - An unchanged second synchronization keeps active display resource counts and source/display diagnostics stable under [Resource Stability](../spec/lifecycle.md#resource-stability). When disposal succeeds, total managed-resource counts also remain stable. Count inactive pending-cleanup resources separately; disposal failures may increase only those tracked counts and their current cleanup diagnostics.
 - Save and reopen preserves the display and correspondence without accessing the source.
 - Changing the time code or payload policy and resynchronizing gives the same result as a clean synchronization at the new settings.
+- Each sampled time code cached in a generation synchronized at another displays what a clean synchronization at it does, whatever the order of caching; a frame between cached time codes displays the latest one before it.
 
 ### Expected-Failure Checks
 
@@ -52,7 +53,7 @@ Matching model bounds do not establish correctness inside a model. Targeted sour
 
 ## Sampled Time Codes
 
-Synchronization must work **at any time code**. That remains a behavioral guarantee; the sampled set is evidence, not exhaustive proof. For each time-varying fixture it covers at least:
+Synchronization and caching must work **at any time code**. That remains a behavioral guarantee; the sampled set is evidence, not exhaustive proof. For each time-varying fixture it covers at least:
 
 - The stage's start and end time codes.
 - Interior samples, including a non-integer time code.

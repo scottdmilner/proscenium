@@ -1,6 +1,6 @@
 # M7 — Blender application and source inspection UI
 
-**Implements:** [Blender Application](../spec/pipeline.md#blender-application), the inspection and interaction behavior in [Source Inspection and Interaction](../spec/interaction.md#source-inspection-and-interaction), except correspondence through batching (M8) and instance-root selection (M10), the application side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion), display-correspondence persistence in [Persistence](../spec/lifecycle.md#persistence), and stale-content retirement and external-usage protection in [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle).
+**Implements:** [Blender Application](../spec/pipeline.md#blender-application), the inspection and interaction behavior in [Source Inspection and Interaction](../spec/interaction.md#source-inspection-and-interaction), except correspondence through batching (M8) and instance-root selection (M10), the application side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion), display-correspondence persistence in [Persistence](../spec/lifecycle.md#persistence), stale-content retirement and external-usage protection in [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle), and the display of cached time codes in [Cached Time Codes](../spec/pipeline.md#cached-time-codes) and [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), as M4's decision represents them (row "Time-sampled data representation"), except time-varying topology (M8).
 
 **Depends on:** M4 (partitioning decision and finalized interaction contract), M5 (application-layer interface, transaction, and stub tests), M6 (display plans).
 
@@ -25,5 +25,6 @@
 - `F-OFFLINE`: correspondence records unchanged through reopening with the source unavailable (REOPEN-07).
 - The M4 interaction checks against the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 - End-to-end tests using M6-generated plans.
+- Cached time codes: synchronized at one sampled time code and cached at the others in more than one order, each frame displays what a clean synchronization at its time code does, whether they were cached in one call or several, and a frame between them the latest before it, with interaction answering for that time code; the display caches nothing on its own (CACHE-01, CACHE-04, CACHE-08, CACHE-09, XFORM-11, XFORM-13, XFORM-14).
 
 **Exit condition:** the application layer displays and inspects plans, passes the M5 failure-injection suite and `F-UNMANAGED-USER`, and meets the boundary rule in Blender Application.
