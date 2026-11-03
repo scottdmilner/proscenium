@@ -1638,6 +1638,34 @@ requirements:
         quote: "The bounds check reuses decisions made elsewhere rather than making its own."
         delivery: M7
         qualified_by: M12
+      - id: ABND-03
+        quote: "each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-04
+        quote: "each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-05
+        quote: "a subdivision surface is compared as its control cage on both sides"
+        delivery: M8
+        qualified_by: M12
+      - id: ABND-06
+        quote: "lies within its USD-computed extent under its world transform and spans at least 90% of it on every axis"
+        delivery: M8
+        qualified_by: M12
+      - id: ABND-07
+        quote: "a bounding-box placeholder's eight corners are its usable bounds' corners under its world transform, compared corner by corner"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-08
+        quote: "empty markers and content without usable bounds are excluded from both sides"
+        delivery: M7
+        qualified_by: M12
+      - id: ABND-09
+        quote: "each face of a display box is within 1e-6 + 1e-5 × m of the expected box's in Blender world units"
+        delivery: M7
+        qualified_by: M12
 
   - section: testing/acceptance.md#production-scale-validation-alab
     kind: process

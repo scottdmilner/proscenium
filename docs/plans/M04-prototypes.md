@@ -660,6 +660,14 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
   - **For M5:** a batch's `covers` follows its points' order, so an element's instance is its position in them, the order picks read (D3); resource identities and roles come from the partitions (F1).
   - **For M7:** the destination collection's `hide_select` and the 3D views' hidden overlay settings are changed while Source Select is active, and a file saved then keeps them; whatever owns the display restores or ignores them on load.
   - **The check:** `blender/test_binding_state.py` round-trips cached time codes through a save and reopen, reads a record without them as none, and refuses unsorted ones, one at the generation's own time code, and any at the default time code.
+- **F4, the [bounds comparison contract](../testing/acceptance.md#bounds-comparison-contract) (with the user),** in DECISIONS.md "Bounds comparison contract and tolerances". It is the oracle of the standard end-to-end checks' bounds comparison (ASTD-02), which the tests run and the extension never does, so accuracy is chosen over its cost.
+  - **Per model, drawn copy, and destination,** with the display's vertices boxed in world space as correspondence assigns them, a batch's instances through their transforms (ABND-03).
+  - **Expected bounds from evaluated points** under USD's world transform (ABND-04), as M1 found `BBoxCache`'s transformed extents looser under rotation, and an authored extent may be stale. Its cost on ALab, whose meshes hold about 7.6 million points, isn't measured; M12 runs it once per sampled time code and payload policy.
+  - **Subdivision surfaces as their cages** on both sides (ABND-05), as the display holds them; displacement through a material moves no mesh positions.
+  - **Approximations** (ABND-06), an implicit shape's mesh or a NURBS patch's control hull, lie within their USD-computed extents and span at least 90% of them, the check the runtime record's implicit-shapes case already makes; their model's bounds lie between its exact content's box and that box joined with the approximations' extents.
+  - **Placeholders corner by corner** (ABND-07), from the usable bounds the placeholder shows; empty markers and content without usable bounds excluded (ABND-08); a model with nonfinite expected bounds left to its mesh classification.
+  - **Tolerance** (ABND-09): 1e-6 + 1e-5 × the largest absolute coordinate of the model's expected box, about a hundred 32-bit units in the last place at that magnitude, which Blender's positions and matrices are held in.
+  - **Rows:** ABND-01 is delivered by this record; M7 delivers the comparison (ABND-03, -04, -07 to -09) and M8 its subdivision and approximation cases (ABND-05, -06), all qualified by M12.
 
 ## Risk matrix
 

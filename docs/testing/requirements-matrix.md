@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-377 rows: 308 behavior, 17 contract, 52 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4.
+384 rows: 308 behavior, 17 contract, 59 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4.
 
 ## PROJECT.md
 
@@ -430,6 +430,13 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [ATIME-02](../testing/acceptance.md#sampled-time-codes) | Each time-varying fixture declares its topology and visibility transitions from how it is built | process |  | M6 | 1 / M12 | — | Set by M6. |
 | [ABND-01](../testing/acceptance.md#bounds-comparison-contract) | M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints | contract |  | M4 | 1 / M4 | — | The M4 decision record: the Bounds Comparison Contract in acceptance.md states, for the chosen representation, each item this row lists (M4 plan, F4). |
 | [ABND-02](../testing/acceptance.md#bounds-comparison-contract) | The bounds check reuses decisions made elsewhere rather than making its own. | process |  | M7 | 1 / M12 | — | Set by M7. |
+| [ABND-03](../testing/acceptance.md#bounds-comparison-contract) | each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too | process |  | M7 | 1 / M12 | — | Set by M7. |
+| [ABND-04](../testing/acceptance.md#bounds-comparison-contract) | each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed | process |  | M7 | 1 / M12 | — | Set by M7. |
+| [ABND-05](../testing/acceptance.md#bounds-comparison-contract) | a subdivision surface is compared as its control cage on both sides | process |  | M8 | 1 / M12 | — | Set by M8. |
+| [ABND-06](../testing/acceptance.md#bounds-comparison-contract) | lies within its USD-computed extent under its world transform and spans at least 90% of it on every axis | process |  | M8 | 1 / M12 | — | Set by M8. |
+| [ABND-07](../testing/acceptance.md#bounds-comparison-contract) | a bounding-box placeholder's eight corners are its usable bounds' corners under its world transform, compared corner by corner | process |  | M7 | 1 / M12 | — | Set by M7. |
+| [ABND-08](../testing/acceptance.md#bounds-comparison-contract) | empty markers and content without usable bounds are excluded from both sides | process |  | M7 | 1 / M12 | — | Set by M7. |
+| [ABND-09](../testing/acceptance.md#bounds-comparison-contract) | each face of a display box is within 1e-6 + 1e-5 × m of the expected box's in Blender world units | process |  | M7 | 1 / M12 | — | Set by M7. |
 | [AALAB-01](../testing/acceptance.md#production-scale-validation-alab) | A failure found in ALab is reproduced as a bespoke fixture before it is fixed. | process |  | M12 | 1 / M12 | — | Set by M12. |
 | [AALAB-02](../testing/acceptance.md#production-scale-validation-alab) | ALab passes the standard end-to-end checks at every sampled time code and under every payload policy | process |  | M12 | 1 / M12 | — | Set by M12. |
 | [AALAB-04](../testing/acceptance.md#production-scale-validation-alab) | The tree is pinned by alab/subtrees.sha256 and checked with tools/alab_checksums.py --check. | process |  | M1 | 1 / M1 | — | tools/alab_checksums.py --check passes on the tree (the alab-marked test in tests/bpy_free/test_alab_tools.py). |
