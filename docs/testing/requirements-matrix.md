@@ -60,7 +60,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CACHE-09](../spec/pipeline.md#cached-time-codes) | One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-02](../spec/pipeline.md#cached-time-codes) | Caching publishes no new generation. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-03](../spec/pipeline.md#cached-time-codes) | A call that fails caches none of its time codes and leaves the published generation as it was | behavior | **high** | M5 | 1 / M12 | — | Set by M5. |
-| [CACHE-04](../spec/pipeline.md#cached-time-codes) | variation the representation can't display is one that fails the call | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CACHE-10](../spec/pipeline.md#cached-time-codes) | A call never fails because of how content varies | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-05](../spec/pipeline.md#cached-time-codes) | If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-06](../spec/pipeline.md#cached-time-codes) | A generation synchronized at the USD default time code has no time-varying values | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-07](../spec/pipeline.md#cached-time-codes) | Synchronizing again produces a new generation, holding only its own time code. | behavior |  | M5 | 1 / M12 | — | Set by M5. |

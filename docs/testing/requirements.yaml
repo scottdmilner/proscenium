@@ -224,8 +224,8 @@ requirements:
       - id: CACHE-03
         quote: "A call that fails caches none of its time codes and leaves the published generation as it was"
         risk: high
-      - id: CACHE-04
-        quote: "variation the representation can't display is one that fails the call"
+      - id: CACHE-10
+        quote: "A call never fails because of how content varies"
         delivery: M7
       - id: CACHE-05
         quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"

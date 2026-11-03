@@ -25,6 +25,6 @@
 - `F-OFFLINE`: correspondence records unchanged through reopening with the source unavailable (REOPEN-07).
 - The M4 interaction checks against the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 - End-to-end tests using M6-generated plans.
-- Cached time codes: synchronized at one sampled time code and cached at the others in more than one order, each frame displays what a clean synchronization at its time code does, whether they were cached in one call or several, and a frame between them the latest before it, with interaction answering for that time code; the display caches nothing on its own (CACHE-01, CACHE-04, CACHE-08, CACHE-09, XFORM-11, XFORM-13, XFORM-14).
+- Cached time codes: synchronized at one sampled time code and cached at the others in more than one order, each frame displays what a clean synchronization at its time code does, whether they were cached in one call or several, and a frame between them the latest before it, with interaction answering for that time code; the display caches nothing on its own (CACHE-01, CACHE-08, CACHE-10, CACHE-09, XFORM-11, XFORM-13, XFORM-14).
 
 **Exit condition:** the application layer displays and inspects plans, passes the M5 failure-injection suite and `F-UNMANAGED-USER`, and meets the boundary rule in Blender Application.
