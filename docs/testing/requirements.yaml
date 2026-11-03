@@ -329,14 +329,22 @@ requirements:
     delivery: M3
     phase: 1
     rows:
+      - id: API-11
+        quote: "attach(stage, confirm=False) attaches the caller's stage to this binding and returns an immutable result."
+        fixtures: [F-REATTACH]
+        oracle: "Attachment returns success, a source-confirmation-required failure, or a refusal for an unreadable or disabled binding. Refusals leave the source and persistent records unchanged."
+      - id: API-12
+        quote: "release() drops this binding's source and evaluation stages and returns None."
+        fixtures: [F-REATTACH]
+        oracle: "Repeated release calls clear only the addressed binding's runtime stages, return None, and change no configuration, saved display, or other binding. Release works after undo or removal and for a handle whose identity is absent."
       - id: API-01
         quote: "Callers reach a binding through a binding handle: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state."
         fixtures: [F-BINDING-STATE]
         oracle: "A handle compares equal to one built from the same identifier, and stays usable across undo, redo, and save/reopen while its binding exists."
       - id: API-10
-        quote: "create_binding(scene, key, *, payload_policy=LOAD_ALL, name=None) creates an unattached binding with a nonempty string source key"
+        quote: "create_binding(scene, *, payload_policy=LOAD_ALL, name=\"USD Display\") creates an unattached binding"
         fixtures: [F-BINDING-STATE]
-        oracle: "Creation stores the given key and requested payload policy, creates a dedicated destination named for name or the key, and has no live or evaluation stage until attachment or acquisition. Empty and non-string keys raise before any Blender data is created."
+        oracle: "Creation stores the requested payload policy and creates a dedicated destination named for name, defaulting to USD Display. The binding has no live or evaluation stage until attachment or acquisition, and opens no source file."
       - id: API-02
         quote: "The time code is the attempt's, not a setting of the binding"
         fixtures: [F-BINDING-STATE]
@@ -346,14 +354,14 @@ requirements:
         fixtures: [F-BINDING-STATE]
         oracle: "set_settings changes the requested settings and nothing else: the published generation, last attempt, and live stage are unchanged, and no synchronization runs."
       - id: API-06
-        quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used."
+        quote: "A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for release()."
         fixtures: [F-BINDING-STATE]
-        oracle: "After a binding's creation is undone, every method of a handle to it raises, as does an equal handle made afterwards."
+        oracle: "After creation is undone, methods that need the binding records, including attach, raise for its handles. release remains idempotent and frees the runtime attachment retained for redo."
       - id: API-08
-        quote: "or binding removal, raises when used."
+        quote: "or binding removal, raises when used except for release()."
         delivery: M11
         fixtures: [F-BINDING-STATE]
-        oracle: "After a binding is removed, every method of a handle to it raises, as does an equal handle made afterwards."
+        oracle: "After a binding is removed, methods that need its records raise for its handles, while release can free any retained runtime attachment."
         note: "API-06's removal half: removing a binding is M11's lifecycle operation."
       - id: API-07
         quote: "reload(layers=None) rereads the binding's source layers from disk on request"
@@ -386,23 +394,23 @@ requirements:
     delivery: M3
     phase: 1
     rows:
-      - id: SID-03
-        quote: "A source key names one attached source within a .blend. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key."
-        note: "SID-03 to SID-07 replace SID-02 (retired), the contract row M3 settled."
+      - id: SID-08
+        quote: "Attaching or releasing a stage affects only the binding identified by the handle."
+        note: "SID-03 and SID-04 are retired; SID-02 remains retired. Attachment is addressed by binding identity."
         fixtures: [F-REATTACH]
-        oracle: "Attaching a stage under a key attaches it to both bindings created with that key, and not to a binding with another key."
-      - id: SID-04
-        quote: "Reattachment requires an exact key match."
+        oracle: "Two handles may attach the same stage; attaching or releasing through one changes only its stages and configuration. Another binding using the same root or source stage stays untouched."
+      - id: SID-09
+        quote: "Reattachment after reopening uses that binding's persistent identifier through its handle."
         fixtures: [F-REATTACH]
-        oracle: "Attaching under a key that differs from a binding's, even only in case or whitespace, leaves that binding unattached."
+        oracle: "After save/reopen, handles found through in_scene or rebuilt from their persistent identifiers address the same bindings. Explicit attachment restores only the addressed binding; every other binding stays unattached."
       - id: SID-05
         quote: "The root-layer identifier is informative only: it is never used to find the bindings for a stage."
         fixtures: [F-REATTACH]
-        oracle: "Attaching a stage whose root layer matches a binding's stored identifier, under a different key, does not attach it to that binding."
+        oracle: "Attaching a stage to another binding whose root layer matches this binding's stored identifier supplies no attachment to this binding."
       - id: SID-06
         quote: "Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged."
         fixtures: [F-REATTACH]
-        oracle: "Attaching a stage with a different root-layer identifier under an existing key fails without confirmation and leaves every binding's attachment unchanged; with confirmation it attaches, and the stored identifier becomes the new one."
+        oracle: "Attaching a stage with a different root-layer identifier fails without confirmation, reports a source-confirmation-required diagnostic, and changes no runtime attachment, saved record, or selection. With confirm=True it updates only the addressed binding and stores the new identifier."
       - id: SID-07
         quote: "Replacing the attached stage preserves stored source selections; they resolve against the next published generation."
         fixtures: [F-REATTACH]
@@ -486,15 +494,15 @@ requirements:
         quote: "The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a .blend is reopened."
         note: "Every source is attached (2026-11-03); SRC-01 is retired. MEM-01, MEM-02, MEM-04 to MEM-08, FILE-04, and FILE-08 remain retired from the 2026-10-18 source-contract consolidation."
         fixtures: [F-REATTACH]
-        oracle: "Creating a binding stores a source key and optional last attached root-layer identifier and opens no source stage. Synchronizing or reloading before attachment reports an unavailable source, even when the key names an existing file with an open stage. After reopening the caller must reattach; attachment makes that exact caller-supplied stage live."
+        oracle: "Creating a binding stores its settings and an optional last attached root-layer identifier, and opens no source stage. An existing file or another binding over the same root never supplies its attachment. After reopening, the caller restores a stage through the persistent handle."
       - id: SRC-02
-        quote: "The binding holds the attached stage until the caller releases it with release(key)"
+        quote: "The binding holds the attached stage until the caller calls its handle's release()"
         fixtures: [F-REATTACH]
-        oracle: "After the caller drops every reference to the attached stage, the binding still has it as its live stage and its layers stay loaded, unsaved edits included; after release(key), every binding with the key is unattached, the stage expires, and its layers are freed. A binding whose creation is undone keeps its attachment, drops its evaluation stage, and is attached again after redo; release(key) releases it meanwhile."
+        oracle: "After the caller drops all references, the binding keeps its source alive with its unsaved edits until its handle releases or replaces it. Release frees only that binding. Undo of creation retains attachment and drops evaluation; release still works while the binding is gone, so redo brings it back unattached after release."
       - id: SRC-03
         quote: "After a .blend is reopened, every binding reports its source as unavailable until the caller attaches a stage."
         fixtures: [F-REATTACH]
-        oracle: "After save/reopen, a binding with an attached source reports its source unavailable until a stage is attached under its key; refreshing it before then gives a diagnostic and changes no published state."
+        oracle: "After save/reopen every binding has no live stage and refuses synchronization without changing its saved display until the caller attaches a stage through that binding handle."
       - id: SRC-04
         quote: "Do not author changes to an attached stage's layers or change its stage settings"
         fixtures: [F-PRIVATE-STAGE]
@@ -1900,7 +1908,7 @@ excluded:
     quotes: ["Failure safety for synchronization is defined separately by the Synchronization Transaction."]
     reason: "Cross-reference."
   - section: spec/lifecycle.md#binding-state
-    quotes: ["Source information is the source key and the root-layer identifier of the stage last attached"]
+    quotes: ["Source information is the root-layer identifier of the stage last attached"]
     restates: [STATE-01]
   - section: spec/lifecycle.md#reopening
     quotes:
@@ -1951,7 +1959,7 @@ excluded:
     quotes: ["A synchronization binding associates a source with a dedicated managed destination collection"]
     reason: "Definition of a binding; its data model is M3's binding schema."
   - section: spec/source-access.md#source-identity
-    quotes: ["The key is the reattachment contract because the root-layer identifier of an anonymous or unsaved source does not survive the session."]
+    quotes: ["Callers may attach the same stage to several bindings or open separate stages over shared layers, including caller-authored anonymous overlays. Each binding is attached and released explicitly."]
     reason: "Explanation."
   - section: spec/source-access.md#canonical-candidate
     quotes:
@@ -2191,11 +2199,11 @@ excluded:
     quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.api.bindings."]
     reason: "Design record of M3's API, and a note for M5."
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Each method looks the binding up when it is called, and two handles are equal when their identifiers are."]
+    quotes: ["Methods that use the binding's records look it up when called; release addresses runtime state directly. Two handles are equal when their identifiers are."]
     restates: [API-01]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Operations that span bindings belong to the process's bindings, not to a handle"]
-    reason: "Design guidance for M3's API; SID-03 tests attaching under a key, and COPY-15 the report of copied bindings."
+    quotes: ["Operations that span bindings belong to the process's bindings"]
+    reason: "Design guidance for M3's API; COPY-15 covers the report of copied bindings."
   - section: spec/source-access.md#source-consistency
     quotes: ["The caller must not mutate an attached stage or its contributing layers during a synchronization."]
     reason: "Caller obligation; CONS-03 covers detectable violations."
@@ -2317,7 +2325,7 @@ excluded:
     quotes: ["Opening or synchronizing must not save or modify source USD files."]
     reason: "Scope: nothing in synchronization writes source files (see PROJ-01's exclusion)."
   - section: spec/source-access.md#source-identity
-    quotes: ["Source identity is persisted separately from source availability.", "A binding also stores the root-layer identifier of the stage last attached to it."]
+    quotes: ["Source identity is persisted separately from source availability.", "A binding stores the root-layer identifier of the stage last attached to it."]
     reason: "Design guidance for M3's schemas; traced by REOPEN-04, REOPEN-05, and SRC-03."
   - section: spec/lifecycle.md#ownership-and-lifecycle
     quotes: ["A resource has one owning binding but may cover many source entities and have many users."]
@@ -2329,7 +2337,7 @@ excluded:
     quotes: ["Duplicates are defined by source coverage and representation role"]
     reason: "Definition for M11's duplicate detection; OWN-10 tests it."
   - section: spec/lifecycle.md#binding-state
-    quotes: ["Runtime source attachment | The caller's stage attached under the binding's source key | No"]
+    quotes: ["Runtime source attachment | The caller's stage attached through the binding's handle | No"]
     reason: "True by construction: a caller's stage cannot be saved in a .blend."
   - section: spec/lifecycle.md#binding-state
     quotes: ["Runtime evaluation stage | Each binding's own stage composing the attached source's root and session layers | No"]

@@ -13,10 +13,19 @@ from . import bpy_blocker
 BLOCKER = Path(bpy_blocker.__file__)
 
 
-def test_proscenium_and_core_import_without_bpy() -> None:
+def test_bpy_free_packages_import_without_bpy() -> None:
     # A fresh interpreter, so modules imported earlier in this run cannot hide an import of bpy.
     proc = subprocess.run(
-        [sys.executable, str(BLOCKER), "proscenium", "--walk", "proscenium.core"],
+        [
+            sys.executable,
+            str(BLOCKER),
+            "proscenium",
+            "proscenium.results",
+            "--walk",
+            "proscenium.core",
+            "--walk",
+            "proscenium.source_access",
+        ],
         capture_output=True,
         text=True,
         check=False,

@@ -7,11 +7,10 @@ fixtures.scenes.copy_scene.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from pxr import Usd
 
-from proscenium.core.source_access import PayloadPolicy
+from proscenium.source_access import PayloadPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,9 +38,8 @@ def binding_on_file(
     payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
     name: str | None = None,
 ) -> BindingHandle:
-    """Open a copied fixture and attach its stage to a binding with an independent source key."""
+    """Open a copied fixture and attach its stage to a binding with independent runtime stages."""
     stage = open_fresh(root)
-    key = uuid4().hex
-    handle = bindings.create_binding(scene, key, payload_policy=payload_policy, name=name or root.stem)
-    bindings.attach(key, stage)
+    handle = bindings.create_binding(scene, payload_policy=payload_policy, name=name or root.stem)
+    bindings.attach(handle.binding_id, stage)
     return handle

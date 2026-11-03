@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
-from proscenium.core.binding_ids import BindingId
-from proscenium.core.source_access import PayloadPolicy, StageRegistry
+from proscenium.source_access import PayloadPolicy, StageRegistry
+from proscenium.source_access.binding_ids import BindingId
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,10 +22,9 @@ FIRST, SECOND = BindingId("first"), BindingId("second")
 def test_a_bindings_stages_are_made_once_and_reused() -> None:
     registry = StageRegistry()
     assert registry.get(FIRST) is None
-    first, second = (registry.attached(binding_id, "shot") for binding_id in (FIRST, SECOND))
-    assert first.source_key == second.source_key == "shot"
+    first, second = (registry.attached(binding_id) for binding_id in (FIRST, SECOND))
     assert first is not second
-    assert (registry.attached(FIRST, "shot"), registry.attached(SECOND, "shot")) == (first, second)
+    assert (registry.attached(FIRST), registry.attached(SECOND)) == (first, second)
     assert (registry.get(FIRST), registry.get(SECOND)) == (first, second)
     assert FIRST in registry
     assert BindingId("other") not in registry
@@ -34,7 +33,7 @@ def test_a_bindings_stages_are_made_once_and_reused() -> None:
 def test_attaching_another_root_keeps_the_binding_and_drops_its_evaluation(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        stages = registry.attached(FIRST, "shot")
+        stages = registry.attached(FIRST)
         stages.attach(scene.caller)
         first = stages.acquire(PayloadPolicy.LOAD_ALL)
         stages.attach(scene.other_root)
@@ -49,9 +48,9 @@ def test_attaching_another_root_keeps_the_binding_and_drops_its_evaluation(tmp_p
 def test_an_attached_source_keeps_its_attachment(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        stages = registry.attached(FIRST, "shot")
+        stages = registry.attached(FIRST)
         stages.attach(scene.caller)
-        assert registry.attached(FIRST, "shot").live_stage == scene.caller
+        assert registry.attached(FIRST).live_stage == scene.caller
 
 
 def _pruned(tmp_path: Path, existing: set[BindingId]) -> dict[BindingId, tuple[bool, bool, bool]]:
@@ -59,7 +58,7 @@ def _pruned(tmp_path: Path, existing: set[BindingId]) -> dict[BindingId, tuple[b
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
         for binding_id in (FIRST, SECOND):
-            stages = registry.attached(binding_id, "shot")
+            stages = registry.attached(binding_id)
             stages.attach(scene.caller)
             stages.acquire(PayloadPolicy.LOAD_ALL)
         registry.prune(existing)
@@ -83,17 +82,17 @@ def test_prune_keeps_a_gone_attached_bindings_attachment(tmp_path: Path) -> None
     assert _pruned(tmp_path, {FIRST})[SECOND] == (True, False, True)
 
 
-def test_release_reaches_every_binding_with_the_key(tmp_path: Path) -> None:
-    # SRC-02: stages whose binding is gone included, since they keep their attachment.
+def test_release_reaches_only_the_addressed_binding_even_after_pruning(tmp_path: Path) -> None:
     with source_access.reattach(tmp_path) as scene:
         registry = StageRegistry()
-        with_key = [registry.attached(binding_id, "shot") for binding_id in (BindingId("a"), BindingId("b"))]
-        other = registry.attached(BindingId("c"), "other")
-        for stages in (*with_key, other):
+        first, second = (registry.attached(binding_id) for binding_id in (FIRST, SECOND))
+        for stages in (first, second):
             stages.attach(scene.caller)
             stages.acquire(PayloadPolicy.LOAD_ALL)
-        registry.prune({BindingId("b"), BindingId("c")})  # "a" is gone
-        registry.release("shot")
-        assert [(s.live_stage, s.evaluation_stage) for s in with_key] == [(None, None), (None, None)]
-        assert other.live_stage == scene.caller
-        assert other.evaluation_stage is not None
+        registry.prune({SECOND})
+        registry.release(FIRST)
+        registry.release(FIRST)
+        registry.release(BindingId("unknown"))
+        assert (first.live_stage, first.evaluation_stage) == (None, None)
+        assert second.live_stage == scene.caller
+        assert second.evaluation_stage is not None

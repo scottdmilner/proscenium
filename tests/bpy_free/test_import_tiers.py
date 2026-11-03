@@ -12,12 +12,16 @@ import proscenium
 
 PACKAGE = Path(proscenium.__file__).parent
 
-# What each tier may import from proscenium; modules at the package's top level, such as addon, may import any.
+# What each tier, and each bpy-free package or module below them, may import from proscenium. Other modules at the
+# package's top level, such as addon, may import any.
+BELOW_TIERS = {"core", "source_access", "results"}
 ALLOWED = {
     "core": {"core"},
-    "persistence": {"persistence", "core"},
-    "runtime": {"runtime", "persistence", "core"},
-    "api": {"api", "runtime", "persistence", "core"},
+    "source_access": {"source_access"},
+    "results": {"results"},
+    "persistence": {"persistence", *BELOW_TIERS},
+    "runtime": {"runtime", "persistence", *BELOW_TIERS},
+    "api": {"api", "runtime", "persistence", *BELOW_TIERS},
 }
 
 
@@ -60,8 +64,8 @@ def _crosses(name: str, tier: str) -> bool:
 
 
 def _tier(path: Path) -> str | None:
-    parts = path.relative_to(PACKAGE).parts
-    return parts[0] if len(parts) > 1 and parts[0] in ALLOWED else None
+    parts = path.relative_to(PACKAGE).with_suffix("").parts
+    return parts[0] if parts[0] in ALLOWED else None
 
 
 def test_tiers_import_only_below() -> None:

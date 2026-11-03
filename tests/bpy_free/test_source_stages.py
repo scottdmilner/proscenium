@@ -10,7 +10,7 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
-from proscenium.core.source_access import (
+from proscenium.source_access import (
     BindingStages,
     PayloadPolicy,
     SourceUnavailableError,
@@ -70,7 +70,7 @@ def test_session_layer_opinions_are_displayed(tmp_path: Path) -> None:
 
 
 def test_unavailable_source() -> None:
-    source = BindingStages("shot")
+    source = BindingStages()
     with pytest.raises(SourceUnavailableError):
         source.acquire(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage is None

@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from ..core.binding_ids import BindingId
-from ..core.requested_settings import RequestedSettings
+from ..source_access.binding_ids import BindingId
+from ..source_access.requested_settings import RequestedSettings
 from . import records
 from .records import RefusedRecord, RefusedRecordError, Schema
 
@@ -37,9 +37,8 @@ INDEX_NAME = ".proscenium"
 
 @dataclass(frozen=True, slots=True)
 class BindingConfig:
-    """A binding's configuration: its source, its destination, and its requested settings."""
+    """A binding's configuration: its last attached root identifier, destination, and requested settings."""
 
-    source_key: str
     settings: RequestedSettings
     root_layer_identifier: str | None = None  # of the stage last attached; informative only
     destination: bpy.types.Collection | None = None  # None once the destination is removed
@@ -49,8 +48,6 @@ class BindingConfig:
             object.__setattr__(self, "settings", RequestedSettings(**self.settings))
         if not isinstance(self.settings, RequestedSettings):
             raise TypeError("the requested settings are not a group")
-        if type(self.source_key) is not str or not self.source_key:
-            raise ValueError("a source key must be a nonempty string")
         if not isinstance(self.root_layer_identifier, str | None):
             raise TypeError("the root-layer identifier is not a string")
         if not isinstance(self.destination, bpy.types.Collection | None):

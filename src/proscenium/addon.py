@@ -1,4 +1,4 @@
-"""Blender registration. Imports bpy, so proscenium.core never imports this module."""
+"""Blender registration. Imports bpy, so no bpy-free module imports this one."""
 
 import bpy
 from bpy.app.handlers import persistent
@@ -26,7 +26,7 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    bindings.BINDINGS.drop_all_stages()
+    bindings.drop_all_stages()
     runtime.invalidate()
 
 
@@ -40,7 +40,7 @@ def _data_changing(*_args: object) -> None:
 @persistent
 def _undone_or_redone(*_args: object) -> None:
     runtime.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
-    bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
+    bindings.prune_stages()  # at once, so an undone binding's stages are freed without waiting
 
 
 def register() -> None:

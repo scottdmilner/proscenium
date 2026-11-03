@@ -1,7 +1,7 @@
 """The synchronization API's entry point, acquisition only (source-access.md#synchronization-api).
 
 Through binding handles over a fresh process state per test, on bindings in the factory scene.
-Their records, save/reopen, undo, and the key contract are in test_bindings.py.
+Their records, save/reopen, undo, and the attachment contract are in test_bindings.py.
 """
 
 from __future__ import annotations
@@ -25,10 +25,10 @@ from proscenium.api.bindings import (
     ResultState,
     Severity,
 )
-from proscenium.core.binding_ids import BindingId
-from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, records
 from proscenium.runtime import state
+from proscenium.source_access import PayloadPolicy
+from proscenium.source_access.binding_ids import BindingId
 from support import undo
 from support.usd import binding_on_file, open_fresh
 
@@ -108,8 +108,8 @@ def test_a_reload_before_any_synchronization_opens_under_the_requested_policy(
 def test_a_reload_after_attaching_opens_under_the_policy_requested_since(bindings: Bindings, tmp_path: Path) -> None:
     # Attaching makes the binding's source before any evaluation stage; the policy comes from the configuration.
     caller = open_fresh(_root(tmp_path))
-    handle = bindings.create_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
     source = bindings.stages.get(handle.binding_id)
@@ -120,7 +120,7 @@ def test_a_reload_after_attaching_opens_under_the_policy_requested_since(binding
 
 
 def test_set_settings_before_attachment_opens_nothing(bindings: Bindings) -> None:
-    handle = bindings.create_binding(_scene(), "shot")
+    handle = bindings.create_binding(_scene())
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.live_stage() is None
     assert bindings.stages.get(handle.binding_id) is None
@@ -131,8 +131,8 @@ def test_an_unchanged_configuration_is_not_written(
 ) -> None:
     # Setting nothing, or attaching the stage a binding already stored, leaves Blender data alone.
     caller = open_fresh(_root(tmp_path))
-    handle = bindings.create_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     written: list[str] = []
     write = records.write
 
@@ -141,7 +141,7 @@ def test_an_unchanged_configuration_is_not_written(
         write(id_, key, *args)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(records, "write", counted)
-    assert bindings.attach("shot", caller).attached == (handle.binding_id,)
+    assert handle.attach(caller) == Result(ResultState.SUCCESS)
     assert handle.set_settings() == Result(ResultState.SUCCESS)
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result(ResultState.SUCCESS)  # the default
     assert written == []
@@ -150,7 +150,7 @@ def test_an_unchanged_configuration_is_not_written(
 
 
 def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
-    handle = bindings.create_binding(_scene(), "shot")
+    handle = bindings.create_binding(_scene())
     for result in (handle.synchronize(0), handle.reload()):
         assert result.state == ResultState.FATAL_FAILURE
         assert [(d.category, d.severity) for d in result.diagnostics] == [
@@ -188,31 +188,34 @@ def test_reload_rejects_other_layers(bindings: Bindings, tmp_path: Path) -> None
         handle.reload([str(tmp_path / "unknown.usda")])
 
 
-def test_attaching_under_a_key(bindings: Bindings, tmp_path: Path) -> None:
+def test_attaching_through_a_handle(bindings: Bindings, tmp_path: Path) -> None:
     root = _root(tmp_path)
     caller = open_fresh(root)
-    handle = bindings.create_binding(_scene(), "shot")
-    assert bindings.attach("shot", caller).attached == (handle.binding_id,)
+    handle = bindings.create_binding(_scene())
+    assert handle.attach(caller) == Result(ResultState.SUCCESS)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     assert handle.live_stage() == caller
 
 
-def test_releasing_under_a_key(bindings: Bindings, tmp_path: Path) -> None:
-    # SRC-02: release(key) leaves every binding with the key unattached; others keep their stage.
-    caller = open_fresh(_root(tmp_path))
-    first, second = (bindings.create_binding(_scene(), "shot") for _ in range(2))
-    other = bindings.create_binding(_scene(), "other")
-    bindings.attach("shot", caller)
-    bindings.attach("other", caller)
-    for handle in (first, second, other):
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    assert bindings.release("shot") == (first.binding_id, second.binding_id)
-    for handle in (first, second):
-        assert handle.live_stage() is None
-        assert [d.category for d in handle.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
-    assert other.live_stage() == caller
-    assert bindings.attach("shot", caller).attached == (first.binding_id, second.binding_id)  # attachable again
-    assert first.synchronize(0) == Result(ResultState.SUCCESS)
+def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) -> None:
+    # SRC-02, API-12, SID-08: independent lifetimes even when stages are shared.
+    with source_access.reattach(tmp_path) as scene:
+        caller = scene.caller
+        first, second = (bindings.create_binding(_scene()) for _ in range(2))
+        for handle in (first, second):
+            assert handle.attach(caller) == Result(ResultState.SUCCESS)
+            assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        second_evaluation = _evaluation(bindings, second)
+        before = records.stored(_scene(), binding_records.config_key(first.binding_id))
+        assert first.release() is None
+        assert first.release() is None
+        assert records.stored(_scene(), binding_records.config_key(first.binding_id)) == before
+        assert first.live_stage() is None
+        assert [d.category for d in first.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+        assert second.live_stage() == caller
+        assert _evaluation(bindings, second) == second_evaluation
+        assert first.attach(caller) == Result(ResultState.SUCCESS)
+        assert first.synchronize(0) == Result(ResultState.SUCCESS)
 
 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -233,7 +236,7 @@ def test_an_undo_with_no_sources_rebuilds_nothing_in_its_handler(
 ) -> None:
     # Bindings exist, but none has been synchronized this session: nothing to prune.
     undo.require_global_undo()
-    handle = bindings.create_binding(_scene(), "shot")
+    handle = bindings.create_binding(_scene())
     undo.push("base")
     bpy.data.objects.new("Unrelated", None)
     undo.push("edit")
@@ -264,12 +267,12 @@ def test_pruning_compares_the_scenes_once(bindings: Bindings, tmp_path: Path, mo
 
 def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
     # UNDO-06: undo neither restores nor removes attachments. The binding's evaluation stage goes; the
-    # attachment stays for redo, and release(key) still releases it while the binding doesn't exist.
+    # attachment stays for redo, and handle.release() still releases it while the binding doesn't exist.
     undo.require_global_undo()
     caller = open_fresh(_root(tmp_path))
     undo.push("base")
-    handle = bindings.create_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     source = bindings.stages.get(handle.binding_id)
     assert source is not None
@@ -281,8 +284,11 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     assert handle.live_stage() == caller
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     undo.undo()
-    assert bindings.release("shot") == ()  # no binding with the key exists
+    assert handle.release() is None  # the record no longer exists
     assert source.live_stage is None
+    undo.redo()
+    assert handle.live_stage() is None
+    assert handle.synchronize(0).state is ResultState.FATAL_FAILURE
 
 
 def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
@@ -300,6 +306,9 @@ def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, 
     assert source.evaluation_stage is None
     assert source.live_stage == caller
     assert bindings.stages.get(kept.binding_id) is not None
+    assert removed.release() is None
+    assert (source.live_stage, source.evaluation_stage) == (None, None)
+    assert kept.live_stage() is not None
 
 
 @pytest.mark.parametrize("unusable", ["unreadable", "disabled"])
@@ -327,9 +336,9 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
 def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
     # ICON-07, ICON-34: callers may attach a cached stage; evaluation never substitutes it for the live stage.
     with source_access.cached_stage(tmp_path) as scene:
-        handle = bindings.create_binding(_scene(), "shot")
+        handle = bindings.create_binding(_scene())
         assert handle.live_stage() is None
-        bindings.attach("shot", scene.ambient)
+        handle.attach(scene.ambient)
         assert handle.live_stage() == scene.ambient  # before any synchronization
         assert UsdUtils.StageCache.Get().Contains(scene.ambient)
         handle.synchronize(0)
@@ -342,6 +351,7 @@ def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> No
 def test_a_handle_to_no_binding_raises(bindings: Bindings) -> None:
     handle = BindingHandle(BindingId("not-a-binding"))
     calls = [
+        lambda: handle.attach(Usd.Stage.CreateInMemory()),
         lambda: handle.synchronize(0),
         lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
         handle.reload,
@@ -351,3 +361,5 @@ def test_a_handle_to_no_binding_raises(bindings: Bindings) -> None:
     for call in calls:
         with pytest.raises(BindingNotFoundError):
             call()
+
+    assert handle.release() is None

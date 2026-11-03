@@ -24,19 +24,21 @@ Binding configuration must not cross-contaminate other bindings. Opening or sync
 
 ## Synchronization API
 
-Callers reach a binding through a **binding handle**: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. Each method looks the binding up when it is called, and two handles are equal when their identifiers are.
+Callers reach a binding through a **binding handle**: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. Methods that use the binding's records look it up when called; `release` addresses runtime state directly. Two handles are equal when their identifiers are.
 
 - `synchronize(time_code=None)` synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)). The time code is the attempt's, not a setting of the binding: the caller derives it at each synchronization, and the attempt uses the binding's requested settings.
 - `cache(time_codes)` caches the published generation's time-varying values at each given time code without synchronizing ([Cached Time Codes](pipeline.md#cached-time-codes)), and returns an immutable result as `synchronize` does. `time_codes` is a collection of USD time codes, such as a frame range; one time code is a collection of one.
 - The requested settings (payload policy, conversion, purpose, UV-set names) change only through `set_settings(...)`, which records them without synchronizing.
 - `reload(layers=None)` rereads the binding's source layers from disk on request ([Layer State and Reloading](#layer-state-and-reloading)) without synchronizing; the next synchronization displays them.
+- `attach(stage, confirm=False)` attaches the caller's stage to this binding and returns an immutable result. A different stored root-layer identifier requires `confirm=True`; without it the result is a fatal failure with a source-confirmation-required diagnostic and nothing changes.
+- `release()` drops this binding's source and evaluation stages and returns `None`. It is idempotent, changes no persistent records or saved display, and remains valid after undo or removal of the binding.
 - `synchronize` returns an immutable result: its result state and deduplicated diagnostics ([Diagnostics](pipeline.md#diagnostics)). An expected failure, such as an unavailable source, is a result, not an exception.
-- A handle whose binding no longer exists, for example after undo or binding removal, raises when used.
+- A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for `release()`.
 - Exceptions report misuse only, such as a call made during another synchronization.
 
-Operations that span bindings belong to the process's bindings, not to a handle: creating a binding, finding a scene's bindings, reporting copied bindings ([Copied Bindings](#copied-bindings)), and attaching a stage under a source key or releasing it ([Source Identity](#source-identity), [Source Stages](#source-stages)).
+Operations that span bindings belong to the process's bindings: creating a binding, finding a scene's bindings, and reporting copied bindings ([Copied Bindings](#copied-bindings)). Attachment and release belong to each binding's handle.
 
-`create_binding(scene, key, *, payload_policy=LOAD_ALL, name=None)` creates an unattached binding with a nonempty string source key and a dedicated destination named for `name`, or the key when no name is given. It opens no source stage; the caller attaches one separately.
+`create_binding(scene, *, payload_policy=LOAD_ALL, name="USD Display")` creates an unattached binding with a dedicated destination named for `name`. It opens no source stage; the caller attaches one through the returned handle.
 
 Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
@@ -48,15 +50,15 @@ Design note (settled by M3; M5 settles the result's fields): the API is `proscen
 
 ## Source Identity
 
-Source identity is persisted separately from source availability. Every binding has an **attached source**, named by a **source key**: a string the caller chooses when it creates the binding, under which it attaches the source stage ([Source Stages](#source-stages)). A binding also stores the root-layer identifier of the stage last attached to it.
+Source identity is persisted separately from source availability. Every binding has an **attached source**, a caller-supplied stage attached through its handle ([Source Stages](#source-stages)). A binding stores the root-layer identifier of the stage last attached to it.
 
-- A source key names one attached source within a `.blend`. Several bindings may share a key; attaching a stage under a key attaches it to every binding with that key.
-- Reattachment requires an exact key match.
+- Attaching or releasing a stage affects only the binding identified by the handle.
+- Reattachment after reopening uses that binding's persistent identifier through its handle.
 - The root-layer identifier is informative only: it is never used to find the bindings for a stage.
 - Attaching a stage whose root-layer identifier differs from the stored one requires explicit confirmation from the caller. Without it, the attachment fails and the bindings are unchanged.
 - Replacing the attached stage preserves stored source selections; they resolve against the next published generation.
 
-The key is the reattachment contract because the root-layer identifier of an anonymous or unsaved source does not survive the session.
+Callers may attach the same stage to several bindings or open separate stages over shared layers, including caller-authored anonymous overlays. Each binding is attached and released explicitly.
 
 ## Copied Bindings
 
@@ -91,8 +93,8 @@ An attached binding has a **source stage**: the caller-supplied stage its source
 
 Requirements:
 
-- The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a `.blend` is reopened. Binding configuration identifies its source by a source key and the last attached root-layer identifier; a binding never opens or restores its source stage itself.
-- The binding holds the attached stage until the caller releases it with `release(key)`, which releases it from every binding with that key, or attaches another stage under the key; loading a `.blend` releases it too. The caller dropping its own references doesn't release it: until then the stage stays alive with its layers and their unsaved edits, which a stage opened on the same files sees. A released binding is unattached. A binding that no longer exists, as after undo of its creation, keeps its attachment until then, so redo brings it back attached, and `release(key)` still releases it; its other runtime stages are dropped. Replacing the stage follows the [Source Identity](#source-identity) rules.
+- The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a `.blend` is reopened. Binding configuration stores the last attached root-layer identifier; a binding never opens or restores its source stage itself.
+- The binding holds the attached stage until the caller calls its handle's `release()` or attaches another stage; loading a `.blend` releases it too. Dropping the caller's own references doesn't release it: until then the stage stays alive with its layers and unsaved edits. A released binding is unattached. A binding that no longer exists, as after undo of its creation, keeps its attachment until release or file load, so redo brings it back attached, and its handle can still release it; its evaluation stage is dropped. Replacing the stage follows the [Source Identity](#source-identity) rules.
 - After a `.blend` is reopened, every binding reports its source as unavailable until the caller attaches a stage. Refreshing an unattached binding produces a diagnostic and preserves the saved display.
 - Do not author changes to an attached stage's layers or change its stage settings, including load state, population mask, layer muting, and edit target. A reload the caller requests is the one change to its layers ([Layer State and Reloading](#layer-state-and-reloading)).
 - Evaluate the source stage's composed content as the source stage presents it, including the opinions in its session layer and the anonymous layers beneath it, except that the binding's payload policy replaces the source stage's load rules.

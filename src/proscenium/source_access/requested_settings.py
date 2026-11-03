@@ -5,7 +5,7 @@ The binding's configuration holds them (proscenium.persistence.binding_records),
 
 from dataclasses import dataclass
 
-from .source_access import PayloadPolicy
+from .binding_stages import PayloadPolicy
 
 
 @dataclass(frozen=True, slots=True)

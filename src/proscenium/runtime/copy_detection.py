@@ -1,9 +1,9 @@
 """Copied-binding detection (source-access.md#copied-bindings).
 
 identities() finds each binding identity's candidates in the records the bindings' state holds, and the
-canonical-candidate rule's decision on them (proscenium.core.canonical_candidate). A candidate is one of the identity's
-binding records, one per local scene, or a local collection tagged with the identity that no record names, as a
-collection duplicated on its own is. report() describes an identity that isn't unique.
+canonical-candidate rule's decision on them (proscenium.source_access.canonical_candidate). A candidate is one of
+the identity's binding records, one per local scene, or a local collection tagged with the identity that no record
+names, as a collection duplicated on its own is. report() describes an identity that isn't unique.
 
 Detection reads only the state's records, and never writes: whether a binding is disabled is derived from the records
 each time they are read, never stored, so it survives save and reopen and no copy carries it.
@@ -14,23 +14,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..core.canonical_candidate import (
+from ..persistence.binding_records import BindingIndex, DestinationTag
+from ..persistence.records import RefusedRecord
+from ..source_access.canonical_candidate import (
     UNREADABLE_INDEX_ENTRY,
     CandidateEvidence,
     DecisionReason,
     UnreadableIndexEntry,
     decide,
 )
-from ..persistence.binding_records import BindingIndex, DestinationTag
-from ..persistence.records import RefusedRecord
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     import bpy
 
-    from ..core.binding_ids import BindingId
-    from ..core.canonical_candidate import CanonicalDecision
+    from ..source_access.binding_ids import BindingId
+    from ..source_access.canonical_candidate import CanonicalDecision
     from .state import BindingRecord, DestinationRecords, State
 
     Entry = int | None | UnreadableIndexEntry  # what one binding index says about an identity (decide)

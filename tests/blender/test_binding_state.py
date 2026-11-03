@@ -12,8 +12,6 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.core.results import Diagnostic, DiagnosticCategory, ResultState, Severity
-from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, manifests, records
 from proscenium.persistence.binding_state import Generation, LastAttempt
 from proscenium.persistence.manifests import Manifest, ManifestEntry
@@ -25,6 +23,8 @@ from proscenium.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
+from proscenium.results import Diagnostic, DiagnosticCategory, ResultState, Severity
+from proscenium.source_access import PayloadPolicy
 from support.blend import save_and_reopen
 from support.usd import binding_on_file
 

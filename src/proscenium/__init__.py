@@ -1,8 +1,9 @@
 """Proscenium: one-way synchronization of composed OpenUSD stages into Blender.
 
-This module must stay importable without bpy so proscenium.core, the compiled
-core and its bpy-free Python, can be tested outside Blender. Blender-facing code
-is imported only on register, through proscenium.addon.
+This module must stay importable without bpy so the bpy-free code below the tiers,
+proscenium.core (the compiled core), proscenium.source_access, and proscenium.results,
+can be tested outside Blender. Blender-facing code is imported only on register,
+through proscenium.addon.
 """
 
 

@@ -9,7 +9,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 - Bindings never cross-contaminate each other's configuration, stage state, or resources. → [Bindings and Source Access](source-access.md#bindings-and-source-access) (BIND-10)
 - Synchronization is synchronous and non-reentrant. → [Source Consistency](source-access.md#source-consistency) (CONS-01)
 - Bindings display their source's layers as loaded in the process, unsaved edits included, and synchronization never reloads them. A reload happens only on request, may discard unsaved edits, and is the only effect source access has that other stages can observe, apart from holding an attached stage until the caller releases it. → [Layer State and Reloading](source-access.md#layer-state-and-reloading), [Source Stages](source-access.md#source-stages) (LAYER-01, LAYER-03, LAYER-06, SRC-02)
-- Every source is a caller-supplied attachment under a source key; callers acquire and restore stages. Each binding evaluates its own reused stage without changing the caller's settings. → [Source Identity](source-access.md#source-identity), [Source Stages](source-access.md#source-stages) (SID-03, SRC-04, SRC-06, SRC-09, SRC-10)
+- Each binding's handle attaches and releases only its own caller-supplied source; callers acquire and restore stages. Release remains valid after undo or removal. Each binding evaluates its own reused stage without changing the caller's settings. → [Synchronization API](source-access.md#synchronization-api), [Source Identity](source-access.md#source-identity), [Source Stages](source-access.md#source-stages) (API-12, SID-08, SID-09, SRC-04, SRC-06, SRC-09, SRC-10)
 
 ## Layer Boundaries
 

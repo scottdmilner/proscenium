@@ -4,16 +4,18 @@ How `src/proscenium/` is arranged so its structure shows in the tree, and how it
 
 ## Tiers
 
-The Blender-facing code is three tiers. Each imports only the tiers below it, and `core/` is below all three:
+The Blender-facing code is three tiers. Each imports only the tiers below it, and the bpy-free code, `core/`, `source_access/`, and `results.py`, is below all three:
 
 | Package | Holds | May import |
 |---|---|---|
-| `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) | `runtime`, `persistence`, `core` |
-| `runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) | `persistence`, `core` |
-| `persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) | `core` |
-| `core/` | Everything that imports without `bpy`: the compiled core, source access, the canonical-candidate rule, source-entity identifiers, results and diagnostics | `core` |
+| `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) | `runtime`, `persistence`, and the bpy-free code |
+| `runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) | `persistence`, and the bpy-free code |
+| `persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) | the bpy-free code |
+| `core/` | The compiled core: its C++ source and built module | `core` |
+| `source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers | `source_access` |
+| `results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) | nothing |
 
-`addon.py` registers the extension and its handlers, which drive `runtime` and `api`, so it may import any of them. `core/` is a different axis from the three tiers: it holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays there. The tiers are called packages or tiers, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
+`addon.py` registers the extension and its handlers, which drive `runtime` and `api`, so it may import any of them. The bpy-free code is a different axis from the three tiers: it holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called packages or tiers, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
 
 A `bpy_free` test reads every module's imports with `ast`, without importing it, and fails on an import against this table.
 
@@ -25,9 +27,9 @@ src/proscenium/
   addon.py
   api/
     __init__.py
-    bindings.py                Bindings, BINDINGS, BindingHandle, RequestedSettings, AttachResult
+    bindings.py                Bindings, BINDINGS, BindingHandle, RequestedSettings
   runtime/
-    __init__.py                the public lookups and writes
+    __init__.py                what api and addon call, and the errors that reach their callers
     state.py                   the state, tracking, rebuilding, and the checks of held references
     binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
     ownership_index.py         Claim, each destination's claims, manifest lookups and writes
@@ -39,22 +41,24 @@ src/proscenium/
     manifests.py               ManifestEntry, Manifest, and their records
     binding_state.py           Generation, LastAttempt
     selection.py               PersistentSelection
-  core/
-    results.py                 Result, ResultState, Diagnostic, DiagnosticCategory, Severity
+  results.py                   Result, ResultState, Diagnostic, DiagnosticCategory, Severity
+  core/                        the compiled core: _core and its C++ source
+  source_access/
+    binding_stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
+    stage_registry.py          StageRegistry
+    binding_ids.py             BindingId
     canonical_candidate.py     the canonical-candidate rule
+    requested_settings.py      RequestedSettings
     source_entities.py
-    source_access/
-      binding_stages.py        BindingStages, PayloadPolicy, SourceUnavailableError
-      stage_registry.py        StageRegistry
 ```
 
-Module names are unique across the tiers, and named for the spec section they implement where there is one, as `canonical_candidate.py` is for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`, and `copy_detection.py`, beside `copied_bindings()`.
+Module names are unique across the tiers, and named for the spec section they implement where there is one, as `canonical_candidate.py` is for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface, exporting only what `api/` and `addon.py` call and the errors that reach their callers. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`, and `copy_detection.py`, beside `copied_bindings()`.
 
 ## Conventions
 
 These go in AGENTS.md's Style section:
 
-- **One concept per word, the Glossary's where it has one.** A bare `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_key`, `candidate` for one record or copy of a binding identity.
+- **One concept per word, the Glossary's where it has one.** A bare `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
 - **Spec terms keep their meaning.** *Generation* is a published generation, *layer* a USD layer or a pipeline layer, *synchronization* one attempt, and *claim* and *candidate* what the spec defines. None names anything else.
 - **Exceptions end in `Error`**, so they aren't mistaken for values (ruff's N818, without `noqa`).
 - **A type names its domain:** `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
@@ -89,7 +93,7 @@ These go in AGENTS.md's Style section:
 
 ### Stored field names
 
-A record's field names are its stored keys. Binding configuration version 1 stores `source_key`, `root_layer_identifier`, `destination`, and `settings`.
+A record's field names are its stored keys. Binding configuration version 1 stores `root_layer_identifier`, `destination`, and `settings`.
 
 ## Semantics
 
@@ -116,7 +120,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 10. **`DiagnosticCategory`.**
 11. **A disabled binding reported in band** by runtime lookups.
 12. **The API:** `api/synchronization.py` to `api/bindings.py`, its class, instance, and methods, with the spec, matrix, and DECISIONS.md changes above.
-13. **The binding record**, at version 1, with its source key, last attached root-layer identifier, destination, and requested settings.
+13. **The binding record**, at version 1, with its last attached root-layer identifier, destination, and requested settings.
 14. **AGENTS.md's Style section** gains the conventions.
 
 ## Decision log

@@ -5,7 +5,8 @@ Used two ways:
 - As a script, it imports modules in a fresh interpreter with Blender modules
   blocked; tests/bpy_free/test_no_blender_imports.py uses this for proscenium itself:
 
-      python tests/bpy_free/bpy_blocker.py proscenium --walk proscenium.core
+      python tests/bpy_free/bpy_blocker.py proscenium proscenium.results \
+          --walk proscenium.core --walk proscenium.source_access
 
 Blender modules are recognized by where they come from, not by name:
 - Modules loaded from the bpy wheel's package dir: bpy itself (bpy/__init__.so)
@@ -92,7 +93,7 @@ class _BlockBlender(importlib.abc.MetaPathFinder):
             if spec is not None:
                 if is_blender_origin(spec.origin):
                     raise ImportError(
-                        f"{fullname} is a Blender module; tests/bpy_free and proscenium.core must not import it"
+                        f"{fullname} is a Blender module; tests/bpy_free and bpy-free code must not import it"
                     )
                 break
         # Modules created by bpy's C code (mathutils, ...) have no finder; once hidden

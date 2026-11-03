@@ -1,6 +1,6 @@
 # `proscenium`
 
-The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, and its code in four packages.
+The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, and its code: three tiers of Blender-facing packages, and the bpy-free code below them.
 
 | Path | Holds |
 |---|---|
@@ -10,17 +10,19 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `runtime/` | Disposable in-memory state built from `persistence/`'s records. |
 | `persistence/` | Versioned records in Blender ID properties. |
-| `core/` | Everything that imports without `bpy`, including the compiled core's C++ source. |
+| `core/` | The compiled core: its C++ source and the built module. |
+| `source_access/` | The stages a binding reads its source from, and the binding identifiers, canonical-candidate rule, requested settings, and source-entity identifiers they're found and made by. |
+| `results.py` | What operations on a binding report: `Result`, `ResultState`, `Diagnostic`, `DiagnosticCategory`, and `Severity` ([Diagnostics](../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. |
 
 ## Import rules
 
-The Blender-facing code is three tiers, each importing only the tiers below it, with `core/` below all three ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
+The Blender-facing code is three tiers, each importing only the tiers below it, with the bpy-free code, `core/`, `source_access/`, and `results.py`, below all three ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
 
 | Package | May import |
 |---|---|
-| `api/` | `runtime`, `persistence`, `core` |
-| `runtime/` | `persistence`, `core` |
-| `persistence/` | `core` |
-| `core/` | `core` only, and never `bpy` |
+| `api/` | `runtime`, `persistence`, `core`, `source_access`, `results` |
+| `runtime/` | `persistence`, `core`, `source_access`, `results` |
+| `persistence/` | `core`, `source_access`, `results` |
+| `core/`, `source_access/`, `results.py` | each only itself, and never `bpy` |
 
-`addon.py` may import any of them. `tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and `tests/bpy_free/test_no_blender_imports.py` checks that `proscenium` and `proscenium.core` import with Blender's modules blocked.
+`addon.py` may import any of them. `tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and `tests/bpy_free/test_no_blender_imports.py` checks that `proscenium` and the bpy-free code import with Blender's modules blocked.

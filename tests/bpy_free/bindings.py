@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.core.source_access import BindingStages
+from proscenium.source_access import BindingStages
 
 if TYPE_CHECKING:
     from pxr import Usd
 
 
 def binding(caller: Usd.Stage) -> BindingStages:
-    """A binding with caller attached under the source key 'shot'."""
-    stages = BindingStages("shot")
+    """A binding with caller attached through its handle."""
+    stages = BindingStages()
     stages.attach(caller)
     return stages

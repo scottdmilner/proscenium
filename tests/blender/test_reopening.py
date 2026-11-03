@@ -22,13 +22,15 @@ from proscenium.api.bindings import (
     Bindings,
     DiagnosticCategory,
     RequestedSettings,
+    Result,
     ResultState,
 )
-from proscenium.core.source_access import PayloadPolicy
 from proscenium.persistence import binding_records, binding_state, records
 from proscenium.persistence.binding_state import LastAttempt
 from proscenium.persistence.manifests import Manifest, ManifestEntry
 from proscenium.persistence.records import Loaded
+from proscenium.runtime import ownership_index
+from proscenium.source_access import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 from support.usd import binding_on_file
@@ -37,8 +39,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.core.binding_ids import BindingId
     from proscenium.persistence.binding_records import BindingConfig
+    from proscenium.source_access.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -61,7 +63,7 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
     config = _config(handle)
     destination = _destination(handle)
-    manifest = runtime.manifest(handle.binding_id)
+    manifest = ownership_index.manifest(handle.binding_id)
     assert isinstance(manifest, Loaded)
     entries = {
         key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses)
@@ -118,17 +120,17 @@ def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -
 
 def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
     # F-OFFLINE "unattached": the caller's stage was attached when saving, and still exists, but reopening
-    # leaves nothing attached under the key.
+    # leaves the binding unattached.
     with source_access.offline(tmp_path) as scene:
         caller = scene.open_caller()
-        handle = bindings.create_binding(_scene(), scene.key, name="Shot")
-        bindings.attach(scene.key, caller)
+        handle = bindings.create_binding(_scene(), name="Shot")
+        handle.attach(caller)
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
         _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
         assert handle.live_stage() is None
-        assert bindings.attach(scene.key, caller).attached == (handle.binding_id,)
+        assert handle.attach(caller) == Result(ResultState.SUCCESS)
         assert handle.live_stage() == caller
         assert _saved(handle) == saved  # attachment alone does not publish or modify the saved display
         assert handle.synchronize(0).state is ResultState.SUCCESS
@@ -151,8 +153,8 @@ def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConf
     assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
     assert _index_entry(handle.binding_id) == (True, None)
     # DEST-04: no manifest, so no resources, and the object it displayed claims no owner.
-    assert runtime.manifest(handle.binding_id) is None
-    assert runtime.ownership(bpy.data.objects["Managed"]).claims == ()
+    assert ownership_index.manifest(handle.binding_id) is None
+    assert ownership_index.ownership(bpy.data.objects["Managed"]).claims == ()
     # DEST-02: a fatal failure, with no evaluation stage made and no destination created.
     collections = set(bpy.data.collections.keys())
     stages = bindings.stages.get(handle.binding_id)
@@ -173,10 +175,10 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         obj = bpy.data.objects.new("Managed", None)
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)
-        runtime.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+        ownership_index.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
-        assert runtime.ownership(obj).claims != ()
+        assert ownership_index.ownership(obj).claims != ()
         before = _config(handle)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)

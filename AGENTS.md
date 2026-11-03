@@ -21,9 +21,11 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 ## Layout
 
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
-  - `proscenium/__init__.py` and `proscenium/core/` must import without `bpy`.
-  - `proscenium/core/` also holds the compiled core's C++ source. See [Compiled core](#compiled-core).
-  - Blender-facing code is in three tiers, each importing only the tiers below it and `core/` ([plan](docs/plans/source-tiers-and-names.md#tiers)):
+  - The bpy-free code, below the tiers, must import without `bpy`, as must `proscenium/__init__.py`:
+    - `proscenium/core/`: the compiled core, its C++ source and built module. See [Compiled core](#compiled-core).
+    - `proscenium/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
+    - `proscenium/results.py`: results and diagnostics.
+  - Blender-facing code is in three tiers, each importing only the tiers below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)):
     - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
     - `proscenium/runtime/`: disposable in-memory state built from the records.
     - `proscenium/persistence/`: versioned records in ID properties.
@@ -60,7 +62,7 @@ Tests and probes that need the Blender binary find it through the `BLENDER` env 
 
 M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECISIONS.md) "Evaluation front end and core language"). It holds evaluation, the snapshot, planning, source-side diagnostics, and Phase 2 comparison. Everything that touches Blender stays in Python. The display plan is the one boundary: an immutable object whose large arrays Python reads without copying.
 
-- **Source:** C++ in `src/proscenium/core/`, beside that package's Python. The manifest's `[build]` patterns keep C++ sources and CMake files out of the zip; only the built module ships, in the same package.
+- **Source:** C++ in `src/proscenium/core/`, which holds only the compiled core: its C++, its type stubs, and the `__init__.py` that loads what it links. The manifest's `[build]` patterns keep C++ sources and CMake files out of the zip; only the built module ships, in the same package.
 - **Build:** through `tools/build_extension.py`, from `src/proscenium/core/` only: one zip per platform, built on that platform, against the dependency headers of the Blender release `uv.lock` pins, and linked only to Blender's bundled `usd_ms`. The module (`proscenium.core._core`, ignored by `core/.gitignore`) is built into that package. Only the zip's copy of the manifest names the platform and sets `blender_version_max`, so each zip supports one Blender minor version (5.2.x). CI builds Linux's on Blender's glibc floor (manylinux_2_28). The Hydra bridge in `tools/feasibility/` is test code and never goes through it. Both build through `tools/native_build.py` (toolsets and the linkage audit) and `tools/blender_deps.py` (the pinned headers); the core's and the bridge's CMakeLists.txt set the same flags.
 - **Boundary rules** (M1b findings):
   - Every entry point turns Tf errors and C++ exceptions into Python exceptions.
@@ -102,7 +104,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Classes declare their typed attributes in the class body, above `__init__`.
 - Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
 - Names:
-  - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `source_key`, `candidate` for one record or copy of a binding identity.
+  - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
   - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source tiers are tiers, never layers.
   - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
   - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.

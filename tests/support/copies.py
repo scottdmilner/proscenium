@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.core.binding_ids import BindingId
+    from proscenium.source_access.binding_ids import BindingId
 
 
 def run(route: str, tmp_path: Path) -> None:

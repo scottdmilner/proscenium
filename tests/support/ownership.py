@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium import runtime
 from proscenium.persistence import binding_records, manifests
 from proscenium.persistence.records import Loaded
-from proscenium.runtime import Claim
+from proscenium.runtime import ownership_index
+from proscenium.runtime.ownership_index import Claim
 
 if TYPE_CHECKING:
-    from proscenium.core.binding_ids import BindingId
+    from proscenium.source_access.binding_ids import BindingId
 
 
 def claims() -> dict[bpy.types.ID, list[Claim]]:
@@ -50,4 +50,4 @@ def assert_agrees() -> None:
     """Assert the ownership index's claims are the oracle's, as sets, for every datablock of every type."""
     expected = claims()
     for id_ in bpy.data.user_map().keys() | expected.keys():
-        assert set(runtime.ownership(id_).claims) == set(expected.get(id_, [])), id_
+        assert set(ownership_index.ownership(id_).claims) == set(expected.get(id_, [])), id_

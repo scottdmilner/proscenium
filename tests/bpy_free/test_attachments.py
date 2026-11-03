@@ -1,6 +1,6 @@
 """An attached binding's stages in the runtime registry: held until released or replaced (SRC-02).
 
-The key contract reads the binding records, so its tests are in tests/blender/test_bindings.py.
+The attachment contract reads the binding records, so its tests are in tests/blender/test_bindings.py.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium.core.binding_ids import BindingId
-from proscenium.core.source_access import PayloadPolicy, SourceUnavailableError, StageRegistry
+from proscenium.source_access import PayloadPolicy, SourceUnavailableError, StageRegistry
+from proscenium.source_access.binding_ids import BindingId
 from support.usd import open_fresh
 
 if TYPE_CHECKING:
@@ -26,9 +26,9 @@ EXPIRY_WAIT = 2.0
 
 def test_the_binding_holds_its_attached_stage_until_released(tmp_path: Path) -> None:
     # Dropping the caller's references releases nothing: the stage and its unsaved edits stay loaded.
-    # release(key) lets the stage expire and its layers go, and leaves the binding unattached.
+    # release(binding_id) lets the stage expire and its layers go, and leaves the binding unattached.
     registry = StageRegistry()
-    stages = registry.attached(BindingId("a"), "shot")
+    stages = registry.attached(BindingId("a"))
     with source_access.reattach(tmp_path) as scene:
         caller = open_fresh(scene.root)  # this test's own stage, so it holds the only caller reference
         caller.SetEditTarget(caller.GetSessionLayer())
@@ -42,7 +42,7 @@ def test_the_binding_holds_its_attached_stage_until_released(tmp_path: Path) -> 
         layer = Sdf.Layer.Find(session)
         assert layer is not None and layer.GetPrimAtPath("/Edited") is not None
         del layer
-        registry.release("shot")
+        registry.release(BindingId("a"))
         deadline = time.monotonic() + EXPIRY_WAIT
         while Sdf.Layer.Find(session) and time.monotonic() < deadline:  # the session layer goes with its stage
             gc.collect()
@@ -58,7 +58,7 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path,
     # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
     # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
     with source_access.reattach(tmp_path) as scene:
-        stages = StageRegistry().attached(BindingId("a"), "shot")
+        stages = StageRegistry().attached(BindingId("a"))
         stages.attach(scene.caller)
         evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
         stages.attach(scene.caller)
@@ -81,7 +81,7 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path,
 def test_attaching_another_stage_over_the_same_layers_reuses_evaluation(tmp_path: Path) -> None:
     # SRC-10: evaluation belongs to the root and session layers, independently of the source stage's identity.
     with source_access.reattach(tmp_path) as scene:
-        stages = StageRegistry().attached(BindingId("a"), "shot")
+        stages = StageRegistry().attached(BindingId("a"))
         stages.attach(scene.caller)
         evaluation = stages.acquire(PayloadPolicy.LOAD_NONE)
         with Usd.StageCacheContext(Usd.BlockStageCaches):

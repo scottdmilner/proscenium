@@ -134,7 +134,7 @@ Each entry links to the section that defines the term in full.
 | **Requested settings / last attempt** | The settings the user has asked for, and the record of the most recent synchronization attempt and its result. Both are kept separate from the published generation. See [Binding State](spec/lifecycle.md#binding-state). |
 | **Payload policy** | Load-all or load-no-payload. |
 | **Contributing layer** | Any layer that contributes opinions to the composed stage, whether through its layer stack or through composition arcs. |
-| **Attached source** | A binding's source: a stage a caller acquires and attaches under a source key. See [Source Identity](spec/source-access.md#source-identity). |
+| **Attached source** | A binding's source: a stage a caller acquires and attaches through its handle. See [Source Identity](spec/source-access.md#source-identity). |
 | **Source stage / evaluation stage** | The stage a binding's source is composed on, which is also its live stage, and the stage the binding evaluates, which composes the source stage's root and session layers, so it shares their opinions but not the source stage's settings. Each binding has its own evaluation stage, distinct from the attached source stage. See [Source Stages](spec/source-access.md#source-stages). |
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |

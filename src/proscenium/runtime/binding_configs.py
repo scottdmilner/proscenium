@@ -9,30 +9,21 @@ binding that isn't usable raises.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from ..core.canonical_candidate import DecisionReason
 from ..persistence import binding_records, records
 from ..persistence.records import RefusedRecord, RefusedRecordError
+from ..source_access.canonical_candidate import DecisionReason
 from . import copy_detection, state
 from .state import StaleError
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..core.binding_ids import BindingId
     from ..persistence.binding_records import BindingConfig
+    from ..source_access.binding_ids import BindingId
     from .copy_detection import CopiedBinding, IdentityCandidates
     from .state import BindingRecord, State
-
-
-class BindingStatus(StrEnum):
-    """Whether a binding can be used: whatever needs its configuration needs it usable."""
-
-    USABLE = "usable"
-    UNREADABLE = "unreadable"  # its configuration can't be read
-    DISABLED = "disabled"  # it has copies and no canonical candidate
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,13 +35,6 @@ class FoundBinding:
     config: BindingConfig | None  # its configuration, if it is usable
     unreadable: RefusedRecord | None  # why its configuration can't be read, if it can't
     copies: CopiedBinding | None  # its candidates, and why none is canonical, if it is disabled
-
-    @property
-    def status(self) -> BindingStatus:
-        """Whether the binding can be used, and if not, why."""
-        if self.copies is not None:
-            return BindingStatus.DISABLED
-        return BindingStatus.UNREADABLE if self.unreadable is not None else BindingStatus.USABLE
 
     @property
     def usable(self) -> bool:

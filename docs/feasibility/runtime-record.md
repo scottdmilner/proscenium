@@ -898,9 +898,9 @@ ALab's payloads hold all of its displayed content, so without them nothing is di
 The first ownership lookup after an undo or redo, with the baseline's display as a binding's manifest, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes ownership`.
 
 **Method** (`measure/ownership_timing.py`):
-- **The manifest:** the child applies the display into a binding's destination, made through M3's API, and writes its manifest with `runtime.set_manifest`. There is one entry per object, shear parent, placeholder mesh, mesh, and material. An object's entry covers its source and uses its mesh and materials; a mesh's or material's covers its users' sources.
+- **The manifest:** the child applies the display into a binding's destination, made through M3's API, and writes its manifest with `ownership_index.set_manifest`. There is one entry per object, shear parent, placeholder mesh, mesh, and material. An object's entry covers its source and uses its mesh and materials; a mesh's or material's covers its users' sources.
 - **The undo steps:** with global undo on, it pushes a step, then five times moves one object, pushes a step, undoes it, and redoes it.
-- **The lookups:** after each undo and redo it times `runtime.ownership()` of an object no step changed, found by name before the clock starts, then again, cached. Each undo and redo dropped the bindings' state, so each first lookup rebuilt it: `rebuild_count` changed three times per undo or redo in every run.
+- **The lookups:** after each undo and redo it times `ownership_index.ownership()` of an object no step changed, found by name before the clock starts, then again, cached. Each undo and redo dropped the bindings' state, so each first lookup rebuilt it: `rebuild_count` changed three times per undo or redo in every run.
 - **Statistics:** three processes per scene after a warmup; each process's median of its repeats, as a median and range over the processes.
 
 | Operation (ms) | Repeats per run | updates-100 | updates-1000 | ALab | updates-10000 |

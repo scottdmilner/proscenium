@@ -73,7 +73,7 @@ tests/
 
 `bpy_free/conftest.py` blocks Blender modules (`bpy`, `bmesh`, `mathutils`, ...) while this layer's test files are imported and while each of its tests runs. A test here that imports one fails with `ImportError`. Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything bpy's C code creates at import (see `bpy_blocker.py`). Modules already loaded by blender-layer tests in the same worker are hidden for the duration, so the block holds in mixed runs too.
 
-`test_no_blender_imports.py` checks the rule from [AGENTS.md](../AGENTS.md#layout) directly: `proscenium` and every `proscenium.core` module import in a fresh interpreter with Blender blocked.
+`test_no_blender_imports.py` checks the rule from [AGENTS.md](../AGENTS.md#layout) directly: `proscenium`, `proscenium.results`, and every `proscenium.core` and `proscenium.source_access` module import in a fresh interpreter with Blender blocked.
 
 ### `blender/`
 

@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from ..core.binding_ids import BindingId
     from ..persistence.manifests import ManifestEntry
+    from ..source_access.binding_ids import BindingId
     from .state import DestinationRecords, State
 
 

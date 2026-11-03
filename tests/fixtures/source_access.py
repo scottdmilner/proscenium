@@ -20,7 +20,7 @@ and leaves everyone else's state alone:
   and a stage over a copy of the scene, whose root layer differs. Source Identity
   and Source Stages.
 - binding_state (F-BINDING-STATE): a scene and a caller's
-  stage to attach under a source key, for tests of bindings' records, handles,
+  stage to attach to a binding, for tests of bindings' records, handles,
   save/reopen, and undo. Binding State and Synchronization API.
 - offline (F-OFFLINE): a source to move away before reopening, and the saved display
   a binding on it published. Reopening.
@@ -273,7 +273,7 @@ class ReattachScene:
 
 @contextmanager
 def reattach(dest: Path) -> Generator[ReattachScene]:
-    """F-REATTACH: stages to attach under a source key, release, and replace.
+    """F-REATTACH: stages to attach to a binding, release, and replace.
 
     The tests release the caller's stage themselves, by dropping every reference to it.
     Reopening a .blend with the source missing is the binding records' (M3 Phase D).
@@ -323,8 +323,7 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
 @dataclass
 class BindingStateScene:
     root: Path  # the caller's root-layer file
-    caller: Usd.Stage  # over root, for an attached binding under KEY
-    key: str
+    caller: Usd.Stage  # over root, for bindings to attach
     values: dict[str, float | None]  # what both compose, load-all
 
 
@@ -335,7 +334,7 @@ def binding_state(dest: Path) -> Generator[BindingStateScene]:
     The tests make the bindings in Blender data themselves, since the generator runs without bpy.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest) / "root.usda"
-    yield BindingStateScene(root=root, caller=open_fresh(root), key="shot", values=dict(DISK))
+    yield BindingStateScene(root=root, caller=open_fresh(root), values=dict(DISK))
 
 
 @dataclass(frozen=True)
@@ -372,11 +371,10 @@ DISPLAY = SavedDisplay(
 @dataclass
 class OfflineScene:
     root: Path  # a binding's source, until move_away
-    key: str  # an attached binding's source key
     display: SavedDisplay
 
     def open_caller(self) -> Usd.Stage:
-        """A caller's stage over root, to attach under key. Held, it keeps root's layers open after move_away."""
+        """A caller's stage over root, to attach to a binding. Held, it keeps root's layers open after move_away."""
         return open_fresh(self.root)
 
     def move_away(self) -> None:
@@ -392,4 +390,4 @@ def offline(dest: Path) -> Generator[OfflineScene]:
     M9 adds materials with image textures, whose files move away too.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
-    yield OfflineScene(root=root, key="shot", display=DISPLAY)
+    yield OfflineScene(root=root, display=DISPLAY)

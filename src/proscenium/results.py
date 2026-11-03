@@ -18,9 +18,10 @@ class ResultState(StrEnum):
 
 
 class DiagnosticCategory(StrEnum):
-    """Diagnostic categories synchronization reports so far (pipeline.md#diagnostics)."""
+    """Diagnostic categories binding operations report so far (pipeline.md#diagnostics)."""
 
     UNAVAILABLE_SOURCE = "unavailable source"
+    SOURCE_CONFIRMATION_REQUIRED = "source confirmation required"
     SOURCE_STATE = "source state"  # informational: it doesn't change the result state
     UNSUPPORTED_RECORD = "unsupported record"  # the binding's configuration can't be read
     REMOVED_DESTINATION = "removed destination"  # fatal: the binding has nowhere to display (lifecycle.md)
@@ -58,3 +59,8 @@ class Result:
 
     state: ResultState
     diagnostics: tuple[Diagnostic, ...] = ()
+
+    @property
+    def is_success(self) -> bool:
+        """Whether the operation succeeded."""
+        return self.state == ResultState.SUCCESS

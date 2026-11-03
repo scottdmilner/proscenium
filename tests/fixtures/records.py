@@ -76,7 +76,6 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
     # A valid configuration whose destination was removed (a cleared pointer).
     binding = {
-        "source_key": "shot",
         "root_layer_identifier": "/shot.usda",
         "destination": None,
         "settings": {"payload_policy": "load_all"},
@@ -109,7 +108,7 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         },
         bindings={
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
-            "no-key": {VERSION_KEY: 1, **binding, "source_key": None},
+            "invalid-root": {VERSION_KEY: 1, **binding, "root_layer_identifier": 7},
             "unknown-policy": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_some"}},
             "no-settings": {
                 VERSION_KEY: 1,
@@ -123,7 +122,7 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         },
         bindings_refused={
             "newer": RefusalReason.NEWER,
-            "no-key": RefusalReason.INVALID,
+            "invalid-root": RefusalReason.INVALID,
             "unknown-policy": RefusalReason.INVALID,
             "unknown-field": RefusalReason.INVALID,
             "no-settings": RefusalReason.INVALID,

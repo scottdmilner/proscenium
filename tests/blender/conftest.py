@@ -55,5 +55,5 @@ def bindings(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generato
     Its handlers keep the bindings' in-memory state current (proscenium.runtime).
     """
     fresh = Bindings()
-    monkeypatch.setattr("proscenium.api.bindings.BINDINGS", fresh)
+    monkeypatch.setattr("proscenium.api.bindings._BINDINGS", fresh)
     yield fresh

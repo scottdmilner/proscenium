@@ -5,7 +5,7 @@ state; nothing is evaluated, planned, applied, or published yet.
 
 A binding's configuration is its records (proscenium.persistence.binding_records), held and written through the
 bindings' in-memory state (proscenium.runtime). Its stages and attachment are runtime state, never saved, in
-Bindings.stages (proscenium.runtime.CurrentStages), made from the configuration on first use.
+Bindings.stages (proscenium.runtime.CurrentStages), created unattached on first use.
 
 A binding refuses the operations that need its configuration when the configuration can't be read
 (lifecycle.md#schema-versions), or when the binding has copies and no canonical candidate, which disables it
@@ -14,10 +14,11 @@ binding's canonical candidate, and copied() reports the others.
 
 Each kind of call reports a refusal one way:
 
-- An operation (synchronize, set_settings, reload) returns a result whose diagnostic says why.
+- An operation (attach, synchronize, set_settings, reload) returns a result whose diagnostic says why.
 - The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
   DisabledBindingError for a disabled binding (FoundBinding.usable_config).
-- A call keyed by binding identifier raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
+- A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
+- Release clears runtime stages directly and remains valid after undo or removal.
 """
 
 from __future__ import annotations
@@ -29,24 +30,24 @@ from typing import TYPE_CHECKING
 from pxr import Usd
 
 from .. import runtime
-from ..core.requested_settings import RequestedSettings
-from ..core.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
-from ..core.source_access import (
+from ..persistence.binding_records import BindingConfig
+from ..results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
+from ..runtime import CurrentStages
+from ..source_access import (
     PayloadPolicy,
     SourceUnavailableError,
     dirty_layers,
 )
-from ..persistence.binding_records import BindingConfig
-from ..runtime import CurrentStages
+from ..source_access.requested_settings import RequestedSettings
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import bpy
 
-    from ..core.binding_ids import BindingId
-    from ..core.source_access import BindingStages
     from ..runtime import CopiedBinding, FoundBinding
+    from ..source_access import BindingStages
+    from ..source_access.binding_ids import BindingId
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
@@ -54,48 +55,42 @@ class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
 
 
 @dataclass(frozen=True, slots=True)
-class AttachResult:
-    """What attach(key, stage) did: attached the stage, or refused.
-
-    - Refused, when a binding with the key stored another root-layer identifier and confirm wasn't passed: unconfirmed
-      lists those bindings, and attached is empty.
-    - Attached: attached lists the bindings with the key whose configuration can be read and isn't disabled, possibly
-      none, and unconfirmed is empty.
-    """
-
-    attached: tuple[BindingId, ...]  # the bindings the stage is now attached to
-    unconfirmed: tuple[BindingId, ...]  # the bindings whose stored root-layer identifier differs from the stage's
-
-
-@dataclass(frozen=True, slots=True)
 class BindingHandle:
-    """How callers reach a binding: its persistent identifier, never a datablock or cached state.
+    """How callers reach a binding: its persistent identifier.
 
-    Each method looks the binding up when it is called, and raises BindingNotFoundError once the
-    binding is gone. Two handles are equal when their identifiers are.
+    Methods needing records look the binding up and raise BindingNotFoundError once it is gone.
+    Release also works after removal or undo. Two handles are equal when their identifiers are.
     """
 
     binding_id: BindingId
 
+    def attach(self, stage: Usd.Stage, *, confirm: bool = False) -> Result:
+        """Attach a caller-owned stage to this binding, confirming a changed root identifier explicitly."""
+        return _BINDINGS.attach(self.binding_id, stage, confirm=confirm)
+
+    def release(self) -> None:
+        """Release this binding's source and evaluation stages, including after removal or undo."""
+        _BINDINGS.release(self.binding_id)
+
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code (Bindings.synchronize)."""
-        return BINDINGS.synchronize(self.binding_id, time_code)
+        return _BINDINGS.synchronize(self.binding_id, time_code)
 
     def set_settings(self, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing (Bindings.set_settings)."""
-        return BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
+        return _BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request (Bindings.reload)."""
-        return BINDINGS.reload(self.binding_id, layers)
+        return _BINDINGS.reload(self.binding_id, layers)
 
     def requested_settings(self) -> RequestedSettings:
         """The settings the binding's next synchronization uses (Bindings.requested_settings)."""
-        return BINDINGS.requested_settings(self.binding_id)
+        return _BINDINGS.requested_settings(self.binding_id)
 
     def live_stage(self) -> Usd.Stage | None:
         """The binding's live stage, which callers inspect (Bindings.live_stage)."""
-        return BINDINGS.live_stage(self.binding_id)
+        return _BINDINGS.live_stage(self.binding_id)
 
 
 class Bindings:
@@ -109,14 +104,13 @@ class Bindings:
     def create_binding(
         self,
         scene: bpy.types.Scene,
-        key: str,
         *,
         payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
-        name: str | None = None,
+        name: str = "USD Display",
     ) -> BindingHandle:
-        """A binding on scene whose source a caller attaches under key, with a new destination named name (or key)."""
-        config = BindingConfig(key, RequestedSettings(payload_policy))
-        return self._create(scene, config, name or key)
+        """Create an unattached binding on scene with a new destination named name."""
+        config = BindingConfig(RequestedSettings(payload_policy))
+        return self._create(scene, config, name)
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene.
@@ -130,35 +124,27 @@ class Bindings:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
         return runtime.copied_bindings()
 
-    def attach(self, key: str, stage: Usd.Stage, *, confirm: bool = False) -> AttachResult:
-        """Attach stage to every binding whose attached source has this exact key (source-access.md#source-identity).
-
-        If any of them stored a root-layer identifier other than stage's, the caller must pass
-        confirm=True; otherwise no binding changes, and the result lists those bindings. A binding
-        whose configuration can't be read is never attached.
-        """
+    def attach(self, binding_id: BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
+        """Attach stage to one binding, requiring confirmation when its stored root identifier differs."""
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        config = found.usable_config()
         identifier = stage.GetRootLayer().identifier
-        matching = _attached_with_key(key)
-        unconfirmed = tuple(
-            binding_id for binding_id, config in matching if config.root_layer_identifier not in (None, identifier)
-        )
-        if unconfirmed and not confirm:
-            return AttachResult(attached=(), unconfirmed=unconfirmed)  # before any change, so none is made
+        if config.root_layer_identifier not in (None, identifier) and not confirm:
+            diagnostic = Diagnostic(
+                DiagnosticCategory.SOURCE_CONFIRMATION_REQUIRED,
+                Severity.ERROR,
+                "The attached stage has a different root-layer identifier; pass confirm=True to replace it",
+            )
+            return Result(ResultState.FATAL_FAILURE, (diagnostic,))
+        runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
+        self.stages.attached(binding_id).attach(stage)
+        return Result(ResultState.SUCCESS)
 
-        for binding_id, config in matching:
-            self.stages.attached(binding_id, key).attach(stage)
-            runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
-        return AttachResult(attached=tuple(binding_id for binding_id, _ in matching), unconfirmed=())
-
-    def release(self, key: str) -> tuple[BindingId, ...]:
-        """Release the stage attached under key from every binding with that key, which leaves them unattached.
-
-        The bindings hold an attached stage, and the layers it composes, until this, another attach,
-        or a file load (source-access.md#source-stages). Returns the bindings with the key.
-        """
-        # Through the stages, not the bindings: a binding that no longer exists keeps its attachment (prune_stages()).
-        self.stages.release(key)
-        return tuple(binding_id for binding_id, _ in _attached_with_key(key))
+    def release(self, binding_id: BindingId) -> None:
+        """Release one binding's runtime stages; its persistent record need not exist."""
+        self.stages.release(binding_id)
 
     def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
@@ -191,7 +177,7 @@ class Bindings:
         if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
             return _removed_destination(binding_id)
         try:
-            dirty = dirty_layers(self._stages(binding_id, config).acquire(config.settings.payload_policy))
+            dirty = dirty_layers(self._stages(binding_id).acquire(config.settings.payload_policy))
         except SourceUnavailableError as error:
             return _unavailable(error)
         diagnostics = ()
@@ -210,7 +196,7 @@ class Bindings:
             return _refused(found)
         config = found.usable_config()
         try:
-            self._stages(binding_id, config).reload(config.settings.payload_policy, layers)
+            self._stages(binding_id).reload(config.settings.payload_policy, layers)
         except SourceUnavailableError as error:
             return _unavailable(error)
         return Result(ResultState.SUCCESS)
@@ -238,15 +224,9 @@ class Bindings:
             raise BindingNotFoundError(binding_id)
         return found
 
-    def _stages(self, binding_id: BindingId, config: BindingConfig) -> BindingStages:
-        """The binding's stages, made from its source key on first use."""
-        return self.stages.attached(binding_id, config.source_key)
-
-
-def _attached_with_key(key: str) -> list[tuple[BindingId, BindingConfig]]:
-    """The usable bindings whose attached source has this exact key, with their configurations."""
-    configs = [(found.binding_id, found.usable_config()) for found in runtime.find_bindings() if found.usable]
-    return [(binding_id, config) for binding_id, config in configs if config.source_key == key]
+    def _stages(self, binding_id: BindingId) -> BindingStages:
+        """The binding's stages, created unattached on first use."""
+        return self.stages.attached(binding_id)
 
 
 def _unavailable(error: SourceUnavailableError) -> Result:
@@ -274,4 +254,14 @@ def _refused(found: FoundBinding) -> Result:
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
 
 
-BINDINGS = Bindings()  # the process's bindings, which handles use
+_BINDINGS = Bindings()  # the process's bindings, which handles use
+
+
+def drop_all_stages() -> None:
+    """Drop every binding's stages, leaving each with no source stage or attachment (CurrentStages.clear)."""
+    _BINDINGS.drop_all_stages()
+
+
+def prune_stages() -> None:
+    """Drop evaluation stages of bindings that no longer exist (CurrentStages.prune)."""
+    _BINDINGS.prune_stages()

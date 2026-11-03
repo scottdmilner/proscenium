@@ -214,11 +214,12 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         sys.path.insert(0, str(HERE.parents[3] / "src"))
         import proscenium
         from proscenium import runtime
-        from proscenium.api.bindings import BINDINGS
+        from proscenium.api.bindings import _BINDINGS
 
         proscenium.register()
-        binding_id = BINDINGS.create_binding(scene, "prototype", name="Prototype").binding_id
-        BINDINGS.attach("prototype", usd_stage)
+        handle = _BINDINGS.create_binding(scene, name="Prototype")
+        binding_id = handle.binding_id
+        handle.attach(usd_stage)
         found = runtime.find_binding(binding_id)
         assert found is not None and found.config is not None and found.config.destination is not None
         collection = found.config.destination

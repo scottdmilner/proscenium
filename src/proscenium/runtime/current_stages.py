@@ -1,7 +1,7 @@
 """Every binding's stages, kept consistent with the bindings that exist (source-access.md#source-stages).
 
-The stages are core's StageRegistry, made from each binding's configuration on first use. Whenever the bindings'
-state was rebuilt since (state.rebuild_count), the next use drops evaluation stages of bindings that are gone,
+The stages are source access's StageRegistry, created unattached on first use by binding identity. Whenever the
+bindings' state was rebuilt since (state.rebuild_count), the next use drops evaluation stages of bindings that are gone,
 keeping their attachments for undo and redo (StageRegistry.prune).
 """
 
@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..core.source_access import StageRegistry
+from ..source_access import StageRegistry
 from . import binding_configs, state
 
 if TYPE_CHECKING:
-    from ..core.binding_ids import BindingId
-    from ..core.source_access import BindingStages
+    from ..source_access import BindingStages
+    from ..source_access.binding_ids import BindingId
 
 
 class CurrentStages:
@@ -27,17 +27,17 @@ class CurrentStages:
         self._registry = StageRegistry()
         self._pruned_at = None
 
-    def attached(self, binding_id: BindingId, key: str) -> BindingStages:
+    def attached(self, binding_id: BindingId) -> BindingStages:
         """The binding's stages on an attached source (StageRegistry.attached)."""
-        return self._current().attached(binding_id, key)
+        return self._current().attached(binding_id)
 
     def get(self, binding_id: BindingId) -> BindingStages | None:
         """The binding's stages, or None before their first use."""
         return self._current().get(binding_id)
 
-    def release(self, key: str) -> None:
-        """Release the stage attached under key from every binding with that key (StageRegistry.release)."""
-        self._current().release(key)
+    def release(self, binding_id: BindingId) -> None:
+        """Release one binding without reading its records (StageRegistry.release)."""
+        self._registry.release(binding_id)
 
     def prune(self) -> None:
         """Drop evaluation stages of bindings that no longer exist (StageRegistry.prune).

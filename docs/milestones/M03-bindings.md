@@ -12,8 +12,8 @@
 **Decisions and deliverables:**
 
 - The synchronization API signature.
-- Caller-supplied source stages attached under source keys, with a distinct reused evaluation stage per binding, reproduced source-stage settings, dirty-layer handling, and explicit reloading.
-- The source key contract for attached sources.
+- Caller-supplied source stages attached through their handles, with a distinct reused evaluation stage per binding, reproduced source-stage settings, dirty-layer handling, and explicit reloading.
+- The per-binding attachment contract for attached sources.
 - Identifier schemes for bindings and source entities that implement M2's draft browsing and persistent selection contract. Source-entity identifiers are USD paths plus instance context, never Hydra-generated paths or instancer indices. Display-resource identifiers are defined in M5, once the representation is chosen.
 - A representation-independent ownership metadata format covering the concepts in [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle). M5 defines the representation roles.
 - Schemas for the persisted rows of the [Binding State](../spec/lifecycle.md#binding-state) model, including the pending-cleanup persistence contract. M5 settles the tracking mechanism and refines these schemas as needed.
@@ -26,7 +26,7 @@
 **Tests:**
 
 - Independent bindings sharing an attached stage, bindings on stages callers opened from `.usd`, `.usda`, and `.usdc` files, and an anonymous source with unsaved opinions and no file dependencies (`F-MULTI-BINDING`).
-- With M1b's compiled core: releasing the caller's attached stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment under the key contract (`F-REATTACH`).
+- With M1b's compiled core: releasing the caller's attached stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment through the binding handle (`F-REATTACH`).
 - `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`.
 - Copied-binding detection from `F-OWNERSHIP-AMBIGUITY`.
 - Loading older, failed-migration, and newer-schema records (`F-SCHEMA-VERSIONS`).

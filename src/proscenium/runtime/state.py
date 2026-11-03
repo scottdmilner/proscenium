@@ -47,9 +47,9 @@ from . import copy_detection
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..core.binding_ids import BindingId
     from ..persistence.binding_records import BindingIndex, CreatedBinding, DestinationTag, WrittenIndex
     from ..persistence.manifests import Manifest
+    from ..source_access.binding_ids import BindingId
     from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex
 

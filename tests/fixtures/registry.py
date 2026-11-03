@@ -133,14 +133,14 @@ FIXTURES: dict[str, Fixture] = {
             ("M3",),
             source_access.reattach,
             (
-                # Attaching under a source key: exact keys, never by root layer, and confirmation for another root.
-                Case("key-contract", SYNC, SUCCESS, ("SID-03", "SID-04", "SID-05", "SID-06", "SRC-09"), 1),
+                # Attachment by binding identity, never by root layer; confirmation for another root.
+                Case("attachment", SYNC, SUCCESS, ("SID-08", "SID-05", "SID-06", "SRC-09", "API-11"), 1),
                 # The attached stage is the live stage, and replacing it leaves the persistent selection.
                 Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07", "SRC-10"), 1),
                 # Dropping caller references retains the attachment; explicit release makes it unavailable.
-                Case("release", SYNC, FAILURE, ("SRC-02",), 1),
+                Case("release", SYNC, FAILURE, ("SRC-02", "API-12"), 1),
                 # After reopening, unavailable until attached again; undo and redo leave the attachment.
-                Case("reopen-and-undo", SYNC, FAILURE, ("SRC-03", "UNDO-06"), 1),
+                Case("reopen-and-undo", SYNC, FAILURE, ("SRC-03", "UNDO-06", "SID-09"), 1),
             ),
         ),
         Fixture(
@@ -229,7 +229,7 @@ FIXTURES: dict[str, Fixture] = {
                 # Reopened with the source files moved away: synchronization fails until reattachment, and the
                 # binding and its saved display are kept.
                 Case("moved-file", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
-                # Reopened with nothing attached under an attached binding's key, as after every reopening.
+                # Reopened with no caller stage attached, as after every reopening.
                 Case("unattached", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
                 # Opened without the extension, the saved display is ordinary Blender content.
                 Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),

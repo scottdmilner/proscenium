@@ -1,4 +1,4 @@
-"""The compiled core and its bpy-free Python. Must not import bpy (enforced by tests/bpy_free).
+"""The compiled core. Must not import bpy (enforced by tests/bpy_free).
 
 The compiled module, _core, links Blender's usd_ms without embedding a path to it, so it loads only
 into a process that already has that library.

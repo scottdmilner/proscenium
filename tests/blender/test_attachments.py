@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import source_access
-from proscenium.core.source_access import PayloadPolicy
+from proscenium.source_access import PayloadPolicy
 from support import undo
 
 if TYPE_CHECKING:
@@ -22,9 +22,9 @@ if TYPE_CHECKING:
 
 def test_undo_and_redo_leave_attachments(bindings: Bindings, tmp_path: Path) -> None:
     undo.require_global_undo()
-    handle = bindings.create_binding(bpy.data.scenes[0], "shot")
+    handle = bindings.create_binding(bpy.data.scenes[0])
     with source_access.reattach(tmp_path) as scene:
-        bindings.attach("shot", scene.caller)
+        handle.attach(scene.caller)
         undo.push("base")
         handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         undo.push("change")

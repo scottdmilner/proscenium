@@ -21,15 +21,15 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from ..core.results import Diagnostic, ResultState
-from ..core.source_access import PayloadPolicy
+from ..results import Diagnostic, ResultState
+from ..source_access import PayloadPolicy
 from . import records
 from .records import Schema
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..core.binding_ids import BindingId
+    from ..source_access.binding_ids import BindingId
     from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"

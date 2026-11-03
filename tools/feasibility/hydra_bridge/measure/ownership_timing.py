@@ -71,21 +71,21 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time undo, redo, and the lookups after each."""
-    from proscenium import runtime
     from proscenium.persistence.manifests import Manifest
+    from proscenium.runtime import ownership_index, state
 
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = True
     built, manifest = _seconds(lambda: Manifest(entries(display, records, materials)))
-    written, _ = _seconds(lambda: runtime.set_manifest(binding_id, manifest))
+    written, _ = _seconds(lambda: ownership_index.set_manifest(binding_id, manifest))
     # An object no step below changes, found by name after each undo, since undo re-reads datablocks.
     name = display.objects[-1].name
     moved = display.objects[0].name
     # Found before each timing: Blender finds a datablock by name by scanning the list.
     target = bpy.data.objects[name]
-    lookup, owned = _seconds(lambda: runtime.ownership(target))
+    lookup, owned = _seconds(lambda: ownership_index.ownership(target))
     pushes, undos, redos, first, cached = [], [], [], [], []
-    rebuilds = runtime.rebuild_count()
+    rebuilds = state.rebuild_count()
     seconds, _ = _seconds(lambda: bpy.ops.ed.undo_push(message="published"))
     pushes.append(seconds)
     for step in range(REPEATS):
@@ -96,16 +96,16 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
             seconds, _ = _seconds(undone)
             times.append(seconds)
             target = bpy.data.objects[name]
-            seconds, result = _seconds(partial(runtime.ownership, target))
+            seconds, result = _seconds(partial(ownership_index.ownership, target))
             first.append(seconds)
             assert result.status == owned.status, (result, owned)
-            seconds, _ = _seconds(partial(runtime.ownership, target))
+            seconds, _ = _seconds(partial(ownership_index.ownership, target))
             cached.append(seconds)
     return {
         "entries": len(manifest.entries),
         # It changes as the undo or redo handlers drop the state, before and after, and as the next lookup
         # rebuilds it: three times for each.
-        "rebuild_count changes": runtime.rebuild_count() - rebuilds,
+        "rebuild_count changes": state.rebuild_count() - rebuilds,
         "undos and redos": len(undos) + len(redos),
         "status": str(owned.status),
         "timings": {

@@ -56,13 +56,11 @@ class BindingStages:
     Layers are evaluated as loaded; only reload() rereads them.
     """
 
-    source_key: str  # lets the registry release matching attachments, including bindings removed by undo
     _source_stage: Usd.Stage | None
     _evaluation_stage: Usd.Stage | None
     _payload_policy: PayloadPolicy | None  # the evaluation stage's: opened under it, or loaded or unloaded to it
 
-    def __init__(self, source_key: str) -> None:
-        self.source_key = source_key
+    def __init__(self) -> None:
         self._source_stage = None
         self._evaluation_stage = None
         self._payload_policy = None
