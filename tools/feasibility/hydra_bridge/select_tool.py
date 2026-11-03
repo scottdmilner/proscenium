@@ -16,9 +16,10 @@ tool is the second, over Phase D's batched display (batch.py), so one instance i
 - **Only Source Select selects:** while another tool is active, and Blender's own tools aren't followed, managed
   objects are unselectable, by their collection's `hide_select` (a flag per object took about 0.9 s to switch on
   ALab, against about 40 ms), so Blender's tools can't select them. Blender deselects an object it makes
-  unselectable, so the source selection is kept and mirrored back once Source Select is active again. A
-  message-bus subscription to the workspaces' tools says when the active tool changes. It lives here for the
-  prototype only: later tools may need managed content selectable too, so the product may decide it elsewhere.
+  unselectable, so the source selection is kept and mirrored back once Source Select is active again.
+  Message-bus subscriptions to the workspaces' tools and the windows' workspaces say when the active tool
+  changes. It lives here for the prototype only: later tools may need managed content selectable too, so the
+  product may decide it elsewhere.
 
 `Session` holds the selection and does everything but read the window, so it runs headless; select_tool_demo.py
 installs the tool over a scene in a windowed Blender.
@@ -347,8 +348,11 @@ def register(session: Session) -> None:
     bpy.utils.register_tool(PROSCENIUM_TT_source_select, separator=True)
     bpy.app.handlers.depsgraph_update_post.append(_on_update)
     # Blender publishes WorkSpace.tools when a tool is set (ad hoc, Blender 5.2); a file load clears subscriptions.
-    key: Any = (bpy.types.WorkSpace, "tools")  # every workspace's: the stubs take only an instance's
-    bpy.msgbus.subscribe_rna(key=key, owner=_TOOL_OWNER, args=(), notify=_watch_tool)
+    # Every workspace's tools, and every window's workspace, as a window's tool changes with its workspace too. The
+    # stubs take only an instance's key.
+    keys: list[Any] = [(bpy.types.WorkSpace, "tools"), (bpy.types.Window, "workspace")]
+    for key in keys:
+        bpy.msgbus.subscribe_rna(key=key, owner=_TOOL_OWNER, args=(), notify=_watch_tool)
     _watch_tool()
 
 
