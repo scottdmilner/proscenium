@@ -1406,6 +1406,53 @@ Medians over the three runs, with their range: a frame's first visit and a revis
 - **Memory:** snapshots hold one frame, so the least heap and the smallest `.blend`. On ALab once filled, the attribute caches held about 500 MB more heap than snapshots, and the sequence caches about 2,950 MB more than the attribute caches (not broken down), with a USD file of 295 MB beside the `.blend`, which took 2.7 and 2.3 s to save (objects, batched). Batched, the scatter's cached display holds 59 MB against 1.6 GB as objects.
 - **Not measured:** viewport frame time while playing, and Linux and Windows.
 
+### Batch minimum (M4 Phase F)
+
+The smallest group of copies that the display batches ([M4 plan](../plans/M04-prototypes.md), F2), measured through the cached display with attribute caches (E3–E5), as objects and batched, in the environment of [Playback of time-sampled data](#playback-of-time-sampled-data-m4-phase-e) (2026-11-02, AC power), three runs each in fresh processes. Reproduce with:
+
+```sh
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes groups-1 groups-2 groups-3 groups-4 groups-5 groups-6 groups-8 groups-10 groups-12 groups-20 \
+    --batch-minimum 2 --out build/hydra-bridge/playback-groups
+# Real scenes, as objects, then batched at each minimum (2, 3, 5, 8 for ALab only, and 10)
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes alab alab-objects SCENE.usd ... --representations objects --out build/hydra-bridge/playback-real-objects
+uv run python tools/feasibility/hydra_bridge/measure/playback.py --approaches attributes --repeats 3 --check --frames 24 \
+    --scenes alab alab-objects SCENE.usd ... --representations batched --batch-minimum 5 --out build/hydra-bridge/playback-real-min5
+```
+
+`groups-N` (`measure/stress.py`) is 6,000 copies of 4 × 4 grids, in groups of N copies of equal content, unlike any other group's, every copy moving every frame, frames 1 to 24: the worst case for batches, whose points cache every copy's transform each frame. The real scenes are ALab with and without its point instancers, Pixar's Kitchen set (`Kitchen_set_instanced.usd`), the OpenPBR Shader Playground (`ShdrPlygrnd_OpenPBR.usda`), and Intel's Moore Lane (`4004MooreLane_Assembly.usda`), each visited for at most 24 frames after its first. Every cached display matched fresh plans at its checked frames, but one Moore Lane mesh in every run, as objects and batched alike: its primvar `custom_normal` takes the name of Blender's custom normals, and Blender alters what is written to it.
+
+Medians over the three runs; a frame's first visit and a revisit are each run's median, and the heap is the live heap once every frame has been visited.
+
+| Group size | Build (s), objects / batched | First visit (s) | Revisit (ms) | Heap (MB) | Blender objects |
+|---|---|---|---|---|---|
+| 1 | 0.84 / 0.82 | 0.52 / 0.53 | 33.7 / 33.8 | 712 / 711 | 6,000 / 6,000 |
+| 2 | 0.68 / 1.01 | 0.59 / 0.44 | 39.1 / 71.5 | 639 / 656 | 6,000 / 3,000 |
+| 3 | 0.65 / 0.70 | 0.58 / 0.37 | 32.2 / 46.6 | 616 / 488 | 6,000 / 2,000 |
+| 4 | 0.64 / 0.60 | 0.52 / 0.34 | 30.2 / 34.6 | 606 / 406 | 6,000 / 1,500 |
+| 5 | 0.62 / 0.56 | 0.53 / 0.36 | 31.3 / 28.1 | 599 / 356 | 6,000 / 1,200 |
+| 6 | 0.67 / 0.54 | 0.53 / 0.31 | 31.5 / 23.4 | 594 / 319 | 6,000 / 1,000 |
+| 10 | 0.60 / 0.45 | 0.52 / 0.27 | 30.0 / 12.7 | 584 / 253 | 6,000 / 600 |
+| 20 | 0.61 / 0.41 | 0.53 / 0.26 | 30.3 / 6.5 | 577 / 204 | 6,000 / 300 |
+
+| ALab with its point instancers | Build (s) | First visit (s) | Revisit (ms) | Heap (MB) | Blender objects |
+|---|---|---|---|---|---|
+| Objects | 6.15 | 0.37 | 8.3 | 3,333 | 15,159 |
+| Batched, minimum 2 | 3.73 | 0.40 | 10.8 | 3,368 | 4,845 |
+| Minimum 3 | 4.28 | 0.39 | 8.7 | 3,326 | 5,286 |
+| Minimum 5 | 3.58 | 0.36 | 7.4 | 3,303 | 5,842 |
+| Minimum 8 | 3.92 | 0.38 | 7.4 | 3,292 | 6,734 |
+| Minimum 10 | 3.60 | 0.35 | 6.7 | 3,289 | 7,159 |
+
+- **Where batching pays:** from groups of 5, a batch costs less than its copies as objects in every measure. Batches of 2 and 3 cost more to revisit, the cost of playing a cached frame (71.5 and 46.6 ms against 39.1 and 32.2 ms), and those of 2 more to build; groups of 4 are about even. On ALab, every minimum builds faster than objects (3.6–4.3 s against 6.2 s), and from 5 each revisits faster too.
+- **Where it doesn't matter:** on ALab without its point instancers (7,018 copies), the Kitchen set (1,788, groups up to 174), the Shader Playground (346), and Moore Lane (707, groups up to 18), no minimum differs consistently from objects: their figures move both ways between minimums, mostly within their runs' spread, as few of their copies are in groups.
+- **Not measured:** viewport frame time, selection on the cached display's batches, copies that hold still, and other hardware.
+
+#### Moana Island at scale
+
+Disney's Moana Island scene (`island/usd/island.usda`, 16 GB) exhausted this machine's 32 GB through the bridge when opened whole (by the user), so it was surveyed one element at a time, each in a child process killed past 8 GB of resident memory (ad hoc, one run). Every element is a native instance of a prototype, and its point instancers hold about 31 million instances, 23.0 million in `isBeach` alone. The bridge plans each point instance as a copy (D6): the elements small enough to plan with their instances took about 13 KB of resident memory per planned copy, meshes included (`isBayCedarA1`: 219,005 copies at a 2.9 GB peak), so the whole island's instances would need hundreds of GB. `isDunesB` (65,228 prims, 5.5 million mesh points) passed 8 GB even with its point instancers left out, for a cause not investigated. So scenes of millions of point instances can't be planned instance by instance at all; their batches would need to come from an instancer's arrays without a record per instance.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

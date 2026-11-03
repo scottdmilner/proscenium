@@ -327,6 +327,30 @@ def scatter(path: Path, points: int, side: int = 16, seed: int = 7) -> dict[str,
     return parameters
 
 
+def groups(path: Path, size: int, copies: int = 6000, side: int = 4) -> dict[str, Any]:
+    """M4 Phase F (F2): `copies` meshes in groups of `size` copies of one content, every copy moving every frame.
+
+    Each group's copies are side x side grids of equal content, unlike any other group's, so a batch's minimum
+    decides whether a group of `size` batches. Each copy is a mesh under its own Xform, whose translation changes
+    every frame.
+    """
+    parameters = {"copies": copies, "group size": size, "groups": copies // size, "grid side": side, "frames": FRAMES}
+    layer = _layer(path, "copies in groups of one size, each moving every frame", parameters, FRAMES)
+    points, counts, indices = _grid(side)
+    with Sdf.ChangeBlock():
+        world = _xform(layer, "World")
+        for i in range(copies):
+            group = i // size
+            content = (points + np.array([0, 0, 0.001 * group], np.float32), counts, indices)
+            holder = _xform(world, f"Copy_{i}", (1.5 * (i % 100), 1.5 * (i // 100), 0))
+            translate = holder.attributes["xformOp:translate"]
+            for frame in range(FRAMES[0], FRAMES[1] + 1):
+                layer.SetTimeSample(translate.path, frame, Gf.Vec3d(1.5 * (i % 100), 1.5 * (i // 100), 0.1 * frame))
+            _mesh(holder, "Mesh", content)
+    layer.Save()
+    return parameters
+
+
 # Scene name -> (generator, time code imported). One small and one large size per dimension that matters;
 # instances-100 is the CI smoke scene.
 SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
@@ -343,7 +367,9 @@ SCENES: dict[str, tuple[Callable[[Path], dict[str, Any]], float]] = {
     "colors-1000": (lambda p: colors(p, 1000), 1.0),
     "colors-1000-palette-8": (lambda p: colors(p, 1000, 8), 1.0),
     "scatter-10000": (lambda p: scatter(p, 10000), 1.0),
+    **{f"groups-{size}": (lambda p, size=size: groups(p, size), 1.0) for size in (1, 2, 3, 4, 5, 6, 8, 10, 12, 20)},
 }
+GROUPS = [f"groups-{size}" for size in (1, 2, 3, 4, 5, 6, 8, 10, 12, 20)]  # M4 Phase F's batch minimum probe
 STRESS = ["mesh-64", "mesh-2048", "prims-10000", "instances-1000", "animation"]
 UPDATES = ["updates-100", "updates-1000", "updates-10000"]  # M4 Phase C's sizes
 COLORS = ["colors-1000", "colors-1000-palette-8"]  # M4 Phase D's display color comparison (D13)

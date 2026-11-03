@@ -39,7 +39,7 @@ sys.path[:0] = [str(HERE.parent), str(HERE), str(ROOT / "tools")]
 
 APPROACHES = ["snapshots", "attributes", "sequence"]
 REPRESENTATIONS = ["objects", "batched"]
-SCENES = ["alab", "animation", "scatter"]
+SCENES = ["alab", "alab-objects", "animation", "scatter"]  # and stress.py's groups-N, or a USD file's path
 ALAB_FRAMES = (1004, 1057)  # ALab's range
 
 
@@ -50,18 +50,25 @@ def scenes(names: list[str], out: Path) -> dict[str, dict[str, Any]]:
 
     found: dict[str, dict[str, Any]] = {}
     for name in names:
-        if name == "alab":
+        if name in ("alab", "alab-objects"):
             alab = os.environ.get("PROSCENIUM_ALAB_ROOT")
             if not alab:
                 raise SystemExit("--scenes alab needs PROSCENIUM_ALAB_ROOT (environment or .env)")
-            entry = out / "scenes" / "alab_instancers_playback.usda"
+            entry = out / "scenes" / f"{name}_playback.usda"
             entry.parent.mkdir(parents=True, exist_ok=True)
             entry.unlink(missing_ok=True)
-            written = alab_entry.write(Path(alab) / "entry.usda", entry, point_instancers=True)
+            # alab-objects: ALab with its point instancers deactivated, as M1b measured it.
+            written = alab_entry.write(Path(alab) / "entry.usda", entry, point_instancers=name == "alab")
             parameters = {k: v for k, v in written.items() if k != "deactivated paths"}
             found[name] = {"path": str(entry), "frames": ALAB_FRAMES, "parameters": parameters}
+        elif name.endswith((".usd", ".usda", ".usdc")):
+            from pxr import Usd
+
+            stage = Usd.Stage.Open(name)
+            frames = (int(stage.GetStartTimeCode()), int(stage.GetEndTimeCode()))
+            found[Path(name).stem] = {"path": name, "frames": frames, "parameters": {"file": name}}
         else:
-            generated = {"animation": "animation", "scatter": "scatter-10000"}[name]
+            generated = {"animation": "animation", "scatter": "scatter-10000"}.get(name, name)
             path, parameters = stress.generate(generated, out / "scenes")
             found[name] = {"path": str(path), "frames": stress.FRAMES, "parameters": parameters}
     return found
@@ -169,9 +176,8 @@ def child(config: dict[str, Any]) -> None:
     if config["check"] and approach != "snapshots" and not errors:
         from tests.isolated.bodies import caching
 
-        middle = (first + last) // 2
         result["mismatches"] = {}
-        for frame in (first + 1, middle, last):
+        for frame in sorted({min(first + 1, last), (first + last) // 2, last}):  # a static scene's one frame
             scene.frame_set(frame)
             result["mismatches"][frame] = caching._mismatches(native, stage, display, float(frame))  # noqa: SLF001
     bpy.app.handlers.frame_change_pre.remove(on_frame)
@@ -232,8 +238,8 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
         if results:
             entry |= {
                 "build s": _stats([r["build s"] for r in results]),
-                "first visit s": _stats([statistics.median(r["first visit s"]) for r in results]),
-                "first visit max s": _stats([max(r["first visit s"]) for r in results]),
+                "first visit s": _stats([statistics.median(r["first visit s"]) for r in results if r["first visit s"]]),
+                "first visit max s": _stats([max(r["first visit s"]) for r in results if r["first visit s"]]),
                 "revisit s": _stats([statistics.median(r["revisit s"]) for r in results]),
                 "heap built MB": _stats([r["heap MB"]["built"] - r["heap MB"]["before"] for r in results]),
                 "heap filled MB": _stats([r["heap MB"]["filled"] - r["heap MB"]["before"] for r in results]),
@@ -287,7 +293,8 @@ def main() -> int:
     from blender_paths import find_blender
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, choices=SCENES)
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help=f"{SCENES}, groups-N, or USD files' paths")
+    parser.add_argument("--frames", type=int, help="visit at most this many frames after the first")
     parser.add_argument("--approaches", nargs="+", default=APPROACHES, choices=APPROACHES)
     parser.add_argument("--representations", nargs="+", default=REPRESENTATIONS, choices=REPRESENTATIONS)
     parser.add_argument("--batch-minimum", type=int, default=3)
@@ -312,6 +319,9 @@ def main() -> int:
     found = scenes(args.scenes, out)
     runs = []
     for name, scene in found.items():
+        if args.frames is not None:
+            first, last = scene["frames"]
+            scene["frames"] = (first, min(last, first + args.frames))
         for repeat in range(args.repeats):
             for approach in args.approaches:
                 for representation in args.representations:
