@@ -40,7 +40,7 @@ from gpu_extras.batch import batch_for_shader
 from pxr import Kind
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
     from batch import BatchedDisplay
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
@@ -63,6 +63,9 @@ class Session:
     following: bool = False  # whether Blender's own selection changes become source selections
     selectable: bool = True  # whether managed objects are selectable, and mirror the source selection
     keep: tuple[Any, ...] = ()  # what the interaction needs alive: the stage, its bridge, the plan
+    stage: Any = None  # the live stage, which callers read values from, as the contract says
+    time: float | None = None  # the time code the display shows; None for the default
+    listeners: list[Callable[[], None]] = field(default_factory=list)  # told when the source selection changes
     _applying: bool = False
     _centers: dict[int, numpy.ndarray] | None = None  # the display's, which stays as it is built
 
@@ -98,7 +101,9 @@ class Session:
         self.apply()
 
     def apply(self) -> None:
-        """Mirror the source selection into Blender's selection, while managed objects are selectable."""
+        """Tell the listeners, and mirror the source selection into Blender's, while managed objects are selectable."""
+        for listener in self.listeners:
+            listener()
         if not self.selectable:
             return
         shown = set(self.interaction.highlight_targets(self.targets)) if self.targets else set()
@@ -156,6 +161,7 @@ class Session:
 
 SESSION: Session | None = None  # the one session a demo installs
 _TOOL_OWNER = object()  # owns the message-bus subscription to tool changes
+OUTLINES: Any = None  # the session's origins, and its own outlines when drawn (select_outline.Outlines)
 
 
 def _center(obj: bpy.types.Object) -> numpy.ndarray:
@@ -175,6 +181,14 @@ def _on_level(self: Any, _context: Any) -> None:
         SESSION.level = None if self.proscenium_level == PRIM_LEVEL else self.proscenium_level
 
 
+def _on_outlines(self: Any, _context: Any) -> None:
+    """Draw the extension's own outlines of the source selection (select_outline.py) besides its origins, or not."""
+    if OUTLINES is not None:
+        OUTLINES.draw_outlines = self.proscenium_outlines
+        OUTLINES.rebuild()
+        _watch_tool()
+
+
 def _on_follow(self: Any, _context: Any) -> None:
     if SESSION is not None:
         SESSION.following = self.proscenium_follow
@@ -192,9 +206,16 @@ def _tool_active() -> bool:
 
 
 def _watch_tool(*_args: Any) -> None:
-    """Keep managed objects selectable exactly while Source Select is active, or Blender's tools are followed."""
+    """Keep managed objects selectable exactly while Source Select is active, or Blender's tools are followed.
+
+    While the extension draws its own outlines, Blender's selection outlines and origins are hidden exactly while
+    Source Select is active, so Blender outlines what its own tools select.
+    """
     if SESSION is not None:
-        SESSION.set_selectable(SESSION.following or _tool_active())
+        active = _tool_active()
+        SESSION.set_selectable(SESSION.following or active)
+        if OUTLINES is not None:
+            OUTLINES.hide_blender_overlays(active)
 
 
 def _on_update(_scene: Any, _depsgraph: Any = None) -> None:
@@ -290,6 +311,10 @@ class PROSCENIUM_PT_source_selection(bpy.types.Panel):  # noqa: N801 - Blender's
         layout: Any = self.layout  # never None while drawing
         layout.prop(context.scene, "proscenium_level", text="Level")
         layout.prop(context.scene, "proscenium_follow", text="Follow Blender's Tools")
+        layout.prop(context.scene, "proscenium_outlines", text="Draw Own Outlines")
+        if OUTLINES is not None and OUTLINES.draw_ms:
+            recent = OUTLINES.draw_ms[-60:]
+            layout.label(text=f"Outlines: {sum(recent) / len(recent):.2f} ms a frame (CPU)")
         if SESSION is None:
             layout.label(text="No display")
             return
@@ -337,12 +362,17 @@ CLASSES = (PROSCENIUM_OT_source_pick, PROSCENIUM_OT_source_box, PROSCENIUM_PT_so
 
 def register(session: Session) -> None:
     """Install the tool, its panel, and the handler that follows Blender's own tools, over `session`."""
-    global SESSION  # noqa: PLW0603 - the demo's one session
+    global SESSION, OUTLINES  # noqa: PLW0603 - the demo's one session, and its origins and outlines
+    import select_outline
+
     SESSION = session
+    OUTLINES = select_outline.Outlines(session)
+    OUTLINES.enable()
     scene_type: Any = bpy.types.Scene
     # A fixed list, read once: a callback's items must stay referenced from Python, or Blender may show garbage.
     scene_type.proscenium_level = bpy.props.EnumProperty(items=levels(), update=_on_level)
     scene_type.proscenium_follow = bpy.props.BoolProperty(default=False, update=_on_follow)
+    scene_type.proscenium_outlines = bpy.props.BoolProperty(default=False, update=_on_outlines)
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.utils.register_tool(PROSCENIUM_TT_source_select, separator=True)
@@ -357,8 +387,10 @@ def register(session: Session) -> None:
 
 
 def unregister() -> None:
-    global SESSION  # noqa: PLW0603 - the demo's one session
-    SESSION = None
+    global SESSION, OUTLINES  # noqa: PLW0603 - the demo's one session, and its outlines
+    if OUTLINES is not None:
+        OUTLINES.disable()
+    SESSION = OUTLINES = None
     bpy.app.handlers.depsgraph_update_post.remove(_on_update)
     bpy.msgbus.clear_by_owner(_TOOL_OWNER)
     bpy.utils.unregister_tool(PROSCENIUM_TT_source_select)
