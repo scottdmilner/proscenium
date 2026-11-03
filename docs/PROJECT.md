@@ -124,7 +124,7 @@ Each entry links to the section that defines the term in full.
 | **Source coverage** | The set of source entities a display resource represents. It may contain many entities. |
 | **Representation role** | Why a display resource exists, such as shared geometry, a placeholder, or a material. Roles are defined in M5. |
 | **Canonical** | The single authoritative instance among duplicates: of a representation (same source coverage and role) or of a copied binding. Noncanonical resources are still tracked but excluded from the active display and correspondence. |
-| **Partition** | The unit of display replacement chosen in M4. A partition owns a set of display resources and is replaced as a whole. |
+| **Partition** | The unit of display replacement: a drawn copy's own resources, a batch's, or one shared datablock such as a mesh or material (DECISIONS.md "Partition unit"). A partition owns a set of display resources and is replaced as a whole. |
 | **Evaluated source snapshot** | The resolved USD semantics for one synchronization, with no Blender references. See [Evaluated Source Snapshot](spec/pipeline.md#evaluated-source-snapshot). |
 | **Display plan** | The description of how a snapshot will be represented in Blender. See [Display Plan](spec/pipeline.md#display-plan). |
 | **Planning context** | The immutable plain values, such as the target scene's unit scale, that planning depends on besides the snapshot and binding settings. See [Display Plan](spec/pipeline.md#display-plan). |

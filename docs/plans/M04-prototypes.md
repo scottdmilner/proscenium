@@ -612,6 +612,13 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
 5. **Limitations and fallbacks,** and the "Python-only implementation" row's measurements.
 6. **Notes for M5 to M10** in their milestone files, and the close of this plan.
 
+#### Phase F log
+
+- **F1, the partition unit (with the user):** a drawn copy, or a batch, with each shared datablock a partition of its own, in DECISIONS.md "Partition unit" and the Glossary.
+  - **What a partition owns:** a copy shown as objects, its viewport and render objects, a shear parent, a placeholder's bounds mesh, and their animation data, the keys of its cached time codes included; a batch, its carriers, points mesh with its cached samples, and prototype object; a mesh, material, or node group, itself and its cached samples. A copy that leaves its batch for an object of its own (E5) becomes a partition of its own.
+  - **How one is replaced:** prepared beside the published generation, linked at publication with every other partition, a replaced shared datablock's users repointed then, and the old one retired. A kept partition keeps its identities. Caching adds keys and samples to published partitions in place. A sample is shown only through a key, so a failing `cache` call removes the keys it added; its sample attributes are then never shown and stay until a synchronization rebuilds their mesh, and a whole mesh it wrote for a sample, a datablock, is disposed of or tracked as pending cleanup.
+  - **Why:** the units' measured costs barely differ, as fixed costs dominate (B6, C3), so the finest, which replaces the least alongside an edit, keeps the most identities in Phase 2. Repointing a shared datablock's users is cheap and keeps them (B6), and a batch already updates as a unit (D4, D8).
+
 ## Risk matrix
 
 The requirements a display representation is most likely to fail, each marked `risk: high` in [requirements.yaml](../testing/requirements.yaml). Every evaluated representation is tested against all of them; the last column names the steps that test the baseline, then those that test the batched display.
