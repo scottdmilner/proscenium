@@ -131,6 +131,26 @@ def test_ambient_cache(tmp_path: Path) -> None:
         assert caller_settings(scene.ambient) == ambient_settings
 
 
+def test_cached_source_composes_its_own_opinions_and_reuses_evaluation(tmp_path: Path) -> None:
+    # SRC-05, SRC-06, SRC-10 on F-CACHED-STAGE: the cached stage is explicitly attached and stays untouched.
+    with source_access.cached_stage(tmp_path) as scene:
+        source = binding(scene.ambient)
+        settings = caller_settings(scene.ambient)
+        layers = layer_contents(scene.ambient)
+        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
+        assert evaluation != scene.ambient
+        assert not UsdUtils.StageCache.Get().Contains(evaluation)
+        assert evaluation.GetRootLayer() == scene.ambient.GetRootLayer()
+        assert evaluation.GetSessionLayer() == scene.ambient.GetSessionLayer()
+        assert evaluation.GetPathResolverContext() == scene.ambient.GetPathResolverContext()
+        assert read_values(evaluation) == scene.ambient_values | {"payA": 1.0, "payB": 1.0}
+        source.attach(scene.ambient)
+        assert source.acquire(PayloadPolicy.LOAD_NONE) == evaluation
+        assert read_values(evaluation) == scene.ambient_values
+        assert caller_settings(scene.ambient) == settings
+        assert layer_contents(scene.ambient) == layers
+
+
 # --- evaluation fidelity -----------------------------------------------------------------------
 
 

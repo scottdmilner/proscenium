@@ -105,6 +105,25 @@ def test_callers_unsaved_edit(tmp_path: Path) -> None:
         assert scene.caller.GetRootLayer().dirty
 
 
+def test_anonymous_source_needs_no_files(tmp_path: Path) -> None:
+    # BIND-03: an anonymous source and its unsaved opinions can be evaluated after the scene files are gone.
+    with source_access.multi_binding(tmp_path) as scene:
+        caller = scene.anonymous_caller
+        _set_root_value(caller, caller.GetRootLayer(), 6.0)
+        for path in tmp_path.iterdir():
+            path.unlink()
+        source = binding(caller)
+        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
+        assert source.live_stage == caller
+        assert evaluation != caller
+        assert read_values(evaluation) == scene.values | {"root": 6.0}
+        assert evaluation.GetRootLayer() == caller.GetRootLayer()
+        assert evaluation.GetSessionLayer() == caller.GetSessionLayer()
+        _set_root_value(caller, caller.GetSessionLayer(), 7.0)
+        assert source.acquire(PayloadPolicy.LOAD_ALL) == evaluation
+        assert read_values(evaluation) == scene.values | {"root": 7.0}
+
+
 def test_a_reload_reaches_the_attached_binding(tmp_path: Path) -> None:
     # LAYER-06: a reload reaches bindings and callers composing the shared layer, preserving caller settings.
     with source_access.multi_binding(tmp_path) as scene:

@@ -25,7 +25,7 @@
 
 **Tests:**
 
-- Independent bindings sharing an attached stage and bindings on stages callers opened from `.usd`, `.usda`, and `.usdc` files (`F-MULTI-BINDING`).
+- Independent bindings sharing an attached stage, bindings on stages callers opened from `.usd`, `.usda`, and `.usdc` files, and an anonymous source with unsaved opinions and no file dependencies (`F-MULTI-BINDING`).
 - With M1b's compiled core: releasing the caller's attached stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment under the key contract (`F-REATTACH`).
 - `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`.
 - Copied-binding detection from `F-OWNERSHIP-AMBIGUITY`.

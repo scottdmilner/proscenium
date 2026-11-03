@@ -127,6 +127,11 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
         _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
+        assert handle.live_stage() is None
+        assert bindings.attach(scene.key, caller).attached == (handle.binding_id,)
+        assert handle.live_stage() == caller
+        assert _saved(handle) == saved  # attachment alone does not publish or modify the saved display
+        assert handle.synchronize(0).state is ResultState.SUCCESS
 
 
 # A removed destination.

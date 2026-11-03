@@ -290,7 +290,7 @@ requirements:
       - id: BIND-03
         quote: "Caller-supplied in-memory stages without requiring file reopening."
         fixtures: [F-MULTI-BINDING]
-        oracle: "A binding with the caller's stage attached composes the caller's unsaved root-layer edit without reopening its file, which remains unchanged on disk."
+        oracle: "A binding composes the attached caller's unsaved root-layer edit while its file remains unchanged on disk. A caller with anonymous root and session layers composes the fixture's values and unsaved opinions even after all fixture files are removed."
       - id: BIND-04
         quote: "Load-all or load-no-payload policy."
         fixtures: [F-MULTI-BINDING]
@@ -486,7 +486,7 @@ requirements:
         quote: "The caller acquires and attaches the source stage, including opening files, resolving file paths, and restoring the attachment after a .blend is reopened."
         note: "Every source is attached (2026-11-03); SRC-01 is retired. MEM-01, MEM-02, MEM-04 to MEM-08, FILE-04, and FILE-08 remain retired from the 2026-10-18 source-contract consolidation."
         fixtures: [F-REATTACH]
-        oracle: "Creating a binding stores a source key and optional last attached root-layer identifier and opens no source stage. Synchronizing before attachment reports an unavailable source, including after reopening; attaching a caller-opened stage makes that exact stage live without opening a source file."
+        oracle: "Creating a binding stores a source key and optional last attached root-layer identifier and opens no source stage. Synchronizing or reloading before attachment reports an unavailable source, even when the key names an existing file with an open stage. After reopening the caller must reattach; attachment makes that exact caller-supplied stage live."
       - id: SRC-02
         quote: "The binding holds the attached stage until the caller releases it with release(key)"
         fixtures: [F-REATTACH]
@@ -509,8 +509,8 @@ requirements:
         oracle: "The evaluation stage is not the attached stage, its root and session layers are the attached stage's layer objects, and its resolver context equals the attached stage's. Even with the source stage cached and its cache context active, acquiring an evaluation stage never takes a cached stage."
       - id: SRC-10
         quote: "The evaluation stage is distinct from the source stage and every other binding's evaluation stage, is never placed in a stage cache or shared with callers, and is reused across synchronizations while the attached stage's root and session layers stay the same."
-        fixtures: [F-PRIVATE-STAGE, F-CACHED-STAGE]
-        oracle: "Each binding has its own evaluation stage, distinct from every source and cached stage, reused across acquisitions and reattachment over the same root and session layers. Replacing either layer drops the old evaluation stage, and the next acquisition opens a new one. Release drops both held stages; undo of creation retains only the attachment, as SRC-02 checks."
+        fixtures: [F-PRIVATE-STAGE, F-CACHED-STAGE, F-REATTACH]
+        oracle: "Each binding has its own evaluation stage, distinct from every source and cached stage and reused across acquisitions. An explicitly attached cached stage contributes its own session opinions without being used for evaluation. Reattachment over unchanged root and session layers preserves evaluation; replacing either layer drops it and the next acquisition opens a new stage. Release and undo retention are checked by SRC-02."
       - id: SRC-07
         quote: "At each synchronization, the evaluation stage's population mask, muted layers, and interpolation type match the source stage's."
         fixtures: [F-PRIVATE-STAGE]

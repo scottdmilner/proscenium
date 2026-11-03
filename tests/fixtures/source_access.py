@@ -1,7 +1,7 @@
 """Set up the USD situations that source access must handle (docs/spec/source-access.md).
 
-A binding reads its source from a file or from a caller's stage, in a process
-where other tools hold stages and layers too. These generators reproduce the
+A binding reads a caller-supplied stage in a process where other tools hold
+stages and layers too. These generators reproduce the
 hazards the spec names, so tests can check a binding reads the right content
 and leaves everyone else's state alone:
 
@@ -14,7 +14,8 @@ and leaves everyone else's state alone:
 - cached_stage (F-CACHED-STAGE): a stage for the same file sitting in a stage
   cache with an active cache context. Source Stages, Layer State and Reloading.
 - multi_binding (F-MULTI-BINDING): the scene's root layer saved as .usda, .usdc,
-  and .usd, and a caller's stage over the .usda one. Bindings and Source Access.
+  and .usd, a caller's stage over the .usda one, and an anonymous flattened stage
+  with no file dependencies. Bindings and Source Access.
 - reattach (F-REATTACH): a caller's stage, another stage over the same root layer,
   and a stage over a copy of the scene, whose root layer differs. Source Identity
   and Source Stages.
@@ -295,7 +296,8 @@ ROOT_FORMATS = (".usda", ".usdc", ".usd")
 @dataclass
 class MultiBindingScene:
     roots: dict[str, Path]  # by extension in ROOT_FORMATS: the same root layer in each format
-    caller: Usd.Stage  # for an attached source: a caller's stage over the .usda root, loading every payload
+    caller: Usd.Stage  # a caller's stage over the .usda root, loading every payload
+    anonymous_caller: Usd.Stage  # the composed scene in anonymous layers, independent of the files
     values: dict[str, float | None]  # what each root composes, load-all
 
 
@@ -304,7 +306,7 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     """F-MULTI-BINDING: one scene for several bindings, with its root layer in each format.
 
     root.usdc and root.usd are exports of root.usda (.usd is written as crate) beside it, so
-    they compose the same layers.
+    they compose the same layers. An anonymous stage contains the flattened scene, with no file dependencies.
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
     root = Sdf.Layer.OpenAsAnonymous(str(scene / "root.usda"))
@@ -312,7 +314,10 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     for extension in (".usdc", ".usd"):
         roots[extension] = scene / f"root{extension}"
         root.Export(str(roots[extension]))
-    yield MultiBindingScene(roots=roots, caller=open_fresh(roots[".usda"]), values=dict(DISK))
+    caller = open_fresh(roots[".usda"])
+    with Usd.StageCacheContext(Usd.BlockStageCaches):
+        anonymous_caller = Usd.Stage.Open(caller.Flatten())
+    yield MultiBindingScene(roots=roots, caller=caller, anonymous_caller=anonymous_caller, values=dict(DISK))
 
 
 @dataclass

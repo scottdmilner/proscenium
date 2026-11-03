@@ -118,6 +118,9 @@ def test_multi_binding(tmp_path: Path) -> None:
         for path in scene.roots.values():
             assert read_values(open_fresh(path)) == scene.values
         assert read_values(scene.caller) == scene.values
+        assert scene.anonymous_caller.GetRootLayer().anonymous
+        assert all(layer.anonymous for layer in scene.anonymous_caller.GetUsedLayers())
+        assert read_values(scene.anonymous_caller) == scene.values
 
 
 def test_offline(tmp_path: Path) -> None:

@@ -386,6 +386,22 @@ def test_the_root_layer_never_finds_a_binding(bindings: Bindings, tmp_path: Path
         assert handle.live_stage() == scene.caller
 
 
+def test_a_source_key_that_names_an_existing_file_does_not_acquire_it(bindings: Bindings, tmp_path: Path) -> None:
+    # SRC-09: a key is only a name, even when it equals the identifier of an open, available stage.
+    with source_access.reattach(tmp_path) as scene:
+        key = scene.caller.GetRootLayer().identifier
+        handle = bindings.create_binding(_scene(), key)
+        before = _config(handle)
+        for result in (handle.synchronize(0), handle.reload()):
+            assert result.state is ResultState.FATAL_FAILURE
+            assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+        assert handle.live_stage() is None
+        assert _config(handle) == before
+        assert bindings.attach(key, scene.caller).attached == (handle.binding_id,)
+        assert handle.live_stage() == scene.caller
+        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+
+
 def test_a_stage_over_the_same_root_layer_reattaches(bindings: Bindings, tmp_path: Path) -> None:
     handle = bindings.create_binding(_scene(), "shot")
     with source_access.reattach(tmp_path) as scene:

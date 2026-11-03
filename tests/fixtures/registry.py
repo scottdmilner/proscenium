@@ -99,6 +99,8 @@ FIXTURES: dict[str, Fixture] = {
             (
                 # A cached source may be attached; the binding's evaluation stage stays private and uncached.
                 Case("ambient-cache", SYNC, SUCCESS, ("SRC-06", "SRC-10", "ICON-34"), 1),
+                # Explicit attachment composes the cached stage's session opinions under the binding's policy.
+                Case("attached-cache", SYNC, SUCCESS, ("SRC-05", "SRC-06", "SRC-10"), 1),
                 # A requested reload of a shared layer shows the disk change to the cached stage too;
                 # the binding's own session-layer opinions compose over the source, the ambient stage's don't.
                 Case("shared-reload", SYNC, SUCCESS, ("LAYER-06", "LAYER-07", "SRC-05"), 1),
@@ -114,6 +116,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("formats", SYNC, SUCCESS, ("BIND-02",), 1),
                 # The caller's unsaved edit shows without reopening the file or changing it on disk.
                 Case("attached-edit", SYNC, SUCCESS, ("BIND-03",), 1),
+                # Anonymous root and session layers need no files to display their unsaved opinions.
+                Case("anonymous-stage", SYNC, SUCCESS, ("BIND-03",), 1),
                 # Load-all and load-none bindings on one attached stage, each by its own policy.
                 Case("payload-policies", SYNC, SUCCESS, ("BIND-04",), 1),
                 # Bindings on one source have their own stages, and a settings change stays with its binding.
@@ -132,7 +136,7 @@ FIXTURES: dict[str, Fixture] = {
                 # Attaching under a source key: exact keys, never by root layer, and confirmation for another root.
                 Case("key-contract", SYNC, SUCCESS, ("SID-03", "SID-04", "SID-05", "SID-06", "SRC-09"), 1),
                 # The attached stage is the live stage, and replacing it leaves the persistent selection.
-                Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07"), 1),
+                Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07", "SRC-10"), 1),
                 # Dropping caller references retains the attachment; explicit release makes it unavailable.
                 Case("release", SYNC, FAILURE, ("SRC-02",), 1),
                 # After reopening, unavailable until attached again; undo and redo leave the attachment.
