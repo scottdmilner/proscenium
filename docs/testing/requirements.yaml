@@ -867,7 +867,7 @@ requirements:
         quote: "Interaction feasibility and qualification are claimed at the level of these headless functions"
         kind: contract
         qualified_by: M4
-        oracle: "The M2 decision record: the draft interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 recorded what a real pick is assumed to supply, what a ray cast returns, as an accepted risk (Picking; M4 plan, F2)."
+        oracle: "The M2 decision record: the interaction contract states every requirement as the result of a headless function (spec/interaction-contract.md#headless-functions), and the M2 interaction fixtures and oracle give their expected results. M4 recorded what a real pick is assumed to supply, what a ray cast returns, as an accepted risk (Picking; M4 plan, F2)."
 
   # --- spec/interaction-contract.md -----------------------------------------------------------
   # Contract drafted by M2 (INSP-06) and finalized by M4 (M4 plan, F2).

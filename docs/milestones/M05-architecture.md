@@ -19,6 +19,10 @@
 - A measurement of the synchronization undo step's memory cost.
 - Publication and cleanup through M3's bindings' state ([M3 plan](../plans/M03-bindings.md), D8): a publication writes its manifest whole, and cleanup removes content through the state, or publishes the manifest without a datablock before removing it, so a removal costs what it removes rather than a reread of its manifest. A new entry point that uses a binding's stages compares the runtime stages with the bindings after a rebuild of the state, as `proscenium/api/bindings.py` describes.
 - A measurement of the cached manifests' memory with M4's representation and realistic source coverage, against its budget: about 5 MB per 10,000 entries covering three paths each in M3. The M3 plan's Phase E lists ways to hold less.
+- Resource identities and roles from M4's partitions ([M4 plan](../plans/M04-prototypes.md), F1): a copy shown as objects (its viewport and render objects, a shear parent, a placeholder's bounds mesh, their animation data), a batch (its carriers, points mesh, and prototype), and each shared mesh, material, and node group. A batch's `covers` follows its points' order, so an element's instance is its position in them, the order picks read (F3).
+- A revision token in each manifest record, so an undo or redo rereads only the manifests whose token changed: the first ownership lookup after an undo took a median of 43.9 ms on ALab's 11,185 entries and 158 ms on 30,006, against a 50 ms budget ([M4 plan](../plans/M04-prototypes.md), C5).
+- `cache` against the stub application layer: the generation record holds its cached time codes (`Generation.cached_time_codes`, F3), and M5 decides whether a failed call records a last attempt.
+- Work over the whole plan belongs in the core; Python's work in an update grows with what the update builds, as a whole-plan pass in Python missed the small-update budget ([M4 plan](../plans/M04-prototypes.md), D8, F5).
 - Whether a publication may give a binding whose destination was removed a new destination ([Removed Destination](../spec/lifecycle.md#removed-destination)), decided with M11.
 
 **Tests:**

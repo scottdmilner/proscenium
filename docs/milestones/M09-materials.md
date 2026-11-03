@@ -12,6 +12,7 @@
 - Evaluation/planning: effective material bindings, translated networks, and material inputs that accept per-instance data. With M1b's Hydra core, networks come from Hydra's material network data. Bindings come from UsdShade's resolution, recorded by the core beside the chain: M1b found Hydra's flattened bindings wrong inside nested instances, without the allPurpose fallback, and blind to collections that reach into instances (OpenUSD #3690, worked around and labeled in the prototype). See the [M1b plan](../plans/M01b-evaluation-gate.md#phase-c-log); the connection grammar, Principled BSDF translation, and material purpose selection remain project work. Direct, inherited, collection-based, and face-subset precedence are verified against fixtures.
 - Application: materials, nodes, images (as external file references), and assignments.
 - Ownership and reuse rules for translated materials, images, node groups, and dependencies.
+- From M4 ([M4 plan](../plans/M04-prototypes.md)): a material reads a copy's constant primvars through an Attribute node of type Object for an object and Instancer for a batch's instance, so translation chooses it by representation (D1); a copy's own constant color is its object color, which Solid shading's Object color shows (D10, D13); and a reader's fallback comes from the translated material or is written per copy, also where a cached time code blocks the primvar (B4, F5).
 
 **Tests:**
 

@@ -699,6 +699,18 @@ Per-time-code snapshots against animation data: keyframed transforms, mesh cache
   - **Python's whole-plan work missed a budget:** a batched small update spent 65 ms converting every plan record and 112 ms regrouping them in Python on ALab with its point instancers, in an ad hoc profile (D8). Grouping moved into the planner's compiled module, and Python reads only the records an update builds from, halving a transform update on `updates-10000`. So work over the whole plan belongs in the core, and Python's work grows with what an update builds.
   - **Python within budget:** mirroring a pick's selection, 12.3 ms of 50 on ALab, of which Blender's depsgraph is most at scale (102 of 129 ms at 30,001 objects, C4); the ownership index's rebuild, which M5's revision token bounds (C5); switching selectability, 44 ms on ALab (F2); and the outlines' rebuild, 2.7–8.5 ms (F2).
   - **So no further compiled component is called for:** where a budget is missed, the cost is Blender's own per-object work (C3, C4), or planning and the diff, already compiled (D9). DECISIONS.md's row records this.
+- **F6, notes for later milestones,** in their milestone files, which are what each milestone reads first:
+  - **M5:** resource identities and roles from the partitions, a batch's `covers` in its points' order, the manifest revision token, `cache` against the stub with the generation's cached time codes, and work over the whole plan in the core;
+  - **M6:** object names that land at the end of Blender's sorted lists, batch groups in the plan, and what depends on time from Hydra's dirtying;
+  - **M7:** selectability and overlays owned by the display rather than a tool, restored or ignored on load, Blender's outlines as the default, the box by bounds' centers, and cached time codes for every variation with their suggested mechanisms;
+  - **M8:** UV-set names in the requested settings, the `custom_normal` collision, multi-mesh copies in batches, mesh caching and the material-slot union, and the bounds comparison's subdivision and approximation cases;
+  - **M9:** the Attribute node's type by representation, a copy's own color as its object color, and readers' fallbacks, also where a cached time code blocks a primvar;
+  - **M10:** point instancers at scale from an instancer's arrays, with a point instance's identity, and prototype changes over time.
+- **F6, the exit condition is met.**
+  - **Frozen support cases, the risk matrix, and the stress fixture:** the chosen representation, objects with batches of at least 5, passes `F-APPEARANCE-CASES` and `F-NESTED-STRESS` in `isolated/test_baseline.py` and the risk matrix's steps below, each run on both representations (B4, D1–D4, D10).
+  - **The finalized interaction contract:** the headless interaction functions pass `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP` against the M2 oracle on both representations, and the selection tool's session on the batched display (`isolated/test_interaction.py`); Q1–Q11 are answered (F2).
+  - **M3's identifiers and schemas** are compatible, with the generation's cached time codes added (F3); the **partitioning decision** is recorded (F1).
+  - **Evidence:** the full suite passes in the bpy wheel and the Blender binary on macOS (829 passed, 21 skipped: fixture cases the M2 interaction fixtures don't have, and an update scenario whose edits move only some of a batch's copies). `tools/matrix.py check` passes. Every row M4 delivers or qualifies has its oracle; the contract rows are covered by the records above, and the process rows by the feasibility record's measurements.
 
 ## Risk matrix
 

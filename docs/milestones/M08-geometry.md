@@ -9,6 +9,12 @@
 - First, before implementation: complete the primvar support matrix and mesh classification rules against M4's representation feasibility cases. Additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes and revising the design as needed before implementation.
 - Evaluation/planning: validated geometry and primvar data in the snapshot and plan. Since M1b adopted Hydra, the support matrix is written against Hydra's mesh and primvar data (topology, subdivision tags, indexed primvars, interpolation, subsets), and each Hydra filter conversion is classified as exact or approximate. The planning performance M1b's prototype leaves open (contention when meshes are built in parallel, and single large meshes) is in its [notes for production planning](../feasibility/runtime-record.md#for-production-planning-m8).
 - Application: mesh data, attributes, and modifiers created from the plan.
+- From M4 ([M4 plan](../plans/M04-prototypes.md)):
+  - UV-set names join the requested settings, with a migration of the binding record (A3, F3).
+  - A primvar named `custom_normal` takes the name of Blender's custom normals, which alters what is written to it (Moore Lane, F2): the name-collision rules cover it.
+  - A batch's instance is one mesh's copy, so a multi-mesh asset's copy spreads over a carrier per mesh and is never one active object (F2). Batching a whole copy as one instance would give it one, at the cost of grouping by whole assets, of copies whose meshes vary on their own leaving their batch, and of a pick resolving to the copy before its element.
+  - Cached time codes: a mesh whose points vary caches position attributes, and one whose topology varies a mesh per sample (E4); a mesh's material slots could be the union over its cached time codes, a newly needed slot appended (F5, a suggestion).
+  - The bounds comparison's subdivision and approximation cases (ABND-05, ABND-06, F4).
 
 **Tests:**
 
