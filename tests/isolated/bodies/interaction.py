@@ -282,8 +282,9 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
     instance's world matrix. Reports where the session differs from the scene's construction: each element picked
     at each level the fixture names selects its kind target, made active, and Blender shows exactly its elements;
     set, toggle, extend, and subtract combine prim-level picks, and a pick on nothing clears the selection; each
-    viewport element's center is its prim's world bounds' centroid as USD computes it; and Blender's own selection,
-    followed, becomes the source selection selection_from_blender gives.
+    viewport element's center is its prim's world bounds' centroid as USD computes it; unselectable, managed objects
+    hold no selection while the source selection is kept, and show it again once selectable; and Blender's own
+    selection, followed, becomes the source selection selection_from_blender gives.
     """
     from pxr import UsdGeom
 
@@ -293,7 +294,12 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
         try:
             display.publish(0.0)
             records = display._records  # noqa: SLF001 - the plan the display was built from
-            session = select_tool.Session(display._interaction, display._display, display.view_layer)  # noqa: SLF001
+            session = select_tool.Session(
+                display._interaction,
+                display._display,
+                display.view_layer,
+                display.collection,  # noqa: SLF001
+            )
             picks: dict[str, Any] = {}  # by source, a pick on one of its elements
             for obj in display.managed_objects():
                 for element, pick in zip(display.elements(obj), display.picks(obj), strict=True):
@@ -342,6 +348,18 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
                     )
             if shown():
                 found.append(f"cleared, Blender still shows {sorted(shown())}")
+            # Outside the tool, managed objects are unselectable and deselected; the source selection waits.
+            pick(seat, "SET")
+            session.set_selectable(False)
+            if not display.collection.hide_select or shown():
+                found.append(f"unselectable: shows {sorted(shown())}")
+            pick(back, "EXTEND")
+            if session.targets != [seat, back] or shown():
+                found.append(f"picked while unselectable: {session.targets}, shows {sorted(shown())}")
+            session.set_selectable(True)
+            if display.collection.hide_select or shown() != set(display.highlight_targets([seat, back])):
+                found.append(f"selectable again: shows {sorted(shown())}")
+            pick(None, "SET")
             cache = UsdGeom.BBoxCache(0.0, [UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy])
             for element, center in session.centers().items():
                 prim = scene.stage.GetPrimAtPath(records[element]["source"])

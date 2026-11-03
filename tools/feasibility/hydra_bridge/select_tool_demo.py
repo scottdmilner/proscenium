@@ -42,7 +42,7 @@ def main(argv: list[str]) -> None:
     display = batch.apply_batched(plan, collection, args.minimum)
     interaction = native.Interaction(stage, plan)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
-    select_tool.register(select_tool.Session(interaction, display, view_layer, keep=(stage, bridge, plan)))
+    select_tool.register(select_tool.Session(interaction, display, view_layer, collection, keep=(stage, bridge, plan)))
     bpy.app.timers.register(_activate, first_interval=0.5)
     print(
         f"Source Select over {plan.object_count} copies: {len(display.batches)} batches, "

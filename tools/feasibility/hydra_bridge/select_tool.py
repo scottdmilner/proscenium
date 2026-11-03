@@ -13,6 +13,12 @@ tool is the second, over Phase D's batched display (batch.py), so one instance i
 - **Following Blender's own tools** (the sidebar's toggle): after any depsgraph update, Blender's selected and
   active managed objects become a source selection (selection_from_blender), mirrored back at once. A batch's
   carrier then stands for every instance in its state.
+- **Only Source Select selects:** while another tool is active, and Blender's own tools aren't followed, managed
+  objects are unselectable, by their collection's `hide_select` (a flag per object took about 0.9 s to switch on
+  ALab, against about 40 ms), so Blender's tools can't select them. Blender deselects an object it makes
+  unselectable, so the source selection is kept and mirrored back once Source Select is active again. A
+  message-bus subscription to the workspaces' tools says when the active tool changes. It lives here for the
+  prototype only: later tools may need managed content selectable too, so the product may decide it elsewhere.
 
 `Session` holds the selection and does everything but read the window, so it runs headless; select_tool_demo.py
 installs the tool over a scene in a windowed Blender.
@@ -49,10 +55,12 @@ class Session:
     interaction: Any  # the bridge's Interaction over the display's plan
     display: BatchedDisplay
     view_layer: bpy.types.ViewLayer
+    collection: bpy.types.Collection  # the display's, which holds every managed object
     level: str | None = None  # a model kind, or None for the prim level
     targets: list[str] = field(default_factory=list)  # in the order picked
     active: str | None = None
     following: bool = False  # whether Blender's own selection changes become source selections
+    selectable: bool = True  # whether managed objects are selectable, and mirror the source selection
     keep: tuple[Any, ...] = ()  # what the interaction needs alive: the stage, its bridge, the plan
     _applying: bool = False
     _centers: dict[int, numpy.ndarray] | None = None  # the display's, which stays as it is built
@@ -89,7 +97,9 @@ class Session:
         self.apply()
 
     def apply(self) -> None:
-        """Mirror the source selection into Blender's selection."""
+        """Mirror the source selection into Blender's selection, while managed objects are selectable."""
+        if not self.selectable:
+            return
         shown = set(self.interaction.highlight_targets(self.targets)) if self.targets else set()
         active = set(self.interaction.highlight_targets([self.active])) if self.active else set()
         self._applying = True
@@ -97,6 +107,14 @@ class Session:
             batch_selection.apply_selection(self.view_layer, self.display, shown, active)
         finally:
             self._applying = False
+
+    def set_selectable(self, selectable: bool) -> None:
+        """Make managed objects selectable, mirroring the source selection, or not, which deselects them."""
+        if selectable == self.selectable:
+            return
+        self.selectable = selectable
+        self.collection.hide_select = not selectable
+        self.apply()
 
     def follow_blender(self) -> None:
         """Take Blender's selection of managed objects as the source selection, if it changed, and mirror it."""
@@ -136,6 +154,7 @@ class Session:
 
 
 SESSION: Session | None = None  # the one session a demo installs
+_TOOL_OWNER = object()  # owns the message-bus subscription to tool changes
 
 
 def _center(obj: bpy.types.Object) -> numpy.ndarray:
@@ -158,6 +177,23 @@ def _on_level(self: Any, _context: Any) -> None:
 def _on_follow(self: Any, _context: Any) -> None:
     if SESSION is not None:
         SESSION.following = self.proscenium_follow
+        _watch_tool()
+
+
+def _tool_active() -> bool:
+    """Whether Source Select is the active object-mode tool of a 3D view in any window."""
+    manager: Any = bpy.context.window_manager  # never None in a windowed Blender
+    for window in manager.windows if manager is not None else ():
+        tool = window.workspace.tools.from_space_view3d_mode("OBJECT", create=False)
+        if tool is not None and tool.idname == PROSCENIUM_TT_source_select.bl_idname:
+            return True
+    return False
+
+
+def _watch_tool(*_args: Any) -> None:
+    """Keep managed objects selectable exactly while Source Select is active, or Blender's tools are followed."""
+    if SESSION is not None:
+        SESSION.set_selectable(SESSION.following or _tool_active())
 
 
 def _on_update(_scene: Any, _depsgraph: Any = None) -> None:
@@ -310,12 +346,17 @@ def register(session: Session) -> None:
         bpy.utils.register_class(cls)
     bpy.utils.register_tool(PROSCENIUM_TT_source_select, separator=True)
     bpy.app.handlers.depsgraph_update_post.append(_on_update)
+    # Blender publishes WorkSpace.tools when a tool is set (ad hoc, Blender 5.2); a file load clears subscriptions.
+    key: Any = (bpy.types.WorkSpace, "tools")  # every workspace's: the stubs take only an instance's
+    bpy.msgbus.subscribe_rna(key=key, owner=_TOOL_OWNER, args=(), notify=_watch_tool)
+    _watch_tool()
 
 
 def unregister() -> None:
     global SESSION  # noqa: PLW0603 - the demo's one session
     SESSION = None
     bpy.app.handlers.depsgraph_update_post.remove(_on_update)
+    bpy.msgbus.clear_by_owner(_TOOL_OWNER)
     bpy.utils.unregister_tool(PROSCENIUM_TT_source_select)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
