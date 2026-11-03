@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     import bpy
 
     from ..core.binding_ids import BindingId
-    from ..core.source_access import AttachedBindingStages
+    from ..core.source_access import BindingStages
     from ..runtime import CopiedBinding, FoundBinding
 
 
@@ -226,7 +226,7 @@ class Bindings:
         self.stages.clear()
 
     def prune_stages(self) -> None:
-        """Drop the stages of bindings that no longer exist or can't synchronize (CurrentStages.prune)."""
+        """Drop evaluation stages of bindings that no longer exist (CurrentStages.prune)."""
         self.stages.prune()
 
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
@@ -238,7 +238,7 @@ class Bindings:
             raise BindingNotFoundError(binding_id)
         return found
 
-    def _stages(self, binding_id: BindingId, config: BindingConfig) -> AttachedBindingStages:
+    def _stages(self, binding_id: BindingId, config: BindingConfig) -> BindingStages:
         """The binding's stages, made from its source key on first use."""
         return self.stages.attached(binding_id, config.source_key)
 

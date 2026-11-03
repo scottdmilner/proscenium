@@ -302,13 +302,26 @@ def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, 
     assert bindings.stages.get(kept.binding_id) is not None
 
 
-def test_an_unreadable_binding_cannot_return_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
+@pytest.mark.parametrize("unusable", ["unreadable", "disabled"])
+def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
+    bindings: Bindings, tmp_path: Path, unusable: str
+) -> None:
     handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+    stages = bindings.stages.get(handle.binding_id)
+    assert stages is not None
+    caller, evaluation = stages.live_stage, stages.evaluation_stage
+    if unusable == "unreadable":
+        _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+    else:
+        [text] = binding_records.index_texts()
+        text.copy()  # two indexes naming the identity leave no canonical candidate
     runtime.invalidate()
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE
     assert handle.live_stage() is None
+    assert bindings.stages.get(handle.binding_id) is stages
+    assert stages.live_stage == caller
+    assert stages.evaluation_stage == evaluation
 
 
 def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:

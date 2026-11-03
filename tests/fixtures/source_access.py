@@ -18,7 +18,7 @@ and leaves everyone else's state alone:
 - reattach (F-REATTACH): a caller's stage, another stage over the same root layer,
   and a stage over a copy of the scene, whose root layer differs. Source Identity
   and Source Stages.
-- binding_state (F-BINDING-STATE): a scene to make a file binding on, and a caller's
+- binding_state (F-BINDING-STATE): a scene and a caller's
   stage to attach under a source key, for tests of bindings' records, handles,
   save/reopen, and undo. Binding State and Synchronization API.
 - offline (F-OFFLINE): a source to move away before reopening, and the saved display
@@ -288,7 +288,7 @@ def reattach(dest: Path) -> Generator[ReattachScene]:
     )
 
 
-# The root-layer formats a file source may have (source-access.md#bindings-and-source-access).
+# The root-layer formats a caller may open (source-access.md#bindings-and-source-access).
 ROOT_FORMATS = (".usda", ".usdc", ".usd")
 
 
@@ -317,7 +317,7 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
 
 @dataclass
 class BindingStateScene:
-    root: Path  # a file binding's source
+    root: Path  # the caller's root-layer file
     caller: Usd.Stage  # over root, for an attached binding under KEY
     key: str
     values: dict[str, float | None]  # what both compose, load-all
@@ -325,7 +325,7 @@ class BindingStateScene:
 
 @contextmanager
 def binding_state(dest: Path) -> Generator[BindingStateScene]:
-    """F-BINDING-STATE: a source for one file binding and one attached binding.
+    """F-BINDING-STATE: a caller-supplied source stage for bindings to share.
 
     The tests make the bindings in Blender data themselves, since the generator runs without bpy.
     """

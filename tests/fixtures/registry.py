@@ -222,7 +222,7 @@ FIXTURES: dict[str, Fixture] = {
             ("M3", "M7", "M9", "M12"),
             source_access.offline,
             (
-                # Reopened with the file source moved away: the synchronization after it fails, and the
+                # Reopened with the source files moved away: synchronization fails until reattachment, and the
                 # binding and its saved display are kept.
                 Case("moved-file", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
                 # Reopened with nothing attached under an attached binding's key, as after every reopening.

@@ -44,8 +44,7 @@ src/proscenium/
     canonical_candidate.py     the canonical-candidate rule
     source_entities.py
     source_access/
-      sources.py               FileSource, AttachedSource, PayloadPolicy
-      binding_stages.py        BindingStages and its two kinds
+      binding_stages.py        BindingStages, PayloadPolicy, SourceUnavailableError
       stage_registry.py        StageRegistry
 ```
 
@@ -68,9 +67,9 @@ These go in AGENTS.md's Style section:
 | `Synchronization`, `SYNCHRONIZATION`, `proscenium.synchronization` | `Bindings`, `BINDINGS`, `proscenium.api.bindings` | It is the file's bindings and their runtime stages; a synchronization is one attempt |
 | `Synchronization.bindings(scene)`, `.copied_bindings()` | `Bindings.in_scene(scene)`, `.copied()` | |
 | `Synchronization.file_loaded()`, `.prune()` | `.drop_all_stages()`, `.prune_stages()` | |
-| `BindingSource`, `FileBindingSource`, `AttachedBindingSource` | `BindingStages`, `FileBindingStages`, `AttachedBindingStages` | It holds a binding's source stage and evaluation stage; its `source` is the source |
+| `BindingSource` | `BindingStages` | It holds a binding's source stage and evaluation stage; its `source` is the source |
 | `SourceRegistry`, `Synchronization.sources` | `StageRegistry`, `Bindings.stages` | |
-| `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(synchronizable)` | One mapping of every binding that exists to whether it can synchronize, disabled ones included |
+| `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(existing)` | The set of existing binding identities, including unreadable and disabled bindings |
 | `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |
 | `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `DecisionReason`, `UNREADABLE_INDEX_ENTRY` | |

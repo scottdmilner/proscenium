@@ -1,9 +1,4 @@
-"""A binding's source stage and evaluation stage, for file and attached sources (SRC-01 to SRC-08).
-
-Rules that hold for every binding run over both kinds of source (bindings.KINDS); the rest are
-about one kind: opening outside stage caches for a file source, and matching the caller's
-settings for an attached one.
-"""
+"""An attached source stage and its independent evaluation stage (SRC-02 to SRC-10)."""
 
 from __future__ import annotations
 
@@ -16,16 +11,13 @@ from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
 from proscenium.core.source_access import (
-    AttachedBindingStages,
-    AttachedSource,
-    FileBindingStages,
-    FileSource,
+    BindingStages,
     PayloadPolicy,
     SourceUnavailableError,
 )
 from support.usd import open_fresh
 
-from .bindings import KINDS, binding
+from .bindings import binding
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,10 +26,10 @@ UNLOADED = {"payA": None, "payB": None}
 POLICIES = tuple(PayloadPolicy)
 
 
-def _scene(tmp_path: Path) -> tuple[Path, Usd.Stage]:
+def _caller(tmp_path: Path) -> Usd.Stage:
     """A copy of the source-access scene and a caller's stage over it, which an attached binding uses."""
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
-    return root, open_fresh(root)
+    return open_fresh(root)
 
 
 def _set_root_value_in_session(stage: Usd.Stage, value: float) -> None:
@@ -48,32 +40,28 @@ def _set_root_value_in_session(stage: Usd.Stage, value: float) -> None:
 # --- every binding ------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_evaluation_stage_is_kept_and_reused(kind: str, tmp_path: Path) -> None:
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+def test_evaluation_stage_is_kept_and_reused(tmp_path: Path) -> None:
+    caller = _caller(tmp_path)
+    source = binding(caller)
     assert source.evaluation_stage is None
     stage = source.acquire(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage == stage
     assert source.acquire(PayloadPolicy.LOAD_ALL) == stage
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_live_stage_is_the_source_stage(kind: str, tmp_path: Path) -> None:
-    # For a file source, the stage the binding opened, which it also evaluates; for an attached source, the
-    # caller's stage, not the evaluation stage (ICON-07).
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+def test_live_stage_is_the_source_stage(tmp_path: Path) -> None:
+    caller = _caller(tmp_path)
+    source = binding(caller)
+    assert source.live_stage == caller  # ICON-07: available before evaluation
     stage = source.acquire(PayloadPolicy.LOAD_ALL)
-    assert source.live_stage == (stage if kind == "file" else caller)
-    assert (source.live_stage == stage) == (kind == "file")
+    assert source.live_stage == caller
+    assert stage != caller
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_session_layer_opinions_are_displayed(kind: str, tmp_path: Path) -> None:
+def test_session_layer_opinions_are_displayed(tmp_path: Path) -> None:
     # SRC-05: opinions in the source stage's session layer compose over the source.
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+    caller = _caller(tmp_path)
+    source = binding(caller)
     source.acquire(PayloadPolicy.LOAD_ALL)
     live = source.live_stage
     assert live is not None
@@ -81,24 +69,17 @@ def test_session_layer_opinions_are_displayed(kind: str, tmp_path: Path) -> None
     assert read_values(source.acquire(PayloadPolicy.LOAD_ALL)) == DISK | {"root": 4.0}
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_unavailable_source(kind: str, tmp_path: Path) -> None:
-    # A file that won't open, or no stage attached.
-    source = (
-        FileBindingStages(FileSource(tmp_path / "missing.usda"))
-        if kind == "file"
-        else AttachedBindingStages(AttachedSource("shot"))
-    )
+def test_unavailable_source() -> None:
+    source = BindingStages("shot")
     with pytest.raises(SourceUnavailableError):
         source.acquire(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage is None
     assert source.live_stage is None
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_a_changed_payload_policy_applies_to_the_reused_stage(kind: str, tmp_path: Path) -> None:
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+def test_a_changed_payload_policy_applies_to_the_reused_stage(tmp_path: Path) -> None:
+    caller = _caller(tmp_path)
+    source = binding(caller)
     stage = source.acquire(PayloadPolicy.LOAD_ALL)
     assert source.acquire(PayloadPolicy.LOAD_NONE) == stage  # the same stage, its payloads unloaded
     assert read_values(stage) == DISK | UNLOADED
@@ -107,22 +88,20 @@ def test_a_changed_payload_policy_applies_to_the_reused_stage(kind: str, tmp_pat
     assert read_values(caller) == DISK  # an attached caller's load set is its own
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_a_reload_leaves_the_payload_policy(kind: str, tmp_path: Path) -> None:
+def test_a_reload_leaves_the_payload_policy(tmp_path: Path) -> None:
     # The policy given only opens a stage when there is none; a reload doesn't synchronize.
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+    caller = _caller(tmp_path)
+    source = binding(caller)
     stage = source.acquire(PayloadPolicy.LOAD_ALL)
     source.reload(PayloadPolicy.LOAD_NONE)
     assert read_values(stage) == DISK
 
 
-@pytest.mark.parametrize("kind", KINDS)
-def test_switching_payload_policy_and_back_keeps_the_display(kind: str, tmp_path: Path) -> None:
+def test_switching_payload_policy_and_back_keeps_the_display(tmp_path: Path) -> None:
     # Metamorphic: load-all, then load-none again, composes what the binding showed before,
     # session-layer opinions included, and changes no layer.
-    root, caller = _scene(tmp_path)
-    source = binding(kind, root, caller)
+    caller = _caller(tmp_path)
+    source = binding(caller)
     stage = source.acquire(PayloadPolicy.LOAD_NONE)
     live = source.live_stage
     assert live is not None
@@ -134,23 +113,25 @@ def test_switching_payload_policy_and_back_keeps_the_display(kind: str, tmp_path
     assert not [layer.identifier for layer in stage.GetUsedLayers() if layer.dirty and not layer.anonymous]
 
 
-# --- file sources: the binding's own source stage -----------------------------------------------
+# --- cache isolation ---------------------------------------------------------------------------
 
 
 def test_ambient_cache(tmp_path: Path) -> None:
-    # F-CACHED-STAGE "ambient-cache" (SRC-01): the source stage is not the cached ambient stage and is never
-    # cached, and the ambient stage's session-layer opinions aren't composed (SRC-05).
+    # F-CACHED-STAGE: the caller opens a source whose session opinions differ from the cached stage's.
     with source_access.cached_stage(tmp_path) as scene:
         ambient_settings = caller_settings(scene.ambient)
-        stage = FileBindingStages(FileSource(scene.root)).acquire(PayloadPolicy.LOAD_ALL)
-        assert stage != scene.ambient
+        caller = open_fresh(scene.root)
+        source = binding(caller)
+        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        assert stage != caller and stage != scene.ambient
+        assert source.live_stage == caller
         assert not UsdUtils.StageCache.Get().Contains(stage)
         assert read_values(stage) == scene.disk_values
         assert read_values(scene.ambient) == scene.ambient_values
         assert caller_settings(scene.ambient) == ambient_settings
 
 
-# --- attached sources: an evaluation stage matched to the caller's ------------------------------
+# --- evaluation fidelity -----------------------------------------------------------------------
 
 
 def _expected(scene: source_access.PrivateStageScene, payload_policy: PayloadPolicy) -> dict:
@@ -169,7 +150,7 @@ def test_caller_settings(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
         caller = scene.caller
         for payload_policy in POLICIES:
-            evaluation = binding("attached", scene.root, caller).acquire(payload_policy)
+            evaluation = binding(caller).acquire(payload_policy)
             # SRC-06: a separate stage composing the caller's own layers, in no cache, with its resolver context.
             assert evaluation != caller
             assert evaluation.GetRootLayer() == caller.GetRootLayer()
@@ -190,7 +171,7 @@ def test_caller_settings_are_matched_at_each_acquisition(tmp_path: Path) -> None
     # SRC-07: the caller changes its settings between synchronizations.
     with source_access.private_stage(tmp_path) as scene:
         caller = scene.caller
-        source = binding("attached", scene.root, caller)
+        source = binding(caller)
         evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
         caller.SetPopulationMask(Usd.StagePopulationMask.All())
         caller.UnmuteLayer(caller.GetMutedLayers()[0])
@@ -208,8 +189,8 @@ def test_payload_policies(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
         caller = scene.caller
         load_set = caller.GetLoadSet()
-        loading = binding("attached", scene.root, caller)
-        unloading = binding("attached", scene.root, caller)
+        loading = binding(caller)
+        unloading = binding(caller)
         loaded, unloaded = loading.acquire(PayloadPolicy.LOAD_ALL), unloading.acquire(PayloadPolicy.LOAD_NONE)
         loading.acquire(PayloadPolicy.LOAD_ALL)
         assert loaded != unloaded
@@ -220,11 +201,10 @@ def test_payload_policies(tmp_path: Path) -> None:
 
 def test_a_caller_with_other_layers_gets_a_new_evaluation_stage(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
-        source = binding("attached", scene.root, scene.caller)
+        source = binding(scene.caller)
         first = source.acquire(PayloadPolicy.LOAD_ALL)
         other = open_fresh(scene.root)  # the same root layer, but its own session layer
-        assert isinstance(source.source, AttachedSource)
-        source.source.attach(other)
+        source.attach(other)
         second = source.acquire(PayloadPolicy.LOAD_ALL)
         assert second != first
         assert second.GetSessionLayer() == other.GetSessionLayer()
@@ -237,7 +217,7 @@ def test_evaluation_stage_is_not_the_cached_caller(tmp_path: Path) -> None:
         cache_id = cache.Insert(scene.caller)
         try:
             with Usd.StageCacheContext(cache):
-                evaluation = binding("attached", scene.root, scene.caller).acquire(PayloadPolicy.LOAD_ALL)
+                evaluation = binding(scene.caller).acquire(PayloadPolicy.LOAD_ALL)
             assert evaluation != scene.caller
             assert not cache.Contains(evaluation)
         finally:

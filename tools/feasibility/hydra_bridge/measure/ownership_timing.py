@@ -1,6 +1,6 @@
 """M4 Phase C (C5): the first ownership lookup after an undo, with the baseline's display as a binding's manifest.
 
-The child applies the display into a file binding's destination, made through M3's API, so this writes its
+The child applies the display into a binding's destination, made through M3's API, so this writes its
 manifest through M3's runtime: one entry per object, shear parent, placeholder mesh, mesh, and material. An
 object entry covers its source and uses its mesh and materials; a mesh or material entry covers the sources of
 its users, as M5's realistic covers would.

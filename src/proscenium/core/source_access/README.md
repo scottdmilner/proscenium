@@ -1,12 +1,11 @@
 # `proscenium.core.source_access`
 
-The stages a binding reads its source from ([Source Access](../../../../docs/spec/source-access.md)). Part of `proscenium.core`, so it imports without `bpy`. It's runtime state: nothing here is saved in the `.blend`, and undo neither restores nor removes it. A binding's records keep the configuration these stages are made from (`proscenium.persistence.binding_records`). The compiled core receives a stage from here, and never opens one.
+The stages a binding reads its source from ([Source Access](../../../../docs/spec/source-access.md)). Part of `proscenium.core`, so it imports without `bpy`. Nothing here is saved in the `.blend`. Undo retains attachments and drops evaluation stages of vanished bindings. A binding's records keep the configuration these stages are made from (`proscenium.persistence.binding_records`). The compiled core receives a stage from here, and never opens one.
 
 | File | Holds |
 |---|---|
 | `__init__.py` | The package's exports. |
-| `sources.py` | `AttachedSource`, a stage a caller attaches under a source key and the binding holds until released. Also `PayloadPolicy` and `SourceUnavailableError`. `FileSource` remains for the runtime refactor in step 3; the public binding API uses attachments only. |
-| `binding_stages.py` | A binding's stages: `FileBindingStages`, whose evaluation stage is its source stage, and `AttachedBindingStages`, whose evaluation stage composes the attached stage's root and session layers. Both acquire the evaluation stage under a payload policy, matched to the source stage, and reload layers on request. Also `contributing_layers` and `dirty_layers`. |
-| `stage_registry.py` | `StageRegistry`: every binding's stages by binding identifier, made from its configuration on first use, released by source key, and compared with the bindings that exist (`prune`): a file binding's stages go with its binding, and an attached binding keeps its attachment, as undo leaves attachments. |
+| `binding_stages.py` | `BindingStages` holds the source key, attached stage, and reused evaluation stage. It owns attachment, replacement, release, evaluation under the binding's payload policy, and explicit reloading. Also `PayloadPolicy`, `SourceUnavailableError`, `contributing_layers`, and `dirty_layers`. |
+| `stage_registry.py` | `StageRegistry`: every binding's stages by binding identifier, made from its source key on first use and released by source key. Pruning compares with the set of existing binding identities and drops evaluation stages of vanished bindings while keeping their attachments for undo and redo. |
 
 How a binding's stages behave is in [Source Stages](../../../../docs/spec/source-access.md#source-stages) and [Layer State and Reloading](../../../../docs/spec/source-access.md#layer-state-and-reloading); the decisions behind them are DECISIONS.md's rows "One kind of binding" and "Evaluation-stage reuse".
