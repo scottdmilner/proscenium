@@ -13,7 +13,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 
 ## Import rules
 
-The Blender-facing code is three tiers, each importing only the tiers below it, with the bpy-free code, `core/`, `binding/source_access/`, and `binding/results.py`, below all three ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
+Tiers apply only inside `binding/`: `runtime/` over `persistence/`, each importing only the tier below it and the bpy-free code (`core/`, `binding/source_access/`, `binding/results.py`). `api/` is a separate package that uses `binding`'s units ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
 
 | Package | May import |
 |---|---|

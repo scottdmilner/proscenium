@@ -1,6 +1,6 @@
 # `proscenium.binding.runtime`
 
-The bindings' in-memory state: a disposable write-through cache of their records, and the runtime indexes into it ([Undo and Runtime State](../../../../docs/spec/lifecycle.md#undo-and-runtime-state)). The middle tier: it may import `proscenium.binding.persistence` and the bpy-free code below the tiers (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), never `proscenium.api`.
+The bindings' in-memory state: a disposable write-through cache of their records, and the runtime indexes into it ([Undo and Runtime State](../../../../docs/spec/lifecycle.md#undo-and-runtime-state)). The upper tier: it may import `proscenium.binding.persistence` and the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), never `proscenium.api`.
 
 Callers use what `__init__.py` exports, not the modules below it (checked by `tests/bpy_free/test_import_tiers.py`). It exports only what `proscenium.api` and `proscenium.addon` call, and the errors that reach their callers; what only tests use stays in its module, where tests reach it.
 

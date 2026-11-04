@@ -1,6 +1,6 @@
 # `proscenium.api`
 
-What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). The top tier: it may import `proscenium.binding.runtime`, `proscenium.binding.persistence`, and the bpy-free code below the tiers (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), using what each package exports.
+What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). Not a tier: it may import `proscenium.binding.runtime`, `proscenium.binding.persistence`, and the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), using what each package exports.
 
 | File | Holds |
 |---|---|

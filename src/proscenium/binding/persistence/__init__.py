@@ -1,6 +1,6 @@
 """Versioned records in Blender ID properties (lifecycle.md#persistence).
 
-The bottom tier of the Blender-facing code: it may import only the bpy-free code below the tiers. Code outside this
+The lower tier of proscenium.binding: it may import only the bpy-free code. Code outside this
 package uses what it exports: the records proscenium.binding.runtime, proscenium.api, and proscenium.addon read and
 write, and the functions that read and write them. The modules below are reached only through it (checked by
 tests/bpy_free/test_import_tiers.py); tests reach into them. The exception is manifests, which only the ownership index
