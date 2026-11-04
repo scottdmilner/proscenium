@@ -42,6 +42,16 @@ Required lifecycle operations:
 
 Lifecycle operations must preserve resources still required by other owners, and must remain correct even when Blender objects do not correspond individually to USD prims.
 
+### Representation Roles and Resource Identities
+
+Every managed resource has one representation role and one resource identity, both taken from the display plan. [DECISIONS.md](../DECISIONS.md) "Representation roles and resource identities" lists the roles.
+
+- A role names why the resource exists in its [partition](../PROJECT.md#glossary), such as a drawn copy's object, a batch's carrier, or a shared mesh. The roles are a fixed vocabulary of the representation version, and an ownership record naming an unknown role is unsupported.
+- A resource's identity is derived from what it represents and its role, never from Blender names, datablock pointers, or the plan's order, so equal plans give equal identities, in any process.
+- A drawn copy's resources take their identity from the copy's track: its source path, its instance context, and its place among the copy's objects.
+- A batch's resources take their identity from the content its copies share, and a shared datablock's from its content.
+- A prepared resource that represents what a published one does, in the same role, has its identity, so a synchronization tells replaced resources from new and obsolete ones by identity.
+
 ### Resource Stability
 
 Count active display resources and inactive pending-cleanup resources separately. Repeated unchanged refreshes must not accumulate active resources or duplicate source/display diagnostics. When disposal succeeds, total managed-resource counts do not grow.
@@ -107,7 +117,7 @@ Source information is the root-layer identifier of the stage last attached (see 
 
 Persist sufficient ownership information to retry disposal of newly prepared or obsolete resources safely. Tracking survives save/reopen and later attempts without modifying the published generation; it does not rely on retained runtime datablock references. Retries revalidate ownership and current users, preserving active, reused, detached, ambiguously owned, and externally required resources. Resolve work by safe disposal or by releasing resources intact under the ownership protection rules. Remove resolved tracking and current cleanup diagnostics rather than accumulating history. Unresolved work remains inactive; retries are explicit and do not require USD access. Undo/redo restores cleanup tracking consistently with resource ownership.
 
-**Design note:** two candidate mechanisms are a separate persistent cleanup ledger, or a pending-cleanup state in the existing ownership records. M3 defines the persistence contract; M5 chooses and validates the mechanism during transaction planning, refining the schemas as needed. Neither mechanism is required by this spec. M11 settles how unresolved tracking is retained during binding removal; removing configuration must not orphan pending work.
+**Design note** (settled by M5; see [DECISIONS.md](../DECISIONS.md) "Pending-cleanup tracking mechanism"): pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies, so no copy can authorize disposing of a copy's content. M11 settles how unresolved tracking is retained during binding removal; removing configuration must not orphan pending work.
 
 ### Reopening
 
@@ -132,7 +142,7 @@ A binding whose destination collection is removed keeps its configuration, last 
 - Its requested settings can still be read and changed.
 - It owns nothing: its manifest was removed with the collection, so content left from its display is unmanaged.
 
-**Design note:** M5 and M11 decide whether a publication or a repair may give such a binding a new destination.
+**Design note:** a publication never gives such a binding a new destination (see [DECISIONS.md](../DECISIONS.md) "Removed destination"); M11 decides whether a repair may.
 
 ### Schema Versions
 

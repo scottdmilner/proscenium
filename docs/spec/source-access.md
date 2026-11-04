@@ -32,7 +32,7 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 - `reload(layers=None)` rereads the binding's source layers from disk on request ([Layer State and Reloading](#layer-state-and-reloading)) without synchronizing; the next synchronization displays them.
 - `attach(stage, confirm=False)` attaches the caller's stage to this binding and returns an immutable result. A different stored root-layer identifier requires `confirm=True`; without it the result is a fatal failure with a source-confirmation-required diagnostic and nothing changes.
 - `release()` drops this binding's source and evaluation stages and returns `None`. It is idempotent, changes no persistent records or saved display, and remains valid after undo or removal of the binding.
-- `synchronize` returns an immutable result: its result state and deduplicated diagnostics ([Diagnostics](pipeline.md#diagnostics)). An expected failure, such as an unavailable source, is a result, not an exception.
+- `synchronize` returns an immutable result ([Diagnostics](pipeline.md#diagnostics)) holding its result state; its own deduplicated diagnostics, with a pending-cleanup diagnostic for each resource it left pending; the time codes it attempted, a synchronization's one or those a cache call hadn't cached; and the binding's current cleanup status, apart from its own diagnostics. An expected failure, such as an unavailable source, is a result, not an exception.
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for `release()`.
 - Exceptions report misuse only, such as a call made during another synchronization.
 
@@ -40,7 +40,7 @@ Operations that span bindings belong to the process's bindings: creating a bindi
 
 `create_binding(scene, *, payload_policy=LOAD_ALL, name="USD Display")` creates an unattached binding with a dedicated destination named for `name`. It opens no source stage; the caller attaches one through the returned handle.
 
-Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
+Design note (settled by M3 and M5): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
 ## Source Consistency
 

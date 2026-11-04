@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-386 rows: 310 behavior, 17 contract, 59 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4.
+395 rows: 319 behavior, 17 contract, 59 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4.
 
 ## PROJECT.md
 
@@ -60,6 +60,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CACHE-09](../spec/pipeline.md#cached-time-codes) | One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-02](../spec/pipeline.md#cached-time-codes) | Caching publishes no new generation. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-03](../spec/pipeline.md#cached-time-codes) | A call that fails caches none of its time codes and leaves the published generation as it was | behavior | **high** | M5 | 1 / M12 | — | Set by M5. |
+| [CACHE-11](../spec/pipeline.md#cached-time-codes) | A call records no last attempt, whether it succeeds or fails | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-10](../spec/pipeline.md#cached-time-codes) | A call never fails because of how content varies | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-05](../spec/pipeline.md#cached-time-codes) | If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CACHE-06](../spec/pipeline.md#cached-time-codes) | A generation synchronized at the USD default time code has no time-varying values | behavior |  | M5 | 1 / M12 | — | Set by M5. |
@@ -67,12 +68,14 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CACHE-08](../spec/pipeline.md#cached-time-codes) | The display never synchronizes or caches on its own. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [DIAG-01](../spec/pipeline.md#diagnostics) | Unsupported valid content. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [DIAG-02](../spec/pipeline.md#diagnostics) | Include binding, source path, property/asset identifier, severity, and fallback where applicable. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
+| [DIAG-14](../spec/pipeline.md#diagnostics) | Each diagnostic also has a stable code naming its problem | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [DIAG-03](../spec/pipeline.md#diagnostics) | Aggregate repeated problems. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [DIAG-04](../spec/pipeline.md#diagnostics) | Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history. | behavior |  | M5 | 1 / M12 | `F-FAILED-SETTINGS` | Set by M5. |
 | [DIAG-05](../spec/pipeline.md#diagnostics) | Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
 | [DIAG-06](../spec/pipeline.md#diagnostics) | Report current cleanup status separately from historical attempt results and deduplicate by operation and resource. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE`, `F-RETIREMENT-FAILURE` | Set by M5. |
 | [DIAG-07](../spec/pipeline.md#diagnostics) | An unchanged refresh produces equivalent deduplicated source/display diagnostics. | behavior |  | M5 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M5. |
 | [DIAG-08](../spec/pipeline.md#diagnostics) | resolved cleanup diagnostics are removed rather than accumulated as history. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
+| [DIAG-15](../spec/pipeline.md#diagnostics) | Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
 | [DIAG-09](../spec/pipeline.md#diagnostics) | Success: no diagnostics in any category other than source state. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [DIAG-10](../spec/pipeline.md#diagnostics) | Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [DIAG-11](../spec/pipeline.md#diagnostics) | Fatal failure, including an unavailable source. | behavior |  | M5 | 1 / M12 | `F-OFFLINE` | Set by M5. |
@@ -101,6 +104,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [API-08](../spec/source-access.md#synchronization-api) | or binding removal, raises when used except for release(). | behavior |  | M11 | 1 / M12 | `F-BINDING-STATE` | After a binding is removed, methods that need its records raise for its handles, while release can free any retained runtime attachment. *API-06's removal half: removing a binding is M11's lifecycle operation.* |
 | [API-07](../spec/source-access.md#synchronization-api) | reload(layers=None) rereads the binding's source layers from disk on request | behavior |  | M3 | 1 / M12 | `F-BINDING-STATE` | reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers. |
 | [API-09](../spec/source-access.md#synchronization-api) | cache(time_codes) caches the published generation's time-varying values at each given time code without synchronizing | behavior |  | M5 | 1 / M12 | — | Set by M5. |
+| [API-13](../spec/source-access.md#synchronization-api) | returns an immutable result (Diagnostics) holding its result state; its own deduplicated diagnostics | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [API-04](../spec/source-access.md#synchronization-api) | An expected failure, such as an unavailable source, is a result, not an exception. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [API-05](../spec/source-access.md#synchronization-api) | Exceptions report misuse only, such as a call made during another synchronization. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [CONS-01](../spec/source-access.md#source-consistency) | Synchronization is synchronous and non-reentrant. | behavior |  | M5 | 1 / M12 | — | Set by M5. |
@@ -162,6 +166,11 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [OWN-13](../spec/lifecycle.md#ownership-and-lifecycle) | Detach: release a whole binding's surviving managed content as-is into unmanaged Blender content | behavior |  | M11 | 1 / M12 | `F-DETACH-AS-IS`, `F-DETACH-SHARED` | Set by M11. |
 | [OWN-14](../spec/lifecycle.md#ownership-and-lifecycle) | Remove binding: remove configuration and managed content while preserving detached and unrelated content. | behavior |  | M11 | 1 / M12 | `F-LIFECYCLE-FAILURE`, `F-UNMANAGED-USER` | Set by M11. |
 | [OWN-15](../spec/lifecycle.md#ownership-and-lifecycle) | Lifecycle operations must preserve resources still required by other owners | behavior |  | M11 | 1 / M12 | `F-DETACH-SHARED`, `F-UNMANAGED-USER` | Set by M11. |
+| [ROLE-01](../spec/lifecycle.md#representation-roles-and-resource-identities) | The roles are a fixed vocabulary of the representation version, and an ownership record naming an unknown role is unsupported. | behavior |  | M5 | 1 / M12 | `F-SCHEMA-VERSIONS` | Set by M5. |
+| [ROLE-02](../spec/lifecycle.md#representation-roles-and-resource-identities) | A resource's identity is derived from what it represents and its role, never from Blender names, datablock pointers, or the plan's order | behavior |  | M5 | 1 / M12 | — | Set by M5. |
+| [ROLE-03](../spec/lifecycle.md#representation-roles-and-resource-identities) | A drawn copy's resources take their identity from the copy's track | behavior |  | M5 | 1 / M12 | — | Set by M5. |
+| [ROLE-04](../spec/lifecycle.md#representation-roles-and-resource-identities) | A batch's resources take their identity from the content its copies share, and a shared datablock's from its content. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [ROLE-05](../spec/lifecycle.md#representation-roles-and-resource-identities) | A prepared resource that represents what a published one does, in the same role, has its identity | behavior |  | M5 | 1 / M12 | — | Set by M5. |
 | [STAB-01](../spec/lifecycle.md#resource-stability) | Count active display resources and inactive pending-cleanup resources separately. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 | [STAB-02](../spec/lifecycle.md#resource-stability) | Disposal failures may retain additional resources only as inactive, persistently tracked pending cleanup with ownership evidence. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH`, `F-RETIREMENT-FAILURE` | Set by M7. |
 | [STAB-03](../spec/lifecycle.md#resource-stability) | explicit cleanup retry must restore managed-resource counts to the clean baseline | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH`, `F-PREPARATION-CLEANUP-FAILURE` | Set by M7. |
@@ -196,7 +205,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [PEND-03](../spec/lifecycle.md#pending-cleanup) | Remove resolved tracking and current cleanup diagnostics rather than accumulating history. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
 | [PEND-04](../spec/lifecycle.md#pending-cleanup) | Unresolved work remains inactive; retries are explicit and do not require USD access. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
 | [PEND-05](../spec/lifecycle.md#pending-cleanup) | Undo/redo restores cleanup tracking consistently with resource ownership. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. |
-| [PEND-06](../spec/lifecycle.md#pending-cleanup) | M3 defines the persistence contract; M5 chooses and validates the mechanism | contract |  | M5 | 1 / M5 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. *M3's contract is the DECISIONS.md row 'Pending-cleanup persistence contract'.* |
+| [PEND-06](../spec/lifecycle.md#pending-cleanup) | pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies | contract |  | M5 | 1 / M5 | `F-PREPARATION-CLEANUP-FAILURE` | Set by M5. *The mechanism is the DECISIONS.md row 'Pending-cleanup tracking mechanism'; M3's contract it meets is the row 'Pending-cleanup persistence contract'.* |
 | [PEND-07](../spec/lifecycle.md#pending-cleanup) | removing configuration must not orphan pending work. | behavior |  | M11 | 1 / M12 | `F-LIFECYCLE-FAILURE` | Set by M11. |
 | [REOPEN-01](../spec/lifecycle.md#reopening) | Restore metadata, pending-cleanup tracking, and indexes. Do not automatically retry cleanup. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, pending-cleanup tracking, and runtime indexes equal their values before saving, and the leftovers remain: no cleanup ran. |
 | [REOPEN-02](../spec/lifecycle.md#reopening) | Do not automatically synchronize. | behavior |  | M3 | 1 / M12 | `F-BINDING-STATE` | Reopening a .blend with bindings runs no synchronization: no published generation or last attempt changes, and no USD source is opened. |

@@ -122,7 +122,7 @@ Each entry links to the section that defines the term in full.
 | **Instance context** | The chain of native-instance roots through which a prim inside shared instance contents is reached. It distinguishes the separate uses of the same shared contents. |
 | **Correspondence** | The two-way mapping between source entities and the display resources that represent them. See [Source Inspection and Interaction](spec/interaction.md#source-inspection-and-interaction). |
 | **Source coverage** | The set of source entities a display resource represents. It may contain many entities. |
-| **Representation role** | Why a display resource exists, such as shared geometry, a placeholder, or a material. Roles are defined in M5. |
+| **Representation role** | Why a display resource exists, such as shared geometry, a placeholder, or a material. Roles are listed in [Representation Roles and Resource Identities](spec/lifecycle.md#representation-roles-and-resource-identities). |
 | **Canonical** | The single authoritative instance among duplicates: of a representation (same source coverage and role) or of a copied binding. Noncanonical resources are still tracked but excluded from the active display and correspondence. |
 | **Partition** | The unit of display replacement: a drawn copy's own resources, a batch's, or one shared datablock such as a mesh or material (DECISIONS.md "Partition unit"). A partition owns a set of display resources and is replaced as a whole. |
 | **Evaluated source snapshot** | The resolved USD semantics for one synchronization, with no Blender references. See [Evaluated Source Snapshot](spec/pipeline.md#evaluated-source-snapshot). |

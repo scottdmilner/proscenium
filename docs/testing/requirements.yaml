@@ -228,6 +228,8 @@ requirements:
       - id: CACHE-03
         quote: "A call that fails caches none of its time codes and leaves the published generation as it was"
         risk: high
+      - id: CACHE-11
+        quote: "A call records no last attempt, whether it succeeds or fails"
       - id: CACHE-10
         quote: "A call never fails because of how content varies"
         delivery: M7
@@ -249,6 +251,8 @@ requirements:
         quote: "Unsupported valid content."
       - id: DIAG-02
         quote: "Include binding, source path, property/asset identifier, severity, and fallback where applicable."
+      - id: DIAG-14
+        quote: "Each diagnostic also has a stable code naming its problem"
       - id: DIAG-03
         quote: "Aggregate repeated problems."
       - id: DIAG-04
@@ -265,6 +269,9 @@ requirements:
         fixtures: [F-NO-OP-REFRESH]
       - id: DIAG-08
         quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+      - id: DIAG-15
+        quote: "Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
       - id: DIAG-09
         quote: "Success: no diagnostics in any category other than source state."
@@ -369,6 +376,9 @@ requirements:
         oracle: "reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers."
       - id: API-09
         quote: "cache(time_codes) caches the published generation's time-varying values at each given time code without synchronizing"
+        delivery: M5
+      - id: API-13
+        quote: "returns an immutable result (Diagnostics) holding its result state; its own deduplicated diagnostics"
         delivery: M5
       - id: API-04
         quote: "An expected failure, such as an unavailable source, is a result, not an exception."
@@ -613,6 +623,23 @@ requirements:
         quote: "Lifecycle operations must preserve resources still required by other owners"
         fixtures: [F-DETACH-SHARED, F-UNMANAGED-USER]
 
+  - section: spec/lifecycle.md#representation-roles-and-resource-identities
+    delivery: M5
+    phase: 1
+    rows:
+      - id: ROLE-01
+        quote: "The roles are a fixed vocabulary of the representation version, and an ownership record naming an unknown role is unsupported."
+        fixtures: [F-SCHEMA-VERSIONS]
+      - id: ROLE-02
+        quote: "A resource's identity is derived from what it represents and its role, never from Blender names, datablock pointers, or the plan's order"
+      - id: ROLE-03
+        quote: "A drawn copy's resources take their identity from the copy's track"
+      - id: ROLE-04
+        quote: "A batch's resources take their identity from the content its copies share, and a shared datablock's from its content."
+        delivery: M7
+      - id: ROLE-05
+        quote: "A prepared resource that represents what a published one does, in the same role, has its identity"
+
   - section: spec/lifecycle.md#resource-stability
     delivery: M7
     phase: 1
@@ -747,10 +774,10 @@ requirements:
         quote: "Undo/redo restores cleanup tracking consistently with resource ownership."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
       - id: PEND-06
-        quote: "M3 defines the persistence contract; M5 chooses and validates the mechanism"
+        quote: "pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies"
         kind: contract
         qualified_by: M5
-        note: "M3's contract is the DECISIONS.md row 'Pending-cleanup persistence contract'."
+        note: "The mechanism is the DECISIONS.md row 'Pending-cleanup tracking mechanism'; M3's contract it meets is the row 'Pending-cleanup persistence contract'."
       - id: PEND-07
         quote: "removing configuration must not orphan pending work."
         delivery: M11
@@ -2193,11 +2220,8 @@ excluded:
     quotes: ["synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame"]
     restates: [BIND-05, XFORM-12]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["returns an immutable result: its result state and deduplicated diagnostics"]
-    restates: [DIAG-03, DIAG-09, DIAG-10, DIAG-11]
-  - section: spec/source-access.md#synchronization-api
-    quotes: ["Design note (settled by M3; M5 settles the result's fields): the API is proscenium.api.bindings."]
-    reason: "Design record of M3's API, and a note for M5."
+    quotes: ["Design note (settled by M3 and M5): the API is proscenium.api.bindings."]
+    reason: "Design record of M3's API."
   - section: spec/source-access.md#synchronization-api
     quotes: ["Methods that use the binding's records look it up when called; release addresses runtime state directly. Two handles are equal when their identifiers are."]
     restates: [API-01]
@@ -2348,6 +2372,9 @@ excluded:
   - section: spec/lifecycle.md#binding-state
     quotes: ["Runtime indexes | Disposable caches keyed by persistent identifiers | No; rebuilt"]
     reason: "Restates UNDO-07."
+  - section: spec/lifecycle.md#representation-roles-and-resource-identities
+    quotes: ["Every managed resource has one representation role and one resource identity, both taken from the display plan."]
+    restates: [ROLE-01, ROLE-02]
   - section: spec/lifecycle.md#reopening
     quotes: ["Refresh is explicit."]
     reason: "Restates REOPEN-02 and PH1-01."
@@ -2355,8 +2382,8 @@ excluded:
     quotes: ["Nothing detaches or removes it automatically."]
     restates: [DEST-01]
   - section: spec/lifecycle.md#removed-destination
-    quotes: ["M5 and M11 decide whether a publication or a repair may give such a binding a new destination."]
-    reason: "Scope note for M5 and M11."
+    quotes: ["a publication never gives such a binding a new destination"]
+    restates: [DEST-02]
   - section: spec/lifecycle.md#schema-versions
     quotes: ["Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions."]
     reason: "Design guidance for M3's schemas; SCHEMA-02 to SCHEMA-04 test versioning."
