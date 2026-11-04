@@ -2,12 +2,12 @@
 //
 // Each entry point translates errors as errors.h describes. Paths reach Python as strings, as the records store them.
 #include <pxr/base/tf/diagnostic.h>
-#include <pxr/base/tf/errorMark.h>
 #include <pxr/base/tf/pyLock.h>
 #include <pxr/pxr.h>
 
 #include <memory>
 #include <pxr/external/boost/python.hpp>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -36,11 +36,13 @@ struct PlanView {
 // The OpenUSD release the module was compiled against, comparable with the host's pxr.Usd.GetVersion().
 bp::tuple UsdVersion() { return bp::make_tuple(PXR_MAJOR_VERSION, PXR_MINOR_VERSION, PXR_PATCH_VERSION); }
 
-// For tests of error translation only: posts a Tf runtime error, which the entry point raises.
-void PostTfError(const std::string& message) {
-  const TfErrorMark mark;
-  TF_RUNTIME_ERROR("%s", message.c_str());
-  RaiseTfErrors(mark);
+// For tests of error translation only: posts a Tf runtime error, which the entry point raises, and then, if asked,
+// throws a C++ exception, which joins it.
+void PostTfError(const std::string& message, bool thenThrow) {
+  Guarded([&] {
+    TF_RUNTIME_ERROR("%s", message.c_str());
+    if (thenThrow) throw std::runtime_error("Thrown after the Tf error");
+  });
 }
 
 // The stage, or None once it has expired.
@@ -61,32 +63,21 @@ bp::tuple PathStrings(const SdfPathVector& paths) {
 
 // Building the chain reads the stage, so it can post Tf errors.
 std::shared_ptr<SceneIndexChain> NewSceneIndexChain(const UsdStagePtr& stage) {
-  const TfErrorMark mark;
-  auto chain = std::make_shared<SceneIndexChain>(stage);
-  RaiseTfErrors(mark);
-  return chain;
+  return Guarded([&] { return std::make_shared<SceneIndexChain>(stage); });
 }
 
 SnapshotView Capture(SceneIndexChain& chain, const UsdTimeCode& time) {
-  const TfErrorMark mark;
-  SnapshotPtr snapshot;
-  {
+  return Guarded([&] {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
-    snapshot = chain.Capture(time);
-  }
-  RaiseTfErrors(mark);
-  return SnapshotView{snapshot};
+    return SnapshotView{chain.Capture(time)};
+  });
 }
 
 PlanView MakePlan(const SnapshotView& snapshot, const PlanningContext& context) {
-  const TfErrorMark mark;
-  PlanPtr plan;
-  {
+  return Guarded([&] {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
-    plan = BuildPlan(*snapshot.data, context);
-  }
-  RaiseTfErrors(mark);
-  return PlanView{plan};
+    return PlanView{BuildPlan(*snapshot.data, context)};
+  });
 }
 
 void WrapPlan() {
@@ -141,7 +132,7 @@ void WrapPlan() {
 PXR_BOOST_PYTHON_MODULE(_core) {
   using namespace proscenium;
   bp::def("usd_version", &UsdVersion);
-  bp::def("_post_tf_error", &PostTfError);
+  bp::def("_post_tf_error", &PostTfError, (bp::arg("message"), bp::arg("then_throw") = false));
   bp::class_<StageHandle, bp::noncopyable>("StageHandle", bp::init<UsdStagePtr>())
       .def(
           "stage", +[](const StageHandle& h) { return StageOrNone(h.Stage()); })

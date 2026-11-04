@@ -2,7 +2,7 @@
 from pxr import Gf, Usd, Vt
 
 def usd_version() -> tuple[int, int, int]: ...
-def _post_tf_error(message: str) -> None: ...  # for tests of error translation only
+def _post_tf_error(message: str, then_throw: bool = False) -> None: ...  # for tests of error translation only
 
 class StageHandle:
     """The core's own reference to a caller's stage. Raises ValueError for an invalid stage."""
