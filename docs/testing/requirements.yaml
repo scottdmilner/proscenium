@@ -695,11 +695,14 @@ requirements:
         fixtures: [F-RETIREMENT-FAILURE]
         oracle: "F-RETIREMENT-FAILURE's two synchronizations give each placeholder's resources the same identities, unchanged by renaming the objects between them and equal to those a plan in a separate process derives."
       - id: ROLE-03
-        quote: "A drawn copy's resources take their identity from the copy's track"
+        quote: "A drawn copy's resources take their identity from its [source entity](../PROJECT.md#glossary) and its place among the copy's objects."
         fixtures: [F-RETIREMENT-FAILURE]
         oracle: "Each placeholder's object and bounds mesh have identities from its drawn gprim's source path and instance context, distinct between gprims and equal across synchronizations."
       - id: ROLE-04
         quote: "A batch's resources take their identity from the content its copies share, and a shared datablock's from its content."
+        delivery: M7
+      - id: ROLE-06
+        quote: "A batch's and a shared datablock's identities aren't persisted, so after reopening, a synchronization may replace their published resources as obsolete even where a prepared one has the same identity."
         delivery: M7
       - id: ROLE-05
         quote: "A prepared resource that represents what a published one does, in the same role, has its identity"

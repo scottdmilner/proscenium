@@ -48,8 +48,9 @@ Every managed resource has one representation role and one resource identity, bo
 
 - A role names why the resource exists in its [partition](../PROJECT.md#glossary), such as a drawn copy's object, a batch's carrier, or a shared mesh. The roles are a fixed vocabulary of the representation version, and an ownership record naming an unknown role is unsupported.
 - A resource's identity is derived from what it represents and its role, never from Blender names, datablock pointers, or the plan's order, so equal plans give equal identities, in any process.
-- A drawn copy's resources take their identity from the copy's track: its source path, its instance context, and its place among the copy's objects.
+- A drawn copy's resources take their identity from its [source entity](../PROJECT.md#glossary) and its place among the copy's objects.
 - A batch's resources take their identity from the content its copies share, and a shared datablock's from its content.
+- A batch's and a shared datablock's identities aren't persisted, so after reopening, a synchronization may replace their published resources as obsolete even where a prepared one has the same identity.
 - A prepared resource that represents what a published one does, in the same role, has its identity, so a synchronization tells replaced resources from new and obsolete ones by identity.
 
 ### Resource Stability
