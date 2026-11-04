@@ -13,16 +13,11 @@ import bpy
 import pytest
 
 from fixtures import copies
-from proscenium.api.bindings import (
-    BindingHandle,
-    Bindings,
-    ResultState,
-)
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_records, records
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import Loaded
-from proscenium.binding.results import DiagnosticCode
+from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import DisabledBindingError, ownership_index
 from proscenium.binding.source_access import PayloadPolicy
 from support import copies as routes
@@ -34,6 +29,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
+    from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.runtime import CopiedBinding
 
 

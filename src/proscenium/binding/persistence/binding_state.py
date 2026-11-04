@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from ..results import Diagnostic, ResultState
+from ..results import Diagnostic, ResultState, result_state
 from ..source_access import PayloadPolicy, SourceRevision
 from . import records
 from .records import Schema
@@ -94,12 +94,15 @@ class LastAttempt:
 
     payload_policy: PayloadPolicy
     time_code: float | None  # see stored_time
-    result: ResultState
     diagnostics: tuple[Diagnostic, ...]
 
     def __post_init__(self) -> None:
         _settle(self)
-        object.__setattr__(self, "result", ResultState(self.result))
+
+    @property
+    def result(self) -> ResultState:
+        """How it ended, from its diagnostics."""
+        return result_state(self.diagnostics)
 
 
 GENERATION = Schema("generation", version=1, record_type=Generation)

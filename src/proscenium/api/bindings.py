@@ -31,7 +31,7 @@ from pxr import Usd
 
 from ..binding import runtime
 from ..binding.persistence import BindingConfig
-from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
+from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.source_access import PayloadPolicy, RequestedSettings, SourceUnavailableError, dirty_layers
 
 if TYPE_CHECKING:
@@ -130,10 +130,10 @@ class Bindings:
                 binding_id,
                 "The attached stage has a different root-layer identifier; pass confirm=True to replace it",
             )
-            return Result(ResultState.FATAL_FAILURE, (diagnostic,))
+            return Result(diagnostic)
         runtime.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
         self.stages.attached(binding_id).attach(stage)
-        return Result(ResultState.SUCCESS)
+        return Result()
 
     def release(self, binding_id: BindingId) -> None:
         """Release one binding's runtime stages; its persistent record need not exist."""
@@ -157,7 +157,7 @@ class Bindings:
             settings = dataclasses.replace(config.settings, payload_policy=payload_policy)
             config = dataclasses.replace(config, settings=settings)
         runtime.set_config(binding_id, config)
-        return Result(ResultState.SUCCESS)
+        return Result()
 
     def synchronize(self, binding_id: BindingId, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code; acquisition only, so nothing is evaluated at it yet."""
@@ -173,11 +173,10 @@ class Bindings:
             dirty = dirty_layers(self._stages(binding_id).acquire(config.settings.payload_policy))
         except SourceUnavailableError as error:
             return _unavailable(binding_id, error)
-        diagnostics = ()
-        if dirty:
-            message = "Displaying layers with unsaved in-process edits"
-            diagnostics = (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))),)
-        return Result(ResultState.SUCCESS, diagnostics)
+        if not dirty:
+            return Result()
+        message = "Displaying layers with unsaved in-process edits"
+        return Result(Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))))
 
     def reload(self, binding_id: BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
@@ -192,7 +191,7 @@ class Bindings:
             self._stages(binding_id).reload(config.settings.payload_policy, layers)
         except SourceUnavailableError as error:
             return _unavailable(binding_id, error)
-        return Result(ResultState.SUCCESS)
+        return Result()
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""
@@ -223,24 +222,24 @@ class Bindings:
 
 
 def _unavailable(binding_id: BindingId, error: SourceUnavailableError) -> Result:
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),))
+    return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)))
 
 
 def _removed_destination(binding_id: BindingId) -> Result:
     message = f"The destination collection of binding {binding_id} was removed"
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message),))
+    return Result(Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message))
 
 
 def _refused(found: FoundBinding) -> Result:
     """Why a binding that isn't usable refuses."""
     if found.unreadable is not None:
         diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, found.binding_id, found.unreadable.message)
-        return Result(ResultState.FATAL_FAILURE, (diagnostic,))
+        return Result(diagnostic)
     report = found.copies
     assert report is not None
     named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in report.candidates)
     message = f"Binding {report.binding_id} has copies and no canonical candidate ({report.reason}): {named}"
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.COPIED_BINDING, report.binding_id, message),))
+    return Result(Diagnostic(DiagnosticCode.COPIED_BINDING, report.binding_id, message))
 
 
 BINDINGS = Bindings()  # the process's bindings, which handles use

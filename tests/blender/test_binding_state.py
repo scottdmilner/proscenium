@@ -23,7 +23,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
+from proscenium.binding.results import Diagnostic, DiagnosticCode
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
 from support.usd import binding_on_file
@@ -55,7 +55,7 @@ def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:
 
 
 def _attempt(time: float | None = 20.0) -> LastAttempt:
-    return LastAttempt(PayloadPolicy.LOAD_ALL, time, ResultState.FATAL_FAILURE, (UNAVAILABLE,))
+    return LastAttempt(PayloadPolicy.LOAD_ALL, time, (UNAVAILABLE,))
 
 
 @pytest.mark.parametrize("time", [12.5, None], ids=["numeric", "default"])

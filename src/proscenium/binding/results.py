@@ -5,8 +5,12 @@ The synchronization API returns them, and the binding-state records store them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class ResultState(StrEnum):
@@ -101,13 +105,60 @@ class Diagnostic:
         """How serious its code is."""
         return _KINDS[self.code][1]
 
+    @property
+    def problem(self) -> tuple[object, ...]:
+        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03)."""
+        return tuple(getattr(self, f.name) for f in fields(self) if f.name != "message")
 
-@dataclass(frozen=True, slots=True)
+
+# The state each category gives a result on its own (pipeline.md#diagnostics); a result's is its worst diagnostic's.
+_STATE_OF: dict[DiagnosticCategory, ResultState] = {
+    DiagnosticCategory.SOURCE_STATE: ResultState.SUCCESS,
+    DiagnosticCategory.UNSUPPORTED: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.APPROXIMATION: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.LOSSY_CONVERSION: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.MISSING_DEPENDENCY: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.INVALID_DATA: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.PENDING_CLEANUP: ResultState.COMPLETED_WITH_ISSUES,
+    DiagnosticCategory.UNAVAILABLE_SOURCE: ResultState.FATAL_FAILURE,
+    DiagnosticCategory.FATAL_FAILURE: ResultState.FATAL_FAILURE,
+}
+_WORSE = (ResultState.SUCCESS, ResultState.COMPLETED_WITH_ISSUES, ResultState.FATAL_FAILURE)
+
+
+def result_state(diagnostics: Iterable[Diagnostic]) -> ResultState:
+    """The state an operation with these diagnostics ends in: its worst diagnostic's, or success with none."""
+    return max((_STATE_OF[d.category] for d in diagnostics), key=_WORSE.index, default=ResultState.SUCCESS)
+
+
+def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
+    """The diagnostics with each problem once, in the order first reported (DIAG-03).
+
+    A problem is a diagnostic's code and everything it concerns; its message is prose, so a repeat with another
+    message is the same problem, and the first report's message is kept.
+    """
+    first: dict[tuple[object, ...], Diagnostic] = {}
+    for diagnostic in diagnostics:
+        first.setdefault(diagnostic.problem, diagnostic)
+    return tuple(first.values())
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class Result:
-    """What an operation on a binding did. Expected failures are results, never exceptions."""
+    """What an operation on a binding did. Expected failures are results, never exceptions.
 
-    state: ResultState
-    diagnostics: tuple[Diagnostic, ...] = ()
+    Its diagnostics are aggregated, and its state derives from them.
+    """
+
+    diagnostics: tuple[Diagnostic, ...]
+
+    def __init__(self, *diagnostics: Diagnostic) -> None:
+        object.__setattr__(self, "diagnostics", aggregated(diagnostics))
+
+    @property
+    def state(self) -> ResultState:
+        """How the operation ended."""
+        return result_state(self.diagnostics)
 
     @property
     def is_success(self) -> bool:

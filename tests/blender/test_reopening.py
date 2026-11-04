@@ -21,14 +21,13 @@ from proscenium.api.bindings import (
     Bindings,
     RequestedSettings,
     Result,
-    ResultState,
 )
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_records, binding_state, records
 from proscenium.binding.persistence.binding_state import LastAttempt
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import Loaded
-from proscenium.binding.results import DiagnosticCode
+from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership_index
 from proscenium.binding.source_access import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
@@ -128,7 +127,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
         save_and_reopen(tmp_path / "offline.blend")
         _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
         assert handle.live_stage() is None
-        assert handle.attach(caller) == Result(ResultState.SUCCESS)
+        assert handle.attach(caller) == Result()
         assert handle.live_stage() == caller
         assert _saved(handle) == saved  # attachment alone does not publish or modify the saved display
         assert handle.synchronize(0).state is ResultState.SUCCESS
@@ -174,7 +173,7 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)
         ownership_index.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
-        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
+        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         assert ownership_index.ownership(obj).claims != ()
         before = _config(handle)

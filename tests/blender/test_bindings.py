@@ -24,14 +24,13 @@ from proscenium.api.bindings import (
     Bindings,
     RequestedSettings,
     Result,
-    ResultState,
 )
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_records, binding_state, records
 from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
-from proscenium.binding.results import DiagnosticCode
+from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
@@ -196,7 +195,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
     handle.attach(open_fresh(scene.root))
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert handle.synchronize(0) == Result()
 
 
 def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -205,20 +204,20 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root)
         before = _config(handle)
-        assert handle.synchronize(Usd.TimeCode.Default()) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(Usd.TimeCode.Default()) == Result()
         assert _config(handle) == before  # API-02
         live = handle.live_stage()
         assert live is not None and live != scene.caller
-        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(3) == Result()
         assert handle.live_stage() == live  # the same attachment after a second refresh
-        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result(ResultState.SUCCESS)
+        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
         assert live.GetLoadSet()  # not applied: nothing synchronized
         assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
-        assert handle.reload() == Result(ResultState.SUCCESS)
+        assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
-        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(3) == Result()
         assert live.GetLoadSet()  # the caller's load set is protected
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None and stages.evaluation_stage is not None
@@ -247,7 +246,7 @@ def test_undoing_creation_makes_handles_raise(bindings: Bindings, tmp_path: Path
             with pytest.raises(BindingNotFoundError):
                 call()
     undo.redo()
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert handle.synchronize(0) == Result()
 
 
 # Reopening.
@@ -277,7 +276,7 @@ def test_reopening_f_binding_state_synchronizes_nothing(
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         handle.synchronize(0)
         generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, SourceRevision("saved"), ())
-        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
+        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ())
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         save_and_reopen(tmp_path / "reopen.blend")
@@ -294,13 +293,13 @@ def test_an_attached_source_is_unavailable_after_reopening(
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(0) == Result()
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
-        assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.caller) == Result()
+        assert handle.synchronize(0) == Result()
 
 
 # A configuration that can't be read.
@@ -352,9 +351,9 @@ def test_attachment_changes_only_its_binding(bindings: Bindings, tmp_path: Path)
     # SID-08, API-11: each handle attaches independently, even for the same stage.
     a, b, c = (bindings.create_binding(_scene()) for _ in range(3))
     with source_access.reattach(tmp_path) as scene:
-        assert a.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert a.attach(scene.caller) == Result()
         assert [h.live_stage() for h in (a, b, c)] == [scene.caller, None, None]
-        assert b.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert b.attach(scene.caller) == Result()
         assert [h.live_stage() for h in (a, b, c)] == [scene.caller, scene.caller, None]
 
 
@@ -380,16 +379,16 @@ def test_an_open_file_does_not_supply_an_attachment(bindings: Bindings, tmp_path
             assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.live_stage() is None
         assert _config(handle) == before
-        assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.caller) == Result()
         assert handle.live_stage() == scene.caller
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(0) == Result()
 
 
 def test_a_stage_over_the_same_root_layer_reattaches(bindings: Bindings, tmp_path: Path) -> None:
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.same_root) == Result()
         assert handle.live_stage() == scene.same_root
 
 
@@ -399,7 +398,7 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
     with source_access.reattach(tmp_path) as scene:
         a.attach(scene.caller)
         b.attach(scene.caller)
-        assert a.synchronize(0) == Result(ResultState.SUCCESS)
+        assert a.synchronize(0) == Result()
         stages = bindings.stages.get(a.binding_id)
         assert stages is not None
         evaluation = stages.evaluation_stage
@@ -410,7 +409,7 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
         assert [_config(h) for h in (a, b)] == before
         assert stages.evaluation_stage == evaluation
         assert [h.live_stage() for h in (a, b)] == [scene.caller, scene.caller]
-        assert a.attach(scene.other_root, confirm=True) == Result(ResultState.SUCCESS)
+        assert a.attach(scene.other_root, confirm=True) == Result()
         assert _config(a).root_layer_identifier == scene.other_root.GetRootLayer().identifier
         assert _config(b) == before[1]
         assert [h.live_stage() for h in (a, b)] == [scene.other_root, scene.caller]
@@ -427,7 +426,7 @@ def test_reattachment_uses_the_persistent_binding_identity(bindings: Bindings, t
         restored = BindingHandle(a.binding_id)
         assert restored in bindings.in_scene(_scene())
         assert restored.live_stage() is b.live_stage() is None
-        assert restored.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert restored.attach(scene.same_root) == Result()
         assert a.live_stage() == scene.same_root
         assert b.live_stage() is None
 
@@ -443,7 +442,7 @@ def test_anonymous_overlays_keep_binding_opinions_independent(bindings: Bindings
                 caller = Usd.Stage.Open(overlay)
             caller.GetPrimAtPath("/World").GetAttribute("rootValue").Set(value)
             handle = bindings.create_binding(_scene())
-            assert handle.attach(caller) == Result(ResultState.SUCCESS)
+            assert handle.attach(caller) == Result()
             assert handle.synchronize(0).state is ResultState.SUCCESS
             callers.append(caller)
             handles.append(handle)
@@ -467,7 +466,7 @@ def test_the_stored_identifier_is_the_records_after_undo(bindings: Bindings, tmp
         undo.push("replace")
         undo.undo()
         assert _config(handle).root_layer_identifier == scene.caller.GetRootLayer().identifier
-        assert handle.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.same_root) == Result()
 
 
 # The records' namespace.
