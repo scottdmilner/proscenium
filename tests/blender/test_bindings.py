@@ -195,7 +195,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
     handle.attach(open_fresh(scene.root))
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -204,11 +204,11 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root)
         before = _config(handle)
-        assert handle.synchronize(Usd.TimeCode.Default()) == Result()
+        assert handle.synchronize(Usd.TimeCode.Default()) == Result(time_codes=(Usd.TimeCode(Usd.TimeCode.Default()),))
         assert _config(handle) == before  # API-02
         live = handle.live_stage()
         assert live is not None and live != scene.caller
-        assert handle.synchronize(3) == Result()
+        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
         assert handle.live_stage() == live  # the same attachment after a second refresh
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
@@ -217,7 +217,7 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
         assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
-        assert handle.synchronize(3) == Result()
+        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
         assert live.GetLoadSet()  # the caller's load set is protected
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None and stages.evaluation_stage is not None
@@ -246,7 +246,7 @@ def test_undoing_creation_makes_handles_raise(bindings: Bindings, tmp_path: Path
             with pytest.raises(BindingNotFoundError):
                 call()
     undo.redo()
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 # Reopening.
@@ -293,13 +293,13 @@ def test_an_attached_source_is_unavailable_after_reopening(
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.synchronize(0) == Result()
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.attach(scene.caller) == Result()
-        assert handle.synchronize(0) == Result()
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 # A configuration that can't be read.
@@ -381,7 +381,7 @@ def test_an_open_file_does_not_supply_an_attachment(bindings: Bindings, tmp_path
         assert _config(handle) == before
         assert handle.attach(scene.caller) == Result()
         assert handle.live_stage() == scene.caller
-        assert handle.synchronize(0) == Result()
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 def test_a_stage_over_the_same_root_layer_reattaches(bindings: Bindings, tmp_path: Path) -> None:
@@ -398,7 +398,7 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
     with source_access.reattach(tmp_path) as scene:
         a.attach(scene.caller)
         b.attach(scene.caller)
-        assert a.synchronize(0) == Result()
+        assert a.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         stages = bindings.stages.get(a.binding_id)
         assert stages is not None
         evaluation = stages.evaluation_stage

@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from pxr import Usd
+
 
 class ResultState(StrEnum):
     """How an operation ended: its result's state."""
@@ -151,9 +153,11 @@ class Result:
     """
 
     diagnostics: tuple[Diagnostic, ...]
+    time_codes: tuple[Usd.TimeCode, ...]  # those it attempted: a synchronization's one, none for most operations
 
-    def __init__(self, *diagnostics: Diagnostic) -> None:
+    def __init__(self, *diagnostics: Diagnostic, time_codes: Iterable[Usd.TimeCode] = ()) -> None:
         object.__setattr__(self, "diagnostics", aggregated(diagnostics))
+        object.__setattr__(self, "time_codes", tuple(time_codes))
 
     @property
     def state(self) -> ResultState:

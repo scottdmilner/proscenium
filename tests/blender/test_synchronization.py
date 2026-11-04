@@ -59,7 +59,7 @@ def test_the_time_code_is_the_attempts_not_a_setting(
     # API-02: the default time code and numeric ones are accepted, and none becomes a setting.
     handle = binding_on_file(bindings, _scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     before = handle.requested_settings()
-    assert handle.synchronize(time_code) == Result()
+    assert handle.synchronize(time_code) == Result(time_codes=(Usd.TimeCode(time_code),))
     assert handle.requested_settings() == before
     stage = _evaluation(bindings, handle)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}  # the attempt used the payload policy
@@ -149,11 +149,14 @@ def test_an_unchanged_configuration_is_not_written(
 
 def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene())
-    for result in (handle.synchronize(0), handle.reload()):
+    synchronized, reloaded = handle.synchronize(0), handle.reload()
+    for result in (synchronized, reloaded):
         assert result.state == ResultState.FATAL_FAILURE
         assert [(d.code, d.category, d.severity) for d in result.diagnostics] == [
             (DiagnosticCode.NO_ATTACHED_STAGE, DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
         ]
+    # A failed synchronization still names the time code it attempted; a reload attempts none.
+    assert (synchronized.time_codes, reloaded.time_codes) == ((Usd.TimeCode(0),), ())
 
 
 def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -170,6 +173,15 @@ def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path:
         assert {Path(layer) for layer in diagnostic.layers} == set(scene.dirty_contributing.values())
 
 
+def test_an_unchanged_refresh_reports_equal_diagnostics(bindings: Bindings, tmp_path: Path) -> None:
+    # DIAG-07 on F-DIRTY-LAYER: nothing changes between the two, so they report equal diagnostics in the same order.
+    with source_access.dirty_layer(tmp_path) as scene:
+        handle = binding_on_file(bindings, _scene(), scene.root)
+        first, second = handle.synchronize(0), handle.synchronize(0)
+        assert first.diagnostics
+        assert second.diagnostics == first.diagnostics
+
+
 def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
     # The reload rereads the layers; the requested settings are as they were, and the next synchronize shows it.
     with source_access.dirty_layer(tmp_path) as scene:
@@ -178,7 +190,7 @@ def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
         before = handle.requested_settings()
         assert handle.reload() == Result()
         assert handle.requested_settings() == before
-        assert handle.synchronize(1) == Result()  # nothing dirty left
+        assert handle.synchronize(1) == Result(time_codes=(Usd.TimeCode(1),))  # nothing dirty left
         stage = handle.live_stage()
         assert stage is not None
         assert read_values(stage) == scene.disk_values
@@ -195,7 +207,7 @@ def test_attaching_through_a_handle(bindings: Bindings, tmp_path: Path) -> None:
     caller = open_fresh(root)
     handle = bindings.create_binding(_scene())
     assert handle.attach(caller) == Result()
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     assert handle.live_stage() == caller
 
 
@@ -206,7 +218,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
         first, second = (bindings.create_binding(_scene()) for _ in range(2))
         for handle in (first, second):
             assert handle.attach(caller) == Result()
-            assert handle.synchronize(0) == Result()
+            assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         second_evaluation = _evaluation(bindings, second)
         before = records.stored(_scene(), binding_records.config_key(first.binding_id))
         assert first.release() is None
@@ -217,7 +229,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
         assert second.live_stage() == caller
         assert _evaluation(bindings, second) == second_evaluation
         assert first.attach(caller) == Result()
-        assert first.synchronize(0) == Result()
+        assert first.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -275,7 +287,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     undo.push("base")
     handle = bindings.create_binding(_scene())
     handle.attach(caller)
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     source = bindings.stages.get(handle.binding_id)
     assert source is not None
     undo.push("create")
@@ -284,7 +296,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     assert source.live_stage == caller
     undo.redo()
     assert handle.live_stage() == caller
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     undo.undo()
     assert handle.release() is None  # the record no longer exists
     assert source.live_stage is None
@@ -299,12 +311,12 @@ def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, 
     removed = binding_on_file(bindings, other, _root(tmp_path))
     kept = binding_on_file(bindings, scene, _root(tmp_path))
     for handle in (removed, kept):
-        assert handle.synchronize(0) == Result()
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     source = bindings.stages.get(removed.binding_id)
     assert source is not None
     caller = source.live_stage
     bpy.data.scenes.remove(other)
-    assert kept.synchronize(0) == Result()
+    assert kept.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     assert source.evaluation_stage is None
     assert source.live_stage == caller
     assert bindings.stages.get(kept.binding_id) is not None
@@ -318,7 +330,7 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     bindings: Bindings, tmp_path: Path, unusable: str
 ) -> None:
     handle = binding_on_file(bindings, _scene(), _root(tmp_path))
-    assert handle.synchronize(0) == Result()
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     caller, evaluation = stages.live_stage, stages.evaluation_stage
