@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+  # Runs on main fill the caches every pull request can read; a pull request's own caches are visible only to it.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -14,10 +17,7 @@ jobs:
           enable-cache: true
       - run: uv sync --locked  # fail if uv.lock is out of date
       # clang-tidy parses the compiled core with Blender's dependency headers (tools/clang_tidy.py).
-      - uses: actions/cache@v4
-        with:
-          path: build/blender-deps
-          key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: ./.github/actions/blender-deps
       # Checks are defined once, in .pre-commit-config.yaml. Fixes made by
       # ruff count as failures here, and the diff is printed.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
@@ -39,10 +39,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: build/blender-deps
-          key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: ./.github/actions/blender-deps
       - name: Build the compiled core
         run: uv run python tools/build_extension.py
       - name: Build the Hydra bridge
@@ -74,11 +71,8 @@ jobs:
           enable-cache: true
       - uses: ./.github/actions/setup-blender  # binary smoke tests in tests/isolated
       - run: uv sync --locked
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/blender-deps
         if: runner.os != 'Linux'
-        with:
-          path: build/blender-deps
-          key: blender-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
       - uses: actions/download-artifact@v4
         if: runner.os == 'Linux'
         with:

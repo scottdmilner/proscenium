@@ -35,9 +35,9 @@ runs:
         libegl1 libgl1 libice6 libsm6 libx11-6 libxext6 libxfixes3 libxi6
         libxkbcommon0 libxrender1 libxxf86vm1
 
-    - name: Cache Blender download
+    - name: Restore Blender download
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/blender-download
         key: ${{ env.BLENDER_FILE }}
@@ -52,6 +52,14 @@ runs:
         curl -fsSL "$BLENDER_URL/blender-$BLENDER_VERSION.sha256" | grep " $BLENDER_FILE\$" > "$dl/SHA256"
         if command -v sha256sum > /dev/null; then check="sha256sum -c"; else check="shasum -a 256 -c"; fi
         (cd "$dl" && $check SHA256)
+
+    # Saved once verified, so a later failing step doesn't lose the download.
+    - name: Save Blender download
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/blender-download
+        key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: Unpack Blender
       shell: bash
