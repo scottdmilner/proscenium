@@ -279,7 +279,7 @@ requirements:
       - id: DIAG-02
         quote: "Include binding, source path, property/asset identifier, severity, and fallback where applicable."
         fixtures: [F-RETIREMENT-FAILURE, F-DIRTY-LAYER]
-        oracle: "Every diagnostic names its binding; a pending-cleanup one also names its resource's identity and role, a source-state one its layers, and one about a source entity its source path; fields that don't apply are empty."
+        oracle: "Every diagnostic names its binding; a pending-cleanup one also names its resource's entry key and role, a source-state one its layers, and one about a source entity its source path; fields that don't apply are empty."
       - id: DIAG-14
         quote: "Each diagnostic also has a stable code naming its problem"
         fixtures: [F-RETIREMENT-FAILURE, F-DIRTY-LAYER]

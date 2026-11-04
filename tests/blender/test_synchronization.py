@@ -19,13 +19,12 @@ from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
-    DiagnosticCategory,
     Result,
     ResultState,
-    Severity,
 )
 from proscenium.binding import persistence, runtime
 from proscenium.binding.persistence import binding_records, records
+from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, Severity
 from proscenium.binding.runtime import state
 from proscenium.binding.source_access import PayloadPolicy
 from proscenium.binding.source_access.binding_ids import BindingId
@@ -153,8 +152,8 @@ def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene())
     for result in (handle.synchronize(0), handle.reload()):
         assert result.state == ResultState.FATAL_FAILURE
-        assert [(d.category, d.severity) for d in result.diagnostics] == [
-            (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
+        assert [(d.code, d.category, d.severity) for d in result.diagnostics] == [
+            (DiagnosticCode.NO_ATTACHED_STAGE, DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
         ]
 
 
@@ -164,7 +163,11 @@ def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path:
         result = binding_on_file(bindings, _scene(), scene.root).synchronize(0)
         assert result.state == ResultState.SUCCESS
         [diagnostic] = result.diagnostics
-        assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.SOURCE_STATE, Severity.INFO)
+        assert (diagnostic.code, diagnostic.category, diagnostic.severity) == (
+            DiagnosticCode.UNSAVED_LAYERS,
+            DiagnosticCategory.SOURCE_STATE,
+            Severity.INFO,
+        )
         assert {Path(layer) for layer in diagnostic.layers} == set(scene.dirty_contributing.values())
 
 
@@ -211,7 +214,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
         assert first.release() is None
         assert records.stored(_scene(), binding_records.config_key(first.binding_id)) == before
         assert first.live_stage() is None
-        assert [d.category for d in first.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+        assert [d.code for d in first.synchronize(0).diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert second.live_stage() == caller
         assert _evaluation(bindings, second) == second_evaluation
         assert first.attach(caller) == Result(ResultState.SUCCESS)

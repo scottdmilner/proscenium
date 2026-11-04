@@ -19,7 +19,6 @@ from fixtures import source_access
 from proscenium.api.bindings import (
     BindingHandle,
     Bindings,
-    DiagnosticCategory,
     RequestedSettings,
     Result,
     ResultState,
@@ -29,6 +28,7 @@ from proscenium.binding.persistence import binding_records, binding_state, recor
 from proscenium.binding.persistence.binding_state import LastAttempt
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.runtime import ownership_index
 from proscenium.binding.source_access import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
@@ -90,16 +90,14 @@ def _publish(handle: BindingHandle, display: SavedDisplay) -> dict[str, object]:
     return saved
 
 
-def _check_kept(
-    bindings: Bindings, handle: BindingHandle, saved: dict[str, object], category: DiagnosticCategory
-) -> None:
+def _check_kept(bindings: Bindings, handle: BindingHandle, saved: dict[str, object], code: DiagnosticCode) -> None:
     # REOPEN-04, REOPEN-05, REOPEN-07: the binding is listed with its records, and the display unchanged,
     # after reopening and after a synchronization that fails for the unavailable source.
     assert bindings.in_scene(_scene()) == [handle]
     assert _saved(handle) == saved
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
-    assert [d.category for d in result.diagnostics] == [category]
+    assert [d.code for d in result.diagnostics] == [code]
     assert bindings.in_scene(_scene()) == [handle]
     assert _saved(handle) == saved
 
@@ -115,7 +113,7 @@ def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -
         gc.collect()
         assert not Sdf.Layer.Find(str(scene.root))
         assert not scene.root.exists()
-        _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
+        _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
 
 
 def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
@@ -128,7 +126,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
         saved = _publish(handle, scene.display)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
-        _check_kept(bindings, handle, saved, DiagnosticCategory.UNAVAILABLE_SOURCE)
+        _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
         assert handle.live_stage() is None
         assert handle.attach(caller) == Result(ResultState.SUCCESS)
         assert handle.live_stage() == caller
@@ -160,7 +158,7 @@ def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConf
     stages = bindings.stages.get(handle.binding_id)
     result = handle.synchronize(0)
     assert result.state is ResultState.FATAL_FAILURE
-    assert [d.category for d in result.diagnostics] == [DiagnosticCategory.REMOVED_DESTINATION]
+    assert [d.code for d in result.diagnostics] == [DiagnosticCode.REMOVED_DESTINATION]
     assert handle.binding_id in result.diagnostics[0].message
     assert bindings.stages.get(handle.binding_id) is stages
     assert stages is None or stages.evaluation_stage is None

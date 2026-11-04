@@ -23,7 +23,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.results import Diagnostic, DiagnosticCategory, ResultState, Severity
+from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
 from support.usd import binding_on_file
@@ -34,9 +34,9 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import BindingHandle, Bindings
 
 DIRTY = Diagnostic(
-    DiagnosticCategory.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda")
+    DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying layers with unsaved edits", layers=("/a.usda", "/b.usda")
 )
-UNAVAILABLE = Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
+UNAVAILABLE = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
 REVISION = SourceRevision("a revision")
 
 

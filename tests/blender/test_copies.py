@@ -16,13 +16,13 @@ from fixtures import copies
 from proscenium.api.bindings import (
     BindingHandle,
     Bindings,
-    DiagnosticCategory,
     ResultState,
 )
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_records, records
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.runtime import DisabledBindingError, ownership_index
 from proscenium.binding.source_access import PayloadPolicy
 from support import copies as routes
@@ -91,7 +91,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             assert bindings.in_scene(bpy.data.scenes[name]) == [handle]
         for refused in (result, handle.reload(), handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)):
             assert refused.state is ResultState.FATAL_FAILURE
-            assert [d.category for d in refused.diagnostics] == [DiagnosticCategory.COPIED_BINDING]
+            assert [d.code for d in refused.diagnostics] == [DiagnosticCode.COPIED_BINDING]
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )

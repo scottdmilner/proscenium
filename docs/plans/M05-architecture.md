@@ -70,6 +70,10 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 2. **Aggregation and the result state:** repeated problems aggregate (DIAG-03); the state is derived from the categories (DIAG-09 to DIAG-11), source state informational.
 3. **Where diagnostics live:** the generation's and the last attempt's own, the ledger's cleanup diagnostics apart from both (DIAG-04 to DIAG-06, DIAG-08), and an unchanged refresh's equivalent ones (DIAG-07).
 
+#### Phase C log
+
+- **C1, the categories and the fields** (with the user: a code determines its category and severity). `DiagnosticCategory` holds the nine categories of [Diagnostics](../spec/pipeline.md#diagnostics) (DIAG-01). `DiagnosticCode` is the documented list of stable codes (DIAG-14), each with one category and one severity in a table beside it, so a diagnostic stores its code and reads the other two from it, and none can hold a code under the wrong category; codes are added as each phase reports them. The four categories binding operations reported before outside the spec's nine are fatal-failure codes: `source-confirmation-required`, `unsupported-record`, `removed-destination`, and `copied-binding`; an unattached binding's is `no-attached-stage`, and a dirty layer's `unsaved-layers`. `Diagnostic` names its binding and holds DIAG-02's fields, each empty where it doesn't apply: source path, property path, asset, fallback, layers, and a pending-cleanup diagnostic's resource entry key and role. `Severity` gains `warning` for the content categories. Tests identify diagnostics by code.
+
 ### Phase D — The transaction against the stub application layer
 
 1. **Where it lives:** suggested, a package beside `binding/` and `core/` holding the transaction and the stub application layer, which M7 replaces. `api/` imports it, and it imports `binding`'s units and `core` through what each exports, as `api/` does. Its row joins the import-rules table in `src/proscenium/README.md`, AGENTS.md's Layout, and `tests/bpy_free/test_import_tiers.py`. The ledger's record goes in `binding/persistence/` and its write-through in `binding/runtime/`, each exported from its package.

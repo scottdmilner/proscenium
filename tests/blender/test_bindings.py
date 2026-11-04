@@ -22,17 +22,16 @@ from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
-    DiagnosticCategory,
     RequestedSettings,
     Result,
     ResultState,
-    Severity,
 )
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_records, binding_state, records
 from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
+from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
@@ -299,7 +298,7 @@ def test_an_attached_source_is_unavailable_after_reopening(
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
-        assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
         assert handle.synchronize(0) == Result(ResultState.SUCCESS)
 
@@ -322,7 +321,7 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
         ):
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
-            assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR)
+            assert diagnostic.code == DiagnosticCode.UNSUPPORTED_RECORD
             refused = records.load(binding_records.CONFIG, stored)
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
@@ -378,7 +377,7 @@ def test_an_open_file_does_not_supply_an_attachment(bindings: Bindings, tmp_path
         before = _config(handle)
         for result in (handle.synchronize(0), handle.reload()):
             assert result.state is ResultState.FATAL_FAILURE
-            assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+            assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.live_stage() is None
         assert _config(handle) == before
         assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
@@ -407,9 +406,7 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
         before = [_config(h) for h in (a, b)]
         refused = a.attach(scene.other_root)
         assert refused.state is ResultState.FATAL_FAILURE
-        assert [(d.category, d.severity) for d in refused.diagnostics] == [
-            (DiagnosticCategory.SOURCE_CONFIRMATION_REQUIRED, Severity.ERROR)
-        ]
+        assert [d.code for d in refused.diagnostics] == [DiagnosticCode.SOURCE_CONFIRMATION_REQUIRED]
         assert [_config(h) for h in (a, b)] == before
         assert stages.evaluation_stage == evaluation
         assert [h.live_stage() for h in (a, b)] == [scene.caller, scene.caller]

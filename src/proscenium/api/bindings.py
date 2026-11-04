@@ -31,7 +31,7 @@ from pxr import Usd
 
 from ..binding import runtime
 from ..binding.persistence import BindingConfig
-from ..binding.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
+from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.source_access import PayloadPolicy, RequestedSettings, SourceUnavailableError, dirty_layers
 
 if TYPE_CHECKING:
@@ -126,8 +126,8 @@ class Bindings:
         identifier = stage.GetRootLayer().identifier
         if config.root_layer_identifier not in (None, identifier) and not confirm:
             diagnostic = Diagnostic(
-                DiagnosticCategory.SOURCE_CONFIRMATION_REQUIRED,
-                Severity.ERROR,
+                DiagnosticCode.SOURCE_CONFIRMATION_REQUIRED,
+                binding_id,
                 "The attached stage has a different root-layer identifier; pass confirm=True to replace it",
             )
             return Result(ResultState.FATAL_FAILURE, (diagnostic,))
@@ -172,11 +172,11 @@ class Bindings:
         try:
             dirty = dirty_layers(self._stages(binding_id).acquire(config.settings.payload_policy))
         except SourceUnavailableError as error:
-            return _unavailable(error)
+            return _unavailable(binding_id, error)
         diagnostics = ()
         if dirty:
             message = "Displaying layers with unsaved in-process edits"
-            diagnostics = (Diagnostic(DiagnosticCategory.SOURCE_STATE, Severity.INFO, message, tuple(sorted(dirty))),)
+            diagnostics = (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))),)
         return Result(ResultState.SUCCESS, diagnostics)
 
     def reload(self, binding_id: BindingId, layers: Iterable[str] | None = None) -> Result:
@@ -191,7 +191,7 @@ class Bindings:
         try:
             self._stages(binding_id).reload(config.settings.payload_policy, layers)
         except SourceUnavailableError as error:
-            return _unavailable(error)
+            return _unavailable(binding_id, error)
         return Result(ResultState.SUCCESS)
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
@@ -222,29 +222,25 @@ class Bindings:
         return self.stages.attached(binding_id)
 
 
-def _unavailable(error: SourceUnavailableError) -> Result:
-    return Result(
-        ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, str(error)),)
-    )
+def _unavailable(binding_id: BindingId, error: SourceUnavailableError) -> Result:
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),))
 
 
 def _removed_destination(binding_id: BindingId) -> Result:
     message = f"The destination collection of binding {binding_id} was removed"
-    return Result(
-        ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.REMOVED_DESTINATION, Severity.ERROR, message),)
-    )
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message),))
 
 
 def _refused(found: FoundBinding) -> Result:
     """Why a binding that isn't usable refuses."""
     if found.unreadable is not None:
-        diagnostic = Diagnostic(DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR, found.unreadable.message)
+        diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, found.binding_id, found.unreadable.message)
         return Result(ResultState.FATAL_FAILURE, (diagnostic,))
     report = found.copies
     assert report is not None
     named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in report.candidates)
     message = f"Binding {report.binding_id} has copies and no canonical candidate ({report.reason}): {named}"
-    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
+    return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCode.COPIED_BINDING, report.binding_id, message),))
 
 
 BINDINGS = Bindings()  # the process's bindings, which handles use
