@@ -1,0 +1,14 @@
+#usda 1.0
+# Payload of the transaction fixtures' scene (see root.usda): one tetrahedron, drawn only when payloads load.
+(
+    defaultPrim = "Asset"
+)
+
+def Xform "Asset"
+{
+    def Mesh "Tetra" (
+        prepend references = @./tetra.usda@
+    )
+    {
+    }
+}

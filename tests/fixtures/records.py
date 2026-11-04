@@ -11,7 +11,10 @@ they have older versions of their own:
 The generator yields each stored record as ID properties hold it, with what loading it must give,
 derived from the migrations above. It also yields binding configurations
 (proscenium.binding.persistence.binding_records) a newer extension or damage could leave; binding
-configuration has no older version. M5 adds pending-cleanup records once it defines their schema.
+configuration has no older version. Also an ownership manifest naming an unknown representation role
+(lifecycle.md#representation-roles-and-resource-identities), and pending-cleanup ledgers a newer extension or
+damage could leave; the ledger's version 1 is M5's (DECISIONS.md "Pending-cleanup tracking mechanism"), and
+these refuse whatever its fields are, by their version or their shape.
 """
 
 from __future__ import annotations
@@ -65,6 +68,10 @@ class SchemaVersions:
     refused: dict[str, RefusalReason]  # the records that don't -> why
     bindings: dict[str, object]  # binding configurations that can't be read, as stored
     bindings_refused: dict[str, RefusalReason]  # each -> why
+    manifests: dict[str, object]  # ownership manifests that can't be read, as stored
+    manifests_refused: dict[str, RefusalReason]  # each -> why
+    ledgers: dict[str, object]  # pending-cleanup ledgers that can't be read, as stored
+    ledgers_refused: dict[str, RefusalReason]  # each -> why
 
 
 @contextmanager
@@ -126,5 +133,22 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "unknown-policy": RefusalReason.INVALID,
             "unknown-field": RefusalReason.INVALID,
             "no-settings": RefusalReason.INVALID,
+        },
+        manifests={
+            "unknown-role": {
+                VERSION_KEY: 1,
+                "entries": {"r": {"datablock": None, "covers": ["/World"], "role": "hologram", "uses": []}},
+            },
+        },
+        manifests_refused={"unknown-role": RefusalReason.INVALID},
+        ledgers={
+            "newer": {VERSION_KEY: 2, "entries": {}},
+            "no-version": {"entries": {}},
+            "not-a-group": "damaged",
+        },
+        ledgers_refused={
+            "newer": RefusalReason.NEWER,
+            "no-version": RefusalReason.UNREADABLE,
+            "not-a-group": RefusalReason.UNREADABLE,
         },
     )

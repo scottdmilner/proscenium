@@ -32,7 +32,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2, M3, M4]
+started: [M1, M1b, M2, M3, M4, M5]
 
 # Retired on 2026-11-03: SRC-01 (binding-owned file stage), ICON-32 and ICON-33
 # (file-stage live identity and lazy opening). Never reuse these IDs.
@@ -168,11 +168,15 @@ requirements:
         quote: "Every feature extends both evaluation/planning and application explicitly."
         kind: process
         qualified_by: M12
+        oracle: "Each feature milestone's close names the evaluation or planning change and the application change it made; M5's are the minimal capture and planner in the core and the stub application layer."
       - id: BND-02
         quote: "All source-semantic diagnostics and known representation limitations exist before any Blender data is mutated."
+        fixtures: [F-DIRTY-LAYER, F-FAILED-SETTINGS]
+        oracle: "With preparation failing at its first step, F-DIRTY-LAYER's attempt reports the source-state diagnostic its successful synchronization reports, and F-FAILED-SETTINGS' attempts create and change no datablock before that step; every source-side diagnostic in a result comes from acquisition or the display plan."
       - id: BND-03
         quote: "A synchronization that fails for source reasons fails before touching the existing display."
         fixtures: [F-FAILED-SETTINGS]
+        oracle: "On F-FAILED-SETTINGS, an attempt failing at acquisition (its stage released), evaluation, or planning leaves every datablock in the file as it was: the published display, its manifest and records, and nothing new."
 
   - section: spec/pipeline.md#synchronization-transaction
     delivery: M5
@@ -181,32 +185,41 @@ requirements:
       - id: TXN-02
         quote: "Before publication, any failure preserves the previous published generation unchanged and attempts to dispose of prepared work."
         fixtures: [F-FAILED-SETTINGS, F-PUBLICATION-FAILURE, F-SHARED-MATERIAL-FAILURE]
+        oracle: "On F-FAILED-SETTINGS and F-PUBLICATION-FAILURE, a failure at each step before publication leaves the published generation equal to before (records, manifest, correspondence, display datablocks and their values), and each prepared resource is disposed of or, where disposal fails, in the ledger."
       - id: TXN-03
         quote: "Failed disposal leaves leftovers persistently tracked as pending cleanup"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, the two resources whose disposal failed are in the ledger with their binding, identity, role, pointer, operation, and retry status, linked in no scene and named by no manifest or correspondence; the result is a fatal failure reporting the preparation failure and a pending-cleanup diagnostic for each."
       - id: TXN-04
         quote: "For a first synchronization, no untracked partial content remains."
         fixtures: [F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "On a first synchronization failing at publication (F-PUBLICATION-FAILURE) or in preparation with disposal failing (F-PREPARATION-CLEANUP-FAILURE), the file's datablocks are those before it plus exactly the ledger's leftovers."
       - id: TXN-05
         quote: "Preparation never mutates resources reachable from the published generation unless a complete rollback mechanism covers the mutation."
-        fixtures: [F-SHARED-MATERIAL-FAILURE]
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE, F-SHARED-MATERIAL-FAILURE]
         risk: high
+        oracle: "At each preparation failure injected in F-PREPARATION-CLEANUP-FAILURE's replace case, every datablock reachable from the published generation has the values and links it had before; F-SHARED-MATERIAL-FAILURE (M9) adds shared materials."
       - id: TXN-06
         quote: "Publication switches the whole generation together"
         fixtures: [F-PUBLICATION-FAILURE]
         risk: high
+        oracle: "On F-PUBLICATION-FAILURE, a failure at each of publication's writes in turn leaves the generation record, manifest, correspondence, and the destination's links all as before, or all absent on a first synchronization; a publication that succeeds makes them all new."
       - id: TXN-07
         quote: "After publication, retirement failures do not fail the synchronization."
         fixtures: [F-RETIREMENT-FAILURE]
+        oracle: "On F-RETIREMENT-FAILURE the second synchronization completes with issues: its generation at 10 is published and displayed, and the two obsolete resources are in the ledger, noncanonical, linked in no scene, and named by no manifest or correspondence."
       - id: TXN-08
         quote: "Ownership tracking covers newly created prepared resources before subsequent fallible work"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, a failure injected at each fallible step after a resource is created finds every resource created so far in the ledger."
       - id: TXN-09
         quote: "Reused published resources remain protected by the existing manifest and are never disposal candidates."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "In F-PREPARATION-CLEANUP-FAILURE's replace case, no resource the published manifest names is in the ledger or disposed of."
       - id: TXN-10
         quote: "Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "After F-PREPARATION-CLEANUP-FAILURE's failures, no leftover is linked in a scene or named by correspondence, and the published display's datablocks keep their values."
       - id: TXN-12
         quote: "These guarantees apply equally to incremental mutations in Phase 2."
         delivery: M14
@@ -225,20 +238,32 @@ requirements:
         delivery: M7
       - id: CACHE-02
         quote: "Caching publishes no new generation."
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "After F-CACHED-TIME-CODES' cache call, the generation's settings, time code, manifest resources, and correspondence are as before, its cached time codes gain exactly the call's, and no undo step is added."
       - id: CACHE-03
         quote: "A call that fails caches none of its time codes and leaves the published generation as it was"
+        fixtures: [F-CACHED-TIME-CODES]
         risk: high
+        oracle: "F-CACHED-TIME-CODES' failing call returns a failure and leaves the generation's cached time codes and keys as before; its prepared datablocks are disposed of or in the ledger."
       - id: CACHE-11
         quote: "A call records no last attempt, whether it succeeds or fails"
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "After F-CACHED-TIME-CODES' successful and failing calls, the last attempt equals the synchronization's before them, and each call's result holds its own diagnostics."
       - id: CACHE-10
         quote: "A call never fails because of how content varies"
         delivery: M7
       - id: CACHE-05
         quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
+        fixtures: [F-SOURCE-CHANGE]
+        oracle: "On F-SOURCE-CHANGE, after a synchronization, an edit to sub.usda, a reload of its rewritten file, or attaching the stage again each make cache return a failure saying the binding needs synchronizing, caching nothing; without a change, the same call caches."
       - id: CACHE-06
         quote: "A generation synchronized at the USD default time code has no time-varying values"
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "Synchronized at the default time code, cache at any time codes caches nothing and reports success."
       - id: CACHE-07
         quote: "Synchronizing again produces a new generation, holding only its own time code."
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "Synchronizing at 10 after caching gives a generation whose cached time codes are 10 alone, and the display shows 10's values at every frame."
       - id: CACHE-08
         quote: "The display never synchronizes or caches on its own."
         delivery: M7
@@ -249,37 +274,56 @@ requirements:
     rows:
       - id: DIAG-01
         quote: "Unsupported valid content."
+        fixtures: [F-DIRTY-LAYER, F-OFFLINE, F-RETIREMENT-FAILURE, F-FAILED-SETTINGS]
+        oracle: "Each category is its own value in results: source state on F-DIRTY-LAYER, unavailable source on F-OFFLINE, pending cleanup on F-RETIREMENT-FAILURE, and fatal failure on F-FAILED-SETTINGS; the content categories (unsupported, approximation, lossy conversion, missing dependency, invalid data) are defined for M6 and later to report."
       - id: DIAG-02
         quote: "Include binding, source path, property/asset identifier, severity, and fallback where applicable."
+        fixtures: [F-RETIREMENT-FAILURE, F-DIRTY-LAYER]
+        oracle: "Every diagnostic names its binding; a pending-cleanup one also names its resource's identity and role, a source-state one its layers, and one about a source entity its source path; fields that don't apply are empty."
       - id: DIAG-14
         quote: "Each diagnostic also has a stable code naming its problem"
+        fixtures: [F-RETIREMENT-FAILURE, F-DIRTY-LAYER]
+        oracle: "Each diagnostic in those fixtures' cases has a code from the documented list, the same in separate processes; tests identify diagnostics by code, never by message."
       - id: DIAG-03
         quote: "Aggregate repeated problems."
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "In F-PREPARATION-CLEANUP-FAILURE's repeat case, synchronizing again with disposal still failing reports each problem once per resource, never once per attempt, and a problem repeated within one attempt is one diagnostic."
       - id: DIAG-04
         quote: "Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history."
         fixtures: [F-FAILED-SETTINGS]
+        oracle: "On F-FAILED-SETTINGS, the published generation's diagnostics are its synchronization's and the last attempt's are the failed attempt's; recording either leaves the other unchanged."
       - id: DIAG-05
         quote: "Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, a later synchronization, failing or succeeding, keeps the ledger's entries and cleanup diagnostics until a retry resolves them."
       - id: DIAG-06
         quote: "Report current cleanup status separately from historical attempt results and deduplicate by operation and resource."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE, F-RETIREMENT-FAILURE]
+        oracle: "Each result's cleanup status lists the ledger's current cleanup diagnostics, one per operation and resource, apart from its own diagnostics: in F-PREPARATION-CLEANUP-FAILURE's replace and repeat cases and in F-RETIREMENT-FAILURE."
       - id: DIAG-07
         quote: "An unchanged refresh produces equivalent deduplicated source/display diagnostics."
-        fixtures: [F-NO-OP-REFRESH]
+        fixtures: [F-NO-OP-REFRESH, F-DIRTY-LAYER]
+        oracle: "Two synchronizations of F-DIRTY-LAYER with nothing changed between them report equal diagnostics in the same order; F-NO-OP-REFRESH extends this to content diagnostics."
       - id: DIAG-08
         quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "After a successful retry on F-PREPARATION-CLEANUP-FAILURE, the ledger has no entries and the cleanup status is empty; nothing records the resolved work."
       - id: DIAG-15
         quote: "Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, a later synchronization that succeeds reports success, with the earlier leftovers in its cleanup status and not among its own diagnostics."
       - id: DIAG-09
         quote: "Success: no diagnostics in any category other than source state."
+        fixtures: [F-DIRTY-LAYER]
+        oracle: "F-DIRTY-LAYER's synchronization reports success, holding only source-state diagnostics."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
+        fixtures: [F-RETIREMENT-FAILURE]
+        oracle: "F-RETIREMENT-FAILURE's synchronization reports completed with issues, holding pending-cleanup diagnostics and no fatal one; the content categories join with M6."
       - id: DIAG-11
         quote: "Fatal failure, including an unavailable source."
         fixtures: [F-OFFLINE]
+        oracle: "Synchronizing F-OFFLINE's unattached binding, or one whose source moved, returns a fatal failure with an unavailable-source diagnostic; any fatal diagnostic makes a result's state fatal."
       - id: DIAG-13
         quote: "Never pass unsafe invalid geometry into Blender or silently present unsupported translation as exact."
         delivery: M8
@@ -376,16 +420,24 @@ requirements:
         oracle: "reload leaves the requested settings, published generation, and last attempt unchanged and runs no synchronization; the next synchronize displays the reloaded layers."
       - id: API-09
         quote: "cache(time_codes) caches the published generation's time-varying values at each given time code without synchronizing"
+        fixtures: [F-CACHED-TIME-CODES]
         delivery: M5
+        oracle: "handle.cache and Bindings.cache take a collection of time codes, one included, and return a result whose time codes are those it cached."
       - id: API-13
         quote: "returns an immutable result (Diagnostics) holding its result state; its own deduplicated diagnostics"
+        fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
         delivery: M5
+        oracle: "Every result is immutable and holds its state, own diagnostics, attempted time codes, and cleanup status; on F-PREPARATION-CLEANUP-FAILURE the failed attempt's diagnostics include a pending-cleanup diagnostic per leftover, and a later success lists them only in its cleanup status."
       - id: API-04
         quote: "An expected failure, such as an unavailable source, is a result, not an exception."
+        fixtures: [F-OFFLINE, F-FAILED-SETTINGS]
         delivery: M5
+        oracle: "No case of those fixtures raises: each failure, an unavailable source included, is a result."
       - id: API-05
         quote: "Exceptions report misuse only, such as a call made during another synchronization."
+        fixtures: [F-SOURCE-CHANGE]
         delivery: M5
+        oracle: "The calls CONS-04 lists raise when made during a synchronization or cache call, and nothing else in M5's fixtures' cases raises."
 
   - section: spec/source-access.md#source-consistency
     delivery: M3
@@ -393,7 +445,14 @@ requirements:
     rows:
       - id: CONS-01
         quote: "Synchronization is synchronous and non-reentrant."
+        fixtures: [F-SOURCE-CHANGE]
         delivery: M5
+        oracle: "A synchronization or cache call returns only once it has published, cached, or failed, with no work left running."
+      - id: CONS-04
+        quote: "While a synchronization or a cache call is running, a call to synchronize, cache, attach, release, or reload on any binding raises before changing anything."
+        fixtures: [F-SOURCE-CHANGE]
+        delivery: M5
+        oracle: "From inside F-SOURCE-CHANGE's evaluation step, of a synchronization and of a cache call, each of synchronize, cache, attach, release, and reload, on the binding evaluating and on another, raises and changes no record, stage, or datablock; set_settings there writes the configuration, the running attempt records the settings it started with, and the outer call then completes."
       - id: CONS-03
         quote: "Where a source change during evaluation can be detected, the attempt is discarded before publication."
         delivery: M5
@@ -630,15 +689,22 @@ requirements:
       - id: ROLE-01
         quote: "The roles are a fixed vocabulary of the representation version, and an ownership record naming an unknown role is unsupported."
         fixtures: [F-SCHEMA-VERSIONS]
+        oracle: "Every manifest entry's role is one of the vocabulary's; F-SCHEMA-VERSIONS' manifest naming an unknown role is refused as invalid, and its binding refuses to synchronize, saying why."
       - id: ROLE-02
         quote: "A resource's identity is derived from what it represents and its role, never from Blender names, datablock pointers, or the plan's order"
+        fixtures: [F-RETIREMENT-FAILURE]
+        oracle: "F-RETIREMENT-FAILURE's two synchronizations give each placeholder's resources the same identities, unchanged by renaming the objects between them and equal to those a plan in a separate process derives."
       - id: ROLE-03
         quote: "A drawn copy's resources take their identity from the copy's track"
+        fixtures: [F-RETIREMENT-FAILURE]
+        oracle: "Each placeholder's object and bounds mesh have identities from its drawn gprim's source path and instance context, distinct between gprims and equal across synchronizations."
       - id: ROLE-04
         quote: "A batch's resources take their identity from the content its copies share, and a shared datablock's from its content."
         delivery: M7
       - id: ROLE-05
         quote: "A prepared resource that represents what a published one does, in the same role, has its identity"
+        fixtures: [F-RETIREMENT-FAILURE]
+        oracle: "The second synchronization's prepared resources have the published ones' identities, so retirement removes exactly the replaced datablocks and the manifest names only the new ones."
 
   - section: spec/lifecycle.md#resource-stability
     delivery: M7
@@ -701,23 +767,34 @@ requirements:
     rows:
       - id: UNDO-01
         quote: "All persistent state (see Binding State) lives in Blender data"
+        fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
         delivery: M5
+        oracle: "After save and reopen, the configuration, generation, last attempt, manifest, and ledger read as before; nothing they hold lives outside the .blend."
       - id: UNDO-02
         quote: "Each synchronization that publishes is exactly one undo step."
+        fixtures: [F-FAILED-SETTINGS]
         delivery: M5
+        oracle: "A publishing synchronization adds exactly one undo step, through the API and through an operator calling it, and undoing it restores the previous generation."
       - id: UNDO-03
         quote: "A failed synchronization pushes no undo step."
         delivery: M5
         fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "A failed attempt adds no undo step: undo afterwards restores the state before the last publication."
       - id: UNDO-04
         quote: "With global undo disabled or in background mode, synchronization behaves the same but pushes no step."
+        fixtures: [F-FAILED-SETTINGS]
         delivery: M5
+        oracle: "With global undo off, and in background mode, the same synchronizations publish the same generations and add no undo step."
       - id: UNDO-09
         quote: "pushes no undo step. Undo and redo restore a generation's cached time codes with the rest of it."
+        fixtures: [F-CACHED-TIME-CODES]
         delivery: M5
+        oracle: "cache adds no undo step; undoing the synchronization restores the earlier generation with its cached time codes and keys, and redo the later one with its own."
       - id: UNDO-05
         quote: "When undo/redo restores an earlier display, mark the binding as possibly out of date relative to its source."
+        fixtures: [F-FAILED-SETTINGS]
         delivery: M5
+        oracle: "After undo restores an earlier generation, the binding reports it may be out of date relative to its source until it synchronizes again."
       - id: UNDO-06
         quote: "Attachments of callers' stages are runtime associations keyed by binding identity."
         delivery: M3
@@ -745,12 +822,15 @@ requirements:
       - id: STATE-02
         quote: "Published generation | Display resources, correspondence, ownership manifest"
         fixtures: [F-FAILED-SETTINGS]
+        oracle: "On F-FAILED-SETTINGS, the published generation holds its resources, correspondence, manifest, load-all and 10, cached time codes, source revision, and diagnostics, none changed by the failed attempt."
       - id: STATE-03
         quote: "Last attempt | Settings and time code attempted, result state, and diagnostics"
         fixtures: [F-FAILED-SETTINGS]
+        oracle: "The last attempt holds load-none, 20, fatal failure, and the attempt's diagnostics, through save and reopen."
       - id: STATE-04
         quote: "Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "The ledger holds each leftover's resource, ownership evidence, operation and binding, retry status, and cleanup diagnostic, apart from the generation and last attempt, which recording it leaves unchanged."
       - id: STATE-07
         quote: "A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed."
         delivery: M12
@@ -763,21 +843,27 @@ requirements:
     rows:
       - id: PEND-01
         quote: "Persist sufficient ownership information to retry disposal of newly prepared or obsolete resources safely."
+        oracle: "After save and reopen, a retry finds each leftover by its persisted pointer and identity alone, with no runtime state from before, and disposes of it."
       - id: PEND-02
         quote: "Retries revalidate ownership and current users"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE, F-UNMANAGED-USER]
+        oracle: "A retry disposes of a leftover only while it is still exclusively its binding's: the leftover bounds mesh an unmanaged object was given is released intact and leaves the ledger."
       - id: PEND-03
         quote: "Remove resolved tracking and current cleanup diagnostics rather than accumulating history."
+        oracle: "After a successful retry, the ledger has no entry for resolved work and no cleanup diagnostic."
       - id: PEND-04
         quote: "Unresolved work remains inactive; retries are explicit and do not require USD access."
+        oracle: "Leftovers stay unlinked and out of the display through reopening and later synchronizations, nothing retries them on its own, and a retry succeeds with the binding unattached."
       - id: PEND-05
         quote: "Undo/redo restores cleanup tracking consistently with resource ownership."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "After the failed attempt, undo and redo leave every ledger entry naming a datablock in the file, and every leftover named by an entry."
       - id: PEND-06
         quote: "pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies"
         kind: contract
         qualified_by: M5
         note: "The mechanism is the DECISIONS.md row 'Pending-cleanup tracking mechanism'; M3's contract it meets is the row 'Pending-cleanup persistence contract'."
+        oracle: "Contract review: the ledger is a versioned record on the binding index's Text (DECISIONS.md 'Pending-cleanup tracking mechanism'); no copy route of F-OWNERSHIP-AMBIGUITY copies a ledger entry, and with two binding indexes the ledger refuses."
       - id: PEND-07
         quote: "removing configuration must not orphan pending work."
         delivery: M11
@@ -1179,7 +1265,9 @@ requirements:
         delivery: M7
       - id: XFORM-12
         quote: "Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included."
+        fixtures: [F-MULTI-BINDING]
         delivery: M5
+        oracle: "Synchronizing without a time code at frame 7 with subframe 0.25 attempts and records 7.25, and leaves the scene's frame rate and playback range unchanged."
       - id: XFORM-13
         quote: "A display shows each time code cached in its generation"
         delivery: M7
@@ -1518,6 +1606,7 @@ requirements:
       - id: TLAY-03
         quote: "Before-publication failure-injection tests assert that the entire published generation is unchanged"
         delivery: M5
+        oracle: "Each before-publication failure-injection test compares the whole published generation before and after, records, manifest, correspondence, and display datablocks with their values, through one shared helper."
 
   - section: testing/strategy.md#metamorphic-tests
     kind: process
@@ -1611,10 +1700,13 @@ requirements:
     rows:
       - id: AFAIL-01
         quote: "The attempt reports fatal failure with the expected categorized diagnostics"
+        oracle: "The failure-injection tests at each step assert a fatal failure holding the step's expected category and code."
       - id: AFAIL-02
         quote: "Retirement failures after publication are completed-with-issues cases"
+        oracle: "F-RETIREMENT-FAILURE's test asserts completed with issues, with its pending-cleanup diagnostics."
       - id: AFAIL-03
         quote: "For disposal-failure cases before or after publication, repeat attempts with disposal still failing."
+        oracle: "F-PREPARATION-CLEANUP-FAILURE's and F-RETIREMENT-FAILURE's repeat cases synchronize again with disposal still failing: each adds only tracked leftovers, with one cleanup diagnostic per resource."
 
   - section: testing/acceptance.md#lifecycle-checks
     kind: process

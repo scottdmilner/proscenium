@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, copies, interaction, source_access
+from . import appearance, copies, interaction, source_access, transaction
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -37,6 +37,7 @@ def _schema_versions(dest: Path) -> AbstractContextManager[object]:
 
 class Operation(StrEnum):
     SYNCHRONIZE = "synchronize"
+    CACHE = "cache"
     CLEANUP = "cleanup"
     DETACH = "detach"
     REMOVE_BINDING = "remove binding"
@@ -66,7 +67,7 @@ class Fixture:
     cases: tuple[Case, ...] = ()
 
 
-SYNC, SUCCESS, FAILURE = Operation.SYNCHRONIZE, Outcome.SUCCESS, Outcome.FAILURE
+SYNC, CLEANUP, SUCCESS, FAILURE = Operation.SYNCHRONIZE, Operation.CLEANUP, Outcome.SUCCESS, Outcome.FAILURE
 COPY_ROUTE_ROWS = ("COPY-01", "COPY-02", "COPY-03", "COPY-04", "COPY-06", "COPY-09", "COPY-13", "COPY-15", "COPY-17")
 
 
@@ -80,7 +81,15 @@ FIXTURES: dict[str, Fixture] = {
             source_access.dirty_layer,
             (
                 # The binding displays the layers as loaded, edits included, and names the dirty ones.
-                Case("as-loaded", SYNC, SUCCESS, ("LAYER-01", "LAYER-02"), 1),
+                Case(
+                    "as-loaded",
+                    SYNC,
+                    SUCCESS,
+                    ("LAYER-01", "LAYER-02", "BND-02", "DIAG-01", "DIAG-02", "DIAG-09", "DIAG-14"),
+                    1,
+                ),
+                # Synchronizing again with nothing changed reports equal diagnostics.
+                Case("unchanged", SYNC, SUCCESS, ("DIAG-07",), 1),
                 # After a requested reload, the reused stage shows the disk content, edits discarded.
                 Case("reload", SYNC, SUCCESS, ("LAYER-03", "LAYER-04", "LAYER-05", "LAYER-06", "LAYER-07"), 1),
             ),
@@ -131,9 +140,24 @@ FIXTURES: dict[str, Fixture] = {
                 Case("independent", SYNC, SUCCESS, ("BIND-07", "BIND-10"), 1),
                 # A default binding composes the whole stage, and acquisition changes no source layer.
                 Case("whole-stage", SYNC, SUCCESS, ("BIND-08", "BIND-09"), 1),
+                # The time code given, the default included, or else the target scene's current frame's.
+                Case("time-codes", SYNC, SUCCESS, ("BIND-05", "XFORM-12"), 1),
             ),
         ),
-        Fixture("F-SOURCE-CHANGE", "Source change during evaluation", ("M5",)),
+        Fixture(
+            "F-SOURCE-CHANGE",
+            "Source change during evaluation",
+            ("M5",),
+            transaction.source_change,
+            (
+                # A contributing layer edited during evaluation discards the attempt before publication.
+                Case("during-evaluation", SYNC, FAILURE, ("CONS-03",), 1),
+                # After an edit, a reload, or a new attachment, cache caches nothing: synchronize first.
+                Case("changed-before-cache", Operation.CACHE, FAILURE, ("CACHE-05",), 1),
+                # Synchronize, cache, attach, release, or reload during evaluation raises; set_settings doesn't.
+                Case("reentrant", SYNC, SUCCESS, ("CONS-01", "CONS-04", "API-05"), 1),
+            ),
+        ),
         Fixture(
             "F-REATTACH",
             "Release and reattachment",
@@ -160,9 +184,12 @@ FIXTURES: dict[str, Fixture] = {
                 Case("older", SYNC, SUCCESS, ("SCHEMA-02",), 1),
                 # A binding whose configuration is newer or damaged keeps it, refuses to synchronize, and says why.
                 Case("unsupported", SYNC, FAILURE, ("SCHEMA-03",), 1),
-                # Unreadable records are preserved and never overwritten; sample records stand in for
-                # pending-cleanup records until M5 defines their schema.
-                Case("unsupported-cleanup", Operation.CLEANUP, FAILURE, ("SCHEMA-04",), 1),
+                # Unreadable sample records are preserved and never overwritten.
+                Case("unsupported-cleanup", CLEANUP, FAILURE, ("SCHEMA-04",), 1),
+                # An unreadable or newer ledger is preserved, and a retry refuses, disposing of nothing.
+                Case("unsupported-ledger", CLEANUP, FAILURE, ("SCHEMA-04", "SCHEMA-06"), 1),
+                # A manifest naming an unknown role is refused, so its binding refuses to synchronize.
+                Case("unknown-role", SYNC, FAILURE, ("ROLE-01",), 1),
             ),
         ),
         Fixture(
@@ -186,11 +213,121 @@ FIXTURES: dict[str, Fixture] = {
                 Case("removed-destination", SYNC, FAILURE, ("DEST-01", "DEST-02", "DEST-03", "DEST-04"), 1),
             ),
         ),
-        Fixture("F-FAILED-SETTINGS", "Failed settings transition", ("M5",)),
+        Fixture(
+            "F-FAILED-SETTINGS",
+            "Failed settings transition",
+            ("M5",),
+            transaction.failed_settings,
+            (
+                # Each failure before publication keeps the published generation and records the attempt.
+                Case(
+                    "failed-attempt",
+                    SYNC,
+                    FAILURE,
+                    (
+                        "BND-02",
+                        "BND-03",
+                        "TXN-02",
+                        "STATE-02",
+                        "STATE-03",
+                        "DIAG-01",
+                        "DIAG-04",
+                        "UNDO-03",
+                        "API-04",
+                        "API-13",
+                    ),
+                    1,
+                ),
+                # Requested load-none, displayed 10 with load-all, last attempt at 20 failed.
+                Case("report", SYNC, FAILURE, ("STATE-07", "UNDO-01"), 1),
+                # One undo step per publication, none without global undo or in background mode; undo marks the
+                # binding possibly out of date.
+                Case("undo-steps", SYNC, SUCCESS, ("UNDO-02", "UNDO-04", "UNDO-05"), 1),
+            ),
+        ),
+        Fixture(
+            "F-CACHED-TIME-CODES",
+            "Cached time codes",
+            ("M5",),
+            transaction.cached_time_codes,
+            (
+                # Time codes cached in the generation: no new generation, last attempt, or undo step.
+                Case("cache", Operation.CACHE, SUCCESS, ("CACHE-02", "CACHE-11", "API-09", "UNDO-09"), 1),
+                # A failing call caches none of its time codes and leaves the generation as it was.
+                Case("failed-call", Operation.CACHE, FAILURE, ("CACHE-03", "CACHE-11"), 1),
+                # A generation at the default time code has nothing to cache.
+                Case("default-time-code", Operation.CACHE, SUCCESS, ("CACHE-06",), 1),
+                # Synchronizing again holds only the new time code.
+                Case("synchronize-again", SYNC, SUCCESS, ("CACHE-07",), 1),
+            ),
+        ),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
-        Fixture("F-PUBLICATION-FAILURE", "Publication failure", ("M5",)),
-        Fixture("F-PREPARATION-CLEANUP-FAILURE", "Preparation and disposal both fail", ("M5",)),
-        Fixture("F-RETIREMENT-FAILURE", "Retirement failure", ("M5",)),
+        Fixture(
+            "F-PUBLICATION-FAILURE",
+            "Publication failure",
+            ("M5",),
+            transaction.publication_failure,
+            (
+                # A first synchronization leaves nothing behind.
+                Case("first", SYNC, FAILURE, ("TXN-04", "TXN-06"), 1),
+                # A later one leaves the earlier generation whole.
+                Case("replace", SYNC, FAILURE, ("TXN-02", "TXN-06"), 1),
+            ),
+        ),
+        Fixture(
+            "F-PREPARATION-CLEANUP-FAILURE",
+            "Preparation and disposal both fail",
+            ("M5",),
+            transaction.preparation_cleanup_failure,
+            (
+                # A first synchronization leaves only tracked, inactive leftovers.
+                Case(
+                    "first",
+                    SYNC,
+                    FAILURE,
+                    ("TXN-03", "TXN-04", "TXN-08", "TXN-10", "STATE-04", "UNDO-03", "API-13"),
+                    1,
+                ),
+                # A later one leaves the published generation and its reused resources alone.
+                Case("replace", SYNC, FAILURE, ("TXN-03", "TXN-05", "TXN-09", "TXN-10", "DIAG-05", "DIAG-06"), 1),
+                # Synchronizing again with disposal still failing adds only tracked leftovers, each reported once.
+                Case("repeat", SYNC, FAILURE, ("DIAG-03", "DIAG-06"), 1),
+                # A later synchronization that succeeds keeps the earlier pending work and still succeeds.
+                Case("later-success", SYNC, SUCCESS, ("DIAG-05", "DIAG-15"), 1),
+                # Through save and reopen nothing is retried; an explicit retry, without USD, resolves it all.
+                Case(
+                    "retry-after-reopen",
+                    CLEANUP,
+                    SUCCESS,
+                    ("REOPEN-01", "PEND-01", "PEND-03", "PEND-04", "DIAG-08", "STAB-03", "UNDO-01"),
+                    1,
+                ),
+                # A leftover an unmanaged object has come to use is released intact, not disposed of.
+                Case("unmanaged-user", CLEANUP, SUCCESS, ("PEND-02",), 1),
+                # Undo and redo restore the ledger with the ownership it tracks.
+                Case("undo", SYNC, FAILURE, ("PEND-05",), 1),
+            ),
+        ),
+        Fixture(
+            "F-RETIREMENT-FAILURE",
+            "Retirement failure",
+            ("M5",),
+            transaction.retirement_failure,
+            (
+                # The new display is active; the obsolete resources are tracked, inactive, and reported.
+                Case(
+                    "retirement",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("TXN-07", "DIAG-01", "DIAG-02", "DIAG-06", "DIAG-10", "DIAG-14", "STAB-02"),
+                    1,
+                ),
+                # Synchronizing again with retirement still failing reports each leftover once.
+                Case("repeat", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DIAG-06",), 1),
+                # Each placeholder's resources keep their identities, which a replacement takes over.
+                Case("identities", SYNC, SUCCESS, ("ROLE-02", "ROLE-03", "ROLE-05"), 1),
+            ),
+        ),
         Fixture(
             "F-OWNERSHIP-AMBIGUITY",
             "Ownership ambiguity",
@@ -237,7 +374,13 @@ FIXTURES: dict[str, Fixture] = {
                 # binding and its saved display are kept.
                 Case("moved-file", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
                 # Reopened with no caller stage attached, as after every reopening.
-                Case("unattached", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
+                Case(
+                    "unattached",
+                    SYNC,
+                    FAILURE,
+                    ("REOPEN-04", "REOPEN-05", "REOPEN-07", "DIAG-01", "DIAG-11", "API-04"),
+                    1,
+                ),
                 # Opened without the extension, the saved display is ordinary Blender content.
                 Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),
             ),

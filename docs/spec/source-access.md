@@ -44,7 +44,7 @@ Design note (settled by M3 and M5): the API is `proscenium.api.bindings`. The pr
 
 ## Source Consistency
 
-- Synchronization is synchronous and non-reentrant.
+- Synchronization is synchronous and non-reentrant. While a synchronization or a `cache` call is running, a call to `synchronize`, `cache`, `attach`, `release`, or `reload` on any binding raises before changing anything. `set_settings` may be called, and the running attempt keeps the settings it started with.
 - The caller must not mutate an attached stage or its contributing layers during a synchronization.
 - Where a source change during evaluation can be detected, the attempt is discarded before publication.
 
