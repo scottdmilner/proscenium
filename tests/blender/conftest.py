@@ -52,8 +52,8 @@ def extension() -> Generator[ModuleType]:
 def bindings(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generator[Bindings]:
     """The process's bindings, fresh, which handles use, with the extension registered.
 
-    Its handlers keep the bindings' in-memory state current (proscenium.runtime).
+    Its handlers keep the bindings' in-memory state current (proscenium.binding.runtime).
     """
     fresh = Bindings()
-    monkeypatch.setattr("proscenium.api.bindings._BINDINGS", fresh)
+    monkeypatch.setattr("proscenium.api.bindings.BINDINGS", fresh)
     yield fresh

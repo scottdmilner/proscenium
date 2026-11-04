@@ -87,7 +87,7 @@ pythonpath = ["tools", "tests"]  # tests/ for the support and fixtures packages
 addopts = ["--strict-markers", "--import-mode=importlib"]
 # bpy_free, blender, and isolated are applied from the test's directory (tests/conftest.py).
 markers = [
-    "bpy_free: runs without Blender; Blender modules are blocked",
+    "bpy_free: reads and writes no Blender data, so it needs no reset",
     "blender: in-process bpy wheel, reused process with explicit state reset",
     "isolated: fresh Blender process (bpy wheel or binary) per test",
     "alab: requires PROSCENIUM_ALAB_ROOT",

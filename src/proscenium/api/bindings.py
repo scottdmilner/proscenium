@@ -3,9 +3,9 @@
 A synchronization acquires the binding's evaluation stage under its requested settings and reports the source's
 state; nothing is evaluated, planned, applied, or published yet.
 
-A binding's configuration is its records (proscenium.persistence.binding_records), held and written through the
-bindings' in-memory state (proscenium.runtime). Its stages and attachment are runtime state, never saved, in
-Bindings.stages (proscenium.runtime.CurrentStages), created unattached on first use.
+A binding's configuration is its records (proscenium.binding.persistence.binding_records), held and written through the
+bindings' in-memory state (proscenium.binding.runtime). Its stages and attachment are runtime state, never saved, in
+Bindings.stages (proscenium.binding.runtime.CurrentStages), created unattached on first use.
 
 A binding refuses the operations that need its configuration when the configuration can't be read
 (lifecycle.md#schema-versions), or when the binding has copies and no canonical candidate, which disables it
@@ -29,25 +29,18 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
-from .. import runtime
-from ..persistence.binding_records import BindingConfig
-from ..results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
-from ..runtime import CurrentStages
-from ..source_access import (
-    PayloadPolicy,
-    SourceUnavailableError,
-    dirty_layers,
-)
-from ..source_access.requested_settings import RequestedSettings
+from ..binding import runtime
+from ..binding.persistence import BindingConfig
+from ..binding.results import Diagnostic, DiagnosticCategory, Result, ResultState, Severity
+from ..binding.source_access import PayloadPolicy, RequestedSettings, SourceUnavailableError, dirty_layers
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import bpy
 
-    from ..runtime import CopiedBinding, FoundBinding
-    from ..source_access import BindingStages
-    from ..source_access.binding_ids import BindingId
+    from ..binding.runtime import CopiedBinding, FoundBinding
+    from ..binding.source_access import BindingId, BindingStages
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
@@ -66,40 +59,40 @@ class BindingHandle:
 
     def attach(self, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach a caller-owned stage to this binding, confirming a changed root identifier explicitly."""
-        return _BINDINGS.attach(self.binding_id, stage, confirm=confirm)
+        return BINDINGS.attach(self.binding_id, stage, confirm=confirm)
 
     def release(self) -> None:
         """Release this binding's source and evaluation stages, including after removal or undo."""
-        _BINDINGS.release(self.binding_id)
+        BINDINGS.release(self.binding_id)
 
     def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code (Bindings.synchronize)."""
-        return _BINDINGS.synchronize(self.binding_id, time_code)
+        return BINDINGS.synchronize(self.binding_id, time_code)
 
     def set_settings(self, *, payload_policy: PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing (Bindings.set_settings)."""
-        return _BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
+        return BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request (Bindings.reload)."""
-        return _BINDINGS.reload(self.binding_id, layers)
+        return BINDINGS.reload(self.binding_id, layers)
 
     def requested_settings(self) -> RequestedSettings:
         """The settings the binding's next synchronization uses (Bindings.requested_settings)."""
-        return _BINDINGS.requested_settings(self.binding_id)
+        return BINDINGS.requested_settings(self.binding_id)
 
     def live_stage(self) -> Usd.Stage | None:
         """The binding's live stage, which callers inspect (Bindings.live_stage)."""
-        return _BINDINGS.live_stage(self.binding_id)
+        return BINDINGS.live_stage(self.binding_id)
 
 
 class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
-    stages: CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
+    stages: runtime.CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
 
     def __init__(self) -> None:
-        self.stages = CurrentStages()
+        self.stages = runtime.CurrentStages()
 
     def create_binding(
         self,
@@ -254,14 +247,4 @@ def _refused(found: FoundBinding) -> Result:
     return Result(ResultState.FATAL_FAILURE, (Diagnostic(DiagnosticCategory.COPIED_BINDING, Severity.ERROR, message),))
 
 
-_BINDINGS = Bindings()  # the process's bindings, which handles use
-
-
-def drop_all_stages() -> None:
-    """Drop every binding's stages, leaving each with no source stage or attachment (CurrentStages.clear)."""
-    _BINDINGS.drop_all_stages()
-
-
-def prune_stages() -> None:
-    """Drop evaluation stages of bindings that no longer exist (CurrentStages.prune)."""
-    _BINDINGS.prune_stages()
+BINDINGS = Bindings()  # the process's bindings, which handles use

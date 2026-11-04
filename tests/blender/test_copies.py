@@ -13,18 +13,18 @@ import bpy
 import pytest
 
 from fixtures import copies
-from proscenium import runtime
 from proscenium.api.bindings import (
     BindingHandle,
     Bindings,
     DiagnosticCategory,
     ResultState,
 )
-from proscenium.persistence import binding_records, records
-from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import Loaded
-from proscenium.runtime import DisabledBindingError, ownership_index
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding import runtime
+from proscenium.binding.persistence import binding_records, records
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.runtime import DisabledBindingError, ownership_index
+from proscenium.binding.source_access import PayloadPolicy
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.copies import Outcome
-    from proscenium.runtime import CopiedBinding
+    from proscenium.binding.runtime import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:

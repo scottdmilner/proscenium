@@ -12,10 +12,10 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium import runtime
-from proscenium.persistence import manifests, records
-from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import (
+from proscenium.binding import runtime
+from proscenium.binding.persistence import manifests, records
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
     Loaded,
@@ -23,9 +23,9 @@ from proscenium.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.runtime import ownership_index
-from proscenium.runtime.ownership_index import Claim
-from proscenium.source_access.binding_ids import BindingId
+from proscenium.binding.runtime import ownership_index
+from proscenium.binding.runtime.ownership_index import Claim
+from proscenium.binding.source_access.binding_ids import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.usd import binding_on_file

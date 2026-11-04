@@ -1,8 +1,8 @@
 """Copied-binding detection (source-access.md#copied-bindings).
 
 identities() finds each binding identity's candidates in the records the bindings' state holds, and the
-canonical-candidate rule's decision on them (proscenium.source_access.canonical_candidate). A candidate is one of
-the identity's binding records, one per local scene, or a local collection tagged with the identity that no record
+canonical-candidate rule's decision on them (proscenium.binding.source_access.canonical_candidate). A candidate is one
+of the identity's binding records, one per local scene, or a local collection tagged with the identity that no record
 names, as a collection duplicated on its own is. report() describes an identity that isn't unique.
 
 Detection reads only the state's records, and never writes: whether a binding is disabled is derived from the records
@@ -14,8 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..persistence.binding_records import BindingIndex, DestinationTag
-from ..persistence.records import RefusedRecord
+from ..persistence import BindingIndex, DestinationTag, RefusedRecord
 from ..source_access.canonical_candidate import (
     UNREADABLE_INDEX_ENTRY,
     CandidateEvidence,

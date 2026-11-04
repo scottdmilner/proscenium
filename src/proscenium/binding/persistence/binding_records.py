@@ -108,7 +108,7 @@ def config_key(binding_id: BindingId) -> str:
     return CONFIG_PREFIX + binding_id
 
 
-def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedBinding:
+def create_binding(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedBinding:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
     Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the
@@ -123,6 +123,21 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedB
     records.write(scene, config_key(binding_id), CONFIG, config)
     records.write(destination, TAG_KEY, TAG, tag)
     return CreatedBinding(binding_id, config, tag, _write_entry(text, index, binding_id, destination))
+
+
+def has_config(scene: bpy.types.Scene, binding_id: BindingId) -> bool:
+    """Whether scene stores a configuration record for binding_id, without reading it."""
+    return records.has(scene, config_key(binding_id))
+
+
+def has_tag(collection: bpy.types.Collection) -> bool:
+    """Whether collection stores a destination tag, without reading it."""
+    return records.has(collection, TAG_KEY)
+
+
+def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | None:
+    """The binding index text holds, why it can't be read, or None if it holds none."""
+    return records.read(text, INDEX_KEY, INDEX)
 
 
 def write_config(scene: bpy.types.Scene, binding_id: BindingId, config: BindingConfig) -> None:
@@ -178,10 +193,10 @@ def tagged_uids() -> frozenset[int]:
     return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
 
 
-def restore_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
+def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
     """Add a binding's missing index entry, making the index's Text if the file has none; the index written, if any.
 
-    Raises as create does, writing nothing; an entry the index has, even one naming no destination, is kept.
+    Raises as create_binding does, writing nothing; an entry the index has, even one naming no destination, is kept.
     """
     text, index = _index()
     if binding_id in index.destinations:
@@ -201,7 +216,7 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
         raise ValueError(f"This file has {len(texts)} binding indexes")
     if not texts:
         return None, BindingIndex({})
-    result = records.read(texts[0], INDEX_KEY, INDEX)
+    result = read_index(texts[0])
     if isinstance(result, RefusedRecord):
         raise RefusedRecordError(result)
     assert result is not None  # index_texts found the record
@@ -221,4 +236,4 @@ def _write_entry(
 
 
 def _tagged(collection: bpy.types.Collection) -> bool:
-    return collection.library is None and records.has(collection, TAG_KEY)
+    return collection.library is None and has_tag(collection)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from proscenium.source_access.canonical_candidate import (
+from proscenium.binding.source_access.canonical_candidate import (
     UNREADABLE_INDEX_ENTRY,
     CandidateEvidence,
     CanonicalDecision,

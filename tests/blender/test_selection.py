@@ -8,7 +8,7 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium.persistence.records import (
+from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
     Loaded,
@@ -16,14 +16,14 @@ from proscenium.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.persistence.selection import (
+from proscenium.binding.persistence.selection import (
     SELECTION_KEY,
     PersistentSelection,
     SelectionEntry,
     read_selection,
     write_selection,
 )
-from proscenium.source_access.binding_ids import BindingId
+from proscenium.binding.source_access.binding_ids import BindingId
 from support import interaction_oracle
 from support.blend import save_and_reopen
 from support.usd import binding_on_file

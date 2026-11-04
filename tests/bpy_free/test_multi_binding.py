@@ -12,7 +12,7 @@ from pxr import Sdf, Usd
 
 from fixtures import source_access
 from fixtures.source_access import ROOT_FORMATS, caller_settings, read_values, rewrite_on_disk
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding.source_access import PayloadPolicy
 from support.usd import open_fresh
 
 from .bindings import binding

@@ -15,7 +15,6 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium import runtime
 from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
@@ -25,10 +24,11 @@ from proscenium.api.bindings import (
     ResultState,
     Severity,
 )
-from proscenium.persistence import binding_records, records
-from proscenium.runtime import state
-from proscenium.source_access import PayloadPolicy
-from proscenium.source_access.binding_ids import BindingId
+from proscenium.binding import persistence, runtime
+from proscenium.binding.persistence import binding_records, records
+from proscenium.binding.runtime import state
+from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.binding_ids import BindingId
 from support import undo
 from support.usd import binding_on_file, open_fresh
 
@@ -221,13 +221,13 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
     scans: list[int] = []
-    read_configs = binding_records.read_configs
+    read_configs = persistence.read_configs
 
     def counted() -> object:
         scans.append(1)
         return read_configs()
 
-    monkeypatch.setattr(binding_records, "read_configs", counted)
+    monkeypatch.setattr(persistence, "read_configs", counted)
     return scans
 
 

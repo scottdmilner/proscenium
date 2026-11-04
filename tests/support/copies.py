@@ -11,15 +11,15 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.persistence import binding_records, manifests, records
-from proscenium.persistence.manifests import Manifest
-from proscenium.persistence.records import Loaded
+from proscenium.binding.persistence import binding_records, manifests, records
+from proscenium.binding.persistence.manifests import Manifest
+from proscenium.binding.persistence.records import Loaded
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def run(route: str, tmp_path: Path) -> None:

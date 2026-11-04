@@ -15,14 +15,15 @@ import pytest
 from pxr import Usd
 
 from fixtures import source_access
-from proscenium import addon, runtime
+from proscenium import addon
 from proscenium.api.bindings import BindingHandle, Bindings
-from proscenium.persistence import binding_records, manifests, records
-from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import Loaded, RefusedRecord, RefusedRecordError
-from proscenium.runtime import ownership_index, state
-from proscenium.runtime.ownership_index import Claim
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding import persistence, runtime
+from proscenium.binding.persistence import binding_records, manifests, records
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding.persistence.records import Loaded, RefusedRecord, RefusedRecordError
+from proscenium.binding.runtime import ownership_index, state
+from proscenium.binding.runtime.ownership_index import Claim
+from proscenium.binding.source_access import PayloadPolicy
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -31,8 +32,8 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.persistence.binding_records import BindingConfig
-    from proscenium.source_access.binding_ids import BindingId
+    from proscenium.binding.persistence.binding_records import BindingConfig
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -517,7 +518,7 @@ def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatc
     def refused() -> object:
         raise AssertionError("release must not read binding records")
 
-    monkeypatch.setattr(binding_records, "read_configs", refused)
+    monkeypatch.setattr(persistence, "read_configs", refused)
     assert handle.release() is None
     assert (stages.live_stage, stages.evaluation_stage) == (None, None)
 

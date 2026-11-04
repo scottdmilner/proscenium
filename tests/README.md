@@ -26,7 +26,7 @@ Layers are named for what a test runs in, not for how much it covers: unit and i
 
 | Layer | Runs in | Use it for | Cost per test |
 |---|---|---|---|
-| `bpy_free/` | Plain Python. Blender modules are blocked; the wheel's bundled packages (e.g. `pxr`, `MaterialX`) are allowed. | Anything that doesn't need Blender: USD evaluation and planning, fixture generators, docs consistency. Prefer this layer. | ms |
+| `bpy_free/` | Plain Python that reads and writes no Blender data, so it needs no reset. The wheel's bundled packages (e.g. `pxr`, `MaterialX`) are used freely. | Anything that doesn't need Blender: USD evaluation and planning, fixture generators, docs consistency. Prefer this layer. | ms |
 | `blender/` | The bpy wheel, in a process each worker reuses, reset before every test | Code that reads or writes Blender data: registration, save/reopen, undo, datablocks | ~30 ms reset |
 | `isolated/` | A fresh process per test: the bpy wheel, or also the Blender binary | Behavior that needs a fresh process: real startup and file loads with handlers, extension install, process-wide state that a reset can't undo; and smoke tests that must also pass in the binary users run | ~0.85 s (wheel), ~1.2 s (binary) |
 
@@ -40,8 +40,7 @@ Extra markers, added per test: `alab` for tests that need ALab (`PROSCENIUM_ALAB
 tests/
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
-│   ├── conftest.py           blocks Blender modules during this layer's tests
-│   └── bpy_blocker.py        the blocker; also run as a script by test_no_blender_imports.py
+│   └── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   └── state.py              the reset, baseline check, and cleanup
@@ -71,9 +70,14 @@ tests/
 
 ### `bpy_free/`
 
-`bpy_free/conftest.py` blocks Blender modules (`bpy`, `bmesh`, `mathutils`, ...) while this layer's test files are imported and while each of its tests runs. A test here that imports one fails with `ImportError`. Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything bpy's C code creates at import (see `bpy_blocker.py`). Modules already loaded by blender-layer tests in the same worker are hidden for the duration, so the block holds in mixed runs too.
+Tests here read and write no Blender data, so they skip the blender layer's reset. They don't import Blender's modules either, though nothing checks that for the tests themselves.
 
-`test_no_blender_imports.py` checks the rule from [AGENTS.md](../AGENTS.md#layout) directly: `proscenium`, `proscenium.results`, and every `proscenium.core` and `proscenium.source_access` module import in a fresh interpreter with Blender blocked.
+What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). Two tests prove it, and neither depends on what a worker has already imported:
+
+- `test_no_blender_imports.py`: `proscenium`, `proscenium.binding`, `proscenium.binding.results`, and every `proscenium.core` and `proscenium.binding.source_access` module import in a fresh interpreter with Blender blocked.
+- `test_import_tiers.py`: the same modules' source has no import of a Blender module anywhere, including type-only imports and imports inside functions, which importing a module doesn't run.
+
+Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything that can't be found without `bpy`, such as `mathutils`, which bpy's C code creates (see `bpy_blocker.py`).
 
 ### `blender/`
 
@@ -84,7 +88,7 @@ All blender-layer tests in a worker share one bpy-wheel process. The autouse `cl
 
 A test therefore always starts clean, even after a failing test. If the baseline assertion fires, something escaped the reset; fix the reset rather than the test. `test_state_reset.py` shows that each kind of leftover is detected and removed.
 
-The `extension` fixture registers the extension in-process from `src/` (not installed). It's unregistered afterwards even if the test doesn't do it. The `bindings` fixture gives a fresh `Bindings`, the process's bindings, which handles use, with the extension registered: the API's in-memory state (`proscenium.runtime`) needs the extension's load, undo, and redo handlers.
+The `extension` fixture registers the extension in-process from `src/` (not installed). It's unregistered afterwards even if the test doesn't do it. The `bindings` fixture gives a fresh `Bindings`, the process's bindings, which handles use, with the extension registered: the API's in-memory state (`proscenium.binding.runtime`) needs the extension's load, undo, and redo handlers.
 
 ### `isolated/`
 
@@ -142,7 +146,7 @@ Bespoke fixtures are the main correctness evidence ([acceptance.md](../docs/test
 - **`copies.py`** has the generator for `F-OWNERSHIP-AMBIGUITY`: a source, and for each copy route the outcome the canonical-candidate rule gives it, derived from the rule and the route. `support/copies.py` runs the routes, which are Blender operations.
 - **`interaction.py`** has the generators for `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP` over `scenes/interaction/`. Each yields the live stage and the results the scene is built to produce, written out by hand; `bpy_free/test_interaction_fixtures.py` checks that `support/interaction_oracle.py` derives the same results. `tools/show_interaction_fixtures.py` prints them (run it from the repository root as `uv run python tests/tools/show_interaction_fixtures.py`).
 - **`appearance.py`** has the generators for `F-APPEARANCE-CASES`, the representation feasibility cases, and `F-NESTED-STRESS`, over `scenes/appearance/` (with the texture `grid.png`), and `point_instancers`, a point instancer for M4 Phase D's measurement, which isn't a contract fixture since the spec defers point instancers. Each yields the live stage and what its scene is built to display, written out by hand: sharing sets, display color and opacity, materials per destination and per face, the values primvar readers show, UV sets under UV-set names, for the stress fixture each drawn mesh's world transform, determinant sign, shear, and purposes, and for the point instancer each point's copies' world transforms, the invisible points, the per-point primvars, and the bound materials. `bpy_free/test_appearance_fixtures.py` checks them against USD's own APIs (`UsdGeom.XformCache`, `FindPrimvarWithInheritance`, `ComputeBoundMaterial` by purpose, GeomSubsets, `UsdGeom.PointInstancer`).
-- **`records.py`** has the generator for `F-SCHEMA-VERSIONS`: records of a three-version test schema as ID properties store them (older, current, failed-migration, newer, invalid, and unreadable), and the `Sample` dataclass they load as, with what loading each must give, plus binding configurations a newer extension or damage could leave. They are values rather than files. `bpy_free/test_record_loading.py` loads them directly, and `blender/test_records.py` stores them in a scene to check save/reopen and that writing refuses to replace the newer and unreadable ones; `blender/test_bindings.py` stores the binding configurations and checks the binding refuses.
+- **`records.py`** has the generator for `F-SCHEMA-VERSIONS`: records of a three-version test schema as ID properties store them (older, current, failed-migration, newer, invalid, and unreadable), and the `Sample` dataclass they load as, with what loading each must give, plus binding configurations a newer extension or damage could leave. They are values rather than files. `blender/test_record_loading.py` loads them directly, and `blender/test_records.py` stores them in a scene to check save/reopen and that writing refuses to replace the newer and unreadable ones; `blender/test_bindings.py` stores the binding configurations and checks the binding refuses.
 - **`production_like.py`** is the smaller generated CI fixture: a deep organizational hierarchy, instanceable crate payloads with nested instanceable bolts, multi-material assets, and one non-instanced crate. `expected_inventory(params, load_all)` derives what each payload policy must compose. `bpy_free/test_production_like.py` checks that against USD, and also checks determinism and a pinned checksum. Change the checksum only deliberately, together with the generator or its assets.
 - **`scenes/`** holds static `.usda` layers, one directory per scene. Each layer has a header comment saying what it's for. Write static content as files here, not as Python strings.
   - `scenes/__init__.py` indexes them: the `Scene` enum has one member per directory, and `copy_scene(Scene.SOURCE_ACCESS, tmp_path)` copies a scene's files into `tmp_path` and returns it. Generators copy a scene, then make runtime-specific edits through the Sdf API.

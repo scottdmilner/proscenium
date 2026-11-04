@@ -14,7 +14,7 @@ Nothing is stored on the managed datablocks: a datablock is managed by the bindi
   nowhere; only bpy.data's remove clears the pointer. Reading unmanaged users has to discount the manifests (M7).
 
 Reading a manifest reads every entry, so frequent operations go through the ownership index
-(proscenium.runtime.ownership_index). write_entries writes only the entries that change.
+(proscenium.binding.runtime.ownership_index). write_manifest_entries writes only the entries that change.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ class ManifestEntry:
         # Manifest.__post_init__, which refuses any item that isn't another entry's resource identity.
         if type(self.covers) not in (list, tuple) or type(self.uses) not in (list, tuple):
             raise TypeError("an entry covers a list of source-entity paths and uses a list of resources")
-        # Tuples, so the cache that hands entries out (proscenium.runtime) can't be changed through one.
+        # Tuples, so the cache that hands entries out (proscenium.binding.runtime) can't be changed through one.
         object.__setattr__(self, "covers", tuple(self.covers))
         object.__setattr__(self, "uses", tuple(self.uses))
         if type(self.role) is not str or not self.role:
@@ -118,23 +118,25 @@ def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | Refus
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
-def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> None:
-    """Store the destination's manifest whole.
+def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> Loaded[Manifest]:
+    """Store the destination's manifest whole; the manifest as reading it back would give it.
 
     Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read.
     """
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
+    return Loaded(manifest, MANIFEST.version)
 
 
-def write_entries(
+def write_manifest_entries(
     destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
-) -> None:
-    """Store manifest, writing only the entries under changed and removed.
+) -> Loaded[Manifest]:
+    """Store manifest, writing only the entries under changed and removed; the manifest as reading it would give it.
 
     manifest differs from the stored one only in those entries (records.write_items). Raises as write_manifest does, and
     KeyError, changing nothing, for a resource identity too long for an ID-property key.
     """
     records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
+    return Loaded(manifest, MANIFEST.version)
 
 
 def dependents(manifest: Manifest) -> Mapping[str, set[str]]:

@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..persistence import binding_records, records
-from ..persistence.records import RefusedRecord, RefusedRecordError
+from .. import persistence
+from ..persistence import RefusedRecord, RefusedRecordError
 from ..source_access.canonical_candidate import DecisionReason
 from . import copy_detection, state
 from .state import StaleError
@@ -20,7 +20,7 @@ from .state import StaleError
 if TYPE_CHECKING:
     import bpy
 
-    from ..persistence.binding_records import BindingConfig
+    from ..persistence import BindingConfig
     from ..source_access.binding_ids import BindingId
     from .copy_detection import CopiedBinding, IdentityCandidates
     from .state import BindingRecord, State
@@ -81,12 +81,12 @@ def copied_bindings() -> list[CopiedBinding]:
 
 
 def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingId:
-    """Make a binding with binding_records.create, and record it; it has no manifest yet. Returns its identifier.
+    """Make a binding with persistence.create_binding, and record it; it has no manifest yet. Returns its identifier.
 
-    Raises NotRegisteredError before changing anything, and what binding_records.create raises.
+    Raises NotRegisteredError before changing anything, and what persistence.create_binding raises.
     """
     current = state.current_state()
-    created = binding_records.create(scene, config, name)
+    created = persistence.create_binding(scene, config, name)
     current.add_binding(scene, created)
     return created.binding_id
 
@@ -98,12 +98,12 @@ def set_config(binding_id: BindingId, config: BindingConfig) -> None:
     DisabledBindingError if it has no canonical candidate.
     """
     record = required_record(binding_id)
-    # records.write refuses only an unreadable or newer record, so an invalid one is refused here.
+    # write_config refuses only an unreadable or newer record, so an invalid one is refused here.
     if isinstance(record.config, RefusedRecord):
         raise RefusedRecordError(record.config)
     if config == record.config:
         return
-    binding_records.write_config(record.scene, binding_id, config)
+    persistence.write_config(record.scene, binding_id, config)
     moved = record.config.destination != config.destination
     record.held.configs[binding_id] = config
     if moved:  # a destination changes only in repair: rebuilt whole, in the order a rebuild finds
@@ -145,7 +145,7 @@ def restore_entry(binding_id: BindingId, record: BindingRecord) -> None:
     if not copy_detection.refers_back(current, binding_id, record):
         return
     try:
-        written = binding_records.restore_entry(binding_id, config.destination)
+        written = persistence.restore_index_entry(binding_id, config.destination)
     except (ValueError, RefusedRecordError):
         return
     if written is not None:
@@ -201,6 +201,6 @@ def _check_candidates(binding_id: BindingId, identity: IdentityCandidates) -> No
             present = state.valid(binding_id, candidate.record)
         else:  # a tagged copy
             copy = candidate.collection
-            present = copy is not None and state.alive(copy) and records.has(copy, binding_records.TAG_KEY)
+            present = copy is not None and state.alive(copy) and persistence.has_tag(copy)
         if not present:
             raise StaleError

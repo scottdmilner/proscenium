@@ -1,6 +1,6 @@
 """RequestedSettings, the settings a binding's next synchronization uses (lifecycle.md#binding-state).
 
-The binding's configuration holds them (proscenium.persistence.binding_records), and set_settings changes them.
+The binding's configuration holds them (proscenium.binding.persistence.binding_records), and set_settings changes them.
 """
 
 from dataclasses import dataclass

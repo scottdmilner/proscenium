@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import source_access
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding.source_access import PayloadPolicy
 from support import undo
 
 if TYPE_CHECKING:

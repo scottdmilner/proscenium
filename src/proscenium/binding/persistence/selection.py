@@ -28,7 +28,7 @@ class SelectionEntry(NamedTuple):
     """One selected source entity: its binding, and its source-entity identifier."""
 
     binding_id: BindingId
-    path: str  # a source-entity identifier: make it with proscenium.source_access.source_entities.identifier
+    path: str  # a source-entity identifier: make it with proscenium.binding.source_access.source_entities.identifier
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ from bpy.app.handlers import persistent
 from pxr import Usd
 
 import proscenium
-from proscenium.api.bindings import _BINDINGS
+from proscenium.api.bindings import BINDINGS
 from support.blend import save_and_reopen
 
 
@@ -33,7 +33,7 @@ def save_and_reopen_with_handlers(path: str) -> dict[str, Any]:
     scene.collection.objects.link(bpy.data.objects.new("Kept", None))
     bpy.app.handlers.load_post.extend([kept, dropped])
     proscenium.register()
-    handle = _BINDINGS.create_binding(scene)
+    handle = BINDINGS.create_binding(scene)
     caller = Usd.Stage.CreateInMemory()  # held across the reopen, so only the extension's handler can drop it
     handle.attach(caller)
     attached_before = handle.synchronize(0).state.name

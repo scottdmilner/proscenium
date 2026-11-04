@@ -3,12 +3,16 @@
 The compiled core receives a stage from here; it never opens one.
 """
 
+from .binding_ids import BindingId
 from .binding_stages import BindingStages, PayloadPolicy, SourceUnavailableError, contributing_layers, dirty_layers
+from .requested_settings import RequestedSettings
 from .stage_registry import StageRegistry
 
 __all__ = [
+    "BindingId",
     "BindingStages",
     "PayloadPolicy",
+    "RequestedSettings",
     "SourceUnavailableError",
     "StageRegistry",
     "contributing_layers",

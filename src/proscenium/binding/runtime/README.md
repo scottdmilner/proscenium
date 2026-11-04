@@ -1,17 +1,17 @@
-# `proscenium.runtime`
+# `proscenium.binding.runtime`
 
-The bindings' in-memory state: a disposable write-through cache of their records, and the runtime indexes into it ([Undo and Runtime State](../../../docs/spec/lifecycle.md#undo-and-runtime-state)). The middle tier: it may import `proscenium.persistence` and the bpy-free code below the tiers (`proscenium.core`, `proscenium.source_access`, `proscenium.results`), never `proscenium.api`.
+The bindings' in-memory state: a disposable write-through cache of their records, and the runtime indexes into it ([Undo and Runtime State](../../../../docs/spec/lifecycle.md#undo-and-runtime-state)). The middle tier: it may import `proscenium.binding.persistence` and the bpy-free code below the tiers (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), never `proscenium.api`.
 
 Callers use what `__init__.py` exports, not the modules below it (checked by `tests/bpy_free/test_import_tiers.py`). It exports only what `proscenium.api` and `proscenium.addon` call, and the errors that reach their callers; what only tests use stays in its module, where tests reach it.
 
 | File | Holds |
 |---|---|
 | `__init__.py` | The lookups and writes `proscenium.api` and `proscenium.addon` call, and the errors that reach their callers, re-exported from the modules below. |
-| `state.py` | The state itself. It holds the records, decoded, each once and held as stored, by the datablock holding them: each scene's `SceneRecords` (its binding records), each destination collection's `DestinationRecords` (its tag, and its manifest once read), and each Text's `IndexRecords` (its binding index). It also holds what's computed from them: each identity's candidates and decision, and the ownership index. Also tracking (`start`, `stop`), dropping and rebuilding (`invalidate`, `rebuild_count`, `refresh_if_tags_changed`), and the checks of held datablock references. |
+| `state.py` | The state itself. It holds the records, decoded, each once and held as stored, by the datablock holding them: each scene's `SceneRecords` (its binding records), each destination collection's `DestinationRecords` (its tag, and its manifest once read), and each Text's `IndexRecords` (its binding index). It also holds what's computed from them: each identity's candidates and decision, and the ownership index. Also tracking (`start_tracking`, `stop_tracking`), dropping and rebuilding (`invalidate`, `rebuild_count`, `refresh_if_tags_changed`), and the checks of held datablock references. |
 | `binding_configs.py` | Lookups by binding identity (`find_binding`, `find_bindings`), which reach the canonical candidate's binding record and return a `FoundBinding`: usable with its configuration, unreadable with why, or disabled with its copies; binding creation; configuration writes; and restoring a missing index entry after a write. |
 | `ownership_index.py` | Ownership: `ownership(datablock)`, an `Ownership` whose `status` says whether the datablock is unmanaged, managed, or ambiguous, from the `Claim`s on it in the ownership index, built from every destination's manifest. Also a binding's manifest, and manifest writes, each replacing only its destination's claims. |
 | `current_stages.py` | `CurrentStages`: every binding's stages, in source access's `StageRegistry`, compared with the set of existing binding identities before any use once the bindings' state was rebuilt (`rebuild_count`). Vanished bindings keep their attachments and drop their evaluation stages; unreadable and disabled bindings retain both. |
-| `copy_detection.py` | Copied-binding detection ([Copied Bindings](../../../docs/spec/source-access.md#copied-bindings)): `identities()`, which finds each identity's `Candidate`s in the state's records and returns them (`IdentityCandidates`) with the decision of the rule in `proscenium.source_access.canonical_candidate`; and `report()`'s `CopiedBinding`. |
+| `copy_detection.py` | Copied-binding detection ([Copied Bindings](../../../../docs/spec/source-access.md#copied-bindings)): `identities()`, which finds each identity's `Candidate`s in the state's records and returns them (`IdentityCandidates`) with the decision of the rule in `proscenium.binding.source_access.canonical_candidate`; and `report()`'s `CopiedBinding`. |
 
 ## How the state stays current
 

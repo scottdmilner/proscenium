@@ -10,8 +10,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
-from proscenium.source_access import PayloadPolicy, StageRegistry
-from proscenium.source_access.binding_ids import BindingId
+from proscenium.binding.source_access import PayloadPolicy, StageRegistry
+from proscenium.binding.source_access.binding_ids import BindingId
 
 if TYPE_CHECKING:
     from pathlib import Path

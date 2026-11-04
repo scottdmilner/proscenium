@@ -1,9 +1,9 @@
 """Disposable in-memory state built from the records (lifecycle.md#undo-and-runtime-state).
 
-The middle tier: it may import proscenium.persistence and the bpy-free code below the tiers, never
+The middle tier: it may import proscenium.binding.persistence and the bpy-free code below the tiers, never
 proscenium.api. Callers use what this module exports: what proscenium.api and proscenium.addon call, and the
-errors that reach their callers. The state itself is proscenium.runtime.state's, lookups by binding identity are
-proscenium.runtime.binding_configs', and ownership is proscenium.runtime.ownership_index's.
+errors that reach their callers. The state itself is proscenium.binding.runtime.state's, lookups by binding identity are
+proscenium.binding.runtime.binding_configs', and ownership is proscenium.binding.runtime.ownership_index's.
 """
 
 from .binding_configs import (
@@ -17,7 +17,7 @@ from .binding_configs import (
 )
 from .copy_detection import CopiedBinding
 from .current_stages import CurrentStages
-from .state import NotRegisteredError, invalidate, refresh_if_tags_changed, start, stop
+from .state import NotRegisteredError, invalidate, refresh_if_tags_changed, start_tracking, stop_tracking
 
 __all__ = [
     "CopiedBinding",
@@ -32,6 +32,6 @@ __all__ = [
     "invalidate",
     "refresh_if_tags_changed",
     "set_config",
-    "start",
-    "stop",
+    "start_tracking",
+    "stop_tracking",
 ]

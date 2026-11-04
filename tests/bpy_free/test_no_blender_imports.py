@@ -1,12 +1,10 @@
-"""The extension's bpy-free parts import with Blender modules blocked (AGENTS.md#layout)."""
+"""The extension's bpy-free parts import in a fresh interpreter with Blender modules blocked (AGENTS.md#layout)."""
 
 from __future__ import annotations
 
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 from . import bpy_blocker
 
@@ -20,11 +18,12 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             sys.executable,
             str(BLOCKER),
             "proscenium",
-            "proscenium.results",
+            "proscenium.binding",
+            "proscenium.binding.results",
             "--walk",
             "proscenium.core",
             "--walk",
-            "proscenium.source_access",
+            "proscenium.binding.source_access",
         ],
         capture_output=True,
         text=True,
@@ -34,12 +33,7 @@ def test_bpy_free_packages_import_without_bpy() -> None:
 
 
 def test_blocker_rejects_bpy() -> None:
-    # Guards the test above: it must be able to fail. A fresh interpreter too, so this layer's own block can't stand in.
+    # Guards the test above: it must be able to fail.
     proc = subprocess.run([sys.executable, str(BLOCKER), "bpy"], capture_output=True, text=True, check=False)
     assert proc.returncode != 0
     assert "Blender module" in proc.stderr
-
-
-def test_layer_runs_with_blender_blocked() -> None:
-    with pytest.raises(ImportError, match="Blender module"):
-        import bpy  # noqa: F401

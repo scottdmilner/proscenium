@@ -16,7 +16,6 @@ import bpy
 from pxr import Sdf
 
 from fixtures import source_access
-from proscenium import runtime
 from proscenium.api.bindings import (
     BindingHandle,
     Bindings,
@@ -25,12 +24,13 @@ from proscenium.api.bindings import (
     Result,
     ResultState,
 )
-from proscenium.persistence import binding_records, binding_state, records
-from proscenium.persistence.binding_state import LastAttempt
-from proscenium.persistence.manifests import Manifest, ManifestEntry
-from proscenium.persistence.records import Loaded
-from proscenium.runtime import ownership_index
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding import runtime
+from proscenium.binding.persistence import binding_records, binding_state, records
+from proscenium.binding.persistence.binding_state import LastAttempt
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.runtime import ownership_index
+from proscenium.binding.source_access import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 from support.usd import binding_on_file
@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.persistence.binding_records import BindingConfig
-    from proscenium.source_access.binding_ids import BindingId
+    from proscenium.binding.persistence.binding_records import BindingConfig
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:

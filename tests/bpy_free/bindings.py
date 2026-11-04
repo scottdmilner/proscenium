@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.source_access import BindingStages
+from proscenium.binding.source_access import BindingStages
 
 if TYPE_CHECKING:
     from pxr import Usd

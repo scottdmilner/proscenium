@@ -19,10 +19,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, NamedTuple
 
-from ..persistence import manifests
-from ..persistence.binding_records import DestinationTag
+# The manifests aren't persistence's API until M5 calls ownership (persistence/__init__.py).
+from ..persistence import DestinationTag, Loaded, RefusedRecord, RefusedRecordError, manifests
 from ..persistence.manifests import Manifest
-from ..persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
 from .state import BindingRecord, StaleError, Unread
 
@@ -120,8 +119,8 @@ def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     record = binding_configs.required_record(binding_id)
     current = state.current_state()
     destination = _destination(current, binding_id, record)
-    manifests.write_manifest(destination.collection, manifest)
-    _replace_manifest(current, binding_id, destination, Loaded(manifest, manifests.MANIFEST.version))
+    written = manifests.write_manifest(destination.collection, manifest)
+    _replace_manifest(current, binding_id, destination, written)
     binding_configs.restore_entry(binding_id, record)
 
 
@@ -134,7 +133,7 @@ def set_manifest_entries(
     starts from an empty one, and an empty update writes nothing. What it writes and indexes is what changes; in memory
     it also copies the manifest's entries and, with removals, scans their uses (Manifest.updated).
 
-    Raises what set_manifest raises, and ValueError, TypeError, or KeyError (manifests.write_entries),
+    Raises what set_manifest raises, and ValueError, TypeError, or KeyError (manifests.write_manifest_entries),
     changing nothing, over an update that makes no manifest.
     """
     # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
@@ -147,8 +146,7 @@ def set_manifest_entries(
     index, share, destination = target.current.ownership, target.share, target.destination
     assert index is not None and share is not None
     after = target.before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
-    manifests.write_entries(destination.collection, after, changed.keys(), removed)
-    destination.manifest = Loaded(after, manifests.MANIFEST.version)
+    destination.manifest = manifests.write_manifest_entries(destination.collection, after, changed.keys(), removed)
     for resource_id in [*changed, *removed]:
         _remove_claim(index, share, resource_id)
     for resource_id in changed:

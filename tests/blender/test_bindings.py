@@ -17,7 +17,7 @@ from pxr import Sdf, Usd
 from fixtures import records as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from proscenium import addon, runtime
+from proscenium import addon
 from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
@@ -28,11 +28,12 @@ from proscenium.api.bindings import (
     ResultState,
     Severity,
 )
-from proscenium.persistence import binding_records, binding_state, records
-from proscenium.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
-from proscenium.persistence.binding_state import Generation, LastAttempt
-from proscenium.persistence.records import NAMESPACE, Loaded, RefusedRecordError
-from proscenium.source_access import PayloadPolicy
+from proscenium.binding import runtime
+from proscenium.binding.persistence import binding_records, binding_state, records
+from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
+from proscenium.binding.persistence.binding_state import Generation, LastAttempt
+from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
+from proscenium.binding.source_access import PayloadPolicy
 from support import undo
 from support.blend import save_and_reopen
 from support.usd import binding_on_file, open_fresh

@@ -21,14 +21,15 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 ## Layout
 
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
-  - The bpy-free code, below the tiers, must import without `bpy`, as must `proscenium/__init__.py`:
+  - `proscenium/api/`, `proscenium/binding/`, and `proscenium/core/`: what callers use, the bindings' code, and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently. Code outside `binding/` imports its subpackages and `results` and uses what each exports, never the modules inside them; inside `binding/`, a tier (`runtime`, `persistence`) is reached only through its package too.
+  - The bpy-free code, below the tiers, must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`:
     - `proscenium/core/`: the compiled core, its C++ source and built module. See [Compiled core](#compiled-core).
-    - `proscenium/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
-    - `proscenium/results.py`: results and diagnostics.
+    - `proscenium/binding/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
+    - `proscenium/binding/results.py`: results and diagnostics.
   - Blender-facing code is in three tiers, each importing only the tiers below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)):
     - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
-    - `proscenium/runtime/`: disposable in-memory state built from the records.
-    - `proscenium/persistence/`: versioned records in ID properties.
+    - `proscenium/binding/runtime/`: disposable in-memory state built from the records.
+    - `proscenium/binding/persistence/`: versioned records in ID properties.
   - `proscenium/addon.py` registers the extension and its handlers, and may import any tier.
   - Every directory has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
@@ -81,7 +82,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 [tests/README.md](tests/README.md) documents the test tree: which layer to use, the helpers, the fixture framework, and the rules. Read it before writing tests. In summary:
 
 - Layers are directories named for what a test runs in, not how much it covers. Each test gets its directory's marker:
-  - `bpy_free/`: plain Python with Blender modules blocked. Prefer it.
+  - `bpy_free/`: plain Python that reads and writes no Blender data, so it needs no reset. Prefer it.
   - `blender/`: the bpy wheel in a reused process, reset and checked clean before every test.
   - `isolated/`: a fresh wheel or binary process per test, for what a reset can't make clean.
 - Bespoke fixtures are registered in `tests/fixtures/registry.py`. Generators are context managers that write into a tmp dir. Static layers are `.usda` files in `tests/fixtures/scenes/`.

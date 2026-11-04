@@ -46,7 +46,7 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
     """The display's manifest entries, by resource identity."""
     from apply import SHEAR_PARENT
 
-    from proscenium.persistence.manifests import ManifestEntry
+    from proscenium.binding.persistence.manifests import ManifestEntry
 
     users: dict[int, list[str]] = {}
     found: dict[str, Any] = {}
@@ -71,8 +71,8 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time undo, redo, and the lookups after each."""
-    from proscenium.persistence.manifests import Manifest
-    from proscenium.runtime import ownership_index, state
+    from proscenium.binding.persistence.manifests import Manifest
+    from proscenium.binding.runtime import ownership_index, state
 
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = True

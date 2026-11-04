@@ -4,18 +4,20 @@ How `src/proscenium/` is arranged so its structure shows in the tree, and how it
 
 ## Tiers
 
-The Blender-facing code is three tiers. Each imports only the tiers below it, and the bpy-free code, `core/`, `source_access/`, and `results.py`, is below all three:
+`src/proscenium/` holds three packages: `api/`, what callers use; `binding/`, the bindings' code; and `core/`, the compiled core. The bindings' code and the core are separate packages, so the Blender-facing code and the core and its Hydra code change independently.
+
+The Blender-facing code is three tiers. Each imports only the tiers below it, and the bpy-free code, `core/`, `binding/source_access/`, and `binding/results.py`, is below all three:
 
 | Package | Holds | May import |
 |---|---|---|
-| `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) | `runtime`, `persistence`, and the bpy-free code |
-| `runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) | `persistence`, and the bpy-free code |
-| `persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) | the bpy-free code |
+| `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) | `binding.runtime`, `binding.persistence`, and the bpy-free code |
+| `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) | `binding.persistence`, and the bpy-free code |
+| `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) | the bpy-free code |
 | `core/` | The compiled core: its C++ source and built module | `core` |
-| `source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers | `source_access` |
-| `results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) | nothing |
+| `binding/source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers | `binding.source_access` |
+| `binding/results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) | nothing |
 
-`addon.py` registers the extension and its handlers, which drive `runtime` and `api`, so it may import any of them. The bpy-free code is a different axis from the three tiers: it holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called packages or tiers, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
+Code outside `binding/` imports its units, `runtime`, `persistence`, `source_access`, and `results`, and uses what each exports, never the modules inside them, so calls read as `runtime.start_tracking()`. Inside `binding/`, a tier is reached only through its package too: `runtime` calls `persistence.read_configs()`. The manifests are the one exception until M5 calls the ownership index, their only user. `binding/__init__.py` imports none of them, so importing a bpy-free unit never imports `bpy`. `addon.py` registers the extension and its handlers, which drive `binding.runtime` and `api`, so it may import any of them. The bpy-free code is a different axis from the three tiers: it holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `binding/source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called packages or tiers, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
 
 A `bpy_free` test reads every module's imports with `ast`, without importing it, and fails on an import against this table.
 
@@ -27,32 +29,35 @@ src/proscenium/
   addon.py
   api/
     __init__.py
-    bindings.py                Bindings, BINDINGS, BindingHandle, RequestedSettings
-  runtime/
-    __init__.py                what api and addon call, and the errors that reach their callers
-    state.py                   the state, tracking, rebuilding, and the checks of held references
-    binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
-    ownership_index.py         Claim, each destination's claims, manifest lookups and writes
-    copy_detection.py          copied-binding detection from the records
-  persistence/
+    bindings.py                  Bindings, BINDINGS, BindingHandle, RequestedSettings
+  binding/
     __init__.py
-    records.py                 the versioned-record framework
-    binding_records.py         BindingConfig, DestinationTag, BindingIndex
-    manifests.py               ManifestEntry, Manifest, and their records
-    binding_state.py           Generation, LastAttempt
-    selection.py               PersistentSelection
-  results.py                   Result, ResultState, Diagnostic, DiagnosticCategory, Severity
-  core/                        the compiled core: _core and its C++ source
-  source_access/
-    binding_stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
-    stage_registry.py          StageRegistry
-    binding_ids.py             BindingId
-    canonical_candidate.py     the canonical-candidate rule
-    requested_settings.py      RequestedSettings
-    source_entities.py
+    runtime/
+      __init__.py                what api and addon call, and the errors that reach their callers
+      state.py                   the state, tracking, rebuilding, and the checks of held references
+      binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
+      ownership_index.py         Claim, each destination's claims, manifest lookups and writes
+      copy_detection.py          copied-binding detection from the records
+    persistence/
+      __init__.py                the records, and the reads and writes runtime, api, and addon use
+      records.py                 the versioned-record framework
+      binding_records.py         BindingConfig, DestinationTag, BindingIndex
+      manifests.py               ManifestEntry, Manifest, and their records
+      binding_state.py           Generation, LastAttempt
+      selection.py               PersistentSelection
+    results.py                   Result, ResultState, Diagnostic, DiagnosticCategory, Severity
+    source_access/
+      __init__.py                the stages, BindingId, RequestedSettings
+      binding_stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
+      stage_registry.py          StageRegistry
+      binding_ids.py             BindingId
+      canonical_candidate.py     the canonical-candidate rule
+      requested_settings.py      RequestedSettings
+      source_entities.py
+  core/                          the compiled core: _core and its C++ source
 ```
 
-Module names are unique across the tiers, and named for the spec section they implement where there is one, as `canonical_candidate.py` is for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface, exporting only what `api/` and `addon.py` call and the errors that reach their callers. No module of `runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`, and `copy_detection.py`, beside `copied_bindings()`.
+Module names are unique across the tiers, and named for the spec section they implement where there is one, as `canonical_candidate.py` is for [Canonical Candidate](../spec/source-access.md#canonical-candidate). The modules of `binding/runtime/` share helpers without a leading underscore, and call each other's through the module (`state.current_state()`), so a test can patch one in one place; its `__init__` is its public surface, exporting only what `api/` and `addon.py` call and the errors that reach their callers. No module of `binding/runtime/` is named for a function its `__init__` exports, which would replace the module on the package: `binding_configs.py`, beside `configs()`, and `copy_detection.py`, beside `copied_bindings()`.
 
 ## Conventions
 

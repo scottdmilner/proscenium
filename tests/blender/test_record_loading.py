@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import records as fixture
-from proscenium.persistence.records import VERSION_KEY, Loaded, RefusalReason, RefusedRecord, Schema, load
+from proscenium.binding.persistence.records import VERSION_KEY, Loaded, RefusalReason, RefusedRecord, Schema, load
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -21,11 +21,18 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, copies, interaction, records, source_access
+from . import appearance, copies, interaction, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
 Generator = Callable[[Path], AbstractContextManager[object]]
+
+
+def _schema_versions(dest: Path) -> AbstractContextManager[object]:
+    """F-SCHEMA-VERSIONS' generator, imported when used: it imports the records' package, which imports bpy."""
+    from . import records
+
+    return records.schema_versions(dest)
 
 
 class Operation(StrEnum):
@@ -147,7 +154,7 @@ FIXTURES: dict[str, Fixture] = {
             "F-SCHEMA-VERSIONS",
             "Older, failed-migration, newer, and unreadable records",
             ("M3", "M5"),
-            records.schema_versions,
+            _schema_versions,
             (
                 # Older sample records load at the current version; binding configuration has no older version.
                 Case("older", SYNC, SUCCESS, ("SCHEMA-02",), 1),
