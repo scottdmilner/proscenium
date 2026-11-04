@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Docs-only pull requests skip the builds and tests. Lint always runs: its matrix hook checks docs/. A skipped job
+  # counts as passing for required status checks. Pushes to main and manual runs always run everything.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      # A pull request's checkout is a merge commit: its first parent is the base, so HEAD^1..HEAD is what the
+      # pull request changes.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: filter
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            # Code is any changed file outside docs/ and the root *.md files (README.md, AGENTS.md, CLAUDE.md).
+            # READMEs in src/ and tests/ are tested, so they count as code.
+            if ! git diff --name-only HEAD^1 HEAD | grep -qvE '^(docs/|[^/]+\.md$)'; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -27,6 +51,8 @@ jobs:
   # tools/build_extension.py uses this module because its build record is current. The Hydra bridge, which M4's
   # prototype tests run, is built here too, since its build audits the same floor.
   core-linux:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_28_x86_64
     defaults:
@@ -55,7 +81,8 @@ jobs:
           if-no-files-found: error
 
   test:
-    needs: core-linux
+    needs: [changes, core-linux]
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
