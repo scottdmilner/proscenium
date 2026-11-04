@@ -3,8 +3,9 @@
 The published generation is what the display was produced with: the generation record and the
 ownership manifest beside it on the destination collection (proscenium.binding.persistence.manifests), and the
 correspondence M7 adds. The generation record holds the time code it was synchronized at and those M5's cache
-added to it since (pipeline.md#cached-time-codes). It describes the destination's content, so it travels with the
-destination on copy routes, as the manifest does.
+added to it since (pipeline.md#cached-time-codes), and the source revision it was synchronized from, which cache
+compares with the binding's current one; it's stored, so undo restores it with the generation it describes. It
+describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
 
 The last attempt is the most recent synchronization attempt and its result. It is on the target
 scene beside the binding's configuration, under its own key: it exists without a destination or a
@@ -22,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from pxr import Usd
 
 from ..results import Diagnostic, ResultState
-from ..source_access import PayloadPolicy
+from ..source_access import PayloadPolicy, SourceRevision
 from . import records
 from .records import Schema
 
@@ -62,6 +63,7 @@ class Generation:
     binding_id: BindingId
     payload_policy: PayloadPolicy
     time_code: float | None  # see stored_time
+    source_revision: SourceRevision  # BindingStages.source_revision when it was synchronized
     diagnostics: tuple[Diagnostic, ...]  # its source/display diagnostics
     # The time codes cached in it since, sorted, without its own; one at the default time code has none to cache.
     cached_time_codes: tuple[float, ...] = ()
@@ -70,6 +72,10 @@ class Generation:
         _settle(self)
         if type(self.binding_id) is not str:
             raise TypeError("a generation names its binding")
+        if type(self.source_revision) is not str:
+            raise TypeError("a source revision is a string")
+        if not self.source_revision:
+            raise ValueError("a generation names the source revision it was synchronized from")
         cached = tuple(self.cached_time_codes)  # a stored one comes back as an ID-property array
         if not all(type(t) is float for t in cached):
             raise TypeError("a cached time code is a float")

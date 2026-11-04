@@ -33,7 +33,7 @@ from proscenium.binding.persistence import binding_records, binding_state, recor
 from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
 from support.usd import binding_on_file, open_fresh
@@ -277,7 +277,7 @@ def test_reopening_f_binding_state_synchronizes_nothing(
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         handle.synchronize(0)
-        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, ())
+        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, SourceRevision("saved"), ())
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)

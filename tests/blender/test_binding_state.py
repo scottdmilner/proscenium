@@ -24,7 +24,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecordError,
 )
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, ResultState, Severity
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
 from support.usd import binding_on_file
 
@@ -37,6 +37,7 @@ DIRTY = Diagnostic(
     DiagnosticCategory.SOURCE_STATE, Severity.INFO, "Displaying layers with unsaved edits", ("/a.usda", "/b.usda")
 )
 UNAVAILABLE = Diagnostic(DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR, "Can't open /shot.usda")
+REVISION = SourceRevision("a revision")
 
 
 def _scene() -> bpy.types.Scene:
@@ -50,7 +51,7 @@ def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:
     cached = (13.0, 14.5) if time is not None else ()  # a generation at the default time code caches nothing
-    return Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, time, (DIRTY,), cached)
+    return Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, time, REVISION, (DIRTY,), cached)
 
 
 def _attempt(time: float | None = 20.0) -> LastAttempt:
@@ -75,7 +76,7 @@ def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindin
     stored = destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict()
     del stored["cached_time_codes"]
     destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
-    expected = Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, 12.5, (DIRTY,))
+    expected = Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, 12.5, REVISION, (DIRTY,))
     assert binding_state.read_generation(destination) == Loaded(expected, 1)
 
 
