@@ -31,10 +31,7 @@ jobs:
           enable-cache: true
       - uses: ./.github/actions/setup-blender
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: build/blender-deps
-          key: blender-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: ./.github/actions/blender-deps
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
@@ -75,10 +72,7 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: build/blender-deps
-          key: blender-deps-Linux-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: ./.github/actions/blender-deps
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
@@ -139,10 +133,7 @@ jobs:
           enable-cache: true
       - uses: ./.github/actions/setup-blender
       - run: uv sync --locked
-      - uses: actions/cache@v4
-        with:
-          path: build/blender-deps
-          key: blender-deps-${{ runner.os }}-${{ hashFiles('tools/blender_deps.py', 'uv.lock') }}
+      - uses: ./.github/actions/blender-deps
       # build.py loads the pinned MSVC toolset (14.44, matching Blender's usd_ms.dll and CRT) itself,
       # through Visual Studio's vswhere and vcvarsall.
       - name: Build and audit
