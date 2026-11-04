@@ -1,7 +1,7 @@
-"""Independent bindings on one source, with file and attached sources (BIND-02 to BIND-04, BIND-07 to BIND-10).
+"""Independent bindings on caller-supplied stages (BIND-02 to BIND-04, BIND-07 to BIND-10).
 
 USD shares layers across the process, so bindings on the same files see the same layer
-state; what they must not share is a stage or its settings. All on F-MULTI-BINDING.
+state; each binding has its own evaluation stage and settings. All on F-MULTI-BINDING.
 """
 
 from __future__ import annotations
@@ -12,29 +12,15 @@ from pxr import Sdf, Usd
 
 from fixtures import source_access
 from fixtures.source_access import ROOT_FORMATS, caller_settings, read_values, rewrite_on_disk
-from proscenium.core.source_access import (
-    AttachedBindingStages,
-    AttachedSource,
-    FileBindingStages,
-    FileSource,
-    PayloadPolicy,
-)
+from proscenium.binding.source_access import PayloadPolicy
 from support.usd import open_fresh
+
+from .bindings import binding
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 UNLOADED = {"payA": None, "payB": None}
-
-
-def _file(root: Path) -> FileBindingStages:
-    return FileBindingStages(FileSource(root))
-
-
-def _attached(caller: Usd.Stage) -> AttachedBindingStages:
-    source = AttachedSource("shot")
-    source.attach(caller)
-    return AttachedBindingStages(source)
 
 
 def _set_root_value(stage: Usd.Stage, layer: Sdf.Layer, value: float) -> None:
@@ -46,33 +32,32 @@ def test_root_layer_formats(tmp_path: Path) -> None:
     # BIND-02
     with source_access.multi_binding(tmp_path) as scene:
         for extension in ROOT_FORMATS:
-            assert read_values(_file(scene.roots[extension]).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
+            caller = open_fresh(scene.roots[extension])
+            assert read_values(binding(caller).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
 
 
-def test_bindings_on_one_file_have_their_own_stages(tmp_path: Path) -> None:
-    # BIND-07: two bindings with the same file source, and one with a stage over that file attached.
+def test_bindings_on_one_source_have_their_own_evaluation_stages(tmp_path: Path) -> None:
+    # BIND-07: two bindings share one source stage; a third uses another stage over the same root.
     with source_access.multi_binding(tmp_path) as scene:
-        root = scene.roots[".usda"]
-        stages = [_file(root).acquire(PayloadPolicy.LOAD_ALL) for _ in range(2)]
-        stages.append(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
+        other_caller = open_fresh(scene.roots[".usda"])
+        sources = (scene.caller, scene.caller, other_caller)
+        stages = [binding(caller).acquire(PayloadPolicy.LOAD_ALL) for caller in sources]
         assert all(a != b for i, a in enumerate(stages) for b in stages[i + 1 :])
-        assert len({stage.GetSessionLayer().identifier for stage in stages}) == len(stages)  # opinions kept apart
-        assert scene.caller not in stages
+        assert all(stage not in sources for stage in stages)
+        assert [stage.GetSessionLayer() for stage in stages] == [caller.GetSessionLayer() for caller in sources]
 
 
-def test_payload_policies_on_one_file(tmp_path: Path) -> None:
+def test_payload_policies_on_one_source(tmp_path: Path) -> None:
     # BIND-04
     with source_access.multi_binding(tmp_path) as scene:
-        root = scene.roots[".usda"]
-        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
-        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_NONE)) == scene.values | UNLOADED
-        assert read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_NONE)) == scene.values | UNLOADED
+        assert read_values(binding(scene.caller).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
+        assert read_values(binding(scene.caller).acquire(PayloadPolicy.LOAD_NONE)) == scene.values | UNLOADED
 
 
 def test_default_scope_is_the_whole_stage(tmp_path: Path) -> None:
     # BIND-08: every prim a stage opened on the files composes, payload contents included.
     with source_access.multi_binding(tmp_path) as scene:
-        stage = _file(scene.roots[".usda"]).acquire(PayloadPolicy.LOAD_ALL)
+        stage = binding(open_fresh(scene.roots[".usda"])).acquire(PayloadPolicy.LOAD_ALL)
         assert stage.GetPopulationMask() == Usd.StagePopulationMask.All()
         opened = open_fresh(scene.roots[".usda"])  # held: a traversal of an expired stage raises
         expected = {prim.GetPath() for prim in opened.TraverseAll()}
@@ -85,9 +70,9 @@ def test_acquisition_leaves_the_source_unchanged(tmp_path: Path) -> None:
         files = {path: path.read_bytes() for path in tmp_path.iterdir()}
         for payload_policy in PayloadPolicy:
             for root in scene.roots.values():
-                stage = _file(root).acquire(payload_policy)
+                stage = binding(open_fresh(root)).acquire(payload_policy)
                 assert (read_values(stage)["varA"], read_values(stage)["varB"]) == (1.0, None)
-            _attached(scene.caller).acquire(payload_policy)
+            binding(scene.caller).acquire(payload_policy)
         assert [layer.identifier for layer in Sdf.Layer.GetLoadedLayers() if layer.dirty and not layer.anonymous] == []
         assert {path: path.read_bytes() for path in tmp_path.iterdir()} == files
 
@@ -96,8 +81,8 @@ def test_payload_policy_change_leaves_other_bindings(tmp_path: Path) -> None:
     # BIND-10, for the stages; tests/blender/test_bindings.py checks the other bindings' configuration.
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
-        changed, other = _file(root), _file(root)
-        attached = _attached(scene.caller)
+        changed, other = binding(open_fresh(root)), binding(open_fresh(root))
+        attached = binding(scene.caller)
         stages = [binding.acquire(PayloadPolicy.LOAD_ALL) for binding in (changed, other, attached)]
         load_set = scene.caller.GetLoadSet()
         assert changed.acquire(PayloadPolicy.LOAD_NONE) == stages[0]
@@ -108,31 +93,47 @@ def test_payload_policy_change_leaves_other_bindings(tmp_path: Path) -> None:
 
 
 def test_callers_unsaved_edit(tmp_path: Path) -> None:
-    # BIND-03: a binding with the caller's stage attached shows the caller's unsaved root-layer edit, which
-    # a stage reopened from the file wouldn't. Layers are displayed as loaded (LAYER-01), so a binding with
-    # the same root as its file source shows it too; one on another root layer over the same sublayers doesn't.
+    # BIND-03, LAYER-01: attached stages share unsaved root-layer edits; a stage on another root does not.
     with source_access.multi_binding(tmp_path) as scene:
         root = scene.roots[".usda"]
         _set_root_value(scene.caller, scene.caller.GetRootLayer(), 6.0)
-        assert read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
+        assert read_values(binding(scene.caller).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
         on_disk = Sdf.Layer.OpenAsAnonymous(str(root))
         assert on_disk.GetAttributeAtPath("/World.rootValue").default == 1.0
-        assert read_values(_file(root).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
-        assert read_values(_file(scene.roots[".usdc"]).acquire(PayloadPolicy.LOAD_ALL))["root"] == 1.0
+        assert read_values(binding(open_fresh(root)).acquire(PayloadPolicy.LOAD_ALL))["root"] == 6.0
+        assert read_values(binding(open_fresh(scene.roots[".usdc"])).acquire(PayloadPolicy.LOAD_ALL))["root"] == 1.0
         assert scene.caller.GetRootLayer().dirty
 
 
-def test_a_reload_reaches_the_attached_binding(tmp_path: Path) -> None:
-    # A reload through the file-source binding rereads the shared layer (LAYER-06): the attached binding and
-    # the caller see the disk change, and the caller's settings are as they were. Until then, none of them does.
+def test_anonymous_source_needs_no_files(tmp_path: Path) -> None:
+    # BIND-03: an anonymous source and its unsaved opinions can be evaluated after the scene files are gone.
     with source_access.multi_binding(tmp_path) as scene:
-        file_source, attached = _file(scene.roots[".usda"]), _attached(scene.caller)
-        file_source.acquire(PayloadPolicy.LOAD_ALL)
+        caller = scene.anonymous_caller
+        _set_root_value(caller, caller.GetRootLayer(), 6.0)
+        for path in tmp_path.iterdir():
+            path.unlink()
+        source = binding(caller)
+        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
+        assert source.live_stage == caller
+        assert evaluation != caller
+        assert read_values(evaluation) == scene.values | {"root": 6.0}
+        assert evaluation.GetRootLayer() == caller.GetRootLayer()
+        assert evaluation.GetSessionLayer() == caller.GetSessionLayer()
+        _set_root_value(caller, caller.GetSessionLayer(), 7.0)
+        assert source.acquire(PayloadPolicy.LOAD_ALL) == evaluation
+        assert read_values(evaluation) == scene.values | {"root": 7.0}
+
+
+def test_a_reload_reaches_the_attached_binding(tmp_path: Path) -> None:
+    # LAYER-06: a reload reaches bindings and callers composing the shared layer, preserving caller settings.
+    with source_access.multi_binding(tmp_path) as scene:
+        reloading, attached = binding(open_fresh(scene.roots[".usda"])), binding(scene.caller)
+        reloading.acquire(PayloadPolicy.LOAD_ALL)
         evaluation = attached.acquire(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.caller)
         rewrite_on_disk(tmp_path, "sub", 2.0)
         assert read_values(attached.acquire(PayloadPolicy.LOAD_ALL))["sub"] == 1.0
-        file_source.reload(PayloadPolicy.LOAD_ALL)
+        reloading.reload(PayloadPolicy.LOAD_ALL)
         assert read_values(attached.acquire(PayloadPolicy.LOAD_ALL))["sub"] == 2.0
         assert attached.evaluation_stage == evaluation
         assert read_values(scene.caller)["sub"] == 2.0
@@ -140,11 +141,10 @@ def test_a_reload_reaches_the_attached_binding(tmp_path: Path) -> None:
 
 
 def test_callers_stage_state_stays_with_the_caller(tmp_path: Path) -> None:
-    # Muting and session-layer opinions are the attached stage's own: its binding follows them, a binding
-    # with the same file as its source doesn't see them.
+    # Bindings follow their attached stage's muting and session opinions; another stage over the root is independent.
     with source_access.multi_binding(tmp_path) as scene:
         scene.caller.MuteLayer(str(tmp_path / "extra.usda"))
         _set_root_value(scene.caller, scene.caller.GetSessionLayer(), 5.0)
-        attached = read_values(_attached(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
+        attached = read_values(binding(scene.caller).acquire(PayloadPolicy.LOAD_ALL))
         assert (attached["extra"], attached["root"]) == (None, 5.0)
-        assert read_values(_file(scene.roots[".usda"]).acquire(PayloadPolicy.LOAD_ALL)) == scene.values
+        assert read_values(binding(open_fresh(scene.roots[".usda"])).acquire(PayloadPolicy.LOAD_ALL)) == scene.values

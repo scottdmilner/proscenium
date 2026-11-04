@@ -83,7 +83,7 @@ Preserve Phase 1 correctness while avoiding unnecessary work.
 - Preserve source selections where their source identities remain valid.
 - Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners.
 - Establish and meet representative performance targets for synchronization and the required interaction operations.
-- Support manual refresh of file sources and attached sources.
+- Support manual refresh of attached sources, including stages callers opened from files.
 
 See [Incremental Synchronization](spec/incremental.md) for detailed requirements.
 
@@ -134,8 +134,8 @@ Each entry links to the section that defines the term in full.
 | **Requested settings / last attempt** | The settings the user has asked for, and the record of the most recent synchronization attempt and its result. Both are kept separate from the published generation. See [Binding State](spec/lifecycle.md#binding-state). |
 | **Payload policy** | Load-all or load-no-payload. |
 | **Contributing layer** | Any layer that contributes opinions to the composed stage, whether through its layer stack or through composition arcs. |
-| **File source / attached source** | A binding's source: a root-layer file the binding opens, named by its path, or a stage a caller attaches under a source key. See [Source Identity](spec/source-access.md#source-identity). |
-| **Source stage / evaluation stage** | The stage a binding's source is composed on, which is also its live stage, and the stage the binding evaluates, which composes the source stage's root and session layers, so it shares their opinions but not the source stage's settings. When the binding opened the source stage itself, they are the same stage. See [Source Stages](spec/source-access.md#source-stages). |
+| **Attached source** | A binding's source: a stage a caller acquires and attaches through its handle. See [Source Identity](spec/source-access.md#source-identity). |
+| **Source stage / evaluation stage** | The stage a binding's source is composed on, which is also its live stage, and the stage the binding evaluates, which composes the source stage's root and session layers, so it shares their opinions but not the source stage's settings. Each binding has its own evaluation stage, distinct from the attached source stage. See [Source Stages](spec/source-access.md#source-stages). |
 | **Dirty layer** | A layer with unsaved in-process edits. |
 | **Detach** | Releasing a whole binding's surviving managed content as-is into unmanaged Blender content, removing binding-specific metadata and controls. See [Detach As-Is](spec/lifecycle.md#detach-as-is). |
 | **Materialize** | Turning display content that depends on managed shared resources or extension-specific mechanisms into standalone Blender data. |

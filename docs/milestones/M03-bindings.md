@@ -12,22 +12,21 @@
 **Decisions and deliverables:**
 
 - The synchronization API signature.
-- Settled designs for source stages, for file and attached sources, replacing the spec design notes, including the stage-level state reproduced for attached sources and how dirty layers and reloading are handled.
-- Before settling file-backed refresh, review whether the current contract (exact disk state, no cached-stage reuse, fail on dirty contributing layers) costs more USD performance than it is worth. Use the M1 [feasibility record](../feasibility/runtime-record.md) and the M1b decision as input; with Hydra adopted, weigh retaining an imaging pipeline across refreshes, since a fresh stage per refresh resets it. Record the outcome in the [Decision Register](../DECISIONS.md) row "Strictness of the file-backed refresh contract".
-- The source key contract for attached sources.
+- Caller-supplied source stages attached through their handles, with a distinct reused evaluation stage per binding, reproduced source-stage settings, dirty-layer handling, and explicit reloading.
+- The per-binding attachment contract for attached sources.
 - Identifier schemes for bindings and source entities that implement M2's draft browsing and persistent selection contract. Source-entity identifiers are USD paths plus instance context, never Hydra-generated paths or instancer indices. Display-resource identifiers are defined in M5, once the representation is chosen.
 - A representation-independent ownership metadata format covering the concepts in [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle). M5 defines the representation roles.
 - Schemas for the persisted rows of the [Binding State](../spec/lifecycle.md#binding-state) model, including the pending-cleanup persistence contract. M5 settles the tracking mechanism and refines these schemas as needed.
 - Schema versioning and migration behavior.
-- Which stage is live for each binding's [live inspection](../spec/interaction-contract.md#two-layers-and-the-live-stage), and whether a binding with a file source keeps its source stage open between synchronizations, decided with the row "Strictness of the file-backed refresh contract".
+- The attached source stage is the binding's [live stage](../spec/interaction-contract.md#two-layers-and-the-live-stage) as soon as it is attached. Callers acquire sources and restore attachments after reopening; bindings never open source files or resolve file-opening paths.
 - M4 reviews identifiers and schemas against the finalized interaction contract and updates them as needed before M5 begins.
 - Defined behavior for unavailable sources and deleted destinations.
 - Detection of copied bindings and ownership metadata, the disabled-pending-repair state, and the canonical-candidate rule. What counts as a duplicate representation is defined in M11.
 
 **Tests:**
 
-- Independent bindings on one source, including bindings with a file source and with an attached stage over the same file (`F-MULTI-BINDING`).
-- With M1b's compiled core: releasing the caller's attached stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment under the key contract (`F-REATTACH`).
+- Independent bindings sharing an attached stage, bindings on stages callers opened from `.usd`, `.usda`, and `.usdc` files, and an anonymous source with unsaved opinions and no file dependencies (`F-MULTI-BINDING`).
+- With M1b's compiled core: releasing the caller's attached stage leaves the binding unattached. The core must not keep the stage alive: `UsdImagingStageSceneIndex` holds a strong reference until the chain is released (the feasibility bridge's explicit `release()`). Reattachment through the binding handle (`F-REATTACH`).
 - `F-DIRTY-LAYER`, `F-PRIVATE-STAGE`, and `F-CACHED-STAGE`.
 - Copied-binding detection from `F-OWNERSHIP-AMBIGUITY`.
 - Loading older, failed-migration, and newer-schema records (`F-SCHEMA-VERSIONS`).

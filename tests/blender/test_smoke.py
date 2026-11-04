@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import bpy
 
 from proscenium import addon
-from proscenium.persistence import records
+from proscenium.binding.persistence import records
 from support import undo
 from support.blend import save_and_reopen
 
@@ -17,13 +17,6 @@ from .state import handler_lists
 if TYPE_CHECKING:
     from collections.abc import Callable
     from types import ModuleType
-
-
-def test_blender_modules_importable() -> None:
-    # The bpy_free layer's blocker must not leak into this layer; a blocked import raises.
-    import importlib
-
-    importlib.import_module("bmesh")
 
 
 def test_pxr_is_the_one_bundled_with_blender() -> None:

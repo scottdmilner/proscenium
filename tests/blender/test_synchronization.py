@@ -1,7 +1,7 @@
 """The synchronization API's entry point, acquisition only (source-access.md#synchronization-api).
 
 Through binding handles over a fresh process state per test, on bindings in the factory scene.
-Their records, save/reopen, undo, and the key contract are in test_bindings.py.
+Their records, save/reopen, undo, and the attachment contract are in test_bindings.py.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium import runtime
 from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
@@ -25,12 +24,13 @@ from proscenium.api.bindings import (
     ResultState,
     Severity,
 )
-from proscenium.core.binding_ids import BindingId
-from proscenium.core.source_access import PayloadPolicy
-from proscenium.persistence import binding_records, records
-from proscenium.runtime import state
+from proscenium.binding import persistence, runtime
+from proscenium.binding.persistence import binding_records, records
+from proscenium.binding.runtime import state
+from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.binding_ids import BindingId
 from support import undo
-from support.usd import open_fresh
+from support.usd import binding_on_file, open_fresh
 
 
 def _scene() -> bpy.types.Scene:
@@ -41,11 +41,17 @@ def _root(tmp_path: Path) -> Path:
     return copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
 
 
+def _evaluation(bindings: Bindings, handle: BindingHandle) -> Usd.Stage:
+    stages = bindings.stages.get(handle.binding_id)
+    assert stages is not None and stages.evaluation_stage is not None
+    return stages.evaluation_stage
+
+
 def test_handles_are_equal_by_identifier(bindings: Bindings, tmp_path: Path) -> None:
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     assert BindingHandle(handle.binding_id) == handle
     assert len({handle, BindingHandle(handle.binding_id)}) == 1
-    assert bindings.create_file_binding(_scene(), _root(tmp_path / "other")) != handle
+    assert binding_on_file(bindings, _scene(), _root(tmp_path / "other")) != handle
 
 
 @pytest.mark.parametrize("time_code", [Usd.TimeCode.Default(), 0, 12, 7.25], ids=["default", "0", "12", "7.25"])
@@ -53,26 +59,24 @@ def test_the_time_code_is_the_attempts_not_a_setting(
     bindings: Bindings, tmp_path: Path, time_code: Usd.TimeCode | float
 ) -> None:
     # API-02: the default time code and numeric ones are accepted, and none becomes a setting.
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     before = handle.requested_settings()
     assert handle.synchronize(time_code) == Result(ResultState.SUCCESS)
     assert handle.requested_settings() == before
-    stage = handle.live_stage()
-    assert stage is not None
+    stage = _evaluation(bindings, handle)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}  # the attempt used the payload policy
 
 
 def test_a_time_code_that_isnt_one_is_misuse(bindings: Bindings, tmp_path: Path) -> None:
     with pytest.raises(TypeError):
-        bindings.create_file_binding(_scene(), _root(tmp_path)).synchronize("frame 3")  # ty: ignore[invalid-argument-type]
+        binding_on_file(bindings, _scene(), _root(tmp_path)).synchronize("frame 3")  # ty: ignore[invalid-argument-type]
 
 
 def test_set_settings_records_without_synchronizing(bindings: Bindings, tmp_path: Path) -> None:
     # set_settings changes the requested settings only; the next synchronize uses them.
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     handle.synchronize(3)
-    stage = handle.live_stage()
-    assert stage is not None
+    stage = _evaluation(bindings, handle)
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result(ResultState.SUCCESS)
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert read_values(stage) == DISK  # not applied yet
@@ -81,11 +85,10 @@ def test_set_settings_records_without_synchronizing(bindings: Bindings, tmp_path
 
 
 def test_a_reload_keeps_the_synchronized_payload_policy(bindings: Bindings, tmp_path: Path) -> None:
-    # Neither set_settings nor reload synchronizes, so the live stage keeps the policy it was synchronized with.
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+    # Neither set_settings nor reload synchronizes, so evaluation keeps its synchronized payload policy.
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     handle.synchronize(0)
-    stage = handle.live_stage()
-    assert stage is not None
+    stage = _evaluation(bindings, handle)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
     assert read_values(stage) == DISK
@@ -96,18 +99,17 @@ def test_a_reload_keeps_the_synchronized_payload_policy(bindings: Bindings, tmp_
 def test_a_reload_before_any_synchronization_opens_under_the_requested_policy(
     bindings: Bindings, tmp_path: Path
 ) -> None:
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
-    stage = handle.live_stage()
-    assert stage is not None
+    stage = _evaluation(bindings, handle)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}
 
 
 def test_a_reload_after_attaching_opens_under_the_policy_requested_since(bindings: Bindings, tmp_path: Path) -> None:
     # Attaching makes the binding's source before any evaluation stage; the policy comes from the configuration.
     caller = open_fresh(_root(tmp_path))
-    handle = bindings.create_attached_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.reload() == Result(ResultState.SUCCESS)
     source = bindings.stages.get(handle.binding_id)
@@ -117,10 +119,11 @@ def test_a_reload_after_attaching_opens_under_the_policy_requested_since(binding
     assert read_values(evaluation) == DISK | {"payA": None, "payB": None}
 
 
-def test_set_settings_before_the_first_synchronization_opens_nothing(bindings: Bindings, tmp_path: Path) -> None:
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+def test_set_settings_before_attachment_opens_nothing(bindings: Bindings) -> None:
+    handle = bindings.create_binding(_scene())
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     assert handle.live_stage() is None
+    assert bindings.stages.get(handle.binding_id) is None
 
 
 def test_an_unchanged_configuration_is_not_written(
@@ -128,8 +131,8 @@ def test_an_unchanged_configuration_is_not_written(
 ) -> None:
     # Setting nothing, or attaching the stage a binding already stored, leaves Blender data alone.
     caller = open_fresh(_root(tmp_path))
-    handle = bindings.create_attached_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     written: list[str] = []
     write = records.write
 
@@ -138,7 +141,7 @@ def test_an_unchanged_configuration_is_not_written(
         write(id_, key, *args)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(records, "write", counted)
-    assert bindings.attach("shot", caller).attached == (handle.binding_id,)
+    assert handle.attach(caller) == Result(ResultState.SUCCESS)
     assert handle.set_settings() == Result(ResultState.SUCCESS)
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result(ResultState.SUCCESS)  # the default
     assert written == []
@@ -146,23 +149,19 @@ def test_an_unchanged_configuration_is_not_written(
     assert written == [binding_records.config_key(handle.binding_id)]
 
 
-def test_unavailable_source_is_a_result(bindings: Bindings, tmp_path: Path) -> None:
-    # A file that won't open, and a binding with nothing attached: fatal-failure results, not exceptions.
-    for handle in (
-        bindings.create_file_binding(_scene(), tmp_path / "missing.usda"),
-        bindings.create_attached_binding(_scene(), "shot"),
-    ):
-        for result in (handle.synchronize(0), handle.reload()):
-            assert result.state == ResultState.FATAL_FAILURE
-            assert [(d.category, d.severity) for d in result.diagnostics] == [
-                (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
-            ]
+def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
+    handle = bindings.create_binding(_scene())
+    for result in (handle.synchronize(0), handle.reload()):
+        assert result.state == ResultState.FATAL_FAILURE
+        assert [(d.category, d.severity) for d in result.diagnostics] == [
+            (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
+        ]
 
 
 def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path: Path) -> None:
     # The informational diagnostic names the dirty contributing layers and leaves the state success.
     with source_access.dirty_layer(tmp_path) as scene:
-        result = bindings.create_file_binding(_scene(), scene.root).synchronize(0)
+        result = binding_on_file(bindings, _scene(), scene.root).synchronize(0)
         assert result.state == ResultState.SUCCESS
         [diagnostic] = result.diagnostics
         assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.SOURCE_STATE, Severity.INFO)
@@ -172,7 +171,7 @@ def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path:
 def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
     # The reload rereads the layers; the requested settings are as they were, and the next synchronize shows it.
     with source_access.dirty_layer(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root)
         handle.synchronize(1)
         before = handle.requested_settings()
         assert handle.reload() == Result(ResultState.SUCCESS)
@@ -184,62 +183,51 @@ def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
 
 
 def test_reload_rejects_other_layers(bindings: Bindings, tmp_path: Path) -> None:
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     with pytest.raises(ValueError, match="Not contributing layers"):
         handle.reload([str(tmp_path / "unknown.usda")])
 
 
-def test_attaching_under_a_key(bindings: Bindings, tmp_path: Path) -> None:
+def test_attaching_through_a_handle(bindings: Bindings, tmp_path: Path) -> None:
     root = _root(tmp_path)
     caller = open_fresh(root)
-    handle = bindings.create_attached_binding(_scene(), "shot")
-    assert bindings.attach("shot", caller).attached == (handle.binding_id,)
+    handle = bindings.create_binding(_scene())
+    assert handle.attach(caller) == Result(ResultState.SUCCESS)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     assert handle.live_stage() == caller
 
 
-def test_releasing_under_a_key(bindings: Bindings, tmp_path: Path) -> None:
-    # SRC-02: release(key) leaves every binding with the key unattached; others keep their stage.
-    caller = open_fresh(_root(tmp_path))
-    first, second = (bindings.create_attached_binding(_scene(), "shot") for _ in range(2))
-    other = bindings.create_attached_binding(_scene(), "other")
-    bindings.attach("shot", caller)
-    bindings.attach("other", caller)
-    for handle in (first, second, other):
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    assert bindings.release("shot") == (first.binding_id, second.binding_id)
-    for handle in (first, second):
-        assert handle.live_stage() is None
-        assert [d.category for d in handle.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
-    assert other.live_stage() == caller
-    assert bindings.attach("shot", caller).attached == (first.binding_id, second.binding_id)  # attachable again
-    assert first.synchronize(0) == Result(ResultState.SUCCESS)
-
-
-def test_undoing_a_file_bindings_creation_drops_its_stage(bindings: Bindings, tmp_path: Path) -> None:
-    # The undo handler prunes at once; redo brings the binding back, and its next synchronization reopens.
-    undo.require_global_undo()
-    undo.push("base")
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    undo.push("create")
-    undo.undo()
-    assert handle.binding_id not in bindings.stages._registry  # noqa: SLF001 - unpruned: the undo handler pruned
-    undo.redo()
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    assert handle.live_stage() is not None
+def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) -> None:
+    # SRC-02, API-12, SID-08: independent lifetimes even when stages are shared.
+    with source_access.reattach(tmp_path) as scene:
+        caller = scene.caller
+        first, second = (bindings.create_binding(_scene()) for _ in range(2))
+        for handle in (first, second):
+            assert handle.attach(caller) == Result(ResultState.SUCCESS)
+            assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        second_evaluation = _evaluation(bindings, second)
+        before = records.stored(_scene(), binding_records.config_key(first.binding_id))
+        assert first.release() is None
+        assert first.release() is None
+        assert records.stored(_scene(), binding_records.config_key(first.binding_id)) == before
+        assert first.live_stage() is None
+        assert [d.category for d in first.synchronize(0).diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+        assert second.live_stage() == caller
+        assert _evaluation(bindings, second) == second_evaluation
+        assert first.attach(caller) == Result(ResultState.SUCCESS)
+        assert first.synchronize(0) == Result(ResultState.SUCCESS)
 
 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
     scans: list[int] = []
-    read_configs = binding_records.read_configs
+    read_configs = persistence.read_configs
 
     def counted() -> object:
         scans.append(1)
         return read_configs()
 
-    monkeypatch.setattr(binding_records, "read_configs", counted)
+    monkeypatch.setattr(persistence, "read_configs", counted)
     return scans
 
 
@@ -248,21 +236,21 @@ def test_an_undo_with_no_sources_rebuilds_nothing_in_its_handler(
 ) -> None:
     # Bindings exist, but none has been synchronized this session: nothing to prune.
     undo.require_global_undo()
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+    handle = bindings.create_binding(_scene())
     undo.push("base")
     bpy.data.objects.new("Unrelated", None)
     undo.push("edit")
     scans = _counted_scans(monkeypatch)
     undo.undo()
     assert scans == []
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)  # the next call rebuilds the state, once
+    handle.synchronize(0)  # unavailable; the next call rebuilds the state once
     assert scans == [1]
     undo.redo()  # now with a source: pruned at once
     assert scans == [1, 1]
 
 
 def test_pruning_compares_the_scenes_once(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    handles = [bindings.create_file_binding(_scene(), _root(tmp_path / str(i)), name=f"B{i}") for i in range(3)]
+    handles = [binding_on_file(bindings, _scene(), _root(tmp_path / str(i)), name=f"B{i}") for i in range(3)]
     for handle in handles:
         handle.synchronize(0)
     current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
@@ -279,12 +267,12 @@ def test_pruning_compares_the_scenes_once(bindings: Bindings, tmp_path: Path, mo
 
 def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
     # UNDO-06: undo neither restores nor removes attachments. The binding's evaluation stage goes; the
-    # attachment stays for redo, and release(key) still releases it while the binding doesn't exist.
+    # attachment stays for redo, and handle.release() still releases it while the binding doesn't exist.
     undo.require_global_undo()
     caller = open_fresh(_root(tmp_path))
     undo.push("base")
-    handle = bindings.create_attached_binding(_scene(), "shot")
-    bindings.attach("shot", caller)
+    handle = bindings.create_binding(_scene())
+    handle.attach(caller)
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     source = bindings.stages.get(handle.binding_id)
     assert source is not None
@@ -296,49 +284,74 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     assert handle.live_stage() == caller
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
     undo.undo()
-    assert bindings.release("shot") == ()  # no binding with the key exists
+    assert handle.release() is None  # the record no longer exists
     assert source.live_stage is None
+    undo.redo()
+    assert handle.live_stage() is None
+    assert handle.synchronize(0).state is ResultState.FATAL_FAILURE
 
 
-def test_a_removed_scenes_file_binding_is_pruned(bindings: Bindings, tmp_path: Path) -> None:
-    # No handler announces the removal: the next call that uses sources compares them with the bindings.
+def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, tmp_path: Path) -> None:
     scene = _scene()
-    other = bpy.data.scenes.new("Other")  # sorts first: _scene() would return it
-    removed = bindings.create_file_binding(other, _root(tmp_path))
-    kept = bindings.create_file_binding(scene, _root(tmp_path))
+    other = bpy.data.scenes.new("Other")
+    removed = binding_on_file(bindings, other, _root(tmp_path))
+    kept = binding_on_file(bindings, scene, _root(tmp_path))
     for handle in (removed, kept):
         assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    source = bindings.stages.get(removed.binding_id)
+    assert source is not None
+    caller = source.live_stage
     bpy.data.scenes.remove(other)
     assert kept.synchronize(0) == Result(ResultState.SUCCESS)
-    assert removed.binding_id not in bindings.stages._registry  # noqa: SLF001 - unpruned: kept's synchronize pruned
+    assert source.evaluation_stage is None
+    assert source.live_stage == caller
     assert bindings.stages.get(kept.binding_id) is not None
+    assert removed.release() is None
+    assert (source.live_stage, source.evaluation_stage) == (None, None)
+    assert kept.live_stage() is not None
 
 
-def test_a_file_binding_whose_configuration_cant_be_read_is_pruned(bindings: Bindings, tmp_path: Path) -> None:
-    handle = bindings.create_file_binding(_scene(), _root(tmp_path))
+@pytest.mark.parametrize("unusable", ["unreadable", "disabled"])
+def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
+    bindings: Bindings, tmp_path: Path, unusable: str
+) -> None:
+    handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     assert handle.synchronize(0) == Result(ResultState.SUCCESS)
-    _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
-    runtime.invalidate()  # as a load, undo, or redo that restored this record would
-    assert handle.synchronize(0).state == ResultState.FATAL_FAILURE  # unsupported, without using the stages
-    assert handle.live_stage() is None  # the next use of the stages pruned its file's
+    stages = bindings.stages.get(handle.binding_id)
+    assert stages is not None
+    caller, evaluation = stages.live_stage, stages.evaluation_stage
+    if unusable == "unreadable":
+        _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+    else:
+        [text] = binding_records.index_texts()
+        text.copy()  # two indexes naming the identity leave no canonical candidate
+    runtime.invalidate()
+    assert handle.synchronize(0).state == ResultState.FATAL_FAILURE
+    assert handle.live_stage() is None
+    assert bindings.stages.get(handle.binding_id) is stages
+    assert stages.live_stage == caller
+    assert stages.evaluation_stage == evaluation
 
 
 def test_live_stage_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
-    # F-CACHED-STAGE "ambient-cache", ICON-34: the handle's live stage is the binding's own source stage,
-    # in no stage cache and not the ambient stage.
+    # ICON-07, ICON-34: callers may attach a cached stage; evaluation never substitutes it for the live stage.
     with source_access.cached_stage(tmp_path) as scene:
-        handle = bindings.create_file_binding(_scene(), scene.root)
-        assert handle.live_stage() is None  # no live stage before the first synchronization
+        handle = bindings.create_binding(_scene())
+        assert handle.live_stage() is None
+        handle.attach(scene.ambient)
+        assert handle.live_stage() == scene.ambient  # before any synchronization
+        assert UsdUtils.StageCache.Get().Contains(scene.ambient)
         handle.synchronize(0)
-        live = handle.live_stage()
-        assert live is not None
-        assert live != scene.ambient
-        assert not UsdUtils.StageCache.Get().Contains(live)
+        evaluation = _evaluation(bindings, handle)
+        assert evaluation != scene.ambient
+        assert not UsdUtils.StageCache.Get().Contains(evaluation)
+        assert handle.live_stage() == scene.ambient
 
 
 def test_a_handle_to_no_binding_raises(bindings: Bindings) -> None:
     handle = BindingHandle(BindingId("not-a-binding"))
     calls = [
+        lambda: handle.attach(Usd.Stage.CreateInMemory()),
         lambda: handle.synchronize(0),
         lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
         handle.reload,
@@ -348,3 +361,5 @@ def test_a_handle_to_no_binding_raises(bindings: Bindings) -> None:
     for call in calls:
         with pytest.raises(BindingNotFoundError):
             call()
+
+    assert handle.release() is None

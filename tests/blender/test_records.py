@@ -2,7 +2,7 @@
 
 F-SCHEMA-VERSIONS supplies the stored records and what loading each must give. They are stored
 raw, as a file written by another extension version would hold them, since the extension itself
-only writes current-version records. Loading them is tested in tests/bpy_free/test_record_loading.py.
+only writes current-version records. Loading them is tested in test_record_loading.py.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import bpy
 import pytest
 
 from fixtures import records as fixture
-from proscenium.persistence.records import (
+from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
     Loaded,

@@ -1,6 +1,6 @@
 """M4 Phase C (C5): the first ownership lookup after an undo, with the baseline's display as a binding's manifest.
 
-The child applies the display into a file binding's destination, made through M3's API, so this writes its
+The child applies the display into a binding's destination, made through M3's API, so this writes its
 manifest through M3's runtime: one entry per object, shear parent, placeholder mesh, mesh, and material. An
 object entry covers its source and uses its mesh and materials; a mesh or material entry covers the sources of
 its users, as M5's realistic covers would.
@@ -46,7 +46,7 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
     """The display's manifest entries, by resource identity."""
     from apply import SHEAR_PARENT
 
-    from proscenium.persistence.manifests import ManifestEntry
+    from proscenium.binding.persistence.manifests import ManifestEntry
 
     users: dict[int, list[str]] = {}
     found: dict[str, Any] = {}
@@ -71,21 +71,21 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time undo, redo, and the lookups after each."""
-    from proscenium import runtime
-    from proscenium.persistence.manifests import Manifest
+    from proscenium.binding.persistence.manifests import Manifest
+    from proscenium.binding.runtime import ownership_index, state
 
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = True
     built, manifest = _seconds(lambda: Manifest(entries(display, records, materials)))
-    written, _ = _seconds(lambda: runtime.set_manifest(binding_id, manifest))
+    written, _ = _seconds(lambda: ownership_index.set_manifest(binding_id, manifest))
     # An object no step below changes, found by name after each undo, since undo re-reads datablocks.
     name = display.objects[-1].name
     moved = display.objects[0].name
     # Found before each timing: Blender finds a datablock by name by scanning the list.
     target = bpy.data.objects[name]
-    lookup, owned = _seconds(lambda: runtime.ownership(target))
+    lookup, owned = _seconds(lambda: ownership_index.ownership(target))
     pushes, undos, redos, first, cached = [], [], [], [], []
-    rebuilds = runtime.rebuild_count()
+    rebuilds = state.rebuild_count()
     seconds, _ = _seconds(lambda: bpy.ops.ed.undo_push(message="published"))
     pushes.append(seconds)
     for step in range(REPEATS):
@@ -96,16 +96,16 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
             seconds, _ = _seconds(undone)
             times.append(seconds)
             target = bpy.data.objects[name]
-            seconds, result = _seconds(partial(runtime.ownership, target))
+            seconds, result = _seconds(partial(ownership_index.ownership, target))
             first.append(seconds)
             assert result.status == owned.status, (result, owned)
-            seconds, _ = _seconds(partial(runtime.ownership, target))
+            seconds, _ = _seconds(partial(ownership_index.ownership, target))
             cached.append(seconds)
     return {
         "entries": len(manifest.entries),
         # It changes as the undo or redo handlers drop the state, before and after, and as the next lookup
         # rebuilds it: three times for each.
-        "rebuild_count changes": runtime.rebuild_count() - rebuilds,
+        "rebuild_count changes": state.rebuild_count() - rebuilds,
         "undos and redos": len(undos) + len(redos),
         "status": str(owned.status),
         "timings": {

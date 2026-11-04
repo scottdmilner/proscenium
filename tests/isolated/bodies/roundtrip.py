@@ -33,9 +33,9 @@ def save_and_reopen_with_handlers(path: str) -> dict[str, Any]:
     scene.collection.objects.link(bpy.data.objects.new("Kept", None))
     bpy.app.handlers.load_post.extend([kept, dropped])
     proscenium.register()
-    handle = BINDINGS.create_attached_binding(scene, "shot")
+    handle = BINDINGS.create_binding(scene)
     caller = Usd.Stage.CreateInMemory()  # held across the reopen, so only the extension's handler can drop it
-    BINDINGS.attach("shot", caller)
+    handle.attach(caller)
     attached_before = handle.synchronize(0).state.name
     save_and_reopen(Path(path))
     return {

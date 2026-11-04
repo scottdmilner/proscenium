@@ -10,8 +10,14 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
+from proscenium.binding.source_access import PayloadPolicy
+
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import bpy
+
+    from proscenium.api.bindings import BindingHandle, Bindings
 
 
 def open_fresh(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:
@@ -22,3 +28,18 @@ def open_fresh(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:
     """
     with Usd.StageCacheContext(Usd.BlockStageCaches):
         return Usd.Stage.Open(str(path), load)
+
+
+def binding_on_file(
+    bindings: Bindings,
+    scene: bpy.types.Scene,
+    root: Path,
+    *,
+    payload_policy: PayloadPolicy = PayloadPolicy.LOAD_ALL,
+    name: str | None = None,
+) -> BindingHandle:
+    """Open a copied fixture and attach its stage to a binding with independent runtime stages."""
+    stage = open_fresh(root)
+    handle = bindings.create_binding(scene, payload_policy=payload_policy, name=name or root.stem)
+    bindings.attach(handle.binding_id, stage)
+    return handle

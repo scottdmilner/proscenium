@@ -1,7 +1,7 @@
 """Set up the USD situations that source access must handle (docs/spec/source-access.md).
 
-A binding reads its source from a file or from a caller's stage, in a process
-where other tools hold stages and layers too. These generators reproduce the
+A binding reads a caller-supplied stage in a process where other tools hold
+stages and layers too. These generators reproduce the
 hazards the spec names, so tests can check a binding reads the right content
 and leaves everyone else's state alone:
 
@@ -14,12 +14,13 @@ and leaves everyone else's state alone:
 - cached_stage (F-CACHED-STAGE): a stage for the same file sitting in a stage
   cache with an active cache context. Source Stages, Layer State and Reloading.
 - multi_binding (F-MULTI-BINDING): the scene's root layer saved as .usda, .usdc,
-  and .usd, and a caller's stage over the .usda one. Bindings and Source Access.
+  and .usd, a caller's stage over the .usda one, and an anonymous flattened stage
+  with no file dependencies. Bindings and Source Access.
 - reattach (F-REATTACH): a caller's stage, another stage over the same root layer,
   and a stage over a copy of the scene, whose root layer differs. Source Identity
   and Source Stages.
-- binding_state (F-BINDING-STATE): a scene to make a file binding on, and a caller's
-  stage to attach under a source key, for tests of bindings' records, handles,
+- binding_state (F-BINDING-STATE): a scene and a caller's
+  stage to attach to a binding, for tests of bindings' records, handles,
   save/reopen, and undo. Binding State and Synchronization API.
 - offline (F-OFFLINE): a source to move away before reopening, and the saved display
   a binding on it published. Reopening.
@@ -272,7 +273,7 @@ class ReattachScene:
 
 @contextmanager
 def reattach(dest: Path) -> Generator[ReattachScene]:
-    """F-REATTACH: stages to attach under a source key, release, and replace.
+    """F-REATTACH: stages to attach to a binding, release, and replace.
 
     The tests release the caller's stage themselves, by dropping every reference to it.
     Reopening a .blend with the source missing is the binding records' (M3 Phase D).
@@ -288,14 +289,15 @@ def reattach(dest: Path) -> Generator[ReattachScene]:
     )
 
 
-# The root-layer formats a file source may have (source-access.md#bindings-and-source-access).
+# The root-layer formats a caller may open (source-access.md#bindings-and-source-access).
 ROOT_FORMATS = (".usda", ".usdc", ".usd")
 
 
 @dataclass
 class MultiBindingScene:
     roots: dict[str, Path]  # by extension in ROOT_FORMATS: the same root layer in each format
-    caller: Usd.Stage  # for an attached source: a caller's stage over the .usda root, loading every payload
+    caller: Usd.Stage  # a caller's stage over the .usda root, loading every payload
+    anonymous_caller: Usd.Stage  # the composed scene in anonymous layers, independent of the files
     values: dict[str, float | None]  # what each root composes, load-all
 
 
@@ -304,7 +306,7 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     """F-MULTI-BINDING: one scene for several bindings, with its root layer in each format.
 
     root.usdc and root.usd are exports of root.usda (.usd is written as crate) beside it, so
-    they compose the same layers.
+    they compose the same layers. An anonymous stage contains the flattened scene, with no file dependencies.
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
     root = Sdf.Layer.OpenAsAnonymous(str(scene / "root.usda"))
@@ -312,25 +314,27 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     for extension in (".usdc", ".usd"):
         roots[extension] = scene / f"root{extension}"
         root.Export(str(roots[extension]))
-    yield MultiBindingScene(roots=roots, caller=open_fresh(roots[".usda"]), values=dict(DISK))
+    caller = open_fresh(roots[".usda"])
+    with Usd.StageCacheContext(Usd.BlockStageCaches):
+        anonymous_caller = Usd.Stage.Open(caller.Flatten())
+    yield MultiBindingScene(roots=roots, caller=caller, anonymous_caller=anonymous_caller, values=dict(DISK))
 
 
 @dataclass
 class BindingStateScene:
-    root: Path  # a file binding's source
-    caller: Usd.Stage  # over root, for an attached binding under KEY
-    key: str
+    root: Path  # the caller's root-layer file
+    caller: Usd.Stage  # over root, for bindings to attach
     values: dict[str, float | None]  # what both compose, load-all
 
 
 @contextmanager
 def binding_state(dest: Path) -> Generator[BindingStateScene]:
-    """F-BINDING-STATE: a source for one file binding and one attached binding.
+    """F-BINDING-STATE: a caller-supplied source stage for bindings to share.
 
     The tests make the bindings in Blender data themselves, since the generator runs without bpy.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest) / "root.usda"
-    yield BindingStateScene(root=root, caller=open_fresh(root), key="shot", values=dict(DISK))
+    yield BindingStateScene(root=root, caller=open_fresh(root), values=dict(DISK))
 
 
 @dataclass(frozen=True)
@@ -367,11 +371,10 @@ DISPLAY = SavedDisplay(
 @dataclass
 class OfflineScene:
     root: Path  # a binding's source, until move_away
-    key: str  # an attached binding's source key
     display: SavedDisplay
 
     def open_caller(self) -> Usd.Stage:
-        """A caller's stage over root, to attach under key. Held, it keeps root's layers open after move_away."""
+        """A caller's stage over root, to attach to a binding. Held, it keeps root's layers open after move_away."""
         return open_fresh(self.root)
 
     def move_away(self) -> None:
@@ -387,4 +390,4 @@ def offline(dest: Path) -> Generator[OfflineScene]:
     M9 adds materials with image textures, whose files move away too.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
-    yield OfflineScene(root=root, key="shot", display=DISPLAY)
+    yield OfflineScene(root=root, display=DISPLAY)

@@ -19,9 +19,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from ..core.binding_ids import BindingId
-from ..core.requested_settings import RequestedSettings
-from ..core.source_access import SourceKind
+from ..source_access.binding_ids import BindingId
+from ..source_access.requested_settings import RequestedSettings
 from . import records
 from .records import RefusedRecord, RefusedRecordError, Schema
 
@@ -38,50 +37,19 @@ INDEX_NAME = ".proscenium"
 
 @dataclass(frozen=True, slots=True)
 class BindingConfig:
-    """A binding's configuration: its source, its destination, and its requested settings."""
+    """A binding's configuration: its last attached root identifier, destination, and requested settings."""
 
-    source_kind: SourceKind
-    path: str | None  # a file source's root-layer path, as given: a "//" path is relative to the .blend
-    source_key: str | None  # an attached source's source key
-    root_layer_identifier: str | None  # of the stage last attached; informative only
-    destination: bpy.types.Collection | None  # None once the destination is removed
     settings: RequestedSettings
-
-    @classmethod
-    def file(
-        cls, path: str, settings: RequestedSettings, *, destination: bpy.types.Collection | None = None
-    ) -> BindingConfig:
-        """A file source's configuration: its root-layer path, as given."""
-        return cls(SourceKind.FILE, path, None, None, destination, settings)
-
-    @classmethod
-    def attached(
-        cls,
-        key: str,
-        settings: RequestedSettings,
-        *,
-        root_layer_identifier: str | None = None,
-        destination: bpy.types.Collection | None = None,
-    ) -> BindingConfig:
-        """An attached source's configuration: its source key, and the root-layer identifier last attached."""
-        return cls(SourceKind.ATTACHED, None, key, root_layer_identifier, destination, settings)
+    root_layer_identifier: str | None = None  # of the stage last attached; informative only
+    destination: bpy.types.Collection | None = None  # None once the destination is removed
 
     def __post_init__(self) -> None:
-        # A record stores the enum's value as a plain string, and the settings as a group of plain values. One that
-        # isn't a member raises ValueError.
-        object.__setattr__(self, "source_kind", SourceKind(self.source_kind))
         if isinstance(self.settings, Mapping):
             object.__setattr__(self, "settings", RequestedSettings(**self.settings))
         if not isinstance(self.settings, RequestedSettings):
             raise TypeError("the requested settings are not a group")
-        if self.source_kind is SourceKind.FILE:
-            if type(self.path) is not str or self.source_key is not None or self.root_layer_identifier is not None:
-                raise ValueError("a file source has a path, and no key or root-layer identifier")
-        else:
-            if self.path is not None or type(self.source_key) is not str or not self.source_key:
-                raise ValueError("an attached source has a key, and no path")
-            if not isinstance(self.root_layer_identifier, str | None):
-                raise TypeError("the root-layer identifier is not a string")
+        if not isinstance(self.root_layer_identifier, str | None):
+            raise TypeError("the root-layer identifier is not a string")
         if not isinstance(self.destination, bpy.types.Collection | None):
             raise TypeError("the destination is not a collection")
 
@@ -140,7 +108,7 @@ def config_key(binding_id: BindingId) -> str:
     return CONFIG_PREFIX + binding_id
 
 
-def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedBinding:
+def create_binding(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedBinding:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
     Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the
@@ -155,6 +123,21 @@ def create(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedB
     records.write(scene, config_key(binding_id), CONFIG, config)
     records.write(destination, TAG_KEY, TAG, tag)
     return CreatedBinding(binding_id, config, tag, _write_entry(text, index, binding_id, destination))
+
+
+def has_config(scene: bpy.types.Scene, binding_id: BindingId) -> bool:
+    """Whether scene stores a configuration record for binding_id, without reading it."""
+    return records.has(scene, config_key(binding_id))
+
+
+def has_tag(collection: bpy.types.Collection) -> bool:
+    """Whether collection stores a destination tag, without reading it."""
+    return records.has(collection, TAG_KEY)
+
+
+def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | None:
+    """The binding index text holds, why it can't be read, or None if it holds none."""
+    return records.read(text, INDEX_KEY, INDEX)
 
 
 def write_config(scene: bpy.types.Scene, binding_id: BindingId, config: BindingConfig) -> None:
@@ -210,10 +193,10 @@ def tagged_uids() -> frozenset[int]:
     return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
 
 
-def restore_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
+def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
     """Add a binding's missing index entry, making the index's Text if the file has none; the index written, if any.
 
-    Raises as create does, writing nothing; an entry the index has, even one naming no destination, is kept.
+    Raises as create_binding does, writing nothing; an entry the index has, even one naming no destination, is kept.
     """
     text, index = _index()
     if binding_id in index.destinations:
@@ -233,7 +216,7 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
         raise ValueError(f"This file has {len(texts)} binding indexes")
     if not texts:
         return None, BindingIndex({})
-    result = records.read(texts[0], INDEX_KEY, INDEX)
+    result = read_index(texts[0])
     if isinstance(result, RefusedRecord):
         raise RefusedRecordError(result)
     assert result is not None  # index_texts found the record
@@ -253,4 +236,4 @@ def _write_entry(
 
 
 def _tagged(collection: bpy.types.Collection) -> bool:
-    return collection.library is None and records.has(collection, TAG_KEY)
+    return collection.library is None and has_tag(collection)

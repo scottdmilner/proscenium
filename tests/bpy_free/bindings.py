@@ -1,32 +1,17 @@
-"""Bindings with either kind of source, so source-access tests can run over both (source-access.md#source-stages).
-
-An attached source holds the caller's stage; a file source ignores it.
-"""
+"""Binding stages attached to a caller-supplied stage (source-access.md#source-stages)."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.core.source_access import (
-    AttachedBindingStages,
-    AttachedSource,
-    FileBindingStages,
-    FileSource,
-    SourceKind,
-)
+from proscenium.binding.source_access import BindingStages
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pxr import Usd
 
-KINDS = tuple(SourceKind)
 
-
-def binding(kind: str, root: Path, caller: Usd.Stage) -> FileBindingStages | AttachedBindingStages:
-    """A binding on root: its own source stage for a file source, caller's stage attached for an attached one."""
-    if kind == SourceKind.FILE:
-        return FileBindingStages(FileSource(root))
-    source = AttachedSource("shot")
-    source.attach(caller)
-    return AttachedBindingStages(source)
+def binding(caller: Usd.Stage) -> BindingStages:
+    """A binding with caller attached through its handle."""
+    stages = BindingStages()
+    stages.attach(caller)
+    return stages

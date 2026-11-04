@@ -39,17 +39,16 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..persistence import binding_records, records
-from ..persistence.binding_records import BindingConfig
-from ..persistence.records import Loaded, RefusedRecord
+from .. import persistence
+from ..persistence import BindingConfig, Loaded, RefusedRecord
 from . import copy_detection
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..core.binding_ids import BindingId
-    from ..persistence.binding_records import BindingIndex, CreatedBinding, DestinationTag, WrittenIndex
-    from ..persistence.manifests import Manifest
+    from ..persistence import BindingIndex, CreatedBinding, DestinationTag, WrittenIndex
+    from ..persistence.manifests import Manifest  # held for the ownership index (persistence/__init__.py)
+    from ..source_access.binding_ids import BindingId
     from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex
 
@@ -166,15 +165,15 @@ class State:
         self.identities[binding_id] = copy_detection.identity(self, binding_id, identity.records)
 
 
-def start() -> None:
+def start_tracking() -> None:
     """The extension registered its handlers: the state can be used."""
     global _tracking
     _tracking = True
     invalidate()
 
 
-def stop() -> None:
-    """The extension unregistered its handlers: the state can't be used until start()."""
+def stop_tracking() -> None:
+    """The extension unregistered its handlers: the state can't be used until start_tracking()."""
     global _tracking
     _tracking = False
     invalidate()
@@ -201,7 +200,7 @@ def refresh_if_tags_changed() -> None:
 
     Duplicating a collection on its own changes them, which no handler announces. Checks every collection's records.
     """
-    if _state is not None and binding_records.tagged_uids() != _state.tagged:
+    if _state is not None and persistence.tagged_uids() != _state.tagged:
         invalidate()
 
 
@@ -241,7 +240,7 @@ def valid(binding_id: BindingId, record: BindingRecord) -> bool:
     destination = None if isinstance(record.config, RefusedRecord) else record.config.destination
     return (
         alive(record.scene)
-        and records.has(record.scene, binding_records.config_key(binding_id))
+        and persistence.has_config(record.scene, binding_id)
         and (destination is None or alive(destination))
     )
 
@@ -262,13 +261,13 @@ def _scene_uids() -> tuple[int, ...]:
 def _read_state(scenes: tuple[int, ...]) -> State:
     """Read every binding record, tag, and binding index, and decide every identity."""
     held: dict[int, SceneRecords] = {}
-    for scene, binding_id, result in binding_records.read_configs():
+    for scene, binding_id, result in persistence.read_configs():
         uid = scene.session_uid
         configs = held.setdefault(uid, SceneRecords(scene, uid)).configs
         configs[binding_id] = result if isinstance(result, RefusedRecord) else result.record
     destinations = {
         collection.session_uid: DestinationRecords(collection, tag.record if isinstance(tag, Loaded) else tag)
-        for collection, tag in binding_records.read_tags()
+        for collection, tag in persistence.read_tags()
     }
     # A removed destination is left out, and checking a record naming it rebuilds the state.
     for scene_records in held.values():
@@ -277,8 +276,8 @@ def _read_state(scenes: tuple[int, ...]) -> State:
                 if alive(destination) and destination.session_uid not in destinations:
                     destinations[destination.session_uid] = DestinationRecords(destination, None)
     indexes = []
-    for text in binding_records.index_texts():
-        index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    for text in persistence.index_texts():
+        index = persistence.read_index(text)
         assert index is not None  # index_texts found the record
         indexes.append(IndexRecords(text, index.record if isinstance(index, Loaded) else index))
     current = State(scenes, held, destinations, indexes, {})

@@ -21,11 +21,18 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, copies, interaction, records, source_access
+from . import appearance, copies, interaction, source_access
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
 Generator = Callable[[Path], AbstractContextManager[object]]
+
+
+def _schema_versions(dest: Path) -> AbstractContextManager[object]:
+    """F-SCHEMA-VERSIONS' generator, imported when used: it imports the records' package, which imports bpy."""
+    from . import records
+
+    return records.schema_versions(dest)
 
 
 class Operation(StrEnum):
@@ -86,9 +93,9 @@ FIXTURES: dict[str, Fixture] = {
             (
                 # The private stage matches the caller's composed content and settings,
                 # and the caller's stage is unchanged.
-                Case("caller-settings", SYNC, SUCCESS, ("SRC-04", "SRC-05", "SRC-06", "SRC-07"), 2),
+                Case("caller-settings", SYNC, SUCCESS, ("SRC-04", "SRC-05", "SRC-06", "SRC-07", "SRC-10"), 1),
                 # Load-all and load-none bindings on the caller's stage, side by side.
-                Case("payload-policies", SYNC, SUCCESS, ("SRC-08",), 2),
+                Case("payload-policies", SYNC, SUCCESS, ("SRC-08",), 1),
             ),
         ),
         Fixture(
@@ -97,8 +104,10 @@ FIXTURES: dict[str, Fixture] = {
             ("M3",),
             source_access.cached_stage,
             (
-                # The binding gets its own stage, not the cached one, and never caches it.
-                Case("ambient-cache", SYNC, SUCCESS, ("SRC-01", "ICON-34"), 1),
+                # A cached source may be attached; the binding's evaluation stage stays private and uncached.
+                Case("ambient-cache", SYNC, SUCCESS, ("SRC-06", "SRC-10", "ICON-34"), 1),
+                # Explicit attachment composes the cached stage's session opinions under the binding's policy.
+                Case("attached-cache", SYNC, SUCCESS, ("SRC-05", "SRC-06", "SRC-10"), 1),
                 # A requested reload of a shared layer shows the disk change to the cached stage too;
                 # the binding's own session-layer opinions compose over the source, the ambient stage's don't.
                 Case("shared-reload", SYNC, SUCCESS, ("LAYER-06", "LAYER-07", "SRC-05"), 1),
@@ -112,9 +121,11 @@ FIXTURES: dict[str, Fixture] = {
             (
                 # Each root-layer format composes the same values.
                 Case("formats", SYNC, SUCCESS, ("BIND-02",), 1),
-                # The caller's unsaved edit shows in the binding with its stage attached, not from the file.
-                Case("attached-edit", SYNC, SUCCESS, ("BIND-03",), 2),
-                # Load-all and load-none bindings on one file, each by its own policy.
+                # The caller's unsaved edit shows without reopening the file or changing it on disk.
+                Case("attached-edit", SYNC, SUCCESS, ("BIND-03",), 1),
+                # Anonymous root and session layers need no files to display their unsaved opinions.
+                Case("anonymous-stage", SYNC, SUCCESS, ("BIND-03",), 1),
+                # Load-all and load-none bindings on one attached stage, each by its own policy.
                 Case("payload-policies", SYNC, SUCCESS, ("BIND-04",), 1),
                 # Bindings on one source have their own stages, and a settings change stays with its binding.
                 Case("independent", SYNC, SUCCESS, ("BIND-07", "BIND-10"), 1),
@@ -129,26 +140,25 @@ FIXTURES: dict[str, Fixture] = {
             ("M3",),
             source_access.reattach,
             (
-                # Attaching under a source key: exact keys, never by root layer, and confirmation for another root.
-                Case("key-contract", SYNC, SUCCESS, ("SID-03", "SID-04", "SID-05", "SID-06"), 2),
+                # Attachment by binding identity, never by root layer; confirmation for another root.
+                Case("attachment", SYNC, SUCCESS, ("SID-08", "SID-05", "SID-06", "SRC-09", "API-11"), 1),
                 # The attached stage is the live stage, and replacing it leaves the persistent selection.
-                Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07"), 2),
-                # Once the caller drops its stage, the binding is unattached and its source unavailable.
-                Case("release", SYNC, FAILURE, ("SRC-02",), 2),
+                Case("replace", SYNC, SUCCESS, ("ICON-07", "SID-07", "SRC-10"), 1),
+                # Dropping caller references retains the attachment; explicit release makes it unavailable.
+                Case("release", SYNC, FAILURE, ("SRC-02", "API-12"), 1),
                 # After reopening, unavailable until attached again; undo and redo leave the attachment.
-                Case("reopen-and-undo", SYNC, FAILURE, ("SRC-03", "UNDO-06"), 2),
+                Case("reopen-and-undo", SYNC, FAILURE, ("SRC-03", "UNDO-06", "SID-09"), 1),
             ),
         ),
         Fixture(
             "F-SCHEMA-VERSIONS",
             "Older, failed-migration, newer, and unreadable records",
             ("M3", "M5"),
-            records.schema_versions,
+            _schema_versions,
             (
-                # Older sample records load at the current version; binding configuration has no older version yet.
+                # Older sample records load at the current version; binding configuration has no older version.
                 Case("older", SYNC, SUCCESS, ("SCHEMA-02",), 1),
                 # A binding whose configuration is newer or damaged keeps it, refuses to synchronize, and says why.
-                # A failed migration is checked on sample records only, until binding configuration has a version 2.
                 Case("unsupported", SYNC, FAILURE, ("SCHEMA-03",), 1),
                 # Unreadable records are preserved and never overwritten; sample records stand in for
                 # pending-cleanup records until M5 defines their schema.
@@ -162,13 +172,11 @@ FIXTURES: dict[str, Fixture] = {
             source_access.binding_state,
             (
                 # Handles by identifier, across undo and reopening; settings change only through set_settings.
-                Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07"), 1),
+                Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07", "API-10"), 1),
                 # The configuration and the index entry creation writes, through save and reopen.
                 Case("configuration", SYNC, SUCCESS, ("STATE-01", "COPY-07"), 1),
-                # Reopening synchronizes nothing and leaves a file binding no live stage.
-                Case("reopen", SYNC, SUCCESS, ("REOPEN-02", "ICON-33"), 1),
-                # A file binding's live stage is the source stage it opened and reuses.
-                Case("live-stage", SYNC, SUCCESS, ("ICON-32",), 1),
+                # Reopening synchronizes nothing; attachment availability is covered by F-REATTACH.
+                Case("reopen", SYNC, SUCCESS, ("REOPEN-02",), 1),
                 # A persistent selection from two bindings through save and reopen.
                 Case("selection", SYNC, SUCCESS, ("ICON-24",), 1),
                 # Runtime indexes return current datablocks or nothing after undo, redo, load, and deletion.
@@ -225,10 +233,10 @@ FIXTURES: dict[str, Fixture] = {
             ("M3", "M7", "M9", "M12"),
             source_access.offline,
             (
-                # Reopened with the file source moved away: the synchronization after it fails, and the
+                # Reopened with the source files moved away: synchronization fails until reattachment, and the
                 # binding and its saved display are kept.
                 Case("moved-file", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
-                # Reopened with nothing attached under an attached binding's key, as after every reopening.
+                # Reopened with no caller stage attached, as after every reopening.
                 Case("unattached", SYNC, FAILURE, ("REOPEN-04", "REOPEN-05", "REOPEN-07"), 1),
                 # Opened without the extension, the saved display is ordinary Blender content.
                 Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),

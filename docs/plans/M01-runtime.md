@@ -39,7 +39,7 @@ Produced the acceptance details in [acceptance.md](../testing/acceptance.md), th
 - **Matrix rows quote the spec.** A quote that must appear in its section, plus a check that every block is quoted or excluded, catches drift in both directions: a changed requirement and an untraced one.
 - **Rows are filled in by their delivering milestone.** Fixtures and oracles for M3–M14 would encode designs those milestones haven't made. A milestone fills in its rows and adds itself to `started` before implementing; the checker then requires them. M4 marks high-risk rows from its risk matrix.
 - **Only requirements with an outcome to check get rows:** behavior checked by tests, contracts by decision records, and process rules by tooling. Permissions, scope limits, design guidance, and statements true by construction are excluded, with the milestone they guide, because checking them would show nothing.
-- **In-memory sources are Phase 2**, because PROJECT.md lists them under Phase 2, even though M3 delivers them. File-backed refresh is Phase 1.
+- **Attached sources are Phase 1.** M3 delivers source access for caller-supplied stages, including stages callers open from files; Phase 2 adds incremental synchronization on those stages.
 - **Invariants name their rows**, so each cross-cutting guarantee points at testable requirements, and the checker confirms those rows sit in the sections the invariant links.
 - **Metamorphic tests** were added for results that are hard to state fully but whose change under an input change the spec defines, such as translating a root or toggling instancing. The delivering milestone chooses its relations.
 
