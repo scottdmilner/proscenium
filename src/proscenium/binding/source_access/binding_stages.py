@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, NewType
 from pxr import Sdf, Tf, Usd
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
+    from collections.abc import Generator, Iterable, Iterator
 
 # What a binding's evaluated source was at some moment: equal revisions mean nothing it evaluates changed between
 # them. Unique in the process and to it, so a generation synchronized in another session never matches one.
