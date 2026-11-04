@@ -1,6 +1,6 @@
 """Disposable in-memory state built from the records (lifecycle.md#undo-and-runtime-state).
 
-The middle tier: it may import proscenium.binding.persistence and the bpy-free code below the tiers, never
+The upper tier of proscenium.binding: it may import proscenium.binding.persistence and the bpy-free code, never
 proscenium.api. Callers use what this module exports: what proscenium.api and proscenium.addon call, and the
 errors that reach their callers. The state itself is proscenium.binding.runtime.state's, lookups by binding identity are
 proscenium.binding.runtime.binding_configs', and ownership is proscenium.binding.runtime.ownership_index's.

@@ -1,6 +1,6 @@
 # `proscenium.binding.persistence`
 
-Everything the extension saves in the `.blend`: versioned records in Blender ID properties ([Persistence](../../../../docs/spec/lifecycle.md#persistence)). The bottom tier of the Blender-facing code: it may import only the bpy-free code below the tiers (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`).
+Everything the extension saves in the `.blend`: versioned records in Blender ID properties ([Persistence](../../../../docs/spec/lifecycle.md#persistence)). The lower tier of `proscenium.binding`: it may import only the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`).
 
 | File | Holds | Records, and where they are |
 |---|---|---|

@@ -22,15 +22,15 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/api/`, `proscenium/binding/`, and `proscenium/core/`: what callers use, the bindings' code, and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently. Code outside `binding/` imports its subpackages and `results` and uses what each exports, never the modules inside them; inside `binding/`, a tier (`runtime`, `persistence`) is reached only through its package too.
-  - The bpy-free code, below the tiers, must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`:
+  - The bpy-free code must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`:
     - `proscenium/core/`: the compiled core, its C++ source and built module. See [Compiled core](#compiled-core).
     - `proscenium/binding/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
     - `proscenium/binding/results.py`: results and diagnostics.
-  - Blender-facing code is in three tiers, each importing only the tiers below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)):
-    - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
+  - `proscenium/api/`: what callers use, the binding handle and the process's bindings. It imports `binding`'s units and `core`, and only `addon.py` imports it.
+  - `proscenium/binding/`'s Blender-facing code is in two tiers, each importing only the tier below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)). Tiers apply only inside `binding/`:
     - `proscenium/binding/runtime/`: disposable in-memory state built from the records.
     - `proscenium/binding/persistence/`: versioned records in ID properties.
-  - `proscenium/addon.py` registers the extension and its handlers, and may import any tier.
+  - `proscenium/addon.py` registers the extension and its handlers, and may import any package.
   - Every directory has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
@@ -106,7 +106,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
 - Names:
   - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
-  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source tiers are tiers, never layers.
+  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the binding's tiers are tiers, never layers.
   - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
   - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
   - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).

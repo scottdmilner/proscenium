@@ -1,4 +1,6 @@
-"""Each tier imports only the tiers below it (docs/plans/source-tiers-and-names.md#tiers, AGENTS.md#layout).
+"""Each package imports only what its row allows; in binding, a tier imports only the tier below it.
+
+See docs/plans/source-tiers-and-names.md#tiers and AGENTS.md#layout.
 
 Imports are read from each module's source with ast, without importing it, so type-only imports count too.
 """
@@ -17,8 +19,8 @@ from .bpy_blocker import is_blender_origin
 
 PACKAGE = Path(proscenium.__file__).parent
 
-# What each tier, and each bpy-free package or module below them, may import from proscenium, keyed by the unit's name
-# under proscenium: the bindings' code's units are binding's subpackages and results module. Other modules at the
+# What each package, and each bpy-free package or module, may import from proscenium, keyed by the unit's name under
+# proscenium: the bindings' code's units are binding's subpackages and results module. Other modules at the
 # package's top level, such as addon, may import any.
 BELOW_TIERS = {"core", "binding.source_access", "binding.results"}
 ALLOWED = {
