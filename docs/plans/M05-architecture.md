@@ -1,0 +1,93 @@
+# M5 — Synchronization architecture, diagnostics, and failure safety: plan
+
+How M5 will build the synchronization transaction, its diagnostics and binding state, persistent cleanup tracking, and `cache`'s API and failure safety, against a stub application layer, and the order of work. Requirements are in the [M5 milestone](../milestones/M05-architecture.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M4 plan](M04-prototypes.md).
+
+M5 delivers the matrix rows whose `delivery` is M5: BND-01 to BND-03, TXN-02 to TXN-10, CACHE-02, CACHE-03, CACHE-05 to CACHE-07, DIAG-01 to DIAG-11, BIND-05, API-04, API-05, API-09, CONS-01, CONS-03, LAYER-02, UNDO-01 to UNDO-05, UNDO-09, STATE-02 to STATE-04, PEND-01 to PEND-06, REOPEN-01, SCHEMA-06, XFORM-12, TLAY-03, and AFAIL-01 to AFAIL-03. It settles the DECISIONS.md rows it owns or co-owns: "Pending-cleanup persistence contract" (the mechanism), "Pending-cleanup tracking mechanism", "Post-publication retirement failure", "Pre-publication disposal failure", "Undo for failed synchronizations", "Undo step for a published synchronization", "Undo memory cost", "Removed destination" (with M11), and the result's fields in "Synchronization API".
+
+## Starting point
+
+- **Every binding has an attached source** (DECISIONS.md "One kind of binding", 2026-11-03). `Bindings.create_binding(scene, ...)` makes an unattached binding, and the caller opens a stage and attaches it through `handle.attach(stage)`, which returns a `Result`; `handle.release()` releases it. Each binding's `BindingStages` (`binding/source_access/`, bpy-free) holds the attached stage and the binding's own evaluation stage, reused while the attached stage's root and session layers stay the same and dropped when either is replaced ("Evaluation-stage reuse"). After reopening a `.blend`, every binding is unattached, and so unavailable, until the caller attaches a stage again.
+- **The API acquires sources and nothing more.** `api/bindings.py`'s `synchronize` acquires the evaluation stage through `BindingStages.acquire` and reports dirty layers; nothing is evaluated, planned, applied, or published. Its contract is settled (DECISIONS.md "Synchronization API" and "Time-sampled data representation", M4): `synchronize(time_code=None)` takes a numeric time code or `Usd.TimeCode.Default()`, and without one uses the target scene's current frame's, its subframe included. The code still requires a time code; the default is M5's to implement (XFORM-12, BIND-05).
+- **The records exist and nothing writes them yet:** `Generation` (with `cached_time_codes`, M4 F3) and `LastAttempt` in `binding/persistence/binding_state.py`, at version 1, so M5 can still refine their fields. Manifests are written whole (`ownership_index.set_manifest`) or by entry (`ownership_index.set_manifest_entries`) through the bindings' state, and `ManifestEntry.role` is a free string. `binding/persistence/manifests.py` isn't among its package's exports yet; they gain it when M5 calls ownership, as that package's README says.
+- **Results and diagnostics are a first cut:** `binding/results.py` (bpy-free) has three result states, six diagnostic categories (`source confirmation required` among them, for an attachment whose root-layer identifier changed), `Result.is_success`, and a `Diagnostic` without binding, source path, property or asset identifier, or fallback.
+- **The compiled core has only the stage handle and error translation.** `proscenium/core/` is now the compiled core alone, and receives stages from `binding/source_access/`, never opening one. M1b's and M4's bridge (`tools/feasibility/hydra_bridge/`) holds the evaluation, planning, and application that M6 and M7 turn into product code. M5 takes two things from it: the plan's read-only buffers (`python_views.cpp`) as the model for the plan boundary, and `update.py`'s discipline (prepare in a collection no scene links, publish in one step that undoes itself on failure, retire what nothing outside the display uses) as the model for the transaction.
+- **M4's decisions fix what is replaced:** partitions are a drawn copy, a batch, or one shared datablock (DECISIONS.md "Partition unit"), and a copy's identity is its track, keyed by source, instance context, and place among the copy's objects (M4 plan, E1).
+
+## Settled with the user (2026-11-03)
+
+1. **Plans come from a minimal path through the core.** The core builds the Hydra chain M6 will extend, captures each drawn gprim's source path, world transform, and bounds at a time code, and plans a placeholder for each into the real plan envelope. So `synchronize` and `cache` run end to end against the stub application layer, and source-change detection, time-varying bounds, and the default time code are tested on real evaluation. M6 replaces the capture and the planner; the envelope and the boundary stay. Rejected: plans built by hand in tests, which would need a plan builder in `src/` only tests use, and would leave CONS-03, CACHE-05, and BIND-05 without an evaluation to test.
+2. **Pending cleanup is a separate ledger on the binding index's Text.** One versioned record, one entry per pending resource, holding what M3's contract lists: the owning binding, the resource's identity in that binding's manifest, a pointer to its datablock, its originating operation, its retry status, and its cleanup diagnostic. Chosen for the least overhead: the Text already exists wherever a binding does, `index_texts()` (`binding/persistence/binding_records.py`) already finds it, M3's copy-route evidence already shows no copy route reaches it (contract (6)), and removing a binding doesn't remove it, as M11 needs; with nothing pending, nothing on a hot path reads it. Rejected: pending state in the manifests, which adds a field every ownership-index rebuild reads and fails contract (6) while manifests are on destination collections; a Text of its own, which repeats M3's evidence and duplicate handling for no gain.
+3. **A failed `cache` call records no last attempt.** The last attempt stays the most recent synchronization attempt, with the settings and time code it tried, so "displayed at 10, last attempt at 20 failed" keeps its meaning. A `cache` call returns its result; pending cleanup it leaves goes into the ledger with its diagnostic, as any operation's does.
+4. **A publication never gives a binding whose destination was removed a new destination.** M3's rule stands: synchronizing fails before accessing the source and creates nothing. Whether an explicit repair may give it one is M11's.
+
+## Phases
+
+Each phase ends with a review by the user before the next starts. Each phase lists its commits in order. Every commit is one feature and passes `pre-commit` and the test suite on its own:
+
+- A spec change lands with its matrix rows, its `invariants.md` bullet, and its DECISIONS.md row.
+- A new fixture lands with its registry entry, its Named Contract Fixtures row, its mention in the milestone's Tests section, and a row that uses it.
+- Code lands with its tests.
+- A decision lands with its line in the phase's decision log.
+
+If a commit grows past one feature, it splits, and this list is updated in the same commit.
+
+### Phase A — Contracts in the spec and matrix
+
+1. **The M5 plan:** this file.
+2. **The settled decisions in DECISIONS.md and the spec:** the ledger as the pending-cleanup mechanism (PEND-06, and [Pending Cleanup](../spec/lifecycle.md#pending-cleanup)'s design note); no last attempt for `cache` ([Binding State](../spec/lifecycle.md#binding-state)); no new destination from a publication ([Removed Destination](../spec/lifecycle.md#removed-destination)), each with its rows.
+3. **The result's fields** ("Synchronization API"): suggested, the result state, its deduplicated diagnostics, the time code attempted, and the current cleanup status kept apart from the attempt's own diagnostics (DIAG-06). Also the diagnostic's fields DIAG-02 lists: binding, source path, property or asset identifier, severity, and fallback.
+4. **Representation roles and display-resource identities** from M4's partitions: the roles (suggested: a copy's viewport object, render object, shear parent, placeholder bounds mesh; a batch's carrier, points mesh, and prototype; a shared mesh, material, and node group), and how each identity is derived (a copy's from its track; a shared datablock's from its content's key in the plan). The Glossary's "Representation role" entry points at them.
+5. **Fixtures:** `F-FAILED-SETTINGS`, `F-PUBLICATION-FAILURE`, `F-PREPARATION-CLEANUP-FAILURE`, `F-RETIREMENT-FAILURE`, and `F-SOURCE-CHANGE` as generators, with the ledger's unreadable and unsupported records added to `F-SCHEMA-VERSIONS`. Each states its injection point and its expected outcome from the spec.
+6. **Oracles on M5's rows, and M5 started:** every M5 row gets its oracle and every behavior row its fixture, M5 joins `started`, then `tools/matrix.py render`.
+
+### Phase B — The plan boundary in the core
+
+1. **The Hydra chain and a minimal capture:** the core receives the evaluation stage `BindingStages.acquire` returns, as a weak stage pointer, and captures its flattened scene index at a time code into an immutable snapshot of each drawn gprim's source path (mapped back to the composed stage, never Hydra's path), world transform, and bounds, with nothing borrowed past the snapshot's life (SNAP-08, SNAP-10).
+2. **The planning context:** an immutable value object with what the minimal planner reads (suggested: the target scene's unit scale and the representation version), captured in Python from the target scene before planning.
+3. **The display-plan envelope:** partitions, ownership entries with their resource identities, roles, covers, and uses, correspondence entries, and placeholder content, each placeholder's bounds as a read-only `'f'` buffer. Deterministic over snapshot, settings, and context (PLAN-08, PLAN-09 are M6's; M5 keeps its planner deterministic so its tests can rely on it).
+4. **Errors at the boundary:** Tf errors and C++ exceptions become Python exceptions at each entry point, and the transaction turns them into fatal diagnostics before any Blender mutation (BND-02, BND-03).
+5. **Source-change detection:** evaluation is discarded when a contributing layer changes during it (CONS-03, `F-SOURCE-CHANGE`), and the binding's `BindingStages` keep a source revision the generation's synchronization is compared with (CACHE-05). Suggested: a `UsdNotice::ObjectsChanged` listener on the evaluation stage, counting changes; a generation from another session (every binding is unattached after reopening), or from before a reload, an attachment, or a dropped evaluation stage, counts as changed.
+
+### Phase C — Diagnostics and results
+
+1. **The diagnostic categories** of [Diagnostics](../spec/pipeline.md#diagnostics), pending cleanup and fatal failure included (DIAG-01), and the fields of A3 (DIAG-02).
+2. **Aggregation and the result state:** repeated problems aggregate (DIAG-03); the state is derived from the categories (DIAG-09 to DIAG-11), source state informational.
+3. **Where diagnostics live:** the generation's and the last attempt's own, the ledger's cleanup diagnostics apart from both (DIAG-04 to DIAG-06, DIAG-08), and an unchanged refresh's equivalent ones (DIAG-07).
+
+### Phase D — The transaction against the stub application layer
+
+1. **Where it lives:** suggested, a package beside `binding/` and `core/` holding the transaction and the stub application layer, which M7 replaces. `api/` imports it, and it imports `binding`'s units and `core` through what each exports, as `api/` does. Its row joins the import-rules table in `src/proscenium/README.md`, AGENTS.md's Layout, and `tests/bpy_free/test_import_tiers.py`. The ledger's record goes in `binding/persistence/` and its write-through in `binding/runtime/`, each exported from its package.
+2. **The role `StrEnum`** in the manifest entry, stored as the same string; an unknown role is a refusal. `binding/persistence` exports the manifest types from here on.
+3. **The stub application layer:** one placeholder object and bounds mesh per partition, prepared in a staging collection no scene links (TXN-05).
+4. **Preparation tracked before fallible work:** each prepared resource enters the ledger as prepared work before the next fallible step (TXN-08); reused published resources are never disposal candidates (TXN-09).
+5. **Publication:** the manifest written whole, the generation record, and the destination's contents switched together, undoing itself on failure (TXN-06); the last attempt recorded on every outcome (STATE-02, STATE-03).
+6. **Retirement:** the old generation's obsolete resources removed through the bindings' state, or published out of the manifest before removal, so a removal costs what it removes; leftovers stay in the ledger, noncanonical and excluded (TXN-07).
+7. **Failed disposal before publication:** the attempt stays fatal, reports both failures, and leaves only inactive tracked leftovers (TXN-03, TXN-04, TXN-10).
+8. **Cleanup retry:** an explicit operation (suggested, `handle.retry_cleanup()` delegating to `Bindings`, as the handle's other methods do; M11's cleanup builds on it) that rereads the ledger, revalidates ownership and current users, disposes or releases intact, and removes resolved entries and their diagnostics, without USD access (PEND-01 to PEND-04); an unreadable or unsupported ledger refuses and disposes of nothing (SCHEMA-06).
+9. **The time code, as settled:** `synchronize(time_code=None)` evaluates at the time code given, numeric or `Usd.TimeCode.Default()`, and without one at the target scene's current frame's, its subframe included; the last attempt and the generation record the one used (XFORM-12, BIND-05, `F-MULTI-BINDING`).
+10. **Non-reentrancy:** a call during another synchronization raises (CONS-01, API-05).
+11. **Undo:** one step per publication through `ed.undo_push`, none for a failure, none in background mode or with global undo off, and none doubled when an operator calls the API (UNDO-02 to UNDO-04); undo marks the binding possibly out of date (UNDO-05); undo restores the ledger with ownership (PEND-05). Undo after deleting stub content leaves the bindings' runtime state (`binding/runtime/`) and its ownership index consistent; a binding's attachment survives the undo, and a binding whose creation was undone keeps it for redo (UNDO-06).
+12. **Failure injection:** a test at each boundary (acquisition, evaluation, planning, each preparation step, publication, retirement, disposal), patching the step's module function as the runtime tests already do, with no hooks in `src/`. The before-publication checks compare the whole published generation, not only its objects (TLAY-03); the same tests rerun unchanged against M7's application layer.
+
+### Phase E — Cached time codes against the stub
+
+1. **`cache(time_codes)`** on the handle and `Bindings` (API-09): each time code not yet cached is captured and the stub keys its placeholders' transforms there; the generation's `cached_time_codes` gains them; no new generation, no undo step (CACHE-02, UNDO-09).
+2. **Its failure safety:** a failing call removes the keys it added, its prepared work under the transaction's rules (CACHE-03).
+3. **Its refusals:** after a source change it caches nothing and says the binding needs synchronizing (CACHE-05); at the default time code it caches nothing and succeeds (CACHE-06); synchronizing again holds only its own time code (CACHE-07).
+
+### Phase F — Runtime costs
+
+1. **The manifest revision token,** so an undo or redo rereads only the manifests whose token changed (M4 plan, C5), measured against the 50 ms budget on ALab's entry counts.
+2. **The cached manifests' memory** with M4's representation and realistic covers, against about 5 MB per 10,000 entries; if over, one of the M3 plan's Phase E options.
+3. **The undo step's memory cost** for a published synchronization ("Undo memory cost").
+
+### Phase G — Close
+
+1. **Notes for M6, M7, M11, and M14** in their milestone files.
+2. **Close the decision log,** render the matrix, and confirm the exit condition.
+
+## Working agreements
+
+- Work happens on branch `m05-architecture`. The user stages, commits, and pushes.
+- Planning docs state requirements; mechanisms are suggestions for the milestone that settles them.
+- Evidence claims only what a check tested; single runs and inferences are labeled.
