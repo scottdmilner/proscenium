@@ -14,7 +14,7 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from support.usd import open_fresh
 

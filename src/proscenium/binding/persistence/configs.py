@@ -19,8 +19,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from ..source_access.binding_ids import BindingId
-from ..source_access.requested_settings import RequestedSettings
+from ..source_access import binding_settings, identifiers
 from . import records
 from .records import RefusedRecord, RefusedRecordError, Schema
 
@@ -39,14 +38,14 @@ INDEX_NAME = ".proscenium"
 class BindingConfig:
     """A binding's configuration: its last attached root identifier, destination, and requested settings."""
 
-    settings: RequestedSettings
+    settings: binding_settings.RequestedSettings
     root_layer_identifier: str | None = None  # of the stage last attached; informative only
     destination: bpy.types.Collection | None = None  # None once the destination is removed
 
     def __post_init__(self) -> None:
         if isinstance(self.settings, Mapping):
-            object.__setattr__(self, "settings", RequestedSettings(**self.settings))
-        if not isinstance(self.settings, RequestedSettings):
+            object.__setattr__(self, "settings", binding_settings.RequestedSettings(**self.settings))
+        if not isinstance(self.settings, binding_settings.RequestedSettings):
             raise TypeError("the requested settings are not a group")
         if not isinstance(self.root_layer_identifier, str | None):
             raise TypeError("the root-layer identifier is not a string")
@@ -58,7 +57,7 @@ class BindingConfig:
 class DestinationTag:
     """On a destination collection: the binding it belongs to, and that binding's target scene."""
 
-    binding_id: BindingId
+    binding_id: identifiers.BindingId
     scene: bpy.types.Scene
 
     def __post_init__(self) -> None:
@@ -70,7 +69,7 @@ class DestinationTag:
 class BindingIndex:
     """The file's binding index: each binding's destination, which the canonical-candidate rule reads."""
 
-    destinations: dict[BindingId, bpy.types.Collection | None]  # each binding's destination
+    destinations: dict[identifiers.BindingId, bpy.types.Collection | None]  # each binding's destination
 
     def __post_init__(self) -> None:
         if not all(isinstance(d, bpy.types.Collection | None) for d in self.destinations.values()):
@@ -92,18 +91,18 @@ class WrittenIndex(NamedTuple):
 class CreatedBinding(NamedTuple):
     """What create stored: the new binding's identifier and its records."""
 
-    binding_id: BindingId
+    binding_id: identifiers.BindingId
     config: BindingConfig  # naming the new destination
     tag: DestinationTag  # on that destination
     index: WrittenIndex  # with the binding's entry
 
 
-def new_identifier() -> BindingId:
+def new_identifier() -> identifiers.BindingId:
     """A new, random binding identifier."""
-    return BindingId(uuid.uuid4().hex)
+    return identifiers.BindingId(uuid.uuid4().hex)
 
 
-def config_key(binding_id: BindingId) -> str:
+def config_key(binding_id: identifiers.BindingId) -> str:
     """The ID-property key of a binding's configuration record on its scene."""
     return CONFIG_PREFIX + binding_id
 
@@ -125,7 +124,7 @@ def create_binding(scene: bpy.types.Scene, config: BindingConfig, name: str) -> 
     return CreatedBinding(binding_id, config, tag, _write_entry(text, index, binding_id, destination))
 
 
-def has_config(scene: bpy.types.Scene, binding_id: BindingId) -> bool:
+def has_config(scene: bpy.types.Scene, binding_id: identifiers.BindingId) -> bool:
     """Whether scene stores a configuration record for binding_id, without reading it."""
     return records.has(scene, config_key(binding_id))
 
@@ -140,17 +139,21 @@ def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | N
     return records.read(text, INDEX_KEY, INDEX)
 
 
-def write_config(scene: bpy.types.Scene, binding_id: BindingId, config: BindingConfig) -> None:
+def write_config(scene: bpy.types.Scene, binding_id: identifiers.BindingId, config: BindingConfig) -> None:
     """Store a binding's changed configuration. Raises RefusedRecordError over one that can't be read."""
     records.write(scene, config_key(binding_id), CONFIG, config)
 
 
-def scene_bindings(scene: bpy.types.Scene) -> list[BindingId]:
+def scene_bindings(scene: bpy.types.Scene) -> list[identifiers.BindingId]:
     """The identifiers of the bindings whose configuration is on scene."""
-    return [BindingId(key.removeprefix(CONFIG_PREFIX)) for key in records.keys(scene) if key.startswith(CONFIG_PREFIX)]
+    return [
+        identifiers.BindingId(key.removeprefix(CONFIG_PREFIX))
+        for key in records.keys(scene)
+        if key.startswith(CONFIG_PREFIX)
+    ]
 
 
-def read_configs() -> Iterator[tuple[bpy.types.Scene, BindingId, Loaded[BindingConfig] | RefusedRecord]]:
+def read_configs() -> Iterator[tuple[bpy.types.Scene, identifiers.BindingId, Loaded[BindingConfig] | RefusedRecord]]:
     """Every binding record in the file: its scene, identifier, and configuration or why it can't be read.
 
     Linked scenes are left out: library data is read-only here, and its bindings belong to its library
@@ -193,7 +196,7 @@ def tagged_uids() -> frozenset[int]:
     return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
 
 
-def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
+def restore_index_entry(binding_id: identifiers.BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
     """Add a binding's missing index entry, making the index's Text if the file has none; the index written, if any.
 
     Raises as create_binding does, writing nothing; an entry the index has, even one naming no destination, is kept.
@@ -224,7 +227,10 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
 
 
 def _write_entry(
-    text: bpy.types.Text | None, index: BindingIndex, binding_id: BindingId, destination: bpy.types.Collection
+    text: bpy.types.Text | None,
+    index: BindingIndex,
+    binding_id: identifiers.BindingId,
+    destination: bpy.types.Collection,
 ) -> WrittenIndex:
     """Write the index with binding_id's entry naming destination, on a new Text if there is none."""
     if text is None:

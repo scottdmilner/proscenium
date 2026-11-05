@@ -13,7 +13,8 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import Manifest, ManifestEntry, RepresentationRole, manifests, records
+from proscenium.binding.persistence import manifests, records
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
@@ -24,7 +25,7 @@ from proscenium.binding.persistence.records import (
 )
 from proscenium.binding.runtime import ownership_index
 from proscenium.binding.runtime.ownership_index import Claim
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access.identifiers import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key, object_entry
@@ -135,14 +136,14 @@ def test_a_linked_copy_scene_shares_one_manifest(
     assert len(bpy.data.scenes) == 2
     shot = bpy.data.collections["Shot"]
     read: list[bpy.types.Collection] = []
-    read_manifest = persistence.read_manifest
+    read_manifest = persistence.manifests.read_manifest
 
     def counted(destination: bpy.types.Collection) -> object:
         read.append(destination)
         return read_manifest(destination)
 
-    monkeypatch.setattr(persistence, "read_manifest", counted)
-    runtime.invalidate()  # so the index is rebuilt from the records, reading what it reads
+    monkeypatch.setattr(persistence.manifests, "read_manifest", counted)
+    runtime.state.invalidate()  # so the index is rebuilt from the records, reading what it reads
     found = {obj: claims for obj in bpy.data.objects if (claims := ownership_index.ownership(obj).claims)}
     assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
@@ -254,7 +255,7 @@ def test_an_invalid_manifest_is_refused(
     assert isinstance(result, RefusedRecord)
     assert result.refusal is RefusalReason.INVALID
     assert problem in result.message
-    runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
+    runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
     assert _claims() == {}
     assert ownership_index.manifest(handle.binding_id) == result
 
@@ -268,7 +269,7 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)
     assert result.refusal is RefusalReason.NEWER
-    runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
+    runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
     assert _claims() == {}
     assert ownership_index.manifest(handle.binding_id) == result
     with pytest.raises(RefusedRecordError):

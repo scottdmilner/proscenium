@@ -14,15 +14,21 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 
 ## Import rules
 
-Tiers apply only inside `binding/`: `runtime/` over `persistence/`, each importing only the tier below it and the bpy-free code (`core/`, `binding/source_access/`, `binding/results.py`). `api/` and `synchronization/` are separate packages that use `binding`'s units ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
+The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers; the lowest tier's units import only themselves, and never `bpy` ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
 
-| Package | May import |
+| Tier | Units |
 |---|---|
-| `api/` | `synchronization`, `binding.runtime`, `binding.persistence`, `core`, `binding.source_access`, `binding.results` |
-| `synchronization/` | `binding.runtime`, `binding.persistence`, `core`, `binding.source_access`, `binding.results` |
-| `binding/runtime/` | `binding.persistence`, `core`, `binding.source_access`, `binding.results` |
-| `binding/persistence/` | `core`, `binding.source_access`, `binding.results` |
-| `core/`, `binding/source_access/`, `binding/results.py` | each only itself, and never `bpy` |
-| `binding/__init__.py` | nothing |
+| 6 | `addon.py` |
+| 5 | `api/` |
+| 4 | `synchronization/` |
+| 3 | `binding/runtime/` |
+| 2 | `binding/persistence/` |
+| 1 | `core/`, `binding/source_access/`, `binding/results.py` |
 
-`addon.py` may import any of them. Code outside `binding/` imports its units and uses what each exports, never the modules inside them, and inside `binding/` a tier's modules are reached only through its package. `tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and fails on any import of a Blender module in the bpy-free code and its packages; `tests/bpy_free/test_no_blender_imports.py` checks that they import in a fresh interpreter with Blender's modules blocked.
+`__init__.py`, the extension's entry, and `binding/__init__.py`, which groups `binding`'s units and imports none of them, are no unit's.
+
+Units reach each other through public modules. A package unit's `__init__.py` exports its public modules, and nothing else; a module unit is public itself. Code in another unit imports a public module from its package and names each use through it: `from ..binding.persistence import manifests`, then `manifests.Manifest`, and `from ..binding import results`, then `results.Result`. Where a module's qualified uses would nest, as in `results.Result(results.Diagnostic(results.DiagnosticCode.X, ...))`, it imports the names from the public module instead: `from ..binding.results import Diagnostic, DiagnosticCode, Result`. Nothing imports a name from a package, or from a module its package doesn't export. A unit's own modules import each other directly, and tests reach into any module.
+
+Module names are unique across `src/proscenium/` and name what the module holds, so a use names its unit and doesn't repeat itself: `configs.BindingConfig`, `stages.PayloadPolicy`.
+
+`tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and fails on any import of a Blender module in the lowest tier and the packages holding it; `tests/bpy_free/test_no_blender_imports.py` checks that they import in a fresh interpreter with Blender's modules blocked.

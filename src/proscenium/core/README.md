@@ -6,7 +6,7 @@ The compiled core and its C++ source. It reads Hydra scene indices ([DECISIONS.m
 
 | File | Holds |
 |---|---|
-| `__init__.py` | The package. It imports `pxr.Usd` first, which loads Blender's `usd_ms` and the converters the compiled module's arguments need. |
+| `__init__.py` | The package's exports: `_core`. It imports `pxr.Usd` first, which loads Blender's `usd_ms` and the converters the compiled module's arguments need. |
 | `_core.pyi` | The compiled module's types, so ty checks its callers without a build. |
 
 ## C++

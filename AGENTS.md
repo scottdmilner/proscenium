@@ -21,17 +21,15 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 ## Layout
 
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
-  - `proscenium/api/`, `proscenium/binding/`, and `proscenium/core/`: what callers use, the bindings' code, and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently. Code outside `binding/` imports its subpackages and `results` and uses what each exports, never the modules inside them; inside `binding/`, a tier (`runtime`, `persistence`) is reached only through its package too.
-  - The bpy-free code must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`:
-    - `proscenium/core/`: the compiled core, its C++ source and built module. See [Compiled core](#compiled-core).
-    - `proscenium/binding/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
-    - `proscenium/binding/results.py`: results and diagnostics.
-  - `proscenium/api/`: what callers use, the binding handle and the process's bindings. It imports `synchronization`, `binding`'s units, and `core`, and only `addon.py` imports it.
-  - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M5's a stub, which M7 replaces). It imports `binding`'s units and `core`, and only `api` imports it.
-  - `proscenium/binding/`'s Blender-facing code is in two tiers, each importing only the tier below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)). Tiers apply only inside `binding/`:
+  - `proscenium/api/`, `proscenium/binding/`, and `proscenium/core/`: what callers use, the bindings' code, and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently.
+  - The code is in units, each a package or a single module, in tiers; a unit imports only from itself and from units in lower tiers. [`src/proscenium/README.md`](src/proscenium/README.md#import-rules) has the table and the rules, which `tests/bpy_free/test_import_tiers.py` enforces. From the top:
+    - `proscenium/addon.py`: registers the extension and its handlers.
+    - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
+    - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M5's a stub, which M7 replaces).
     - `proscenium/binding/runtime/`: disposable in-memory state built from the records.
     - `proscenium/binding/persistence/`: versioned records in ID properties.
-  - `proscenium/addon.py` registers the extension and its handlers, and may import any package.
+    - The lowest tier, which must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`: `proscenium/core/`, the compiled core, its C++ source and built module (see [Compiled core](#compiled-core)); `proscenium/binding/source_access/`, the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers; and `proscenium/binding/results.py`, results and diagnostics.
+  - Units reach each other through public modules: a package unit's `__init__.py` exports its public modules and nothing else, and a module unit is public itself. Code in another unit imports a public module from its package and names each use through it (`from ..binding.persistence import manifests`, then `manifests.Manifest`), or, where those uses would nest, imports the names from the module (`from ..binding.results import Diagnostic, DiagnosticCode, Result`). Never import a name from a package, or from a module its package doesn't export. Module names are unique across `src/proscenium/` and name what they hold, so a use doesn't repeat itself (`configs.BindingConfig`, `stages.PayloadPolicy`).
   - Every directory has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
 - `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
 - `tools/`:
@@ -107,7 +105,7 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
 - Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
 - Names:
   - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
-  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the binding's tiers are tiers, never layers.
+  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else, and the source's tiers are tiers, never layers.
   - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
   - A type names its domain: `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
   - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).

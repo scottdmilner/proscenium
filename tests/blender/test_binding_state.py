@@ -12,8 +12,9 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding.persistence import Manifest, binding_records, binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, configs, manifests, records
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
+from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
@@ -23,7 +24,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecordError,
 )
 from proscenium.binding.results import Diagnostic, DiagnosticCode
-from proscenium.binding.source_access import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
 from support.manifests import key, object_entry
 from support.usd import binding_on_file
@@ -88,7 +89,7 @@ def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
 
     def stored() -> list[object]:
         return [
-            records.stored(_scene(), binding_records.config_key(handle.binding_id)),
+            records.stored(_scene(), configs.config_key(handle.binding_id)),
             records.stored(destination, manifests.MANIFEST_KEY),
             records.stored(destination, binding_state.GENERATION_KEY),
             records.stored(_scene(), binding_state.ATTEMPT_PREFIX + handle.binding_id),

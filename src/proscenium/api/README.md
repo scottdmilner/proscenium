@@ -1,18 +1,18 @@
 # `proscenium.api`
 
-What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). Not a tier: it may import `proscenium.synchronization`, `proscenium.binding.runtime`, `proscenium.binding.persistence`, and the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), using what each package exports.
+What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). Tier 5: it may import every unit below it, and only `proscenium.addon` imports it ([import rules](../README.md#import-rules)).
 
 | File | Holds |
 |---|---|
-| `__init__.py` | The package. |
-| `bindings.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `BindingNotFoundError`, and `RequestedSettings`, from `proscenium.binding.source_access`. |
+| `__init__.py` | The package's exports: `bindings`. |
+| `bindings.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `BindingNotFoundError`, and `RequestedSettings` and `Result`, the types callers pass and receive, re-exported so callers outside `proscenium` import only this module. |
 
 ## `bindings.py`
 
 - **The handle** holds only the binding's identifier, never a datablock or cached state, so undo, redo, and file loads can't leave it stale. Its methods (`attach`, `release`, `synchronize`, `set_settings`, `reload`, `requested_settings`, `live_stage`) delegate to the methods of `BINDINGS` keyed by that identifier, which tests call on a fresh `Bindings`.
 - **Operations that span bindings** are `Bindings`' own: creating an unattached binding (`create_binding(scene, ...)`), listing a scene's bindings (`in_scene`), and reporting copied bindings (`copied`). Callers open source stages and resolve file paths.
 - **Results and refusals:** an operation returns a `Result` (`proscenium.binding.results`) whose diagnostics say why it failed: an unavailable source, a configuration that can't be read, a removed destination, or a binding with copies and no canonical candidate. A query raises instead, and methods needing records raise `BindingNotFoundError` for a binding that doesn't exist. `release()` is an idempotent runtime operation that remains valid after undo or removal.
-- **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `CurrentStages` (`proscenium.binding.runtime`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `addon.py` drops them all when a file is loaded (`drop_all_stages`).
+- **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `CurrentStages` (`proscenium.binding.runtime.stage_tracking`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `addon.py` drops them all when a file is loaded (`drop_all_stages`).
 
 `synchronize` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction. It acquires only so far; M5 adds evaluation, planning, application, and publication.
 

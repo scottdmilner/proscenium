@@ -1,28 +1,8 @@
 """Source access: the stages a binding reads its source from (docs/spec/source-access.md).
 
-The compiled core receives a stage from here; it never opens one.
+The compiled core receives a stage from here; it never opens one. It exports its modules.
 """
 
-from .binding_ids import BindingId
-from .binding_stages import (
-    BindingStages,
-    PayloadPolicy,
-    SourceRevision,
-    SourceUnavailableError,
-    contributing_layers,
-    dirty_layers,
-)
-from .requested_settings import RequestedSettings
-from .stage_registry import StageRegistry
+from . import binding_settings, canonical_candidate, identifiers, registry, source_entities, stages
 
-__all__ = [
-    "BindingId",
-    "BindingStages",
-    "PayloadPolicy",
-    "RequestedSettings",
-    "SourceRevision",
-    "SourceUnavailableError",
-    "StageRegistry",
-    "contributing_layers",
-    "dirty_layers",
-]
+__all__ = ["binding_settings", "canonical_candidate", "identifiers", "registry", "source_entities", "stages"]

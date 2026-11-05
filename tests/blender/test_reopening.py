@@ -23,12 +23,13 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import runtime
-from proscenium.binding.persistence import Manifest, binding_records, binding_state, records
+from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.persistence.binding_state import LastAttempt
+from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership_index
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.stages import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
 from support.manifests import key, object_entry
@@ -38,8 +39,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.persistence.binding_records import BindingConfig
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.persistence.configs import BindingConfig
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -47,7 +48,7 @@ def _scene() -> bpy.types.Scene:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.find_binding(handle.binding_id)
+    found = runtime.binding_configs.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
@@ -140,8 +141,8 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
 
 
 def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
-    [text] = binding_records.index_texts()
-    index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    [text] = configs.index_texts()
+    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
     assert isinstance(index, Loaded)
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
@@ -188,6 +189,6 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         # DEST-03: its requested settings read as saved, and a change is written to its configuration.
         assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_ALL)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-        [(_, binding_id, stored)] = binding_records.read_configs()
+        [(_, binding_id, stored)] = configs.read_configs()
         assert binding_id == handle.binding_id and isinstance(stored, Loaded)
         assert stored.record == replace(config, settings=RequestedSettings(PayloadPolicy.LOAD_NONE))

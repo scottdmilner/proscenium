@@ -19,46 +19,48 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding import runtime
-from ..binding.persistence import LedgerEntry, RefusedRecord, RefusedRecordError, RetryStatus, new_ledger_key
+from ..binding.persistence import ledgers, records
 from ..binding.results import Diagnostic, DiagnosticCode
+from ..binding.runtime import pending_cleanup
 
 if TYPE_CHECKING:
-    from ..binding.persistence import ManifestEntry, OriginatingOperation, RepresentationRole
-    from ..binding.source_access import BindingId
+    from ..binding.persistence import manifests
+    from ..binding.source_access import identifiers
 
 
 @dataclass
 class PreparedWork:
     """What a preparation has made so far, so a failure partway leaves it all to dispose of."""
 
-    binding_id: BindingId  # the binding preparing it, which owns it
-    operation: OriginatingOperation
+    binding_id: identifiers.BindingId  # the binding preparing it, which owns it
+    operation: ledgers.OriginatingOperation
     staging: bpy.types.Collection  # holds the prepared objects; no scene links it
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
-    entries: dict[str, ManifestEntry] = field(default_factory=dict)  # entry key -> its entry, once complete
-    tracked: dict[str, LedgerEntry] = field(default_factory=dict)  # ledger key -> its entry, as recorded
+    entries: dict[str, manifests.ManifestEntry] = field(default_factory=dict)  # entry key -> its entry, once complete
+    tracked: dict[str, ledgers.LedgerEntry] = field(default_factory=dict)  # ledger key -> its entry, as recorded
 
-    def track(self, entry_key: str, role: RepresentationRole, datablock: bpy.types.ID) -> None:
+    def track(self, entry_key: str, role: manifests.RepresentationRole, datablock: bpy.types.ID) -> None:
         """Hold a resource just created, and record it in the ledger, before anything else can fail.
 
         Raises what writing the ledger raises; the datablock is held first, so disposal still removes it.
         """
         self.datablocks[entry_key] = datablock
-        ledger_key = new_ledger_key()
-        entry = LedgerEntry(self.binding_id, entry_key, role, datablock, self.operation, RetryStatus.PREPARED)
-        runtime.set_ledger_entries({ledger_key: entry})
+        ledger_key = ledgers.new_ledger_key()
+        entry = ledgers.LedgerEntry(
+            self.binding_id, entry_key, role, datablock, self.operation, ledgers.RetryStatus.PREPARED
+        )
+        pending_cleanup.set_ledger_entries({ledger_key: entry})
         self.tracked[ledger_key] = entry
 
 
-def new_prepared_work(binding_id: BindingId, operation: OriginatingOperation) -> PreparedWork:
+def new_prepared_work(binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation) -> PreparedWork:
     """Empty prepared work for binding_id, with its staging collection.
 
     Raises RefusedRecordError over a ledger that can't be read, and ValueError if the file has more than one binding
     index, having made nothing: work the ledger can't track is never prepared.
     """
-    if isinstance(ledger := runtime.ledger(), RefusedRecord):
-        raise RefusedRecordError(ledger)
+    if isinstance(ledger := pending_cleanup.ledger(), records.RefusedRecord):
+        raise records.RefusedRecordError(ledger)
     return PreparedWork(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
 
 
@@ -69,7 +71,7 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
     what writing the ledger raises.
     """
     keys = {entry.entry_key: ledger_key for ledger_key, entry in work.tracked.items()}
-    changed: dict[str, LedgerEntry] = {}
+    changed: dict[str, ledgers.LedgerEntry] = {}
     resolved: list[str] = []
     diagnostics: list[Diagnostic] = []
     for entry_key, datablock in reversed(work.datablocks.items()):  # users before what they use
@@ -85,11 +87,13 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
             diagnostics.append(diagnostic)
             if ledger_key is not None:
                 entry = work.tracked[ledger_key]
-                changed[ledger_key] = dataclasses.replace(entry, status=RetryStatus.RETRYABLE, diagnostic=diagnostic)
+                changed[ledger_key] = dataclasses.replace(
+                    entry, status=ledgers.RetryStatus.RETRYABLE, diagnostic=diagnostic
+                )
             continue
         if ledger_key is not None:
             resolved.append(ledger_key)
-    runtime.set_ledger_entries(changed, resolved)
+    pending_cleanup.set_ledger_entries(changed, resolved)
     bpy.data.batch_remove([work.staging])
     work.datablocks.clear()
     work.entries.clear()

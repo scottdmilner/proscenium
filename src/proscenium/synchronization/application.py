@@ -6,7 +6,7 @@ links, so nothing prepared is visible, and preparation only creates datablocks: 
 generation reaches (TXN-05). Each is tracked in the pending-cleanup ledger as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
-(persistence.entry_keys), and the entries preparation makes are the manifest a publication writes. M7 replaces this
+(manifests.entry_keys), and the entries preparation makes are the manifest a publication writes. M7 replaces this
 layer; a sheared world transform, which needs a shear parent, is M7's.
 """
 
@@ -17,24 +17,25 @@ from typing import TYPE_CHECKING
 import bpy
 from mathutils import Matrix
 
-from ..binding.persistence import CopyResourceIdentity, ManifestEntry, RepresentationRole, entry_keys
+from ..binding.persistence import manifests
 
 if TYPE_CHECKING:
     from pxr import Gf
 
-    from ..binding.persistence import Manifest
-    from ..core._core import Plan
+    from ..core import _core
     from .prepared_work import PreparedWork
 
 
-def prepare(plan: Plan, published: Manifest, work: PreparedWork) -> None:
+def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork) -> None:
     """Make plan's placeholders in work's staging collection, tracking each datablock as it's made (TXN-08).
 
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
     take. Raises whatever Blender or the ledger raises; what was made before stays in work, tracked.
     """
-    identities = [CopyResourceIdentity(RepresentationRole(r.role), r.entity, r.place) for r in plan.resources]
-    keys = entry_keys(published, identities)
+    identities = [
+        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in plan.resources
+    ]
+    keys = manifests.entry_keys(published, identities)
     for placeholder in plan.placeholders:
         mesh_key, object_key = keys[placeholder.bounds_mesh], keys[placeholder.object]
         source = plan.resources[placeholder.object].entity
@@ -53,7 +54,7 @@ def prepare(plan: Plan, published: Manifest, work: PreparedWork) -> None:
         ):
             resource = plan.resources[index]
             uses = [keys[used] for used in resource.uses]
-            work.entries[key] = ManifestEntry(
+            work.entries[key] = manifests.ManifestEntry(
                 datablock, list(resource.covers), identities[index].role, uses, resource.place
             )
 

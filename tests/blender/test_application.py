@@ -15,15 +15,10 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
-from proscenium.binding.persistence import (
-    CopyResourceIdentity,
-    Manifest,
-    OriginatingOperation,
-    RepresentationRole,
-    RetryStatus,
-)
+from proscenium.binding.persistence.ledgers import OriginatingOperation, RetryStatus
+from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, prepared_work
 from support.blend import save_and_reopen
@@ -33,8 +28,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.persistence import LedgerEntry
-    from proscenium.binding.source_access import BindingId
+    from proscenium.binding.persistence.ledgers import LedgerEntry
+    from proscenium.binding.source_access.identifiers import BindingId
     from proscenium.synchronization.prepared_work import PreparedWork
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
@@ -59,7 +54,7 @@ def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | Non
 
 
 def _ledger() -> dict[str, LedgerEntry]:
-    ledger = runtime.ledger()
+    ledger = runtime.pending_cleanup.ledger()
     return {} if ledger is None else dict(ledger.record.entries)  # ty: ignore[unresolved-attribute] - not refused
 
 
@@ -175,7 +170,7 @@ def test_a_failure_writing_the_ledger_leaves_the_untracked_resource_to_dispose_o
         plan = _plan(scene.caller, 0.0)
         before = _datablocks()
         work = _work(binding_id)
-        write = runtime.set_ledger_entries
+        write = runtime.pending_cleanup.set_ledger_entries
         calls = []
 
         def failing(*args: object) -> None:
@@ -184,12 +179,12 @@ def test_a_failure_writing_the_ledger_leaves_the_untracked_resource_to_dispose_o
                 raise RuntimeError("injected")
             write(*args)  # ty: ignore[invalid-argument-type]
 
-        monkeypatch.setattr(runtime, "set_ledger_entries", failing)
+        monkeypatch.setattr(runtime.pending_cleanup, "set_ledger_entries", failing)
         with pytest.raises(RuntimeError, match="injected"):
             application.prepare(plan, Manifest({}), work)
         assert len(work.datablocks) == 3
         assert len(_ledger()) == 2
-        monkeypatch.setattr(runtime, "set_ledger_entries", write)
+        monkeypatch.setattr(runtime.pending_cleanup, "set_ledger_entries", write)
         assert prepared_work.dispose(work) == ()
         assert _datablocks() == before
 
@@ -288,7 +283,7 @@ def _publish(work: PreparedWork) -> list[bpy.types.Object]:
     for obj in objects:
         destination.objects.link(obj)
         work.staging.objects.unlink(obj)
-    runtime.set_ledger_entries({}, list(work.tracked))
+    runtime.pending_cleanup.set_ledger_entries({}, list(work.tracked))
     return objects
 
 

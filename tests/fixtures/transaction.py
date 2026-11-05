@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Sdf, Usd
 
 from proscenium.binding.results import ResultState
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.stages import PayloadPolicy
 from support.usd import open_fresh
 
 from .scenes import Scene, copy_scene

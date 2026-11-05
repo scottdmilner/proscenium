@@ -12,19 +12,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .. import persistence
-from ..persistence import Ledger, Loaded, RefusedRecord, RefusedRecordError
+from ..persistence import ledgers, records
 from . import state
 from .state import StaleError, Unread
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-    from ..persistence import LedgerEntry
     from .state import IndexRecords, State
 
 
-def ledger() -> Loaded[Ledger] | RefusedRecord | None:
+def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
     """The file's pending-cleanup ledger, why it can't be read, or None if there is none yet.
 
     Raises ValueError if the file has more than one binding index.
@@ -32,7 +30,7 @@ def ledger() -> Loaded[Ledger] | RefusedRecord | None:
     return state.query(_checked_ledger)
 
 
-def set_ledger_entries(changed: Mapping[str, LedgerEntry], removed: Collection[str] = ()) -> None:
+def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
     """Change some of the ledger's entries, writing only those; a file with no ledger yet starts from an empty one.
 
     Raises RefusedRecordError, changing nothing, over a ledger that can't be read; ValueError if the file has no binding
@@ -42,21 +40,21 @@ def set_ledger_entries(changed: Mapping[str, LedgerEntry], removed: Collection[s
     if held is None:
         raise ValueError("this file has no binding index to hold the pending-cleanup ledger")
     stored = _ledger_of(held)
-    if isinstance(stored, RefusedRecord):
-        raise RefusedRecordError(stored)
-    after = (Ledger({}) if stored is None else stored.record).updated(changed, removed)
-    held.ledger = persistence.write_ledger_entries(held.text, after, changed.keys(), removed)
+    if isinstance(stored, records.RefusedRecord):
+        raise records.RefusedRecordError(stored)
+    after = (ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
+    held.ledger = ledgers.write_ledger_entries(held.text, after, changed.keys(), removed)
 
 
-def _checked_ledger(current: State) -> Loaded[Ledger] | RefusedRecord | None:
+def _checked_ledger(current: State) -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
     """The ledger, reread if a datablock it names was removed: Blender cleared that entry's pointer."""
     if (held := _held_index(current)) is None:
         return None
     ledger = _ledger_of(held)
-    if isinstance(ledger, Loaded) and not all(
+    if isinstance(ledger, records.Loaded) and not all(
         e.datablock is None or state.alive(e.datablock) for e in ledger.record.entries.values()
     ):
-        held.ledger = ledger = persistence.read_ledger(held.text)
+        held.ledger = ledger = ledgers.read_ledger(held.text)
     return ledger
 
 
@@ -72,8 +70,8 @@ def _held_index(current: State) -> IndexRecords | None:
     return held
 
 
-def _ledger_of(held: IndexRecords) -> Loaded[Ledger] | RefusedRecord | None:
+def _ledger_of(held: IndexRecords) -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
     """The Text's ledger, read the first time."""
     if isinstance(held.ledger, Unread):
-        held.ledger = persistence.read_ledger(held.text)
+        held.ledger = ledgers.read_ledger(held.text)
     return held.ledger

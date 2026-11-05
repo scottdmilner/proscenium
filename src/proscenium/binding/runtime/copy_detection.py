@@ -14,26 +14,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..persistence import BindingIndex, DestinationTag, RefusedRecord
-from ..source_access.canonical_candidate import (
-    UNREADABLE_INDEX_ENTRY,
-    CandidateEvidence,
-    DecisionReason,
-    UnreadableIndexEntry,
-    decide,
-)
+from ..persistence import configs, records
+from ..source_access import canonical_candidate
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     import bpy
 
-    from ..source_access.binding_ids import BindingId
-    from ..source_access.canonical_candidate import CanonicalDecision
+    from ..source_access import identifiers
     from .state import BindingRecord, DestinationRecords, State
 
-    Entry = int | None | UnreadableIndexEntry  # what one binding index says about an identity (decide)
-    Index = Mapping[BindingId, int | None] | UnreadableIndexEntry  # by binding: its destination's session_uid
+    # What one binding index says about an identity (decide).
+    Entry = int | None | canonical_candidate.UnreadableIndexEntry
+    # By binding: its destination's session_uid.
+    Index = Mapping[identifiers.BindingId, int | None] | canonical_candidate.UnreadableIndexEntry
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,8 +44,8 @@ class CandidateReport:
 class CopiedBinding:
     """A binding identity that isn't unique: its candidates, and why the rule chose its canonical one, or none."""
 
-    binding_id: BindingId
-    reason: DecisionReason
+    binding_id: identifiers.BindingId
+    reason: canonical_candidate.DecisionReason
     candidates: tuple[CandidateReport, ...]
 
     @property
@@ -65,7 +60,7 @@ class Candidate:
 
     record: BindingRecord | None  # None for a tagged copy
     collection: bpy.types.Collection | None  # the collection its readable record names, or the tagged copy
-    evidence: CandidateEvidence  # what the rule reads about it
+    evidence: canonical_candidate.CandidateEvidence  # what the rule reads about it
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +69,7 @@ class IdentityCandidates:
 
     candidates: tuple[Candidate, ...]  # its binding records, in the order found, then its tagged copies
     index_entries: tuple[Entry, ...]  # what each binding index naming the identity, or unreadable, says
-    decision: CanonicalDecision  # its canonical position is a position in candidates
+    decision: canonical_candidate.CanonicalDecision  # its canonical position is a position in candidates
 
     @property
     def records(self) -> tuple[BindingRecord, ...]:
@@ -95,11 +90,11 @@ class IdentityCandidates:
         return record
 
 
-def identities(current: State) -> dict[BindingId, IdentityCandidates]:
+def identities(current: State) -> dict[identifiers.BindingId, IdentityCandidates]:
     """Every identity with a binding record or a tagged collection, records' first, its candidates and decision."""
-    by_identity: dict[BindingId, list[BindingRecord]] = {}
+    by_identity: dict[identifiers.BindingId, list[BindingRecord]] = {}
     for held in current.scenes.values():
-        for record in held.records():
+        for record in held.records_found():
             by_identity.setdefault(record.binding_id, []).append(record)
     tagged_with = _tagged_with(current)
     indexes = _indexes(current)
@@ -107,13 +102,13 @@ def identities(current: State) -> dict[BindingId, IdentityCandidates]:
     return {b: _identity(current, b, by_identity.get(b, ()), tagged_with.get(b, []), indexes) for b in binding_ids}
 
 
-def identity(current: State, binding_id: BindingId, records: Sequence[BindingRecord]) -> IdentityCandidates:
+def identity(current: State, binding_id: identifiers.BindingId, records: Sequence[BindingRecord]) -> IdentityCandidates:
     """One identity's candidates and decision, given its binding records, after a write changed what the rule reads."""
     tagged = [d for d in current.destinations.values() if _tagged_binding(d) == binding_id]
     return _identity(current, binding_id, records, tagged, _indexes(current))
 
 
-def report(binding_id: BindingId, identity: IdentityCandidates) -> CopiedBinding:
+def report(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> CopiedBinding:
     """The identity's candidates by name, for reporting: names aren't identities, and may change."""
     canonical = identity.decision.canonical
     reports = [
@@ -127,9 +122,9 @@ def report(binding_id: BindingId, identity: IdentityCandidates) -> CopiedBinding
     return CopiedBinding(binding_id, identity.decision.reason, tuple(reports))
 
 
-def refers_back(current: State, binding_id: BindingId, record: BindingRecord) -> bool:
+def refers_back(current: State, binding_id: identifiers.BindingId, record: BindingRecord) -> bool:
     """Whether the record's destination is tagged with binding_id and points back at the record's scene."""
-    if isinstance(record.config, RefusedRecord) or record.config.destination is None:
+    if isinstance(record.config, records.RefusedRecord) or record.config.destination is None:
         return False
     destination = current.destinations.get(record.config.destination.session_uid)
     return destination is not None and _points_back(destination.tag, binding_id, record.scene)
@@ -137,7 +132,7 @@ def refers_back(current: State, binding_id: BindingId, record: BindingRecord) ->
 
 def _identity(
     current: State,
-    binding_id: BindingId,
+    binding_id: identifiers.BindingId,
     records: Sequence[BindingRecord],
     tagged: Sequence[DestinationRecords],
     indexes: Sequence[Index],
@@ -146,39 +141,41 @@ def _identity(
     candidates = [_record_candidate(current, binding_id, r) for r in records]
     named = {c.evidence.destination for c in candidates}
     candidates += [
-        Candidate(None, d.collection, CandidateEvidence(d.collection.session_uid, mutual=False))
+        Candidate(None, d.collection, canonical_candidate.CandidateEvidence(d.collection.session_uid, mutual=False))
         for d in tagged
         if d.collection.session_uid not in named
     ]
     entries = tuple(
-        index if isinstance(index, UnreadableIndexEntry) else index[binding_id]
+        index if isinstance(index, canonical_candidate.UnreadableIndexEntry) else index[binding_id]
         for index in indexes
-        if isinstance(index, UnreadableIndexEntry) or binding_id in index
+        if isinstance(index, canonical_candidate.UnreadableIndexEntry) or binding_id in index
     )
-    return IdentityCandidates(tuple(candidates), entries, decide([c.evidence for c in candidates], entries))
+    return IdentityCandidates(
+        tuple(candidates), entries, canonical_candidate.decide([c.evidence for c in candidates], entries)
+    )
 
 
-def _record_candidate(current: State, binding_id: BindingId, record: BindingRecord) -> Candidate:
+def _record_candidate(current: State, binding_id: identifiers.BindingId, record: BindingRecord) -> Candidate:
     """A binding record as a candidate: the destination it names, and whether that destination's tag points back."""
     config = record.config
-    if isinstance(config, RefusedRecord):
+    if isinstance(config, records.RefusedRecord):
         # A record that can't be read names no destination, but a collection whose tag points back at its scene is
         # its destination, not a copy: the binding is unreadable, not copied.
         uid = next(
             (uid for uid, d in current.destinations.items() if _points_back(d.tag, binding_id, record.scene)), None
         )
-        return Candidate(record, None, CandidateEvidence(uid, mutual=False))
+        return Candidate(record, None, canonical_candidate.CandidateEvidence(uid, mutual=False))
     if config.destination is None:
-        return Candidate(record, None, CandidateEvidence(None, mutual=False))
+        return Candidate(record, None, canonical_candidate.CandidateEvidence(None, mutual=False))
     uid = config.destination.session_uid
     destination = current.destinations.get(uid)
     mutual = destination is not None and _points_back(destination.tag, binding_id, record.scene)
-    return Candidate(record, config.destination, CandidateEvidence(uid, mutual=mutual))
+    return Candidate(record, config.destination, canonical_candidate.CandidateEvidence(uid, mutual=mutual))
 
 
-def _tagged_with(current: State) -> dict[BindingId, list[DestinationRecords]]:
+def _tagged_with(current: State) -> dict[identifiers.BindingId, list[DestinationRecords]]:
     """By binding identity, the collections tagged with it, in the order found."""
-    tagged: dict[BindingId, list[DestinationRecords]] = {}
+    tagged: dict[identifiers.BindingId, list[DestinationRecords]] = {}
     for destination in current.destinations.values():
         if (binding_id := _tagged_binding(destination)) is not None:
             tagged.setdefault(binding_id, []).append(destination)
@@ -189,15 +186,19 @@ def _indexes(current: State) -> list[Index]:
     """Every binding index, with its destinations by session_uid, or UNREADABLE_INDEX_ENTRY."""
     return [
         {b: None if d is None else d.session_uid for b, d in index.destinations.items()}
-        if isinstance(index, BindingIndex)
-        else UNREADABLE_INDEX_ENTRY
+        if isinstance(index, configs.BindingIndex)
+        else canonical_candidate.UNREADABLE_INDEX_ENTRY
         for index in (held.index for held in current.indexes)
     ]
 
 
-def _tagged_binding(destination: DestinationRecords) -> BindingId | None:
-    return destination.tag.binding_id if isinstance(destination.tag, DestinationTag) else None
+def _tagged_binding(destination: DestinationRecords) -> identifiers.BindingId | None:
+    return destination.tag.binding_id if isinstance(destination.tag, configs.DestinationTag) else None
 
 
-def _points_back(tag: DestinationTag | RefusedRecord | None, binding_id: BindingId, scene: bpy.types.Scene) -> bool:
-    return isinstance(tag, DestinationTag) and tag.binding_id == binding_id and tag.scene == scene
+def _points_back(
+    tag: configs.DestinationTag | records.RefusedRecord | None,
+    binding_id: identifiers.BindingId,
+    scene: bpy.types.Scene,
+) -> bool:
+    return isinstance(tag, configs.DestinationTag) and tag.binding_id == binding_id and tag.scene == scene

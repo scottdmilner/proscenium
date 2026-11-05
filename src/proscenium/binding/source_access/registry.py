@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .binding_stages import BindingStages
+from .stages import BindingStages
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from .binding_ids import BindingId
+    from .identifiers import BindingId
 
 
 class StageRegistry:

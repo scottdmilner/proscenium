@@ -14,13 +14,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import binding_records, manifests
+from proscenium.binding.persistence import configs, manifests
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.runtime import ownership_index
 from proscenium.binding.runtime.ownership_index import Claim
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def claims() -> dict[bpy.types.ID, list[Claim]]:
@@ -36,11 +36,11 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))
 
-    for _scene, binding_id, config in binding_records.read_configs():
+    for _scene, binding_id, config in configs.read_configs():
         destination = config.record.destination if isinstance(config, Loaded) else None
         if destination is not None and destination not in seen:  # a linked-copy scene's shared one is read once
             claim(binding_id, destination)
-    for collection, tag in binding_records.read_tags():
+    for collection, tag in configs.read_tags():
         if isinstance(tag, Loaded) and collection not in seen:
             claim(tag.record.binding_id, collection)
     return found

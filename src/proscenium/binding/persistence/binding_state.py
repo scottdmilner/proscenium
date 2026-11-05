@@ -22,15 +22,15 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from ..results import Diagnostic, ResultState, result_state
-from ..source_access import PayloadPolicy, SourceRevision
+from .. import results
+from ..source_access import stages
 from . import records
 from .records import Schema
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access.binding_ids import BindingId
+    from ..source_access import identifiers
     from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"
@@ -49,10 +49,10 @@ def time_code(stored: float | None) -> Usd.TimeCode:
 
 def _settle(record: Any) -> None:
     """Turn a stored record's plain values back into the fields' types; ValueError or TypeError if they can't be."""
-    object.__setattr__(record, "payload_policy", PayloadPolicy(record.payload_policy))
+    object.__setattr__(record, "payload_policy", stages.PayloadPolicy(record.payload_policy))
     if not isinstance(record.time_code, float | None):
         raise TypeError("a time code is a float, or None for the default time code")
-    diagnostics = tuple(d if isinstance(d, Diagnostic) else Diagnostic(**d) for d in record.diagnostics)
+    diagnostics = tuple(d if isinstance(d, results.Diagnostic) else results.Diagnostic(**d) for d in record.diagnostics)
     object.__setattr__(record, "diagnostics", diagnostics)
 
 
@@ -60,11 +60,11 @@ def _settle(record: Any) -> None:
 class Generation:
     """What a binding's published display was produced with."""
 
-    binding_id: BindingId
-    payload_policy: PayloadPolicy
+    binding_id: identifiers.BindingId
+    payload_policy: stages.PayloadPolicy
     time_code: float | None  # see stored_time
-    source_revision: SourceRevision  # BindingStages.source_revision when it was synchronized
-    diagnostics: tuple[Diagnostic, ...]  # its source/display diagnostics
+    source_revision: stages.SourceRevision  # BindingStages.source_revision when it was synchronized
+    diagnostics: tuple[results.Diagnostic, ...]  # its source/display diagnostics
     # The time codes cached in it since, sorted, without its own; one at the default time code has none to cache.
     cached_time_codes: tuple[float, ...] = ()
 
@@ -92,17 +92,17 @@ class Generation:
 class LastAttempt:
     """The most recent synchronization attempt: what it asked for, and how it ended."""
 
-    payload_policy: PayloadPolicy
+    payload_policy: stages.PayloadPolicy
     time_code: float | None  # see stored_time
-    diagnostics: tuple[Diagnostic, ...]
+    diagnostics: tuple[results.Diagnostic, ...]
 
     def __post_init__(self) -> None:
         _settle(self)
 
     @property
-    def result(self) -> ResultState:
+    def result(self) -> results.ResultState:
         """How it ended, from its diagnostics."""
-        return result_state(self.diagnostics)
+        return results.result_state(self.diagnostics)
 
 
 GENERATION = Schema("generation", version=1, record_type=Generation)
@@ -122,12 +122,14 @@ def write_generation(destination: bpy.types.Collection, generation: Generation) 
     records.write(destination, GENERATION_KEY, GENERATION, generation)
 
 
-def read_last_attempt(scene: bpy.types.Scene, binding_id: BindingId) -> Loaded[LastAttempt] | RefusedRecord | None:
+def read_last_attempt(
+    scene: bpy.types.Scene, binding_id: identifiers.BindingId
+) -> Loaded[LastAttempt] | RefusedRecord | None:
     """The binding's last attempt on scene, why it can't be read, or None if it has none."""
     return records.read(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT)
 
 
-def write_last_attempt(scene: bpy.types.Scene, binding_id: BindingId, attempt: LastAttempt) -> None:
+def write_last_attempt(scene: bpy.types.Scene, binding_id: identifiers.BindingId, attempt: LastAttempt) -> None:
     """Store the binding's last attempt on scene.
 
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.

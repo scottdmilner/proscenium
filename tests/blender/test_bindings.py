@@ -26,12 +26,13 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import runtime
-from proscenium.binding.persistence import MANIFEST_KEY, binding_records, binding_state, manifests, records
-from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
+from proscenium.binding.persistence import binding_state, configs, manifests, records
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
+from proscenium.binding.persistence.configs import BindingConfig, BindingIndex, DestinationTag
+from proscenium.binding.persistence.manifests import MANIFEST_KEY
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecord, RefusedRecordError
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
-from proscenium.binding.source_access import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
 from support.usd import binding_on_file, open_fresh
@@ -52,20 +53,20 @@ def _root(tmp_path: Path) -> Path:
 
 def _config(handle: BindingHandle) -> BindingConfig:
     """The binding's configuration as its record stores it, read from the scenes, not the bindings' state."""
-    [config] = [c for _, binding_id, c in binding_records.read_configs() if binding_id == handle.binding_id]
+    [config] = [c for _, binding_id, c in configs.read_configs() if binding_id == handle.binding_id]
     assert isinstance(config, Loaded)
     return config.record
 
 
 def _index() -> BindingIndex:
-    [text] = binding_records.index_texts()
-    result = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    [text] = configs.index_texts()
+    result = records.read(text, configs.INDEX_KEY, configs.INDEX)
     assert isinstance(result, Loaded)
     return result.record
 
 
 def _destination_tag(collection: bpy.types.Collection) -> DestinationTag:
-    result = records.read(collection, binding_records.TAG_KEY, binding_records.TAG)
+    result = records.read(collection, configs.TAG_KEY, configs.TAG)
     assert isinstance(result, Loaded)
     return result.record
 
@@ -83,14 +84,14 @@ def test_creating_a_binding_writes_records_that_refer_to_each_other(bindings: Bi
     assert destination.name in _scene().collection.children
     assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
-    [text] = binding_records.index_texts()
+    [text] = configs.index_texts()
     assert text.name.startswith(".")
     assert text.use_fake_user
 
 
 def test_the_payload_policy_is_stored_as_its_value(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene(), payload_policy=PayloadPolicy.LOAD_NONE)
-    stored = records.stored(_scene(), binding_records.config_key(handle.binding_id))
+    stored = records.stored(_scene(), configs.config_key(handle.binding_id))
     assert stored == {
         records.VERSION_KEY: 1,
         "root_layer_identifier": None,
@@ -140,8 +141,8 @@ def test_creation_has_a_default_destination_name(bindings: Bindings) -> None:
 
 def test_an_unreadable_index_stops_creation_before_any_change(bindings: Bindings, tmp_path: Path) -> None:
     binding_on_file(bindings, _scene(), _root(tmp_path))
-    [text] = binding_records.index_texts()
-    text[NAMESPACE][binding_records.INDEX_KEY] = {records.VERSION_KEY: 99}
+    [text] = configs.index_texts()
+    text[NAMESPACE][configs.INDEX_KEY] = {records.VERSION_KEY: 99}
     collections = len(bpy.data.collections)
     with pytest.raises(RefusedRecordError):
         binding_on_file(bindings, _scene(), _root(tmp_path / "other"))
@@ -152,9 +153,9 @@ def test_an_unreadable_index_stops_creation_before_any_change(bindings: Bindings
 def test_two_indexes_stop_creation(bindings: Bindings, tmp_path: Path) -> None:
     # Copies the canonical-candidate rule can't decide between; repairing them is not creation's job.
     binding_on_file(bindings, _scene(), _root(tmp_path))
-    [text] = binding_records.index_texts()
+    [text] = configs.index_texts()
     text.copy()  # ID.copy copies the ID properties, the index record with them
-    assert len(binding_records.index_texts()) == 2
+    assert len(configs.index_texts()) == 2
     collections = len(bpy.data.collections)
     with pytest.raises(ValueError, match="2 binding indexes"):
         binding_on_file(bindings, _scene(), _root(tmp_path / "other"))
@@ -310,8 +311,8 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
     # SCHEMA-03: F-SCHEMA-VERSIONS' binding configurations, as another extension version or damage left them.
     with record_fixtures.schema_versions(tmp_path) as versions:
         stored = versions.bindings[name]
-        handle = BindingHandle(binding_records.new_identifier())
-        _scene()[NAMESPACE] = {binding_records.config_key(handle.binding_id): stored}
+        handle = BindingHandle(configs.new_identifier())
+        _scene()[NAMESPACE] = {configs.config_key(handle.binding_id): stored}
         for result in (
             handle.attach(Usd.Stage.CreateInMemory()),
             handle.synchronize(0),
@@ -321,14 +322,14 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
             assert diagnostic.code == DiagnosticCode.UNSUPPORTED_RECORD
-            refused = records.load(binding_records.CONFIG, stored)
+            refused = records.load(configs.CONFIG, stored)
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
             assert diagnostic.message == refused.message
         with pytest.raises(RefusedRecordError):
             handle.requested_settings()
         assert bindings.in_scene(_scene()) == [handle]
-        assert records.stored(_scene(), binding_records.config_key(handle.binding_id)) == stored
+        assert records.stored(_scene(), configs.config_key(handle.binding_id)) == stored
 
 
 @pytest.mark.parametrize("name", ["newer", "invalid-root", "unknown-policy", "unknown-field", "no-settings"])
@@ -337,11 +338,11 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
     # records.write alone lets through.
     with record_fixtures.schema_versions(tmp_path) as versions:
         stored = versions.bindings[name]
-        binding_id = binding_records.new_identifier()
-        _scene()[NAMESPACE] = {binding_records.config_key(binding_id): stored}
+        binding_id = configs.new_identifier()
+        _scene()[NAMESPACE] = {configs.config_key(binding_id): stored}
         with pytest.raises(RefusedRecordError):
-            runtime.set_config(binding_id, BindingConfig(RequestedSettings(PayloadPolicy.LOAD_ALL)))
-        assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
+            runtime.binding_configs.set_config(binding_id, BindingConfig(RequestedSettings(PayloadPolicy.LOAD_ALL)))
+        assert records.stored(_scene(), configs.config_key(binding_id)) == stored
 
 
 def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Bindings, tmp_path: Path) -> None:
@@ -352,7 +353,7 @@ def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Binding
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         destination = bpy.data.collections["Shot"]
         destination[NAMESPACE][MANIFEST_KEY] = stored
-        runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
+        runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
         refused = manifests.read_manifest(destination)
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.manifests_refused["unknown-role"]
@@ -508,5 +509,5 @@ def test_records_stay_readable_with_the_extension_unregistered(bindings: Binding
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
     assert _config(handle) == replace(expected, destination=bpy.data.collections["root"])
-    with pytest.raises(runtime.NotRegisteredError):
+    with pytest.raises(runtime.state.NotRegisteredError):
         handle.requested_settings()

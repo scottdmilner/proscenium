@@ -18,18 +18,12 @@ from fixtures import source_access
 from proscenium import addon
 from proscenium.api.bindings import BindingHandle, Bindings
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import (
-    Manifest,
-    ManifestEntry,
-    RepresentationRole,
-    binding_records,
-    manifests,
-    records,
-)
+from proscenium.binding.persistence import configs, manifests, records
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
 from proscenium.binding.persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from proscenium.binding.runtime import ownership_index, state
 from proscenium.binding.runtime.ownership_index import Claim
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.source_access.stages import PayloadPolicy
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -39,8 +33,8 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.binding.persistence.binding_records import BindingConfig
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.persistence.configs import BindingConfig
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -58,24 +52,24 @@ def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.find_binding(handle.binding_id)
+    found = runtime.binding_configs.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
 
 def _scene_of(binding_id: BindingId) -> bpy.types.Scene | None:
     """The scene holding the binding's canonical record, or None if there's no such binding."""
-    found = runtime.find_binding(binding_id)
+    found = runtime.binding_configs.find_binding(binding_id)
     return None if found is None else found.scene
 
 
 def _binding_ids(scene: bpy.types.Scene | None = None) -> list[BindingId]:
-    return [found.binding_id for found in runtime.find_bindings(scene)]
+    return [found.binding_id for found in runtime.binding_configs.find_bindings(scene)]
 
 
 def _resource(binding_id: BindingId, name: str) -> bpy.types.ID | None:
     """The datablock of the binding's manifest entry called name, or None if there's no such binding or entry."""
-    if runtime.find_binding(binding_id) is None:
+    if runtime.binding_configs.find_binding(binding_id) is None:
         return None
     manifest = ownership_index.manifest(binding_id)
     entry = manifest.record.entries.get(key(name)) if isinstance(manifest, Loaded) else None
@@ -168,7 +162,7 @@ def test_the_share_count_sees_a_rebuild(bindings: Bindings, tmp_path: Path, monk
     # Guards the counts below: a rebuild of the ownership index builds every destination's share through the hook.
     ids, names = _two_managed(bindings, tmp_path)
     shares = _counted_shares(monkeypatch)
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert _ownership_view(ids, names)
     assert sorted(shares) == ["Other", "Shot"]
 
@@ -198,7 +192,7 @@ def test_a_removed_datablock_rereads_only_its_manifest(
     assert len(shares) == 1  # Other's, replaced; the index isn't rebuilt
     if lookup == "manifest":
         assert found == manifests.read_manifest(bpy.data.collections["Other"])  # what the record shows
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, names)
 
 
@@ -238,7 +232,7 @@ def test_an_update_writes_and_indexes_only_what_changes(
     assert key("marker") in entries
     del entries[key("marker")]
     assert ownership_index.manifest(other) == manifests.read_manifest(destination)
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, names)
 
 
@@ -256,7 +250,7 @@ def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: 
     assert ownership_index.ownership(a).status is ownership_index.OwnershipStatus.AMBIGUOUS
     assert set(ownership_index.ownership(a).claims) == set(by_name.values())
     in_place = _ownership_view(ids, [*names, "x"])
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, [*names, "x"])
     if first_removed == "Other":
         ownership_index.set_manifest_entries(other, {}, [key("a")])
@@ -266,7 +260,7 @@ def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: 
     assert ownership_index.ownership(a) == ownership_index.Ownership((kept,))
     assert ownership_index.ownership(a).status is ownership_index.OwnershipStatus.MANAGED
     in_place = _ownership_view(ids, [*names, "x"])
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, [*names, "x"])
 
 
@@ -306,7 +300,7 @@ def test_an_update_after_a_removal(bindings: Bindings, tmp_path: Path, removed: 
     assert ownership_index.manifest(other) == manifests.read_manifest(bpy.data.collections["Other"])
     in_place = _ownership_view(ids, names)
     assert _resource(other, "b") == replacement
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, names)
 
 
@@ -341,7 +335,7 @@ def test_a_destination_removed_before_the_ownership_index_is_built(
 ) -> None:
     # The state is built without the index; building it then finds the removed destination and rebuilds.
     ids, _ = _two_managed(bindings, tmp_path)
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert _binding_ids() == ids
     bpy.data.collections.remove(bpy.data.collections["Shot"])
     if asked == "claims":
@@ -362,7 +356,7 @@ def test_a_destination_change_after_another_bindings_destination_was_removed(
     bpy.data.collections.remove(bpy.data.collections["Other"])
     repaired = bpy.data.collections.new("Repaired")
     _move_destination(ids[0], bpy.data.collections["Shot"], repaired)
-    runtime.set_config(ids[0], replace(_config(handle), destination=repaired))
+    runtime.binding_configs.set_config(ids[0], replace(_config(handle), destination=repaired))
     assert _config(handle).destination == repaired
     assert _config(BindingHandle(ids[1])).destination is None
 
@@ -372,15 +366,15 @@ def _move_destination(binding_id: BindingId, old: bpy.types.Collection, new: bpy
 
     Its tag and the index entry; the configuration is the caller's.
     """
-    tag = records.read(old, binding_records.TAG_KEY, binding_records.TAG)
+    tag = records.read(old, configs.TAG_KEY, configs.TAG)
     assert isinstance(tag, Loaded)
-    records.write(new, binding_records.TAG_KEY, binding_records.TAG, tag.record)
-    del old[records.NAMESPACE][binding_records.TAG_KEY]
-    [text] = binding_records.index_texts()
-    index = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    records.write(new, configs.TAG_KEY, configs.TAG, tag.record)
+    del old[records.NAMESPACE][configs.TAG_KEY]
+    [text] = configs.index_texts()
+    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
     assert isinstance(index, Loaded)
     destinations = index.record.destinations | {binding_id: new}
-    records.write(text, binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations))
+    records.write(text, configs.INDEX_KEY, configs.INDEX, configs.BindingIndex(destinations))
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(
@@ -388,7 +382,7 @@ def test_a_resource_is_read_through_its_bindings_manifest_alone(
 ) -> None:
     # A binding's manifest() doesn't build the ownership index, which reads every binding's manifest.
     ids, _ = _two_managed(bindings, tmp_path)
-    runtime.invalidate()
+    runtime.state.invalidate()
     reads, shares = _counted_reads(monkeypatch)
     assert _resource(ids[1], "a") == bpy.data.objects["A"]
     assert [read for read in reads if read[1] == manifests.MANIFEST_KEY] == [("Other", manifests.MANIFEST_KEY)]
@@ -459,7 +453,7 @@ def test_publications_replace_only_their_share(
     in_place = _ownership_view(ids, names)
     assert len(shares) == 3  # one share each, none rebuilt
 
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, names)
     oracle.assert_agrees()
 
@@ -472,7 +466,9 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     with source_access.binding_state(tmp_path) as scene:
         other = binding_on_file(bindings, _scene(), scene.root, name="Other")
     bpy.data.collections.remove(bpy.data.collections["Other"])
-    runtime.set_config(other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"]))
+    runtime.binding_configs.set_config(
+        other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"])
+    )
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     assert _ownership_view(ids, names)  # the index is built
     ownership_index.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
@@ -482,7 +478,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     assert _resource(handle.binding_id, "a") == _resource(other.binding_id, "a") == bpy.data.objects["A"]
     assert [c.binding_id for c in ownership_index.ownership(bpy.data.objects["A"]).claims] == [handle.binding_id]
     in_place = _ownership_view(ids, names)
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert in_place == _ownership_view(ids, names)
 
 
@@ -527,12 +523,12 @@ def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatc
     handle.synchronize(0)
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
-    runtime.invalidate()
+    runtime.state.invalidate()
 
     def refused() -> object:
         raise AssertionError("release must not read binding records")
 
-    monkeypatch.setattr(persistence, "read_configs", refused)
+    monkeypatch.setattr(persistence.configs, "read_configs", refused)
     assert handle.release() is None
     assert (stages.live_stage, stages.evaluation_stage) == (None, None)
 
@@ -541,10 +537,13 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
     readable = bindings.create_binding(_scene(), name="A")
     unreadable = bindings.create_binding(_scene(), name="B")
-    _scene()[records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
-    runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
-    found = runtime.find_bindings()
-    assert found == [runtime.find_binding(readable.binding_id), runtime.find_binding(unreadable.binding_id)]
+    _scene()[records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
+    found = runtime.binding_configs.find_bindings()
+    assert found == [
+        runtime.binding_configs.find_binding(readable.binding_id),
+        runtime.binding_configs.find_binding(unreadable.binding_id),
+    ]
     assert [f.usable for f in found] == [True, False]
     assert isinstance(found[1].unreadable, RefusedRecord)
     assert found[1].config is None
@@ -556,7 +555,7 @@ def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Pa
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(bindings, tmp_path)
     assert _binding_ids(_scene()) == [handle.binding_id]
-    del _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)]
+    del _scene()[records.NAMESPACE][configs.config_key(handle.binding_id)]
     assert _binding_ids(_scene()) == []
 
 
@@ -643,9 +642,9 @@ def test_creation_needs_the_extension_registered(tmp_path: Path) -> None:
     # comes first: a binding made anyway would be in the file, and found at the next load.
     with source_access.binding_state(tmp_path) as scene:
         before = _file_data()
-        with pytest.raises(runtime.NotRegisteredError):
+        with pytest.raises(runtime.state.NotRegisteredError):
             binding_on_file(Bindings(), _scene(), scene.root)
-        with pytest.raises(runtime.NotRegisteredError):
+        with pytest.raises(runtime.state.NotRegisteredError):
             Bindings().create_binding(_scene())
     assert _file_data() == before
 
@@ -655,11 +654,11 @@ def test_writes_need_the_extension_registered(bindings: Bindings, tmp_path: Path
     bindings.create_binding(_scene())
     addon.unregister()
     before = _file_data()
-    with pytest.raises(runtime.NotRegisteredError):
+    with pytest.raises(runtime.state.NotRegisteredError):
         handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    with pytest.raises(runtime.NotRegisteredError):
+    with pytest.raises(runtime.state.NotRegisteredError):
         handle.attach(Usd.Stage.CreateInMemory(), confirm=True)
-    with pytest.raises(runtime.NotRegisteredError):
+    with pytest.raises(runtime.state.NotRegisteredError):
         ownership_index.set_manifest(handle.binding_id, Manifest({}))
     assert _file_data() == before
 

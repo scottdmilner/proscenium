@@ -8,21 +8,24 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..binding import runtime
-from ..binding.persistence import RefusedRecord
+from ..binding.persistence import records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.source_access import SourceUnavailableError, dirty_layers
+from ..binding.runtime import ownership_index
+from ..binding.source_access import stages
 
 if TYPE_CHECKING:
     from pxr import Usd
 
-    from ..binding.persistence import BindingConfig
-    from ..binding.runtime import CurrentStages
-    from ..binding.source_access import BindingId
+    from ..binding.persistence import configs
+    from ..binding.runtime import stage_tracking
+    from ..binding.source_access import identifiers
 
 
 def synchronize(
-    binding_id: BindingId, config: BindingConfig, current: CurrentStages, time_code: Usd.TimeCode
+    binding_id: identifiers.BindingId,
+    config: configs.BindingConfig,
+    current: stage_tracking.CurrentStages,
+    time_code: Usd.TimeCode,
 ) -> Result:
     """Synchronize a usable binding with config at time_code; the result names the time code.
 
@@ -34,12 +37,12 @@ def synchronize(
         return Result(Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message), time_codes=(time_code,))
     # A manifest that can't be read, one naming an unknown role included (ROLE-01), is kept, so nothing it names is
     # replaced or retired.
-    if isinstance(manifest := runtime.manifest(binding_id), RefusedRecord):
+    if isinstance(manifest := ownership_index.manifest(binding_id), records.RefusedRecord):
         diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message)
         return Result(diagnostic, time_codes=(time_code,))
     try:
-        dirty = dirty_layers(current.attached(binding_id).acquire(config.settings.payload_policy))
-    except SourceUnavailableError as error:
+        dirty = stages.dirty_layers(current.attached(binding_id).acquire(config.settings.payload_policy))
+    except stages.SourceUnavailableError as error:
         return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), time_codes=(time_code,))
     if not dirty:
         return Result(time_codes=(time_code,))

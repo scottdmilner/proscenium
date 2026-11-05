@@ -14,14 +14,9 @@ import pytest
 
 from fixtures import records as record_fixtures
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import (
-    Ledger,
-    LedgerEntry,
-    OriginatingOperation,
-    RepresentationRole,
-    RetryStatus,
-    ledger,
-)
+from proscenium.binding.persistence import ledgers
+from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation, RetryStatus
+from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusalReason, RefusedRecord, RefusedRecordError
 from proscenium.binding.results import Diagnostic, DiagnosticCode
 from proscenium.synchronization import prepared_work
@@ -32,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access import BindingId
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -40,7 +35,7 @@ def _binding(bindings: Bindings) -> BindingId:
 
 
 def _text() -> bpy.types.Text:
-    [text] = persistence.index_texts()
+    [text] = persistence.configs.index_texts()
     return text
 
 
@@ -66,59 +61,59 @@ def test_a_ledger_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -
     # status, and cleanup diagnostic, each its own field.
     binding_id = _binding(bindings)
     entries = _entries(binding_id)
-    runtime.set_ledger_entries(entries)
+    runtime.pending_cleanup.set_ledger_entries(entries)
     save_and_reopen(tmp_path / "ledger.blend")
     mesh, obj = bpy.data.meshes["Leftover"], bpy.data.objects["Leftover"]
     expected = {
         key("mesh"): replace(entries[key("mesh")], datablock=mesh),
         key("object"): replace(entries[key("object")], datablock=obj),
     }
-    read = ledger.read_ledger(_text())
+    read = ledgers.read_ledger(_text())
     assert read == Loaded(Ledger(expected), 1)
-    assert runtime.ledger() == read
+    assert runtime.pending_cleanup.ledger() == read
     assert all(type(e.role) is RepresentationRole for e in read.record.entries.values())
 
 
 def test_a_change_writes_only_its_entries(bindings: Bindings) -> None:
     binding_id = _binding(bindings)
-    runtime.set_ledger_entries(_entries(binding_id))
-    group = _text()[NAMESPACE][ledger.LEDGER_KEY]["entries"]
+    runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
+    group = _text()[NAMESPACE][ledgers.LEDGER_KEY]["entries"]
     kept = group[key("object")].to_dict()
-    runtime.set_ledger_entries({}, [key("mesh")])
+    runtime.pending_cleanup.set_ledger_entries({}, [key("mesh")])
     assert list(group.keys()) == [key("object")]  # the stored group, changed in place
     assert group[key("object")].to_dict() == kept
-    assert dict(runtime.ledger().record.entries).keys() == {key("object")}  # ty: ignore[unresolved-attribute]
+    assert dict(runtime.pending_cleanup.ledger().record.entries).keys() == {key("object")}  # ty: ignore[unresolved-attribute]
 
 
 def test_a_removed_datablock_leaves_an_entry_with_nothing_to_dispose_of(bindings: Bindings) -> None:
     binding_id = _binding(bindings)
-    runtime.set_ledger_entries(_entries(binding_id))
-    runtime.ledger()  # held
+    runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
+    runtime.pending_cleanup.ledger()  # held
     bpy.data.objects.remove(bpy.data.objects["Leftover"])
-    held = runtime.ledger()
+    held = runtime.pending_cleanup.ledger()
     assert isinstance(held, Loaded)
     assert held.record.entries[key("object")].datablock is None
     assert held.record.entries[key("mesh")].datablock == bpy.data.meshes["Leftover"]
 
 
 def test_a_file_without_a_binding_index_has_no_ledger(bindings: Bindings) -> None:
-    assert runtime.ledger() is None
+    assert runtime.pending_cleanup.ledger() is None
     with pytest.raises(ValueError, match="no binding index"):
-        runtime.set_ledger_entries({})
+        runtime.pending_cleanup.set_ledger_entries({})
 
 
 def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
     # As appending another file's index Text makes it: nothing is recorded or disposed of until it's gone.
     binding_id = _binding(bindings)
     _text().copy()
-    runtime.invalidate()  # the records changed behind the state, as an append changes them
+    runtime.state.invalidate()  # the records changed behind the state, as an append changes them
     with pytest.raises(ValueError, match="2 binding indexes"):
-        runtime.ledger()
+        runtime.pending_cleanup.ledger()
     with pytest.raises(ValueError, match="2 binding indexes"):
-        runtime.set_ledger_entries(_entries(binding_id))
+        runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
     with pytest.raises(ValueError, match="2 binding indexes"):
         prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
-    assert all(ledger.LEDGER_KEY not in text[NAMESPACE] for text in persistence.index_texts())
+    assert all(ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.configs.index_texts())
 
 
 @pytest.mark.parametrize("name", ["newer", "no-version", "not-a-group"])  # F-SCHEMA-VERSIONS' ledgers
@@ -127,17 +122,17 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
     # no work is prepared, since the ledger couldn't track it.
     with record_fixtures.schema_versions(tmp_path) as versions:
         binding_id = _binding(bindings)
-        _text()[NAMESPACE][ledger.LEDGER_KEY] = versions.ledgers[name]
+        _text()[NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers[name]
         stored = _stored()
-        runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
-        refused = ledger.read_ledger(_text())
+        runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
+        refused = ledgers.read_ledger(_text())
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.ledgers_refused[name]
-        assert runtime.ledger() == refused
+        assert runtime.pending_cleanup.ledger() == refused
         with pytest.raises(RefusedRecordError):
-            runtime.set_ledger_entries(_entries(binding_id))
+            runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
         with pytest.raises(RefusedRecordError):
-            ledger.write_ledger_entries(_text(), Ledger(_entries(binding_id)), [key("mesh")], [])
+            ledgers.write_ledger_entries(_text(), Ledger(_entries(binding_id)), [key("mesh")], [])
         collections = len(bpy.data.collections)
         with pytest.raises(RefusedRecordError):
             prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
@@ -156,12 +151,12 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
 )
 def test_an_invalid_ledger_is_refused(bindings: Bindings, change: dict[str, object], problem: str) -> None:
     binding_id = _binding(bindings)
-    runtime.set_ledger_entries(_entries(binding_id))
+    runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
     stored = _stored()
     stored["entries"][key("mesh")] |= change  # ty: ignore[not-subscriptable]
-    _text()[NAMESPACE][ledger.LEDGER_KEY] = stored
-    runtime.invalidate()
-    refused = runtime.ledger()
+    _text()[NAMESPACE][ledgers.LEDGER_KEY] = stored
+    runtime.state.invalidate()
+    refused = runtime.pending_cleanup.ledger()
     assert isinstance(refused, RefusedRecord)
     assert refused.refusal is RefusalReason.INVALID
     assert problem in refused.message
@@ -170,10 +165,10 @@ def test_an_invalid_ledger_is_refused(bindings: Bindings, change: dict[str, obje
 def test_a_ledger_key_is_32_hex_digits(bindings: Bindings) -> None:
     binding_id = _binding(bindings)
     entry = next(iter(_entries(binding_id).values()))
-    assert len(persistence.new_ledger_key()) == 32
+    assert len(persistence.ledgers.new_ledger_key()) == 32
     with pytest.raises(ValueError, match="ledger keys are 32 hex digits"):
-        runtime.set_ledger_entries({"leftover": entry})
-    assert runtime.ledger() is None
+        runtime.pending_cleanup.set_ledger_entries({"leftover": entry})
+    assert runtime.pending_cleanup.ledger() is None
 
 
 @pytest.mark.parametrize(
@@ -182,13 +177,13 @@ def test_a_ledger_key_is_32_hex_digits(bindings: Bindings) -> None:
 def test_an_update_that_makes_no_ledger_changes_nothing(bindings: Bindings, removed: list[str], problem: str) -> None:
     binding_id = _binding(bindings)
     entries = _entries(binding_id)
-    runtime.set_ledger_entries(entries)
+    runtime.pending_cleanup.set_ledger_entries(entries)
     stored = _stored()
     with pytest.raises(ValueError, match=problem):
-        runtime.set_ledger_entries({key("mesh"): entries[key("mesh")]}, removed)
+        runtime.pending_cleanup.set_ledger_entries({key("mesh"): entries[key("mesh")]}, removed)
     assert _stored() == stored
-    assert runtime.ledger() == Loaded(Ledger(entries), 1)
+    assert runtime.pending_cleanup.ledger() == Loaded(Ledger(entries), 1)
 
 
 def _stored() -> object:
-    return persistence.records.stored(_text(), ledger.LEDGER_KEY)
+    return persistence.records.stored(_text(), ledgers.LEDGER_KEY)

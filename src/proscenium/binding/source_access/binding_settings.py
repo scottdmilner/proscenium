@@ -1,11 +1,11 @@
 """RequestedSettings, the settings a binding's next synchronization uses (lifecycle.md#binding-state).
 
-The binding's configuration holds them (proscenium.binding.persistence.binding_records), and set_settings changes them.
+The binding's configuration holds them (proscenium.binding.persistence.configs), and set_settings changes them.
 """
 
 from dataclasses import dataclass
 
-from .binding_stages import PayloadPolicy
+from .stages import PayloadPolicy
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,6 @@
 # `proscenium.binding`
 
-Everything about [bindings](../../../docs/PROJECT.md#glossary) apart from the compiled core: their records, runtime state, source access, and results. It's kept apart from `proscenium.core`, so the Blender-facing code and the core and its Hydra code change independently. Code outside it imports its units, `runtime`, `persistence`, `source_access`, and `results`, and uses what each exports, never the modules inside them (checked by `tests/bpy_free/test_import_tiers.py`); tests reach into the modules. It holds the two tiers, `runtime/` over `persistence/`, and the bpy-free code they and `proscenium.api` build on ([tiers](../../../docs/plans/source-tiers-and-names.md#tiers)).
+Everything about [bindings](../../../docs/PROJECT.md#glossary) apart from the compiled core: their records, runtime state, source access, and results. It's kept apart from `proscenium.core`, so the Blender-facing code and the core and its Hydra code change independently. Its units are `runtime/` (tier 3), `persistence/` (tier 2), and `source_access/` and `results.py` (the lowest tier), which code in other units imports by the [import rules](../README.md#import-rules).
 
 | Path | Holds |
 |---|---|

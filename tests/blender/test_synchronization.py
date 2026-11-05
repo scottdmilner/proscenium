@@ -22,11 +22,11 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import binding_records, records
+from proscenium.binding.persistence import configs, records
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
 from proscenium.binding.runtime import state
-from proscenium.binding.source_access import PayloadPolicy
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.usd import binding_on_file, open_fresh
 
@@ -144,7 +144,7 @@ def test_an_unchanged_configuration_is_not_written(
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result()  # the default
     assert written == []
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    assert written == [binding_records.config_key(handle.binding_id)]
+    assert written == [configs.config_key(handle.binding_id)]
 
 
 def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
@@ -220,10 +220,10 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
             assert handle.attach(caller) == Result()
             assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         second_evaluation = _evaluation(bindings, second)
-        before = records.stored(_scene(), binding_records.config_key(first.binding_id))
+        before = records.stored(_scene(), configs.config_key(first.binding_id))
         assert first.release() is None
         assert first.release() is None
-        assert records.stored(_scene(), binding_records.config_key(first.binding_id)) == before
+        assert records.stored(_scene(), configs.config_key(first.binding_id)) == before
         assert first.live_stage() is None
         assert [d.code for d in first.synchronize(0).diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert second.live_stage() == caller
@@ -235,13 +235,13 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
     scans: list[int] = []
-    read_configs = persistence.read_configs
+    read_configs = persistence.configs.read_configs
 
     def counted() -> object:
         scans.append(1)
         return read_configs()
 
-    monkeypatch.setattr(persistence, "read_configs", counted)
+    monkeypatch.setattr(persistence.configs, "read_configs", counted)
     return scans
 
 
@@ -335,11 +335,11 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     assert stages is not None
     caller, evaluation = stages.live_stage, stages.evaluation_stage
     if unusable == "unreadable":
-        _scene()[records.NAMESPACE][binding_records.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+        _scene()[records.NAMESPACE][configs.config_key(handle.binding_id)][records.VERSION_KEY] = 99
     else:
-        [text] = binding_records.index_texts()
+        [text] = configs.index_texts()
         text.copy()  # two indexes naming the identity leave no canonical candidate
-    runtime.invalidate()
+    runtime.state.invalidate()
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE
     assert handle.live_stage() is None
     assert bindings.stages.get(handle.binding_id) is stages

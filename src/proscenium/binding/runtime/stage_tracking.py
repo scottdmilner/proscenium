@@ -9,33 +9,32 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..source_access import StageRegistry
+from ..source_access import registry
 from . import binding_configs, state
 
 if TYPE_CHECKING:
-    from ..source_access import BindingStages
-    from ..source_access.binding_ids import BindingId
+    from ..source_access import identifiers, stages
 
 
 class CurrentStages:
     """Every binding's stages, compared with the bindings before each use if their state was rebuilt since."""
 
-    _registry: StageRegistry
+    _registry: registry.StageRegistry
     _pruned_at: int | None  # state.rebuild_count() when the stages were last compared with the bindings
 
     def __init__(self) -> None:
-        self._registry = StageRegistry()
+        self._registry = registry.StageRegistry()
         self._pruned_at = None
 
-    def attached(self, binding_id: BindingId) -> BindingStages:
+    def attached(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
         """The binding's stages on an attached source (StageRegistry.attached)."""
         return self._current().attached(binding_id)
 
-    def get(self, binding_id: BindingId) -> BindingStages | None:
+    def get(self, binding_id: identifiers.BindingId) -> stages.BindingStages | None:
         """The binding's stages, or None before their first use."""
         return self._current().get(binding_id)
 
-    def release(self, binding_id: BindingId) -> None:
+    def release(self, binding_id: identifiers.BindingId) -> None:
         """Release one binding without reading its records (StageRegistry.release)."""
         self._registry.release(binding_id)
 
@@ -52,10 +51,10 @@ class CurrentStages:
 
     def clear(self) -> None:
         """Drop every binding's stages, leaving each binding with no source stage or attachment."""
-        self._registry = StageRegistry()
+        self._registry = registry.StageRegistry()
         self._pruned_at = None
 
-    def _current(self) -> StageRegistry:
+    def _current(self) -> registry.StageRegistry:
         """The stages, pruned first if the bindings' state was rebuilt since they were last compared with it."""
         if self._pruned_at != state.rebuild_count():
             self.prune()

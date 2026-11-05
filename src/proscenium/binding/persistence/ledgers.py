@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..results import Diagnostic
+from .. import results
 from . import records
 from .manifests import RepresentationRole
 from .records import Loaded, RefusedRecord, Schema
@@ -33,7 +33,7 @@ from .records import Loaded, RefusedRecord, Schema
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-    from ..source_access.binding_ids import BindingId
+    from ..source_access import identifiers
 
 LEDGER_KEY = "ledger"
 
@@ -62,13 +62,14 @@ def new_ledger_key() -> str:
 class LedgerEntry:
     """One pending resource."""
 
-    binding_id: BindingId  # the binding that owns it
+    binding_id: identifiers.BindingId  # the binding that owns it
     entry_key: str  # its key in that binding's manifest: the entry it was prepared as, or published as
     role: RepresentationRole  # a record stores the value
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it
     operation: OriginatingOperation
     status: RetryStatus
-    diagnostic: Diagnostic | None = None  # its cleanup diagnostic, which a retryable entry has and a prepared one lacks
+    # Its cleanup diagnostic, which a retryable entry has and a prepared one lacks.
+    diagnostic: results.Diagnostic | None = None
 
     def __post_init__(self) -> None:
         if type(self.binding_id) is not str or type(self.entry_key) is not str:
@@ -79,8 +80,8 @@ class LedgerEntry:
         object.__setattr__(self, "role", RepresentationRole(self.role))
         object.__setattr__(self, "operation", OriginatingOperation(self.operation))
         object.__setattr__(self, "status", RetryStatus(self.status))
-        if self.diagnostic is not None and not isinstance(self.diagnostic, Diagnostic):
-            object.__setattr__(self, "diagnostic", Diagnostic(**self.diagnostic))
+        if self.diagnostic is not None and not isinstance(self.diagnostic, results.Diagnostic):
+            object.__setattr__(self, "diagnostic", results.Diagnostic(**self.diagnostic))
         if (self.diagnostic is None) != (self.status is RetryStatus.PREPARED):
             raise ValueError("a retryable entry has a cleanup diagnostic, and a prepared one has none")
 

@@ -10,15 +10,16 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import Manifest, ManifestEntry, binding_state
+from proscenium.binding.persistence import binding_state
 from proscenium.binding.persistence.binding_state import Generation
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.runtime import ownership_index
-from proscenium.binding.source_access import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support.manifests import key
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, display: SavedDisplay) -> None:

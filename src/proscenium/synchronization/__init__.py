@@ -1,9 +1,9 @@
 """Synchronization: the transaction that makes one attempt, and the application layer it applies plans with.
 
-docs/spec/pipeline.md#synchronization-transaction. proscenium.api calls it; it imports proscenium.binding's units
-and proscenium.core, using what each package exports.
+docs/spec/pipeline.md#synchronization-transaction. proscenium.api calls it. It exports the transaction's module;
+the application layer and prepared work are the transaction's own.
 """
 
-from .transaction import synchronize
+from . import transaction
 
-__all__ = ["synchronize"]
+__all__ = ["transaction"]
