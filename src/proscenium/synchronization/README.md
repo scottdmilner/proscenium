@@ -5,4 +5,5 @@ The synchronization transaction ([Synchronization Transaction](../../../docs/spe
 | File | Holds |
 |---|---|
 | `__init__.py` | The package's exports: `synchronize`. |
+| `application.py` | M5's stub application layer, which M7 replaces: `prepare` makes each of a plan's placeholders, an object drawing its bounds and its bounds mesh, in a staging collection no scene links, keyed by the published entries whose identities they have (`PreparedWork`); `dispose` removes what a preparation made. Preparation only creates datablocks, so it changes nothing the published generation reaches (TXN-05). The transaction doesn't call it until publication and tracking of prepared work land (M5 plan, D4 and D5). |
 | `transaction.py` | `synchronize`, the transaction's steps for a binding the caller has found usable. So far it refuses a binding whose manifest can't be read, a manifest naming an unknown role included, and acquires the evaluation stage. |
