@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Result, ResultState
 
 DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layers=("/a.usda",))
 UNATTACHED = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
 REMOVED = Diagnostic(DiagnosticCode.REMOVED_DESTINATION, "binding", "The destination was removed")
+LEFTOVER = Diagnostic(DiagnosticCode.DISPOSAL_FAILED, "binding", "Couldn't dispose", resource="0" * 32, role="object")
 
 
 def test_with_no_diagnostics_or_only_source_state_it_succeeds() -> None:
@@ -59,3 +62,17 @@ def test_problems_about_different_things_stay_apart() -> None:
         REMOVED,
         other_binding,
     )
+
+
+def test_the_cleanup_status_never_changes_the_state() -> None:
+    # DIAG-15: leftovers an earlier attempt left are reported apart, aggregated; a result's own pending cleanup is its
+    # issue.
+    result = Result(DIRTY, cleanup_status=(LEFTOVER, LEFTOVER))
+    assert result.state is ResultState.SUCCESS
+    assert (result.diagnostics, result.cleanup_status) == ((DIRTY,), (LEFTOVER,))
+    assert Result(LEFTOVER).state is ResultState.COMPLETED_WITH_ISSUES
+
+
+def test_a_cleanup_status_holds_only_pending_cleanup() -> None:
+    with pytest.raises(ValueError, match="only pending-cleanup"):
+        Result(cleanup_status=(DIRTY,))

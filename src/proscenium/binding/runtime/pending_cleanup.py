@@ -1,8 +1,8 @@
 """The pending-cleanup ledger, through the bindings' state (lifecycle.md#pending-cleanup).
 
 The ledger is read from the binding index's Text when first asked for, and held with that Text's records; writes go
-through it, as manifest writes do. Only operations that record or resolve pending work read it, so no frequent
-operation pays for it.
+through it, as manifest writes do. Every operation's result reports its binding's cleanup status from it, so once it's
+held a result costs a check of each entry's datablock, and only work it records or resolves writes it.
 
 While the file has more than one binding index, the ledger refuses as the index does: an appended index Text brings a
 ledger whose pointers name the appended copies, so nothing is recorded or disposed of until it's gone.
@@ -19,6 +19,8 @@ from .state import StaleError, Unread
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
+    from .. import results
+    from ..source_access import identifiers
     from .state import IndexRecords, State
 
 
@@ -28,6 +30,23 @@ def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
     Raises ValueError if the file has more than one binding index.
     """
     return state.query(_checked_ledger)
+
+
+def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnostic, ...]:
+    """The binding's current cleanup diagnostics: the ledger's, one per resource it holds pending, by ledger key.
+
+    A ledger entry is one resource with one originating operation, so these are deduplicated by operation and resource
+    (DIAG-06). Prepared work, still tracked by the operation preparing it, has none. Empty when the ledger can't be read
+    or the file has more than one binding index, since neither names a pending resource cleanup could retry.
+    """
+
+    def question(current: State) -> tuple[results.Diagnostic, ...]:
+        if len(current.indexes) > 1 or not isinstance(ledger := _checked_ledger(current), records.Loaded):
+            return ()
+        entries = sorted(ledger.record.entries.items())
+        return tuple(e.diagnostic for _, e in entries if e.binding_id == binding_id and e.diagnostic is not None)
+
+    return state.query(question)
 
 
 def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:

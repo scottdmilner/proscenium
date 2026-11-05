@@ -13,6 +13,9 @@ A binding refuses the operations that need its configuration when the configurat
 pending repair (source-access.md#copied-bindings). Either way it keeps everything it has. A handle reaches a
 binding's canonical candidate, and copied() reports the others.
 
+Each operation's result reports the binding's cleanup status as it ends (proscenium.binding.runtime.pending_cleanup),
+a refusal's included.
+
 Each kind of call reports a refusal one way:
 
 - An operation (attach, synchronize, set_settings, reload) returns a result whose diagnostic says why.
@@ -25,18 +28,20 @@ Each kind of call reports a refusal one way:
 from __future__ import annotations
 
 import dataclasses
+import functools
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pxr import Usd
 
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_configs, stage_tracking, state
+from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking, state
 from ..binding.source_access import binding_settings, stages
 from ..synchronization import transaction
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
+    from typing import Concatenate
 
     import bpy
 
@@ -47,6 +52,20 @@ if TYPE_CHECKING:
 # The types callers pass and receive, so callers outside proscenium import only this module: these, and Result,
 # imported above.
 RequestedSettings = binding_settings.RequestedSettings
+
+
+def _reporting_cleanup[**P](
+    operation: Callable[Concatenate[Bindings, identifiers.BindingId, P], Result],
+) -> Callable[Concatenate[Bindings, identifiers.BindingId, P], Result]:
+    """operation, its result reporting the binding's cleanup status once it ends."""
+
+    @functools.wraps(operation)
+    def reporting(bindings: Bindings, binding_id: identifiers.BindingId, *args: P.args, **kwargs: P.kwargs) -> Result:
+        result = operation(bindings, binding_id, *args, **kwargs)
+        status = pending_cleanup.cleanup_status(binding_id)
+        return Result(*result.diagnostics, time_codes=result.time_codes, cleanup_status=status)
+
+    return reporting
 
 
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
@@ -122,6 +141,7 @@ class Bindings:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
         return binding_configs.copied_bindings()
 
+    @_reporting_cleanup
     def attach(self, binding_id: identifiers.BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach stage to one binding, requiring confirmation when its stored root identifier differs."""
         found = self._found(binding_id)
@@ -152,6 +172,7 @@ class Bindings:
         """
         return self._found(binding_id).usable_config().settings
 
+    @_reporting_cleanup
     def set_settings(
         self, binding_id: identifiers.BindingId, *, payload_policy: stages.PayloadPolicy | None = None
     ) -> Result:
@@ -166,6 +187,7 @@ class Bindings:
         binding_configs.set_config(binding_id, config)
         return Result()
 
+    @_reporting_cleanup
     def synchronize(self, binding_id: identifiers.BindingId, time_code: Usd.TimeCode | float) -> Result:
         """Synchronize at an explicit time code through the transaction (proscenium.synchronization).
 
@@ -178,6 +200,7 @@ class Bindings:
             return Result(*_refused(found).diagnostics, time_codes=(attempted,))
         return transaction.synchronize(binding_id, found.usable_config(), self.stages, attempted)
 
+    @_reporting_cleanup
     def reload(self, binding_id: identifiers.BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
 

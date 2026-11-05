@@ -151,15 +151,26 @@ def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
 class Result:
     """What an operation on a binding did. Expected failures are results, never exceptions.
 
-    Its diagnostics are aggregated, and its state derives from them.
+    Its diagnostics are its own, aggregated, and its state derives from them. Its cleanup status is the binding's
+    pending cleanup as the operation ended, which an earlier attempt may have left, so it never changes the state
+    (DIAG-06, DIAG-15).
     """
 
     diagnostics: tuple[Diagnostic, ...]
     time_codes: tuple[Usd.TimeCode, ...]  # those it attempted: a synchronization's one, none for most operations
+    cleanup_status: tuple[Diagnostic, ...]  # the binding's current cleanup diagnostics, aggregated
 
-    def __init__(self, *diagnostics: Diagnostic, time_codes: Iterable[Usd.TimeCode] = ()) -> None:
+    def __init__(
+        self,
+        *diagnostics: Diagnostic,
+        time_codes: Iterable[Usd.TimeCode] = (),
+        cleanup_status: Iterable[Diagnostic] = (),
+    ) -> None:
         object.__setattr__(self, "diagnostics", aggregated(diagnostics))
         object.__setattr__(self, "time_codes", tuple(time_codes))
+        object.__setattr__(self, "cleanup_status", aggregated(cleanup_status))
+        if any(d.category is not DiagnosticCategory.PENDING_CLEANUP for d in self.cleanup_status):
+            raise ValueError("a cleanup status holds only pending-cleanup diagnostics")
 
     @property
     def state(self) -> ResultState:

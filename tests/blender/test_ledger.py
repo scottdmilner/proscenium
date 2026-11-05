@@ -1,4 +1,6 @@
-"""The pending-cleanup ledger on the binding index's Text, and its write-through (lifecycle.md#pending-cleanup).
+"""The pending-cleanup ledger on the binding index's Text, its write-through, and the cleanup status read from it.
+
+See lifecycle.md#pending-cleanup and pipeline.md#diagnostics.
 
 Bindings come from the synchronization API on a fresh process state per test; the resources the ledger tracks are made
 here, as preparation makes them.
@@ -13,15 +15,17 @@ import bpy
 import pytest
 
 from fixtures import records as record_fixtures
+from fixtures.scenes import Scene, copy_scene
 from proscenium.binding import persistence, runtime
 from proscenium.binding.persistence import ledgers
 from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation, RetryStatus
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusalReason, RefusedRecord, RefusedRecordError
-from proscenium.binding.results import Diagnostic, DiagnosticCode
+from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.synchronization import prepared_work
 from support.blend import save_and_reopen
 from support.manifests import key
+from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -113,6 +117,7 @@ def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
         runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
     with pytest.raises(ValueError, match="2 binding indexes"):
         prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
+    assert runtime.pending_cleanup.cleanup_status(binding_id) == ()  # no ledger names what's pending
     assert all(ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.configs.index_texts())
 
 
@@ -129,6 +134,7 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.ledgers_refused[name]
         assert runtime.pending_cleanup.ledger() == refused
+        assert runtime.pending_cleanup.cleanup_status(binding_id) == ()
         with pytest.raises(RefusedRecordError):
             runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
         with pytest.raises(RefusedRecordError):
@@ -183,6 +189,30 @@ def test_an_update_that_makes_no_ledger_changes_nothing(bindings: Bindings, remo
         runtime.pending_cleanup.set_ledger_entries({key("mesh"): entries[key("mesh")]}, removed)
     assert _stored() == stored
     assert runtime.pending_cleanup.ledger() == Loaded(Ledger(entries), 1)
+
+
+def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp_path: Path) -> None:
+    # DIAG-06, DIAG-15, API-13: the ledger's leftovers are in each result's cleanup status, apart from its own
+    # diagnostics and leaving its state; prepared work and another binding's leftovers aren't. From D6,
+    # F-PREPARATION-CLEANUP-FAILURE checks it through the synchronizations that leave them.
+    root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
+    handle = binding_on_file(bindings, bpy.data.scenes["Scene"], root)
+    other = _binding(bindings)
+    entries = _entries(handle.binding_id)
+    others = {key("other"): _entries(other)[key("object")]}
+    runtime.pending_cleanup.set_ledger_entries(entries | others)
+    stage = handle.live_stage()
+    assert stage is not None
+    status = (entries[key("object")].diagnostic,)
+    for result in (handle.synchronize(0), handle.attach(stage), handle.set_settings(), handle.reload()):
+        assert (result.state, result.diagnostics, result.cleanup_status) == (ResultState.SUCCESS, (), status)
+    # A refusal reports it too.
+    refused = bindings.synchronize(other, 0)
+    assert refused.state is ResultState.FATAL_FAILURE
+    assert refused.cleanup_status == (others[key("other")].diagnostic,)
+    # Resolved work leaves the status.
+    runtime.pending_cleanup.set_ledger_entries({}, [key("object")])
+    assert handle.synchronize(0).cleanup_status == ()
 
 
 def _stored() -> object:
