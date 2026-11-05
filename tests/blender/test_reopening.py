@@ -23,15 +23,15 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, records
+from proscenium.binding.persistence import Manifest, binding_records, binding_state, records
 from proscenium.binding.persistence.binding_state import LastAttempt
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership_index
 from proscenium.binding.source_access import PayloadPolicy
 from support.blend import collection_content, save_and_reopen
 from support.display import expected_content, publish_by_hand
+from support.manifests import key, object_entry
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
@@ -65,8 +65,8 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     manifest = ownership_index.manifest(handle.binding_id)
     assert isinstance(manifest, Loaded)
     entries = {
-        key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses)
-        for key, entry in manifest.record.entries.items()
+        entry_key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses, entry.place)
+        for entry_key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(destination)
     assert isinstance(generation, Loaded)
@@ -85,7 +85,10 @@ def _publish(handle: BindingHandle, display: SavedDisplay) -> dict[str, object]:
     saved = _saved(handle)
     assert saved["content"] == expected_content(display)
     names = {"world": "World", "ref": "Ref", "ref-mesh": "Ref", "ref-material": "Ref"}
-    assert saved["entries"] == {key: (names[key], *entry) for key, entry in display.entries.items()}
+    assert saved["entries"] == {
+        key(name): (names[name], covers, role, tuple(key(u) for u in uses), place)
+        for name, (covers, role, uses, place) in display.entries.items()
+    }
     return saved
 
 
@@ -172,7 +175,7 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         obj = bpy.data.objects.new("Managed", None)
         bpy.data.collections["Shot"].objects.link(obj)
         _scene().collection.objects.link(obj)
-        ownership_index.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+        ownership_index.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
         attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ())
         binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
         assert ownership_index.ownership(obj).claims != ()

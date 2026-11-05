@@ -5,4 +5,4 @@ The synchronization transaction ([Synchronization Transaction](../../../docs/spe
 | File | Holds |
 |---|---|
 | `__init__.py` | The package's exports: `synchronize`. |
-| `transaction.py` | `synchronize`, the transaction's steps for a binding the caller has found usable. So far it acquires the evaluation stage only. |
+| `transaction.py` | `synchronize`, the transaction's steps for a binding the caller has found usable. So far it refuses a binding whose manifest can't be read, a manifest naming an unknown role included, and acquires the evaluation stage. |

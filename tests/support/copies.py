@@ -7,12 +7,12 @@ file beside it first, so the other file holds the same binding.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import binding_records, manifests, records
-from proscenium.binding.persistence.manifests import Manifest
+from proscenium.binding.persistence import Manifest, binding_records, manifests, records
 from proscenium.binding.persistence.records import Loaded
 
 if TYPE_CHECKING:
@@ -96,8 +96,8 @@ def _deep_copy_collection(tmp_path: Path) -> None:
     manifest = manifests.read_manifest(copy)
     assert isinstance(manifest, Loaded)
     entries = {
-        key: type(entry)(copies.get(entry.datablock, entry.datablock), entry.covers, entry.role, entry.uses)
-        for key, entry in manifest.record.entries.items()
+        entry_key: replace(entry, datablock=copies.get(entry.datablock, entry.datablock))
+        for entry_key, entry in manifest.record.entries.items()
     }
     manifests.write_manifest(copy, Manifest(entries))
 

@@ -12,9 +12,8 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding.persistence import binding_records, binding_state, manifests, records
+from proscenium.binding.persistence import Manifest, binding_records, binding_state, manifests, records
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
@@ -26,6 +25,7 @@ from proscenium.binding.persistence.records import (
 from proscenium.binding.results import Diagnostic, DiagnosticCode
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
+from support.manifests import key, object_entry
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
     # Writing one leaves the configuration, the manifest, and the other unchanged.
     handle = _binding(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
-    manifests.write_manifest(destination, Manifest({"a": ManifestEntry(None, [], "prim", [])}))
+    manifests.write_manifest(destination, Manifest({key("a"): object_entry(None, "/World")}))
 
     def stored() -> list[object]:
         return [

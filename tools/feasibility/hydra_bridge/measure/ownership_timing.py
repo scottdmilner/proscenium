@@ -43,35 +43,41 @@ def _stats(values: list[float]) -> dict[str, Any]:
 
 
 def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict[str, Any]:
-    """The display's manifest entries, by resource identity."""
+    """The display's manifest entries, by entry key: a random one for each resource, as a publication gives."""
+    from collections import defaultdict
+
     from apply import SHEAR_PARENT
 
-    from proscenium.binding.persistence.manifests import ManifestEntry
+    from proscenium.binding.persistence import ManifestEntry, RepresentationRole, new_entry_key
 
+    key: defaultdict[str, str] = defaultdict(new_entry_key)  # each resource's name here -> its entry key
     users: dict[int, list[str]] = {}
     found: dict[str, Any] = {}
     for index, (record, obj) in enumerate(zip(records, display.objects, strict=True)):
         mesh = record["mesh"]
-        uses = [] if mesh is None else [f"mesh:{mesh}"]
-        uses += [f"material:{m}" for m in dict.fromkeys(record["material_slots"]) if m is not None]
+        uses = [] if mesh is None else [key[f"mesh:{mesh}"]]
+        uses += [key[f"material:{m}"] for m in dict.fromkeys(record["material_slots"]) if m is not None]
+        source = [record["source"]]
         if mesh is not None:
             users.setdefault(mesh, []).append(record["source"])
         elif obj.data is not None:  # a placeholder's own bounds
-            found[f"bounds:{index}"] = ManifestEntry(obj.data, [record["source"]], "placeholder bounds", [])
-            uses.append(f"bounds:{index}")
+            found[key[f"bounds:{index}"]] = ManifestEntry(obj.data, source, RepresentationRole.BOUNDS_MESH, [], 0)
+            uses.append(key[f"bounds:{index}"])
         if obj.parent is not None and SHEAR_PARENT in obj.parent:
-            found[f"shear:{index}"] = ManifestEntry(obj.parent, [record["source"]], "shear parent", [])
-        found[f"object:{index}"] = ManifestEntry(obj, [record["source"]], "object", uses)
+            found[key[f"shear:{index}"]] = ManifestEntry(obj.parent, source, RepresentationRole.SHEAR_PARENT, [], 0)
+        found[key[f"object:{index}"]] = ManifestEntry(obj, source, RepresentationRole.OBJECT, uses, 0)
     for index, mesh in enumerate(display.meshes):
-        found[f"mesh:{index}"] = ManifestEntry(mesh, sorted(set(users.get(index, []))), "mesh", [])
+        covers = sorted(set(users.get(index, [])))
+        found[key[f"mesh:{index}"]] = ManifestEntry(mesh, covers, RepresentationRole.MESH, [])
     for index, material in enumerate(display.materials):
-        found[f"material:{index}"] = ManifestEntry(material, list(materials[index]["sources"]), "material", [])
+        covers = list(materials[index]["sources"])
+        found[key[f"material:{index}"]] = ManifestEntry(material, covers, RepresentationRole.MATERIAL, [])
     return found
 
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time undo, redo, and the lookups after each."""
-    from proscenium.binding.persistence.manifests import Manifest
+    from proscenium.binding.persistence import Manifest
     from proscenium.binding.runtime import ownership_index, state
 
     preferences: Any = bpy.context.preferences  # never None in a running Blender

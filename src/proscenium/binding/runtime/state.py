@@ -46,8 +46,7 @@ from . import copy_detection
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..persistence import BindingIndex, CreatedBinding, DestinationTag, WrittenIndex
-    from ..persistence.manifests import Manifest  # held for the ownership index (persistence/__init__.py)
+    from ..persistence import BindingIndex, CreatedBinding, DestinationTag, Manifest, WrittenIndex
     from ..source_access.binding_ids import BindingId
     from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex

@@ -12,9 +12,8 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding import runtime
-from proscenium.binding.persistence import manifests, records
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding import persistence, runtime
+from proscenium.binding.persistence import Manifest, ManifestEntry, RepresentationRole, manifests, records
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
@@ -28,6 +27,7 @@ from proscenium.binding.runtime.ownership_index import Claim
 from proscenium.binding.source_access.binding_ids import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
+from support.manifests import key, object_entry
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
@@ -50,14 +50,19 @@ def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[Bi
     objects = [bpy.data.objects.new(f"{name}{i}", mesh) for i in range(2)]
     for obj in objects:
         destination.objects.link(obj)
-    entries = {
-        "mesh": ManifestEntry(mesh, ["/World/Ref", "/World/Pay"], "shared geometry", []),
-        "a": ManifestEntry(objects[0], ["/World/Ref"], "prim", ["mesh"]),
-        "b": ManifestEntry(objects[1], ["/World/Pay"], "prim", ["mesh"]),
-    }
-    manifest = Manifest(entries)
+    manifest = _manifest(mesh, *objects)
     ownership_index.set_manifest(handle.binding_id, manifest)  # the writer path: memory, then the record
     return handle, manifest
+
+
+def _manifest(mesh: bpy.types.Mesh, a: bpy.types.Object, b: bpy.types.Object) -> Manifest:
+    return Manifest(
+        {
+            key("mesh"): ManifestEntry(mesh, ["/World/Ref", "/World/Pay"], RepresentationRole.MESH, []),
+            key("a"): object_entry(a, "/World/Ref", ("mesh",)),
+            key("b"): object_entry(b, "/World/Pay", ("mesh",)),
+        }
+    )
 
 
 def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
@@ -70,18 +75,13 @@ def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
 
 
 def test_a_manifest_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
-    # OWN-01: identity (the key), datablock, coverage, role, and uses, each its own field.
+    # OWN-01: the entry key, datablock, coverage, role, place, and uses, each its own field.
     _managed(bindings, tmp_path)
     save_and_reopen(tmp_path / "manifest.blend")
-    mesh, a, b = bpy.data.meshes["ShotMesh"], bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]
-    expected = Manifest(
-        {
-            "mesh": ManifestEntry(mesh, ["/World/Ref", "/World/Pay"], "shared geometry", []),
-            "a": ManifestEntry(a, ["/World/Ref"], "prim", ["mesh"]),
-            "b": ManifestEntry(b, ["/World/Pay"], "prim", ["mesh"]),
-        }
-    )
-    assert manifests.read_manifest(bpy.data.collections["Shot"]) == Loaded(expected, 1)
+    expected = _manifest(bpy.data.meshes["ShotMesh"], bpy.data.objects["Shot0"], bpy.data.objects["Shot1"])
+    read = manifests.read_manifest(bpy.data.collections["Shot"])
+    assert read == Loaded(expected, 1)
+    assert all(type(e.role) is RepresentationRole for e in read.record.entries.values())
 
 
 def test_nothing_is_stored_on_the_managed_datablocks(bindings: Bindings, tmp_path: Path) -> None:
@@ -95,9 +95,9 @@ def test_the_manifest_names_what_is_managed(bindings: Bindings, tmp_path: Path) 
     handle, _ = _managed(bindings, tmp_path)
     shot = bpy.data.collections["Shot"]
     assert _claims() == {
-        bpy.data.meshes["ShotMesh"]: (Claim(handle.binding_id, shot, "mesh"),),
-        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, "a"),),
-        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, "b"),),
+        bpy.data.meshes["ShotMesh"]: (Claim(handle.binding_id, shot, key("mesh")),),
+        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, key("a")),),
+        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, key("b")),),
     }
 
 
@@ -107,19 +107,20 @@ def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: P
     shared = bpy.data.objects["First0"]
     manifest = manifests.read_manifest(bpy.data.collections["Second"])
     assert isinstance(manifest, Loaded)
-    entries = {**manifest.record.entries, "stolen": ManifestEntry(shared, ["/World/Ref"], "prim", [])}
+    entries = {**manifest.record.entries, key("stolen"): object_entry(shared, "/World/Ref")}
     ownership_index.set_manifest(second.binding_id, Manifest(entries))
-    first_claim = Claim(first.binding_id, bpy.data.collections["First"], "a")
-    assert _claims()[shared] == (first_claim, Claim(second.binding_id, bpy.data.collections["Second"], "stolen"))
+    first_claim = Claim(first.binding_id, bpy.data.collections["First"], key("a"))
+    stolen = Claim(second.binding_id, bpy.data.collections["Second"], key("stolen"))
+    assert _claims()[shared] == (first_claim, stolen)
     assert ownership_index.ownership(shared).status is ownership_index.OwnershipStatus.AMBIGUOUS
 
 
 def test_a_manifest_names_a_datablock_once(bindings: Bindings, tmp_path: Path) -> None:
     # So two claims on a datablock always come from two manifests.
     _, manifest = _managed(bindings, tmp_path)
-    twice = manifest.entries["a"]
+    twice = manifest.entries[key("a")]
     with pytest.raises(ValueError, match="two entries name one datablock"):
-        Manifest({**manifest.entries, "again": twice})
+        Manifest({**manifest.entries, key("again"): twice})
 
 
 def test_a_linked_copy_scene_shares_one_manifest(
@@ -134,19 +135,19 @@ def test_a_linked_copy_scene_shares_one_manifest(
     assert len(bpy.data.scenes) == 2
     shot = bpy.data.collections["Shot"]
     read: list[bpy.types.Collection] = []
-    read_manifest = manifests.read_manifest
+    read_manifest = persistence.read_manifest
 
     def counted(destination: bpy.types.Collection) -> object:
         read.append(destination)
         return read_manifest(destination)
 
-    monkeypatch.setattr(manifests, "read_manifest", counted)
+    monkeypatch.setattr(persistence, "read_manifest", counted)
     runtime.invalidate()  # so the index is rebuilt from the records, reading what it reads
     found = {obj: claims for obj in bpy.data.objects if (claims := ownership_index.ownership(obj).claims)}
     assert read == [shot]
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
-        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, "a"),),
-        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, "b"),),
+        bpy.data.objects["Shot0"]: (Claim(handle.binding_id, shot, key("a")),),
+        bpy.data.objects["Shot1"]: (Claim(handle.binding_id, shot, key("b")),),
     }
 
 
@@ -173,7 +174,7 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(bindings: Bindi
     bpy.data.objects.remove(bpy.data.objects["Shot0"])
     manifest = manifests.read_manifest(bpy.data.collections["Shot"])
     assert isinstance(manifest, Loaded)
-    assert manifest.record.entries["a"].datablock is None
+    assert manifest.record.entries[key("a")].datablock is None
     assert len(_claims()) == 2
 
 
@@ -206,13 +207,36 @@ def test_a_removed_destination_has_no_manifest(bindings: Bindings, tmp_path: Pat
 
 def test_dependents_invert_the_uses(bindings: Bindings, tmp_path: Path) -> None:
     _, manifest = _managed(bindings, tmp_path)
-    assert manifests.dependents(manifest) == {"mesh": {"a", "b"}, "a": set(), "b": set()}
+    assert manifests.dependents(manifest) == {key("mesh"): {key("a"), key("b")}, key("a"): set(), key("b"): set()}
+
+
+def test_a_prepared_resource_takes_the_key_of_the_entry_with_its_identity(bindings: Bindings, tmp_path: Path) -> None:
+    # ROLE-05: matched by role, source entity, and place; a new identity gets a new key. A content-keyed entry has none.
+    _, manifest = _managed(bindings, tmp_path)
+    object_at = manifests.CopyResourceIdentity(RepresentationRole.OBJECT, "/World/Pay", 0)
+    found, other_place, other_role = manifests.entry_keys(
+        manifest,
+        [object_at, object_at._replace(place=1), object_at._replace(role=RepresentationRole.BOUNDS_MESH)],
+    )
+    assert found == key("b")
+    assert len({other_place, other_role, *manifest.entries}) == 5
+    assert manifest.entries[key("mesh")].identity is None
+
+
+def test_entry_keys_are_random_and_stored_as_keys() -> None:
+    keys = {manifests.new_entry_key() for _ in range(100)}
+    assert len(keys) == 100
+    assert all(len(k) == 32 and int(k, 16) >= 0 for k in keys)
 
 
 @pytest.mark.parametrize(
     ("change", "problem"),
     [
-        ({"role": ""}, "an entry has a representation role"),
+        ({"role": ""}, "is not a valid RepresentationRole"),
+        ({"role": "hologram"}, "is not a valid RepresentationRole"),  # ROLE-01: outside the vocabulary
+        ({"place": None}, "has a place among its copy's objects"),
+        ({"place": -1}, "has a place among its copy's objects"),
+        ({"covers": ["/World/Ref", "/World/Pay"]}, "covers one source entity"),
         # Not a list at all: ID properties can't hold a list mixing strings and ints.
         ({"covers": "/World"}, "an entry covers a list of source-entity paths"),
         ({"uses": ["nowhere"]}, "entries use resources the manifest doesn't have"),
@@ -224,7 +248,7 @@ def test_an_invalid_manifest_is_refused(
     handle, _ = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
-    stored["entries"]["a"] |= change
+    stored["entries"][key("a")] |= change
     destination[NAMESPACE][manifests.MANIFEST_KEY] = stored
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)
@@ -252,39 +276,54 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     assert destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict() == stored
 
 
-def _entry(datablock: bpy.types.ID, uses: list[str] | None = None) -> ManifestEntry:
-    return ManifestEntry(datablock, ["/World/Ref"], "prim", uses or [])
+def _entry(datablock: bpy.types.ID, uses: tuple[str, ...] = ()) -> ManifestEntry:
+    return object_entry(datablock, "/World/Ref", uses)
 
 
 # Updates to the manifest on _managed's destination, given its objects and a new one: (changed, removed), and
 # the error with its message.
 type _Update = Callable[[list[bpy.types.Object], bpy.types.Object], tuple[dict[str, Any], list[str]]]
 _UPDATES: dict[str, tuple[_Update, type[Exception], str]] = {
-    "removes a used resource": (lambda _, new: ({}, ["mesh"]), ValueError, "use resources the manifest doesn't have"),
-    "uses a missing resource": (
-        lambda _, new: ({"c": _entry(new, ["nowhere"])}, []),
+    "removes a used resource": (
+        lambda _, new: ({}, [key("mesh")]),
         ValueError,
         "use resources the manifest doesn't have",
     ),
-    "names a named datablock": (lambda objects, _: ({"c": _entry(objects[0])}, []), ValueError, "name one datablock"),
-    "names a datablock twice": (
-        lambda _, new: ({"c": _entry(new), "d": _entry(new)}, []),
+    "uses a missing resource": (
+        lambda _, new: ({key("c"): _entry(new, ("nowhere",))}, []),
+        ValueError,
+        "use resources the manifest doesn't have",
+    ),
+    "names a named datablock": (
+        lambda objects, _: ({key("c"): _entry(objects[0])}, []),
         ValueError,
         "name one datablock",
     ),
-    "changes and removes one": (lambda _, new: ({"a": _entry(new)}, ["a"]), ValueError, "both changes and removes"),
-    "removes a missing resource": (lambda _, new: ({}, ["nowhere"]), ValueError, "removes resources"),
+    "names a datablock twice": (
+        lambda _, new: ({key("c"): _entry(new), key("d"): _entry(new)}, []),
+        ValueError,
+        "name one datablock",
+    ),
+    "changes and removes one": (
+        lambda _, new: ({key("a"): _entry(new)}, [key("a")]),
+        ValueError,
+        "both changes and removes",
+    ),
+    "removes a missing resource": (lambda _, new: ({}, [key("nowhere")]), ValueError, "removes resources"),
     "is not an entry": (
-        lambda _, new: ({"c": {"datablock": new, "covers": [], "role": "prim", "uses": []}}, []),
+        lambda _, new: (
+            {key("c"): {"datablock": new, "covers": ["/World"], "role": "object", "uses": [], "place": 0}},
+            [],
+        ),
         TypeError,
         "not a ManifestEntry",
     ),
     "covers a non-path": (
-        lambda _, new: ({"c": ManifestEntry(new, [1], "prim", [])}, []),  # ty: ignore[invalid-argument-type]
+        lambda _, new: ({key("c"): ManifestEntry(new, [1], RepresentationRole.OBJECT, [], 0)}, []),  # ty: ignore[invalid-argument-type]
         TypeError,
         "all strings",
     ),
-    "has a key too long to store": (lambda _, new: ({"x" * 64: _entry(new)}, []), KeyError, "limited to 63"),
+    "has a key that isn't an entry key": (lambda _, new: ({"c": _entry(new)}, []), ValueError, "32 hex digits"),
 }
 
 

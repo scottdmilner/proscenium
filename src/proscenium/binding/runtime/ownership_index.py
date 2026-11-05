@@ -19,9 +19,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, NamedTuple
 
-# The manifests aren't persistence's API until M5 calls ownership (persistence/__init__.py).
-from ..persistence import DestinationTag, Loaded, RefusedRecord, RefusedRecordError, manifests
-from ..persistence.manifests import Manifest
+from .. import persistence
+from ..persistence import DestinationTag, Loaded, Manifest, RefusedRecord, RefusedRecordError
 from . import binding_configs, state
 from .state import BindingRecord, StaleError, Unread
 
@@ -30,7 +29,7 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from ..persistence.manifests import ManifestEntry
+    from ..persistence import ManifestEntry
     from ..source_access.binding_ids import BindingId
     from .state import DestinationRecords, State
 
@@ -45,7 +44,7 @@ class Claim:
 
     binding_id: BindingId  # the binding whose manifest holds the entry
     destination: bpy.types.Collection  # the collection holding that manifest; a binding's copies share binding_id
-    resource_id: str  # the entry's key in that manifest
+    entry_key: str  # the entry's key in that manifest
 
 
 class OwnershipStatus(StrEnum):
@@ -76,7 +75,7 @@ class DestinationClaims:
 
     claimant: BindingId  # the first binding found whose configuration names the destination, or else its tag's
     claims: dict[int, Claim]  # by datablock session_uid; a manifest names a datablock at most once
-    entries: dict[str, int]  # resource identity -> its datablock's session_uid, for the entries naming one
+    entries: dict[str, int]  # entry key -> its datablock's session_uid, for the entries naming one
 
 
 @dataclass(slots=True)
@@ -119,7 +118,7 @@ def set_manifest(binding_id: BindingId, manifest: Manifest) -> None:
     record = binding_configs.required_record(binding_id)
     current = state.current_state()
     destination = _destination(current, binding_id, record)
-    written = manifests.write_manifest(destination.collection, manifest)
+    written = persistence.write_manifest(destination.collection, manifest)
     _replace_manifest(current, binding_id, destination, written)
     binding_configs.restore_entry(binding_id, record)
 
@@ -129,11 +128,11 @@ def set_manifest_entries(
 ) -> None:
     """Change some of a binding's manifest entries, writing only those.
 
-    changed adds or replaces entries by resource identity, and removed deletes them. A binding with no manifest yet
+    changed adds or replaces entries by entry key, and removed deletes them. A binding with no manifest yet
     starts from an empty one, and an empty update writes nothing. What it writes and indexes is what changes; in memory
     it also copies the manifest's entries and, with removals, scans their uses (Manifest.updated).
 
-    Raises what set_manifest raises, and ValueError, TypeError, or KeyError (manifests.write_manifest_entries),
+    Raises what set_manifest raises, and ValueError, TypeError, or KeyError (write_manifest_entries),
     changing nothing, over an update that makes no manifest.
     """
     # Read once: the checks, the record, and the index each go through it, so a one-shot iterable would leave
@@ -145,13 +144,13 @@ def set_manifest_entries(
     target = state.query(lambda s: _update_target(s, binding_id, indexed=True))
     index, share, destination = target.current.ownership, target.share, target.destination
     assert index is not None and share is not None
-    after = target.before.updated(changed, removed, lambda uid: c.resource_id if (c := share.claims.get(uid)) else None)
-    destination.manifest = manifests.write_manifest_entries(destination.collection, after, changed.keys(), removed)
-    for resource_id in [*changed, *removed]:
-        _remove_claim(index, share, resource_id)
-    for resource_id in changed:
-        if (datablock := after.entries[resource_id].datablock) is not None:
-            _add_claim(index, share, datablock, Claim(share.claimant, destination.collection, resource_id))
+    after = target.before.updated(changed, removed, lambda uid: c.entry_key if (c := share.claims.get(uid)) else None)
+    destination.manifest = persistence.write_manifest_entries(destination.collection, after, changed.keys(), removed)
+    for entry_key in [*changed, *removed]:
+        _remove_claim(index, share, entry_key)
+    for entry_key in changed:
+        if (datablock := after.entries[entry_key].datablock) is not None:
+            _add_claim(index, share, datablock, Claim(share.claimant, destination.collection, entry_key))
     binding_configs.restore_entry(binding_id, target.record)
 
 
@@ -202,7 +201,7 @@ def _destination_records(current: State, record: BindingRecord) -> DestinationRe
 def _manifest_of(destination: DestinationRecords) -> Loaded[Manifest] | RefusedRecord | None:
     """The destination's manifest, read the first time."""
     if isinstance(destination.manifest, Unread):
-        destination.manifest = manifests.read_manifest(destination.collection)
+        destination.manifest = persistence.read_manifest(destination.collection)
     return destination.manifest
 
 
@@ -222,7 +221,7 @@ def _reread(
     current: State, binding_id: BindingId, destination: DestinationRecords
 ) -> Loaded[Manifest] | RefusedRecord | None:
     """Reread a destination's manifest after a datablock it names was removed, replacing its share alone."""
-    manifest = manifests.read_manifest(destination.collection)
+    manifest = persistence.read_manifest(destination.collection)
     _replace_manifest(current, binding_id, destination, manifest)
     return manifest
 
@@ -288,17 +287,17 @@ def _add_share(
     uid = destination.session_uid
     share = DestinationClaims(claimant, {}, {})
     if isinstance(manifest, Loaded):  # one that can't be read claims nothing until it is repaired
-        for resource_id, entry in manifest.record.entries.items():
+        for entry_key, entry in manifest.record.entries.items():
             if entry.datablock is not None:
-                _add_claim(index, share, entry.datablock, Claim(claimant, destination, resource_id))
+                _add_claim(index, share, entry.datablock, Claim(claimant, destination, entry_key))
     index.shares[uid] = share
 
 
 def _remove_share(index: OwnershipIndex, uid: int) -> None:
     if (share := index.shares.pop(uid, None)) is None:
         return
-    for resource_id in list(share.entries):
-        _remove_claim(index, share, resource_id)
+    for entry_key in list(share.entries):
+        _remove_claim(index, share, entry_key)
 
 
 def _add_claim(index: OwnershipIndex, share: DestinationClaims, datablock: bpy.types.ID, claim: Claim) -> None:
@@ -308,12 +307,12 @@ def _add_claim(index: OwnershipIndex, share: DestinationClaims, datablock: bpy.t
     else:
         index.claims[datablock_uid] = (*_as_tuple(existing), claim)
     share.claims[datablock_uid] = claim
-    share.entries[claim.resource_id] = datablock_uid
+    share.entries[claim.entry_key] = datablock_uid
 
 
-def _remove_claim(index: OwnershipIndex, share: DestinationClaims, resource_id: str) -> None:
-    """Take out the claim of the share's entry for resource_id, if it names a datablock."""
-    if (datablock_uid := share.entries.pop(resource_id, None)) is None:
+def _remove_claim(index: OwnershipIndex, share: DestinationClaims, entry_key: str) -> None:
+    """Take out the claim of the share's entry for entry_key, if it names a datablock."""
+    if (datablock_uid := share.entries.pop(entry_key, None)) is None:
         return
     claim = share.claims.pop(datablock_uid)
     remaining = tuple(c for c in _as_tuple(index.claims[datablock_uid]) if c is not claim)

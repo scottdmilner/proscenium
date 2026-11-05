@@ -14,8 +14,7 @@ import pytest
 
 from fixtures import copies
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, records
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
+from proscenium.binding.persistence import Manifest, binding_records, records
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import DisabledBindingError, ownership_index
@@ -23,6 +22,7 @@ from proscenium.binding.source_access import PayloadPolicy
 from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
+from support.manifests import key, object_entry
 from support.usd import binding_on_file, open_fresh
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ def _published(bindings: Bindings, root: Path) -> BindingHandle:
     handle = binding_on_file(bindings, _scene(), root, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
-    ownership_index.set_manifest(handle.binding_id, Manifest({"a": ManifestEntry(obj, ["/World"], "prim", [])}))
+    ownership_index.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
     return handle
 
 
@@ -103,7 +103,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         for call in (
             lambda: ownership_index.manifest(binding_id),
             lambda: ownership_index.set_manifest(binding_id, Manifest({})),
-            lambda: ownership_index.set_manifest_entries(binding_id, {}, ["a"]),
+            lambda: ownership_index.set_manifest_entries(binding_id, {}, [key("a")]),
         ):
             with pytest.raises(DisabledBindingError):
                 call()

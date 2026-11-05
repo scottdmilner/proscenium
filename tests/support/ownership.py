@@ -32,9 +32,9 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
         seen.add(destination)
         manifest = manifests.read_manifest(destination)
         if isinstance(manifest, Loaded):
-            for resource_id, entry in manifest.record.entries.items():
+            for entry_key, entry in manifest.record.entries.items():
                 if entry.datablock is not None:
-                    found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, resource_id))
+                    found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))
 
     for _scene, binding_id, config in binding_records.read_configs():
         destination = config.record.destination if isinstance(config, Loaded) else None

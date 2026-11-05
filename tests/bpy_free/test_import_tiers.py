@@ -102,12 +102,6 @@ def test_every_module_is_in_a_tier_or_at_the_top() -> None:
 
 # The tiers in binding; outside its own tier, a tier's modules are reached only through its package.
 BINDING_TIERS = {"binding.runtime", "binding.persistence"}
-# The modules that may reach a tier's module anyway, and which. The manifests aren't persistence's API until M5 calls
-# the ownership index, which reads and writes them, and the state holds them for it (persistence/__init__.py).
-REACH_EXCEPTIONS = {
-    Path("binding/runtime/ownership_index.py"): {"proscenium.binding.persistence.manifests"},
-    Path("binding/runtime/state.py"): {"proscenium.binding.persistence.manifests"},
-}
 
 
 def _reached_inside(path: Path, imports: list[tuple[int, str]]) -> list[str]:
@@ -124,7 +118,6 @@ def _reached_inside(path: Path, imports: list[tuple[int, str]]) -> list[str]:
         and len(name.split(".")) > 3
         and (unit := _unit(name.split(".")[1:])) != own
         and (outside or unit in BINDING_TIERS)
-        and name not in REACH_EXCEPTIONS.get(path.relative_to(PACKAGE), set())
     ]
 
 

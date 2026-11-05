@@ -137,7 +137,14 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         manifests={
             "unknown-role": {
                 VERSION_KEY: 1,
-                "entries": {"r": {"datablock": None, "covers": ["/World"], "role": "hologram", "uses": []}},
+                "entries": {
+                    "6a1f0c2e9b7d4835a0e4c1f27b9d3e58": {
+                        "datablock": None,
+                        "covers": ["/World"],
+                        "role": "hologram",
+                        "uses": [],
+                    }
+                },
             },
         },
         manifests_refused={"unknown-role": RefusalReason.INVALID},

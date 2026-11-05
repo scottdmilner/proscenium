@@ -26,11 +26,11 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, records
+from proscenium.binding.persistence import MANIFEST_KEY, binding_records, binding_state, manifests, records
 from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
-from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
-from proscenium.binding.results import DiagnosticCode, ResultState
+from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecord, RefusedRecordError
+from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.binding.source_access import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
@@ -342,6 +342,26 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
         with pytest.raises(RefusedRecordError):
             runtime.set_config(binding_id, BindingConfig(RequestedSettings(PayloadPolicy.LOAD_ALL)))
         assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
+
+
+def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Bindings, tmp_path: Path) -> None:
+    # ROLE-01 on F-SCHEMA-VERSIONS' "unknown-role": the manifest is refused as invalid, and the binding refuses to
+    # synchronize, saying why, before reading its source.
+    with record_fixtures.schema_versions(tmp_path) as versions, source_access.binding_state(tmp_path) as scene:
+        stored = versions.manifests["unknown-role"]
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        destination = bpy.data.collections["Shot"]
+        destination[NAMESPACE][MANIFEST_KEY] = stored
+        runtime.invalidate()  # the record changed behind the state, as a load or undo changes it
+        refused = manifests.read_manifest(destination)
+        assert isinstance(refused, RefusedRecord)
+        assert refused.refusal is versions.manifests_refused["unknown-role"]
+        assert "hologram" in refused.message
+        diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, handle.binding_id, refused.message)
+        assert handle.synchronize(0) == Result(diagnostic, time_codes=(Usd.TimeCode(0),))
+        stages = bindings.stages.get(handle.binding_id)
+        assert stages is not None and stages.evaluation_stage is None  # never acquired
+        assert records.stored(destination, MANIFEST_KEY) == stored
 
 
 # The attachment contract (source-access.md#source-identity).

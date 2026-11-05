@@ -54,7 +54,7 @@ class DiagnosticCode(StrEnum):
     UNSAVED_LAYERS = "unsaved-layers"  # layers displayed with unsaved in-process edits
     NO_ATTACHED_STAGE = "no-attached-stage"
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
-    UNSUPPORTED_RECORD = "unsupported-record"  # the binding's configuration can't be read
+    UNSUPPORTED_RECORD = "unsupported-record"  # the binding's configuration or manifest can't be read
     REMOVED_DESTINATION = "removed-destination"  # the binding has nowhere to display (lifecycle.md)
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
 
