@@ -26,7 +26,8 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
     - `proscenium/core/`: the compiled core, its C++ source and built module. See [Compiled core](#compiled-core).
     - `proscenium/binding/source_access/`: the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers.
     - `proscenium/binding/results.py`: results and diagnostics.
-  - `proscenium/api/`: what callers use, the binding handle and the process's bindings. It imports `binding`'s units and `core`, and only `addon.py` imports it.
+  - `proscenium/api/`: what callers use, the binding handle and the process's bindings. It imports `synchronization`, `binding`'s units, and `core`, and only `addon.py` imports it.
+  - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M5's a stub, which M7 replaces). It imports `binding`'s units and `core`, and only `api` imports it.
   - `proscenium/binding/`'s Blender-facing code is in two tiers, each importing only the tier below it and the bpy-free code ([plan](docs/plans/source-tiers-and-names.md#tiers)). Tiers apply only inside `binding/`:
     - `proscenium/binding/runtime/`: disposable in-memory state built from the records.
     - `proscenium/binding/persistence/`: versioned records in ID properties.

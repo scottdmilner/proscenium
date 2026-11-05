@@ -1,6 +1,6 @@
 # `proscenium.api`
 
-What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). Not a tier: it may import `proscenium.binding.runtime`, `proscenium.binding.persistence`, and the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), using what each package exports.
+What callers use to reach bindings ([Synchronization API](../../../docs/spec/source-access.md#synchronization-api)). Not a tier: it may import `proscenium.synchronization`, `proscenium.binding.runtime`, `proscenium.binding.persistence`, and the bpy-free code (`proscenium.core`, `proscenium.binding.source_access`, `proscenium.binding.results`), using what each package exports.
 
 | File | Holds |
 |---|---|
@@ -14,7 +14,7 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 - **Results and refusals:** an operation returns a `Result` (`proscenium.binding.results`) whose diagnostics say why it failed: an unavailable source, a configuration that can't be read, a removed destination, or a binding with copies and no canonical candidate. A query raises instead, and methods needing records raise `BindingNotFoundError` for a binding that doesn't exist. `release()` is an idempotent runtime operation that remains valid after undo or removal.
 - **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `CurrentStages` (`proscenium.binding.runtime`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `addon.py` drops them all when a file is loaded (`drop_all_stages`).
 
-M3 implements source acquisition only. M5 adds evaluation, planning, application, and publication behind `synchronize`.
+`synchronize` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction. It acquires only so far; M5 adds evaluation, planning, application, and publication.
 
 ## Caller workflow
 

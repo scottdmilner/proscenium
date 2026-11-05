@@ -30,7 +30,8 @@ ALLOWED = {
     "binding.results": {"binding.results"},
     "binding.persistence": {"binding.persistence", *BELOW_TIERS},
     "binding.runtime": {"binding.runtime", "binding.persistence", *BELOW_TIERS},
-    "api": {"api", "binding.runtime", "binding.persistence", *BELOW_TIERS},
+    "synchronization": {"synchronization", "binding.runtime", "binding.persistence", *BELOW_TIERS},
+    "api": {"api", "synchronization", "binding.runtime", "binding.persistence", *BELOW_TIERS},
 }
 
 

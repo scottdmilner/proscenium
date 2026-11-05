@@ -1,7 +1,7 @@
 """The process's bindings, and the handle callers reach one through (source-access.md#synchronization-api).
 
-A synchronization acquires the binding's evaluation stage under its requested settings and reports the source's
-state; nothing is evaluated, planned, applied, or published yet.
+A synchronization runs the transaction (proscenium.synchronization) on a binding found usable; so far it acquires the
+binding's evaluation stage under its requested settings and reports the source's state.
 
 A binding's configuration is its records (proscenium.binding.persistence.binding_records), held and written through the
 bindings' in-memory state (proscenium.binding.runtime). Its stages and attachment are runtime state, never saved, in
@@ -29,10 +29,11 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
+from .. import synchronization
 from ..binding import runtime
 from ..binding.persistence import BindingConfig
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.source_access import PayloadPolicy, RequestedSettings, SourceUnavailableError, dirty_layers
+from ..binding.source_access import PayloadPolicy, RequestedSettings, SourceUnavailableError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -160,13 +161,16 @@ class Bindings:
         return Result()
 
     def synchronize(self, binding_id: BindingId, time_code: Usd.TimeCode | float) -> Result:
-        """Synchronize at an explicit time code; acquisition only, so nothing is evaluated at it yet.
+        """Synchronize at an explicit time code through the transaction (proscenium.synchronization).
 
-        The result names the time code, whatever it reports.
+        The result names the time code, whatever it reports, a refusal's included.
         """
         attempted = Usd.TimeCode(time_code)  # a time code evaluation can use, or a TypeError now
-        result = self._synchronization(binding_id)
-        return Result(*result.diagnostics, time_codes=(attempted,))
+        runtime.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
+        found = self._found(binding_id)
+        if not found.usable:
+            return Result(*_refused(found).diagnostics, time_codes=(attempted,))
+        return synchronization.synchronize(binding_id, found.usable_config(), self.stages, attempted)
 
     def reload(self, binding_id: BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
@@ -197,24 +201,6 @@ class Bindings:
         """Drop evaluation stages of bindings that no longer exist (CurrentStages.prune)."""
         self.stages.prune()
 
-    def _synchronization(self, binding_id: BindingId) -> Result:
-        """What synchronizing the binding reports, apart from the time code it attempted."""
-        runtime.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
-        found = self._found(binding_id)
-        if not found.usable:
-            return _refused(found)
-        config = found.usable_config()
-        if config.destination is None:  # removed: Blender cleared the pointer (lifecycle.md#removed-destination)
-            return _removed_destination(binding_id)
-        try:
-            dirty = dirty_layers(self._stages(binding_id).acquire(config.settings.payload_policy))
-        except SourceUnavailableError as error:
-            return _unavailable(binding_id, error)
-        if not dirty:
-            return Result()
-        message = "Displaying layers with unsaved in-process edits"
-        return Result(Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))))
-
     def _create(self, scene: bpy.types.Scene, config: BindingConfig, name: str) -> BindingHandle:
         return BindingHandle(runtime.create(scene, config, name))
 
@@ -231,11 +217,6 @@ class Bindings:
 
 def _unavailable(binding_id: BindingId, error: SourceUnavailableError) -> Result:
     return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)))
-
-
-def _removed_destination(binding_id: BindingId) -> Result:
-    message = f"The destination collection of binding {binding_id} was removed"
-    return Result(Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message))
 
 
 def _refused(found: FoundBinding) -> Result:
