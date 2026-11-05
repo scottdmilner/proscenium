@@ -3,7 +3,7 @@
 Each generator copies Scene.TRANSACTION (see its root.usda), opens a caller's stage over it, and yields
 what a correct binding does with it: the step where a test injects a failure, and the outcome the spec
 requires there. A test injects a failure by patching the step's module function, so no hook exists in
-src/ (M5 plan, D12); the fixture names the step and leaves the patching to the test.
+src/ (M5 plan, D13); the fixture names the step and leaves the patching to the test.
 
 - failed_settings (F-FAILED-SETTINGS): a display published under one setting and time code, then an
   attempt under another that fails before publication. Binding State.

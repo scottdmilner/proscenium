@@ -53,9 +53,14 @@ def _imported(path: Path) -> list[tuple[int, str]]:
 
 
 def _submodule(target: str, name: str) -> str:
-    """target.name if that is a module of proscenium, else target."""
-    path = PACKAGE.parent.joinpath(*target.split("."), name)
-    return f"{target}.{name}" if path.with_suffix(".py").is_file() or (path / "__init__.py").is_file() else target
+    """target.name if that is a module of proscenium, else target.
+
+    Compared with the directory's entries, since a case-insensitive file system finds ledger.py for Ledger.
+    """
+    directory = PACKAGE.parent.joinpath(*target.split("."))
+    entries = {p.name for p in directory.iterdir()} if directory.is_dir() else set()
+    module = f"{name}.py" in entries or (name in entries and (directory / name / "__init__.py").is_file())
+    return f"{target}.{name}" if module else target
 
 
 def _imports_in(tree: ast.Module, package: list[str]) -> list[tuple[int, str]]:

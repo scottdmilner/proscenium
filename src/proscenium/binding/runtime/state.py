@@ -4,7 +4,7 @@ It holds two things:
 
 - The records, decoded, each once and held as they are stored, by the datablock holding them: each scene's binding
   records (SceneRecords), each destination collection's tag and, once read, its manifest (DestinationRecords), and
-  each Text's binding index (IndexRecords).
+  each Text's binding index and, once read, its pending-cleanup ledger (IndexRecords).
 - What is computed from them: each binding identity's candidates and the canonical-candidate rule's decision
   (copy_detection.IdentityCandidates), whose binding records are read through their scenes' (BindingRecord), and the
   ownership index (ownership_index), built when first asked for.
@@ -46,7 +46,7 @@ from . import copy_detection
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..persistence import BindingIndex, CreatedBinding, DestinationTag, Manifest, WrittenIndex
+    from ..persistence import BindingIndex, CreatedBinding, DestinationTag, Ledger, Manifest, WrittenIndex
     from ..source_access.binding_ids import BindingId
     from .copy_detection import IdentityCandidates
     from .ownership_index import OwnershipIndex
@@ -118,10 +118,11 @@ class DestinationRecords:
 
 @dataclass(slots=True)
 class IndexRecords:
-    """The record on a Text holding a binding index: the index."""
+    """The records on a Text holding a binding index: the index, and the pending-cleanup ledger once read."""
 
     text: bpy.types.Text
     index: BindingIndex | RefusedRecord
+    ledger: Loaded[Ledger] | RefusedRecord | None | Unread = UNREAD
 
 
 @dataclass(slots=True)
@@ -151,7 +152,7 @@ class State:
         held = self.scenes.setdefault(uid, SceneRecords(scene, uid))
         held.configs[binding_id] = created.config
         self.destinations[destination.session_uid] = DestinationRecords(destination, created.tag, None)
-        self.indexes = [IndexRecords(*created.index)]
+        self._hold_index(created.index)
         self.identities[binding_id] = copy_detection.identity(self, binding_id, [BindingRecord(held, binding_id)])
 
     def replace_index(self, binding_id: BindingId, written: WrittenIndex) -> None:
@@ -159,9 +160,14 @@ class State:
 
         A write to the index refuses a file with more than one, so the file now has only this one.
         """
-        self.indexes = [IndexRecords(*written)]
+        self._hold_index(written)
         identity = self.identities[binding_id]
         self.identities[binding_id] = copy_detection.identity(self, binding_id, identity.records)
+
+    def _hold_index(self, written: WrittenIndex) -> None:
+        """Hold the only binding index, keeping the ledger held from its Text, which the write left as it was."""
+        ledger = next((i.ledger for i in self.indexes if i.text == written.text), UNREAD)
+        self.indexes = [IndexRecords(written.text, written.index, ledger)]
 
 
 def start_tracking() -> None:

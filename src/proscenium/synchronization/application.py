@@ -3,7 +3,7 @@
 Each of the plan's placeholders becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, or no vertices when the plan has none. They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
-generation reaches (TXN-05).
+generation reaches (TXN-05). Each is tracked in the pending-cleanup ledger as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (persistence.entry_keys), and the entries preparation makes are the manifest a publication writes. M7 replaces this
@@ -12,7 +12,6 @@ layer; a sheared world transform, which needs a shear parent, is M7's.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import bpy
@@ -25,27 +24,14 @@ if TYPE_CHECKING:
 
     from ..binding.persistence import Manifest
     from ..core._core import Plan
+    from .prepared_work import PreparedWork
 
 
-@dataclass
-class PreparedWork:
-    """The prepared work a preparation has made so far, so a failure partway leaves it all to dispose of."""
-
-    staging: bpy.types.Collection  # holds the prepared objects; no scene links it
-    datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
-    entries: dict[str, ManifestEntry] = field(default_factory=dict)  # entry key -> its entry, once complete
-
-
-def new_prepared_work() -> PreparedWork:
-    """Empty prepared work, with its staging collection."""
-    return PreparedWork(bpy.data.collections.new("Proscenium prepared"))
-
-
-def prepare(plan: Plan, published: Manifest, prepared: PreparedWork) -> None:
-    """Make plan's placeholders in prepared's staging collection, adding each datablock to prepared as it's made.
+def prepare(plan: Plan, published: Manifest, work: PreparedWork) -> None:
+    """Make plan's placeholders in work's staging collection, tracking each datablock as it's made (TXN-08).
 
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
-    take. Raises whatever Blender raises; what was made before stays in prepared.
+    take. Raises whatever Blender or the ledger raises; what was made before stays in work, tracked.
     """
     identities = [CopyResourceIdentity(RepresentationRole(r.role), r.entity, r.place) for r in plan.resources]
     keys = entry_keys(published, identities)
@@ -54,11 +40,11 @@ def prepare(plan: Plan, published: Manifest, prepared: PreparedWork) -> None:
         source = plan.resources[placeholder.object].entity
         name = source.rsplit("/", 1)[-1]
         mesh = bpy.data.meshes.new(name)
-        prepared.datablocks[mesh_key] = mesh
+        work.track(mesh_key, identities[placeholder.bounds_mesh].role, mesh)
         mesh.from_pydata(_corners(list(placeholder.bounds)), [], [])
         obj = bpy.data.objects.new(name, mesh)
-        prepared.datablocks[object_key] = obj
-        prepared.staging.objects.link(obj)
+        work.track(object_key, identities[placeholder.object].role, obj)
+        work.staging.objects.link(obj)
         obj.display_type = "BOUNDS"
         obj.matrix_world = _world(placeholder.world)
         for index, key, datablock in (
@@ -67,16 +53,9 @@ def prepare(plan: Plan, published: Manifest, prepared: PreparedWork) -> None:
         ):
             resource = plan.resources[index]
             uses = [keys[used] for used in resource.uses]
-            prepared.entries[key] = ManifestEntry(
+            work.entries[key] = ManifestEntry(
                 datablock, list(resource.covers), identities[index].role, uses, resource.place
             )
-
-
-def dispose(prepared: PreparedWork) -> None:
-    """Remove what prepared holds, its staging collection included."""
-    bpy.data.batch_remove([*prepared.datablocks.values(), prepared.staging])
-    prepared.datablocks.clear()
-    prepared.entries.clear()
 
 
 def _corners(bounds: list[float]) -> list[tuple[float, float, float]]:

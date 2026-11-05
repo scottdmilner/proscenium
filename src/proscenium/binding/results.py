@@ -57,6 +57,7 @@ class DiagnosticCode(StrEnum):
     UNSUPPORTED_RECORD = "unsupported-record"  # the binding's configuration or manifest can't be read
     REMOVED_DESTINATION = "removed-destination"  # the binding has nowhere to display (lifecycle.md)
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
+    DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
 
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
@@ -66,6 +67,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.UNSUPPORTED_RECORD: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.REMOVED_DESTINATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.COPIED_BINDING: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
 }
 
 
@@ -84,7 +86,7 @@ class Diagnostic:
     asset: str = ""  # the asset it concerns, as authored
     fallback: str = ""  # what is displayed in its place
     layers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
-    resource: str = ""  # the entry key of the managed resource it concerns, for pending cleanup
+    resource: str = ""  # for pending cleanup, the ledger key of the pending resource it concerns
     role: str = ""  # that resource's representation role
 
     def __post_init__(self) -> None:
