@@ -42,7 +42,9 @@ def cache(
     """Cache the published generation's time-varying values at each of time_codes it hasn't cached, all or none.
 
     config is a usable binding's, and time_codes numeric. The result names the time codes it attempted, those the
-    generation hadn't cached, in order.
+    generation hadn't cached, in order. A generation synchronized at the default time code has nothing to cache, so
+    the call succeeds caching nothing (CACHE-06); one with no generation, or whose source changed since it was
+    synchronized, needs synchronizing, so the call fails caching nothing (CACHE-05).
     """
     scene, destination = config.scene, binding_configs.required_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
@@ -52,14 +54,15 @@ def cache(
         return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message))
     if isinstance(generation, records.RefusedRecord):
         return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message))
-    assert manifest is not None and generation is not None  # E3 refuses a binding with nothing published
+    if generation is None:
+        message = "The binding has no published generation to cache time codes in; synchronize it first"
+        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message))
     published = generation.record
-    assert published.time_code is not None  # E3: one at the default time code has nothing to cache
+    if published.time_code is None:  # nothing in it varies with time
+        return Result()
     have = {published.time_code, *published.cached_time_codes}
     new = sorted({t.GetValue() for t in time_codes} - have)
     attempted = [Usd.TimeCode(t) for t in new]
-    if not new:
-        return Result()
     if (refused := prepared_work.untrackable(binding_id)) is not None:
         return Result(refused, time_codes=attempted)
 
@@ -68,16 +71,23 @@ def cache(
         evaluation_stage = binding_stages.acquire(published.payload_policy)
     except stages.SourceUnavailableError as error:
         return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), time_codes=attempted)
+    # Checked even when every time code is cached, so a call never reports success over a source that changed. The
+    # revision changes with anything evaluated: an edit, a reload that rereads a layer, an attachment, the evaluation
+    # stage loaded to another payload policy since, or a new process.
+    if binding_stages.source_revision != published.source_revision:
+        message = "The source changed since the binding was synchronized; synchronize it before caching time codes"
+        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
+    if not new:
+        return Result()
     own = evaluation.source_state(binding_id, evaluation_stage)
     planned = evaluation.plans(binding_id, binding_stages, evaluation_stage, scene, attempted)
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, time_codes=attempted)
 
     work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.CACHE)
+    before = manifests.Manifest({}) if manifest is None else manifest.record
     try:
-        changes = application.key_time_codes(
-            dict(zip(new, planned, strict=True)), manifest.record, published.time_code, work
-        )
+        changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
@@ -85,7 +95,7 @@ def cache(
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
-        work.undo.append(functools.partial(manifests.write_manifest, destination, manifest.record))
+        work.undo.append(functools.partial(manifests.write_manifest, destination, before))
         ownership.set_manifest_entries(binding_id, changes, created=work.datablocks)
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001

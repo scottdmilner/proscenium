@@ -1,8 +1,8 @@
 """Caching time codes in the published generation, against the stub application layer (pipeline.md#cached-time-codes).
 
-On F-CACHED-TIME-CODES (fixtures/transaction.py), M5 plan, E1. The stub keys each placeholder's transform at each
-cached time code, so a frame shows the latest cached time code at or before it; expected translations come from how
-the scene is built (transaction.translation).
+On F-CACHED-TIME-CODES and F-SOURCE-CHANGE (fixtures/transaction.py), M5 plan, E1 and E3. The stub keys each
+placeholder's transform at each cached time code, so a frame shows the latest cached time code at or before it;
+expected translations come from how the scene is built (transaction.translation).
 """
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ from fixtures.transaction import translation
 from proscenium.api import bindings as api
 from proscenium.binding.persistence import binding_state, records
 from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
+from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from support import undo
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from fixtures.transaction import CachedTimeCodesScene
+    from fixtures.transaction import CachedTimeCodesScene, SourceChangeScene
     from proscenium.api.bindings import BindingHandle, Bindings
 
 MOVER = "/World/Mover"
@@ -157,3 +157,87 @@ def pushing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Push undo steps as Blender with global undo on, outside background mode, would (test_undo.py)."""
     undo.require_global_undo()
     monkeypatch.setattr(api, "_pushes_undo", lambda: True)
+
+
+def _unchanged_by_cache(handle: BindingHandle, call: Any) -> Any:
+    """Call's result, checking it cached nothing: the generation and manifest as before, and no action made."""
+    before, entries = _generation(), _entries(handle)
+    result = call()
+    assert (_generation(), _entries(handle)) == (before, entries)
+    assert not bpy.data.actions
+    return result
+
+
+def _edited(scene: SourceChangeScene, handle: BindingHandle) -> None:
+    scene.edit()
+
+
+def _reloaded(scene: SourceChangeScene, handle: BindingHandle) -> None:
+    scene.rewrite_on_disk()
+    assert handle.reload().state is ResultState.SUCCESS
+
+
+def _attached_again(scene: SourceChangeScene, handle: BindingHandle) -> None:
+    assert handle.attach(scene.caller).state is ResultState.SUCCESS
+
+
+@pytest.mark.parametrize("change", [_edited, _reloaded, _attached_again], ids=["edit", "reload", "attach"])
+def test_after_a_source_change_cache_needs_a_synchronization(bindings: Bindings, tmp_path: Path, change: Any) -> None:
+    # CACHE-05 on F-SOURCE-CHANGE "changed-before-cache": after an edit to sub.usda, a reload of its rewritten file, or
+    # attaching the stage again, cache fails saying the binding needs synchronizing and caches nothing, its cached
+    # time codes included; once synchronized again, the same call caches.
+    with transaction.source_change(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.caller).state is ResultState.SUCCESS
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        change(scene, handle)
+        for time_codes in ([5, 10], [0]):
+            result = _unchanged_by_cache(handle, lambda t=time_codes: handle.cache(t))
+            assert [d.code for d in result.diagnostics] == [DiagnosticCode.NEEDS_SYNCHRONIZATION]
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        assert handle.cache([5, 10]).state is ResultState.SUCCESS
+
+
+def test_without_a_source_change_the_same_call_caches(bindings: Bindings, tmp_path: Path) -> None:
+    # CACHE-05's control on F-SOURCE-CHANGE: with no change, nor any after a call, cache keeps caching.
+    with transaction.source_change(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.caller).state is ResultState.SUCCESS
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        assert handle.cache([5]).state is ResultState.SUCCESS
+        assert handle.cache([5, 10]).time_codes == (Usd.TimeCode(10),)
+
+
+def test_a_binding_with_nothing_published_needs_a_synchronization(bindings: Bindings, tmp_path: Path) -> None:
+    # Nothing to cache time codes in, so the call fails as after a source change, before reading the source.
+    with transaction.cached_time_codes(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        result = handle.cache(scene.cached)
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.NEEDS_SYNCHRONIZATION]
+        assert binding_state.read_generation(bpy.data.collections["Shot"]) is None
+
+
+def test_a_generation_at_the_default_time_code_has_nothing_to_cache(bindings: Bindings, tmp_path: Path) -> None:
+    # CACHE-06 on F-CACHED-TIME-CODES "default-time-code": cache at any time codes caches nothing and succeeds.
+    with transaction.cached_time_codes(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.caller).state is ResultState.SUCCESS
+        assert handle.synchronize(Usd.TimeCode.Default()).state is ResultState.SUCCESS
+        result = _unchanged_by_cache(handle, lambda: handle.cache([*scene.cached, *scene.failing]))
+        assert (result.state, result.time_codes) == (ResultState.SUCCESS, ())
+        assert _generation().cached_time_codes == ()
+
+
+def test_synchronizing_again_holds_only_its_own_time_code(bindings: Bindings, tmp_path: Path) -> None:
+    # CACHE-07 on F-CACHED-TIME-CODES "synchronize-again": after caching, synchronizing at 10 gives a generation whose
+    # only time code is 10, showing 10's values at every frame, and the cached time codes' actions are retired.
+    with transaction.cached_time_codes(tmp_path) as scene:
+        handle = _synchronized(bindings, scene)
+        assert handle.cache(scene.cached).state is ResultState.SUCCESS
+        assert handle.synchronize(scene.synchronized_again).state is ResultState.SUCCESS
+        generation = _generation()
+        assert (generation.time_code, generation.cached_time_codes) == (scene.synchronized_again, ())
+        assert not bpy.data.actions
+        assert {e.role for e in _entries(handle).values()} == set(transaction.ROLES_PER_PLACEHOLDER)
+        for frame in (scene.synchronized, *scene.cached, *scene.failing):
+            assert _shown_at(handle, frame) == pytest.approx(translation(MOVER, scene.synchronized_again))
