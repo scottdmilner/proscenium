@@ -49,6 +49,17 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
     return state.query(question)
 
 
+def nothing_pending(binding_id: identifiers.BindingId) -> bool:
+    """Whether the ledger can be read and holds no entry of the binding, so a retry has nothing to do or report."""
+
+    def question(current: State) -> bool:
+        if len(current.indexes) > 1 or isinstance(ledger := _checked_ledger(current), records.RefusedRecord):
+            return False
+        return ledger is None or all(e.binding_id != binding_id for e in ledger.record.entries.values())
+
+    return state.query(question)
+
+
 def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
     """Change some of the ledger's entries, writing only those; a file with no ledger yet starts from an empty one.
 

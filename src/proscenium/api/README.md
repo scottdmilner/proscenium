@@ -9,7 +9,7 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 
 ## `bindings.py`
 
-- **The handle** holds only the binding's identifier, never a datablock or cached state, so undo, redo, and file loads can't leave it stale. Its methods (`attach`, `release`, `synchronize`, `set_settings`, `reload`, `retry_cleanup`, `requested_settings`, `live_stage`) delegate to the methods of `BINDINGS` keyed by that identifier, which tests call on a fresh `Bindings`.
+- **The handle** holds only the binding's identifier, never a datablock or cached state, so undo, redo, and file loads can't leave it stale. Its methods (`attach`, `release`, `synchronize`, `set_settings`, `reload`, `retry_cleanup`, `possibly_out_of_date`, `requested_settings`, `live_stage`) delegate to the methods of `BINDINGS` keyed by that identifier, which tests call on a fresh `Bindings`.
 - **Operations that span bindings** are `Bindings`' own: creating an unattached binding (`create_binding(scene, ...)`), listing a scene's bindings (`in_scene`), and reporting copied bindings (`copied`). Callers open source stages and resolve file paths.
 - **Results and refusals:** an operation returns a `Result` (`proscenium.binding.results`) whose diagnostics say why it failed: an unavailable source, a configuration that can't be read, a removed destination, or a binding with copies and no canonical candidate. A query raises instead, and methods needing records raise `BindingNotFoundError` for a binding that doesn't exist. `release()` is an idempotent runtime operation that remains valid after undo or removal.
 - **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `CurrentStages` (`proscenium.binding.runtime.stage_tracking`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `addon.py` drops them all when a file is loaded (`drop_all_stages`).
@@ -17,6 +17,8 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 `synchronize(time_code=None)` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction at the time code given, the USD default time code included, or else at the target scene's current frame's, its subframe included, since time code t is frame t. The result names the time code attempted; a refusal here, before the attempt, names only one given.
 
 A synchronization and a cleanup retry each run alone: while one runs, `synchronize`, `retry_cleanup`, `attach`, `release`, and `reload` on any binding raise `ReentrantCallError` before changing anything, whether a Blender handler, a USD notice, or another thread calls them; `set_settings` may be called, and the running attempt keeps the settings it started with ([Source Consistency](../../../docs/spec/source-access.md#source-consistency)). `Bindings.running` is the flag.
+
+A synchronization that publishes and a cleanup retry that commits each push one undo step, with global undo on outside background mode; nothing else does. An operator that calls the API declares no `UNDO`, so it adds no second step. `possibly_out_of_date()` is false only while the destination shows the generation this session last published for the binding, and its source is at that generation's revision, so it's true after an undo or redo restores another generation ([Undo and Runtime State](../../../docs/spec/lifecycle.md#undo-and-runtime-state)).
 
 ## Caller workflow
 

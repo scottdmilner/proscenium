@@ -13,14 +13,18 @@ A binding refuses the operations that need its configuration when the configurat
 pending repair (source-access.md#copied-bindings). Either way it keeps everything it has. A handle reaches a
 binding's canonical candidate, and copied() reports the others.
 
+A synchronization that publishes, and a cleanup retry that commits, push one undo step each, and nothing else does;
+none in background mode or with global undo off (lifecycle.md#undo-and-runtime-state). An operator calling the API
+doesn't declare UNDO, so it adds no second step.
+
 Each operation's result reports the binding's cleanup status as it ends (proscenium.binding.runtime.pending_cleanup),
 a refusal's included.
 
 Each kind of call reports a refusal one way:
 
 - An operation (attach, synchronize, set_settings, reload, retry_cleanup) returns a result whose diagnostic says why.
-- The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
-  DisabledBindingError for a disabled binding (FoundBinding.usable_config).
+- The queries requested_settings and possibly_out_of_date raise RefusedRecordError for a configuration that can't be
+  read, and DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
 - While synchronize or retry_cleanup runs, a call to either, attach, release, or reload on any binding raises
   ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
@@ -34,9 +38,11 @@ import functools
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import bpy
 from pxr import Usd
 
-from ..binding.results import Diagnostic, DiagnosticCode, Result
+from ..binding.persistence import binding_state, records
+from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking, state
 from ..binding.source_access import binding_settings, stages
 from ..synchronization import cleanup_retry, transaction
@@ -44,8 +50,6 @@ from ..synchronization import cleanup_retry, transaction
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Concatenate
-
-    import bpy
 
     from ..binding.runtime import copy_detection
     from ..binding.source_access import identifiers
@@ -141,6 +145,10 @@ class BindingHandle:
         """Retry the cleanup earlier attempts left pending (Bindings.retry_cleanup)."""
         return BINDINGS.retry_cleanup(self.binding_id)
 
+    def possibly_out_of_date(self) -> bool:
+        """Whether the display may not show the source as it is now (Bindings.possibly_out_of_date)."""
+        return BINDINGS.possibly_out_of_date(self.binding_id)
+
     def requested_settings(self) -> RequestedSettings:
         """The settings the binding's next synchronization uses (Bindings.requested_settings)."""
         return BINDINGS.requested_settings(self.binding_id)
@@ -155,10 +163,12 @@ class Bindings:
 
     stages: stage_tracking.CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
     running: bool  # whether an exclusive operation, synchronize or retry_cleanup, is running
+    published: dict[identifiers.BindingId, binding_state.Generation]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
         self.stages = stage_tracking.CurrentStages()
         self.running = False
+        self.published = {}
 
     def create_binding(
         self,
@@ -242,7 +252,15 @@ class Bindings:
         found = self._found(binding_id)
         if not found.usable:
             return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))
-        return transaction.synchronize(binding_id, found.usable_config(), self.stages, given)
+        config = found.usable_config()
+        result = transaction.synchronize(binding_id, config, self.stages, given)
+        # Every failure before publication is fatal, and none after it (transaction.synchronize), so it published.
+        if result.state is not ResultState.FATAL_FAILURE and config.destination is not None:
+            generation = binding_state.read_generation(config.destination)
+            assert isinstance(generation, records.Loaded)  # the one just published
+            self.published[binding_id] = generation.record
+            _push_undo("Synchronize USD Display")
+        return result
 
     @_not_while_exclusive
     @_reporting_cleanup
@@ -271,7 +289,29 @@ class Bindings:
         found = self._found(binding_id)
         if not found.usable:
             return _refused(found)
-        return cleanup_retry.retry_cleanup(binding_id)
+        if pending_cleanup.nothing_pending(binding_id):
+            return Result()  # nothing to retry, so nothing committed and no undo step
+        result = cleanup_retry.retry_cleanup(binding_id)
+        if result.state is not ResultState.FATAL_FAILURE:  # a retry resolving nothing, or unrecorded, is fatal
+            _push_undo("Retry USD Display Cleanup")
+        return result
+
+    def possibly_out_of_date(self, binding_id: identifiers.BindingId) -> bool:
+        """Whether the binding's display may not show its source as it is now (lifecycle.md#undo-and-runtime-state).
+
+        It's current only while it shows the generation this session last published for the binding, and the source
+        is still at that generation's revision. So an undo or redo that restores another generation makes it possibly
+        out of date, as do a source change, a reload, an attachment, and reopening, until it synchronizes again.
+        Raises as requested_settings does for a binding that isn't usable.
+        """
+        config = self._found(binding_id).usable_config()
+        published = self.published.get(binding_id)
+        current = self.stages.get(binding_id)
+        if published is None or current is None or config.destination is None:
+            return True
+        shown = binding_state.read_generation(config.destination)
+        showing_it = isinstance(shown, records.Loaded) and shown.record == published
+        return not showing_it or published.source_revision != current.source_revision
 
     def live_stage(self, binding_id: identifiers.BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""
@@ -296,6 +336,21 @@ class Bindings:
     def _stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
         """The binding's stages, created unattached on first use."""
         return self.stages.attached(binding_id)
+
+
+def _pushes_undo() -> bool:
+    """Whether an operation that commits pushes an undo step: with global undo on, outside background mode (UNDO-04)."""
+    preferences = bpy.context.preferences
+    return not bpy.app.background and preferences is not None and preferences.edit.use_global_undo
+
+
+def _push_undo(message: str) -> None:
+    """Push the one undo step of an operation that committed, if steps are pushed (lifecycle.md#undo-and-runtime-state).
+
+    An operator calling the API doesn't declare UNDO, so this is the only step (UNDO-02).
+    """
+    if _pushes_undo():
+        bpy.ops.ed.undo_push(message=message)
 
 
 def _unavailable(binding_id: identifiers.BindingId, error: stages.SourceUnavailableError) -> Result:
