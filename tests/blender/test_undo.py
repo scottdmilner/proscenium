@@ -174,7 +174,7 @@ def test_a_failed_synchronization_adds_no_step(
         with monkeypatch.context() as patch:
             patch.setattr(_core, "plan", lambda *_: (_ for _ in ()).throw(RuntimeError("injected failure")))
             assert handle.synchronize(scene.attempted[1]).state is scene.outcome
-        undo.undo()
+        undo.undo_unpushed()
         assert _shown() == before
 
 
@@ -193,7 +193,7 @@ def test_background_mode_pushes_no_step(bindings: Bindings, tmp_path: Path) -> N
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, records.Loaded)
         assert (generation.record.payload_policy, generation.record.time_code) == (policy, time_code)
-        undo.undo()
+        undo.undo_unpushed()
         assert MARKER not in bpy.data.objects
 
 

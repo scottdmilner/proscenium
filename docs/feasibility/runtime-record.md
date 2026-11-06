@@ -86,6 +86,13 @@ All runtimes here are background mode.
 
 Other datablock types and other kinds of change were not tested. Because held references fail only in some cases, they are easy to miss in testing, which supports the rule in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state).
 
+**Undo from a state changed since the last push** (M5, 2026-11-06; the bpy wheel, Blender 5.2.2):
+- **The case:** a collection linked in the scene before two pushes, then a new object linked into it without a push, then `ed.undo`. It reads freed memory: the depsgraph Blender builds around the undo reads an object's animation data (`BKE_fcurves_id_cb`, from `is_object_visibility_animated`) after the object is freed.
+- **Where it crashed:** it segfaulted in CI on Linux and Windows. On macOS it passed unless freed memory was scribbled over (`MallocScribble=1 MallocPreScribble=1`), and then it segfaulted every time.
+- **Variants:** the same object created but linked nowhere, and pushed changes followed by an undo, didn't crash.
+- **The explanation:** Blender's undo reuses the datablocks it believes unchanged since the last step, and a change made since without a push isn't seen. This is an inference from these cases.
+- **What it means:** with a window every operator pushes a step, so an undo starts from a pushed state. Tests undo only from one: one that checks an operation pushed no step pushes the current state first (`tests/support/undo.py`, `undo_unpushed`).
+
 ### In-memory source candidates
 
 Tested the design-note candidate from [Source Stages](../spec/source-access.md#source-stages): a private stage per binding over the caller's root and session layers. It was opened with `Usd.Stage.OpenMasked(root, session, resolverContext, mask, load)` under `BlockStageCaches`. The caller's settings were then reproduced with `MuteAndUnmuteLayers` and `SetInterpolationType`.

@@ -153,7 +153,7 @@ def test_caching_pushes_no_undo_step_and_undo_restores_what_was_cached(bindings:
         bpy.data.objects.new(MARKER, None)
         undo.push("base")
         assert handle.cache(scene.cached).state is ResultState.SUCCESS
-        undo.undo()
+        undo.undo_unpushed()
         assert MARKER not in bpy.data.objects
         assert _generation().cached_time_codes == ()
         assert handle.cache(scene.cached).state is ResultState.SUCCESS
