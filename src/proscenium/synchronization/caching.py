@@ -4,11 +4,17 @@ A cache call evaluates and plans the source at each time code the generation has
 settings, before changing any Blender data, so its source-state diagnostics exist before then, as a synchronization's
 do. The application layer then keys the published display at them, and the generation record gains them. It
 publishes no new generation, records no last attempt, and pushes no undo step, as Bindings pushes none for it.
+
+A call that fails caches none of its time codes (CACHE-03): before then a failure only reports, and after it the keys
+the call added are removed, the manifest restored, and the actions it made disposed of under the transaction's rules,
+each whose removal fails entering the pending-cleanup ledger. A failure is a fatal diagnostic, never an exception,
+apart from a ledger write that fails, a defect, which raises.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import functools
 from typing import TYPE_CHECKING
 
 from pxr import Usd
@@ -54,6 +60,8 @@ def cache(
     attempted = [Usd.TimeCode(t) for t in new]
     if not new:
         return Result()
+    if (refused := prepared_work.untrackable(binding_id)) is not None:
+        return Result(refused, time_codes=attempted)
 
     binding_stages = current.attached(binding_id)
     try:
@@ -66,11 +74,35 @@ def cache(
         return Result(*own, planned, time_codes=attempted)
 
     work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.CACHE)
-    changes = application.key_time_codes(
-        dict(zip(new, planned, strict=True)), manifest.record, published.time_code, work
-    )
-    ownership.set_manifest_entries(binding_id, changes, created=work.datablocks)
+    try:
+        changes = application.key_time_codes(
+            dict(zip(new, planned, strict=True)), manifest.record, published.time_code, work
+        )
+    except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
+        message = f"Keying the cached time codes failed: {error}"
+        failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
+        return Result(*own, failed, *_discarded(work), time_codes=attempted)
     cached = tuple(sorted({*published.cached_time_codes, *new}))
-    binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
+    try:
+        # Restored whole, since an update by entry that fails partway may have written some entries.
+        work.undo.append(functools.partial(manifests.write_manifest, destination, manifest.record))
+        ownership.set_manifest_entries(binding_id, changes, created=work.datablocks)
+        binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
+    except Exception as error:  # noqa: BLE001
+        message = f"Recording the cached time codes failed: {error}"
+        failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
+        return Result(*own, failed, *_discarded(work), time_codes=attempted)
     prepared_work.remove_staging(work)
     return Result(*own, time_codes=attempted)
+
+
+def _discarded(work: prepared_work.PreparedWork) -> tuple[Diagnostic, ...]:
+    """Undo work's changes to the published generation, and dispose of what it made; each disposal that failed.
+
+    Raises, as defects, what reverting or writing the ledger raises, having disposed of the work either way.
+    """
+    try:
+        prepared_work.revert(work)
+    finally:
+        disposed = prepared_work.dispose(work)
+    return disposed

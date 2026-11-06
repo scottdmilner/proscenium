@@ -18,7 +18,7 @@ from pxr import Usd
 
 from ..binding.persistence import binding_state, ledgers, manifests, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_configs, pending_cleanup
+from ..binding.runtime import binding_configs
 from ..binding.source_access import stages
 from . import application, evaluation, prepared_work, publication, retirement
 
@@ -77,7 +77,7 @@ def _attempt(
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
     if isinstance(generation, records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
-    if (refused := _untracked(binding_id)) is not None:
+    if (refused := prepared_work.untrackable(binding_id)) is not None:
         return (refused,)
     policy = config.settings.payload_policy
     stages_ = current.attached(binding_id)
@@ -112,14 +112,3 @@ def _attempt(
         return (*own, failed, *prepared_work.dispose(work))
     prepared_work.remove_staging(work)
     return (*own, *retirement.retire(binding_id, obsolete, work.operation))
-
-
-def _untracked(binding_id: identifiers.BindingId) -> Diagnostic | None:
-    """Why the ledger couldn't record a failed removal, or None if it could (pending_cleanup.check_trackable)."""
-    try:
-        pending_cleanup.check_trackable()
-    except records.RefusedRecordError as error:
-        return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, error.refused.message)
-    except ValueError as error:
-        return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, str(error))
-    return None

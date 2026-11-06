@@ -59,8 +59,8 @@ class DiagnosticCode(StrEnum):
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     PLANNING_FAILED = "planning-failed"
-    PREPARATION_FAILED = "preparation-failed"  # making the display's resources failed; what was made is disposed of
-    PUBLICATION_FAILED = "publication-failed"  # switching to the prepared generation failed, so it was undone
+    PREPARATION_FAILED = "preparation-failed"  # making or keying the display's resources failed, so it was undone
+    PUBLICATION_FAILED = "publication-failed"  # publishing, or recording cached time codes, failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
