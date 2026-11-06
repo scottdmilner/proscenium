@@ -1,8 +1,8 @@
 """Every binding's stages, kept consistent with the bindings that exist (source-access.md#source-stages).
 
-The stages are source access's StageRegistry, created unattached on first use by binding identity. Whenever the
-bindings' state was rebuilt since (state.rebuild_count), the next use drops evaluation stages of bindings that are gone,
-keeping their attachments for undo and redo (StageRegistry.prune).
+The stages are source access's StageRegistry, created unattached on first use by binding identity. Each use first
+drops the evaluation stages of bindings that are gone, keeping their attachments for undo and redo
+(StageRegistry.prune), which reads the binding records only while there are stages.
 """
 
 from __future__ import annotations
@@ -10,29 +10,29 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ..source_access import registry
-from . import binding_configs, state
+from . import copy_detection
 
 if TYPE_CHECKING:
     from ..source_access import identifiers, stages
 
 
 class CurrentStages:
-    """Every binding's stages, compared with the bindings before each use if their state was rebuilt since."""
+    """Every binding's stages, compared with the bindings before each use."""
 
     _registry: registry.StageRegistry
-    _pruned_at: int | None  # state.rebuild_count() when the stages were last compared with the bindings
 
     def __init__(self) -> None:
         self._registry = registry.StageRegistry()
-        self._pruned_at = None
 
     def attached(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
         """The binding's stages on an attached source (StageRegistry.attached)."""
-        return self._current().attached(binding_id)
+        self.prune()
+        return self._registry.attached(binding_id)
 
     def get(self, binding_id: identifiers.BindingId) -> stages.BindingStages | None:
         """The binding's stages, or None before their first use."""
-        return self._current().get(binding_id)
+        self.prune()
+        return self._registry.get(binding_id)
 
     def release(self, binding_id: identifiers.BindingId) -> None:
         """Release one binding without reading its records (StageRegistry.release)."""
@@ -41,21 +41,11 @@ class CurrentStages:
     def prune(self) -> None:
         """Drop evaluation stages of bindings that no longer exist (StageRegistry.prune).
 
-        With no stages, as before a session's first synchronization, it reads no configurations, so calling it
-        (as the undo and redo handler does) never rebuilds the bindings' state.
+        With no stages, as before a session's first synchronization, it reads no records.
         """
         if self._registry:
-            found = binding_configs.find_bindings()
-            self._registry.prune({f.binding_id for f in found})
-        self._pruned_at = state.rebuild_count()
+            self._registry.prune(copy_detection.identities().keys())
 
     def clear(self) -> None:
         """Drop every binding's stages, leaving each binding with no source stage or attachment."""
         self._registry = registry.StageRegistry()
-        self._pruned_at = None
-
-    def _current(self) -> registry.StageRegistry:
-        """The stages, pruned first if the bindings' state was rebuilt since they were last compared with it."""
-        if self._pruned_at != state.rebuild_count():
-            self.prune()
-        return self._registry

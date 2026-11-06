@@ -4,7 +4,7 @@ A synchronization runs the transaction (proscenium.synchronization) on a binding
 or else, as the transaction chooses it, the target scene's current frame's.
 
 A binding's configuration is its records (proscenium.binding.persistence.configs), which this module reaches only
-through the bindings' in-memory state (proscenium.binding.runtime.binding_configs), which holds and writes them. Its
+through proscenium.binding.runtime.binding_configs, which reads and writes them when called. Its
 stages and attachment are runtime state, never saved, in Bindings.stages (proscenium.binding.runtime.stage_tracking),
 created unattached on first use.
 
@@ -44,7 +44,7 @@ from pxr import Usd
 
 from ..binding.persistence import binding_state, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
-from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking, state
+from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
 from ..synchronization import cleanup_retry, transaction
 
@@ -249,7 +249,6 @@ class Bindings:
         The result names the time code attempted; a refusal before the attempt names only one given.
         """
         given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
-        state.refresh_if_records_changed()  # a collection duplicated on its own since the state was built is a copy
         found = self._found(binding_id)
         if not found.usable:
             return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))

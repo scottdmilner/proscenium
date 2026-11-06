@@ -15,7 +15,7 @@ from fixtures import transaction
 from proscenium.binding.persistence import binding_state, manifests, records
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership_index, pending_cleanup
+from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.synchronization import removal
 from support.destinations import destination
@@ -38,7 +38,7 @@ def _binding(bindings: Bindings, scene: RetirementFailureScene) -> BindingHandle
 
 
 def _manifest(handle: BindingHandle) -> manifests.Manifest:
-    manifest = ownership_index.manifest(handle.binding_id)
+    manifest = ownership.manifest(handle.binding_id)
     assert isinstance(manifest, Loaded)
     return manifest.record
 
@@ -107,7 +107,7 @@ def test_a_failed_retirement_completes_with_issues(
         assert sorted(d.name for d in leftovers if d is not None) == [FAILING, FAILING]
         for datablock in leftovers:
             assert datablock is not None and datablock.session_uid in old_uids
-            assert ownership_index.ownership(datablock).claims == ()  # noncanonical: no manifest names it
+            assert ownership.of(datablock).claims == ()  # noncanonical: no manifest names it
             assert datablock not in published
         [obj] = (d for d in leftovers if isinstance(d, bpy.types.Object))
         assert obj.users_collection == ()  # linked in no scene
@@ -179,7 +179,7 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         users.objects.link(kept)
         assert handle.synchronize(second).state is ResultState.SUCCESS
         assert kept.name in bpy.data.objects and kept.data == mesh and set(kept.users_collection) == {users}
-        assert ownership_index.ownership(kept).claims == ()
+        assert ownership.of(kept).claims == ()
         assert _ledger() == {}  # released, so no retry deletes it
 
 

@@ -523,8 +523,8 @@ requirements:
         quote: "Whether a candidate is disabled is derived from the records whenever they are read, never stored"
         oracle: "Detection leaves every record in the file as it was, and gives the same report after the state is rebuilt and after save/reopen, apart from an appended index host, which the save drops."
       - id: COPY-18
-        quote: "Detection runs when a .blend is loaded, after undo and redo, when scenes are added or removed, and before each synchronization."
-        oracle: "A collection copied by script after the bindings' state was built is reported at the next synchronization, which, for the canonical candidate, succeeds."
+        quote: "Detection runs at every lookup of a binding, reading the records as they are"
+        oracle: "A collection copied by script after a lookup is reported by the next one, and the next synchronization, for the canonical candidate, succeeds."
 
   - section: spec/source-access.md#canonical-candidate
     delivery: M3
@@ -806,7 +806,7 @@ requirements:
         quote: "check each reference before returning it, so no lookup returns a removed datablock"
         delivery: M3
         fixtures: [F-BINDING-STATE]
-        oracle: "After undo, redo, file load, and deletion of managed content, lookups through runtime indexes return current datablocks or nothing, never a removed one, including when a new datablock takes a removed one's address."
+        oracle: "After undo, redo, file load, and deletion of managed content, lookups return current datablocks or nothing, never a removed one, including when a new datablock takes a removed one's address."
       - id: UNDO-08
         quote: "Detach, cleanup, and binding removal must support undo/redo"
         delivery: M11
@@ -883,7 +883,7 @@ requirements:
         quote: "Restore metadata, pending-cleanup tracking, and indexes. Do not automatically retry cleanup."
         delivery: M5
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
-        oracle: "After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, pending-cleanup tracking, and runtime indexes equal their values before saving, and the leftovers remain: no cleanup ran."
+        oracle: "After save/reopen with F-PREPARATION-CLEANUP-FAILURE's leftovers, binding metadata, the binding index, and pending-cleanup tracking equal their values before saving, and the leftovers remain: no cleanup ran."
       - id: REOPEN-02
         quote: "Do not automatically synchronize."
         fixtures: [F-BINDING-STATE]

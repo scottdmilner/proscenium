@@ -172,16 +172,16 @@ def test_units_import_each_other_in_one_form() -> None:
 def test_an_import_out_of_form_is_found() -> None:
     # Guards the test above, from a runtime module: a public module from its package, and names from a public module,
     # take the form; a name from a package, and an unexported module or a name from one, don't.
-    state = PACKAGE / "binding" / "runtime" / "state.py"
+    module = PACKAGE / "binding" / "runtime" / "copy_detection.py"
     runtime = ["proscenium", "binding", "runtime"]
 
     def out_of_form(code: str) -> int:
-        return len(_out_of_form(state, _imports_in(ast.parse(code), runtime)))
+        return len(_out_of_form(module, _imports_in(ast.parse(code), runtime)))
 
     assert out_of_form("from ..persistence import manifests, records") == 0
     assert out_of_form("from .. import results") == 0
     assert out_of_form("from ...core import _core") == 0
-    assert out_of_form("from .ownership_index import Claim") == 0  # inside its own unit
+    assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
     assert out_of_form("from ..persistence.manifests import Manifest, RepresentationRole") == 0
     assert out_of_form("from ..results import Diagnostic, Result") == 0
     assert out_of_form("from ..persistence import Manifest") == 1

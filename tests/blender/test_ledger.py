@@ -110,7 +110,6 @@ def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
     # As appending another file's index Text makes it: nothing is recorded or disposed of until it's gone.
     binding_id = _binding(bindings)
     _text().copy()
-    runtime.state.invalidate()  # the records changed behind the state, as an append changes them
     with pytest.raises(ValueError, match="2 binding indexes"):
         runtime.pending_cleanup.ledger()
     with pytest.raises(ValueError, match="2 binding indexes"):
@@ -129,7 +128,6 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
         binding_id = _binding(bindings)
         _text()[NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers[name]
         stored = _stored()
-        runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
         refused = ledgers.read_ledger(_text())
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.ledgers_refused[name]
@@ -161,7 +159,6 @@ def test_an_invalid_ledger_is_refused(bindings: Bindings, change: dict[str, obje
     stored = _stored()
     stored["entries"][key("mesh")] |= change  # ty: ignore[not-subscriptable]
     _text()[NAMESPACE][ledgers.LEDGER_KEY] = stored
-    runtime.state.invalidate()
     refused = runtime.pending_cleanup.ledger()
     assert isinstance(refused, RefusedRecord)
     assert refused.refusal is RefusalReason.INVALID

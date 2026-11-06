@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import bpy
 
 from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.runtime import ownership_index
+from proscenium.binding.runtime import ownership
 from support.blend import collection_content
 
 if TYPE_CHECKING:
@@ -25,7 +25,7 @@ def published_generation(binding_id: BindingId, destination: bpy.types.Collectio
     """
     return {
         "manifest": records.stored(destination, manifests.MANIFEST_KEY),
-        "held manifest": ownership_index.manifest(binding_id),
+        "held manifest": ownership.manifest(binding_id),
         "generation": records.stored(destination, binding_state.GENERATION_KEY),
         "objects": {o.session_uid for o in destination.objects},
         "content": collection_content(destination),

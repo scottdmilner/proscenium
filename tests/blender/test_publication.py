@@ -18,7 +18,7 @@ from proscenium.binding.persistence import binding_state, manifests, records
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
-from proscenium.binding.runtime import ownership_index, pending_cleanup
+from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, publication
@@ -79,7 +79,7 @@ def _raising(*_args: object, **_kwargs: object) -> None:
 def _fail_publication_write(monkeypatch: pytest.MonkeyPatch, write: str) -> None:
     """Make one of publication's writes fail."""
     if write == "manifest":
-        monkeypatch.setattr(ownership_index, "set_manifest", _raising)
+        monkeypatch.setattr(manifests, "write_manifest", _raising)
     else:
         monkeypatch.setattr(binding_state, "write_generation", _raising)
 
@@ -139,7 +139,7 @@ def test_a_failed_first_publication_leaves_nothing(
         assert result.state is scene.outcome
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
         assert _published(handle) == nothing
-        assert ownership_index.manifest(handle.binding_id) is None
+        assert ownership.manifest(handle.binding_id) is None
         assert datablocks() == before
         assert _ledger_entries() == {}
 
@@ -158,7 +158,7 @@ def test_a_failed_publication_keeps_the_published_generation(
         result = handle.synchronize(12)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
         assert _published(handle) == published
-        assert all(ownership_index.ownership(obj).claims for obj in _destination().objects)
+        assert all(ownership.of(obj).claims for obj in _destination().objects)
         assert datablocks() == before
         assert _ledger_entries() == {}
 

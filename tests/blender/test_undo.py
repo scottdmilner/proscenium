@@ -17,7 +17,7 @@ from fixtures import transaction
 from proscenium.api import bindings as api
 from proscenium.binding.persistence import binding_state, manifests, records
 from proscenium.binding.results import Result, ResultState
-from proscenium.binding.runtime import ownership_index, pending_cleanup
+from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.core import _core
 from proscenium.synchronization import removal
 from support import undo
@@ -83,7 +83,7 @@ def _ledger_names() -> set[tuple[str, str]]:
 
 
 def _managed_names(handle: BindingHandle) -> set[tuple[str, str]]:
-    manifest = ownership_index.manifest(handle.binding_id)
+    manifest = ownership.manifest(handle.binding_id)
     if manifest is None:
         return set()
     assert isinstance(manifest, records.Loaded)
@@ -260,7 +260,7 @@ def test_undoing_a_deletion_of_managed_content_restores_its_ownership(bindings: 
         assert ("Object", deleted) not in _managed_names(handle)
         undo.undo()
         assert _managed_names(handle) == managed
-        manifest = ownership_index.manifest(handle.binding_id)
+        manifest = ownership.manifest(handle.binding_id)
         assert manifest == manifests.read_manifest(bpy.data.collections["Shot"])  # held as stored
-        claims = ownership_index.ownership(bpy.data.objects[deleted]).claims
+        claims = ownership.of(bpy.data.objects[deleted]).claims
         assert [c.binding_id for c in claims] == [handle.binding_id]

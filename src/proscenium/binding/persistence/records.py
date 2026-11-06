@@ -154,6 +154,15 @@ def _is_group(value: object) -> bool:
     return isinstance(value, idprop.types.IDPropertyGroup)
 
 
+def alive(id_: bpy.types.ID) -> bool:
+    """Whether the ID still exists: touching a removed one's reference raises."""
+    try:
+        id_.name  # noqa: B018 - touching a removed ID's reference raises
+    except ReferenceError:
+        return False
+    return True
+
+
 def _namespace(id_: bpy.types.ID, schema: Schema[Any]) -> Any:
     """id_'s group of records, an IDPropertyGroup, or None if it has none.
 

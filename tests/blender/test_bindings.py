@@ -365,7 +365,6 @@ def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Binding
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         destination = bpy.data.collections["Shot"]
         destination[NAMESPACE][MANIFEST_KEY] = stored
-        runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
         refused = manifests.read_manifest(destination)
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.manifests_refused["unknown-role"]
@@ -513,13 +512,12 @@ def test_the_namespace_is_registered_so_the_panel_hides_it(extension: ModuleType
 
 
 def test_records_stay_readable_with_the_extension_unregistered(bindings: Bindings, tmp_path: Path) -> None:
-    # The records are raw ID properties, readable without the namespace's registered class; the API is not,
-    # since its in-memory state needs the extension's handlers.
+    # The records are raw ID properties, readable without the namespace's registered class, and the API reads them
+    # when called, so it needs no handler.
     handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     expected = _config(handle)
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
     assert _config(handle) == replace(expected, scene=_scene())  # a reference from before the reopen is stale
-    with pytest.raises(runtime.state.NotRegisteredError):
-        handle.requested_settings()
+    assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_NONE)

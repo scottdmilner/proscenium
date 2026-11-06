@@ -354,8 +354,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("linked-copy-scene", SYNC, SUCCESS, ("COPY-14", "COPY-15", "COPY-17"), 1),
                 Case("full-copy-scene", SYNC, SUCCESS, (*COPY_ROUTE_ROWS, "OWN-16"), 1),
                 Case("record-copy", SYNC, SUCCESS, COPY_ROUTE_ROWS, 1),
-                # A collection copied after the bindings' state was built is found at the next synchronization.
-                Case("found-at-synchronization", SYNC, SUCCESS, ("COPY-18",), 1),
+                # A collection copied after a lookup is found by the next one.
+                Case("found-by-the-next-lookup", SYNC, SUCCESS, ("COPY-18",), 1),
                 # The index lost or cleared: nothing decides between two candidates, and one is unique, its next
                 # write restoring the entry.
                 Case("index-lost", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-04", "COPY-11", "COPY-16"), 1),

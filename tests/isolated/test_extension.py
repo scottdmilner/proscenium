@@ -40,7 +40,7 @@ def test_install_enable_disable(runtime: Runtime, extension_zip: Path, tmp_path:
     assert repo in Path(result["module_file"]).parents  # the installed copy, not src/
     assert result["enabled_after_install"]
     registered = result["registered_after_install"]
-    assert {"load_pre", "load_post", "undo_pre", "undo_post", "redo_pre", "redo_post"} <= set(registered["handlers"])
+    assert {"load_post", "undo_post", "redo_post"} <= set(registered["handlers"])
     assert registered["namespaces"] == ["Scene", "Collection", "Text"]
     assert registered["classes"] == ["ProsceniumRecords"]
     assert repo in Path(result["core_file"]).parents

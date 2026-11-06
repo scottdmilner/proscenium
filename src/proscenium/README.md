@@ -6,7 +6,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 |---|---|
 | `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep the C++ sources, CMake files, and these READMEs out of the zip; only the built core module ships. |
 | `__init__.py` | The package, with `register` and `unregister`. It imports without `bpy`, and imports `addon` only when Blender registers the extension. |
-| `addon.py` | Registration: the record namespace's property group, and the handlers for file load, undo, and redo that keep the bindings' in-memory state current. |
+| `addon.py` | Registration: the record namespace's property group, and the handlers for file load, undo, and redo that drop or prune the bindings' stages. |
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |

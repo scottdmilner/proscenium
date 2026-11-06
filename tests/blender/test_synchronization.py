@@ -21,10 +21,9 @@ from proscenium.api.bindings import (
     Bindings,
     Result,
 )
-from proscenium.binding import persistence, runtime
+from proscenium.binding import persistence
 from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
-from proscenium.binding.runtime import state
 from proscenium.binding.source_access.identifiers import BindingId
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
@@ -279,7 +278,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
 
 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """One item for every time the bindings' state is rebuilt from the scenes' records from here on."""
+    """One item for every time every binding record is read from here on, as pruning the stages reads them."""
     scans: list[int] = []
     read_configs = persistence.configs.read_configs
 
@@ -303,25 +302,19 @@ def test_an_undo_with_no_sources_rebuilds_nothing_in_its_handler(
     scans = _counted_scans(monkeypatch)
     undo.undo()
     assert scans == []
-    handle.synchronize(0)  # unavailable; the next call rebuilds the state once
+    handle.synchronize(0)  # unavailable; a lookup reads only its own identity's records
+    assert scans == []
+    undo.redo()  # now with stages: pruned at once
     assert scans == [1]
-    undo.redo()  # now with a source: pruned at once
-    assert scans == [1, 1]
 
 
-def test_pruning_compares_the_scenes_once(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pruning_reads_the_records_once(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     handles = [binding_on_file(bindings, _scene(), _root(tmp_path / str(i)), name=f"B{i}") for i in range(3)]
     for handle in handles:
         handle.synchronize(0)
-    current, calls = state.current_state, []  # the cost under test is one comparison of the scenes
-
-    def counted() -> object:
-        calls.append(1)
-        return current()
-
-    monkeypatch.setattr(state, "current_state", counted)
+    scans = _counted_scans(monkeypatch)
     bindings.prune_stages()
-    assert len(calls) == 1
+    assert scans == [1]  # one read of every binding record, whatever the number of bindings
     assert all(bindings.stages.get(handle.binding_id) is not None for handle in handles)
 
 
@@ -385,7 +378,6 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     else:
         [text] = configs.index_texts()
         text.copy()  # two indexes naming the identity leave no canonical candidate
-    runtime.state.invalidate()
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE
     assert handle.live_stage() is None
     assert bindings.stages.get(handle.binding_id) is stages

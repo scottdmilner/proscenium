@@ -18,7 +18,7 @@ from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
-from proscenium.binding.runtime import ownership_index, pending_cleanup
+from proscenium.binding.runtime import ownership, pending_cleanup
 from support.blend import save_and_reopen
 from support.destinations import destination
 
@@ -72,7 +72,7 @@ def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.t
         assert (entry.binding_id, entry.operation) == (handle.binding_id, OriginatingOperation.SYNCHRONIZE)
         assert entry.diagnostic in result.diagnostics
         assert (entry.diagnostic.resource, entry.diagnostic.role) == (ledger_key, entry.role)
-        assert entry.datablock is not None and ownership_index.ownership(entry.datablock).claims == ()
+        assert entry.datablock is not None and ownership.of(entry.datablock).claims == ()
     assert all(not d.users_collection for d in leftovers if isinstance(d, bpy.types.Object))  # in no scene
     assert set(result.cleanup_status) >= {e.diagnostic for e in ledger.values()}
 
@@ -99,14 +99,14 @@ def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bi
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         published = _published(handle)
-        manifest = ownership_index.manifest(handle.binding_id)
+        manifest = ownership.manifest(handle.binding_id)
         assert isinstance(manifest, Loaded)
         named = {e.datablock for e in manifest.record.entries.values()}
         result, leftovers = failing_preparation(handle, scene, 10)
         _check_failed(handle, result, scene)
         _check_leftovers(handle, result, leftovers)
         assert _published(handle) == published
-        assert ownership_index.manifest(handle.binding_id) == manifest
+        assert ownership.manifest(handle.binding_id) == manifest
         assert named <= {*bpy.data.objects, *bpy.data.meshes}  # none disposed of
         assert named.isdisjoint(e.datablock for e in _ledger().values())
         assert leftovers.isdisjoint(_destination().objects)

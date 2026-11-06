@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.runtime import state
+from proscenium.binding.persistence import records
 from proscenium.synchronization import removal
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ def test_datablocks_are_removed_in_one_call(monkeypatch: pytest.MonkeyPatch) -> 
     calls = _counted(monkeypatch, lambda _: False)
     assert removal.remove(objects) == {}
     assert calls == [5]
-    assert not any(state.alive(obj) for obj in objects)
+    assert not any(records.alive(obj) for obj in objects)
 
 
 def test_a_failure_is_found_one_call_each(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,7 +55,7 @@ def test_a_failure_is_found_one_call_each(monkeypatch: pytest.MonkeyPatch) -> No
     failures = removal.remove(objects)
     assert list(failures) == [2]
     assert calls == [4, 1, 1, 1]
-    assert [state.alive(obj) for obj in objects] == [False, False, True, False]
+    assert [records.alive(obj) for obj in objects] == [False, False, True, False]
 
 
 def _placeholder(name: str) -> tuple[bpy.types.Object, bpy.types.Mesh]:
@@ -97,7 +97,7 @@ def test_a_failure_leaves_it_and_what_it_uses_pending(monkeypatch: pytest.Monkey
     outcome = removal.remove_unused({"object": obj, "mesh": mesh})
     assert outcome.removed == outcome.released == set()
     assert outcome.pending == {"object": "injected failure", "mesh": "a resource using it couldn't be removed"}
-    assert state.alive(obj) and state.alive(mesh)
+    assert records.alive(obj) and records.alive(mesh)
 
 
 def test_one_already_gone_counts_as_removed() -> None:

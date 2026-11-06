@@ -52,7 +52,7 @@ def _ours(fn: Callable[..., object]) -> bool:
 
 def test_extension_registers_and_unregisters(extension: ModuleType) -> None:
     registered = _registrations()
-    assert {"load_pre", "load_post", "undo_pre", "undo_post", "redo_pre", "redo_post"} <= registered.handlers.keys()
+    assert {"load_post", "undo_post", "redo_post"} <= registered.handlers.keys()
     assert registered.namespaces == [t.__name__ for t in addon.RECORD_TYPES]
     assert registered.classes == [c.__name__ for c in addon.CLASSES]
     extension.unregister()

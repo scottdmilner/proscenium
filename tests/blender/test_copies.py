@@ -18,7 +18,7 @@ from proscenium.binding.persistence import binding_state, configs, manifests, re
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership_index
+from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.binding_configs import DisabledBindingError
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import copies as routes
@@ -129,9 +129,9 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             binding_id, None, None, None, None, report
         )
         for call in (
-            lambda: ownership_index.manifest(binding_id),
-            lambda: ownership_index.set_manifest(binding_id, Manifest({})),
-            lambda: ownership_index.set_manifest_entries(binding_id, {}, [key("a")]),
+            lambda: ownership.manifest(binding_id),
+            lambda: ownership.set_manifest(binding_id, Manifest({})),
+            lambda: ownership.set_manifest_entries(binding_id, {}, [key("a")]),
         ):
             with pytest.raises(DisabledBindingError):
                 call()
@@ -156,7 +156,6 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
             restored = not expected.index_untouched
             before, after = _republished(before, index_restored=restored), _republished(after, index_restored=restored)
         assert after == before
-        runtime.state.invalidate()
         assert bindings.copied() == reported  # COPY-03: the same once the state is rebuilt
         if expected.index_untouched:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
@@ -180,7 +179,7 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
             objects = bpy.data.collections[name].objects
             assert len(objects) == len(transaction.DRAWN[PayloadPolicy.LOAD_ALL])
             for obj in objects:
-                claims = ownership_index.ownership(obj).claims
+                claims = ownership.of(obj).claims
                 assert [(c.binding_id, c.destination.name) for c in claims] == [(handle.binding_id, name)]
 
 
@@ -191,25 +190,24 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
         published = set(bpy.data.objects)
         routes.run("duplicated-object", tmp_path)
         [copy] = set(bpy.data.objects) - published
-        assert ownership_index.ownership(copy).claims == ()
-        assert len(ownership_index.ownership(bpy.data.objects[routes.MANAGED]).claims) == 1
+        assert ownership.of(copy).claims == ()
+        assert len(ownership.of(bpy.data.objects[routes.MANAGED]).claims) == 1
         # Synchronizing again publishes new content, and still claims no copy.
         assert handle.synchronize(0).state is ResultState.SUCCESS
-        assert ownership_index.ownership(copy).claims == ()
+        assert ownership.of(copy).claims == ()
         published = [o for o in bpy.data.collections["Shot"].objects if o != copy]  # the copy stays linked there
-        assert all(len(ownership_index.ownership(o).claims) == 1 for o in published)
+        assert all(len(ownership.of(o).claims) == 1 for o in published)
 
 
-def test_a_copy_is_found_at_the_next_synchronization(bindings: Bindings, tmp_path: Path) -> None:
-    # COPY-18, F-OWNERSHIP-AMBIGUITY "found-at-synchronization": a collection copied by script adds no scene,
-    # so nothing reports it until a synchronization looks; for the canonical candidate, that succeeds.
+def test_a_copy_is_found_by_the_next_lookup(bindings: Bindings, tmp_path: Path) -> None:
+    # COPY-18, F-OWNERSHIP-AMBIGUITY "found-by-the-next-lookup": a collection copied by script after a lookup is
+    # reported by the next one, with no handler; for the canonical candidate, the next synchronization succeeds.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
-        assert bindings.copied() == []  # the state is built
-        routes.run("collection-copy", tmp_path)
         assert bindings.copied() == []
-        assert handle.synchronize(0).state is ResultState.SUCCESS
+        routes.run("collection-copy", tmp_path)
         [report] = bindings.copied()
+        assert handle.synchronize(0).state is ResultState.SUCCESS
         assert [(c.scene, c.destination, c.canonical) for c in report.candidates] == [
             ("Scene", "Shot", True),
             ("Scene", "Shot.001", False),
@@ -227,7 +225,6 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
             lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
         ):
             bpy.data.texts.remove(bpy.data.texts[configs.INDEX_NAME])
-            runtime.state.invalidate()
             assert bindings.in_scene(_scene()) == [handle]
             assert configs.index_texts() == []
             assert write().state is ResultState.SUCCESS

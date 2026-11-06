@@ -18,7 +18,7 @@ from pxr import Usd
 
 from ..binding.persistence import binding_state, ledgers, manifests, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_configs, ownership_index, pending_cleanup
+from ..binding.runtime import binding_configs, pending_cleanup
 from ..binding.source_access import stages
 from ..core import _core
 from . import application, prepared_work, publication, retirement
@@ -72,7 +72,7 @@ def _attempt(
     scene = config.scene
     assert scene is not None
     # A manifest naming an unknown role is one that can't be read (ROLE-01).
-    manifest = ownership_index.manifest(binding_id)
+    manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if isinstance(manifest, records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
@@ -125,7 +125,9 @@ def _attempt(
         binding_id, policy, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
     )
     try:
-        obsolete = publication.publish(binding_id, destination, work, described)
+        before = None if manifest is None else published
+        previous = None if generation is None else generation.record
+        obsolete = publication.publish(destination, work, described, before, previous)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
         return (*own, failed, *prepared_work.dispose(work))

@@ -5,7 +5,6 @@ from bpy.app.handlers import persistent
 
 from .api import bindings
 from .binding.persistence import records
-from .binding.runtime import state
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):
@@ -26,48 +25,33 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    bindings.BINDINGS.drop_all_stages()
-    state.invalidate()
-
-
-@persistent
-def _data_changing(*_args: object) -> None:
-    # Before a load, undo, or redo, so that another extension's handler running ahead of _file_loaded
-    # or _undone_or_redone rebuilds the state from the data that results.
-    state.invalidate()
+    bindings.BINDINGS.drop_all_stages()  # loading a .blend releases every attachment (source-access.md)
 
 
 @persistent
 def _undone_or_redone(*_args: object) -> None:
-    state.invalidate()  # undo and redo restore records, and re-read the datablocks the step changed
     bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
 
 
 def register() -> None:
-    """Register the record types, and the handlers that keep the bindings' state current."""
+    """Register the record types, and the handlers that drop or prune the bindings' stages."""
     global _registered
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     for id_type in RECORD_TYPES:
         setattr(id_type, records.NAMESPACE, bpy.props.PointerProperty(type=ProsceniumRecords))
-    for pre in (bpy.app.handlers.load_pre, bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
-        pre.append(_data_changing)
     bpy.app.handlers.load_post.append(_file_loaded)
     bpy.app.handlers.undo_post.append(_undone_or_redone)
     bpy.app.handlers.redo_post.append(_undone_or_redone)
-    state.start_tracking()
     _registered = True
 
 
 def unregister() -> None:
-    """Remove what register() added, and stop the bindings' state."""
+    """Remove what register() added."""
     global _registered
-    state.stop_tracking()
     bpy.app.handlers.load_post.remove(_file_loaded)
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)
-    for pre in (bpy.app.handlers.load_pre, bpy.app.handlers.undo_pre, bpy.app.handlers.redo_pre):
-        pre.remove(_data_changing)
     for id_type in RECORD_TYPES:
         delattr(id_type, records.NAMESPACE)
     for cls in reversed(CLASSES):

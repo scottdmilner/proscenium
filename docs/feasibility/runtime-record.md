@@ -1453,6 +1453,38 @@ Medians over the three runs; a frame's first visit and a revisit are each run's 
 
 Disney's Moana Island scene (`island/usd/island.usda`, 16 GB) exhausted this machine's 32 GB through the bridge when opened whole (by the user), so it was surveyed one element at a time, each in a child process killed past 8 GB of resident memory (ad hoc, one run). Every element is a native instance of a prototype, and its point instancers hold about 31 million instances, 23.0 million in `isBeach` alone. The bridge plans each point instance as a copy (D6): the elements small enough to plan with their instances took about 13 KB of resident memory per planned copy, meshes included (`isBayCedarA1`: 219,005 copies at a 2.9 GB peak), so the whole island's instances would need hundreds of GB. `isDunesB` (65,228 prims, 5.5 million mesh points) passed 8 GB even with its point instancers left out, for a cause not investigated. So scenes of millions of point instances can't be planned instance by instance at all; their batches would need to come from an instancer's arrays without a record per instance.
 
+### Lookups without the bindings' cache (M5 Phase S)
+
+Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) is needed at scale: lookups without it, against it, with the baseline's display as a binding's manifest, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, 2026-11-06). The cache was removed after this measurement (DECISIONS.md "Binding records read when called"), so the rows with it can't be measured again; `measure/run.py --scenes updates alab --modes uncached --repeats 3 --out build/hydra-bridge/measure-uncached` now times the runtime's own lookups, which are the rows without it.
+
+**Method** (`measure/uncached_timing.py`):
+- **The manifest:** written as C5 writes it ([Ownership lookup after undo](#ownership-lookup-after-undo-m4-phase-c)), one binding's, so every file has one binding.
+- **With the cache:** `ownership_index.ownership()` of one object, and of 1,000; the first `ownership()` after `state.invalidate()`, as after an undo; and `binding_configs.find_binding()`.
+- **Ownership without the cache, by scan:** every binding record and every manifest read through `configs` and `manifests`, then the claims on the object.
+- **Ownership without the cache, by users:** `bpy.data.user_map(subset=...)` of the objects, the collections holding binding records among their users (a manifest's pointer is a user), and a scan of those manifests' stored entries for the pointers; of one object, and of 1,000 at once, as a box select asks. Each way without the cache gave the cache's claims, checked in every run, for the one object and each of the 1,000.
+- **A binding lookup without the cache:** every collection's binding records and the index read, and `canonical_candidate.decide` for the identity.
+- **The manifest read whole**, as a synchronization without the cache would read it.
+- **Statistics:** three processes per scene after a warmup, ten repeats each; each process's median, as a median and range over the processes.
+
+| Operation (ms) | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Manifest entries | 306 | 3,006 | 11,185 | 30,006 |
+| cached ownership, one | 0.002 | 0.002 | 0.002 | 0.002 |
+| cached ownership, 1,000 (301 in updates-100) | 0.504 | 1.703 | 1.628 | 1.676 |
+| **first ownership after the state is dropped** | 1.373 | 13.112 | **52.452 (51.803–56.938)** | **158.076 (152.137–188.141)** |
+| **no cache, ownership by scan** | 1.025 | 10.813 | 42.904 (41.757–46.175) | **127.973 (126.092–133.235)** |
+| no cache, ownership by users, one | 0.131 | 1.377 | 9.139 (8.548–9.959) | 22.135 (21.926–22.680) |
+| no cache, ownership by users, 1,000 at once (301) | 0.760 | 3.540 | 11.515 (11.148–13.516) | 25.881 (25.473–28.446) |
+| cached binding lookup | 0.003 | 0.003 | 0.003 | 0.003 |
+| no cache, binding lookup by scan | 0.013 | 0.013 | 0.013 | 0.013 |
+| no cache, the manifest read whole | 1.014 | 11.179 | 43.232 (41.214–44.528) | 123.835 (119.076–124.418) |
+
+**Findings:**
+- **Ownership by scan needs the cache at scale:** it costs about what rebuilding the cache does, over the 50 ms interaction budget at 30,006 entries and near it on ALab, so a cache that answers it from memory is needed if ownership is looked up that way.
+- **Ownership by users fits the budget without a cache** on every scene measured: 9 ms on ALab and 22 ms at 30,006 entries for one object, and 12 ms and 26 ms for 1,000 at once. It grows with the file, since `user_map` walks every datablock; these files hold the display and little else (11,188 datablocks of the kinds counted on ALab), so a file with more unmanaged content costs more, which wasn't measured. Against the cache's microseconds it suits a lookup per operation, such as a pick or a box select, not one per redraw.
+- **A binding lookup needs no cache with one binding:** 13 µs without it. More bindings weren't measured in the binary; in the bpy wheel, ad hoc, a scan with 100 bindings took 0.52 ms.
+- **The first lookup after an undo is over budget on ALab here,** 52 ms against C5's 43.9 ms in the same environment, where each first lookup also followed a real undo; ownership by users is cheaper than it at every scale measured.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

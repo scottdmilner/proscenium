@@ -24,7 +24,7 @@ from proscenium.binding.persistence.binding_state import LastAttempt
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership_index
+from proscenium.binding.runtime import ownership
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.blend import collection_content, save_and_reopen
@@ -55,7 +55,7 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     """The binding's records and its destination's content, by name: references don't survive a reopen."""
     config = _config(handle)
     found = destination(handle)
-    manifest = ownership_index.manifest(handle.binding_id)
+    manifest = ownership.manifest(handle.binding_id)
     assert isinstance(manifest, Loaded)
     entries = {
         entry_key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses, entry.place)
@@ -173,9 +173,9 @@ def _managed(bindings: Bindings, tmp_path: Path, scene: bpy.types.Scene) -> Bind
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     _scene().collection.objects.link(obj)
-    ownership_index.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
+    ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
     binding_state.write_last_attempt(destination(handle), LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ()))
-    assert ownership_index.ownership(obj).claims != ()
+    assert ownership.of(obj).claims != ()
     return handle
 
 
@@ -189,7 +189,7 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         if check:
             save_and_reopen(tmp_path / "removed.blend")
         _check_gone(bindings, handle)
-        assert ownership_index.ownership(bpy.data.objects["Managed"]).claims == ()
+        assert ownership.of(bpy.data.objects["Managed"]).claims == ()
         assert _index_entry(handle.binding_id) == (True, None)
 
 
@@ -208,7 +208,7 @@ def test_removed_target_scene(bindings: Bindings, tmp_path: Path) -> None:
         _check_gone(bindings, handle)
         shot = bpy.data.collections["Shot"]
         assert records.stored(shot, configs.config_key(handle.binding_id)) == {**stored, "scene": None}
-        claims = ownership_index.ownership(bpy.data.objects["Managed"]).claims
+        claims = ownership.of(bpy.data.objects["Managed"]).claims
         assert [(c.binding_id, c.destination) for c in claims] == [(handle.binding_id, shot)]
 
 
@@ -222,7 +222,7 @@ def test_undoing_the_removal_restores_the_binding(bindings: Bindings, tmp_path: 
             "config": replace(_config(handle), scene=None),
             "attempt": binding_state.read_last_attempt(destination(handle)),
             "generation": binding_state.read_generation(destination(handle)),
-            "entries": sorted(ownership_index.manifest(handle.binding_id).record.entries),  # ty: ignore[unresolved-attribute]
+            "entries": sorted(ownership.manifest(handle.binding_id).record.entries),  # ty: ignore[unresolved-attribute]
         }
         undo.push("base")
         bpy.data.collections.remove(bpy.data.collections["Shot"])
@@ -233,7 +233,7 @@ def test_undoing_the_removal_restores_the_binding(bindings: Bindings, tmp_path: 
             "config": replace(_config(handle), scene=None),
             "attempt": binding_state.read_last_attempt(destination(handle)),
             "generation": binding_state.read_generation(destination(handle)),
-            "entries": sorted(ownership_index.manifest(handle.binding_id).record.entries),  # ty: ignore[unresolved-attribute]
+            "entries": sorted(ownership.manifest(handle.binding_id).record.entries),  # ty: ignore[unresolved-attribute]
         } == saved
         assert _config(handle).scene == _scene()
         assert handle.synchronize(0).state is ResultState.SUCCESS

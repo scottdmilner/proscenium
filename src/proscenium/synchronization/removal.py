@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding.runtime import state
+from ..binding.persistence import records
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Hashable, Mapping, Sequence
@@ -48,7 +48,7 @@ def remove_unused[K: Hashable](
     outcome: RemovalOutcome[K] = RemovalOutcome()
     present: dict[K, bpy.types.ID] = {}
     for key, datablock in datablocks.items():
-        if datablock is None or not state.alive(datablock):
+        if datablock is None or not records.alive(datablock):
             outcome.removed.add(key)
         else:
             present[key] = datablock
@@ -96,7 +96,7 @@ def remove(datablocks: Sequence[bpy.types.ID]) -> dict[int, Exception]:
         return {}
     failures: dict[int, Exception] = {}
     for index, datablock in enumerate(datablocks):
-        if not state.alive(datablock):  # removed by the failed call
+        if not records.alive(datablock):  # removed by the failed call
             continue
         try:
             _batch_remove([datablock])

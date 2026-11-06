@@ -1,8 +1,6 @@
-"""The pending-cleanup ledger, through the bindings' state (lifecycle.md#pending-cleanup).
+"""The pending-cleanup ledger, read from the binding index's Text when asked for (lifecycle.md#pending-cleanup).
 
-The ledger is read from the binding index's Text when first asked for, and held with that Text's records; writes go
-through it, as manifest writes do. Every operation's result reports its binding's cleanup status from it, so once it's
-held a result costs a check of each entry's datablock, and only work it records or resolves writes it.
+Every operation's result reports its binding's cleanup status from it, and only work it records or resolves writes it.
 
 While the file has more than one binding index, the ledger refuses as the index does: an appended index Text brings a
 ledger whose pointers name the appended copies, so nothing is recorded or disposed of until it's gone.
@@ -12,16 +10,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..persistence import ledgers, records
-from . import state
-from .state import StaleError, Unread
+from ..persistence import configs, ledgers, records
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
+    import bpy
+
     from .. import results
     from ..source_access import identifiers
-    from .state import IndexRecords, State
 
 
 def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
@@ -29,7 +26,8 @@ def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
 
     Raises ValueError if the file has more than one binding index.
     """
-    return state.query(_checked_ledger)
+    text = _index_text()
+    return None if text is None else ledgers.read_ledger(text)
 
 
 def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnostic, ...]:
@@ -39,25 +37,24 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
     (DIAG-06). Prepared work is held by the operation preparing it, never in the ledger. Empty when the ledger can't be
     read or the file has more than one binding index, since neither names a pending resource cleanup could retry.
     """
-
-    def question(current: State) -> tuple[results.Diagnostic, ...]:
-        if len(current.indexes) > 1 or not isinstance(ledger := _checked_ledger(current), records.Loaded):
-            return ()
-        entries = sorted(ledger.record.entries.items())
-        return tuple(e.diagnostic for _, e in entries if e.binding_id == binding_id)
-
-    return state.query(question)
+    try:
+        held = ledger()
+    except ValueError:
+        return ()
+    if not isinstance(held, records.Loaded):
+        return ()
+    return tuple(e.diagnostic for _, e in sorted(held.record.entries.items()) if e.binding_id == binding_id)
 
 
 def nothing_pending(binding_id: identifiers.BindingId) -> bool:
     """Whether the ledger can be read and holds no entry of the binding, so a retry has nothing to do or report."""
-
-    def question(current: State) -> bool:
-        if len(current.indexes) > 1 or isinstance(ledger := _checked_ledger(current), records.RefusedRecord):
-            return False
-        return ledger is None or all(e.binding_id != binding_id for e in ledger.record.entries.values())
-
-    return state.query(question)
+    try:
+        held = ledger()
+    except ValueError:
+        return False
+    if isinstance(held, records.RefusedRecord):
+        return False
+    return held is None or all(e.binding_id != binding_id for e in held.record.entries.values())
 
 
 def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
@@ -66,13 +63,13 @@ def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Coll
     An empty update writes nothing. Raises as check_trackable does, and ValueError or TypeError, changing nothing, over
     an update that makes no ledger.
     """
-    held = _trackable()
+    text = _trackable_text()
     if not changed and not removed:
         return
-    stored = _ledger_of(held)
-    assert not isinstance(stored, records.RefusedRecord)  # _trackable refused it
+    stored = ledgers.read_ledger(text)
+    assert not isinstance(stored, records.RefusedRecord)  # _trackable_text refused it
     after = (ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
-    held.ledger = ledgers.write_ledger_entries(held.text, after, changed.keys(), removed)
+    ledgers.write_ledger_entries(text, after, changed.keys(), removed)
 
 
 def check_trackable() -> None:
@@ -81,45 +78,22 @@ def check_trackable() -> None:
     RefusedRecordError over one that can't be read, and ValueError if the file has no binding index to hold it or more
     than one.
     """
-    _trackable()
+    _trackable_text()
 
 
-def _trackable() -> IndexRecords:
-    """The index Text's records, holding a ledger that can be read or none yet; raises as check_trackable does."""
-    held = state.query(_held_index)
-    if held is None:
+def _trackable_text() -> bpy.types.Text:
+    """The index Text, holding a ledger that can be read or none yet; raises as check_trackable does."""
+    text = _index_text()
+    if text is None:
         raise ValueError("This file has no binding index to hold the pending-cleanup ledger")
-    if isinstance(stored := _ledger_of(held), records.RefusedRecord):
+    if isinstance(stored := ledgers.read_ledger(text), records.RefusedRecord):
         raise records.RefusedRecordError(stored)
-    return held
+    return text
 
 
-def _checked_ledger(current: State) -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
-    """The ledger, reread if a datablock it names was removed: Blender cleared that entry's pointer."""
-    if (held := _held_index(current)) is None:
-        return None
-    ledger = _ledger_of(held)
-    if isinstance(ledger, records.Loaded) and not all(
-        e.datablock is None or state.alive(e.datablock) for e in ledger.record.entries.values()
-    ):
-        held.ledger = ledger = ledgers.read_ledger(held.text)
-    return ledger
-
-
-def _held_index(current: State) -> IndexRecords | None:
-    """The records on the file's only binding index Text, or None if it has none; ValueError if it has more."""
-    if len(current.indexes) > 1:
-        raise ValueError(f"This file has {len(current.indexes)} binding indexes")
-    if not current.indexes:
-        return None
-    held = current.indexes[0]
-    if not state.alive(held.text):
-        raise StaleError  # removed since the state was built
-    return held
-
-
-def _ledger_of(held: IndexRecords) -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
-    """The Text's ledger, read the first time."""
-    if isinstance(held.ledger, Unread):
-        held.ledger = ledgers.read_ledger(held.text)
-    return held.ledger
+def _index_text() -> bpy.types.Text | None:
+    """The file's only binding index Text, or None if it has none; ValueError if it has more."""
+    texts = configs.index_texts()
+    if len(texts) > 1:
+        raise ValueError(f"This file has {len(texts)} binding indexes")
+    return texts[0] if texts else None

@@ -15,8 +15,8 @@ import bpy
 
 from proscenium.binding.persistence import configs, manifests
 from proscenium.binding.persistence.records import Loaded
-from proscenium.binding.runtime import ownership_index
-from proscenium.binding.runtime.ownership_index import Claim
+from proscenium.binding.runtime import ownership
+from proscenium.binding.runtime.ownership import Claim
 
 if TYPE_CHECKING:
     from proscenium.binding.source_access.identifiers import BindingId
@@ -45,4 +45,4 @@ def assert_agrees() -> None:
     """Assert the ownership index's claims are the oracle's, as sets, for every datablock of every type."""
     expected = claims()
     for id_ in bpy.data.user_map().keys() | expected.keys():
-        assert set(ownership_index.ownership(id_).claims) == set(expected.get(id_, [])), id_
+        assert set(ownership.of(id_).claims) == set(expected.get(id_, [])), id_

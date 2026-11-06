@@ -15,7 +15,7 @@ from fixtures import records as record_fixtures
 from fixtures import transaction
 from proscenium.binding.persistence import configs, ledgers, records
 from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import pending_cleanup, state
+from proscenium.binding.runtime import pending_cleanup
 from proscenium.synchronization import removal
 from support.blend import save_and_reopen
 
@@ -181,7 +181,6 @@ def test_a_ledger_that_cant_be_read_refuses_and_disposes_of_nothing(bindings: Bi
         names = {d.name for d in leftovers}
         [text] = configs.index_texts()
         text[records.NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers["newer"]
-        state.invalidate()  # the record changed behind the state, as a load or undo changes it
         result = handle.retry_cleanup()
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics

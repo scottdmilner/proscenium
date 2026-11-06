@@ -70,7 +70,7 @@ Custom properties can be copied by duplication; do not assume they guarantee uni
 - A binding's handle reaches its canonical candidate. A scene lists the bindings whose canonical candidate is on it and, for a binding with none, those with a candidate on it. Every candidate of an identity that isn't unique is reported, with which one is canonical, or that none is.
 - A binding with no canonical candidate refuses synchronization, reloading, and settings changes with a fatal diagnostic naming its candidates, before accessing its source.
 - Whether a candidate is disabled is derived from the records whenever they are read, never stored, so it survives save/reopen and no copy carries it. Detection writes nothing.
-- Detection runs when a `.blend` is loaded, after undo and redo, when scenes are added or removed, and before each synchronization.
+- Detection runs at every lookup of a binding, reading the records as they are, so the next call that reaches an identity finds its copies.
 
 ### Canonical Candidate
 
