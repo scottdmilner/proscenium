@@ -119,6 +119,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
             assert all(
                 c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
             )
+        assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
         assert _evaluation(bindings, handle) is evaluation  # the refusals acquired nothing
         assert handle.live_stage() is None
         with pytest.raises(DisabledBindingError):

@@ -328,6 +328,7 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
             assert diagnostic.message == refused.message
+        assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
         with pytest.raises(RefusedRecordError):
             handle.requested_settings()
         assert bindings.in_scene(_scene()) == [handle]

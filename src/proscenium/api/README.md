@@ -14,7 +14,7 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 - **Results and refusals:** an operation returns a `Result` (`proscenium.binding.results`) whose diagnostics say why it failed: an unavailable source, a configuration that can't be read, a removed destination, or a binding with copies and no canonical candidate. A query raises instead, and methods needing records raise `BindingNotFoundError` for a binding that doesn't exist. `release()` is an idempotent runtime operation that remains valid after undo or removal.
 - **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `CurrentStages` (`proscenium.binding.runtime.stage_tracking`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `addon.py` drops them all when a file is loaded (`drop_all_stages`).
 
-`synchronize` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction. It acquires only so far; M5 adds evaluation, planning, application, and publication.
+`synchronize(time_code=None)` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction at the time code given, the USD default time code included, or else at the target scene's current frame's, its subframe included, since time code t is frame t. The result names the time code attempted; a refusal here, before the attempt, names only one given.
 
 ## Caller workflow
 
@@ -30,7 +30,7 @@ stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
 handle = BINDINGS.create_binding(bpy.context.scene, name="Shot")
 attachment = handle.attach(stage)
 if attachment.is_success:
-    result = handle.synchronize(Usd.TimeCode.Default())
+    result = handle.synchronize()  # at the scene's current frame
     print(result)
 ```
 

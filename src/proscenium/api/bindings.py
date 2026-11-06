@@ -1,7 +1,7 @@
 """The process's bindings, and the handle callers reach one through (source-access.md#synchronization-api).
 
-A synchronization runs the transaction (proscenium.synchronization) on a binding found usable; so far it acquires the
-binding's evaluation stage under its requested settings and reports the source's state.
+A synchronization runs the transaction (proscenium.synchronization) on a binding found usable, at the time code given
+or else, as the transaction chooses it, the target scene's current frame's.
 
 A binding's configuration is its records (proscenium.binding.persistence.configs), which this module reaches only
 through the bindings' in-memory state (proscenium.binding.runtime.binding_configs), which holds and writes them. Its
@@ -90,8 +90,8 @@ class BindingHandle:
         """Release this binding's source and evaluation stages, including after removal or undo."""
         BINDINGS.release(self.binding_id)
 
-    def synchronize(self, time_code: Usd.TimeCode | float) -> Result:
-        """Synchronize at an explicit time code (Bindings.synchronize)."""
+    def synchronize(self, time_code: Usd.TimeCode | float | None = None) -> Result:
+        """Synchronize at time_code, or at the target scene's current frame's (Bindings.synchronize)."""
         return BINDINGS.synchronize(self.binding_id, time_code)
 
     def set_settings(self, *, payload_policy: stages.PayloadPolicy | None = None) -> Result:
@@ -192,17 +192,17 @@ class Bindings:
         return Result()
 
     @_reporting_cleanup
-    def synchronize(self, binding_id: identifiers.BindingId, time_code: Usd.TimeCode | float) -> Result:
-        """Synchronize at an explicit time code through the transaction (proscenium.synchronization).
+    def synchronize(self, binding_id: identifiers.BindingId, time_code: Usd.TimeCode | float | None = None) -> Result:
+        """Synchronize through the transaction (proscenium.synchronization), at time_code if given.
 
-        The result names the time code, whatever it reports, a refusal's included.
+        The result names the time code attempted; a refusal before the attempt names only one given.
         """
-        attempted = Usd.TimeCode(time_code)  # a time code evaluation can use, or a TypeError now
+        given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
         state.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
         found = self._found(binding_id)
         if not found.usable:
-            return Result(*_refused(found).diagnostics, time_codes=(attempted,))
-        return transaction.synchronize(binding_id, found.usable_config(), self.stages, attempted)
+            return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))
+        return transaction.synchronize(binding_id, found.usable_config(), self.stages, given)
 
     @_reporting_cleanup
     def reload(self, binding_id: identifiers.BindingId, layers: Iterable[str] | None = None) -> Result:

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from pxr import Usd
+
 from ..binding.persistence import binding_state, ledgers, manifests, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.runtime import binding_configs, ownership_index, pending_cleanup
@@ -21,7 +23,6 @@ from . import application, prepared_work, publication, retirement
 
 if TYPE_CHECKING:
     import bpy
-    from pxr import Usd
 
     from ..binding.persistence import configs
     from ..binding.runtime import stage_tracking
@@ -32,15 +33,18 @@ def synchronize(
     binding_id: identifiers.BindingId,
     config: configs.BindingConfig,
     current: stage_tracking.CurrentStages,
-    time_code: Usd.TimeCode,
+    time_code: Usd.TimeCode | None,
 ) -> Result:
     """Synchronize a usable binding with config at time_code; the result names the time code.
 
-    The binding's stages are current's, made only once the source is accessed, so a binding failing before that
-    gets none.
+    Without a time code, the attempt is at the target scene's current frame's, its subframe included, since time code
+    t is frame t (transforms.md#transforms-and-time-codes). The binding's stages are current's, made only once the
+    source is accessed, so a binding failing before that gets none.
     """
     record = binding_configs.required_record(binding_id)
     scene = record.scene
+    if time_code is None:
+        time_code = Usd.TimeCode(scene.frame_current + scene.frame_subframe)
     if isinstance(last := binding_state.read_last_attempt(scene, binding_id), records.RefusedRecord):
         # Kept, so this attempt goes unrecorded.
         return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), time_codes=(time_code,))

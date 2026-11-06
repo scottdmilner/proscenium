@@ -1,4 +1,4 @@
-"""The synchronization API's entry point, acquisition only (source-access.md#synchronization-api).
+"""Synchronizing through the API: acquisition and the attempt's time code (source-access.md#synchronization-api).
 
 Through binding handles over a fresh process state per test, on bindings in the factory scene.
 Their records, save/reopen, undo, and the attachment contract are in test_bindings.py.
@@ -22,7 +22,7 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import configs, records
+from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
 from proscenium.binding.runtime import state
 from proscenium.binding.source_access.identifiers import BindingId
@@ -68,6 +68,51 @@ def test_the_time_code_is_the_attempts_not_a_setting(
 def test_a_time_code_that_isnt_one_is_misuse(bindings: Bindings, tmp_path: Path) -> None:
     with pytest.raises(TypeError):
         binding_on_file(bindings, _scene(), _root(tmp_path)).synchronize("frame 3")  # ty: ignore[invalid-argument-type]
+
+
+def _recorded(handle: BindingHandle) -> tuple[float | None, float | None]:
+    """The time codes the binding's last attempt and its generation record."""
+    last = binding_state.read_last_attempt(_scene(), handle.binding_id)
+    generation = binding_state.read_generation(bpy.data.collections["USD Display"])
+    assert isinstance(last, records.Loaded) and isinstance(generation, records.Loaded)
+    return last.record.time_code, generation.record.time_code
+
+
+def _timing() -> tuple[object, ...]:
+    """The scene's frame, frame rate, and playback range."""
+    scene = _scene()
+    frame = (scene.frame_current, scene.frame_subframe)
+    return (*frame, scene.render.fps, scene.render.fps_base, scene.frame_start, scene.frame_end)
+
+
+@pytest.mark.parametrize(
+    ("time_code", "stored"), [(Usd.TimeCode.Default(), None), (0, 0.0), (7.25, 7.25)], ids=["default", "0", "7.25"]
+)
+def test_the_attempt_is_at_the_time_code_given(
+    bindings: Bindings, tmp_path: Path, time_code: Usd.TimeCode | float, stored: float | None
+) -> None:
+    # BIND-05 on F-MULTI-BINDING "time-codes": the attempt, its last attempt, and its generation take it exactly.
+    with source_access.multi_binding(tmp_path) as scene:
+        handle = bindings.create_binding(_scene())
+        assert handle.attach(scene.caller).state is ResultState.SUCCESS
+        _scene().frame_set(3)  # not the current frame's
+        result = handle.synchronize(time_code)
+        assert (result.state, result.time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(time_code),))
+        assert _recorded(handle) == (stored, stored)
+
+
+def test_without_a_time_code_the_attempt_is_at_the_current_frames(bindings: Bindings, tmp_path: Path) -> None:
+    # BIND-05, XFORM-12 on F-MULTI-BINDING "time-codes": frame 7 at subframe 0.25 is time code 7.25, and the
+    # scene's frame, frame rate, and playback range stay as they were.
+    with source_access.multi_binding(tmp_path) as scene:
+        handle = bindings.create_binding(_scene())
+        assert handle.attach(scene.caller).state is ResultState.SUCCESS
+        _scene().frame_set(7, subframe=0.25)
+        before = _timing()
+        result = handle.synchronize()
+        assert (result.state, result.time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(7.25),))
+        assert _recorded(handle) == (7.25, 7.25)
+        assert _timing() == before
 
 
 def test_set_settings_records_without_synchronizing(bindings: Bindings, tmp_path: Path) -> None:
