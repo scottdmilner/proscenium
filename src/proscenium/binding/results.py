@@ -64,7 +64,7 @@ class DiagnosticCode(StrEnum):
     PUBLICATION_FAILED = "publication-failed"  # switching to the prepared generation failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
-    CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing, or couldn't record what it resolved
+    CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
 
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {

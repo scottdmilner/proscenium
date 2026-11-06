@@ -439,7 +439,7 @@ requirements:
         quote: "Exceptions report misuse only, such as a call made during another synchronization, and defects"
         fixtures: [F-SOURCE-CHANGE, F-PREPARATION-CLEANUP-FAILURE]
         delivery: M5
-        oracle: "The calls CONS-04 lists raise when made during a synchronization, a cache call, or a cleanup retry; a write to the ledger, manifest, or generation record injected to fail raises out of synchronize; and nothing else in M5's fixtures' cases raises."
+        oracle: "The calls CONS-04 lists raise when made during a synchronization, a cache call, or a cleanup retry; a ledger write injected to fail as disposal or retirement records its leftovers, or as a retry records what it resolved, raises out of synchronize or retry_cleanup; and nothing else in M5's fixtures' cases raises."
 
   - section: spec/source-access.md#source-consistency
     delivery: M3

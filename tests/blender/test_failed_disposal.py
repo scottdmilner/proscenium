@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import bpy
+import pytest
 
 from fixtures import transaction
 from proscenium.binding.persistence import binding_state, records
@@ -24,8 +25,6 @@ from .transaction_failures import failing_preparation
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
-
-    import pytest
 
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
@@ -140,13 +139,14 @@ def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_
         assert _ledger() == before
 
 
-def test_a_disposal_the_ledger_cant_record_is_reported(
+def test_a_disposal_the_ledger_cant_record_raises(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # API-04: a ledger write failing as disposal records its leftovers is reported, never raised, and the staging
-    # collection goes.
+    # API-05: a ledger write failing as disposal records its leftovers is a defect, and raises; the staging collection
+    # still goes, and the published generation is as it was (here, none).
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
+        nothing = _published(handle)
         write = pending_cleanup.set_ledger_entries
 
         def failing(changed: Mapping[str, LedgerEntry], removed: Sequence[str] = ()) -> None:
@@ -155,9 +155,7 @@ def test_a_disposal_the_ledger_cant_record_is_reported(
             write(changed, removed)
 
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
-        result, _ = failing_preparation(handle, scene, 0)
-        assert result.state is ResultState.FATAL_FAILURE
-        codes = [DiagnosticCode.PREPARATION_FAILED, DiagnosticCode.DISPOSAL_FAILED]
-        assert [d.code for d in result.diagnostics] == codes
-        assert _ledger() == {}
+        with pytest.raises(RuntimeError, match="injected ledger failure"):
+            failing_preparation(handle, scene, 0)
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone
+        assert _published(handle) == nothing

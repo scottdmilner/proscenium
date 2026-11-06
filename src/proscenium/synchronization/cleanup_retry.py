@@ -40,11 +40,7 @@ def retry_cleanup(binding_id: identifiers.BindingId) -> Result:
     outcome = removal.remove_unused({key: e.datablock for key, e in entries.items()}, holders=[text])
     resolved = sorted(outcome.removed | outcome.released)
     changed = {key: _pending(entries[key], key, problem) for key, problem in outcome.pending.items()}
-    try:
-        pending_cleanup.set_ledger_entries(changed, resolved)
-    except Exception as error:  # noqa: BLE001 - reported, never raised
-        message = f"Couldn't record the retry in the pending-cleanup ledger: {error}"
-        return Result(Diagnostic(DiagnosticCode.CLEANUP_FAILED, binding_id, message))
+    pending_cleanup.set_ledger_entries(changed, resolved)  # a failure is a defect, and raises
     diagnostics = [e.diagnostic for e in changed.values()]
     if changed and not resolved:
         message = f"Retrying binding {binding_id}'s pending cleanup resolved none of it"

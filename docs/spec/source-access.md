@@ -34,7 +34,7 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 - `release()` drops this binding's source and evaluation stages and returns `None`. It is idempotent, changes no persistent records or saved display, and remains valid after undo or removal of the binding.
 - `synchronize` returns an immutable result ([Diagnostics](pipeline.md#diagnostics)) holding its result state; its own deduplicated diagnostics, with a pending-cleanup diagnostic for each resource it left pending; the time codes it attempted, a synchronization's one or those a cache call hadn't cached; and the binding's current cleanup status, apart from its own diagnostics. An expected failure, such as an unavailable source, is a result, not an exception.
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for `release()`.
-- Exceptions report misuse only, such as a call made during another synchronization, and defects, such as a failed write to the extension's own records.
+- Exceptions report misuse only, such as a call made during another synchronization, and defects, such as a failed write to the pending-cleanup ledger.
 
 Operations that span bindings belong to the process's bindings: creating a binding, finding a scene's bindings, and reporting copied bindings ([Copied Bindings](#copied-bindings)). Attachment and release belong to each binding's handle.
 

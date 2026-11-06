@@ -112,7 +112,7 @@ Acquire source
 
 The attempt tracks each newly created prepared resource before subsequent fallible work, so a failure partway disposes of everything prepared so far. Only a resource whose disposal or retirement fails becomes persistent pending cleanup; one the attempt removes leaves no persistent record. Prepared resources remain isolated from the active display until publication. Reused published resources remain protected by the existing manifest and are never disposal candidates. Publication makes the new resources active and hands the obsolete ones to retirement. Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state.
 
-Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable. Neither is a failed write to the extension's own records, once the attempt has found them readable: it is a defect, and raises.
+Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable. Neither is a failed write to the pending-cleanup ledger, once the attempt has found it readable: it is a defect, and raises.
 
 These guarantees apply equally to incremental mutations in Phase 2.
 

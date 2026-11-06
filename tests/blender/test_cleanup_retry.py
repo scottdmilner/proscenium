@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
+import pytest
 
 from fixtures import records as record_fixtures
 from fixtures import transaction
@@ -23,8 +24,6 @@ from .transaction_failures import failing_preparation
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
-
-    import pytest
 
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
@@ -151,6 +150,24 @@ def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_pa
         assert _ledger() == others
         assert len(other.retry_cleanup().cleanup_status) == 0
         assert _ledger() == {}
+
+
+def test_a_retry_the_ledger_cant_record_raises(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # API-05: a ledger write failing as a retry records what it resolved is a defect, and raises; the retry is over, so
+    # another may run.
+    with transaction.preparation_cleanup_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        failing_preparation(handle, scene, 0)
+
+        def failing(*_args: object) -> None:
+            raise RuntimeError("injected ledger failure")
+
+        monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
+        with pytest.raises(RuntimeError, match="injected ledger failure"):
+            handle.retry_cleanup()
+        assert not bindings.running
 
 
 def test_a_ledger_that_cant_be_read_refuses_and_disposes_of_nothing(bindings: Bindings, tmp_path: Path) -> None:

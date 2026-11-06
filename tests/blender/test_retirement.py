@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
+import pytest
 
 from fixtures import transaction
 from proscenium.binding.persistence import binding_state, manifests, records
@@ -21,8 +22,6 @@ from proscenium.synchronization import removal
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
-
-    import pytest
 
     from fixtures.transaction import RetirementFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
@@ -183,11 +182,11 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         assert _ledger() == {}  # released, so no retry deletes it
 
 
-def test_a_retirement_the_ledger_cant_record_is_reported(
+def test_a_retirement_the_ledger_cant_record_raises(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # TXN-07, API-04: a ledger write failing as retirement records its leftovers is reported, never raised, and the
-    # synchronization still completes with its generation published.
+    # API-05: a ledger write failing as retirement records its leftovers is a defect, and raises, after the
+    # generation is published.
     with transaction.retirement_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
         first, second = scene.time_codes
@@ -201,9 +200,7 @@ def test_a_retirement_the_ledger_cant_record_is_reported(
             write(changed, removed)
 
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
-        result = handle.synchronize(second)
-        assert result.state is ResultState.COMPLETED_WITH_ISSUES
-        assert [d.code for d in result.diagnostics] == [DiagnosticCode.RETIREMENT_FAILED]
+        with pytest.raises(RuntimeError, match="injected ledger failure"):
+            handle.synchronize(second)
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, Loaded) and generation.record.time_code == second
-        assert _ledger() == {}

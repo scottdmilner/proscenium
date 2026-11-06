@@ -29,6 +29,7 @@ Each kind of call reports a refusal one way:
 - While synchronize or retry_cleanup runs, a call to either, attach, release, or reload on any binding raises
   ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
 - Release clears runtime stages directly and remains valid after undo or removal.
+- A failed write to the pending-cleanup ledger is a defect, and raises (pipeline.md#synchronization-transaction).
 """
 
 from __future__ import annotations

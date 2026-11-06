@@ -6,7 +6,8 @@ failure at any step before publication leaves the published generation as it was
 an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
 by recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
 discarded before publication (CONS-03). After publication, a resource retirement can't remove leaves the
-synchronization completed with issues (TXN-07).
+synchronization completed with issues (TXN-07). A ledger write that fails as disposal or retirement records its
+leftovers is a defect, and raises (pipeline.md#synchronization-transaction).
 """
 
 from __future__ import annotations
@@ -119,7 +120,7 @@ def _attempt(
         application.prepare(plan, published, work)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
-        return (*own, failed, *_disposed(work))
+        return (*own, failed, *prepared_work.dispose(work))
     described = binding_state.Generation(
         binding_id, policy, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
     )
@@ -127,25 +128,9 @@ def _attempt(
         obsolete = publication.publish(binding_id, destination, work, described)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
-        return (*own, failed, *_disposed(work))
+        return (*own, failed, *prepared_work.dispose(work))
     prepared_work.remove_staging(work)
-    try:
-        return (*own, *retirement.retire(binding_id, obsolete, work.operation))
-    except Exception as error:  # noqa: BLE001 - after publication, nothing fails the synchronization (TXN-07)
-        message = f"Couldn't record failed retirements in the pending-cleanup ledger: {error}"
-        return (*own, Diagnostic(DiagnosticCode.RETIREMENT_FAILED, binding_id, message))
-
-
-def _disposed(work: prepared_work.PreparedWork) -> tuple[Diagnostic, ...]:
-    """Dispose of work; its disposal diagnostics, or why disposal couldn't be recorded, never an exception.
-
-    A ledger that can't be written leaves the resources disposal couldn't remove unrecorded.
-    """
-    try:
-        return prepared_work.dispose(work)
-    except Exception as error:  # noqa: BLE001 - the attempt is already fatal, and reports this too
-        message = f"Couldn't record failed disposals in the pending-cleanup ledger: {error}"
-        return (Diagnostic(DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message),)
+    return (*own, *retirement.retire(binding_id, obsolete, work.operation))
 
 
 def _untracked(binding_id: identifiers.BindingId) -> Diagnostic | None:
