@@ -18,7 +18,7 @@ a refusal's included.
 
 Each kind of call reports a refusal one way:
 
-- An operation (attach, synchronize, set_settings, reload) returns a result whose diagnostic says why.
+- An operation (attach, synchronize, set_settings, reload, retry_cleanup) returns a result whose diagnostic says why.
 - The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
   DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
@@ -37,7 +37,7 @@ from pxr import Usd
 from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking, state
 from ..binding.source_access import binding_settings, stages
-from ..synchronization import transaction
+from ..synchronization import cleanup_retry, transaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -101,6 +101,10 @@ class BindingHandle:
     def reload(self, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request (Bindings.reload)."""
         return BINDINGS.reload(self.binding_id, layers)
+
+    def retry_cleanup(self) -> Result:
+        """Retry the cleanup earlier attempts left pending (Bindings.retry_cleanup)."""
+        return BINDINGS.retry_cleanup(self.binding_id)
 
     def requested_settings(self) -> RequestedSettings:
         """The settings the binding's next synchronization uses (Bindings.requested_settings)."""
@@ -215,6 +219,17 @@ class Bindings:
         except stages.SourceUnavailableError as error:
             return _unavailable(binding_id, error)
         return Result()
+
+    @_reporting_cleanup
+    def retry_cleanup(self, binding_id: identifiers.BindingId) -> Result:
+        """Retry the binding's pending cleanup, without USD access (proscenium.synchronization.cleanup_retry).
+
+        Only this retries it, neither reopening the file nor a synchronization. Its result reports what's pending.
+        """
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        return cleanup_retry.retry_cleanup(binding_id)
 
     def live_stage(self, binding_id: identifiers.BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""

@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import bpy
-import pytest
 
 from fixtures import transaction
 from proscenium.binding.persistence import binding_state, manifests, records
@@ -18,16 +17,19 @@ from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOpera
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership_index, pending_cleanup
-from proscenium.synchronization import application, prepared_work, removal
+from proscenium.synchronization import application, prepared_work
 from support.blend import collection_content
+
+from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    import pytest
+
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.manifests import RepresentationRole
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene) -> BindingHandle:
@@ -58,40 +60,6 @@ def _published() -> dict[str, Any]:
         "generation": records.stored(destination, binding_state.GENERATION_KEY),
         "content": collection_content(destination),
     }
-
-
-def _failing(
-    handle: BindingHandle, scene: PreparationCleanupFailureScene, time_code: float
-) -> tuple[Result, set[bpy.types.ID]]:
-    """Synchronize with preparation and some of its disposal failing as the fixture says; the result and leftovers."""
-    tracked: list[tuple[RepresentationRole, bpy.types.ID]] = []
-    failing: set[bpy.types.ID] = set()
-    track, world, remove = prepared_work.PreparedWork.track, application._world, removal._batch_remove  # noqa: SLF001
-    worlds: list[object] = []
-
-    def recording(work: prepared_work.PreparedWork, entry_key: str, role: RepresentationRole, d: bpy.types.ID) -> None:
-        tracked.append((role, d))
-        track(work, entry_key, role, d)
-
-    def failing_world(matrix: Any) -> Any:  # called once a placeholder's resources are made
-        worlds.append(matrix)
-        if len(worlds) * len(transaction.ROLES_PER_PLACEHOLDER) == scene.prepared_before_failure:
-            raise RuntimeError("injected preparation failure")
-        return world(matrix)
-
-    def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
-        failing.update(next(d for r, d in tracked if r == role) for role in scene.failed_disposals)
-        if any(d in failing for d in datablocks):  # so a call removing one fails, the batch's included
-            raise RuntimeError("injected disposal failure")
-        remove(datablocks)
-
-    with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(prepared_work.PreparedWork, "track", recording)
-        patch.setattr(application, "_world", failing_world)
-        patch.setattr(removal, "_batch_remove", failing_remove)
-        result = handle.synchronize(time_code)
-    assert len(tracked) == scene.prepared_before_failure
-    return result, failing
 
 
 def _check_failed(handle: BindingHandle, result: Result, scene: PreparationCleanupFailureScene) -> None:
@@ -128,7 +96,7 @@ def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: 
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
         before = _datablocks()
-        result, leftovers = _failing(handle, scene, 0)
+        result, leftovers = failing_preparation(handle, scene, 0)
         _check_failed(handle, result, scene)
         _check_leftovers(handle, result, leftovers)
         assert _datablocks() - before == leftovers
@@ -147,7 +115,7 @@ def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bi
         manifest = ownership_index.manifest(handle.binding_id)
         assert isinstance(manifest, Loaded)
         named = {e.datablock for e in manifest.record.entries.values()}
-        result, leftovers = _failing(handle, scene, 10)
+        result, leftovers = failing_preparation(handle, scene, 10)
         _check_failed(handle, result, scene)
         _check_leftovers(handle, result, leftovers)
         assert _published() == published
@@ -162,9 +130,9 @@ def test_repeated_failures_add_only_tracked_leftovers_each_reported_once(binding
     # and diagnostics; this attempt's are its own, once each, and the cleanup status lists all of them once.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
-        earlier, _ = _failing(handle, scene, 0)
+        earlier, _ = failing_preparation(handle, scene, 0)
         before = _ledger()
-        again, leftovers = _failing(handle, scene, 0)
+        again, leftovers = failing_preparation(handle, scene, 0)
         _check_failed(handle, again, scene)
         after = _ledger()
         assert {k: after[k] for k in before} == before
@@ -179,7 +147,7 @@ def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_
     # its cleanup status and not among its own diagnostics, and the ledger keeps them.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
-        _failing(handle, scene, 0)
+        failing_preparation(handle, scene, 0)
         before = _ledger()
         result = handle.synchronize(0)
         assert (result.state, result.diagnostics) == (ResultState.SUCCESS, ())
