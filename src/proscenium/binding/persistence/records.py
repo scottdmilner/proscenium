@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+import bpy  # noqa: TC002 - Blender creates the idprop module when bpy loads, so bpy is imported first
+import idprop
+
 if TYPE_CHECKING:
-    import bpy
     from _typeshed import DataclassInstance
 
 NAMESPACE = "proscenium"
@@ -129,7 +131,7 @@ def _version(schema: Schema[Any], stored: object) -> int | RefusedRecord:
 
     stored is a plain group or a stored ID-property group, so a write can check one without copying it.
     """
-    if not isinstance(stored, Mapping) and not hasattr(stored, "to_dict"):
+    if not isinstance(stored, Mapping) and not _is_group(stored):
         return _refuse(schema, RefusalReason.UNREADABLE, None, f"stored as {type(stored).__name__}, not a group")
     version = stored.get(VERSION_KEY)  # ty: ignore[unresolved-attribute] - a Mapping or an IDPropertyGroup
     if type(version) is not int or version < 1:
@@ -144,12 +146,33 @@ def _refuse(schema: Schema[Any], refusal: RefusalReason, version: int | None, de
     return RefusedRecord(schema.name, version, refusal, f"{schema.name} record{at}: {refusal}: {detail}")
 
 
+def _is_group(value: object) -> bool:
+    """Whether a stored value is an ID-property group, as a record and the namespace holding records are.
+
+    Not a TypeGuard: idprop's stubs give the group no item assignment or deletion.
+    """
+    return isinstance(value, idprop.types.IDPropertyGroup)
+
+
+def _namespace(id_: bpy.types.ID, schema: Schema[Any]) -> Any:
+    """id_'s group of records, an IDPropertyGroup, or None if it has none.
+
+    Raises RefusedRecordError over one that isn't a group, whose records are all unreadable.
+    """
+    namespace = id_.get(NAMESPACE)
+    if namespace is not None and not _is_group(namespace):
+        raise RefusedRecordError(
+            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
+        )
+    return namespace
+
+
 def stored(id_: bpy.types.ID, key: str) -> object | None:
     """A copy of the stored record under key, as plain values; None if there is none."""
     namespace = id_.get(NAMESPACE)
     if namespace is None:
         return None
-    if not hasattr(namespace, "to_dict"):  # the namespace itself is damaged: its records are unreadable
+    if not _is_group(namespace):  # the namespace itself is damaged: its records are unreadable
         return _plain(namespace)
     return _plain(namespace.get(key))
 
@@ -157,13 +180,13 @@ def stored(id_: bpy.types.ID, key: str) -> object | None:
 def has(id_: bpy.types.ID, key: str) -> bool:
     """Whether id_ stores a record under key, without reading it."""
     namespace = id_.get(NAMESPACE)
-    return hasattr(namespace, "to_dict") and key in namespace
+    return _is_group(namespace) and key in namespace
 
 
 def keys(id_: bpy.types.ID) -> list[str]:
     """The keys of id_'s records; none if its namespace is missing or damaged."""
     namespace = id_.get(NAMESPACE)
-    return list(namespace.keys()) if hasattr(namespace, "to_dict") else []
+    return list(namespace.keys()) if _is_group(namespace) else []
 
 
 def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -> Loaded[R] | RefusedRecord | None:
@@ -181,11 +204,7 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
     """
     if type(record) is not schema.record_type:
         raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
-    namespace = id_.get(NAMESPACE)
-    if namespace is not None and not hasattr(namespace, "to_dict"):
-        raise RefusedRecordError(
-            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
-        )
+    namespace = _namespace(id_, schema)
     existing = None if namespace is None else namespace.get(key)
     if existing is not None and isinstance(result := _version(schema, existing), RefusedRecord):
         raise RefusedRecordError(result)
@@ -202,14 +221,7 @@ def remove(id_: bpy.types.ID, key: str, schema: Schema[Any]) -> None:
     Raises RefusedRecordError, changing nothing, over a stored record that is unreadable or newer than supported, as
     write does.
     """
-    namespace = id_.get(NAMESPACE)
-    if namespace is None:
-        return
-    if not hasattr(namespace, "to_dict"):
-        raise RefusedRecordError(
-            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
-        )
-    if (existing := namespace.get(key)) is None:
+    if (namespace := _namespace(id_, schema)) is None or (existing := namespace.get(key)) is None:
         return
     if isinstance(result := _version(schema, existing), RefusedRecord):
         raise RefusedRecordError(result)
@@ -235,9 +247,9 @@ def write_items[R: DataclassInstance](
     if type(record) is not schema.record_type:
         raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
     namespace = id_.get(NAMESPACE)
-    existing = namespace.get(key) if hasattr(namespace, "to_dict") else None
+    existing = namespace.get(key) if _is_group(namespace) else None
     group = None if existing is None or _version(schema, existing) != schema.version else existing.get(field)
-    if not hasattr(group, "to_dict"):  # none stored, or not at the current version: written whole
+    if not _is_group(group):  # none stored, or not at the current version: written whole
         write(id_, key, schema, record)
         return
     assert namespace is not None and group is not None
@@ -279,8 +291,8 @@ def _copy(value: Any) -> Any:
 
 def _plain(value: Any) -> Any:
     """ID-property groups and arrays as dicts and lists; ID pointers and scalars as they are."""
-    if hasattr(value, "to_dict"):
+    if _is_group(value):
         return value.to_dict()
-    if hasattr(value, "to_list"):
+    if isinstance(value, idprop.types.IDPropertyArray):
         return value.to_list()
     return value
