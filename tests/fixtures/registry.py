@@ -154,7 +154,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("during-evaluation", SYNC, FAILURE, ("CONS-03",), 1),
                 # After an edit, a reload, or a new attachment, cache caches nothing: synchronize first.
                 Case("changed-before-cache", Operation.CACHE, FAILURE, ("CACHE-05",), 1),
-                # Synchronize, cache, attach, release, or reload during evaluation raises; set_settings doesn't.
+                # Synchronize, cache, attach, release, reload, or retry_cleanup during evaluation, or during a
+                # cleanup retry, raises; set_settings doesn't.
                 Case("reentrant", SYNC, SUCCESS, ("CONS-01", "CONS-04", "API-05"), 1),
             ),
         ),

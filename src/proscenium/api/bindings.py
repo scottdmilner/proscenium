@@ -22,6 +22,8 @@ Each kind of call reports a refusal one way:
 - The query requested_settings raises RefusedRecordError for a configuration that can't be read, and
   DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
+- While synchronize or retry_cleanup runs, a call to either, attach, release, or reload on any binding raises
+  ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
 - Release clears runtime stages directly and remains valid after undo or removal.
 """
 
@@ -68,8 +70,41 @@ def _reporting_cleanup[**P](
     return reporting
 
 
+def _not_while_exclusive[**P, R](
+    operation: Callable[Concatenate[Bindings, P], R],
+) -> Callable[Concatenate[Bindings, P], R]:
+    """operation, raising ReentrantCallError before it starts while an exclusive operation is running (CONS-04)."""
+
+    @functools.wraps(operation)
+    def checked(bindings: Bindings, *args: P.args, **kwargs: P.kwargs) -> R:
+        if bindings.running:
+            raise ReentrantCallError("Called while a synchronization or a cleanup retry is running")
+        return operation(bindings, *args, **kwargs)
+
+    return checked
+
+
+def _exclusive[**P, R](operation: Callable[Concatenate[Bindings, P], R]) -> Callable[Concatenate[Bindings, P], R]:
+    """operation, which no other exclusive operation, nor attach, release, or reload, runs during (CONS-04)."""
+
+    @_not_while_exclusive
+    @functools.wraps(operation)
+    def exclusive(bindings: Bindings, *args: P.args, **kwargs: P.kwargs) -> R:
+        bindings.running = True
+        try:
+            return operation(bindings, *args, **kwargs)
+        finally:
+            bindings.running = False
+
+    return exclusive
+
+
 class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
     """No binding has this identifier: it was removed, its creation undone, or it never existed."""
+
+
+class ReentrantCallError(RuntimeError):  # misuse
+    """A call that can't run while a synchronization or a cleanup retry is running was made during one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +154,11 @@ class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
     stages: stage_tracking.CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
+    running: bool  # whether an exclusive operation, synchronize or retry_cleanup, is running
 
     def __init__(self) -> None:
         self.stages = stage_tracking.CurrentStages()
+        self.running = False
 
     def create_binding(
         self,
@@ -145,6 +182,7 @@ class Bindings:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
         return binding_configs.copied_bindings()
 
+    @_not_while_exclusive
     @_reporting_cleanup
     def attach(self, binding_id: identifiers.BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach stage to one binding, requiring confirmation when its stored root identifier differs."""
@@ -164,6 +202,7 @@ class Bindings:
         self.stages.attached(binding_id).attach(stage)
         return Result()
 
+    @_not_while_exclusive
     def release(self, binding_id: identifiers.BindingId) -> None:
         """Release one binding's runtime stages; its persistent record need not exist."""
         self.stages.release(binding_id)
@@ -191,6 +230,7 @@ class Bindings:
         binding_configs.set_config(binding_id, config)
         return Result()
 
+    @_exclusive
     @_reporting_cleanup
     def synchronize(self, binding_id: identifiers.BindingId, time_code: Usd.TimeCode | float | None = None) -> Result:
         """Synchronize through the transaction (proscenium.synchronization), at time_code if given.
@@ -204,6 +244,7 @@ class Bindings:
             return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))
         return transaction.synchronize(binding_id, found.usable_config(), self.stages, given)
 
+    @_not_while_exclusive
     @_reporting_cleanup
     def reload(self, binding_id: identifiers.BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
@@ -220,6 +261,7 @@ class Bindings:
             return _unavailable(binding_id, error)
         return Result()
 
+    @_exclusive
     @_reporting_cleanup
     def retry_cleanup(self, binding_id: identifiers.BindingId) -> Result:
         """Retry the binding's pending cleanup, without USD access (proscenium.synchronization.cleanup_retry).

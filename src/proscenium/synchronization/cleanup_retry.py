@@ -10,9 +10,9 @@ leftovers, after reopening too (PEND-01), and revalidates each one's current use
 - One whose removal fails, or whose user's did, stays retryable with a fresh cleanup diagnostic.
 
 Each resolved entry leaves the ledger with its diagnostic (PEND-03, DIAG-08). Every entry of the binding is retried,
-those left prepared or retiring by a ledger write that failed included, since no operation runs beside a retry. The
-result reports what's still pending; it's a fatal failure when nothing could be resolved, as lifecycle.md's cleanup
-reports one. A ledger that can't be read refuses, disposing of nothing (SCHEMA-06).
+those left prepared or retiring by a ledger write that failed included, since no operation runs beside a retry
+(CONS-04). The result reports what's still pending; it's a fatal failure when nothing could be resolved, as
+lifecycle.md's cleanup reports one. A ledger that can't be read refuses, disposing of nothing (SCHEMA-06).
 """
 
 from __future__ import annotations

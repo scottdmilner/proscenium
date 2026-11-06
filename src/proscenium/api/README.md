@@ -16,6 +16,8 @@ What callers use to reach bindings ([Synchronization API](../../../docs/spec/sou
 
 `synchronize(time_code=None)` finds the binding and refuses one that isn't usable, and `proscenium.synchronization` runs the transaction at the time code given, the USD default time code included, or else at the target scene's current frame's, its subframe included, since time code t is frame t. The result names the time code attempted; a refusal here, before the attempt, names only one given.
 
+A synchronization and a cleanup retry each run alone: while one runs, `synchronize`, `retry_cleanup`, `attach`, `release`, and `reload` on any binding raise `ReentrantCallError` before changing anything, whether a Blender handler, a USD notice, or another thread calls them; `set_settings` may be called, and the running attempt keeps the settings it started with ([Source Consistency](../../../docs/spec/source-access.md#source-consistency)). `Bindings.running` is the flag.
+
 ## Caller workflow
 
 With the extension enabled in Blender, the caller opens a stage and attaches it through the returned handle:

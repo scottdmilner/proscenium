@@ -437,7 +437,7 @@ requirements:
         quote: "Exceptions report misuse only, such as a call made during another synchronization."
         fixtures: [F-SOURCE-CHANGE]
         delivery: M5
-        oracle: "The calls CONS-04 lists raise when made during a synchronization or cache call, and nothing else in M5's fixtures' cases raises."
+        oracle: "The calls CONS-04 lists raise when made during a synchronization, a cache call, or a cleanup retry, and nothing else in M5's fixtures' cases raises."
 
   - section: spec/source-access.md#source-consistency
     delivery: M3
@@ -449,10 +449,10 @@ requirements:
         delivery: M5
         oracle: "A synchronization or cache call returns only once it has published, cached, or failed, with no work left running."
       - id: CONS-04
-        quote: "While a synchronization or a cache call is running, a call to synchronize, cache, attach, release, or reload on any binding raises before changing anything."
+        quote: "While a synchronization, a cache call, or a cleanup retry is running, a call to synchronize, cache, attach, release, reload, or retry_cleanup on any binding raises before changing anything."
         fixtures: [F-SOURCE-CHANGE]
         delivery: M5
-        oracle: "From inside F-SOURCE-CHANGE's evaluation step, of a synchronization and of a cache call, each of synchronize, cache, attach, release, and reload, on the binding evaluating and on another, raises and changes no record, stage, or datablock; set_settings there writes the configuration, the running attempt records the settings it started with, and the outer call then completes."
+        oracle: "From inside F-SOURCE-CHANGE's evaluation step, of a synchronization and of a cache call, and from inside a cleanup retry's removal, each of synchronize, cache, attach, release, reload, and retry_cleanup, on the binding running and on another, raises and changes no record, stage, or datablock; set_settings there writes the configuration, a running attempt records the settings it started with, and the outer call then completes."
       - id: CONS-03
         quote: "Where a source change during evaluation can be detected, the attempt is discarded before publication."
         delivery: M5
