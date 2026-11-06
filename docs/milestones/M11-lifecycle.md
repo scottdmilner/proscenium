@@ -9,6 +9,7 @@
 **Decisions and deliverables:**
 
 - The Cleanup, Detach, and Remove binding operations, as specified in Ownership and Lifecycle. Detach releases surviving content as-is and removes binding-specific metadata and controls without requiring baking or reconstruction.
+- Cleanup builds on M5's `retry_cleanup` and its shared removal (`synchronization/removal.py`), which reads users once, removes a level at a time, users first, releases intact what anything else uses, and halves a failing `batch_remove` call to find what fails. The ledger holds only removals that failed, a ledger write that fails raises as a defect, and a retry that commits pushes one undo step ([M5 plan](../plans/M05-architecture.md), S2 to S4, D12, F2).
 - A lifecycle failure-safety decision record and implementation: staging/rollback, logical commit points, resumable disposal, outcome reporting, and retention of unresolved ownership information during binding removal. Evaluate retaining configuration until cleanup completes and retaining cleanup information independently after removal, using M5's chosen tracking mechanism.
 - Duplicate-representation detection and removal, and handling of content with copied or missing ownership evidence, as specified in Ownership and Lifecycle.
 - User-facing repair of bindings disabled pending repair: make a new binding, or detach.

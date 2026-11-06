@@ -160,6 +160,11 @@ A review against the feasibility bridge found most of Phase D's size in two plac
 1. **Notes for M6, M7, M11, and M14** in their milestone files.
 2. **Close the decision log,** render the matrix, and confirm the exit condition.
 
+#### Phase G log
+
+- **G1, notes for later milestones.** M6: the plan's tuple properties convert every element on each read, so its extensions carry large content as buffers; its capture and planner replace the minimal path in `synchronization/evaluation.py`, which the transaction and `cache` share inside `changed_layers()`. M7: its application layer replaces the stub's `prepare` and `key_time_codes`, holding each datablock with `PreparedWork.track` and each change to a published resource with `PreparedWork.undo`; object names matter most when synchronizing again; and a full rebuild's undo step and retirement shrink with partition-level replacement (F1 to F3). M11: cleanup builds on `retry_cleanup` and the shared removal. M14: an update by entry can take its caller's manifest, and the undo step and retirement are measured again with incremental updates.
+- **G2, the close.** Every DECISIONS.md row M5 owns is chosen; "Undo step for a published synchronization" now says so, its M1 finding kept as evidence. The matrix renders with 400 rows, M5 among the started milestones. Every behavior row M5 delivers is named by a test; of its process rows, AFAIL-01 to AFAIL-03 are checked by the failure-injection, retirement, and repeated-failure tests their oracles name, and BND-01 by this close: M5's evaluation and planning change is the core's minimal capture and planner, its application change the stub application layer. The exit condition holds against the stub: a failure at any boundary before publication leaves the published generation unchanged (TXN-02, TXN-05, TXN-06: `blender/test_failure_injection.py`, `blender/test_application.py`, and `blender/test_publication.py` on `F-PUBLICATION-FAILURE`), a failed disposal leaves only inactive, tracked, retryable work (TXN-03, TXN-04: `blender/test_failed_disposal.py` on `F-PREPARATION-CLEANUP-FAILURE`), and a retirement failure leaves the new generation active with its leftovers tracked (TXN-07: `blender/test_retirement.py` on `F-RETIREMENT-FAILURE`).
+
 ## Working agreements
 
 - Work happens on branch `m05-architecture`. The user stages, commits, and pushes.

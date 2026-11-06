@@ -8,7 +8,9 @@
 
 **Decisions and deliverables:**
 
-- The real application layer for the chosen representation, connected to M5's ownership tracking, transaction, and publishing.
+- The real application layer for the chosen representation, connected to M5's ownership tracking, transaction, and publishing. It replaces the stub's `prepare` and `key_time_codes` (`synchronization/application.py`): each datablock is held in `PreparedWork` with `track` as soon as it's made, before anything else can fail (TXN-08), and each change a cache call makes to a published resource has its undo appended to `PreparedWork.undo` before it's made (CACHE-03).
+- Object names that land at the end of Blender's sorted lists (M6) matter most when synchronizing again, beside the display being replaced: the stub's placeholders, named for their prims, took 7.9 s to prepare on `updates-10000` the second time against 1.1 s the first ([M5 plan](../plans/M05-architecture.md), F3).
+- What a full rebuild costs beside its display ([M5 plan](../plans/M05-architecture.md), F1, F2): its undo step holds about the display's size, 1.2 GB on ALab, and its retirement about the datablocks removed times those left in the file, 5.0 s on ALab. Partition-level replacement that keeps unchanged datablocks shrinks both: a step after moving one object held 4.5 MB.
 - Partition-level replacement from the start, following the M4 partitioning decision, even though Phase 1 rebuilds everything.
 - Basic reconciliation: each synchronization builds a fresh set of partitions, publishes it, and retires the previous result, deleting only obsolete resources that are safe to remove under the ownership and external-usage rules.
 - The source inspector, and the agreed browsing, selection, and highlighting behavior from the finalized interaction contract.
