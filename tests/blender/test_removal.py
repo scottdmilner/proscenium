@@ -1,4 +1,7 @@
-"""Removing datablocks in one call where none fails (proscenium.synchronization.removal)."""
+"""Removing managed datablocks nothing else uses, users first, in one call per level where none fails.
+
+See proscenium.synchronization.removal.
+"""
 
 from __future__ import annotations
 
@@ -53,3 +56,53 @@ def test_a_failure_is_found_one_call_each(monkeypatch: pytest.MonkeyPatch) -> No
     assert list(failures) == [2]
     assert calls == [4, 1, 1, 1]
     assert [state.alive(obj) for obj in objects] == [False, False, True, False]
+
+
+def _placeholder(name: str) -> tuple[bpy.types.Object, bpy.types.Mesh]:
+    mesh = bpy.data.meshes.new(name)
+    return bpy.data.objects.new(name, mesh), mesh
+
+
+def test_users_are_removed_first_a_level_per_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    first, first_mesh = _placeholder("First")
+    second, second_mesh = _placeholder("Second")
+    calls = _counted(monkeypatch, lambda _: False)
+    outcome = removal.remove_unused({"a": first_mesh, "b": first, "c": second_mesh, "d": second})
+    assert outcome == removal.RemovalOutcome(removed={"a", "b", "c", "d"})
+    assert calls == [2, 2]  # the objects, then the meshes they used
+
+
+def test_what_something_else_uses_is_released_intact(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The mesh's key sorts before its object's, so it's decided after the object is released, in a later pass.
+    obj, mesh = _placeholder("Kept")
+    bpy.data.scenes["Scene"].collection.objects.link(obj)  # an unmanaged user
+    calls = _counted(monkeypatch, lambda _: False)
+    outcome = removal.remove_unused({"a": mesh, "b": obj})
+    assert outcome == removal.RemovalOutcome(released={"a", "b"})
+    assert calls == []
+    assert obj.data == mesh
+
+
+def test_a_holder_doesnt_keep_one_from_removal() -> None:
+    obj, mesh = _placeholder("Staged")
+    staging = bpy.data.collections.new("Staging")
+    staging.objects.link(obj)
+    outcome = removal.remove_unused({"object": obj, "mesh": mesh}, holders=[staging])
+    assert outcome == removal.RemovalOutcome(removed={"object", "mesh"})
+
+
+def test_a_failure_leaves_it_and_what_it_uses_pending(monkeypatch: pytest.MonkeyPatch) -> None:
+    obj, mesh = _placeholder("Failing")
+    _counted(monkeypatch, lambda datablocks: obj in datablocks)
+    outcome = removal.remove_unused({"object": obj, "mesh": mesh})
+    assert outcome.removed == outcome.released == set()
+    assert outcome.pending == {"object": "injected failure", "mesh": "a resource using it couldn't be removed"}
+    assert state.alive(obj) and state.alive(mesh)
+
+
+def test_one_already_gone_counts_as_removed() -> None:
+    obj, mesh = _placeholder("Gone")
+    bpy.data.objects.remove(obj)
+    assert removal.remove_unused({"object": obj, "none": None, "mesh": mesh}) == removal.RemovalOutcome(
+        removed={"object", "none", "mesh"}
+    )

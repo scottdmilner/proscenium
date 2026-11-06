@@ -130,7 +130,7 @@ def _attempt(
         return (*own, failed, *_disposed(work))
     prepared_work.remove_staging(work)
     try:
-        return (*own, *retirement.retire(binding_id, obsolete, published, work.operation))
+        return (*own, *retirement.retire(binding_id, obsolete, work.operation))
     except Exception as error:  # noqa: BLE001 - after publication, nothing fails the synchronization (TXN-07)
         message = f"Couldn't record failed retirements in the pending-cleanup ledger: {error}"
         return (*own, Diagnostic(DiagnosticCode.RETIREMENT_FAILED, binding_id, message))

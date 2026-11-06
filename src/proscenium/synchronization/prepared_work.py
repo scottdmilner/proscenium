@@ -4,9 +4,10 @@ The application layer holds each resource it creates (PreparedWork.track) before
 partway finds everything made so far to dispose of (TXN-08). Resources reused from the published generation are never
 held, so they're never disposal candidates (TXN-09).
 
-dispose removes the held resources, in one call unless one fails (removal.remove). Only one whose removal fails enters
-the pending-cleanup ledger, retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases; a
-disposal that removes everything writes nothing.
+dispose removes the held resources as retirement and a cleanup retry do (removal.remove_unused), users first, the
+staging collection aside. Only one whose removal fails, or whose user's did, enters the pending-cleanup ledger,
+retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases; a disposal that removes
+everything writes nothing. One something else uses, as nothing should, is released intact.
 
 The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal or publication removes it.
 A leftover stays alive through the ledger's pointer to it, which is a user, linked in no collection.
@@ -61,15 +62,12 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
 
     Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
     """
-    made = list(reversed(work.datablocks.items()))  # users before what they use
-    failures = removal.remove([datablock for _, datablock in made])
+    outcome = removal.remove_unused(work.datablocks, holders=[work.staging])
     pending: dict[str, ledgers.LedgerEntry] = {}
-    for index, (entry_key, datablock) in enumerate(made):
-        if (error := failures.get(index)) is None:
-            continue
-        role = work.roles[entry_key]
+    for entry_key, problem in outcome.pending.items():
+        datablock, role = work.datablocks[entry_key], work.roles[entry_key]
         ledger_key = ledgers.new_ledger_key()
-        message = f"Couldn't dispose of prepared {role} {datablock.name!r}: {error}"
+        message = f"Couldn't dispose of prepared {role} {datablock.name!r}: {problem}"
         diagnostic = Diagnostic(
             DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, resource=ledger_key, role=str(role)
         )
