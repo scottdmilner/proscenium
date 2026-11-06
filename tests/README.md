@@ -43,6 +43,7 @@ tests/
 │   └── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
+│   ├── published.py          the whole published generation and the file's datablocks, compared around a failure
 │   ├── state.py              the reset, baseline check, and cleanup
 │   └── transaction_failures.py  synchronizations whose steps fail as the transaction fixtures say
 ├── isolated/                 fresh-process tests

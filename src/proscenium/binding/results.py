@@ -58,6 +58,7 @@ class DiagnosticCode(StrEnum):
     REMOVED_DESTINATION = "removed-destination"  # the binding has nowhere to display (lifecycle.md)
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
+    SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     PLANNING_FAILED = "planning-failed"
     PREPARATION_FAILED = "preparation-failed"  # making the display's resources failed; what was made is disposed of
     PUBLICATION_FAILED = "publication-failed"  # switching to the prepared generation failed, so it was undone
@@ -74,6 +75,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.REMOVED_DESTINATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.COPIED_BINDING: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.EVALUATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.SOURCE_CHANGED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),

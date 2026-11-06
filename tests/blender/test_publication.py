@@ -24,6 +24,8 @@ from proscenium.core import _core
 from proscenium.synchronization import application, publication
 from support.blend import save_and_reopen
 
+from .published import datablocks, published_generation
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -56,19 +58,8 @@ def _destination() -> bpy.types.Collection:
     return bpy.data.collections["Shot"]
 
 
-def _datablocks() -> set[bpy.types.ID]:
-    return {*bpy.data.objects, *bpy.data.meshes, *bpy.data.collections}
-
-
 def _published(handle: BindingHandle) -> dict[str, Any]:
-    """The published generation: its manifest and generation record as stored, and the destination's objects."""
-    destination = _destination()
-    assert ownership_index.manifest(handle.binding_id) == manifests.read_manifest(destination)  # held as stored
-    return {
-        "manifest": records.stored(destination, manifests.MANIFEST_KEY),
-        "generation": records.stored(destination, binding_state.GENERATION_KEY),
-        "objects": set(destination.objects),
-    }
+    return published_generation(handle.binding_id, _destination())
 
 
 def _ledger_entries() -> dict[str, object]:
@@ -133,7 +124,7 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
         assert isinstance(manifest, Loaded)
         named = {e.datablock for e in manifest.record.entries.values()}
         assert len(named) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
-        assert first["objects"] == {d for d in named if isinstance(d, bpy.types.Object)}
+        assert first["objects"] == {d.session_uid for d in named if isinstance(d, bpy.types.Object)}
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None
         expected = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 10.0, stages.source_revision, ())
@@ -143,7 +134,7 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
         uids = {d.session_uid for d in named if d is not None}  # a removed datablock can't be compared
         assert handle.synchronize(12).state is ResultState.SUCCESS
         second = _published(handle)
-        assert uids.isdisjoint(o.session_uid for o in second["objects"])
+        assert uids.isdisjoint(second["objects"])
         assert second["manifest"] != first["manifest"]
         assert second["generation"] != first["generation"]
         assert uids.isdisjoint(d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes))  # retired
@@ -158,14 +149,14 @@ def test_a_failed_first_publication_leaves_nothing(
     # manifest, generation, or content, and its prepared work disposed of.
     with transaction.publication_failure(tmp_path) as scene:
         handle = _binding(bindings, scene, PayloadPolicy.LOAD_ALL)
-        before = _datablocks()
+        nothing, before = _published(handle), datablocks()
         _fail_publication_write(monkeypatch, write)
         result = handle.synchronize(10)
         assert result.state is scene.outcome
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
-        assert _published(handle) == {"manifest": None, "generation": None, "objects": set()}
+        assert _published(handle) == nothing
         assert ownership_index.manifest(handle.binding_id) is None
-        assert _datablocks() == before
+        assert datablocks() == before
         assert _ledger_entries() == {}
 
 
@@ -178,13 +169,13 @@ def test_a_failed_publication_keeps_the_published_generation(
     with transaction.publication_failure(tmp_path) as scene:
         handle = _binding(bindings, scene, PayloadPolicy.LOAD_ALL)
         assert handle.synchronize(10).state is ResultState.SUCCESS
-        published, before = _published(handle), _datablocks()
+        published, before = _published(handle), datablocks()
         _fail_publication_write(monkeypatch, write)
         result = handle.synchronize(12)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
         assert _published(handle) == published
-        assert all(ownership_index.ownership(obj).claims for obj in published["objects"])
-        assert _datablocks() == before
+        assert all(ownership_index.ownership(obj).claims for obj in _destination().objects)
+        assert datablocks() == before
         assert _ledger_entries() == {}
 
 
@@ -205,12 +196,12 @@ def test_a_failed_attempt_keeps_the_generation_and_records_itself(
         assert isinstance(generation, Loaded)
         assert handle.set_settings(payload_policy=attempted_policy).state is ResultState.SUCCESS
         _fail_step(monkeypatch, handle, step)
-        before = _datablocks()
+        before = datablocks()
         result = handle.synchronize(attempted_time)
         assert result.state is scene.outcome
         assert [d.code for d in result.diagnostics] == [FAILED[step]]
         assert _published(handle) == published
-        assert _datablocks() == before  # prepared work disposed of
+        assert datablocks() == before  # prepared work disposed of
         attempt = LastAttempt(attempted_policy, attempted_time, result.diagnostics)
         assert _last_attempt(handle) == Loaded(attempt, 1)
         monkeypatch.undo()

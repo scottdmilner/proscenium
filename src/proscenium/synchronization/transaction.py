@@ -4,7 +4,8 @@ Its steps are acquisition, evaluation, planning, preparation, publication, and r
 attempt needs can't be read is refused before its source is read, so nothing they name is replaced or retired. A
 failure at any step before publication leaves the published generation as it was and disposes of prepared work, and
 an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
-by recording it, whatever its outcome (STATE-03). After publication, a resource retirement can't remove leaves the
+by recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
+discarded before publication (CONS-03). After publication, a resource retirement can't remove leaves the
 synchronization completed with issues (TXN-07).
 """
 
@@ -92,11 +93,16 @@ def _attempt(
 
     # Before preparation nothing in Blender has changed, so a failure only reports.
     try:
-        chain = _core.SceneIndexChain(evaluation)
-        try:
-            snapshot = chain.capture(time_code)
-        finally:
-            chain.release()  # the core never keeps the stage alive
+        with stages_.changed_layers() as changed:
+            chain = _core.SceneIndexChain(evaluation)
+            try:
+                snapshot = chain.capture(time_code)
+            finally:
+                chain.release()  # the core never keeps the stage alive
+            if changed:  # what was captured may mix the source before and after the change (CONS-03)
+                message = "A contributing layer changed during evaluation, so the attempt was discarded"
+                layers = tuple(sorted(changed))
+                return (*own, Diagnostic(DiagnosticCode.SOURCE_CHANGED, binding_id, message, layers=layers))
     except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
         failed = Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
         return (*own, failed)

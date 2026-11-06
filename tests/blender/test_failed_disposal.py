@@ -18,8 +18,8 @@ from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership_index, pending_cleanup
 from proscenium.synchronization import application, prepared_work
-from support.blend import collection_content
 
+from .published import datablocks, published_generation
 from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
@@ -42,24 +42,14 @@ def _destination() -> bpy.types.Collection:
     return bpy.data.collections["Shot"]
 
 
-def _datablocks() -> set[bpy.types.ID]:
-    return {*bpy.data.objects, *bpy.data.meshes, *bpy.data.collections}
-
-
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
     assert not isinstance(ledger, records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
-def _published() -> dict[str, Any]:
-    """The published generation's records as stored, and what the destination shows."""
-    destination = _destination()
-    return {
-        "manifest": records.stored(destination, manifests.MANIFEST_KEY),
-        "generation": records.stored(destination, binding_state.GENERATION_KEY),
-        "content": collection_content(destination),
-    }
+def _published(handle: BindingHandle) -> dict[str, Any]:
+    return published_generation(handle.binding_id, _destination())
 
 
 def _check_failed(handle: BindingHandle, result: Result, scene: PreparationCleanupFailureScene) -> None:
@@ -95,13 +85,13 @@ def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: 
     # the file holds what it did before plus exactly the ledger's leftovers.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
-        before = _datablocks()
+        nothing, before = _published(handle), datablocks()
         result, leftovers = failing_preparation(handle, scene, 0)
         _check_failed(handle, result, scene)
         _check_leftovers(handle, result, leftovers)
-        assert _datablocks() - before == leftovers
+        assert datablocks() - before == {(type(d).__name__, d.session_uid) for d in leftovers}
         assert {e.datablock for e in _ledger().values()} == leftovers
-        assert _published() == {"manifest": None, "generation": None, "content": {}}
+        assert _published(handle) == nothing
         assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(_ledger().items()))
 
 
@@ -111,14 +101,14 @@ def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bi
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
-        published = _published()
+        published = _published(handle)
         manifest = ownership_index.manifest(handle.binding_id)
         assert isinstance(manifest, Loaded)
         named = {e.datablock for e in manifest.record.entries.values()}
         result, leftovers = failing_preparation(handle, scene, 10)
         _check_failed(handle, result, scene)
         _check_leftovers(handle, result, leftovers)
-        assert _published() == published
+        assert _published(handle) == published
         assert ownership_index.manifest(handle.binding_id) == manifest
         assert named <= {*bpy.data.objects, *bpy.data.meshes}  # none disposed of
         assert named.isdisjoint(e.datablock for e in _ledger().values())
