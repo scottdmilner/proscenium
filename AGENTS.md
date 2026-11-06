@@ -40,7 +40,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
   - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
   - `feasibility/`: M1 runtime probes and M1b's Hydra bridge (`hydra_bridge/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.
   - `bpy-site-packages/`: puts the bpy wheel's bundled `pxr` on `sys.path`.
-- `docs/`: the spec, milestones, decisions, and testing docs. `docs/plans/` holds each milestone's decision log; `docs/archive/` holds superseded documents (see [Before any work](#before-any-work)).
+- `docs/`: the spec, milestones, decisions, and testing docs. `docs/plans/` holds each milestone's decision log; `docs/phase3/` holds design notes for Phase 3, which are not requirements; `docs/archive/` holds superseded documents (see [Before any work](#before-any-work)).
 
 ## Commands
 

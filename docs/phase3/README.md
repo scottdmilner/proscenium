@@ -1,0 +1,9 @@
+# Phase 3 Notes
+
+Findings and design notes for [Phase 3 — USD Stage Editor](../PROJECT.md#phase-3--usd-stage-editor), kept so they aren't lost before Phase 3 begins. Nothing here is a requirement: requirements are in [PROJECT.md](../PROJECT.md), [spec/](../spec/invariants.md), and [testing/](../testing/strategy.md), and where a note conflicts with them, they win. A note that becomes a requirement moves into the spec, with its matrix rows.
+
+| File | Contents |
+|---|---|
+| [scene-graph-ui.md](scene-graph-ui.md) | A prim tree for the stage editor: a virtualized UIList over a model kept apart from drawing, where it fits in Blender's UI, and its keys, icons, tooltips, search, and selection, from the proof of concept in `tools/feasibility/scene_graph_ui/` |
+| [node-zones.md](node-zones.md) | Zones in the editor's node tree, like Geometry Nodes' simulation and for-each zones: why Blender's can't be used, pairing begin and end nodes by uid, what a zone holds, and drawing its outline with the `gpu` module, from the proof of concept in `tools/feasibility/node_zones/` |
+| [usd-asset-library.md](usd-asset-library.md) | Offering USD assets through Blender's asset system: an asset library of stand-in assets, catalogs, and an asset shelf whose operators create bindings |
