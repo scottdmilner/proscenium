@@ -13,8 +13,8 @@
 - Duplicate-representation detection and removal, and handling of content with copied or missing ownership evidence, as specified in Ownership and Lifecycle.
 - User-facing repair of bindings disabled pending repair: make a new binding, or detach.
   - Repair starts from M3's report of copied bindings (`Bindings.copied()`): each identity that isn't unique, its candidates by scene and destination, and which one is canonical, if any ([M3 plan](../plans/M03-bindings.md), D10).
-  - A repair that gives a binding another destination moves the destination's tag and the binding's index entry with it; otherwise the old destination remains a copy ([Copied Bindings](../spec/source-access.md#copied-bindings)).
-  - Whether a repair may give a binding whose destination was removed a new destination ([Removed Destination](../spec/lifecycle.md#removed-destination)), decided with M5.
+  - A repair that moves a binding to another collection moves its records and its index entry with it; otherwise the old collection remains a copy ([Copied Bindings](../spec/source-access.md#copied-bindings)).
+  - Cleanup reaches the pending work of a binding removed with its destination or target scene, which stays in the ledger ([Removed Destination](../spec/lifecycle.md#removed-destination), DEST-10).
   - Detection runs at each load, undo, redo, change of scenes, and synchronization; a binding record or index changed by a script on an existing scene is found at the next of these. Lifecycle operations that act on copies look for them first, as synchronization does.
 - Undo/redo of every lifecycle operation.
 

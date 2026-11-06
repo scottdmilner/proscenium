@@ -36,6 +36,8 @@ started: [M1, M1b, M2, M3, M4, M5]
 
 # Retired on 2026-11-03: SRC-01 (binding-owned file stage), ICON-32 and ICON-33
 # (file-stage live identity and lazy opening). Never reuse these IDs.
+# Retired on 2026-11-06: COPY-10 (mutual-reference fallback) and DEST-01 to DEST-04
+# (a binding kept without its destination). Never reuse these IDs.
 # Earlier retired IDs remain recorded in the replacement rows' notes.
 
 requirements:
@@ -189,7 +191,7 @@ requirements:
       - id: TXN-03
         quote: "Failed disposal leaves leftovers persistently tracked as pending cleanup"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
-        oracle: "On F-PREPARATION-CLEANUP-FAILURE, the two resources whose disposal failed are in the ledger with their binding, identity, role, pointer, operation, and retry status, linked in no scene and named by no manifest or correspondence; the result is a fatal failure reporting the preparation failure and a pending-cleanup diagnostic for each."
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, the two resources whose disposal failed are in the ledger with their binding, identity, role, pointer, operation, and cleanup diagnostic, linked in no scene and named by no manifest or correspondence; the result is a fatal failure reporting the preparation failure and a pending-cleanup diagnostic for each."
       - id: TXN-04
         quote: "For a first synchronization, no untracked partial content remains."
         fixtures: [F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE]
@@ -209,9 +211,9 @@ requirements:
         fixtures: [F-RETIREMENT-FAILURE]
         oracle: "On F-RETIREMENT-FAILURE the second synchronization completes with issues: its generation at 10 is published and displayed, and the two obsolete resources are in the ledger, noncanonical, linked in no scene, and named by no manifest or correspondence."
       - id: TXN-08
-        quote: "Ownership tracking covers newly created prepared resources before subsequent fallible work"
+        quote: "The attempt tracks each newly created prepared resource before subsequent fallible work"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
-        oracle: "On F-PREPARATION-CLEANUP-FAILURE, a failure injected at each fallible step after a resource is created finds every resource created so far in the ledger."
+        oracle: "On F-PREPARATION-CLEANUP-FAILURE, a failure injected at each fallible step after a resource is created leaves every resource created so far either removed or, where its disposal fails, in the ledger; a failed attempt whose disposal succeeds, and a synchronization whose retirement succeeds, leave the ledger as it was."
       - id: TXN-09
         quote: "Reused published resources remain protected by the existing manifest and are never disposal candidates."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
@@ -434,10 +436,10 @@ requirements:
         delivery: M5
         oracle: "No case of those fixtures raises: each failure, an unavailable source included, is a result."
       - id: API-05
-        quote: "Exceptions report misuse only, such as a call made during another synchronization."
-        fixtures: [F-SOURCE-CHANGE]
+        quote: "Exceptions report misuse only, such as a call made during another synchronization, and defects"
+        fixtures: [F-SOURCE-CHANGE, F-PREPARATION-CLEANUP-FAILURE]
         delivery: M5
-        oracle: "The calls CONS-04 lists raise when made during a synchronization, a cache call, or a cleanup retry, and nothing else in M5's fixtures' cases raises."
+        oracle: "The calls CONS-04 lists raise when made during a synchronization, a cache call, or a cleanup retry; a write to the ledger, manifest, or generation record injected to fail raises out of synchronize; and nothing else in M5's fixtures' cases raises."
 
   - section: spec/source-access.md#source-consistency
     delivery: M3
@@ -506,11 +508,11 @@ requirements:
         quote: "until the user makes it a new binding or detaches it."
         delivery: M11
       - id: COPY-13
-        quote: "each scene's binding record for it, and each destination collection tagged with it that no binding record names"
-        oracle: "On each copy route F-OWNERSHIP-AMBIGUITY builds, the reported candidates are the scenes holding a binding record for the identity, in the order found, then the tagged collections no record names: two after a collection copy or a scene copy, three after a record copy."
+        quote: "each local collection whose binding record names that identity and a target scene that exists"
+        oracle: "On each copy route F-OWNERSHIP-AMBIGUITY builds, the reported candidates are the local collections holding a binding record for the identity, in the order found: two after a collection copy, a full-copy scene, an append, or a record copy; a collection whose record's target scene was removed is not one."
       - id: COPY-14
         quote: "A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it."
-        oracle: "A binding with one candidate is unique and enabled, with its destination removed or the index unreadable; one candidate that two indexes name is disabled; nothing is reported for a unique identity."
+        oracle: "A binding with one candidate is unique and enabled, with the index unreadable or without its entry; one candidate that two indexes name is disabled; nothing is reported for a unique identity."
       - id: COPY-15
         quote: "A binding's handle reaches its canonical candidate."
         oracle: "On each route where the rule decides, the handle's lookups reach the original, its scene lists it and the copy's scene doesn't; where it can't, each scene with a candidate lists the binding; copied() reports every candidate, and which is canonical or that none is."
@@ -540,17 +542,14 @@ requirements:
         quote: "Removing a binding removes its entry."
         delivery: M11
       - id: COPY-09
-        quote: "A candidate is canonical when the index names its destination and its binding record and destination refer to each other."
+        quote: "A candidate is canonical when the index's entry for its identity names its collection."
         oracle: "On each copy route F-OWNERSHIP-AMBIGUITY builds, including the full-copy scene and append, which copy a binding's record and destination together, the original binding is canonical and stays enabled, and every copy is disabled pending repair, on repeated detection and after save/reopen."
-      - id: COPY-10
-        quote: "then the one candidate whose binding record and destination refer to each other is canonical."
-        oracle: "With the index host deleted, or the index entry naming no destination, the canonical candidate on each route F-OWNERSHIP-AMBIGUITY builds is the one candidate whose record and destination refer to each other; where there are two or none, every candidate is disabled pending repair."
       - id: COPY-11
         quote: "Otherwise the rule cannot decide, and all candidates are disabled."
-        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), an index naming a destination whose record does not refer back, or an index that can't be read beside a full-copy scene, every candidate is disabled pending repair."
+        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), an index that can't be read, no index entry for the identity (the index host deleted), or an entry naming none of its candidates, beside a collection copy and beside a full-copy scene, every candidate is disabled pending repair."
       - id: COPY-19
-        quote: "A write to the canonical candidate's binding records restores its missing index entry"
-        oracle: "With the index's Text removed, set_settings on the binding writes a new index whose entry names its destination, and the next full-copy scene leaves the original canonical; an entry naming no destination is kept, and detection alone writes no index."
+        quote: "A write to a unique binding's records restores its index entry"
+        oracle: "With the index's Text removed, or its entry naming no collection, set_settings on the unique binding writes an entry naming its destination, and the next full-copy scene leaves the original canonical; detection alone writes no index."
       - id: COPY-12
         quote: "A binding linked from another .blend is not a candidate."
         oracle: "Linking a collection holding a binding with a local binding's identity leaves the local binding canonical and enabled, and the linked binding is not reported as a candidate."
@@ -821,7 +820,7 @@ requirements:
         quote: "Binding configuration | Binding identity, source information, destination, target scene, and requested settings"
         delivery: M3
         fixtures: [F-BINDING-STATE]
-        oracle: "A binding's identity, source information, destination, target scene, and requested settings survive save/reopen exactly, stored apart from its published generation and last attempt."
+        oracle: "A binding's identity, source information, destination, target scene, and requested settings survive save/reopen exactly, in a record on its destination apart from its published generation and last attempt."
       - id: STATE-02
         quote: "Published generation | Display resources, correspondence, ownership manifest"
         fixtures: [F-FAILED-SETTINGS]
@@ -831,9 +830,13 @@ requirements:
         fixtures: [F-FAILED-SETTINGS]
         oracle: "The last attempt holds load-none, 20, fatal failure, and the attempt's diagnostics, through save and reopen."
       - id: STATE-04
-        quote: "Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence"
+        quote: "Pending cleanup | Prepared or obsolete resources whose disposal or retirement failed, ownership evidence"
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
-        oracle: "The ledger holds each leftover's resource, ownership evidence, operation and binding, retry status, and cleanup diagnostic, apart from the generation and last attempt, which recording it leaves unchanged."
+        oracle: "The ledger holds each leftover's resource, ownership evidence, operation and binding, and cleanup diagnostic, apart from the generation and last attempt, which recording it leaves unchanged, and nothing for a resource whose removal succeeded."
+      - id: STATE-08
+        quote: "A binding's configuration, last attempt, and published generation are records on its destination collection"
+        fixtures: [F-BINDING-STATE]
+        oracle: "F-BINDING-STATE's bindings keep their configuration, last attempt, generation, and manifest as records on their destination collections, each configuration pointing at its target scene, and no scene holds a binding record."
       - id: STATE-07
         quote: "A binding can therefore report, for example: requested load-none, displayed time 10 with load-all, last attempt at time 20 failed."
         delivery: M12
@@ -845,7 +848,7 @@ requirements:
     fixtures: [F-PREPARATION-CLEANUP-FAILURE]
     rows:
       - id: PEND-01
-        quote: "Persist sufficient ownership information to retry disposal of newly prepared or obsolete resources safely."
+        quote: "When disposal of a prepared resource or retirement of an obsolete one fails, persist sufficient ownership information to retry it safely."
         oracle: "After save and reopen, a retry finds each leftover by its persisted pointer and identity alone, with no runtime state from before, and disposes of it."
       - id: PEND-02
         quote: "Retries revalidate ownership and current users"
@@ -908,22 +911,30 @@ requirements:
         fixtures: [F-OFFLINE]
 
   - section: spec/lifecycle.md#removed-destination
-    delivery: M3
+    delivery: M5
     phase: 1
     fixtures: [F-BINDING-STATE]
     rows:
-      - id: DEST-01
-        quote: "A binding whose destination collection is removed keeps its configuration, last attempt, and binding-index entry, through save/reopen, until the binding itself is removed."
-        oracle: "With F-BINDING-STATE's destination removed, then save/reopen, the binding is still listed on its scene, its configuration equals the saved one except for its cleared destination, and its last attempt and binding-index entry are as saved."
-      - id: DEST-02
-        quote: "Synchronizing it is a fatal failure whose diagnostic names the binding and says its destination was removed."
-        oracle: "Synchronizing that binding returns a fatal failure with one removed-destination diagnostic naming the binding; no source stage is made for it, and no collection is created."
-      - id: DEST-03
-        quote: "Its requested settings can still be read and changed."
-        oracle: "That binding's requested settings read as saved, and set_settings changes them, writing its configuration."
-      - id: DEST-04
-        quote: "It owns nothing: its manifest was removed with the collection"
-        oracle: "That binding has no manifest and no resources, and the objects its destination held claim no owner."
+      - id: DEST-05
+        quote: "removing the destination collection removes the binding, as removing its target scene does."
+        oracle: "With F-BINDING-STATE's destination removed, and separately with its target scene removed, every method of the binding's handles but release raises BindingNotFoundError, release succeeds, and no scene lists it nor copied() reports it, before and after save/reopen."
+      - id: DEST-06
+        quote: "Undoing the removal restores the binding with its records."
+        oracle: "Undoing the destination's removal restores the binding: its handle reaches it with the configuration, last attempt, generation, and manifest it had, and its next synchronization succeeds."
+      - id: DEST-07
+        quote: "Content left from its display is unmanaged: its manifest went with the collection."
+        oracle: "After the destination's removal, the objects it held claim no owner."
+      - id: DEST-08
+        quote: "If the collection outlives the target scene, its records stay on it."
+        oracle: "With F-BINDING-STATE's destination also linked in a second scene and its target scene removed, the collection keeps its records, no scene lists the binding, and ownership reports each datablock its manifest names as managed, by that manifest."
+      - id: DEST-09
+        quote: "Its binding-index entry and its pending cleanup stay on the binding index's Text."
+        fixtures: [F-BINDING-STATE, F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "With F-PREPARATION-CLEANUP-FAILURE's leftovers, removing the destination leaves the index entry, naming no collection, and the ledger's entries and their leftovers as they were, through save/reopen."
+      - id: DEST-10
+        quote: "M11's cleanup reaches the pending work of a binding that no longer exists."
+        delivery: M11
+        fixtures: [F-PREPARATION-CLEANUP-FAILURE]
 
   - section: spec/lifecycle.md#schema-versions
     delivery: M3
@@ -2086,8 +2097,7 @@ excluded:
   - section: spec/source-access.md#canonical-candidate
     quotes:
       - "more than one index naming the identity;"
-      - "an index naming a destination whose binding record does not refer back;"
-      - "with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none."
+      - "no index entry for the identity, or one naming none of its candidates."
       - "a binding index that can't be read, for an identity with two or more candidates;"
     restates: [COPY-11]
   - section: spec/source-access.md#source-stages
@@ -2474,11 +2484,14 @@ excluded:
     quotes: ["Refresh is explicit."]
     reason: "Restates REOPEN-02 and PH1-01."
   - section: spec/lifecycle.md#removed-destination
-    quotes: ["Nothing detaches or removes it automatically."]
-    restates: [DEST-01]
+    quotes: ["Nothing else removes a binding automatically."]
+    restates: [DEST-05]
   - section: spec/lifecycle.md#removed-destination
-    quotes: ["a publication never gives such a binding a new destination"]
-    restates: [DEST-02]
+    quotes: ["Its handles then raise as for any binding that no longer exists"]
+    restates: [DEST-05, API-06]
+  - section: spec/lifecycle.md#removed-destination
+    quotes: ["for why the binding goes with its destination."]
+    reason: "Cross-reference."
   - section: spec/lifecycle.md#schema-versions
     quotes: ["Binding records, ownership manifests, correspondence, and any separate pending-cleanup records carry schema versions."]
     reason: "Design guidance for M3's schemas; SCHEMA-02 to SCHEMA-04 test versioning."

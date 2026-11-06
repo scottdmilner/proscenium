@@ -1,6 +1,6 @@
 # M5 — Synchronization architecture, diagnostics, and failure safety
 
-**Implements:** the interfaces and boundary rules in [Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries) (M6 and M7 implement the layers themselves), [Diagnostics](../spec/pipeline.md#diagnostics), [Synchronization Transaction](../spec/pipeline.md#synchronization-transaction) for full rebuilds (M14 covers incremental mutation), the synchronization undo policy in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state), the API, failure safety, and undo policy of [Cached Time Codes](../spec/pipeline.md#cached-time-codes) (M7 applies cached values), and publication of the [Binding State](../spec/lifecycle.md#binding-state) model.
+**Implements:** the interfaces and boundary rules in [Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries) (M6 and M7 implement the layers themselves), [Diagnostics](../spec/pipeline.md#diagnostics), [Synchronization Transaction](../spec/pipeline.md#synchronization-transaction) for full rebuilds (M14 covers incremental mutation), the synchronization undo policy in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state), the API, failure safety, and undo policy of [Cached Time Codes](../spec/pipeline.md#cached-time-codes) (M7 applies cached values), publication of the [Binding State](../spec/lifecycle.md#binding-state) model, and [Removed Destination](../spec/lifecycle.md#removed-destination), except M11's cleanup of a removed binding's pending work.
 
 **Depends on:** M3 (ownership metadata, binding-state schemas, and index rules), M4 (partitioning decision).
 
@@ -23,7 +23,7 @@
 - A revision token in each manifest record, so an undo or redo rereads only the manifests whose token changed: the first ownership lookup after an undo took a median of 43.9 ms on ALab's 11,185 entries and 158 ms on 30,006, against a 50 ms budget ([M4 plan](../plans/M04-prototypes.md), C5).
 - `cache` against the stub application layer: the generation record holds its cached time codes (`Generation.cached_time_codes`, F3), and M5 decides whether a failed call records a last attempt.
 - Work over the whole plan belongs in the core; Python's work in an update grows with what the update builds, as a whole-plan pass in Python missed the small-update budget ([M4 plan](../plans/M04-prototypes.md), D8, F5).
-- Whether a publication may give a binding whose destination was removed a new destination ([Removed Destination](../spec/lifecycle.md#removed-destination)), decided with M11.
+- Binding records on the destination collection, so removing it or the target scene removes the binding ([Removed Destination](../spec/lifecycle.md#removed-destination), DECISIONS.md "Removed destination").
 
 **Tests:**
 

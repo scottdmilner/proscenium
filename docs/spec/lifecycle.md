@@ -104,7 +104,7 @@ Keep these distinct:
 | Binding configuration | Binding identity, source information, destination, target scene, and requested settings (payload policy, conversion, purpose, UV-set names) | Yes |
 | Published generation | Display resources, correspondence, ownership manifest, the settings and time code it was produced with, the time codes cached in it, source revision information, its diagnostics, and persistent selection-resolution state | Yes |
 | Last attempt | Settings and time code attempted, result state, and diagnostics | Yes |
-| Pending cleanup | Unresolved prepared or obsolete resources, ownership evidence, originating operation/binding identities, retry status, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
+| Pending cleanup | Prepared or obsolete resources whose disposal or retirement failed, ownership evidence, originating operation/binding identities, and cleanup diagnostics; logically distinct from the published generation and last attempt | Yes |
 | Binding index | One entry per binding identity, naming its destination, held outside every binding's own datablocks ([Canonical Candidate](source-access.md#canonical-candidate)) | Yes |
 | Runtime source attachment | The caller's stage attached through the binding's handle | No; after reopening, the caller must attach a stage again |
 | Runtime evaluation stage | Each binding's own stage composing the attached source's root and session layers | No; opened on demand once a source stage is attached |
@@ -114,11 +114,13 @@ A binding can therefore report, for example: requested load-none, displayed time
 
 Source information is the root-layer identifier of the stage last attached (see [Source Identity](source-access.md#source-identity)).
 
+A binding's configuration, last attempt, and published generation are records on its destination collection, and the configuration points at its target scene, so removing either removes the binding ([Removed Destination](#removed-destination)).
+
 ### Pending Cleanup
 
-Persist sufficient ownership information to retry disposal of newly prepared or obsolete resources safely. Tracking survives save/reopen and later attempts without modifying the published generation; it does not rely on retained runtime datablock references. Retries revalidate ownership and current users, preserving active, reused, detached, ambiguously owned, and externally required resources. Resolve work by safe disposal or by releasing resources intact under the ownership protection rules. Remove resolved tracking and current cleanup diagnostics rather than accumulating history. Unresolved work remains inactive; retries are explicit and do not require USD access. Undo/redo restores cleanup tracking consistently with resource ownership.
+When disposal of a prepared resource or retirement of an obsolete one fails, persist sufficient ownership information to retry it safely. Tracking survives save/reopen and later attempts without modifying the published generation; it does not rely on retained runtime datablock references. Retries revalidate ownership and current users, preserving active, reused, detached, ambiguously owned, and externally required resources. Resolve work by safe disposal or by releasing resources intact under the ownership protection rules. Remove resolved tracking and current cleanup diagnostics rather than accumulating history. Unresolved work remains inactive; retries are explicit and do not require USD access. Undo/redo restores cleanup tracking consistently with resource ownership.
 
-**Design note** (settled by M5; see [DECISIONS.md](../DECISIONS.md) "Pending-cleanup tracking mechanism"): pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies, so no copy can authorize disposing of a copy's content. M11 settles how unresolved tracking is retained during binding removal; removing configuration must not orphan pending work.
+**Design note** (settled by M5; see [DECISIONS.md](../DECISIONS.md) "Pending-cleanup tracking mechanism"): pending cleanup is a separate persistent ledger held on the binding index's Text, which no copy route copies, so no copy can authorize disposing of a copy's content. An entry is written only when a removal fails. M11 settles how unresolved tracking is retained during binding removal; removing configuration must not orphan pending work.
 
 ### Reopening
 
@@ -137,13 +139,15 @@ Serialization of arbitrary unsaved in-memory USD edits is not guaranteed in Phas
 
 ### Removed Destination
 
-A binding whose destination collection is removed keeps its configuration, last attempt, and binding-index entry, through save/reopen, until the binding itself is removed. Nothing detaches or removes it automatically.
+A binding's records are on its destination collection ([Binding State](#binding-state)), so removing the destination collection removes the binding, as removing its target scene does. Nothing else removes a binding automatically.
 
-- Synchronizing it is a fatal failure whose diagnostic names the binding and says its destination was removed. It fails before accessing the source, and creates no destination.
-- Its requested settings can still be read and changed.
-- It owns nothing: its manifest was removed with the collection, so content left from its display is unmanaged.
+- Its handles then raise as for any binding that no longer exists, except for `release()`, and no scene lists it.
+- Undoing the removal restores the binding with its records.
+- Content left from its display is unmanaged: its manifest went with the collection.
+- If the collection outlives the target scene, its records stay on it. It is no longer a binding, but its manifest still claims the content it names, so no binding's synchronization or cleanup removes that content.
+- Its binding-index entry and its pending cleanup stay on the binding index's Text. M11's cleanup reaches the pending work of a binding that no longer exists.
 
-**Design note:** a publication never gives such a binding a new destination (see [DECISIONS.md](../DECISIONS.md) "Removed destination"); M11 decides whether a repair may.
+**Design note:** see [DECISIONS.md](../DECISIONS.md) "Removed destination" for why the binding goes with its destination.
 
 ### Schema Versions
 

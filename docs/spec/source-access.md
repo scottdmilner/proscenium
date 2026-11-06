@@ -34,7 +34,7 @@ Callers reach a binding through a **binding handle**: an immutable value that ho
 - `release()` drops this binding's source and evaluation stages and returns `None`. It is idempotent, changes no persistent records or saved display, and remains valid after undo or removal of the binding.
 - `synchronize` returns an immutable result ([Diagnostics](pipeline.md#diagnostics)) holding its result state; its own deduplicated diagnostics, with a pending-cleanup diagnostic for each resource it left pending; the time codes it attempted, a synchronization's one or those a cache call hadn't cached; and the binding's current cleanup status, apart from its own diagnostics. An expected failure, such as an unavailable source, is a result, not an exception.
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for `release()`.
-- Exceptions report misuse only, such as a call made during another synchronization.
+- Exceptions report misuse only, such as a call made during another synchronization, and defects, such as a failed write to the extension's own records.
 
 Operations that span bindings belong to the process's bindings: creating a binding, finding a scene's bindings, and reporting copied bindings ([Copied Bindings](#copied-bindings)). Attachment and release belong to each binding's handle.
 
@@ -62,7 +62,7 @@ Callers may attach the same stage to several bindings or open separate stages ov
 
 ## Copied Bindings
 
-Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest. The bindings in a `.blend` that share one binding identity are its **candidates**: each scene's binding record for it, and each destination collection tagged with it that no binding record names, as a collection duplicated on its own is. A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it.
+Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or its target scene, appending it from another `.blend`, or copying its records to another collection by script. A binding's records are on its destination collection, naming its identity and its target scene ([Binding State](lifecycle.md#binding-state)). The bindings in a `.blend` that share one binding identity are its **candidates**: each local collection whose binding record names that identity and a target scene that exists. A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it.
 
 - A binding whose identity is not unique is **disabled pending repair**: it keeps its display, does not refresh, and reports the ambiguity until the user makes it a new binding or detaches it.
 - A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled.
@@ -77,14 +77,12 @@ Custom properties can be copied by duplication; do not assume they guarantee uni
 Each `.blend` holds a **binding index**, with one entry per binding identity naming that binding's destination. The index is held outside every binding's own datablocks, and nothing in a binding refers to it, so copying a binding's datablocks does not copy the index.
 
 - Creating a binding adds its index entry. Removing a binding removes its entry.
-- A candidate is canonical when the index names its destination and its binding record and destination refer to each other.
-- If the index has no entry for the identity, or its entry names no destination, then the one candidate whose binding record and destination refer to each other is canonical.
+- A candidate is canonical when the index's entry for its identity names its collection.
 - Otherwise the rule cannot decide, and all candidates are disabled. This includes:
   - more than one index naming the identity;
   - a binding index that can't be read, for an identity with two or more candidates;
-  - an index naming a destination whose binding record does not refer back;
-  - with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none.
-- A write to the canonical candidate's binding records restores its missing index entry, when its record and destination refer to each other. An entry naming no destination is kept.
+  - no index entry for the identity, or one naming none of its candidates.
+- A write to a unique binding's records restores its index entry when the index has none for it, or one naming no collection, so a lost index doesn't disable both sides of a later copy.
 - A binding linked from another `.blend` is not a candidate. It is library data, read-only in the linking file, and its identity belongs to its library, so it never makes a local binding's identity non-unique.
 
 ## Source Stages
