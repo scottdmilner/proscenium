@@ -1485,6 +1485,38 @@ Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycl
 - **A binding lookup needs no cache with one binding:** 13 µs without it. More bindings weren't measured in the binary; in the bpy wheel, ad hoc, a scan with 100 bindings took 0.52 ms.
 - **The first lookup after an undo is over budget on ALab here,** 52 ms against C5's 43.9 ms in the same environment, where each first lookup also followed a real undo; ownership by users is cheaper than it at every scale measured.
 
+### The undo step of a synchronization (M5 Phase F)
+
+What the one undo step a published synchronization pushes ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) holds, for M5's full rebuild, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, 2026-11-06). Reproduce with `measure/undo_memory.py --scenes updates alab --exclude updates-10000 --repeats 3`.
+
+**Method** (`measure/undo_memory.py`), in a fresh background process per run, with global undo on:
+- **The steps:** the display is built and a step pushed, as after a first synchronization; then three times one object is moved and a step pushed; then four times the whole display is rebuilt from the same plan, the one it replaces removed in one `batch_remove`, the depsgraph evaluated, and a step pushed, as after synchronizing again. Then one undo and one redo, timed.
+- **The memory:** the heap in use (`memory.py`), read around each push, and around each rebuild with its push. A control run per scene does the same with global undo off, pushing nothing.
+- **Statistics:** three processes per scene and setting; each process's median over its steps, as a median and range over the processes. Blender's preferences as found: 32 undo steps, no memory limit.
+- **Left out:** `updates-10000`, whose first rebuild hadn't finished removing the display it replaced after 11 minutes, with the time in `batch_remove` (sampled); removal's cost is Phase F's F2.
+
+| Measure | updates-100 | updates-1000 | ALab |
+|---|---|---|---|
+| Objects; objects, meshes, and materials | 301; 306 | 3,001; 3,006 | 7,018; 11,185 |
+| Heap of the built display (MB) | 9 | 85 | 1,340 (1,339–1,343) |
+| `.blend`, uncompressed (MB) | 1 | 8 | 1,117 |
+| A push after moving one object (MB) | 0.0 | 0.1 | 4.5 |
+| A push after a rebuild (MB) | 1 | 8 | 58 |
+| **A rebuild and its push, undo on (MB)** | 1.0 | 8.8 (8.6–8.9) | **1,195 (1,195–1,195)** |
+| A rebuild, undo off (MB) | 0.1 | 0.7 (0.7–0.8) | 0.0 (−0.9–0.0) |
+| Heap after every step, undo on / off (MB) | 15 / 9 | 136 / 88 | 6,228 / 1,338 |
+| A push after a rebuild (ms) | 1 | 5 (4–7) | 77 (65–79) |
+| Undo; redo (ms) | 10; 9 | 88; 97 | 272 (261–277); 236 (222–238) |
+
+Two variants on ALab, one process each, without the control: with 2 undo steps, the rebuilds' growth was 1,191, 1,194, −15, and 8 MB; with a 2,048 MB undo memory limit and 32 steps, 1,195, 1,198, 1,156, and 1,185 MB, the heap after every step 6,184 MB.
+
+**Findings:**
+- **A full rebuild's step holds about the display's size:** 1.2 GB on ALab, about its uncompressed `.blend` (1.1 GB), and 8.8 MB against 8 MB on `updates-1000`; with undo off a rebuild leaves nothing. On ALab the push itself grew the heap by only 58 MB, and the rest of the growth came at the rebuild before it, which grew 1.14 GB with undo on and nothing with it off. That a step shares the replaced meshes' arrays, so removing them frees nothing while it lives, is an inference: it fits the 2-step variant, whose growth stopped once the oldest step was dropped.
+- **A step that keeps its datablocks is small:** moving one object pushed 4.5 MB on ALab, so a step grows with the datablocks a synchronization replaces, not with the display.
+- **Only the step count bounds it:** at Blender's default of 32 steps, synchronizing ALab again 32 times would hold about 38 GB, more than this machine's memory (an extrapolation: five steps were measured). The undo memory limit didn't bound it in the variant measured, which is consistent with the limit counting only a step's own data, about 58 MB here.
+- **Pushing, undoing, and redoing are fast** beside a rebuild: 77 ms to push after ALab's 12 s rebuild, and 0.27 s to undo.
+- **Not measured:** a windowed Blender, Linux and Windows, batched displays, and more than five steps.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

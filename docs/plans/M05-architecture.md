@@ -148,6 +148,10 @@ A review against the feasibility bridge found most of Phase D's size in two plac
 1. **The undo step's memory cost** for a published synchronization ("Undo memory cost").
 2. **Removal's cost** (S3): the shared removal's `user_map` call and its `batch_remove` calls, one per level of users, measured on ALab's resource counts against M4's fixed cost of about 20 ms a call; and the one-call-per-datablock fallback after a failed call, which may need to bisect instead.
 
+#### Phase F log
+
+- **F1, the undo step's memory** (with the user: one step per published synchronization, DECISIONS.md "Undo memory cost"). `measure/undo_memory.py` builds the baseline's display in the Blender binary with global undo on, then pushes a step after a first build, after moving one object, and after each of four full rebuilds that remove the display they replace, as M5's synchronization does, with a control run per scene with undo off ([runtime record](../feasibility/runtime-record.md#the-undo-step-of-a-synchronization-m5-phase-f)). A full rebuild's step held about the display's size, 1.2 GB on ALab and 8.8 MB on `updates-1000`, about each uncompressed `.blend`; on ALab most of it was the rebuild's own growth before the push, as the replaced display's memory stayed held while the step lived, and with undo off a rebuild left nothing. A step after moving one object held 4.5 MB on ALab, so a step grows with what a synchronization replaces. In one run each on ALab, 2 undo steps bounded the growth and a 2,048 MB undo memory limit didn't. Pushing took 77 ms and undoing 0.27 s on ALab. `updates-10000` is left out: its first rebuild was still in `batch_remove` after 11 minutes, which is F2's to measure. Phase G's note for M14 has it measure its steps again.
+
 ### Phase G — Close
 
 1. **Notes for M6, M7, M11, and M14** in their milestone files.
