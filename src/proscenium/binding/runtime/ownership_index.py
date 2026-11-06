@@ -108,8 +108,8 @@ def manifest(binding_id: identifiers.BindingId) -> records.Loaded[manifests.Mani
     return _checked_manifest(current, binding_id, destination)
 
 
-def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest) -> None:
-    """Store a binding's manifest on its destination, replacing only that destination's share of ownership.
+def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest | None) -> None:
+    """Store a binding's manifest on its destination, or remove it with None, replacing only that destination's claims.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such
     binding; DisabledBindingError if it has no canonical candidate; ValueError if it has no destination.
@@ -117,7 +117,11 @@ def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest
     record = binding_configs.required_record(binding_id)
     current = state.current_state()
     destination = _destination(current, binding_id, record)
-    written = manifests.write_manifest(destination.collection, manifest)
+    if manifest is None:
+        manifests.remove_manifest(destination.collection)
+        written = None
+    else:
+        written = manifests.write_manifest(destination.collection, manifest)
     _replace_manifest(current, binding_id, destination, written)
     binding_configs.restore_entry(binding_id, record)
 

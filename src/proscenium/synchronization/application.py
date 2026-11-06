@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from ..core import _core
     from .prepared_work import PreparedWork
 
+REPRESENTATION_VERSION = 1  # the representation this layer applies, which the planning context names
+
 
 def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork) -> None:
     """Make plan's placeholders in work's staging collection, tracking each datablock as it's made (TXN-08).

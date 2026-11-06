@@ -52,17 +52,35 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
 def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
     """Change some of the ledger's entries, writing only those; a file with no ledger yet starts from an empty one.
 
-    Raises RefusedRecordError, changing nothing, over a ledger that can't be read; ValueError if the file has no binding
-    index or more than one; and ValueError or TypeError, changing nothing, over an update that makes no ledger.
+    An empty update writes nothing. Raises as check_trackable does, and ValueError or TypeError, changing nothing, over
+    an update that makes no ledger.
     """
-    held = state.query(_held_index)
-    if held is None:
-        raise ValueError("this file has no binding index to hold the pending-cleanup ledger")
+    held = _trackable()
+    if not changed and not removed:
+        return
     stored = _ledger_of(held)
-    if isinstance(stored, records.RefusedRecord):
-        raise records.RefusedRecordError(stored)
+    assert not isinstance(stored, records.RefusedRecord)  # _trackable refused it
     after = (ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
     held.ledger = ledgers.write_ledger_entries(held.text, after, changed.keys(), removed)
+
+
+def check_trackable() -> None:
+    """Raise unless the ledger can record work.
+
+    RefusedRecordError over one that can't be read, and ValueError if the file has no binding index to hold it or more
+    than one.
+    """
+    _trackable()
+
+
+def _trackable() -> IndexRecords:
+    """The index Text's records, holding a ledger that can be read or none yet; raises as check_trackable does."""
+    held = state.query(_held_index)
+    if held is None:
+        raise ValueError("This file has no binding index to hold the pending-cleanup ledger")
+    if isinstance(stored := _ledger_of(held), records.RefusedRecord):
+        raise records.RefusedRecordError(stored)
+    return held
 
 
 def _checked_ledger(current: State) -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:

@@ -54,9 +54,13 @@ class DiagnosticCode(StrEnum):
     UNSAVED_LAYERS = "unsaved-layers"  # layers displayed with unsaved in-process edits
     NO_ATTACHED_STAGE = "no-attached-stage"
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
-    UNSUPPORTED_RECORD = "unsupported-record"  # the binding's configuration or manifest can't be read
+    UNSUPPORTED_RECORD = "unsupported-record"  # a record the binding's operation needs can't be read
     REMOVED_DESTINATION = "removed-destination"  # the binding has nowhere to display (lifecycle.md)
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
+    EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
+    PLANNING_FAILED = "planning-failed"
+    PREPARATION_FAILED = "preparation-failed"  # making the display's resources failed; what was made is disposed of
+    PUBLICATION_FAILED = "publication-failed"  # switching to the prepared generation failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
 
 
@@ -67,6 +71,10 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.UNSUPPORTED_RECORD: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.REMOVED_DESTINATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.COPIED_BINDING: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.EVALUATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
 }
 

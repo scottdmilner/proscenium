@@ -11,8 +11,8 @@ The last attempt is the most recent synchronization attempt and its result. It i
 scene beside the binding's configuration, under its own key: it exists without a destination or a
 publication, and reading the configuration doesn't load its diagnostics.
 
-Nothing writes these records before M5's synchronization transaction, so M5 can still refine their
-version 1 fields.
+The synchronization transaction writes both (proscenium.synchronization): the generation as part of publication,
+and the last attempt at every attempt's end.
 """
 
 from __future__ import annotations
@@ -120,6 +120,11 @@ def write_generation(destination: bpy.types.Collection, generation: Generation) 
     Raises RefusedRecordError, changing nothing, over a stored generation that can't be read.
     """
     records.write(destination, GENERATION_KEY, GENERATION, generation)
+
+
+def remove_generation(destination: bpy.types.Collection) -> None:
+    """Remove the destination's published generation, if it has one; raises as write_generation does."""
+    records.remove(destination, GENERATION_KEY, GENERATION)
 
 
 def read_last_attempt(

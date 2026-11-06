@@ -106,11 +106,12 @@ def _check_kept(bindings: Bindings, handle: BindingHandle, saved: dict[str, obje
 
 
 def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -> None:
-    # F-OFFLINE "moved-file": the binding synchronized before saving, so the source was open; reopening drops it.
+    # F-OFFLINE "moved-file": the binding's source was open before saving, and reopening drops it. A reload opens it
+    # without publishing over the display published by hand.
     with source_access.offline(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         saved = _publish(handle, scene.display)
-        assert handle.synchronize(0).state is ResultState.SUCCESS
+        assert handle.reload().state is ResultState.SUCCESS
         scene.move_away()
         save_and_reopen(tmp_path / "offline.blend")
         gc.collect()
@@ -127,7 +128,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
         handle = bindings.create_binding(_scene(), name="Shot")
         handle.attach(caller)
         saved = _publish(handle, scene.display)
-        assert handle.synchronize(0).state is ResultState.SUCCESS
+        assert handle.reload().state is ResultState.SUCCESS
         save_and_reopen(tmp_path / "offline.blend")
         _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
         assert handle.live_stage() is None
@@ -147,7 +148,10 @@ def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | No
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
 
-def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt) -> None:
+def _check_removed(
+    bindings: Bindings, handle: BindingHandle, saved: BindingConfig, attempt: LastAttempt
+) -> LastAttempt:
+    """Check the binding whose destination was removed; the last attempt its synchronization records (STATE-03)."""
     # DEST-01: listed, with its configuration, last attempt, and index entry, its destination pointer cleared.
     assert bindings.in_scene(_scene()) == [handle]
     assert _config(handle) == saved
@@ -166,6 +170,9 @@ def _check_removed(bindings: Bindings, handle: BindingHandle, saved: BindingConf
     assert bindings.stages.get(handle.binding_id) is stages
     assert stages is None or stages.evaluation_stage is None
     assert set(bpy.data.collections.keys()) == collections
+    recorded = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, result.diagnostics)
+    assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(recorded, 1)
+    return recorded
 
 
 def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
@@ -183,7 +190,7 @@ def test_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
         before = _config(handle)
         bpy.data.collections.remove(bpy.data.collections["Shot"])
         config = replace(before, destination=None)
-        _check_removed(bindings, handle, config, attempt)
+        attempt = _check_removed(bindings, handle, config, attempt)
         save_and_reopen(tmp_path / "removed.blend")
         _check_removed(bindings, handle, config, attempt)
         # DEST-03: its requested settings read as saved, and a change is written to its configuration.

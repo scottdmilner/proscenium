@@ -214,7 +214,9 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
         assert live.GetLoadSet()  # not applied: nothing synchronized
-        assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
+        # Still the last synchronization's attempt: set_settings records none.
+        last = binding_state.read_last_attempt(_scene(), handle.binding_id)
+        assert last == Loaded(binding_state.LastAttempt(PayloadPolicy.LOAD_ALL, 3.0, ()), 1)
         assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live

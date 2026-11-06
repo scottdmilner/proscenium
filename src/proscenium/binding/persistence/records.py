@@ -196,6 +196,26 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
     namespace[key] = value
 
 
+def remove(id_: bpy.types.ID, key: str, schema: Schema[Any]) -> None:
+    """Remove the record under key, if there is one.
+
+    Raises RefusedRecordError, changing nothing, over a stored record that is unreadable or newer than supported, as
+    write does.
+    """
+    namespace = id_.get(NAMESPACE)
+    if namespace is None:
+        return
+    if not hasattr(namespace, "to_dict"):
+        raise RefusedRecordError(
+            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
+        )
+    if (existing := namespace.get(key)) is None:
+        return
+    if isinstance(result := _version(schema, existing), RefusedRecord):
+        raise RefusedRecordError(result)
+    del namespace[key]
+
+
 def write_items[R: DataclassInstance](
     id_: bpy.types.ID,
     key: str,

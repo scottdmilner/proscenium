@@ -7,8 +7,8 @@ tracked, so they're never disposal candidates (TXN-09).
 dispose removes each tracked resource and resolves its ledger entry. One whose removal fails stays in the ledger,
 retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases.
 
-The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal removes it. A leftover stays
-alive through the ledger's pointer to it, which is a user, linked in no collection.
+The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal or publication removes it.
+A leftover stays alive through the ledger's pointer to it, which is a user, linked in no collection.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding.persistence import ledgers, records
+from ..binding.persistence import ledgers
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.runtime import pending_cleanup
 
@@ -56,11 +56,9 @@ class PreparedWork:
 def new_prepared_work(binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation) -> PreparedWork:
     """Empty prepared work for binding_id, with its staging collection.
 
-    Raises RefusedRecordError over a ledger that can't be read, and ValueError if the file has more than one binding
-    index, having made nothing: work the ledger can't track is never prepared.
+    Raises as pending_cleanup.check_trackable does, having made nothing: work the ledger can't track is never prepared.
     """
-    if isinstance(ledger := pending_cleanup.ledger(), records.RefusedRecord):
-        raise records.RefusedRecordError(ledger)
+    pending_cleanup.check_trackable()
     return PreparedWork(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
 
 
@@ -94,11 +92,16 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
         if ledger_key is not None:
             resolved.append(ledger_key)
     pending_cleanup.set_ledger_entries(changed, resolved)
+    remove_staging(work)
+    return tuple(diagnostics)
+
+
+def remove_staging(work: PreparedWork) -> None:
+    """Remove work's staging collection and let go of what it held: published, or disposed of."""
     bpy.data.batch_remove([work.staging])
     work.datablocks.clear()
     work.entries.clear()
     work.tracked.clear()
-    return tuple(diagnostics)
 
 
 def _remove(datablock: bpy.types.ID) -> None:

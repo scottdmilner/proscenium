@@ -208,6 +208,11 @@ def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> Loa
     return Loaded(manifest, MANIFEST.version)
 
 
+def remove_manifest(destination: bpy.types.Collection) -> None:
+    """Remove the destination's manifest, if it has one; raises as write_manifest does."""
+    records.remove(destination, MANIFEST_KEY, MANIFEST)
+
+
 def write_manifest_entries(
     destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
 ) -> Loaded[Manifest]:

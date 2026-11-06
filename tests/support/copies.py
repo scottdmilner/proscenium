@@ -1,7 +1,7 @@
 """F-OWNERSHIP-AMBIGUITY's routes, run in Blender, and the file's records by name (fixtures.copies).
 
-Each route acts on a binding "Shot" on the scene "Scene", whose destination holds the managed object
-"Managed" with a manifest naming it. Routes that bring data from another .blend save a copy of the open
+Each route acts on a binding "Shot" on the scene "Scene", whose destination holds the content its synchronization
+published, with the manifest naming it. Routes that bring data from another .blend save a copy of the open
 file beside it first, so the other file holds the same binding.
 """
 
@@ -21,6 +21,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.binding.source_access.identifiers import BindingId
+
+
+MANAGED = "Still"  # one of the published objects: /World/Still's placeholder
 
 
 def run(route: str, tmp_path: Path) -> None:
@@ -173,8 +176,8 @@ def _unreadable_index(_: Path) -> None:
 
 
 def _duplicate_object(_: Path) -> None:
-    """Object > Duplicate (Shift+D) on the managed object."""
-    obj = bpy.data.objects["Managed"]
+    """Object > Duplicate (Shift+D) on a managed object."""
+    obj = _shot().objects[MANAGED]
     view_layer = bpy.context.view_layer
     assert view_layer is not None
     obj.select_set(True)
