@@ -10,9 +10,9 @@ leftovers, after reopening too (PEND-01), and revalidates each one's current use
 - One whose removal fails, or whose user's did, stays retryable with a fresh cleanup diagnostic.
 
 Each resolved entry leaves the ledger with its diagnostic (PEND-03, DIAG-08). Every entry of the binding is retried,
-those left prepared or retiring by a ledger write that failed included, since no operation runs beside a retry
-(CONS-04). The result reports what's still pending; it's a fatal failure when nothing could be resolved, as
-lifecycle.md's cleanup reports one. A ledger that can't be read refuses, disposing of nothing (SCHEMA-06).
+since no operation runs beside a retry (CONS-04). The result reports what's still pending; it's a fatal failure when
+nothing could be resolved, as lifecycle.md's cleanup reports one. A ledger that can't be read refuses, disposing of
+nothing (SCHEMA-06).
 """
 
 from __future__ import annotations
@@ -29,12 +29,6 @@ from . import removal
 
 if TYPE_CHECKING:
     from ..binding.source_access import identifiers
-
-# The code a leftover's fresh diagnostic takes, for one left without a diagnostic by a ledger write that failed.
-_CODE_OF = {
-    ledgers.RetryStatus.PREPARED: DiagnosticCode.DISPOSAL_FAILED,
-    ledgers.RetryStatus.RETIRING: DiagnosticCode.RETIREMENT_FAILED,
-}
 
 
 def retry_cleanup(binding_id: identifiers.BindingId) -> Result:
@@ -56,7 +50,7 @@ def retry_cleanup(binding_id: identifiers.BindingId) -> Result:
     except Exception as error:  # noqa: BLE001 - reported, never raised
         message = f"Couldn't record the retry in the pending-cleanup ledger: {error}"
         return Result(Diagnostic(DiagnosticCode.CLEANUP_FAILED, binding_id, message))
-    diagnostics = [e.diagnostic for e in changed.values() if e.diagnostic is not None]
+    diagnostics = [e.diagnostic for e in changed.values()]
     if changed and not resolved:
         message = f"Retrying binding {binding_id}'s pending cleanup resolved none of it"
         diagnostics.insert(0, Diagnostic(DiagnosticCode.CLEANUP_FAILED, binding_id, message))
@@ -100,9 +94,8 @@ def _retried(entries: dict[str, ledgers.LedgerEntry], text: bpy.types.Text) -> t
 
 
 def _pending(entry: ledgers.LedgerEntry, ledger_key: str, problem: str) -> ledgers.LedgerEntry:
-    """entry, retryable, with a fresh diagnostic saying why it's still pending."""
-    code = entry.diagnostic.code if entry.diagnostic is not None else _CODE_OF[entry.status]
+    """Entry with a fresh diagnostic saying why it's still pending, under its original code."""
     assert entry.datablock is not None
     message = f"Couldn't remove pending {entry.role} {entry.datablock.name!r}: {problem}"
-    diagnostic = Diagnostic(code, entry.binding_id, message, resource=ledger_key, role=str(entry.role))
-    return dataclasses.replace(entry, status=ledgers.RetryStatus.RETRYABLE, diagnostic=diagnostic)
+    diagnostic = Diagnostic(entry.diagnostic.code, entry.binding_id, message, resource=ledger_key, role=str(entry.role))
+    return dataclasses.replace(entry, diagnostic=diagnostic)

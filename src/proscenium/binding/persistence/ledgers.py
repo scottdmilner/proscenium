@@ -3,8 +3,9 @@
 A versioned record on the binding index's Text (DECISIONS.md "Pending-cleanup tracking mechanism"), which no copy route
 copies, so no copy can authorize disposing of a copy's content, and which removing a binding doesn't remove. It has one
 entry per pending resource, keyed by a random ledger key, holding the contract's evidence: its binding, its entry key
-and role in that binding's manifest, a pointer to its datablock, its originating operation, its retry status, and its
-cleanup diagnostic once its disposal has failed.
+and role in that binding's manifest, a pointer to its datablock, its originating operation, and its cleanup diagnostic.
+An entry is written only when an operation fails to remove its resource: until then the operation holds what it would
+remove, so one whose removals all succeed writes nothing.
 
 - An entry's entry key isn't unique: a prepared replacement takes its published resource's key, and a retired resource
   keeps the key the new generation may reuse. Its ledger key is, and a cleanup diagnostic names it.
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
@@ -31,7 +33,7 @@ from .manifests import RepresentationRole
 from .records import Loaded, RefusedRecord, Schema
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Mapping
+    from collections.abc import Collection
 
     from ..source_access import identifiers
 
@@ -44,14 +46,6 @@ class OriginatingOperation(StrEnum):
     """The operation that left a resource pending."""
 
     SYNCHRONIZE = "synchronize"
-
-
-class RetryStatus(StrEnum):
-    """Where a pending resource's disposal stands."""
-
-    PREPARED = "prepared"  # tracked while the operation preparing it runs, before anything else can fail
-    RETIRING = "retiring"  # published out of its manifest, for retirement to remove next
-    RETRYABLE = "retryable"  # its disposal or retirement failed: an explicit retry may resolve it
 
 
 def new_ledger_key() -> str:
@@ -68,9 +62,7 @@ class LedgerEntry:
     role: RepresentationRole  # a record stores the value
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it
     operation: OriginatingOperation
-    status: RetryStatus
-    # Its cleanup diagnostic, which a retryable entry has and the others lack.
-    diagnostic: results.Diagnostic | None = None
+    diagnostic: results.Diagnostic  # why its removal failed, naming its ledger key
 
     def __post_init__(self) -> None:
         if type(self.binding_id) is not str or type(self.entry_key) is not str:
@@ -80,11 +72,10 @@ class LedgerEntry:
         # Stored as plain values; ValueError for one outside its vocabulary.
         object.__setattr__(self, "role", RepresentationRole(self.role))
         object.__setattr__(self, "operation", OriginatingOperation(self.operation))
-        object.__setattr__(self, "status", RetryStatus(self.status))
-        if self.diagnostic is not None and not isinstance(self.diagnostic, results.Diagnostic):
+        if isinstance(self.diagnostic, Mapping):
             object.__setattr__(self, "diagnostic", results.Diagnostic(**self.diagnostic))
-        if (self.diagnostic is None) == (self.status is RetryStatus.RETRYABLE):
-            raise ValueError("a retryable entry has a cleanup diagnostic, and no other has one")
+        if not isinstance(self.diagnostic, results.Diagnostic):
+            raise TypeError("an entry has the cleanup diagnostic of its failed removal")
 
 
 @dataclass(frozen=True)
@@ -102,8 +93,8 @@ class Ledger:
     def updated(self, changed: Mapping[str, LedgerEntry], removed: Collection[str]) -> Ledger:
         """This ledger with changed's entries added or replaced and removed's deleted.
 
-        The checks cost what changes; the result copies the entries, as preparation's one tracked resource at a time
-        does. Raises ValueError or TypeError over an update that makes no ledger.
+        The checks cost what changes; the result copies the entries. Raises ValueError or TypeError over an update that
+        makes no ledger.
         """
         if not changed.keys().isdisjoint(removed):
             raise ValueError("an update both changes and removes an entry")

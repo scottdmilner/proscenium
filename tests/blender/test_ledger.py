@@ -18,7 +18,7 @@ from fixtures import records as record_fixtures
 from fixtures.scenes import Scene, copy_scene
 from proscenium.binding import persistence, runtime
 from proscenium.binding.persistence import ledgers
-from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation, RetryStatus
+from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusalReason, RefusedRecord, RefusedRecordError
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
@@ -44,25 +44,25 @@ def _text() -> bpy.types.Text:
 
 
 def _entries(binding_id: BindingId) -> dict[str, LedgerEntry]:
-    """A prepared mesh and a retryable object, by ledger key."""
+    """A bounds mesh retirement left and an object disposal left, by ledger key."""
     mesh = bpy.data.meshes.new("Leftover")
     obj = bpy.data.objects.new("Leftover", mesh)
-    diagnostic = Diagnostic(
+    retired = Diagnostic(
+        DiagnosticCode.RETIREMENT_FAILED, binding_id, "Couldn't retire", resource=key("mesh"), role="bounds mesh"
+    )
+    disposed = Diagnostic(
         DiagnosticCode.DISPOSAL_FAILED, binding_id, "Couldn't dispose", resource=key("object"), role="object"
     )
-    prepared, retryable = RetryStatus.PREPARED, RetryStatus.RETRYABLE
     synchronize = OriginatingOperation.SYNCHRONIZE
     return {
-        key("mesh"): LedgerEntry(binding_id, key("m"), RepresentationRole.BOUNDS_MESH, mesh, synchronize, prepared),
-        key("object"): LedgerEntry(
-            binding_id, key("o"), RepresentationRole.OBJECT, obj, synchronize, retryable, diagnostic
-        ),
+        key("mesh"): LedgerEntry(binding_id, key("m"), RepresentationRole.BOUNDS_MESH, mesh, synchronize, retired),
+        key("object"): LedgerEntry(binding_id, key("o"), RepresentationRole.OBJECT, obj, synchronize, disposed),
     }
 
 
 def test_a_ledger_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
-    # PEND-06, STATE-04: on the binding index's Text, each entry's binding, entry key, role, pointer, operation, retry
-    # status, and cleanup diagnostic, each its own field.
+    # PEND-06, STATE-04: on the binding index's Text, each entry's binding, entry key, role, pointer, operation, and
+    # cleanup diagnostic, each its own field.
     binding_id = _binding(bindings)
     entries = _entries(binding_id)
     runtime.pending_cleanup.set_ledger_entries(entries)
@@ -150,8 +150,8 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
     ("change", "problem"),
     [
         ({"role": "hologram"}, "hologram"),
-        ({"status": "lost"}, "lost"),
-        ({"status": "retryable", "diagnostic": None}, "a retryable entry has a cleanup diagnostic"),
+        ({"operation": "lost"}, "lost"),
+        ({"diagnostic": None}, "cleanup diagnostic of its failed removal"),
         ({"binding_id": 7}, "names its binding"),
     ],
 )
@@ -193,7 +193,7 @@ def test_an_update_that_makes_no_ledger_changes_nothing(bindings: Bindings, remo
 
 def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp_path: Path) -> None:
     # DIAG-06, DIAG-15, API-13: the ledger's leftovers are in each result's cleanup status, apart from its own
-    # diagnostics and leaving its state; prepared work and another binding's leftovers aren't. From D6,
+    # diagnostics and leaving its state; another binding's leftovers aren't. From D6,
     # F-PREPARATION-CLEANUP-FAILURE checks it through the synchronizations that leave them.
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
     handle = binding_on_file(bindings, bpy.data.scenes["Scene"], root)
@@ -203,7 +203,7 @@ def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp
     runtime.pending_cleanup.set_ledger_entries(entries | others)
     stage = handle.live_stage()
     assert stage is not None
-    status = (entries[key("object")].diagnostic,)
+    status = tuple(e.diagnostic for _, e in sorted(entries.items()))
     for result in (handle.synchronize(0), handle.attach(stage), handle.set_settings(), handle.reload()):
         assert (result.state, result.diagnostics, result.cleanup_status) == (ResultState.SUCCESS, (), status)
     # A refusal reports it too.
@@ -211,7 +211,7 @@ def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp
     assert refused.state is ResultState.FATAL_FAILURE
     assert refused.cleanup_status == (others[key("other")].diagnostic,)
     # Resolved work leaves the status.
-    runtime.pending_cleanup.set_ledger_entries({}, [key("object")])
+    runtime.pending_cleanup.set_ledger_entries({}, list(entries))
     assert handle.synchronize(0).cleanup_status == ()
 
 

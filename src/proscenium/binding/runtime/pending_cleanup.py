@@ -36,15 +36,15 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
     """The binding's current cleanup diagnostics: the ledger's, one per resource it holds pending, by ledger key.
 
     A ledger entry is one resource with one originating operation, so these are deduplicated by operation and resource
-    (DIAG-06). Prepared work, still tracked by the operation preparing it, has none. Empty when the ledger can't be read
-    or the file has more than one binding index, since neither names a pending resource cleanup could retry.
+    (DIAG-06). Prepared work is held by the operation preparing it, never in the ledger. Empty when the ledger can't be
+    read or the file has more than one binding index, since neither names a pending resource cleanup could retry.
     """
 
     def question(current: State) -> tuple[results.Diagnostic, ...]:
         if len(current.indexes) > 1 or not isinstance(ledger := _checked_ledger(current), records.Loaded):
             return ()
         entries = sorted(ledger.record.entries.items())
-        return tuple(e.diagnostic for _, e in entries if e.binding_id == binding_id and e.diagnostic is not None)
+        return tuple(e.diagnostic for _, e in entries if e.binding_id == binding_id)
 
     return state.query(question)
 

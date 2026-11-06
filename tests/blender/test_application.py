@@ -1,7 +1,8 @@
 """M5's stub application layer: preparing a plan's placeholders apart from the display (M5 plan, D3 and D4).
 
 Plans come from the core on the transaction scenes; expected values come from how the scene is built
-(fixtures/transaction.py). Each preparation is a binding's, and the ledger tracks what it makes.
+(fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
+disposal fails to remove enters the ledger.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
-from proscenium.binding.persistence.ledgers import OriginatingOperation, RetryStatus
+from proscenium.binding.persistence.ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access.stages import PayloadPolicy
@@ -117,20 +118,17 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
         Manifest(work.entries)  # a whole manifest
 
 
-def test_each_prepared_resource_is_tracked(bindings: Bindings, tmp_path: Path) -> None:
-    # STATE-04: the ledger holds each with its ownership evidence, operation, and retry status, apart from the binding's
-    # other records, which tracking leaves unchanged.
+def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> None:
+    # TXN-08: the prepared work holds each with its entry key and role, and preparing writes no record, the ledger's
+    # included (STATE-04).
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         before = _records()
         work = _prepared(binding_id, _plan(scene.caller, 0.0))
-        assert _ledger() == work.tracked
-        assert {(e.entry_key, e.role, e.datablock) for e in work.tracked.values()} == {
+        assert {(key, work.roles[key], d) for key, d in work.datablocks.items()} == {
             (key, entry.role, entry.datablock) for key, entry in work.entries.items()
         }
-        assert {(e.binding_id, e.operation, e.status, e.diagnostic) for e in work.tracked.values()} == {
-            (binding_id, OriginatingOperation.SYNCHRONIZE, RetryStatus.PREPARED, None)
-        }
+        assert _ledger() == {}
         bpy.data.batch_remove([work.staging])  # which holds no records
         assert _records() == before
 
@@ -140,11 +138,11 @@ _STEPS = [("_corners", call) for call in range(1, 5)] + [("_world", call) for ca
 
 
 @pytest.mark.parametrize(("step", "call"), _STEPS)
-def test_a_failure_after_a_resource_is_made_finds_it_tracked(
+def test_a_failure_after_a_resource_is_made_finds_it_held(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: str, call: int
 ) -> None:
-    # TXN-08 on F-PREPARATION-CLEANUP-FAILURE: every resource made before the failure is in the ledger, and
-    # disposing of the work leaves the file as before.
+    # TXN-08 on F-PREPARATION-CLEANUP-FAILURE: every resource made before the failure is held, and disposing of the
+    # work leaves the file as before, writing no ledger entry.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         plan = _plan(scene.caller, 0.0)
@@ -156,45 +154,16 @@ def test_a_failure_after_a_resource_is_made_finds_it_tracked(
         made = _datablocks() - before - {work.staging}
         assert made == set(work.datablocks.values())
         assert len(made) == 2 * call - (step == "_corners")  # a placeholder's mesh is made before its corners
-        assert {e.datablock for e in _ledger().values()} == made
         assert prepared_work.dispose(work) == ()
         assert _datablocks() == before
         assert _ledger() == {}
-
-
-def test_a_failure_writing_the_ledger_leaves_the_untracked_resource_to_dispose_of(
-    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The resource whose tracking failed is held, though not in the ledger, so disposal still removes it.
-    with transaction.preparation_cleanup_failure(tmp_path) as scene:
-        binding_id = _binding(bindings)
-        plan = _plan(scene.caller, 0.0)
-        before = _datablocks()
-        work = _work(binding_id)
-        write = runtime.pending_cleanup.set_ledger_entries
-        calls = []
-
-        def failing(*args: object) -> None:
-            calls.append(args)
-            if len(calls) == 3:
-                raise RuntimeError("injected")
-            write(*args)  # ty: ignore[invalid-argument-type]
-
-        monkeypatch.setattr(runtime.pending_cleanup, "set_ledger_entries", failing)
-        with pytest.raises(RuntimeError, match="injected"):
-            application.prepare(plan, Manifest({}), work)
-        assert len(work.datablocks) == 3
-        assert len(_ledger()) == 2
-        monkeypatch.setattr(runtime.pending_cleanup, "set_ledger_entries", write)
-        assert prepared_work.dispose(work) == ()
-        assert _datablocks() == before
 
 
 def test_a_replacement_takes_the_published_keys_and_changes_nothing_published(
     bindings: Bindings, tmp_path: Path
 ) -> None:
     # ROLE-05: prepared resources with the published ones' identities take their keys. TXN-05: preparing them
-    # changes nothing the published generation reaches. TXN-09: none of the published resources is tracked.
+    # changes nothing the published generation reaches. TXN-09: none of the published resources is held.
     with transaction.retirement_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         first, second = scene.time_codes
@@ -205,7 +174,7 @@ def test_a_replacement_takes_the_published_keys_and_changes_nothing_published(
         assert replacement.entries.keys() == published.entries.keys()
         assert set(replacement.datablocks.values()).isdisjoint(published.datablocks.values())
         assert _values(objects) == before
-        assert {e.datablock for e in _ledger().values()} == set(replacement.datablocks.values())
+        assert _ledger() == {}
         mover = next(o for o in replacement.staging.objects if "Mover" in o.name)
         assert mover.matrix_world.translation[:] == pytest.approx(translation("/World/Mover", second))
 
@@ -222,14 +191,14 @@ def test_only_the_same_identity_takes_a_published_key(bindings: Bindings, tmp_pa
         assert replacement.entries.keys() == kept
 
 
-def test_dispose_removes_what_was_prepared_and_resolves_its_tracking(bindings: Bindings, tmp_path: Path) -> None:
+def test_dispose_removes_what_was_prepared_and_writes_no_ledger_entry(bindings: Bindings, tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         before = _datablocks()
         work = _prepared(binding_id, _plan(scene.caller, 0.0))
         assert prepared_work.dispose(work) == ()
         assert _datablocks() == before
-        assert (work.datablocks, work.entries, work.tracked) == ({}, {}, {})
+        assert (work.datablocks, work.roles, work.entries) == ({}, {}, {})
         assert _ledger() == {}
 
 
@@ -238,7 +207,7 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
 ) -> None:
     # F-PREPARATION-CLEANUP-FAILURE: preparation fails once four resources are made, and disposal fails for an object
     # and a bounds mesh. They stay, linked in no collection, each retryable in the ledger with a cleanup diagnostic
-    # naming its ledger key; the rest are removed and resolved.
+    # naming its ledger key; the rest are removed, with no entry.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         plan = _plan(scene.caller, 0.0)
@@ -254,7 +223,6 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
         assert all(not d.users_collection for d in failing if isinstance(d, bpy.types.Object))
         ledger = _ledger()
         assert {e.datablock for e in ledger.values()} == failing
-        assert all(e.status is RetryStatus.RETRYABLE for e in ledger.values())
         assert {e.diagnostic for e in ledger.values()} == set(diagnostics)
         assert {(d.code, d.binding_id, d.resource, d.role) for d in diagnostics} == {
             (DiagnosticCode.DISPOSAL_FAILED, binding_id, ledger_key, entry.role) for ledger_key, entry in ledger.items()
@@ -277,20 +245,19 @@ def test_a_leftover_survives_save_and_reopen_through_its_pointer(
 
 
 def _publish(work: PreparedWork) -> list[bpy.types.Object]:
-    """Link work's objects into a destination and resolve their tracking, as a publication does; the objects."""
+    """Link work's objects into a destination, as a publication does; the objects."""
     destination = bpy.data.collections.new("Shot")
     bpy.data.scenes["Scene"].collection.children.link(destination)
     objects = list(work.staging.objects)
     for obj in objects:
         destination.objects.link(obj)
         work.staging.objects.unlink(obj)
-    runtime.pending_cleanup.set_ledger_entries({}, list(work.tracked))
     return objects
 
 
 def _fail_disposal(monkeypatch: pytest.MonkeyPatch, work: PreparedWork, roles: tuple[str, ...]) -> set[bpy.types.ID]:
-    """Make disposal fail for the first tracked datablock of each role; those datablocks."""
-    failing = {next(e.datablock for e in work.tracked.values() if e.role == role) for role in roles}
+    """Make disposal fail for the first held datablock of each role; those datablocks."""
+    failing = {next(d for key, d in work.datablocks.items() if work.roles[key] == role) for role in roles}
     remove = removal._batch_remove  # noqa: SLF001
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:

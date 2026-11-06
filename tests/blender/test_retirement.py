@@ -12,7 +12,6 @@ import bpy
 
 from fixtures import transaction
 from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.ledgers import LedgerEntry, RetryStatus
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership_index, pending_cleanup
@@ -20,13 +19,14 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.synchronization import removal
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     import pytest
 
     from fixtures.transaction import RetirementFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium.binding.persistence.ledgers import LedgerEntry
 
 FAILING = "Still"  # the placeholder whose object and bounds mesh can't be retired: /World/Still's
 
@@ -100,9 +100,8 @@ def test_a_failed_retirement_completes_with_issues(
         assert len(published) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         # The leftovers: the ledger's, each with the diagnostic naming its ledger key and role.
         ledger = _ledger()
-        assert all(e.status is RetryStatus.RETRYABLE for e in ledger.values())
         assert {e.diagnostic for e in ledger.values()} == set(result.diagnostics)
-        assert all(e.diagnostic is not None and e.diagnostic.resource == k for k, e in ledger.items())
+        assert all(e.diagnostic.resource == k for k, e in ledger.items())
         assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(ledger.items()))
         leftovers = [e.datablock for e in ledger.values()]
         assert sorted(d.name for d in leftovers if d is not None) == [FAILING, FAILING]
@@ -187,21 +186,19 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
 def test_a_retirement_the_ledger_cant_record_is_reported(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # TXN-07, API-04: a ledger write failing in retirement is reported, never raised, and the synchronization still
-    # completes with its generation published; what retirement couldn't record stays in the ledger as retiring.
+    # TXN-07, API-04: a ledger write failing as retirement records its leftovers is reported, never raised, and the
+    # synchronization still completes with its generation published.
     with transaction.retirement_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
         first, second = scene.time_codes
         assert handle.synchronize(first).state is ResultState.SUCCESS
+        _fail_retirement(monkeypatch)
         write = pending_cleanup.set_ledger_entries
-        resolving: list[object] = []
 
-        def failing(changed: object, removed: Sequence[str] = ()) -> None:
-            if removed:
-                resolving.append(removed)
-                if len(resolving) == 2:  # publication's resolves the prepared work; retirement's comes next
-                    raise RuntimeError("injected ledger failure")
-            write(changed, removed)  # ty: ignore[invalid-argument-type]
+        def failing(changed: Mapping[str, LedgerEntry], removed: Sequence[str] = ()) -> None:
+            if changed:  # retirement's record of its leftovers, the one write here
+                raise RuntimeError("injected ledger failure")
+            write(changed, removed)
 
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
         result = handle.synchronize(second)
@@ -209,6 +206,4 @@ def test_a_retirement_the_ledger_cant_record_is_reported(
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.RETIREMENT_FAILED]
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, Loaded) and generation.record.time_code == second
-        ledger = _ledger()
-        assert len(ledger) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
-        assert all(e.status is RetryStatus.RETIRING for e in ledger.values())
+        assert _ledger() == {}

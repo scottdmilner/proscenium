@@ -27,7 +27,6 @@ from support.blend import save_and_reopen
 from .published import datablocks, published_generation
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from fixtures.transaction import TransactionScene
@@ -41,7 +40,7 @@ FAILED = {
     Step.PREPARE: DiagnosticCode.PREPARATION_FAILED,
     Step.PUBLISH: DiagnosticCode.PUBLICATION_FAILED,
 }
-PUBLICATION_WRITES = ("manifest", "generation", "ledger")  # the destination's links are written first
+PUBLICATION_WRITES = ("manifest", "generation")  # the destination's links are written first
 
 
 def _scene() -> bpy.types.Scene:
@@ -76,28 +75,12 @@ def _raising(*_args: object, **_kwargs: object) -> None:
     raise RuntimeError("injected failure")
 
 
-def _once(original: Callable[..., Any], when: Callable[..., bool]) -> Callable[..., Any]:
-    """original, raising the first time it's called with arguments when accepts."""
-    failed = []
-
-    def call(*args: object, **kwargs: object) -> Any:
-        if not failed and when(*args, **kwargs):
-            failed.append(True)
-            raise RuntimeError("injected failure")
-        return original(*args, **kwargs)
-
-    return call
-
-
 def _fail_publication_write(monkeypatch: pytest.MonkeyPatch, write: str) -> None:
-    """Make one of publication's writes fail; disposal's own ledger write afterwards succeeds."""
+    """Make one of publication's writes fail."""
     if write == "manifest":
         monkeypatch.setattr(ownership_index, "set_manifest", _raising)
-    elif write == "generation":
+    else:
         monkeypatch.setattr(binding_state, "write_generation", _raising)
-    else:  # the ledger update that resolves the prepared work: the first that removes entries
-        resolving = _once(pending_cleanup.set_ledger_entries, lambda _changed, removed=(): bool(removed))
-        monkeypatch.setattr(pending_cleanup, "set_ledger_entries", resolving)
 
 
 def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Step) -> None:

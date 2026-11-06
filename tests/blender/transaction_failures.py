@@ -27,14 +27,14 @@ def failing_preparation(
     handle: BindingHandle, scene: PreparationCleanupFailureScene, time_code: float
 ) -> tuple[Result, set[bpy.types.ID]]:
     """Synchronize with preparation and some of its disposal failing as the fixture says; the result and leftovers."""
-    tracked: list[tuple[RepresentationRole, bpy.types.ID]] = []
+    held: list[tuple[RepresentationRole, bpy.types.ID]] = []
     failing: set[bpy.types.ID] = set()
-    track, world, remove = prepared_work.PreparedWork.track, application._world, removal._batch_remove  # noqa: SLF001
+    hold, world, remove = prepared_work.PreparedWork.track, application._world, removal._batch_remove  # noqa: SLF001
     worlds: list[object] = []
 
     def recording(work: prepared_work.PreparedWork, entry_key: str, role: RepresentationRole, d: bpy.types.ID) -> None:
-        tracked.append((role, d))
-        track(work, entry_key, role, d)
+        held.append((role, d))
+        hold(work, entry_key, role, d)
 
     def failing_world(matrix: Any) -> Any:  # called once a placeholder's resources are made
         worlds.append(matrix)
@@ -43,7 +43,7 @@ def failing_preparation(
         return world(matrix)
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
-        failing.update(next(d for r, d in tracked if r == role) for role in scene.failed_disposals)
+        failing.update(next(d for r, d in held if r == role) for role in scene.failed_disposals)
         if any(d in failing for d in datablocks):  # so a call removing one fails, the batch's included
             raise RuntimeError("injected disposal failure")
         remove(datablocks)
@@ -53,5 +53,5 @@ def failing_preparation(
         patch.setattr(application, "_world", failing_world)
         patch.setattr(removal, "_batch_remove", failing_remove)
         result = handle.synchronize(time_code)
-    assert len(tracked) == scene.prepared_before_failure
+    assert len(held) == scene.prepared_before_failure
     return result, failing

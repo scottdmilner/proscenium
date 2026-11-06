@@ -124,32 +124,32 @@ def _attempt(
         binding_id, policy, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
     )
     try:
-        retiring = publication.publish(binding_id, destination, work, described)
+        obsolete = publication.publish(binding_id, destination, work, described)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
         return (*own, failed, *_disposed(work))
     prepared_work.remove_staging(work)
     try:
-        return (*own, *retirement.retire(binding_id, retiring, published))
+        return (*own, *retirement.retire(binding_id, obsolete, published, work.operation))
     except Exception as error:  # noqa: BLE001 - after publication, nothing fails the synchronization (TXN-07)
-        message = f"Couldn't record retirement in the pending-cleanup ledger, which still has it retiring: {error}"
+        message = f"Couldn't record failed retirements in the pending-cleanup ledger: {error}"
         return (*own, Diagnostic(DiagnosticCode.RETIREMENT_FAILED, binding_id, message))
 
 
 def _disposed(work: prepared_work.PreparedWork) -> tuple[Diagnostic, ...]:
     """Dispose of work; its disposal diagnostics, or why disposal couldn't be recorded, never an exception.
 
-    A ledger that can't be written keeps the work's entries as prepared, so they're still tracked.
+    A ledger that can't be written leaves the resources disposal couldn't remove unrecorded.
     """
     try:
         return prepared_work.dispose(work)
     except Exception as error:  # noqa: BLE001 - the attempt is already fatal, and reports this too
-        message = f"Couldn't record disposal in the pending-cleanup ledger, which still tracks it as prepared: {error}"
+        message = f"Couldn't record failed disposals in the pending-cleanup ledger: {error}"
         return (Diagnostic(DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message),)
 
 
 def _untracked(binding_id: identifiers.BindingId) -> Diagnostic | None:
-    """Why the ledger can't track what preparation makes, or None if it can (pending_cleanup.check_trackable)."""
+    """Why the ledger couldn't record a failed removal, or None if it could (pending_cleanup.check_trackable)."""
     try:
         pending_cleanup.check_trackable()
     except records.RefusedRecordError as error:

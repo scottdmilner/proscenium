@@ -65,15 +65,15 @@ def _raising(*_args: object) -> None:
     raise RuntimeError("injected failure")
 
 
-def _failing_after(monkeypatch: pytest.MonkeyPatch, tracked: int) -> None:
-    """Make preparation fail right after its tracked-th resource is made and tracked."""
+def _failing_after(monkeypatch: pytest.MonkeyPatch, held: int) -> None:
+    """Make preparation fail right after its held-th resource is made and held."""
     track = prepared_work.PreparedWork.track
     calls: list[None] = []
 
     def failing(work: prepared_work.PreparedWork, entry_key: str, role: RepresentationRole, d: bpy.types.ID) -> None:
         track(work, entry_key, role, d)
         calls.append(None)
-        if len(calls) == tracked:
+        if len(calls) == held:
             raise RuntimeError("injected preparation failure")
 
     monkeypatch.setattr(prepared_work.PreparedWork, "track", failing)
@@ -82,16 +82,16 @@ def _failing_after(monkeypatch: pytest.MonkeyPatch, tracked: int) -> None:
 ATTEMPTED_RESOURCES = transaction.resource_count(PayloadPolicy.LOAD_NONE)  # F-FAILED-SETTINGS' attempt's
 
 
-@pytest.mark.parametrize("tracked", range(1, ATTEMPTED_RESOURCES + 1))
+@pytest.mark.parametrize("held", range(1, ATTEMPTED_RESOURCES + 1))
 def test_a_failure_at_each_preparation_step_disposes_of_its_work(
-    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tracked: int
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, held: int
 ) -> None:
     # TXN-02, TLAY-03 on F-FAILED-SETTINGS "failed-attempt": failing after each prepared resource in turn, the
     # published generation is whole and unchanged, and everything prepared is disposed of, leaving nothing pending.
     with transaction.failed_settings(tmp_path) as scene:
         handle = _attempting(bindings, scene)
         published, before = _published(handle), datablocks()
-        _failing_after(monkeypatch, tracked)
+        _failing_after(monkeypatch, held)
         result = handle.synchronize(scene.attempted[1])
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PREPARATION_FAILED]
         assert _published(handle) == published

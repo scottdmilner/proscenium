@@ -3,7 +3,7 @@
 Each of the plan's placeholders becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, or no vertices when the plan has none. They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
-generation reaches (TXN-05). Each is tracked in the pending-cleanup ledger as soon as it exists (prepared_work).
+generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.entry_keys), and the entries preparation makes are the manifest a publication writes. M7 replaces this
@@ -29,10 +29,10 @@ REPRESENTATION_VERSION = 1  # the representation this layer applies, which the p
 
 
 def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork) -> None:
-    """Make plan's placeholders in work's staging collection, tracking each datablock as it's made (TXN-08).
+    """Make plan's placeholders in work's staging collection, holding each datablock as it's made (TXN-08).
 
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
-    take. Raises whatever Blender or the ledger raises; what was made before stays in work, tracked.
+    take. Raises whatever Blender raises; what was made before stays in work, held.
     """
     identities = [
         manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in plan.resources

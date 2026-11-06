@@ -1,12 +1,12 @@
-"""Prepared work: what a preparation has made, tracked in the ledger (pipeline.md#synchronization-transaction).
+"""Prepared work: what a preparation has made, held by the attempt (pipeline.md#synchronization-transaction).
 
-The application layer tracks each resource it creates (PreparedWork.track) before anything else can fail, so a failure
-partway finds everything made so far in the ledger (TXN-08). Resources reused from the published generation are never
-tracked, so they're never disposal candidates (TXN-09).
+The application layer holds each resource it creates (PreparedWork.track) before anything else can fail, so a failure
+partway finds everything made so far to dispose of (TXN-08). Resources reused from the published generation are never
+held, so they're never disposal candidates (TXN-09).
 
-dispose removes the tracked resources, in one call unless one fails (removal.remove), and resolves their ledger
-entries. One whose removal fails stays in the ledger, retryable, with a cleanup diagnostic naming its ledger key, which
-no later attempt erases.
+dispose removes the held resources, in one call unless one fails (removal.remove). Only one whose removal fails enters
+the pending-cleanup ledger, retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases; a
+disposal that removes everything writes nothing.
 
 The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal or publication removes it.
 A leftover stays alive through the ledger's pointer to it, which is a user, linked in no collection.
@@ -14,7 +14,6 @@ A leftover stays alive through the ledger's pointer to it, which is a user, link
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -38,27 +37,20 @@ class PreparedWork:
     operation: ledgers.OriginatingOperation
     staging: bpy.types.Collection  # holds the prepared objects; no scene links it
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
+    roles: dict[str, manifests.RepresentationRole] = field(default_factory=dict)  # entry key -> its datablock's role
     entries: dict[str, manifests.ManifestEntry] = field(default_factory=dict)  # entry key -> its entry, once complete
-    tracked: dict[str, ledgers.LedgerEntry] = field(default_factory=dict)  # ledger key -> its entry, as recorded
 
     def track(self, entry_key: str, role: manifests.RepresentationRole, datablock: bpy.types.ID) -> None:
-        """Hold a resource just created, and record it in the ledger, before anything else can fail.
-
-        Raises what writing the ledger raises; the datablock is held first, so disposal still removes it.
-        """
+        """Hold a resource just created, before anything else can fail."""
         self.datablocks[entry_key] = datablock
-        ledger_key = ledgers.new_ledger_key()
-        entry = ledgers.LedgerEntry(
-            self.binding_id, entry_key, role, datablock, self.operation, ledgers.RetryStatus.PREPARED
-        )
-        pending_cleanup.set_ledger_entries({ledger_key: entry})
-        self.tracked[ledger_key] = entry
+        self.roles[entry_key] = role
 
 
 def new_prepared_work(binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation) -> PreparedWork:
     """Empty prepared work for binding_id, with its staging collection.
 
-    Raises as pending_cleanup.check_trackable does, having made nothing: work the ledger can't track is never prepared.
+    Raises as pending_cleanup.check_trackable does, having made nothing: work whose failed disposal the ledger couldn't
+    record is never prepared.
     """
     pending_cleanup.check_trackable()
     return PreparedWork(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
@@ -67,42 +59,33 @@ def new_prepared_work(binding_id: identifiers.BindingId, operation: ledgers.Orig
 def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
     """Remove what work holds, its staging collection included; a cleanup diagnostic for each removal that failed.
 
-    Each resource removed has its ledger entry resolved; each that failed stays, retryable, with its diagnostic. Raises
-    what writing the ledger raises.
+    Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
     """
-    keys = {entry.entry_key: ledger_key for ledger_key, entry in work.tracked.items()}
-    changed: dict[str, ledgers.LedgerEntry] = {}
-    resolved: list[str] = []
-    diagnostics: list[Diagnostic] = []
     made = list(reversed(work.datablocks.items()))  # users before what they use
     failures = removal.remove([datablock for _, datablock in made])
+    pending: dict[str, ledgers.LedgerEntry] = {}
     for index, (entry_key, datablock) in enumerate(made):
-        ledger_key = keys.get(entry_key)
-        role = "" if ledger_key is None else str(work.tracked[ledger_key].role)  # a diagnostic holds plain strings
-        if (error := failures.get(index)) is not None:
-            message = f"Couldn't dispose of prepared {role or 'resource'} {datablock.name!r}: {error}"
-            diagnostic = Diagnostic(
-                DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, resource=ledger_key or "", role=role
-            )
-            diagnostics.append(diagnostic)
-            if ledger_key is not None:
-                entry = work.tracked[ledger_key]
-                changed[ledger_key] = dataclasses.replace(
-                    entry, status=ledgers.RetryStatus.RETRYABLE, diagnostic=diagnostic
-                )
+        if (error := failures.get(index)) is None:
             continue
-        if ledger_key is not None:
-            resolved.append(ledger_key)
+        role = work.roles[entry_key]
+        ledger_key = ledgers.new_ledger_key()
+        message = f"Couldn't dispose of prepared {role} {datablock.name!r}: {error}"
+        diagnostic = Diagnostic(
+            DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, resource=ledger_key, role=str(role)
+        )
+        pending[ledger_key] = ledgers.LedgerEntry(
+            work.binding_id, entry_key, role, datablock, work.operation, diagnostic
+        )
     try:
-        pending_cleanup.set_ledger_entries(changed, resolved)
+        pending_cleanup.set_ledger_entries(pending)
     finally:
         remove_staging(work)  # whatever the ledger records, the staging collection isn't a resource
-    return tuple(diagnostics)
+    return tuple(e.diagnostic for e in pending.values())
 
 
 def remove_staging(work: PreparedWork) -> None:
     """Remove work's staging collection and let go of what it held: published, or disposed of."""
     bpy.data.batch_remove([work.staging])
     work.datablocks.clear()
+    work.roles.clear()
     work.entries.clear()
-    work.tracked.clear()

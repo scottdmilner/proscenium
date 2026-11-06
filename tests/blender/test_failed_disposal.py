@@ -12,18 +12,17 @@ from typing import TYPE_CHECKING, Any
 import bpy
 
 from fixtures import transaction
-from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation, RetryStatus
+from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership_index, pending_cleanup
-from proscenium.synchronization import application, prepared_work
 
 from .published import datablocks, published_generation
 from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     import pytest
@@ -68,12 +67,8 @@ def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.t
     ledger = {k: e for k, e in _ledger().items() if e.datablock in leftovers}
     assert {e.datablock for e in ledger.values()} == leftovers
     for ledger_key, entry in ledger.items():
-        assert (entry.binding_id, entry.operation, entry.status) == (
-            handle.binding_id,
-            OriginatingOperation.SYNCHRONIZE,
-            RetryStatus.RETRYABLE,
-        )
-        assert entry.diagnostic is not None and entry.diagnostic in result.diagnostics
+        assert (entry.binding_id, entry.operation) == (handle.binding_id, OriginatingOperation.SYNCHRONIZE)
+        assert entry.diagnostic in result.diagnostics
         assert (entry.diagnostic.resource, entry.diagnostic.role) == (ledger_key, entry.role)
         assert entry.datablock is not None and ownership_index.ownership(entry.datablock).claims == ()
     assert all(not d.users_collection for d in leftovers if isinstance(d, bpy.types.Object))  # in no scene
@@ -148,28 +143,21 @@ def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_
 def test_a_disposal_the_ledger_cant_record_is_reported(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # API-04: a ledger write failing in disposal is reported, never raised; the work stays tracked as prepared, and
-    # the staging collection goes.
+    # API-04: a ledger write failing as disposal records its leftovers is reported, never raised, and the staging
+    # collection goes.
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle = _binding(bindings, scene)
         write = pending_cleanup.set_ledger_entries
 
-        def failing(changed: object, removed: Sequence[str] = ()) -> None:
-            if removed:  # disposal's, the one write here that resolves entries
+        def failing(changed: Mapping[str, LedgerEntry], removed: Sequence[str] = ()) -> None:
+            if changed:  # disposal's record of its leftovers, the one write here
                 raise RuntimeError("injected ledger failure")
-            write(changed, removed)  # ty: ignore[invalid-argument-type]
+            write(changed, removed)
 
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
-        prepare = application.prepare
-
-        def prepare_then_fail(plan: Any, published: manifests.Manifest, work: prepared_work.PreparedWork) -> None:
-            prepare(plan, published, work)  # all of it, then a failure, as one after its last resource is
-            raise RuntimeError("injected preparation failure")
-
-        monkeypatch.setattr(application, "prepare", prepare_then_fail)
-        result = handle.synchronize(0)
+        result, _ = failing_preparation(handle, scene, 0)
         assert result.state is ResultState.FATAL_FAILURE
         codes = [DiagnosticCode.PREPARATION_FAILED, DiagnosticCode.DISPOSAL_FAILED]
         assert [d.code for d in result.diagnostics] == codes
-        assert _ledger() and all(e.status is RetryStatus.PREPARED for e in _ledger().values())
+        assert _ledger() == {}
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone

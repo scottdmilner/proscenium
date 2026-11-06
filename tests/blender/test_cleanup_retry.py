@@ -13,8 +13,6 @@ import bpy
 from fixtures import records as record_fixtures
 from fixtures import transaction
 from proscenium.binding.persistence import configs, ledgers, records
-from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation, RetryStatus
-from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import pending_cleanup, state
 from proscenium.synchronization import removal
@@ -30,6 +28,7 @@ if TYPE_CHECKING:
 
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium.binding.persistence.ledgers import LedgerEntry
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: str = "Shot") -> BindingHandle:
@@ -51,7 +50,7 @@ def _names() -> set[tuple[str, str]]:
 def _by_name(ledger: dict[str, LedgerEntry]) -> dict[str, tuple[object, ...]]:
     """The ledger's entries with their pointers as names: references don't survive a reopen."""
     return {
-        k: (e.binding_id, e.entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.status, e.diagnostic)
+        k: (e.binding_id, e.entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
         for k, e in ledger.items()
     }
 
@@ -121,7 +120,6 @@ def test_a_retry_that_resolves_nothing_fails(
         ] * len(leftovers)
         after = _ledger()
         assert after.keys() == before.keys()
-        assert all(e.status is RetryStatus.RETRYABLE for e in after.values())
         assert {e.diagnostic for e in after.values()} == set(result.diagnostics[1:])
         assert set(result.cleanup_status) == set(result.diagnostics[1:])
         assert set(result.diagnostics[1:]).isdisjoint(failed.diagnostics)  # fresh, not the attempt's
@@ -153,30 +151,6 @@ def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_pa
         assert _ledger() == others
         assert len(other.retry_cleanup().cleanup_status) == 0
         assert _ledger() == {}
-
-
-def test_entries_left_prepared_or_retiring_are_retried(bindings: Bindings, tmp_path: Path) -> None:
-    # A ledger write that failed leaves entries prepared or retiring, with no diagnostic; nothing else runs beside a
-    # retry, so it takes them up too.
-    with transaction.preparation_cleanup_failure(tmp_path) as scene:
-        handle = _binding(bindings, scene)
-        baseline = _names()
-        mesh = bpy.data.meshes.new("Prepared")
-        obj = bpy.data.objects.new("Retiring", mesh)
-        synchronize = OriginatingOperation.SYNCHRONIZE
-        pending_cleanup.set_ledger_entries(
-            {
-                ledgers.new_ledger_key(): LedgerEntry(
-                    handle.binding_id, "0" * 32, RepresentationRole.BOUNDS_MESH, mesh, synchronize, RetryStatus.PREPARED
-                ),
-                ledgers.new_ledger_key(): LedgerEntry(
-                    handle.binding_id, "1" * 32, RepresentationRole.OBJECT, obj, synchronize, RetryStatus.RETIRING
-                ),
-            }
-        )
-        assert handle.retry_cleanup().state is ResultState.SUCCESS
-        assert _ledger() == {}
-        assert _names() == baseline
 
 
 def test_a_ledger_that_cant_be_read_refuses_and_disposes_of_nothing(bindings: Bindings, tmp_path: Path) -> None:
