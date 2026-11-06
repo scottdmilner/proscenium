@@ -93,8 +93,10 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
             continue
         if ledger_key is not None:
             resolved.append(ledger_key)
-    pending_cleanup.set_ledger_entries(changed, resolved)
-    remove_staging(work)
+    try:
+        pending_cleanup.set_ledger_entries(changed, resolved)
+    finally:
+        remove_staging(work)  # whatever the ledger records, the staging collection isn't a resource
     return tuple(diagnostics)
 
 

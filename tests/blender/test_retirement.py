@@ -182,3 +182,33 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         assert kept.name in bpy.data.objects and kept.data == mesh and set(kept.users_collection) == {users}
         assert ownership_index.ownership(kept).claims == ()
         assert _ledger() == {}  # released, so no retry deletes it
+
+
+def test_a_retirement_the_ledger_cant_record_is_reported(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TXN-07, API-04: a ledger write failing in retirement is reported, never raised, and the synchronization still
+    # completes with its generation published; what retirement couldn't record stays in the ledger as retiring.
+    with transaction.retirement_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        first, second = scene.time_codes
+        assert handle.synchronize(first).state is ResultState.SUCCESS
+        write = pending_cleanup.set_ledger_entries
+        resolving: list[object] = []
+
+        def failing(changed: object, removed: Sequence[str] = ()) -> None:
+            if removed:
+                resolving.append(removed)
+                if len(resolving) == 2:  # publication's resolves the prepared work; retirement's comes next
+                    raise RuntimeError("injected ledger failure")
+            write(changed, removed)  # ty: ignore[invalid-argument-type]
+
+        monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
+        result = handle.synchronize(second)
+        assert result.state is ResultState.COMPLETED_WITH_ISSUES
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.RETIREMENT_FAILED]
+        generation = binding_state.read_generation(bpy.data.collections["Shot"])
+        assert isinstance(generation, Loaded) and generation.record.time_code == second
+        ledger = _ledger()
+        assert len(ledger) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
+        assert all(e.status is RetryStatus.RETIRING for e in ledger.values())
