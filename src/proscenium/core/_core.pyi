@@ -72,7 +72,10 @@ class Placeholder:
     def bounds(self) -> Vt.FloatArray: ...  # (min x, y, z, max x, y, z), a read-only 'f' buffer; empty for none
 
 class Plan:
-    """The immutable display plan."""
+    """The immutable display plan.
+
+    Each read of a tuple property builds the tuple anew, converting every element, so read one once per use.
+    """
 
     @property
     def time_code(self) -> Usd.TimeCode: ...

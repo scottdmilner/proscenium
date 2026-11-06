@@ -251,6 +251,28 @@ def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path:
     assert _resource(handle.binding_id, "a") == obj
 
 
+def test_an_update_from_the_manifest_its_caller_read(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given the manifest as read, the update doesn't read it again, and writes what reading it would have.
+    ids, _names = _two_managed(bindings, tmp_path)
+    other = ids[1]
+    stored = ownership.manifest(other)
+    assert isinstance(stored, Loaded)
+    replacement = bpy.data.objects.new("Replacement", None)
+
+    def no_reads(*_args: object) -> None:
+        raise AssertionError("the manifest was read")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(manifests, "read_manifest", no_reads)
+        ownership.set_manifest_entries(
+            other, {key("b"): _change()}, [key("a")], {key("b"): replacement}, published=stored.record
+        )
+    expected = stored.record.updated({key("b"): _change()}, [key("a")], {key("b"): replacement})
+    assert ownership.manifest(other) == Loaded(expected, manifests.MANIFEST.version)
+
+
 @pytest.mark.parametrize("removed", [["a"], ["a", "a"], []])
 def test_an_update_after_a_removal(bindings: Bindings, tmp_path: Path, removed: list[str]) -> None:
     # The removed datablock's entry, which Blender cleared, is removed by the update, once even if named twice,

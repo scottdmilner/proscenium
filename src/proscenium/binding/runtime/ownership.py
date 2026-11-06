@@ -107,12 +107,16 @@ def set_manifest_entries(
     changed: Mapping[str, manifests.EntryChange],
     removed: Collection[str] = (),
     created: Mapping[str, bpy.types.ID] = MappingProxyType({}),
+    *,
+    published: manifests.Manifest | None = None,
 ) -> None:
     """Change some of a binding's manifest entries, writing only those.
 
     changed adds or replaces entries by entry key, and removed deletes them. created holds the datablocks the operation
     made, by the key of the entry naming each; a replaced entry not in it keeps its datablock (Manifest.updated). A
-    binding with no manifest yet starts from an empty one, and an empty update writes nothing.
+    binding with no manifest yet starts from an empty one, and an empty update writes nothing. published is the
+    binding's manifest as the caller read it, unchanged since, so the update doesn't read it again; without it, the
+    update reads it.
 
     Raises what set_manifest raises, and ValueError, TypeError, or KeyError (write_manifest_entries), changing nothing,
     over an update that makes no manifest.
@@ -120,9 +124,11 @@ def set_manifest_entries(
     record = binding_configs.required_record(binding_id)  # raises as any update does, an empty one included
     if not changed and not removed:
         return
-    stored = manifests.read_manifest(record.collection)
-    if isinstance(stored, records.RefusedRecord):
-        raise records.RefusedRecordError(stored)
-    after = (manifests.Manifest({}) if stored is None else stored.record).updated(changed, removed, created)
+    if published is None:
+        stored = manifests.read_manifest(record.collection)
+        if isinstance(stored, records.RefusedRecord):
+            raise records.RefusedRecordError(stored)
+        published = manifests.Manifest({}) if stored is None else stored.record
+    after = published.updated(changed, removed, created)
     manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)
     binding_configs.restore_entry(binding_id, record)

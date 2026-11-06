@@ -16,7 +16,7 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import translation
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence import binding_state, manifests, records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
@@ -115,6 +115,22 @@ def test_a_call_caches_only_the_time_codes_not_yet_cached(bindings: Bindings, tm
         assert again.time_codes == tuple(Usd.TimeCode(t) for t in rest)
         assert handle.cache(scene.cached).time_codes == ()
         assert _generation().cached_time_codes == scene.cached
+
+
+def test_a_call_reads_the_manifest_once(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Its update by entry starts from the manifest the call read, which reading again would cost as much (F3).
+    with transaction.cached_time_codes(tmp_path) as scene:
+        handle = _synchronized(bindings, scene)
+        read = manifests.read_manifest
+        reads: list[None] = []
+
+        def counted(destination: bpy.types.Collection) -> Any:
+            reads.append(None)
+            return read(destination)
+
+        monkeypatch.setattr(manifests, "read_manifest", counted)
+        assert handle.cache(scene.cached).state is ResultState.SUCCESS
+        assert len(reads) == 1
 
 
 def test_the_default_time_code_is_not_one_to_cache(bindings: Bindings, tmp_path: Path) -> None:

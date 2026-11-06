@@ -41,13 +41,14 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
     take. Raises whatever Blender raises; what was made before stays in work, held.
     """
+    resources = plan.resources  # each read builds the tuple anew
     identities = [
-        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in plan.resources
+        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in resources
     ]
     keys = manifests.entry_keys(published, identities)
     for placeholder in plan.placeholders:
         mesh_key, object_key = keys[placeholder.bounds_mesh], keys[placeholder.object]
-        source = plan.resources[placeholder.object].entity
+        source = resources[placeholder.object].entity
         name = source.rsplit("/", 1)[-1]
         mesh = bpy.data.meshes.new(name)
         work.track(mesh_key, identities[placeholder.bounds_mesh].role, mesh)
@@ -61,7 +62,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
             (placeholder.bounds_mesh, mesh_key, mesh),
             (placeholder.object, object_key, obj),
         ):
-            resource = plan.resources[index]
+            resource = resources[index]
             uses = [keys[used] for used in resource.uses]
             work.entries[key] = manifests.ManifestEntry(
                 datablock, list(resource.covers), identities[index].role, uses, resource.place
@@ -82,8 +83,9 @@ def key_time_codes(
     keys = {identity: key for key, e in published.entries.items() if (identity := e.identity) is not None}
     changes: dict[str, manifests.EntryChange] = {}
     for time_code, plan in plans.items():
+        resources = plan.resources  # each read builds the tuple anew
         for placeholder in plan.placeholders:
-            resource = plan.resources[placeholder.object]
+            resource = resources[placeholder.object]
             object_identity = manifests.CopyResourceIdentity(
                 manifests.RepresentationRole(resource.role), resource.entity, resource.place
             )

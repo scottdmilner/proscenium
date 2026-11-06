@@ -96,7 +96,7 @@ def cache(
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
         work.undo.append(functools.partial(manifests.write_manifest, destination, before))
-        ownership.set_manifest_entries(binding_id, changes, created=work.datablocks)
+        ownership.set_manifest_entries(binding_id, changes, created=work.datablocks, published=before)
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"

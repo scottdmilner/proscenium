@@ -1546,6 +1546,39 @@ Ad hoc probes, one run each in the same binary: of 30,000 objects, removing 1,00
 - **Halving a failing call** found the one failure among 100 objects in 15 calls, 205 ms on ALab, where one call per datablock took 101 calls and 1,356 ms, since each pays a call's cost. The removal halves since this phase.
 - **Not measured:** a windowed Blender, whose event loop may clear what a background process accumulates between calls; Linux and Windows; batched displays.
 
+### The product's synchronization, step by step (M5 Phase F)
+
+Where a synchronization's and a cache call's time goes in the product, against M5's stub application layer, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/synchronization_profile.py --scenes updates alab --repeats 3`.
+
+**Method** (`measure/synchronization_profile.py`), in a fresh background process per run:
+- **The calls:** a binding made and attached through the API, then `synchronize` at the scene's time code, `synchronize` again at it (a full rebuild retiring the first generation), and `cache` at the next three time codes. The API pushes its undo step as with a window (`_pushes_undo` patched true).
+- **The steps:** each module function the transaction and cache call reach their steps through, wrapped and timed; a time includes the steps it calls.
+- **The display:** the stub's placeholders, an object and a bounds mesh for each prim the core's minimal path captures (731 on ALab, against the bridge's 7,018 objects), so this measures M5's own work around evaluation and application, not M7's display.
+- **Statistics:** three processes per scene, each step as a median and range over them. The machine's load average was under 4 when the runs began.
+
+| Step (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Placeholders; manifest entries | 1,001; 3,003 | 731; 2,193 | 10,001; 30,003 |
+| **Synchronize** | **240 (239–245)** | **1,023 (972–1,048)** | **2,684 (2,678–2,722)** |
+| `acquire`; `plans` (the core's capture, M6's) | 16; 67 | 140; 768 | 171; 760 |
+| `prepare` (the stub, M7's) | 106 | 67 | 1,060 |
+| `publish`, its manifest write included | 13 | 10 | 158 |
+| Undo push | 37 | 27 | 516 |
+| **Synchronize again** | **229 (227–231)** | **836 (833–851)** | **9,431 (9,414–10,981)** |
+| Manifest read; `plans`; `prepare` | 7; 54; 99 | 5; 712; 71 | 72; 712; 7,851 |
+| `publish`; `retire` (`user_map` in it) | 18; 3.9 (0.9) | 12; 2.6 (0.5) | 208; 53 (15) |
+| Undo push | 48 | 32 | 530 |
+| **Cache, three time codes** | **278 (276–292)** | **999 (984–1,026)** | **3,237 (3,228–3,318)** |
+| Manifest reads (2); `plans`; `key_time_codes` (the stub) | 15; 63; 174 | 11; 839; 125 | 239; 827; 1,887 |
+| `set_manifest_entries` | 30 | 23 | 413 |
+
+**Findings:**
+- **M5's own steps are a small part on ALab:** reading and writing the manifest, publication, retirement, and the records, 10 to 40 ms in each call, and the undo push 27 to 32 ms. The core's capture is 75 to 85% of each call there, and the stub's application most of the rest.
+- **The plan's tuples were read once per placeholder:** each read of `Plan.resources` builds the tuple anew, converting every resource, and the stub read it several times a placeholder, so `prepare` and `key_time_codes` grew with the square of the plan. Read once per plan, `prepare` on `updates-1000` fell from 760 to 105 ms, a synchronization from 897 to 250 ms, and a cache call from 937 to 296 ms (one process each, before and after).
+- **Synchronizing `updates-10000` again** spent 7.9 s in the stub's `prepare`, against 1.1 s the first time: its placeholders are named for their prims, which collide while the old display is still in the file, as M4 found of object names ([its findings](#measurements-m4-phase-c)). M7's objects are named too.
+- **At 30,003 manifest entries,** the manifest's whole write is 124 to 150 ms, a read 72 ms, a cache call's two reads 239 ms and its update by entry 413 ms, and the undo push 0.5 s. The update read the manifest again; it now takes the one the cache call read, so a call reads it once (not measured since).
+- **Not measured:** M7's display, a windowed Blender, Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
