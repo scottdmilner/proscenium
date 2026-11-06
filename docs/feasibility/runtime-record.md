@@ -1517,6 +1517,35 @@ Two variants on ALab, one process each, without the control: with 2 undo steps, 
 - **Pushing, undoing, and redoing are fast** beside a rebuild: 77 ms to push after ALab's 12 s rebuild, and 0.27 s to undo.
 - **Not measured:** a windowed Blender, Linux and Windows, batched displays, and more than five steps.
 
+### The shared removal's cost (M5 Phase F)
+
+What `removal.remove_unused`, which disposal, retirement, and a cleanup retry share, costs at scale, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/removal_cost.py --scenes updates alab --repeats 3`.
+
+**Method** (`measure/removal_cost.py`), in a fresh background process per run:
+- **The file:** the display built twice, as a synchronization again holds it before retirement, the published one and the prepared one. Each removal is from the published one, its objects unlinked from their collection first, as publication unlinks them.
+- **The cases:** one call of `batch_remove` with one new empty, ten times; units of 1 and 100 objects through `remove_unused`; a unit of 100 objects one of which fails, injected by wrapping the module's `_batch_remove`, through `remove_unused`, which halves the failing call, and through one call per datablock after it, which the removal made before this phase; and the rest of the display through `remove_unused`, each level's call timed by the wrapper. `bpy.data.user_map` of the same datablocks is timed before each.
+- **Statistics:** three processes per scene; each case as a median and range over them. On `updates-100` the units take every object, so its rest is only the meshes and materials.
+
+| Case (ms) | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Datablocks in the file (objects, meshes, materials) | 612 | 6,012 | 22,370 | 60,012 |
+| One call of one empty | 0.1 | 1.3 | 13.2 (12.5–17.9) | 25.6 (25.2–28.7) |
+| `user_map` of one object; of the rest of the display | 0.2; 0.1 | 1.6; 2.2 | 11.0; 13.9 | 17.2; 23.9 |
+| One object | 0.3 | 2.7 | 27.6 (23.1–29.8) | 46.5 (44.7–48.6) |
+| 100 objects, one call | 1.3 | 33.5 (26.0–36.7) | 148 (126–150) | 837 (791–1,008) |
+| 100 objects, one failing: halving, 15 calls | 1.4 | 42.2 (32.8–45.8) | 205 (189–206) | 1,010 (962–1,139) |
+| 100 objects, one failing: one call each after it, 101 calls | 4.8 | 128 (119–147) | 1,356 (1,234–1,440) | 3,461 (2,697–3,924) |
+| **The rest of the display, 2 calls** | 0.3 (7 datablocks) | 167 (2,707) | **4,981 (3,930–5,309)** (10,886) | **83,554 (77,616–90,304)** (29,707) |
+
+Ad hoc probes, one run each in the same binary: of 30,000 objects, removing 1,000 took 1.7 to 2.1 s whether they were linked or unlinked, and whether they shared one mesh or each had its own; in a file of only 32,000 objects with their meshes, removing them all took 3.4 s.
+
+**Findings:**
+- **A call costs more the more the file keeps:** 13 ms for one empty on ALab and 26 ms at 60,012 datablocks, as M4 found (about 20 ms), and 100 objects 0.15 s and 0.84 s. Across these cases a call's time is roughly proportional to the datablocks it removes times those left in the file, at 30 to 100 ns a pair, an inference from these points: removing nearly everything is cheap (3.4 s for 32,000), and retiring a full display while its replacement is in the file is not.
+- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M14's incremental updates do, would.
+- **`user_map` is small** beside the removal: 11 to 14 ms on ALab, 17 to 24 ms at 60,012 datablocks.
+- **Halving a failing call** found the one failure among 100 objects in 15 calls, 205 ms on ALab, where one call per datablock took 101 calls and 1,356 ms, since each pays a call's cost. The removal halves since this phase.
+- **Not measured:** a windowed Blender, whose event loop may clear what a background process accumulates between calls; Linux and Windows; batched displays.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

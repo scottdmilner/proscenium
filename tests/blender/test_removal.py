@@ -1,4 +1,4 @@
-"""Removing managed datablocks nothing else uses, users first, in one call per level where none fails.
+"""Removing managed datablocks nothing else uses, users first, one call per level, halved where one fails.
 
 See proscenium.synchronization.removal.
 """
@@ -46,16 +46,28 @@ def test_datablocks_are_removed_in_one_call(monkeypatch: pytest.MonkeyPatch) -> 
     assert not any(records.alive(obj) for obj in objects)
 
 
-def test_a_failure_is_found_one_call_each(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The failed call removed the first; the rest are removed one call each, which finds the one that fails, and the
-    # removed one is never passed again (Blender crashes on one).
+def test_a_failure_is_found_by_halving(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The failed call removed the first; the three left are halved, the half without the failing one removed in one
+    # call, and the other halved again until the one that fails is alone. The removed one is never passed again
+    # (Blender crashes on one).
     objects = _objects(4)
     failing = objects[2]
     calls = _counted(monkeypatch, lambda datablocks: failing in datablocks)
     failures = removal.remove(objects)
     assert list(failures) == [2]
-    assert calls == [4, 1, 1, 1]
+    assert calls == [4, 1, 2, 1, 1]
     assert [records.alive(obj) for obj in objects] == [False, False, True, False]
+
+
+def test_halving_takes_about_log_n_calls_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Two failures among 64: each is found in about two calls per halving, not one call per datablock.
+    objects = _objects(64)
+    failing = {objects[5].session_uid, objects[40].session_uid}
+    calls = _counted(monkeypatch, lambda datablocks: bool(failing & {d.session_uid for d in datablocks}))
+    failures = removal.remove(objects)
+    assert sorted(failures) == [5, 40]
+    assert len(calls) <= 2 * 2 * 6 + 1
+    assert [i for i, obj in enumerate(objects) if records.alive(obj)] == [5, 40]
 
 
 def _placeholder(name: str) -> tuple[bpy.types.Object, bpy.types.Mesh]:

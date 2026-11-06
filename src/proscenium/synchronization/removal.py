@@ -11,7 +11,8 @@ datablock's current users once, before removing anything (lifecycle.md#pending-c
 - One whose removal fails, or whose user's did, is left pending, with why.
 
 Each call of bpy.data.batch_remove scans the file, so each level is removed in one call, and only when that raises
-are its datablocks removed one call each, to find which fail. A datablock is never passed to Blender once removed,
+is it halved, each half removed the same way, until each datablock that fails is alone: a few failures among n take
+about log n calls each, where one call per datablock would take n. A datablock is never passed to Blender once removed,
 since Blender crashes on one; a failed call may have removed some.
 """
 
@@ -86,23 +87,25 @@ def remove_unused[K: Hashable](
 
 def remove(datablocks: Sequence[bpy.types.ID]) -> dict[int, Exception]:
     """Remove datablocks, each alive; why each that couldn't be removed wasn't, by its index in datablocks."""
-    if not datablocks:
-        return {}
-    try:
-        _batch_remove(datablocks)
-    except Exception:  # noqa: BLE001 - which failed is found one at a time below
-        pass
-    else:
-        return {}
     failures: dict[int, Exception] = {}
-    for index, datablock in enumerate(datablocks):
-        if not records.alive(datablock):  # removed by the failed call
-            continue
-        try:
-            _batch_remove([datablock])
-        except Exception as error:  # noqa: BLE001 - a failure is reported, never raised
-            failures[index] = error
+    if datablocks:
+        _remove_halving(list(enumerate(datablocks)), failures)
     return failures
+
+
+def _remove_halving(indexed: list[tuple[int, bpy.types.ID]], failures: dict[int, Exception]) -> None:
+    """Remove indexed's datablocks, each alive, in one call; if it raises, each half of those left the same way."""
+    try:
+        _batch_remove([datablock for _, datablock in indexed])
+    except Exception as error:  # noqa: BLE001 - a failure is reported, never raised
+        if len(indexed) == 1:
+            failures[indexed[0][0]] = error
+            return
+        left = [(index, d) for index, d in indexed if records.alive(d)]  # removed by the failed call
+        half = len(left) // 2
+        for part in (left[:half], left[half:]):
+            if part:
+                _remove_halving(part, failures)
 
 
 def _batch_remove(datablocks: Sequence[bpy.types.ID]) -> None:
