@@ -176,7 +176,7 @@ def summarize(runs_dir: Path, scenes: dict[str, dict[str, Any]], environment: di
             "log warnings": runs[0]["warnings"],
             "log errors": runs[0]["errors"],
         }
-        if mode in ("interaction", "ownership", "viewport"):
+        if mode in ("interaction", "ownership", "uncached", "viewport"):
             entry["modes"][mode][mode] = _interaction([run["result"]["plan"][mode] for run in runs])
         if mode == "importer-viewport":
             entry["modes"][mode][mode] = _interaction([run["result"]["viewport"] for run in runs])
@@ -342,6 +342,7 @@ def markdown(summary: dict[str, Any]) -> str:
             )
         lines += _budgets(entry) + _updates(entry)
         lines += _interaction_lines(entry, "interaction") + _interaction_lines(entry, "ownership")
+        lines += _interaction_lines(entry, "uncached")
         lines += _interaction_lines(entry, "viewport") + _interaction_lines(entry, "importer-viewport")
         lines += ["", "| Mode | Built (first run) |", "|---|---|"]
         for mode, data in entry["modes"].items():
@@ -350,7 +351,7 @@ def markdown(summary: dict[str, Any]) -> str:
                 built["plan"] = {
                     k: v
                     for k, v in data["result"]["plan"].items()
-                    if k not in ("update", "interaction", "ownership", "viewport")
+                    if k not in ("update", "interaction", "ownership", "uncached", "viewport")
                 }
             lines.append(f"| {mode} | `{json.dumps(built)}` |")
     return "\n".join(lines) + "\n"

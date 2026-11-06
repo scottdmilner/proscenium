@@ -6,7 +6,8 @@ The config names the mode, scene, time code, module directory, and output paths.
 runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
 planning, diff, and update that follow; the initial scenario saves the .blend instead. The interaction mode
 times the interaction functions after it (interaction_timing.py), and the ownership mode the first ownership
-lookup after an undo, the display written as a binding's manifest (ownership_timing.py). The viewport modes (M4
+lookup after an undo, the display written as a binding's manifest (ownership_timing.py), and the uncached mode
+(M5 Phase S) the lookups without the bindings' cache against it (uncached_timing.py). The viewport modes (M4
 Phase D), the prototype's and the importer's, run in a windowed Blender, started without --background, and time
 the 3D view's frames after the synchronization (viewport_timing.py). The child writes a marker
 (JSON line) at every stage boundary with its CPU time and lifetime memory peaks; the parent samples the
@@ -34,6 +35,7 @@ import interaction_timing  # noqa: E402
 import memory  # noqa: E402
 import ownership_timing  # noqa: E402
 import scenarios  # noqa: E402
+import uncached_timing  # noqa: E402
 import viewport_timing  # noqa: E402
 
 # The importer's options closest to what the prototype builds: every purpose, invisible prims too, no
@@ -170,8 +172,8 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
 
     # The baseline's one object per copy (apply.py), or Phase D's batched display (batch.py).
     batched = config.get("representation", "objects") == "batched"
-    if batched and config["mode"] == "ownership":
-        raise SystemExit("ownership mode measures the baseline's manifest only")
+    if batched and config["mode"] in ("ownership", "uncached"):
+        raise SystemExit("ownership and uncached modes measure the baseline's manifest only")
 
     native.take_filter_timings()
     markers.settle("baseline")
@@ -209,7 +211,7 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     stage("construction")
     scene: Any = bpy.context.scene
     binding_id = None
-    if config["mode"] == "ownership":
+    if config["mode"] in ("ownership", "uncached"):
         # The display goes into a binding's destination, with the measured stage attached; C5 writes its manifest.
         sys.path.insert(0, str(HERE.parents[3] / "src"))
         import proscenium
@@ -221,8 +223,8 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         binding_id = handle.binding_id
         handle.attach(usd_stage)
         found = runtime.binding_configs.find_binding(binding_id)
-        assert found is not None and found.config is not None and found.config.destination is not None
-        collection = found.config.destination
+        assert found is not None and found.destination is not None
+        collection = found.destination
     else:
         collection = bpy.data.collections.new("Prototype")
         scene.collection.children.link(collection)
@@ -261,6 +263,8 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         facts["blend bytes"] = blend.stat().st_size
     elif config["mode"] == "ownership":
         facts["ownership"] = ownership_timing.measure(binding_id, display, view.objects, view.materials)
+    elif config["mode"] == "uncached":
+        facts["uncached"] = uncached_timing.measure(binding_id, display, view.objects, view.materials)
     elif config["mode"] == "viewport":
         facts["viewport"] = viewport_timing.measure()
     elif config["mode"] == "interaction":
