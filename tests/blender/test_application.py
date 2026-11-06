@@ -20,11 +20,12 @@ from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manif
 from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from proscenium.synchronization import application, prepared_work
+from proscenium.synchronization import application, prepared_work, removal
 from support.blend import save_and_reopen
 from support.usd import open_fresh
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from proscenium.api.bindings import Bindings
@@ -290,14 +291,14 @@ def _publish(work: PreparedWork) -> list[bpy.types.Object]:
 def _fail_disposal(monkeypatch: pytest.MonkeyPatch, work: PreparedWork, roles: tuple[str, ...]) -> set[bpy.types.ID]:
     """Make disposal fail for the first tracked datablock of each role; those datablocks."""
     failing = {next(e.datablock for e in work.tracked.values() if e.role == role) for role in roles}
-    remove = prepared_work._remove  # noqa: SLF001
+    remove = removal._batch_remove  # noqa: SLF001
 
-    def failing_remove(datablock: bpy.types.ID) -> None:
-        if datablock in failing:
+    def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
+        if any(d in failing for d in datablocks):  # a call removing one fails, the batch's included
             raise RuntimeError("disposal injected")
-        remove(datablock)
+        remove(datablocks)
 
-    monkeypatch.setattr(prepared_work, "_remove", failing_remove)
+    monkeypatch.setattr(removal, "_batch_remove", failing_remove)
     return {d for d in failing if d is not None}
 
 

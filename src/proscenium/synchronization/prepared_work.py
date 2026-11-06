@@ -4,8 +4,9 @@ The application layer tracks each resource it creates (PreparedWork.track) befor
 partway finds everything made so far in the ledger (TXN-08). Resources reused from the published generation are never
 tracked, so they're never disposal candidates (TXN-09).
 
-dispose removes each tracked resource and resolves its ledger entry. One whose removal fails stays in the ledger,
-retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases.
+dispose removes the tracked resources, in one call unless one fails (removal.remove), and resolves their ledger
+entries. One whose removal fails stays in the ledger, retryable, with a cleanup diagnostic naming its ledger key, which
+no later attempt erases.
 
 The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal or publication removes it.
 A leftover stays alive through the ledger's pointer to it, which is a user, linked in no collection.
@@ -22,6 +23,7 @@ import bpy
 from ..binding.persistence import ledgers
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.runtime import pending_cleanup
+from . import removal
 
 if TYPE_CHECKING:
     from ..binding.persistence import manifests
@@ -72,12 +74,12 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
     changed: dict[str, ledgers.LedgerEntry] = {}
     resolved: list[str] = []
     diagnostics: list[Diagnostic] = []
-    for entry_key, datablock in reversed(work.datablocks.items()):  # users before what they use
+    made = list(reversed(work.datablocks.items()))  # users before what they use
+    failures = removal.remove([datablock for _, datablock in made])
+    for index, (entry_key, datablock) in enumerate(made):
         ledger_key = keys.get(entry_key)
         role = "" if ledger_key is None else str(work.tracked[ledger_key].role)  # a diagnostic holds plain strings
-        try:
-            _remove(datablock)
-        except Exception as error:  # noqa: BLE001 - any failure leaves the resource pending, never raised
+        if (error := failures.get(index)) is not None:
             message = f"Couldn't dispose of prepared {role or 'resource'} {datablock.name!r}: {error}"
             diagnostic = Diagnostic(
                 DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, resource=ledger_key or "", role=role
@@ -102,8 +104,3 @@ def remove_staging(work: PreparedWork) -> None:
     work.datablocks.clear()
     work.entries.clear()
     work.tracked.clear()
-
-
-def _remove(datablock: bpy.types.ID) -> None:
-    """Remove one prepared datablock."""
-    bpy.data.batch_remove([datablock])

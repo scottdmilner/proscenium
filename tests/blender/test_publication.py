@@ -104,8 +104,8 @@ def _fail_publication_write(monkeypatch: pytest.MonkeyPatch, write: str) -> None
         monkeypatch.setattr(ownership_index, "set_manifest", _raising)
     elif write == "generation":
         monkeypatch.setattr(binding_state, "write_generation", _raising)
-    else:  # resolving the published work's ledger entries: the first update that only removes
-        resolving = _once(pending_cleanup.set_ledger_entries, lambda changed, removed=(): not changed and bool(removed))
+    else:  # the ledger update that resolves the prepared work: the first that removes entries
+        resolving = _once(pending_cleanup.set_ledger_entries, lambda _changed, removed=(): bool(removed))
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", resolving)
 
 
@@ -124,7 +124,7 @@ def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Ste
 
 def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_path: Path) -> None:
     # TXN-06: a publication that succeeds makes the manifest, the generation record, and the destination's links all
-    # new, and leaves nothing pending or staged.
+    # new, and leaves nothing pending or staged; retirement removes what the earlier one published.
     with transaction.publication_failure(tmp_path) as scene:
         handle = _binding(bindings, scene, PayloadPolicy.LOAD_ALL)
         assert handle.synchronize(10) == Result(time_codes=(Usd.TimeCode(10),))
@@ -140,11 +140,14 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
         assert binding_state.read_generation(_destination()) == Loaded(expected, 1)
         assert _ledger_entries() == {}
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone
+        uids = {d.session_uid for d in named if d is not None}  # a removed datablock can't be compared
         assert handle.synchronize(12).state is ResultState.SUCCESS
         second = _published(handle)
-        assert second["objects"].isdisjoint(first["objects"])
+        assert uids.isdisjoint(o.session_uid for o in second["objects"])
         assert second["manifest"] != first["manifest"]
         assert second["generation"] != first["generation"]
+        assert uids.isdisjoint(d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes))  # retired
+        assert _ledger_entries() == {}
 
 
 @pytest.mark.parametrize("write", PUBLICATION_WRITES)

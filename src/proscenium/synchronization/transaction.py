@@ -4,7 +4,8 @@ Its steps are acquisition, evaluation, planning, preparation, publication, and r
 attempt needs can't be read is refused before its source is read, so nothing they name is replaced or retired. A
 failure at any step before publication leaves the published generation as it was and disposes of prepared work, and
 an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
-by recording it, whatever its outcome (STATE-03). Retirement is the M5 plan's D7.
+by recording it, whatever its outcome (STATE-03). After publication, a resource retirement can't remove leaves the
+synchronization completed with issues (TXN-07).
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.runtime import binding_configs, ownership_index, pending_cleanup
 from ..binding.source_access import stages
 from ..core import _core
-from . import application, prepared_work, publication
+from . import application, prepared_work, publication, retirement
 
 if TYPE_CHECKING:
     import bpy
@@ -113,12 +114,12 @@ def _attempt(
         binding_id, policy, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
     )
     try:
-        publication.publish(binding_id, destination, work, described)
+        retiring = publication.publish(binding_id, destination, work, described)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
         return (*own, failed, *prepared_work.dispose(work))
     prepared_work.remove_staging(work)
-    return own
+    return (*own, *retirement.retire(binding_id, retiring, published))
 
 
 def _untracked(binding_id: identifiers.BindingId) -> Diagnostic | None:

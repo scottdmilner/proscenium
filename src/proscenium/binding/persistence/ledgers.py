@@ -50,7 +50,8 @@ class RetryStatus(StrEnum):
     """Where a pending resource's disposal stands."""
 
     PREPARED = "prepared"  # tracked while the operation preparing it runs, before anything else can fail
-    RETRYABLE = "retryable"  # its disposal failed: an explicit retry may resolve it
+    RETIRING = "retiring"  # published out of its manifest, for retirement to remove next
+    RETRYABLE = "retryable"  # its disposal or retirement failed: an explicit retry may resolve it
 
 
 def new_ledger_key() -> str:
@@ -68,7 +69,7 @@ class LedgerEntry:
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it
     operation: OriginatingOperation
     status: RetryStatus
-    # Its cleanup diagnostic, which a retryable entry has and a prepared one lacks.
+    # Its cleanup diagnostic, which a retryable entry has and the others lack.
     diagnostic: results.Diagnostic | None = None
 
     def __post_init__(self) -> None:
@@ -82,8 +83,8 @@ class LedgerEntry:
         object.__setattr__(self, "status", RetryStatus(self.status))
         if self.diagnostic is not None and not isinstance(self.diagnostic, results.Diagnostic):
             object.__setattr__(self, "diagnostic", results.Diagnostic(**self.diagnostic))
-        if (self.diagnostic is None) != (self.status is RetryStatus.PREPARED):
-            raise ValueError("a retryable entry has a cleanup diagnostic, and a prepared one has none")
+        if (self.diagnostic is None) == (self.status is RetryStatus.RETRYABLE):
+            raise ValueError("a retryable entry has a cleanup diagnostic, and no other has one")
 
 
 @dataclass(frozen=True)
