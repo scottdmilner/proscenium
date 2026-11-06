@@ -44,33 +44,33 @@ def synchronize(
     source is accessed, so a binding failing before that gets none.
     """
     record = binding_configs.required_record(binding_id)
-    scene = record.scene
+    scene, destination = config.scene, record.collection
+    assert scene is not None  # a binding's candidate names a target scene that exists
     if time_code is None:
         time_code = Usd.TimeCode(scene.frame_current + scene.frame_subframe)
-    if isinstance(last := binding_state.read_last_attempt(scene, binding_id), records.RefusedRecord):
+    if isinstance(last := binding_state.read_last_attempt(destination), records.RefusedRecord):
         # Kept, so this attempt goes unrecorded.
         return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), time_codes=(time_code,))
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
     binding_configs.restore_entry(binding_id, record)
-    result = Result(*_attempt(binding_id, config, scene, current, time_code), time_codes=(time_code,))
+    result = Result(*_attempt(binding_id, config, destination, current, time_code), time_codes=(time_code,))
     stored_time = binding_state.stored_time(time_code)
     attempt = binding_state.LastAttempt(config.settings.payload_policy, stored_time, result.diagnostics)
-    binding_state.write_last_attempt(scene, binding_id, attempt)
+    binding_state.write_last_attempt(destination, attempt)
     return result
 
 
 def _attempt(
     binding_id: identifiers.BindingId,
     config: configs.BindingConfig,
-    scene: bpy.types.Scene,
+    destination: bpy.types.Collection,
     current: stage_tracking.CurrentStages,
     time_code: Usd.TimeCode,
 ) -> tuple[Diagnostic, ...]:
     """The attempt's diagnostics, its steps run as far as they succeed."""
-    if (destination := config.destination) is None:  # removed: Blender cleared the pointer (lifecycle.md)
-        message = f"The destination collection of binding {binding_id} was removed"
-        return (Diagnostic(DiagnosticCode.REMOVED_DESTINATION, binding_id, message),)
+    scene = config.scene
+    assert scene is not None
     # A manifest naming an unknown role is one that can't be read (ROLE-01).
     manifest = ownership_index.manifest(binding_id)
     generation = binding_state.read_generation(destination)

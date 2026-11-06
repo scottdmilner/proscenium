@@ -2,12 +2,12 @@
 
 It holds two things:
 
-- The records, decoded, each once and held as they are stored, by the datablock holding them: each scene's binding
-  records (SceneRecords), each destination collection's tag and, once read, its manifest (DestinationRecords), and
-  each Text's binding index and, once read, its pending-cleanup ledger (IndexRecords).
+- The records, decoded, each once and held as they are stored, by the datablock holding them: each destination
+  collection's binding records and, once read, its manifest (DestinationRecords), and each Text's binding index and,
+  once read, its pending-cleanup ledger (IndexRecords).
 - What is computed from them: each binding identity's candidates and the canonical-candidate rule's decision
-  (copy_detection.IdentityCandidates), whose binding records are read through their scenes' (BindingRecord), and the
-  ownership index (ownership_index), built when first asked for.
+  (copy_detection.IdentityCandidates), whose binding records are read through their collections' (BindingRecord), and
+  the ownership index (ownership_index), built when first asked for.
 
 binding_configs looks bindings up in it, and ownership_index builds the claims on each datablock from it.
 
@@ -19,8 +19,8 @@ How it stays current:
   each, and the next use rebuilds it; dropping it before means another extension's handler that runs first reads
   the new data. So the state needs the extension registered (NotRegisteredError).
 - Scenes added or removed, as a scene copy, a new scene, or an append makes them, have no handler: each use compares
-  the scenes' session_uids with those the state was built from.
-- Content appended or linked, and a collection duplicated on its own, add no scene: refresh_if_tags_changed() finds
+  the scenes' session_uids with those the state was built from. Removing a target scene removes its bindings.
+- Content appended or linked, and a collection duplicated on its own, add no scene: refresh_if_records_changed() finds
   them, as a synchronization asks it to first, and otherwise the next load, undo, or redo does.
 
 What it holds:
@@ -28,8 +28,8 @@ What it holds:
 - References to IDs only, never to structs inside one (modifiers, mesh elements, nodes): Blender invalidates a
   removed ID's Python reference, but a struct held across undo silently reads freed memory.
 - Each reference is checked before it's returned (alive()), since the user can remove content at any time. A removed
-  scene or destination raises StaleError, and query() rebuilds the state and asks again; a removed managed datablock
-  rereads only the manifest naming it (ownership_index).
+  scene or destination, which removes a binding, raises StaleError, and query() rebuilds the state and asks again; a
+  removed managed datablock rereads only the manifest naming it (ownership_index).
 """
 
 from __future__ import annotations
@@ -74,12 +74,12 @@ type HeldConfig = configs.BindingConfig | records.RefusedRecord  # a configurati
 
 
 @dataclass(slots=True)
-class SceneRecords:
-    """The binding records on a scene: by binding identity, the configuration stored there."""
+class DestinationRecords:
+    """The records on a collection holding binding records: its configurations, and its manifest once read."""
 
-    scene: bpy.types.Scene
-    uid: int  # its session_uid, compared instead of the reference: a new scene can take a removed one's address
-    configs: dict[identifiers.BindingId, HeldConfig] = field(default_factory=dict)
+    collection: bpy.types.Collection
+    configs: dict[identifiers.BindingId, HeldConfig] = field(default_factory=dict)  # normally one
+    manifest: records.Loaded[manifests.Manifest] | records.RefusedRecord | None | Unread = UNREAD
 
     def records_found(self) -> list[BindingRecord]:
         """Its binding records, in the order found."""
@@ -88,35 +88,30 @@ class SceneRecords:
 
 @dataclass(frozen=True, slots=True)
 class BindingRecord:
-    """One scene's binding record for a binding identity, read through the scene's records, so a write reaches it."""
+    """One collection's binding record for a binding identity, read through its records, so a write reaches it."""
 
-    held: SceneRecords
+    held: DestinationRecords
     binding_id: identifiers.BindingId
 
     @property
-    def scene(self) -> bpy.types.Scene:
-        """The scene holding the record."""
-        return self.held.scene
-
-    @property
-    def scene_uid(self) -> int:
-        """The scene's session_uid."""
-        return self.held.uid
+    def collection(self) -> bpy.types.Collection:
+        """The collection holding the record: the binding's destination."""
+        return self.held.collection
 
     @property
     def config(self) -> HeldConfig:
         """The configuration, or why it can't be read."""
         return self.held.configs[self.binding_id]
 
+    @property
+    def scene(self) -> bpy.types.Scene | None:
+        """The target scene a readable configuration names; None for one that can't be read, or a removed scene."""
+        return None if isinstance(self.config, records.RefusedRecord) else self.config.scene
 
-@dataclass(slots=True)
-class DestinationRecords:
-    """The records on a destination collection: its tag, and its manifest once read."""
-
-    collection: bpy.types.Collection
-    # None for a collection a binding record names that has no local tag
-    tag: configs.DestinationTag | records.RefusedRecord | None
-    manifest: records.Loaded[manifests.Manifest] | records.RefusedRecord | None | Unread = UNREAD
+    @property
+    def candidate(self) -> bool:
+        """Whether it's a candidate of its identity: unreadable, or naming a target scene that exists."""
+        return isinstance(self.config, records.RefusedRecord) or self.config.scene is not None
 
 
 @dataclass(slots=True)
@@ -134,27 +129,22 @@ class State:
 
     scene_uids: tuple[int, ...]  # the session_uids of every scene it was built from, in order: compared at each use
     # The records, each held once, by the datablock holding them, in the order found.
-    scenes: dict[int, SceneRecords]  # by session_uid: every local scene with binding records
-    # By session_uid: every local tagged collection, then every other collection a record names.
-    destinations: dict[int, DestinationRecords]
+    destinations: dict[int, DestinationRecords]  # by session_uid: every local collection with binding records
     indexes: list[IndexRecords]  # every local Text with a binding index; a file normally has one
     # Computed from the records.
-    identities: dict[identifiers.BindingId, IdentityCandidates]  # every identity with a record or a tag, records' first
+    identities: dict[identifiers.BindingId, IdentityCandidates]  # every identity with a candidate
     ownership: OwnershipIndex | None = None  # built when first asked for
 
     @property
-    def tagged(self) -> frozenset[int]:
-        """The session_uids of the local tagged collections (refresh_if_tags_changed)."""
-        return frozenset(uid for uid, d in self.destinations.items() if d.tag is not None)
+    def binding_uids(self) -> frozenset[int]:
+        """The session_uids of the collections holding binding records (refresh_if_records_changed)."""
+        return frozenset(self.destinations)
 
-    def add_binding(self, scene: bpy.types.Scene, created: configs.CreatedBinding) -> None:
-        """Hold a binding just made on scene: the records create stored, and its identity's decision."""
-        binding_id, destination = created.binding_id, created.config.destination
-        assert destination is not None
-        uid = scene.session_uid
-        held = self.scenes.setdefault(uid, SceneRecords(scene, uid))
-        held.configs[binding_id] = created.config
-        self.destinations[destination.session_uid] = DestinationRecords(destination, created.tag, None)
+    def add_binding(self, created: configs.CreatedBinding) -> None:
+        """Hold a binding just made: the records create stored, and its identity's decision."""
+        binding_id, destination = created.binding_id, created.destination
+        held = DestinationRecords(destination, {binding_id: created.config}, None)
+        self.destinations[destination.session_uid] = held
         self._hold_index(created.index)
         self.identities[binding_id] = copy_detection.identity(self, binding_id, [BindingRecord(held, binding_id)])
 
@@ -165,7 +155,7 @@ class State:
         """
         self._hold_index(written)
         identity = self.identities[binding_id]
-        self.identities[binding_id] = copy_detection.identity(self, binding_id, identity.records)
+        self.identities[binding_id] = copy_detection.identity(self, binding_id, identity.candidates)
 
     def _hold_index(self, written: configs.WrittenIndex) -> None:
         """Hold the only binding index, keeping the ledger held from its Text, which the write left as it was."""
@@ -203,12 +193,12 @@ def rebuild_count() -> int:
     return _rebuilds
 
 
-def refresh_if_tags_changed() -> None:
-    """Rebuild the state if the local collections' destination tags changed since it was built.
+def refresh_if_records_changed() -> None:
+    """Rebuild the state if the local collections holding binding records changed since it was built.
 
     Duplicating a collection on its own changes them, which no handler announces. Checks every collection's records.
     """
-    if _state is not None and configs.tagged_uids() != _state.tagged:
+    if _state is not None and configs.binding_uids() != _state.binding_uids:
         invalidate()
 
 
@@ -241,15 +231,15 @@ def current_state() -> State:
 
 
 def valid(binding_id: identifiers.BindingId, record: BindingRecord) -> bool:
-    """Whether the record's scene still exists and holds its configuration, and its destination still exists.
+    """Whether the record's collection still exists and holds its configuration, and its target scene still exists.
 
-    Removing a destination clears the configuration's pointer to it.
+    Removing the target scene clears the configuration's pointer to it.
     """
-    destination = None if isinstance(record.config, records.RefusedRecord) else record.config.destination
+    scene = record.scene
     return (
-        alive(record.scene)
-        and configs.has_config(record.scene, binding_id)
-        and (destination is None or alive(destination))
+        alive(record.collection)
+        and configs.has_config(record.collection, binding_id)
+        and (scene is None or alive(scene))
     )
 
 
@@ -267,27 +257,16 @@ def _scene_uids() -> tuple[int, ...]:
 
 
 def _read_state(scenes: tuple[int, ...]) -> State:
-    """Read every binding record, tag, and binding index, and decide every identity."""
-    held: dict[int, SceneRecords] = {}
-    for scene, binding_id, result in configs.read_configs():
-        uid = scene.session_uid
-        scene_configs = held.setdefault(uid, SceneRecords(scene, uid)).configs
-        scene_configs[binding_id] = result if isinstance(result, records.RefusedRecord) else result.record
-    destinations = {
-        collection.session_uid: DestinationRecords(collection, tag.record if isinstance(tag, records.Loaded) else tag)
-        for collection, tag in configs.read_tags()
-    }
-    # A removed destination is left out, and checking a record naming it rebuilds the state.
-    for scene_records in held.values():
-        for config in scene_records.configs.values():
-            if isinstance(config, configs.BindingConfig) and (destination := config.destination) is not None:
-                if alive(destination) and destination.session_uid not in destinations:
-                    destinations[destination.session_uid] = DestinationRecords(destination, None)
+    """Read every binding record and binding index, and decide every identity."""
+    destinations: dict[int, DestinationRecords] = {}
+    for collection, binding_id, result in configs.read_configs():
+        held = destinations.setdefault(collection.session_uid, DestinationRecords(collection))
+        held.configs[binding_id] = result if isinstance(result, records.RefusedRecord) else result.record
     indexes = []
     for text in configs.index_texts():
         index = configs.read_index(text)
         assert index is not None  # index_texts found the record
         indexes.append(IndexRecords(text, index.record if isinstance(index, records.Loaded) else index))
-    current = State(scenes, held, destinations, indexes, {})
+    current = State(scenes, destinations, indexes, {})
     current.identities = copy_detection.identities(current)
     return current

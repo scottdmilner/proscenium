@@ -2,10 +2,9 @@
 
 See lifecycle.md#ownership-and-lifecycle. The extension has one path to ownership, its runtime
 index (proscenium.binding.runtime). This one shares none of its code past reading the records, so a test
-can compare the two: for every binding found in the scenes, in order, the first whose configuration
-names a destination claims each datablock that destination's manifest names; then each tagged
-collection no configuration names, as a copied destination is, claims for the binding its tag names.
-A manifest that can't be read claims nothing.
+can compare the two: each local collection holding binding records, a copied destination's included, claims
+each datablock its manifest names, for the first binding whose record it holds. A manifest that can't be read
+claims nothing.
 """
 
 from __future__ import annotations
@@ -36,13 +35,9 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))
 
-    for _scene, binding_id, config in configs.read_configs():
-        destination = config.record.destination if isinstance(config, Loaded) else None
-        if destination is not None and destination not in seen:  # a linked-copy scene's shared one is read once
-            claim(binding_id, destination)
-    for collection, tag in configs.read_tags():
-        if isinstance(tag, Loaded) and collection not in seen:
-            claim(tag.record.binding_id, collection)
+    for collection, binding_id, _config in configs.read_configs():
+        if collection not in seen:  # one holding two records claims once
+            claim(binding_id, collection)
     return found
 
 

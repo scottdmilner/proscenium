@@ -45,6 +45,10 @@ def _scene() -> bpy.types.Scene:
     return bpy.data.scenes["Scene"]
 
 
+def _shot() -> bpy.types.Collection:
+    return bpy.data.collections["Shot"]
+
+
 def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     with source_access.binding_state(tmp_path) as scene:
         return binding_on_file(bindings, _scene(), scene.root, name="Shot")
@@ -64,10 +68,10 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path, tim
     # Diagnostics come back with their enums and their layers as a tuple, and cached time codes as a tuple.
     handle = _binding(bindings, tmp_path)
     binding_state.write_generation(bpy.data.collections["Shot"], _generation(handle, time))
-    binding_state.write_last_attempt(_scene(), handle.binding_id, _attempt(time))
+    binding_state.write_last_attempt(_shot(), _attempt(time))
     save_and_reopen(tmp_path / "state.blend")
     assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(_generation(handle, time), 1)
-    assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(_attempt(time), 1)
+    assert binding_state.read_last_attempt(_shot()) == Loaded(_attempt(time), 1)
 
 
 def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindings, tmp_path: Path) -> None:
@@ -89,29 +93,29 @@ def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
 
     def stored() -> list[object]:
         return [
-            records.stored(_scene(), configs.config_key(handle.binding_id)),
+            records.stored(destination, configs.config_key(handle.binding_id)),
             records.stored(destination, manifests.MANIFEST_KEY),
             records.stored(destination, binding_state.GENERATION_KEY),
-            records.stored(_scene(), binding_state.ATTEMPT_PREFIX + handle.binding_id),
+            records.stored(destination, binding_state.ATTEMPT_KEY),
         ]
 
     config, manifest, _, _ = stored()
-    binding_state.write_last_attempt(_scene(), handle.binding_id, _attempt())
+    binding_state.write_last_attempt(_shot(), _attempt())
     assert stored()[:3] == [config, manifest, None]
     attempt = stored()[3]
     binding_state.write_generation(destination, _generation(handle))
     assert stored()[:2] + stored()[3:] == [config, manifest, attempt]
     generation = stored()[2]
-    binding_state.write_last_attempt(_scene(), handle.binding_id, _attempt(30.0))
+    binding_state.write_last_attempt(_shot(), _attempt(30.0))
     assert stored()[:3] == [config, manifest, generation]
     assert bindings.in_scene(_scene()) == [handle]  # the attempt's key isn't taken for a binding
 
 
-def test_the_last_attempt_needs_no_destination(bindings: Bindings, tmp_path: Path) -> None:
-    handle = _binding(bindings, tmp_path)
-    bpy.data.collections.remove(bpy.data.collections["Shot"])
-    binding_state.write_last_attempt(_scene(), handle.binding_id, _attempt())
-    assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(_attempt(), 1)
+def test_the_last_attempt_needs_no_publication(bindings: Bindings, tmp_path: Path) -> None:
+    _binding(bindings, tmp_path)
+    binding_state.write_last_attempt(_shot(), _attempt())
+    assert binding_state.read_generation(_shot()) is None
+    assert binding_state.read_last_attempt(_shot()) == Loaded(_attempt(), 1)
 
 
 def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindings, tmp_path: Path) -> None:

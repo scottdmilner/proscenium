@@ -20,6 +20,7 @@ from proscenium.binding.results import ResultState
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import removal
+from support.destinations import destination
 
 from .transaction_failures import failing_preparation
 
@@ -96,7 +97,7 @@ def test_calls_during_a_synchronization_raise(
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
-        last = binding_state.read_last_attempt(_scene(), handle.binding_id)
+        last = binding_state.read_last_attempt(destination(handle))
         assert isinstance(last, records.Loaded) and last.record.payload_policy is PayloadPolicy.LOAD_ALL
         monkeypatch.setattr(_core, "SceneIndexChain", chain)
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running

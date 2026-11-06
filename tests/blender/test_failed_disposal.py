@@ -13,11 +13,14 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding import runtime
+from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership_index, pending_cleanup
+from support.blend import save_and_reopen
+from support.destinations import destination
 
 from .published import datablocks, published_generation
 from .transaction_failures import failing_preparation
@@ -57,7 +60,7 @@ def _check_failed(handle: BindingHandle, result: Result, scene: PreparationClean
         DiagnosticCode.PREPARATION_FAILED,
         *[DiagnosticCode.DISPOSAL_FAILED] * len(scene.failed_disposals),
     ]
-    attempt = binding_state.read_last_attempt(bpy.data.scenes["Scene"], handle.binding_id)
+    attempt = binding_state.read_last_attempt(destination(handle))
     assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
 
 
@@ -159,3 +162,22 @@ def test_a_disposal_the_ledger_cant_record_raises(
             failing_preparation(handle, scene, 0)
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone
         assert _published(handle) == nothing
+
+
+def test_removing_the_destination_leaves_the_pending_cleanup(bindings: Bindings, tmp_path: Path) -> None:
+    # DEST-09 on F-PREPARATION-CLEANUP-FAILURE "removed-destination": the binding goes with its destination, but
+    # its index entry, naming no collection, and its leftovers and their ledger entries stay, through save and reopen.
+    with transaction.preparation_cleanup_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        failing_preparation(handle, scene, 0)
+        named = {k: (e.binding_id, e.role, e.datablock and e.datablock.name) for k, e in _ledger().items()}
+        assert named
+        bpy.data.collections.remove(_destination())
+        for check in range(2):
+            if check:
+                save_and_reopen(tmp_path / "removed.blend")
+            assert runtime.binding_configs.find_binding(handle.binding_id) is None
+            assert {k: (e.binding_id, e.role, e.datablock and e.datablock.name) for k, e in _ledger().items()} == named
+            [text] = configs.index_texts()
+            index = records.read(text, configs.INDEX_KEY, configs.INDEX)
+            assert isinstance(index, Loaded) and index.record.destinations == {handle.binding_id: None}

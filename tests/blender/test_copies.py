@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from fixtures.copies import Outcome
     from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.runtime.copy_detection import CopiedBinding
-    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -50,19 +49,20 @@ def _published(bindings: Bindings, root: Path) -> BindingHandle:
     return handle
 
 
-def _republished(found: dict[tuple[str, str], Any], binding_id: BindingId) -> dict[tuple[str, str], Any]:
+def _republished(found: dict[tuple[str, str], Any], *, index_restored: bool) -> dict[tuple[str, str], Any]:
     """Found without what the original's synchronization writes when it publishes again.
 
-    Its destination's manifest, generation, and objects, its last attempt, and the objects it makes, which have no
-    records. A restored index entry, where the route lost the index, is a write's (COPY-19).
+    Its destination's manifest, generation, last attempt, and objects, and the objects it makes, which have no
+    records; and with index_restored, the index entry it restores where the route lost or cleared it (COPY-19).
     """
     kept = {}
     for (kind, name), value in found.items():
         if (kind == "object" and not value) or (kind, name) == ("objects in", "Shot"):
             continue
+        if index_restored and (kind, name) == ("text", configs.INDEX_NAME):
+            continue
         dropped = {
-            ("collection", "Shot"): {manifests.MANIFEST_KEY, binding_state.GENERATION_KEY},
-            ("scene", "Scene"): {binding_state.ATTEMPT_PREFIX + binding_id},
+            ("collection", "Shot"): {manifests.MANIFEST_KEY, binding_state.GENERATION_KEY, binding_state.ATTEMPT_KEY},
         }.get((kind, name), set())
         kept[kind, name] = {k: v for k, v in value.items() if k not in dropped} if dropped else value
     return kept
@@ -91,7 +91,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         assert result.state is ResultState.SUCCESS
         assert bindings.in_scene(_scene()) == [handle]
         return reported
-    # COPY-01, COPY-13: every candidate found, records first, in the order found: the original's first.
+    # COPY-01, COPY-13: every candidate found, in the order found: the original's first.
     [report] = reported
     assert (report.binding_id, report.reason, len(report.candidates)) == (
         handle.binding_id,
@@ -100,7 +100,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
     )
     scenes = {c.scene for c in report.candidates if c.scene is not None}
     if outcome.canonical:
-        # COPY-09, COPY-10, COPY-15: the original is canonical, its scene alone lists it, and lookups reach it.
+        # COPY-09, COPY-15: the original is canonical, its scene alone lists it, and lookups reach it.
         assert [c.canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
         assert (report.candidates[0].scene, report.candidates[0].destination) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
@@ -116,9 +116,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         for refused in (result, handle.reload(), handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)):
             assert refused.state is ResultState.FATAL_FAILURE
             assert [d.code for d in refused.diagnostics] == [DiagnosticCode.COPIED_BINDING]
-            assert all(
-                c.destination is None or c.destination in refused.diagnostics[0].message for c in report.candidates
-            )
+            assert all(c.destination in refused.diagnostics[0].message for c in report.candidates)
         assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
         assert _evaluation(bindings, handle) is evaluation  # the refusals acquired nothing
         assert handle.live_stage() is None
@@ -128,7 +126,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
         # The runtime's lookup finds it disabled, with its copies; its manifest and writes raise.
         binding_id = handle.binding_id
         assert runtime.binding_configs.find_binding(binding_id) == runtime.binding_configs.FoundBinding(
-            binding_id, None, None, None, report
+            binding_id, None, None, None, None, report
         )
         for call in (
             lambda: ownership_index.manifest(binding_id),
@@ -149,16 +147,14 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         assert found is not None
         routes.run(route, tmp_path)
         before = routes.records_by_name()
-        synchronized = expected.synchronized or expected.outcome
-        reported = _check(bindings, handle, synchronized)
+        reported = _check(bindings, handle, expected.outcome)
         oracle.assert_agrees()
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content; a canonical
         # original's synchronization publishes again, which changes only its own.
         after = routes.records_by_name()
         if expected.outcome.canonical:
-            if ("text", configs.INDEX_NAME) not in before:
-                del after["text", configs.INDEX_NAME]
-            before, after = _republished(before, handle.binding_id), _republished(after, handle.binding_id)
+            restored = not expected.index_untouched
+            before, after = _republished(before, index_restored=restored), _republished(after, index_restored=restored)
         assert after == before
         runtime.state.invalidate()
         assert bindings.copied() == reported  # COPY-03: the same once the state is rebuilt
@@ -166,7 +162,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
         handle.attach(open_fresh(scene.root))
-        reopened = _check(bindings, handle, expected.reopened or synchronized)
+        reopened = _check(bindings, handle, expected.reopened or expected.outcome)
         oracle.assert_agrees()
         if expected.reopened is None:
             assert reopened == reported  # COPY-02, COPY-03: the same after save and reopen
@@ -216,7 +212,7 @@ def test_a_copy_is_found_at_the_next_synchronization(bindings: Bindings, tmp_pat
         [report] = bindings.copied()
         assert [(c.scene, c.destination, c.canonical) for c in report.candidates] == [
             ("Scene", "Shot", True),
-            (None, "Shot.001", False),
+            ("Scene", "Shot.001", False),
         ]
 
 
@@ -240,13 +236,13 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
         _check(bindings, handle, copies.INDEXED)
 
 
-def test_a_cleared_entry_is_kept(bindings: Bindings, tmp_path: Path) -> None:
-    # COPY-19: an entry naming no destination isn't restored by a write.
+def test_a_write_replaces_a_cleared_entry(bindings: Bindings, tmp_path: Path) -> None:
+    # COPY-19: an entry naming no collection is replaced by a write to the unique binding's records.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
         routes.run("entry-cleared", tmp_path)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-        assert _index_entry() is None
+        assert _index_entry() == bpy.data.collections["Shot"]
 
 
 def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) -> None:

@@ -7,9 +7,9 @@ added to it since (pipeline.md#cached-time-codes), and the source revision it wa
 compares with the binding's current one; it's stored, so undo restores it with the generation it describes. It
 describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
 
-The last attempt is the most recent synchronization attempt and its result. It is on the target
-scene beside the binding's configuration, under its own key: it exists without a destination or a
-publication, and reading the configuration doesn't load its diagnostics.
+The last attempt is the most recent synchronization attempt and its result. It is on the destination beside the
+binding's configuration and the generation, under its own key: it exists without a publication, and reading the
+configuration doesn't load its diagnostics.
 
 The synchronization transaction writes both (proscenium.synchronization): the generation as part of publication,
 and the last attempt at every attempt's end.
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"
-ATTEMPT_PREFIX = "attempt."
+ATTEMPT_KEY = "attempt"
 
 
 def stored_time(time_code: Usd.TimeCode) -> float | None:
@@ -127,16 +127,14 @@ def remove_generation(destination: bpy.types.Collection) -> None:
     records.remove(destination, GENERATION_KEY, GENERATION)
 
 
-def read_last_attempt(
-    scene: bpy.types.Scene, binding_id: identifiers.BindingId
-) -> Loaded[LastAttempt] | RefusedRecord | None:
-    """The binding's last attempt on scene, why it can't be read, or None if it has none."""
-    return records.read(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT)
+def read_last_attempt(destination: bpy.types.Collection) -> Loaded[LastAttempt] | RefusedRecord | None:
+    """The binding's last attempt on its destination, why it can't be read, or None if it has none."""
+    return records.read(destination, ATTEMPT_KEY, ATTEMPT)
 
 
-def write_last_attempt(scene: bpy.types.Scene, binding_id: identifiers.BindingId, attempt: LastAttempt) -> None:
-    """Store the binding's last attempt on scene.
+def write_last_attempt(destination: bpy.types.Collection, attempt: LastAttempt) -> None:
+    """Store the binding's last attempt on its destination.
 
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.
     """
-    records.write(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT, attempt)
+    records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)

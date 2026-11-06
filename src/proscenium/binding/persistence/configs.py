@@ -1,8 +1,9 @@
-"""Binding records: configuration, the destination's tag, and the binding index (lifecycle.md#binding-state).
+"""Binding records: configuration, on the destination collection, and the binding index (lifecycle.md#binding-state).
 
-- Configuration: a record on the binding's target scene, under binding.<identifier>.
-- Destination tag: a record on the destination collection naming the binding and pointing back at the scene, so the
-  configuration and its destination refer to each other (source-access.md#canonical-candidate).
+- Configuration: a record on the binding's destination collection, under binding.<identifier>, pointing at its target
+  scene. The destination is the binding: removing it, or the target scene, removes the binding
+  (lifecycle.md#removed-destination). Its identifier is in the key, so a configuration that can't be read still names
+  its binding.
 - Binding index: each binding's identifier to its destination, a record on its own Text, so duplicating or appending
   a binding never copies it. The Text has a fake user, so Blender keeps it though nothing uses it. It is found by its
   record, not by its name, which users can change; the name it is given, .proscenium, starts with a dot so Blender's
@@ -11,7 +12,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -29,18 +29,17 @@ if TYPE_CHECKING:
     from .records import Loaded
 
 CONFIG_PREFIX = "binding."
-TAG_KEY = "destination"
 INDEX_KEY = "index"
 INDEX_NAME = ".proscenium"
 
 
 @dataclass(frozen=True, slots=True)
 class BindingConfig:
-    """A binding's configuration: its last attached root identifier, destination, and requested settings."""
+    """A binding's configuration: its target scene, last attached root identifier, and requested settings."""
 
+    scene: bpy.types.Scene | None  # its target scene; None once the scene is removed, which removes the binding
     settings: binding_settings.RequestedSettings
     root_layer_identifier: str | None = None  # of the stage last attached; informative only
-    destination: bpy.types.Collection | None = None  # None once the destination is removed
 
     def __post_init__(self) -> None:
         if isinstance(self.settings, Mapping):
@@ -49,20 +48,8 @@ class BindingConfig:
             raise TypeError("the requested settings are not a group")
         if not isinstance(self.root_layer_identifier, str | None):
             raise TypeError("the root-layer identifier is not a string")
-        if not isinstance(self.destination, bpy.types.Collection | None):
-            raise TypeError("the destination is not a collection")
-
-
-@dataclass(frozen=True, slots=True)
-class DestinationTag:
-    """On a destination collection: the binding it belongs to, and that binding's target scene."""
-
-    binding_id: identifiers.BindingId
-    scene: bpy.types.Scene
-
-    def __post_init__(self) -> None:
-        if type(self.binding_id) is not str or not isinstance(self.scene, bpy.types.Scene):
-            raise TypeError("a destination tag names a binding and points at a scene")
+        if not isinstance(self.scene, bpy.types.Scene | None):
+            raise TypeError("the target scene is not a scene")
 
 
 @dataclass(frozen=True)
@@ -77,7 +64,6 @@ class BindingIndex:
 
 
 CONFIG = Schema("binding", version=1, record_type=BindingConfig)
-TAG = Schema("destination tag", version=1, record_type=DestinationTag)
 INDEX = Schema("binding index", version=1, record_type=BindingIndex)
 
 
@@ -89,11 +75,11 @@ class WrittenIndex(NamedTuple):
 
 
 class CreatedBinding(NamedTuple):
-    """What create stored: the new binding's identifier and its records."""
+    """What create stored: the new binding's identifier, destination, and records."""
 
     binding_id: identifiers.BindingId
-    config: BindingConfig  # naming the new destination
-    tag: DestinationTag  # on that destination
+    destination: bpy.types.Collection
+    config: BindingConfig  # on the destination
     index: WrittenIndex  # with the binding's entry
 
 
@@ -103,11 +89,11 @@ def new_identifier() -> identifiers.BindingId:
 
 
 def config_key(binding_id: identifiers.BindingId) -> str:
-    """The ID-property key of a binding's configuration record on its scene."""
+    """The ID-property key of a binding's configuration record on its destination."""
     return CONFIG_PREFIX + binding_id
 
 
-def create_binding(scene: bpy.types.Scene, config: BindingConfig, name: str) -> CreatedBinding:
+def create_binding(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings, name: str) -> CreatedBinding:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
     Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the
@@ -117,21 +103,14 @@ def create_binding(scene: bpy.types.Scene, config: BindingConfig, name: str) -> 
     binding_id = new_identifier()
     destination = bpy.data.collections.new(name)
     scene.collection.children.link(destination)
-    config = dataclasses.replace(config, destination=destination)
-    tag = DestinationTag(binding_id, scene)
-    records.write(scene, config_key(binding_id), CONFIG, config)
-    records.write(destination, TAG_KEY, TAG, tag)
-    return CreatedBinding(binding_id, config, tag, _write_entry(text, index, binding_id, destination))
+    config = BindingConfig(scene, settings)
+    records.write(destination, config_key(binding_id), CONFIG, config)
+    return CreatedBinding(binding_id, destination, config, _write_entry(text, index, binding_id, destination))
 
 
-def has_config(scene: bpy.types.Scene, binding_id: identifiers.BindingId) -> bool:
-    """Whether scene stores a configuration record for binding_id, without reading it."""
-    return records.has(scene, config_key(binding_id))
-
-
-def has_tag(collection: bpy.types.Collection) -> bool:
-    """Whether collection stores a destination tag, without reading it."""
-    return records.has(collection, TAG_KEY)
+def has_config(destination: bpy.types.Collection, binding_id: identifiers.BindingId) -> bool:
+    """Whether destination stores a configuration record for binding_id, without reading it."""
+    return records.has(destination, config_key(binding_id))
 
 
 def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | None:
@@ -139,33 +118,40 @@ def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | N
     return records.read(text, INDEX_KEY, INDEX)
 
 
-def write_config(scene: bpy.types.Scene, binding_id: identifiers.BindingId, config: BindingConfig) -> None:
+def write_config(destination: bpy.types.Collection, binding_id: identifiers.BindingId, config: BindingConfig) -> None:
     """Store a binding's changed configuration. Raises RefusedRecordError over one that can't be read."""
-    records.write(scene, config_key(binding_id), CONFIG, config)
+    records.write(destination, config_key(binding_id), CONFIG, config)
 
 
-def scene_bindings(scene: bpy.types.Scene) -> list[identifiers.BindingId]:
-    """The identifiers of the bindings whose configuration is on scene."""
+def binding_ids(collection: bpy.types.Collection) -> list[identifiers.BindingId]:
+    """The identifiers of the bindings whose configuration is on collection; normally one, or none."""
     return [
         identifiers.BindingId(key.removeprefix(CONFIG_PREFIX))
-        for key in records.keys(scene)
+        for key in records.keys(collection)
         if key.startswith(CONFIG_PREFIX)
     ]
 
 
-def read_configs() -> Iterator[tuple[bpy.types.Scene, identifiers.BindingId, Loaded[BindingConfig] | RefusedRecord]]:
-    """Every binding record in the file: its scene, identifier, and configuration or why it can't be read.
+def read_configs() -> Iterator[
+    tuple[bpy.types.Collection, identifiers.BindingId, Loaded[BindingConfig] | RefusedRecord]
+]:
+    """Every binding record in the file: its collection, identifier, and configuration or why it can't be read.
 
-    Linked scenes are left out: library data is read-only here, and its bindings belong to its library
+    Linked collections are left out: library data is read-only here, and its bindings belong to its library
     (source-access.md#canonical-candidate).
     """
-    for scene in bpy.data.scenes:
-        if scene.library is not None:
+    for collection in bpy.data.collections:
+        if collection.library is not None:
             continue
-        for binding_id in scene_bindings(scene):
-            result = records.read(scene, config_key(binding_id), CONFIG)
+        for binding_id in binding_ids(collection):
+            result = records.read(collection, config_key(binding_id), CONFIG)
             assert result is not None
-            yield scene, binding_id, result
+            yield collection, binding_id, result
+
+
+def binding_uids() -> frozenset[int]:
+    """The session_uids of the collections read_configs reads, without reading their records."""
+    return frozenset(c.session_uid for c in bpy.data.collections if c.library is None and binding_ids(c))
 
 
 def index_texts() -> list[bpy.types.Text]:
@@ -179,30 +165,15 @@ def index_texts() -> list[bpy.types.Text]:
     return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
 
 
-def read_tags() -> Iterator[tuple[bpy.types.Collection, Loaded[DestinationTag] | RefusedRecord]]:
-    """Every local collection with a destination tag, and the tag or why it can't be read.
-
-    These are each binding's destination, and every copy of one (source-access.md#copied-bindings).
-    """
-    for collection in bpy.data.collections:
-        if _tagged(collection):
-            tag = records.read(collection, TAG_KEY, TAG)
-            assert tag is not None  # _tagged found the record
-            yield collection, tag
-
-
-def tagged_uids() -> frozenset[int]:
-    """The session_uids of the collections read_tags gives, without reading their tags."""
-    return frozenset(collection.session_uid for collection in bpy.data.collections if _tagged(collection))
-
-
 def restore_index_entry(binding_id: identifiers.BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
-    """Add a binding's missing index entry, making the index's Text if the file has none; the index written, if any.
+    """Write a binding's index entry where it has none or one naming no collection; the index written, if any.
 
-    Raises as create_binding does, writing nothing; an entry the index has, even one naming no destination, is kept.
+    Makes the index's Text if the file has none.
+
+    Raises as create_binding does, writing nothing; an entry naming a collection is kept, and one naming none replaced.
     """
     text, index = _index()
-    if binding_id in index.destinations:
+    if index.destinations.get(binding_id) is not None:
         return None
     return _write_entry(text, index, binding_id, destination)
 
@@ -239,7 +210,3 @@ def _write_entry(
     written = BindingIndex(index.destinations | {binding_id: destination})
     records.write(text, INDEX_KEY, INDEX, written)
     return WrittenIndex(text, written)
-
-
-def _tagged(collection: bpy.types.Collection) -> bool:
-    return collection.library is None and has_tag(collection)

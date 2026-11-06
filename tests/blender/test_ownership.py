@@ -190,20 +190,24 @@ def test_a_bindings_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
         ownership_index.manifest(BindingId("not-a-binding"))
 
 
-def test_a_bindings_manifest_through_a_configuration_it_cannot_read(bindings: Bindings, tmp_path: Path) -> None:
-    handle, _ = _managed(bindings, tmp_path)
-    config = _scene()[NAMESPACE]["binding." + handle.binding_id]
+def test_a_bindings_manifest_is_read_though_its_configuration_cant_be(bindings: Bindings, tmp_path: Path) -> None:
+    # The manifest is on the destination beside the configuration, so it's found by where the record is.
+    handle, manifest = _managed(bindings, tmp_path)
+    named = {k: e.datablock.name for k, e in manifest.entries.items() if e.datablock is not None}
+    config = bpy.data.collections["Shot"][NAMESPACE]["binding." + handle.binding_id]
     config[VERSION_KEY] = 2
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
-    result = ownership_index.manifest(handle.binding_id)
-    assert isinstance(result, RefusedRecord)
-    assert result.kind == "binding"
+    read = ownership_index.manifest(handle.binding_id)
+    assert isinstance(read, Loaded)  # references from before the reopen are stale, so compared by name
+    assert {k: e.datablock.name for k, e in read.record.entries.items() if e.datablock is not None} == named
 
 
-def test_a_removed_destination_has_no_manifest(bindings: Bindings, tmp_path: Path) -> None:
+def test_a_removed_destination_takes_its_binding_and_manifest(bindings: Bindings, tmp_path: Path) -> None:
+    # DEST-05, DEST-07.
     handle, _ = _managed(bindings, tmp_path)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
-    assert ownership_index.manifest(handle.binding_id) is None  # the configuration's pointer was cleared
+    with pytest.raises(KeyError):
+        ownership_index.manifest(handle.binding_id)
 
 
 def test_dependents_invert_the_uses(bindings: Bindings, tmp_path: Path) -> None:

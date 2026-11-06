@@ -23,6 +23,7 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, publication
 from support.blend import save_and_reopen
+from support.destinations import destination
 
 from .published import datablocks, published_generation
 
@@ -68,7 +69,7 @@ def _ledger_entries() -> dict[str, object]:
 
 
 def _last_attempt(handle: BindingHandle) -> object:
-    return binding_state.read_last_attempt(_scene(), handle.binding_id)
+    return binding_state.read_last_attempt(destination(handle))
 
 
 def _raising(*_args: object, **_kwargs: object) -> None:

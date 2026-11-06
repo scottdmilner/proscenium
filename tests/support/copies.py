@@ -87,7 +87,7 @@ def _copy_collection(_: Path) -> bpy.types.Collection:
 def _deep_copy_collection(tmp_path: Path) -> None:
     """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1).
 
-    The objects copied, and the copy's manifest naming the copies, its tag the original's.
+    The objects copied, and the copy's manifest naming the copies, its other records the original's.
     """
     copy = _copy_collection(tmp_path)
     copies = {}
@@ -128,7 +128,7 @@ def _load(tmp_path: Path, attr: str, name: str, *, link: bool) -> list[bpy.types
 
 
 def _append(tmp_path: Path) -> None:
-    """Append the destination from a copy of the file, linking it under the scene: its tag brings its scene."""
+    """Append the destination from a copy of the file, linking it under the scene: its records bring their scene."""
     for collection in _load(tmp_path, "collections", "Shot", link=False):
         assert isinstance(collection, bpy.types.Collection)
         _scene().collection.children.link(collection)
@@ -146,11 +146,10 @@ def _append_index(tmp_path: Path) -> None:
 
 
 def _copy_records(_: Path) -> None:
-    """A script copies the binding's records, by assignment, onto a new scene and collection."""
+    """A script copies the binding's records, by assignment, onto a new collection on a new scene."""
     scene = bpy.data.scenes.new("Scripted")
-    destination = bpy.data.collections.new("ScriptedDest")
+    destination = bpy.data.collections.new("Shot Scripted")  # found after "Shot"
     scene.collection.children.link(destination)
-    scene[records.NAMESPACE] = _scene()[records.NAMESPACE]
     destination[records.NAMESPACE] = _shot()[records.NAMESPACE]
 
 
@@ -158,17 +157,15 @@ def _lose_index(_: Path) -> None:
     bpy.data.texts.remove(_index_text())
 
 
-def _remove_tag(_: Path) -> None:
-    del _shot()[records.NAMESPACE][configs.TAG_KEY]
-
-
 def _clear_entries(_: Path) -> None:
     _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations)))
 
 
 def _disagree(tmp_path: Path) -> None:
-    copy = _copy_collection(tmp_path)
-    _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations, copy)))
+    """A collection copy, and the index's entry naming a collection that holds neither's records."""
+    _copy_collection(tmp_path)
+    elsewhere = bpy.data.collections.new("Elsewhere")
+    _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations, elsewhere)))
 
 
 def _unreadable_index(_: Path) -> None:
@@ -201,9 +198,9 @@ ROUTES: dict[str, Callable[[Path], object]] = {
     "append": _append,
     "record-copy": _copy_records,
     "index-lost": _then(_lose_index, _copy_scene("FULL_COPY")),
+    "index-lost-collection-copy": _then(_lose_index, _copy_collection),
     "index-lost-linked-copy": _then(_lose_index, _copy_scene("LINK_COPY")),
     "entry-cleared": _then(_clear_entries, _copy_scene("LINK_COPY")),
-    "none-mutual": _then(_lose_index, _remove_tag, _copy_scene("LINK_COPY")),
     "index-disagrees": _disagree,
     "unreadable-index": _then(_unreadable_index, _copy_scene("FULL_COPY")),
     "two-indexes": _append_index,

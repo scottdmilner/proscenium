@@ -9,7 +9,7 @@ from proscenium.binding.results import Diagnostic, DiagnosticCategory, Diagnosti
 
 DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layers=("/a.usda",))
 UNATTACHED = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
-REMOVED = Diagnostic(DiagnosticCode.REMOVED_DESTINATION, "binding", "The destination was removed")
+FAILED = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "binding", "Evaluating the source failed")
 LEFTOVER = Diagnostic(DiagnosticCode.DISPOSAL_FAILED, "binding", "Couldn't dispose", resource="0" * 32, role="object")
 
 
@@ -23,7 +23,7 @@ def test_with_no_diagnostics_or_only_source_state_it_succeeds() -> None:
 def test_an_unavailable_source_or_a_fatal_failure_is_fatal() -> None:
     # DIAG-11: any fatal diagnostic makes the state fatal, whatever else the result holds.
     assert Result(UNATTACHED).state is ResultState.FATAL_FAILURE
-    assert Result(DIRTY, REMOVED).state is ResultState.FATAL_FAILURE
+    assert Result(DIRTY, FAILED).state is ResultState.FATAL_FAILURE
 
 
 def test_each_category_gives_the_state_the_spec_names() -> None:
@@ -49,17 +49,17 @@ def test_each_category_gives_the_state_the_spec_names() -> None:
 
 def test_a_repeated_problem_is_one_diagnostic() -> None:
     # DIAG-03: within one result, in the order first reported, with the first report's message.
-    reworded = Diagnostic(DiagnosticCode.REMOVED_DESTINATION, "binding", "Its collection is gone")
-    assert Result(REMOVED, DIRTY, REMOVED, reworded).diagnostics == (REMOVED, DIRTY)
+    reworded = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "binding", "The source couldn't be evaluated")
+    assert Result(FAILED, DIRTY, FAILED, reworded).diagnostics == (FAILED, DIRTY)
 
 
 def test_problems_about_different_things_stay_apart() -> None:
     other_layer = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layers=("/b.usda",))
-    other_binding = Diagnostic(DiagnosticCode.REMOVED_DESTINATION, "other", "The destination was removed")
-    assert Result(DIRTY, other_layer, REMOVED, other_binding).diagnostics == (
+    other_binding = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "other", "Evaluating the source failed")
+    assert Result(DIRTY, other_layer, FAILED, other_binding).diagnostics == (
         DIRTY,
         other_layer,
-        REMOVED,
+        FAILED,
         other_binding,
     )
 

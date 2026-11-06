@@ -126,6 +126,7 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 | Module | Use it to |
 |---|---|
 | `usd.py` | `open_fresh(path, load)`: open a stage that no stage cache can hand back. `binding_on_file(bindings, scene, root, ...)`: open a copied fixture and attach its stage under an independent key through `create_binding`. |
+| `destinations.py` | `destination(handle)`: the collection holding a binding's records, its destination, found through its canonical record. |
 | `blend.py` | `save_and_reopen(path)`: save and reopen the open file. Any bpy reference held across it is invalid afterwards. `collection_content(collection)`: a collection's objects as plain data (world matrices, parents, mesh geometry, and materials), read with bpy alone, to compare across a reopen or a process. |
 | `copies.py` | `run(route, tmp_path)`: run one of `F-OWNERSHIP-AMBIGUITY`'s copy routes on a published binding "Shot". `records_by_name()`: every record in the file, with ID pointers as names, and each collection's objects, to check that detection changed nothing. |
 | `manifests.py` | `key(name)`: a fixed entry key for an entry a test calls name, so assertions can name entries. `object_entry(datablock, entity, uses)`: an entry for a drawn copy's only object. |

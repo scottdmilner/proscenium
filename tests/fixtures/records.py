@@ -81,10 +81,10 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     The records are values, not files: tests store them in ID properties or load them directly.
     """
     current = {"label": "c", "count": 4, "enabled": False, "scale": 2.5}
-    # A valid configuration whose destination was removed (a cleared pointer).
+    # A valid configuration whose target scene was removed (a cleared pointer).
     binding = {
+        "scene": None,
         "root_layer_identifier": "/shot.usda",
-        "destination": None,
         "settings": {"payload_policy": "load_all"},
     }
     yield SchemaVersions(

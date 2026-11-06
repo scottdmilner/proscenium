@@ -202,16 +202,21 @@ FIXTURES: dict[str, Fixture] = {
                 # Handles by identifier, across undo and reopening; settings change only through set_settings.
                 Case("handles", SYNC, SUCCESS, ("API-01", "API-02", "API-03", "API-06", "API-07", "API-10"), 1),
                 # The configuration and the index entry creation writes, through save and reopen.
-                Case("configuration", SYNC, SUCCESS, ("STATE-01", "COPY-07"), 1),
+                Case("configuration", SYNC, SUCCESS, ("STATE-01", "STATE-08", "COPY-07"), 1),
                 # Reopening synchronizes nothing; attachment availability is covered by F-REATTACH.
                 Case("reopen", SYNC, SUCCESS, ("REOPEN-02",), 1),
                 # A persistent selection from two bindings through save and reopen.
                 Case("selection", SYNC, SUCCESS, ("ICON-24",), 1),
                 # Runtime indexes return current datablocks or nothing after undo, redo, load, and deletion.
                 Case("indexes", SYNC, SUCCESS, ("UNDO-07",), 1),
-                # A removed destination, through save and reopen: the binding is kept, owns nothing, and fails
-                # to synchronize.
-                Case("removed-destination", SYNC, FAILURE, ("DEST-01", "DEST-02", "DEST-03", "DEST-04"), 1),
+                # A removed destination, through save and reopen: the binding goes with it, its content is left
+                # unmanaged, and its index entry stays.
+                Case("removed-destination", SYNC, FAILURE, ("DEST-05", "DEST-07", "DEST-09"), 1),
+                # A removed target scene: the binding goes with it, and a destination that outlives it keeps its
+                # records, whose manifest still claims its content.
+                Case("removed-target-scene", SYNC, FAILURE, ("DEST-05", "DEST-08"), 1),
+                # Undoing the destination's removal restores the binding with its records.
+                Case("undone-removal", SYNC, SUCCESS, ("DEST-06",), 1),
             ),
         ),
         Fixture(
@@ -307,6 +312,10 @@ FIXTURES: dict[str, Fixture] = {
                 Case("unmanaged-user", CLEANUP, SUCCESS, ("PEND-02",), 1),
                 # Undo and redo restore the ledger with the ownership it tracks.
                 Case("undo", SYNC, FAILURE, ("PEND-05",), 1),
+                # A ledger write that fails as disposal records the leftovers raises, as a defect.
+                Case("ledger-write-fails", SYNC, FAILURE, ("API-05",), 1),
+                # Removing the destination leaves the leftovers and their ledger entries as they were.
+                Case("removed-destination", SYNC, FAILURE, ("DEST-09",), 1),
             ),
         ),
         Fixture(
@@ -339,22 +348,25 @@ FIXTURES: dict[str, Fixture] = {
                 # finds every candidate, the same after a rebuild and after save and reopen, and changes nothing.
                 *(
                     Case(route, SYNC, SUCCESS, COPY_ROUTE_ROWS, 1)
-                    for route in ("collection-copy", "deep-collection-copy", "linked-copy-scene", "append")
+                    for route in ("collection-copy", "deep-collection-copy", "append")
                 ),
+                # A linked-copy scene shares the destination, so the binding stays unique.
+                Case("linked-copy-scene", SYNC, SUCCESS, ("COPY-14", "COPY-15", "COPY-17"), 1),
                 Case("full-copy-scene", SYNC, SUCCESS, (*COPY_ROUTE_ROWS, "OWN-16"), 1),
                 Case("record-copy", SYNC, SUCCESS, COPY_ROUTE_ROWS, 1),
                 # A collection copied after the bindings' state was built is found at the next synchronization.
                 Case("found-at-synchronization", SYNC, SUCCESS, ("COPY-18",), 1),
-                # The index lost or cleared: the one candidate referring both ways is canonical, or none is.
-                Case("index-lost", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-04", "COPY-10", "COPY-16"), 1),
-                Case("index-lost-linked-copy", SYNC, SUCCESS, ("COPY-03", "COPY-10", "COPY-15"), 1),
-                Case("entry-cleared", SYNC, SUCCESS, ("COPY-03", "COPY-10"), 1),
-                Case("none-mutual", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-10", "COPY-16"), 1),
+                # The index lost or cleared: nothing decides between two candidates, and one is unique, its next
+                # write restoring the entry.
+                Case("index-lost", SYNC, FAILURE, ("COPY-02", "COPY-03", "COPY-04", "COPY-11", "COPY-16"), 1),
+                Case("index-lost-collection-copy", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-16"), 1),
+                Case("index-lost-linked-copy", SYNC, SUCCESS, ("COPY-14", "COPY-15", "COPY-19"), 1),
+                Case("entry-cleared", SYNC, SUCCESS, ("COPY-14", "COPY-19"), 1),
                 # Indexes the rule can't use: every candidate is disabled.
                 Case("two-indexes", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-14", "COPY-17"), 1),
                 Case("index-disagrees", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-16"), 1),
                 Case("unreadable-index", SYNC, FAILURE, ("COPY-02", "COPY-11", "COPY-14"), 1),
-                # A write to the canonical candidate restores its lost index entry; detection writes none.
+                # A write to a unique binding restores its lost index entry; detection writes none.
                 Case("restored-entry", SYNC, SUCCESS, ("COPY-19",), 1),
                 # Not copies: a linked binding is library data; an object duplicated has no manifest naming it.
                 Case("linked-binding", SYNC, SUCCESS, ("COPY-12", "COPY-14"), 1),

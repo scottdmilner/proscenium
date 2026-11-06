@@ -18,6 +18,7 @@ from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, Resul
 from proscenium.binding.runtime import ownership_index, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.synchronization import removal
+from support.destinations import destination
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -113,7 +114,7 @@ def test_a_failed_retirement_completes_with_issues(
         # Every other obsolete resource is gone, so only the leftovers add to the counts.
         remaining = {d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes)}
         assert remaining & old_uids == {d.session_uid for d in leftovers if d is not None}
-        attempt = binding_state.read_last_attempt(bpy.data.scenes["Scene"], handle.binding_id)
+        attempt = binding_state.read_last_attempt(destination(handle))
         assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
 
 

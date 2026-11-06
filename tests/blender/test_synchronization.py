@@ -28,6 +28,7 @@ from proscenium.binding.runtime import state
 from proscenium.binding.source_access.identifiers import BindingId
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
+from support.destinations import destination
 from support.usd import binding_on_file, open_fresh
 
 
@@ -72,7 +73,7 @@ def test_a_time_code_that_isnt_one_is_misuse(bindings: Bindings, tmp_path: Path)
 
 def _recorded(handle: BindingHandle) -> tuple[float | None, float | None]:
     """The time codes the binding's last attempt and its generation record."""
-    last = binding_state.read_last_attempt(_scene(), handle.binding_id)
+    last = binding_state.read_last_attempt(destination(handle))
     generation = binding_state.read_generation(bpy.data.collections["USD Display"])
     assert isinstance(last, records.Loaded) and isinstance(generation, records.Loaded)
     return last.record.time_code, generation.record.time_code
@@ -380,7 +381,7 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     assert stages is not None
     caller, evaluation = stages.live_stage, stages.evaluation_stage
     if unusable == "unreadable":
-        _scene()[records.NAMESPACE][configs.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+        destination(handle)[records.NAMESPACE][configs.config_key(handle.binding_id)][records.VERSION_KEY] = 99
     else:
         [text] = configs.index_texts()
         text.copy()  # two indexes naming the identity leave no canonical candidate

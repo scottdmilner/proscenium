@@ -7,7 +7,6 @@ checks on each hit.
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import bpy
@@ -323,10 +322,12 @@ def test_a_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
     obj = bpy.data.objects["Managed"]
     assert ownership_index.ownership(obj).claims
     bpy.data.collections.remove(bpy.data.collections["Shot"])
-    assert _resource(handle.binding_id, "a") is None  # though the object it named remains
-    assert ownership_index.manifest(handle.binding_id) is None
-    assert ownership_index.ownership(obj).claims == ()  # the manifest went with its collection
-    assert _config(handle).destination is None  # Blender cleared the pointer, and the state was rebuilt
+    # DEST-05, DEST-07: the binding went with its records, and its manifest with them, though the object remains.
+    assert runtime.binding_configs.find_binding(handle.binding_id) is None
+    assert _resource(handle.binding_id, "a") is None
+    with pytest.raises(KeyError):
+        ownership_index.manifest(handle.binding_id)
+    assert ownership_index.ownership(obj).claims == ()
 
 
 @pytest.mark.parametrize("asked", ["claims", "update"])
@@ -336,7 +337,7 @@ def test_a_destination_removed_before_the_ownership_index_is_built(
     # The state is built without the index; building it then finds the removed destination and rebuilds.
     ids, _ = _two_managed(bindings, tmp_path)
     runtime.state.invalidate()
-    assert _binding_ids() == ids
+    assert sorted(_binding_ids()) == sorted(ids)
     bpy.data.collections.remove(bpy.data.collections["Shot"])
     if asked == "claims":
         assert ownership_index.ownership(bpy.data.objects["Managed"]).claims == ()
@@ -344,37 +345,6 @@ def test_a_destination_removed_before_the_ownership_index_is_built(
         ownership_index.set_manifest_entries(ids[1], {key("c"): _entry(bpy.data.objects.new("C", None))})
         assert _resource(ids[1], "c") == bpy.data.objects["C"]
     assert [c.binding_id for c in ownership_index.ownership(bpy.data.objects["A"]).claims] == [ids[1]]
-
-
-def test_a_destination_change_after_another_bindings_destination_was_removed(
-    bindings: Bindings, tmp_path: Path
-) -> None:
-    # The change rebuilds the map of destinations from the configurations in memory, one of which names a
-    # removed collection; that binding's next check rebuilds the state.
-    ids, _ = _two_managed(bindings, tmp_path)
-    handle = BindingHandle(ids[0])
-    bpy.data.collections.remove(bpy.data.collections["Other"])
-    repaired = bpy.data.collections.new("Repaired")
-    _move_destination(ids[0], bpy.data.collections["Shot"], repaired)
-    runtime.binding_configs.set_config(ids[0], replace(_config(handle), destination=repaired))
-    assert _config(handle).destination == repaired
-    assert _config(BindingHandle(ids[1])).destination is None
-
-
-def _move_destination(binding_id: BindingId, old: bpy.types.Collection, new: bpy.types.Collection) -> None:
-    """What a repair moves with a binding's destination, so the old one isn't left as a copy.
-
-    Its tag and the index entry; the configuration is the caller's.
-    """
-    tag = records.read(old, configs.TAG_KEY, configs.TAG)
-    assert isinstance(tag, Loaded)
-    records.write(new, configs.TAG_KEY, configs.TAG, tag.record)
-    del old[records.NAMESPACE][configs.TAG_KEY]
-    [text] = configs.index_texts()
-    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(index, Loaded)
-    destinations = index.record.destinations | {binding_id: new}
-    records.write(text, configs.INDEX_KEY, configs.INDEX, configs.BindingIndex(destinations))
 
 
 def test_a_resource_is_read_through_its_bindings_manifest_alone(
@@ -398,22 +368,25 @@ def _copy_scene(kind: str) -> bpy.types.Scene:
 
 @pytest.mark.parametrize("kind", ["FULL_COPY", "LINK_COPY"])
 def test_a_scene_copy_made_after_the_state_was_built(bindings: Bindings, tmp_path: Path, kind: str) -> None:
-    # No handler announces a new scene. The copy is a candidate of the binding's identity, which the
-    # index names the original's destination, so the original stays canonical and the copy is reported,
-    # not listed on its scene (source-access.md#copied-bindings); its manifest counts as the oracle counts it.
+    # No handler announces a new scene. A full copy's destination is a candidate of the binding's identity, which
+    # the index names the original's, so the original stays canonical and the copy is reported, not listed on its
+    # scene (source-access.md#copied-bindings); a linked copy shares the destination, so it adds no candidate. The
+    # manifests count as the oracle counts them.
     handle = _managed(bindings, tmp_path)
     assert ownership_index.ownership(bpy.data.objects["Managed"]).claims  # the state, ownership included, is built
     copy = _copy_scene(kind)
     assert bindings.in_scene(copy) == []
     assert bindings.in_scene(_scene()) == [handle]
-    [copied] = bindings.copied()
-    assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
     assert _scene_of(handle.binding_id) == _scene()  # lookups use the canonical candidate
     oracle.assert_agrees()
     if kind == "FULL_COPY":
-        (copied,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
-        assert [c.destination for c in ownership_index.ownership(copied).claims] == [copy.collection.children[0]]
+        [copied] = bindings.copied()
+        assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
+        (copied_object,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
+        destination = copy.collection.children[0]
+        assert [c.destination for c in ownership_index.ownership(copied_object).claims] == [destination]
     else:  # the copy shares the destination, whose manifest counts once
+        assert bindings.copied() == []
         assert len(ownership_index.ownership(bpy.data.objects["Managed"]).claims) == 1
 
 
@@ -459,16 +432,17 @@ def test_publications_replace_only_their_share(
 
 
 def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_path: Path) -> None:
-    # Two identities whose configurations name one destination, as damage leaves them: a publication through
-    # the second keeps the claimant a rebuild finds, the first. The second's own destination is removed, so
-    # it has no copy there and stays unique.
+    # Two identities' records on one destination, as damage leaves them: a publication through the second keeps
+    # the claimant a rebuild finds, the first. The second's own destination is removed, so it has no copy and
+    # stays unique.
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
         other = binding_on_file(bindings, _scene(), scene.root, name="Other")
+    key_of_other = configs.config_key(other.binding_id)
+    shot = bpy.data.collections["Shot"]
+    shot[records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][records.NAMESPACE][key_of_other]
     bpy.data.collections.remove(bpy.data.collections["Other"])
-    runtime.binding_configs.set_config(
-        other.binding_id, replace(_config(other), destination=bpy.data.collections["Shot"])
-    )
+    runtime.state.invalidate()  # the records changed behind the state, as a script changes them
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     assert _ownership_view(ids, names)  # the index is built
     ownership_index.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
@@ -503,18 +477,17 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
         elsewhere = binding_on_file(bindings, other_scene, scene.root, name="Elsewhere")
         here = binding_on_file(bindings, _scene(), scene.root, name="Here")
     assert bindings.in_scene(_scene()) == [here]
+    assert bindings.in_scene(other_scene) == [elsewhere]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
     rebuilds = state.rebuild_count()
     assert bindings.in_scene(_scene()) == [here]
     assert state.rebuild_count() == rebuilds  # not checked, so nothing found to rebuild
-    assert _binding_ids() == [elsewhere.binding_id, here.binding_id]
+    assert _binding_ids() == [here.binding_id]  # DEST-05: removing its destination removed it
     assert state.rebuild_count() > rebuilds  # listing every binding checks it
-    assert _config(elsewhere).destination is None
     bpy.data.collections.remove(bpy.data.collections["Here"])
     rebuilds = state.rebuild_count()
-    assert bindings.in_scene(_scene()) == [here]
+    assert bindings.in_scene(_scene()) == []
     assert state.rebuild_count() > rebuilds
-    assert _config(here).destination is None
 
 
 def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -537,7 +510,7 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
     readable = bindings.create_binding(_scene(), name="A")
     unreadable = bindings.create_binding(_scene(), name="B")
-    _scene()[records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    bpy.data.collections["B"][records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
     runtime.state.invalidate()  # the record changed behind the state, as a load or undo changes it
     found = runtime.binding_configs.find_bindings()
     assert found == [
@@ -555,7 +528,7 @@ def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Pa
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(bindings, tmp_path)
     assert _binding_ids(_scene()) == [handle.binding_id]
-    del _scene()[records.NAMESPACE][configs.config_key(handle.binding_id)]
+    del bpy.data.collections["Shot"][records.NAMESPACE][configs.config_key(handle.binding_id)]
     assert _binding_ids(_scene()) == []
 
 
@@ -606,7 +579,8 @@ def test_writes_update_the_state_in_place(bindings: Bindings, tmp_path: Path, mo
         Claim(handle.binding_id, bpy.data.collections["Shot"], key("b")),
     )
     assert ownership_index.manifest(handle.binding_id) == Loaded(Manifest(entries), manifests.MANIFEST.version)
-    assert _config(handle).destination == bpy.data.collections["Shot"]
+    found = runtime.binding_configs.find_binding(handle.binding_id)
+    assert found is not None and found.destination == bpy.data.collections["Shot"]
 
 
 def test_the_cached_manifest_cant_be_changed_through_a_caller(bindings: Bindings, tmp_path: Path) -> None:

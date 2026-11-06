@@ -55,7 +55,6 @@ class DiagnosticCode(StrEnum):
     NO_ATTACHED_STAGE = "no-attached-stage"
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
     UNSUPPORTED_RECORD = "unsupported-record"  # a record the binding's operation needs can't be read
-    REMOVED_DESTINATION = "removed-destination"  # the binding has nowhere to display (lifecycle.md)
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
@@ -72,7 +71,6 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.NO_ATTACHED_STAGE: (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR),
     DiagnosticCode.SOURCE_CONFIRMATION_REQUIRED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.UNSUPPORTED_RECORD: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
-    DiagnosticCode.REMOVED_DESTINATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.COPIED_BINDING: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.EVALUATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.SOURCE_CHANGED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),

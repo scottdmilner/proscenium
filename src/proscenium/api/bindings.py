@@ -184,8 +184,8 @@ class Bindings:
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene.
 
-        Those whose canonical candidate is on it, and each binding with copies and no canonical candidate that has a
-        candidate on it.
+        Those whose canonical candidate names it, and each binding with copies and no canonical candidate that has a
+        candidate naming it.
         """
         return [BindingHandle(found.binding_id) for found in binding_configs.find_bindings(scene)]
 
@@ -249,15 +249,16 @@ class Bindings:
         The result names the time code attempted; a refusal before the attempt names only one given.
         """
         given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
-        state.refresh_if_tags_changed()  # a collection duplicated on its own since the state was built is a copy
+        state.refresh_if_records_changed()  # a collection duplicated on its own since the state was built is a copy
         found = self._found(binding_id)
         if not found.usable:
             return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))
         config = found.usable_config()
         result = transaction.synchronize(binding_id, config, self.stages, given)
         # Every failure before publication is fatal, and none after it (transaction.synchronize), so it published.
-        if result.state is not ResultState.FATAL_FAILURE and config.destination is not None:
-            generation = binding_state.read_generation(config.destination)
+        if result.state is not ResultState.FATAL_FAILURE:
+            assert found.destination is not None  # a usable binding's
+            generation = binding_state.read_generation(found.destination)
             assert isinstance(generation, records.Loaded)  # the one just published
             self.published[binding_id] = generation.record
             _push_undo("Synchronize USD Display")
@@ -305,12 +306,13 @@ class Bindings:
         out of date, as do a source change, a reload, an attachment, and reopening, until it synchronizes again.
         Raises as requested_settings does for a binding that isn't usable.
         """
-        config = self._found(binding_id).usable_config()
+        found = self._found(binding_id)
+        found.usable_config()  # raises for a binding that isn't usable
         published = self.published.get(binding_id)
         current = self.stages.get(binding_id)
-        if published is None or current is None or config.destination is None:
+        if published is None or current is None or found.destination is None:
             return True
-        shown = binding_state.read_generation(config.destination)
+        shown = binding_state.read_generation(found.destination)
         showing_it = isinstance(shown, records.Loaded) and shown.record == published
         return not showing_it or published.source_revision != current.source_revision
 

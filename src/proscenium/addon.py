@@ -18,7 +18,7 @@ class ProsceniumRecords(bpy.types.PropertyGroup):
 
 # Classes registered with Blender, in registration order.
 CLASSES = (ProsceniumRecords,)
-# The datablock types that carry records: binding configuration, destination tags, the binding index.
+# The datablock types that carry records: the persistent selection, a destination's binding records, the binding index.
 RECORD_TYPES = (bpy.types.Scene, bpy.types.Collection, bpy.types.Text)
 
 _registered = False

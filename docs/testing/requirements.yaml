@@ -546,7 +546,7 @@ requirements:
         oracle: "On each copy route F-OWNERSHIP-AMBIGUITY builds, including the full-copy scene and append, which copy a binding's record and destination together, the original binding is canonical and stays enabled, and every copy is disabled pending repair, on repeated detection and after save/reopen."
       - id: COPY-11
         quote: "Otherwise the rule cannot decide, and all candidates are disabled."
-        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), an index that can't be read, no index entry for the identity (the index host deleted), or an entry naming none of its candidates, beside a collection copy and beside a full-copy scene, every candidate is disabled pending repair."
+        oracle: "With two indexes naming the identity (an index host appended from another .blend, before the save drops it), an index that can't be read, no index entry for the identity (the index host deleted), or an entry naming none of its candidates, each beside a collection copy or a full-copy scene, every candidate is disabled pending repair."
       - id: COPY-19
         quote: "A write to a unique binding's records restores its index entry"
         oracle: "With the index's Text removed, or its entry naming no collection, set_settings on the unique binding writes an entry naming its destination, and the next full-copy scene leaves the original canonical; detection alone writes no index."
