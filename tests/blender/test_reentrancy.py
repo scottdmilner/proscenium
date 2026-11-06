@@ -1,6 +1,7 @@
-"""Calls made while a synchronization or a cleanup retry runs (source-access.md#source-consistency; M5 plan, D11).
+"""Calls made while a synchronization, a cache call, or a cleanup retry runs (source-access.md#source-consistency).
 
-On F-SOURCE-CHANGE (fixtures/transaction.py), with a second binding on the same stage. The calls are made from inside
+M5 plan, D11 and E1. On F-SOURCE-CHANGE (fixtures/transaction.py), with a second binding on the same stage. The calls
+are made from inside
 the evaluation step, by patching the core's SceneIndexChain, and from inside a retry's removal, by patching the removal
 module's function, so src/ has no hooks.
 """
@@ -57,10 +58,11 @@ def _held(bindings: Bindings, handles: Sequence[BindingHandle]) -> tuple[Any, ..
 def _calls(scene: TransactionScene, handle: BindingHandle) -> list[Callable[[], object]]:
     """The calls CONS-04 lists, on handle."""
     synchronize, attach = (lambda: handle.synchronize(0)), (lambda: handle.attach(scene.caller))
-    return [synchronize, attach, handle.release, handle.reload, handle.retry_cleanup]
+    cache = lambda: handle.cache([5])  # noqa: E731
+    return [synchronize, cache, attach, handle.release, handle.reload, handle.retry_cleanup]
 
 
-CALLS = 2 * 5  # each of _calls on the running binding and on the other
+CALLS = 2 * 6  # each of _calls on the running binding and on the other
 
 
 def _check_reentrant_calls(
@@ -101,6 +103,29 @@ def test_calls_during_a_synchronization_raise(
         assert isinstance(last, records.Loaded) and last.record.payload_policy is PayloadPolicy.LOAD_ALL
         monkeypatch.setattr(_core, "SceneIndexChain", chain)
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
+
+
+def test_calls_during_a_cache_call_raise(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # CONS-04 on F-SOURCE-CHANGE "reentrant": from inside a cache call's evaluation step, each call raises and changes
+    # nothing, set_settings writes the configuration, and the cache call then caches.
+    with transaction.source_change(tmp_path) as scene:
+        handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        chain = _core.SceneIndexChain
+        made: list[int] = []
+
+        def reentering(stage: Usd.Stage) -> _core.SceneIndexChain:
+            made.append(_check_reentrant_calls(bindings, scene, handle, other))
+            assert other.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
+            return chain(stage)
+
+        monkeypatch.setattr(_core, "SceneIndexChain", reentering)
+        result = handle.cache([10])
+        assert made == [CALLS]  # once
+        assert result.state is ResultState.SUCCESS
+        generation = binding_state.read_generation(destination(handle))
+        assert isinstance(generation, records.Loaded) and generation.record.cached_time_codes == (10.0,)
+        assert other.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
 
 
 def test_calls_during_a_cleanup_retry_raise(

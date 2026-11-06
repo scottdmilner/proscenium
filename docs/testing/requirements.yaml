@@ -425,6 +425,11 @@ requirements:
         fixtures: [F-CACHED-TIME-CODES]
         delivery: M5
         oracle: "handle.cache and Bindings.cache take a collection of time codes, one included, and return a result whose time codes are those it cached."
+      - id: API-14
+        quote: "The default time code isn't one to cache: passing it is misuse, and the call raises and caches nothing."
+        fixtures: [F-CACHED-TIME-CODES]
+        delivery: M5
+        oracle: "On F-CACHED-TIME-CODES, a cache call whose time codes include the default time code raises ValueError, and the generation is as before."
       - id: API-13
         quote: "returns an immutable result (Diagnostics) holding its result state; its own deduplicated diagnostics"
         fixtures: [F-FAILED-SETTINGS, F-PREPARATION-CLEANUP-FAILURE]

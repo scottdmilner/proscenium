@@ -235,7 +235,8 @@ def cached_time_codes(dest: Path) -> Generator[CachedTimeCodesScene]:
     Each cached time code's placeholder transforms are translation's at it, with no new generation, no last
     attempt, and no undo step; the failing call leaves the generation's cached time codes 0, 5, 10, and 20
     and its keys as they were. A generation synchronized at the default time code caches nothing and
-    succeeds. Synchronizing again at 10 gives a generation holding 10 alone.
+    succeeds, and passing cache the default time code raises, caching nothing. Synchronizing again at 10 gives a
+    generation holding 10 alone.
     """
     yield CachedTimeCodesScene(
         **vars(_open(dest)),

@@ -20,8 +20,7 @@ from ..binding.persistence import binding_state, ledgers, manifests, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.runtime import binding_configs, pending_cleanup
 from ..binding.source_access import stages
-from ..core import _core
-from . import application, prepared_work, publication, retirement
+from . import application, evaluation, prepared_work, publication, retirement
 
 if TYPE_CHECKING:
     import bpy
@@ -83,36 +82,16 @@ def _attempt(
     policy = config.settings.payload_policy
     stages_ = current.attached(binding_id)
     try:
-        evaluation = stages_.acquire(policy)
+        evaluation_stage = stages_.acquire(policy)
     except stages.SourceUnavailableError as error:
         return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
     revision = stages_.source_revision
-    own: tuple[Diagnostic, ...] = ()
-    if dirty := stages.dirty_layers(evaluation):
-        message = "Displaying layers with unsaved in-process edits"
-        own = (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))),)
-
+    own = evaluation.source_state(binding_id, evaluation_stage)
     # Before preparation nothing in Blender has changed, so a failure only reports.
-    try:
-        with stages_.changed_layers() as changed:
-            chain = _core.SceneIndexChain(evaluation)
-            try:
-                snapshot = chain.capture(time_code)
-            finally:
-                chain.release()  # the core never keeps the stage alive
-            if changed:  # what was captured may mix the source before and after the change (CONS-03)
-                message = "A contributing layer changed during evaluation, so the attempt was discarded"
-                layers = tuple(sorted(changed))
-                return (*own, Diagnostic(DiagnosticCode.SOURCE_CHANGED, binding_id, message, layers=layers))
-    except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
-        failed = Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
-        return (*own, failed)
-    try:
-        context = _core.PlanningContext(scene.unit_settings.scale_length, application.REPRESENTATION_VERSION)
-        plan = _core.plan(snapshot, context)
-    except Exception as error:  # noqa: BLE001
-        failed = Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")
-        return (*own, failed)
+    planned = evaluation.plans(binding_id, stages_, evaluation_stage, scene, (time_code,))
+    if isinstance(planned, Diagnostic):
+        return (*own, planned)
+    [plan] = planned
 
     work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record

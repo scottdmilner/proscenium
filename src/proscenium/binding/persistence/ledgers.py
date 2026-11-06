@@ -46,6 +46,7 @@ class OriginatingOperation(StrEnum):
     """The operation that left a resource pending."""
 
     SYNCHRONIZE = "synchronize"
+    CACHE = "cache"
 
 
 def new_ledger_key() -> str:

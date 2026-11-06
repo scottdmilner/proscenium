@@ -263,6 +263,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("failed-call", Operation.CACHE, FAILURE, ("CACHE-03", "CACHE-11"), 1),
                 # A generation at the default time code has nothing to cache.
                 Case("default-time-code", Operation.CACHE, SUCCESS, ("CACHE-06",), 1),
+                # The default time code passed to cache is misuse: the call raises, caching nothing.
+                Case("default-time-code-given", Operation.CACHE, FAILURE, ("API-14",), 1),
                 # Synchronizing again holds only the new time code.
                 Case("synchronize-again", SYNC, SUCCESS, ("CACHE-07",), 1),
             ),

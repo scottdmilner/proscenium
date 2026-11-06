@@ -2,6 +2,7 @@
 
 A synchronization runs the transaction (proscenium.synchronization) on a binding found usable, at the time code given
 or else, as the transaction chooses it, the target scene's current frame's.
+A cache call caches time codes in the published generation of a binding found usable, without synchronizing.
 
 A binding's configuration is its records (proscenium.binding.persistence.configs), which this module reaches only
 through proscenium.binding.runtime.binding_configs, which reads and writes them when called. Its
@@ -13,7 +14,8 @@ A binding refuses the operations that need its configuration when the configurat
 pending repair (source-access.md#copied-bindings). Either way it keeps everything it has. A handle reaches a
 binding's canonical candidate, and copied() reports the others.
 
-A synchronization that publishes, and a cleanup retry that commits, push one undo step each, and nothing else does;
+A synchronization that publishes, and a cleanup retry that commits, push one undo step each, and nothing else does,
+a cache call included;
 none in background mode or with global undo off (lifecycle.md#undo-and-runtime-state). An operator calling the API
 doesn't declare UNDO, so it adds no second step.
 
@@ -22,12 +24,13 @@ a refusal's included.
 
 Each kind of call reports a refusal one way:
 
-- An operation (attach, synchronize, set_settings, reload, retry_cleanup) returns a result whose diagnostic says why.
+- An operation (attach, synchronize, cache, set_settings, reload, retry_cleanup) returns a result whose diagnostic
+  says why.
 - The queries requested_settings and possibly_out_of_date raise RefusedRecordError for a configuration that can't be
   read, and DisabledBindingError for a disabled binding (FoundBinding.usable_config).
 - A call needing records raises BindingNotFoundError for a binding that doesn't exist, which is misuse.
-- While synchronize or retry_cleanup runs, a call to either, attach, release, or reload on any binding raises
-  ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
+- While synchronize, cache, or retry_cleanup runs, a call to any of them, attach, release, or reload on any binding
+  raises ReentrantCallError before changing anything, which is misuse too; set_settings may be called (CONS-04).
 - Release clears runtime stages directly and remains valid after undo or removal.
 - A failed write to the pending-cleanup ledger is a defect, and raises (pipeline.md#synchronization-transaction).
 """
@@ -46,7 +49,7 @@ from ..binding.persistence import binding_state, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_configs, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
-from ..synchronization import cleanup_retry, transaction
+from ..synchronization import caching, cleanup_retry, transaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -83,7 +86,7 @@ def _not_while_exclusive[**P, R](
     @functools.wraps(operation)
     def checked(bindings: Bindings, *args: P.args, **kwargs: P.kwargs) -> R:
         if bindings.running:
-            raise ReentrantCallError("Called while a synchronization or a cleanup retry is running")
+            raise ReentrantCallError("Called while a synchronization, a cache call, or a cleanup retry is running")
         return operation(bindings, *args, **kwargs)
 
     return checked
@@ -109,7 +112,7 @@ class BindingNotFoundError(LookupError):  # misuse, raised like KeyError
 
 
 class ReentrantCallError(RuntimeError):  # misuse
-    """A call that can't run while a synchronization or a cleanup retry is running was made during one."""
+    """A call that can't run during a synchronization, a cache call, or a cleanup retry was made during one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +136,10 @@ class BindingHandle:
     def synchronize(self, time_code: Usd.TimeCode | float | None = None) -> Result:
         """Synchronize at time_code, or at the target scene's current frame's (Bindings.synchronize)."""
         return BINDINGS.synchronize(self.binding_id, time_code)
+
+    def cache(self, time_codes: Iterable[Usd.TimeCode | float]) -> Result:
+        """Cache the published generation at each of time_codes without synchronizing (Bindings.cache)."""
+        return BINDINGS.cache(self.binding_id, time_codes)
 
     def set_settings(self, *, payload_policy: stages.PayloadPolicy | None = None) -> Result:
         """Record requested settings without synchronizing (Bindings.set_settings)."""
@@ -163,7 +170,7 @@ class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
     stages: stage_tracking.CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
-    running: bool  # whether an exclusive operation, synchronize or retry_cleanup, is running
+    running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
     published: dict[identifiers.BindingId, binding_state.Generation]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
@@ -263,6 +270,23 @@ class Bindings:
             _push_undo("Synchronize USD Display")
         return result
 
+    @_exclusive
+    @_reporting_cleanup
+    def cache(self, binding_id: identifiers.BindingId, time_codes: Iterable[Usd.TimeCode | float]) -> Result:
+        """Cache the published generation at each of time_codes not yet cached (proscenium.synchronization.caching).
+
+        One time code is a collection of one. The call publishes no generation, records no last attempt, and pushes no
+        undo step (UNDO-09). The result names the time codes it attempted, those not cached before. Raises ValueError,
+        caching nothing, for the default time code, which isn't one to cache.
+        """
+        given = [Usd.TimeCode(t) for t in time_codes]  # ones caching can use, or a TypeError now
+        if any(t.IsDefault() for t in given):
+            raise ValueError("The default time code isn't one to cache")
+        found = self._found(binding_id)
+        if not found.usable:
+            return _refused(found)
+        return caching.cache(binding_id, found.usable_config(), self.stages, given)
+
     @_not_while_exclusive
     @_reporting_cleanup
     def reload(self, binding_id: identifiers.BindingId, layers: Iterable[str] | None = None) -> Result:
@@ -300,10 +324,10 @@ class Bindings:
     def possibly_out_of_date(self, binding_id: identifiers.BindingId) -> bool:
         """Whether the binding's display may not show its source as it is now (lifecycle.md#undo-and-runtime-state).
 
-        It's current only while it shows the generation this session last published for the binding, and the source
-        is still at that generation's revision. So an undo or redo that restores another generation makes it possibly
-        out of date, as do a source change, a reload, an attachment, and reopening, until it synchronizes again.
-        Raises as requested_settings does for a binding that isn't usable.
+        It's current only while it shows the generation this session last published for the binding, with any time codes
+        cached in it since, and the source is still at that generation's revision. So an undo or redo that restores
+        another generation makes it possibly out of date, as do a source change, a reload, an attachment, and
+        reopening, until it synchronizes again. Raises as requested_settings does for a binding that isn't usable.
         """
         found = self._found(binding_id)
         found.usable_config()  # raises for a binding that isn't usable
@@ -312,7 +336,7 @@ class Bindings:
         if published is None or current is None or found.destination is None:
             return True
         shown = binding_state.read_generation(found.destination)
-        showing_it = isinstance(shown, records.Loaded) and shown.record == published
+        showing_it = isinstance(shown, records.Loaded) and _synchronized(shown.record) == _synchronized(published)
         return not showing_it or published.source_revision != current.source_revision
 
     def live_stage(self, binding_id: identifiers.BindingId) -> Usd.Stage | None:
@@ -353,6 +377,11 @@ def _push_undo(message: str) -> None:
     """
     if _pushes_undo():
         bpy.ops.ed.undo_push(message=message)
+
+
+def _synchronized(generation: binding_state.Generation) -> binding_state.Generation:
+    """Generation as its synchronization published it, before any time codes were cached in it."""
+    return dataclasses.replace(generation, cached_time_codes=())
 
 
 def _unavailable(binding_id: identifiers.BindingId, error: stages.SourceUnavailableError) -> Result:
