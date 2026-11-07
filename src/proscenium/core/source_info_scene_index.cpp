@@ -97,7 +97,7 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, boo
         auto overlay = [&added](const HdContainerDataSourceHandle& more) {
           if (more) added = added ? HdOverlayContainerDataSource::New(added, more) : more;
         };
-        if (const HdContainerDataSourceHandle info = SourceInfo(prim, imaged))
+        if (const HdContainerDataSourceHandle info = SourceInfo(prim, imaged, *self->globals_))
           overlay(HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info));
         if (!imaged) overlay(UsdImagingDataSourcePrim::New(prim.GetPath(), prim, *self->globals_));
         if (ComputesExtent(prim) && !UsdGeomBoundable(prim).GetExtentAttr().HasAuthoredValue()) {

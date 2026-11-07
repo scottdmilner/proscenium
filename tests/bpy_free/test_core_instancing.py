@@ -63,11 +63,11 @@ def test_transforms_copies_and_contexts(transforms: evaluation.TransformsScene) 
 def test_nested_copies_and_contexts(stress: appearance.StressScene) -> None:
     plan = plan_at(stress.stage, 0.0)
     shown = copies(plan)
-    assert set(shown) == set(stress.world)
+    assert set(shown) == stress.viewport | stress.render  # its guides, never explicitly visible, leave the plan
     for path, copy in shown.items():
         assert_world(copy, stress.world[path])
     contexts = _contexts(plan)
-    assert contexts == {path: _usd_context(stress.stage, path) for path in stress.world}
+    assert contexts == {path: _usd_context(stress.stage, path) for path in shown}
     assert max(len(c) for c in contexts.values()) == 2  # nested instances, so the check above covers nesting
 
 

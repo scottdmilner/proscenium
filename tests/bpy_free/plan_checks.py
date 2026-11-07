@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, cast
 
 from pxr import Gf, Usd
 
+from fixtures import evaluation
 from proscenium.core import _core
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 XYZ = tuple[float, float, float]
 
@@ -27,13 +29,15 @@ class Copy:
     geometry: int  # in geometries; -1 for none
     placeholder: int  # in placeholder_bounds; -1 for none
     bounds: tuple[float, ...]  # local: its geometry's extent, else its placeholder's bounds; empty for none
+    viewport: bool  # displays in the viewport
+    render: bool  # displays in the final render
 
 
-def plan_at(stage: Usd.Stage, time: float) -> _core.Plan:
+def plan_at(stage: Usd.Stage, time: float, settings: _core.PlanSettings = SETTINGS) -> _core.Plan:
     """The plan of one capture at `time`, with the chain released."""
     chain = _core.SceneIndexChain(stage)
     try:
-        return _core.plan(chain.capture(Usd.TimeCode(time)), CONTEXT)
+        return _core.plan(chain.capture(Usd.TimeCode(time)), settings, CONTEXT)
     finally:
         chain.release()
 
@@ -45,6 +49,7 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
     geometries = memoryview(plan.copy_geometries).tolist()
     placeholders = memoryview(plan.copy_placeholders).tolist()
     bounds = memoryview(plan.placeholder_bounds).tolist()
+    viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
     extents = [tuple(memoryview(g.extent).tolist()) for g in plan.geometries]
     sources = {c.element: c.source for c in plan.correspondence}
     shown: dict[str, Copy] = {}
@@ -55,7 +60,9 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
             local = tuple(bounds[6 * placeholder : 6 * placeholder + 6]) if placeholder >= 0 else ()
         (bounds_mesh,) = plan.resources[obj].uses
         world = Gf.Matrix4d(*worlds[16 * copy : 16 * copy + 16])  # row-major, USD's layout
-        shown[sources[obj]] = Copy(obj, bounds_mesh, world, geometry, placeholder, local)
+        shown[sources[obj]] = Copy(
+            obj, bounds_mesh, world, geometry, placeholder, local, bool(viewport[copy]), bool(render[copy])
+        )
     return shown
 
 

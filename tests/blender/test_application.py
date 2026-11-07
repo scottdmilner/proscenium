@@ -36,10 +36,11 @@ if TYPE_CHECKING:
     from proscenium.synchronization.prepared_work import PreparedWork
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _plan(stage: Usd.Stage, time_code: float) -> _core.Plan:
-    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), CONTEXT)
+    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -139,6 +140,26 @@ def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path:
                 continue
             assert _close(obj.matrix_world, expected[source]), source
             assert _close(prepared[source].matrix_world, expected[source]), source
+
+
+def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_path: Path) -> None:
+    # The plan's participation as Blender's hide flags, on F-VISIBILITY-PURPOSE: an invisible copy hidden in both.
+    with evaluation.visibility_purpose(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        work = _prepared(_binding(bindings), plan)
+        hidden = {
+            work.entries[_key(work, obj)].covers[0]: (obj.hide_viewport, obj.hide_render)
+            for obj in work.staging.objects
+        }
+        assert hidden == {
+            path: (
+                not scene.displays(path, 0.0, evaluation.VIEWPORT_PURPOSES),
+                not scene.displays(path, 0.0, evaluation.RENDER_PURPOSES),
+            )
+            for path, purpose in scene.purpose.items()
+            if purpose != "guide"  # never explicitly visible, so not planned
+        }
+        assert hidden["/World/Hidden/Child"] == (True, True)
 
 
 def _close(shown: Matrix, expected: Matrix) -> bool:

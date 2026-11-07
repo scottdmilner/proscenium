@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace proscenium {
@@ -34,14 +35,21 @@ struct InstancerRecord {
   PXR_NS::VtArray<PXR_NS::SdfPath> prototypes;
   std::vector<PXR_NS::VtIntArray> instanceIndices;     // per prototype
   PXR_NS::VtArray<PXR_NS::SdfPath> instanceLocations;  // native instancers only
+  PXR_NS::VtBoolArray mask;                            // per instance; empty: all visible
 };
+
+// (purpose, token) pairs, for each purpose with an opinion.
+using PurposeVisibility = std::vector<std::pair<PXR_NS::TfToken, PXR_NS::TfToken>>;
 
 struct PrimRecord {
   PXR_NS::SdfPath path;
   PXR_NS::TfToken type;
-  bool isGprim = false;           // source-info filter: a gprim by its USD type, for a prim Hydra doesn't image
-  bool resetsXformStack = false;  // source-info filter: USD's resetXformStack, which flattening hides
-  PXR_NS::SdfPath originPath;     // primOrigin/scenePath: prototype-relative inside prototypes
+  bool isGprim = false;                 // source-info filter: a gprim by its USD type, for a prim Hydra doesn't image
+  bool resetsXformStack = false;        // source-info filter: USD's resetXformStack, which flattening hides
+  bool visible = true;                  // flattened
+  PXR_NS::TfToken purpose;              // flattened, in Hydra's names (USD's default is geometry); empty for none
+  PurposeVisibility purposeVisibility;  // source-info filter: authored guide, proxy, and render visibility
+  PXR_NS::SdfPath originPath;           // primOrigin/scenePath: prototype-relative inside prototypes
   std::optional<PXR_NS::GfMatrix4d> matrix;  // flattened
   std::optional<PXR_NS::GfRange3d> extent;   // local
   std::vector<PrimvarRecord> primvars;       // the snapshot's, PlannedPrimvars() only
@@ -50,6 +58,8 @@ struct PrimRecord {
 
   // Null when the prim has no such primvar.
   [[nodiscard]] const PrimvarRecord* FindPrimvar(const PXR_NS::TfToken& name) const;
+  // Null when the prim has no authored visibility for the purpose.
+  [[nodiscard]] const PXR_NS::TfToken* PurposeVisibilityOf(const PXR_NS::TfToken& forPurpose) const;
 };
 
 // Every prim of a snapshot, depth-first with parents before children, and indexed by path.

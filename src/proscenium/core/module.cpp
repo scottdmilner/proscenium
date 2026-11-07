@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <pxr/external/boost/python.hpp>
+#include <pxr/external/boost/python/stl_iterator.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -73,10 +74,29 @@ SnapshotView Capture(SceneIndexChain& chain, const UsdTimeCode& time) {
   });
 }
 
-PlanView MakePlan(const SnapshotView& snapshot, const PlanningContext& context) {
+// Each purpose name in an iterable of strings.
+TfTokenVector Tokens(const bp::object& names) {
+  TfTokenVector tokens;
+  for (bp::stl_input_iterator<std::string> name(names), end; name != end; ++name) tokens.emplace_back(*name);
+  return tokens;
+}
+
+bp::tuple TokenStrings(const TfTokenVector& tokens) {
+  bp::list items;
+  for (const TfToken& token : tokens) items.append(token.GetString());
+  return bp::tuple(items);
+}
+
+std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const bp::object& render) {
+  TfTokenVector viewportPurposes = Tokens(viewport);
+  TfTokenVector renderPurposes = Tokens(render);
+  return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes); });
+}
+
+PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   return Guarded([&] {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
-    return PlanView{BuildPlan(*snapshot.data, context)};
+    return PlanView{BuildPlan(*snapshot.data, settings, context)};
   });
 }
 
@@ -89,6 +109,12 @@ bp::dict HydraComposedWorldsDict(const SnapshotView& snapshot) {
 }
 
 void WrapPlan() {
+  bp::class_<PlanSettings, std::shared_ptr<PlanSettings>>("PlanSettings", bp::no_init)
+      .def("__init__", bp::make_constructor(&NewPlanSettings, bp::default_call_policies(),
+                                            (bp::arg("viewport_purposes"), bp::arg("render_purposes"))))
+      .add_property(
+          "viewport_purposes", +[](const PlanSettings& s) { return TokenStrings(s.viewportPurposes); })
+      .add_property("render_purposes", +[](const PlanSettings& s) { return TokenStrings(s.renderPurposes); });
   bp::class_<PlanningContext>("PlanningContext",
                               bp::init<double, int>((bp::arg("unit_scale"), bp::arg("representation_version"))))
       .add_property(
@@ -142,8 +168,12 @@ void WrapPlan() {
           "copy_placeholders", +[](const PlanView& p) { return p.data->copyPlaceholders; })
       .add_property(
           "placeholder_bounds", +[](const PlanView& p) { return p.data->placeholderBounds; })
+      .add_property(
+          "copy_viewport", +[](const PlanView& p) { return p.data->copyViewport; })
+      .add_property(
+          "copy_render", +[](const PlanView& p) { return p.data->copyRender; })
       .add_property("geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); });
-  bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("context")));
+  bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }
 

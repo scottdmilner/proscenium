@@ -6,10 +6,13 @@
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/usd/usdGeom/boundable.h>
 #include <pxr/usd/usdGeom/gprim.h>
+#include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/nurbsPatch.h>
 #include <pxr/usd/usdGeom/pointBased.h>
+#include <pxr/usd/usdGeom/tokens.h>
 #include <pxr/usd/usdGeom/xformable.h>
+#include <pxr/usdImaging/usdImaging/dataSourceAttribute.h>
 
 #include <utility>
 #include <vector>
@@ -57,7 +60,8 @@ HdDataSourceBaseHandle LazyContainer::Get(const TfToken& name) {
   return built ? built->Get(name) : nullptr;
 }
 
-HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged) {
+HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
+                                       const UsdImagingDataSourceStageGlobals& globals) {
   TfTokenVector names;
   std::vector<HdDataSourceBaseHandle> values;
   const HdDataSourceBaseHandle yes = HdRetainedTypedSampledDataSource<bool>::New(true);
@@ -71,6 +75,16 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged) {
   if (const UsdGeomXformable xformable{prim}; xformable && xformable.GetResetXformStack()) {
     names.push_back(SourceInfoTokens::ResetsXformStack());
     values.push_back(yes);
+  }
+  // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy.
+  if (const UsdGeomImageable imageable{prim}) {
+    for (const TfToken& purpose : {UsdGeomTokens->guide, UsdGeomTokens->proxy, UsdGeomTokens->render}) {
+      const UsdAttribute attribute = imageable.GetPurposeVisibilityAttr(purpose);
+      if (!attribute || !attribute.HasAuthoredValue()) continue;
+      names.push_back(purpose);
+      values.push_back(UsdImagingDataSourceAttributeNew(attribute, globals, prim.GetPath(),
+                                                        HdDataSourceLocator(SourceInfoTokens::Schema(), purpose)));
+    }
   }
   if (names.empty()) return nullptr;
   return HdRetainedContainerDataSource::New(names.size(), names.data(), values.data());

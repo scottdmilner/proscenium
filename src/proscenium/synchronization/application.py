@@ -2,7 +2,7 @@
 
 Each of the plan's drawn copies becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, a mesh's provisional geometry description's or a placeholder's, or no vertices when the
-plan has none. They're prepared in a staging collection no scene
+plan has none, hidden in each destination it doesn't display in. They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
 generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
@@ -12,7 +12,7 @@ The roles are a copy's, so each prepared resource takes the key of the published
 A cache call has it key the published copies' transforms at the time codes it caches, in an action per object
 (key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the keys it
 added and unassigns the actions it made. M7 replaces this layer; a sheared world transform, which needs a shear
-parent, is M7's, as are cached bounds and content appearing at a cached time code.
+parent, is M7's, as are cached bounds, visibility, and content appearing at a cached time code.
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     ]
     keys = manifests.entry_keys(published, identities)
     worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
+    viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
     for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
         (mesh_index,) = resources[object_index].uses  # its bounds mesh
         mesh_key, object_key = keys[mesh_index], keys[object_index]
@@ -58,6 +59,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         work.track(object_key, identities[object_index].role, obj)
         work.staging.objects.link(obj)
         obj.display_type = "BOUNDS"
+        obj.hide_viewport, obj.hide_render = not viewport[copy], not render[copy]
         obj.matrix_world = _world(worlds, copy)
         for index, key, datablock in (
             (mesh_index, mesh_key, mesh),

@@ -1,5 +1,5 @@
 # Types of the compiled core, proscenium.core._core (module.cpp), so ty checks its callers without a build.
-from collections.abc import Buffer
+from collections.abc import Buffer, Iterable
 
 from pxr import Gf, Usd
 
@@ -27,6 +27,18 @@ class SceneIndexChain:
 
 class Snapshot:
     """An immutable capture at one time code, which only planning reads."""
+
+class PlanSettings:
+    """The binding settings planning reads: each destination's USD purposes. Raises ValueError for another name.
+
+    The planner adds guide to the viewport's, so a guide explicitly visible displays there.
+    """
+
+    def __init__(self, viewport_purposes: Iterable[str], render_purposes: Iterable[str]) -> None: ...
+    @property
+    def viewport_purposes(self) -> tuple[str, ...]: ...  # sorted, each once
+    @property
+    def render_purposes(self) -> tuple[str, ...]: ...
 
 class PlanningContext:
     """Plain values captured before planning. Raises ValueError for a unit scale not positive and finite."""
@@ -106,9 +118,13 @@ class Plan:
     @property
     def placeholder_bounds(self) -> Buffer: ...  # 'f', 6 each: local (min x, y, z, max x, y, z)
     @property
+    def copy_viewport(self) -> Buffer: ...  # '?': whether it displays in the viewport
+    @property
+    def copy_render(self) -> Buffer: ...  # '?': whether it displays in the final render
+    @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
 
-def plan(snapshot: Snapshot, context: PlanningContext) -> Plan: ...  # ValueError for an unplanned version
+def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version
 
 # EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform, by source,
 # as Hydra's own values compose it, ignoring a reset transform stack inside an instance. Only the known-gap check for

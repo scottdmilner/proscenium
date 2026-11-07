@@ -1,7 +1,7 @@
 // Provisional (M6 plan, B3; M10 completes them): the drawn copies of a prim inside native instances, mapped back from
 // Hydra's instancers to composed-stage sources, as HdxPrimOriginInfo does: walk instancedBy upward and fold in each
 // level's instanceLocations and instance transforms. Sources and contexts are never Hydra paths or instance indices.
-// Visibility through instancers is C2's; a point instancer's prototypes have no copies (DEFER-01).
+// A point instancer's prototypes have no copies (DEFER-01).
 #pragma once
 
 #include <pxr/base/gf/matrix4d.h>
@@ -16,18 +16,32 @@
 namespace proscenium {
 
 // One drawn copy of a prototype's contents: where its Hydra namespace sits on the composed stage, its instance
-// context, and the transform it takes from its instance roots.
+// context, and the transform and visibility it takes from its instance roots.
 struct DrawnCopy {
   PXR_NS::SdfPath hydraRoot = PXR_NS::SdfPath::AbsoluteRootPath();
   PXR_NS::SdfPath usdRoot = PXR_NS::SdfPath::AbsoluteRootPath();
   PXR_NS::SdfPathVector context;  // native-instance roots on the composed stage, outermost first
   PXR_NS::GfMatrix4d world{1.0};  // the innermost instance root's, USD's row-vector convention
+  bool visible = true;            // every enclosing instancer's mask, which folds in each instance root's visibility
+  // The nearest authored guide, proxy, and render visibility at or above the innermost instance root, per purpose.
+  PurposeVisibility purposeVisibility;
 
   // The composed-stage path of the Hydra prim at `hydraPath` in this copy: an instance-proxy path inside instances.
   [[nodiscard]] PXR_NS::SdfPath Map(const PXR_NS::SdfPath& hydraPath) const {
     return hydraPath.ReplacePrefix(hydraRoot, usdRoot);
   }
 };
+
+// The nearest authored visibility opinion for the prim's own purpose, in one drawn copy: in the prototype, then up
+// through the instance roots. Null for a prim of the default purpose (Hydra's geometry), and for no opinion. Hydra
+// doesn't image UsdGeomVisibilityAPI, so the opinions come from the source-info filter.
+const PXR_NS::TfToken* PurposeVisibilityOpinion(const PrimTable& table, const PrimRecord& prim, const DrawnCopy& copy);
+
+// UsdGeomImageable::ComputeEffectiveVisibility for the prim's own purpose, in one drawn copy: invisible if its
+// visibility or its copy's is; otherwise a default-purpose prim is visible, and any other takes its nearest opinion,
+// "inherited" included, as in UsdGeom. With none, a guide is invisible and a proxy or render prim visible. A guide
+// is visible only when explicitly so (VIS-04).
+bool EffectivelyVisible(const PrimTable& table, const PrimRecord& prim, const DrawnCopy& copy);
 
 class InstanceResolver {
  public:

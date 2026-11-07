@@ -5,7 +5,10 @@
 #include <pxr/imaging/hd/instancerTopologySchema.h>
 #include <pxr/imaging/hd/primOriginSchema.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
+#include <pxr/imaging/hd/purposeSchema.h>
 #include <pxr/imaging/hd/sceneIndexPrimView.h>
+#include <pxr/imaging/hd/tokens.h>
+#include <pxr/imaging/hd/visibilitySchema.h>
 #include <pxr/imaging/hd/xformSchema.h>
 
 #include <cstddef>
@@ -51,6 +54,7 @@ InstancerRecord ReadInstancer(const HdInstancerTopologySchema& topology) {
   for (std::size_t i = 0; i < indices.GetNumElements(); ++i)
     out.instanceIndices.push_back(ValueOf(indices.GetElement(i)));
   out.instanceLocations = ValueOf(topology.GetInstanceLocations());
+  out.mask = ValueOf(topology.GetMask());
   return out;
 }
 
@@ -60,6 +64,9 @@ void ReadSourceInfo(const HdContainerDataSourceHandle& source, PrimRecord& recor
   if (!info) return;
   record.isGprim = ValueOf(HdBoolDataSource::Cast(info->Get(SourceInfoTokens::IsGprim())));
   record.resetsXformStack = ValueOf(HdBoolDataSource::Cast(info->Get(SourceInfoTokens::ResetsXformStack())));
+  for (const TfToken& purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
+    if (const auto visibility = HdTokenDataSource::Cast(info->Get(purpose)))
+      record.purposeVisibility.emplace_back(purpose, visibility->GetTypedValue(kNow));
 }
 
 // Everything planning reads of the prim at `path`; false for a path with no prim.
@@ -72,6 +79,9 @@ bool ReadPrim(const HdSceneIndexBase& scene, const SdfPath& path, PrimRecord& re
   record.originPath = HdPrimOriginSchema::GetFromParent(source).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
   if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
     record.matrix = matrix->GetTypedValue(kNow);
+  if (const HdBoolDataSourceHandle visible = HdVisibilitySchema::GetFromParent(source).GetVisibility())
+    record.visible = visible->GetTypedValue(kNow);
+  record.purpose = ValueOf(HdPurposeSchema::GetFromParent(source).GetPurpose());
   if (const HdExtentSchema extent = HdExtentSchema::GetFromParent(source)) {
     if (const HdVec3dDataSourceHandle min = extent.GetMin(), max = extent.GetMax(); min && max)
       record.extent = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));

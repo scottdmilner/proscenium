@@ -8,6 +8,7 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/timeCode.h>
+#include <pxr/usdImaging/usdImaging/dataSourceStageGlobals.h>
 
 #include <cstdint>
 #include <functional>
@@ -22,6 +23,8 @@ struct SourceInfoTokens {
   // bool, on an xformable prim whose op order resets the transform stack, which Hydra's flattening hides
   // (WORKAROUND for OpenUSD #862, ResetsBelow in instancing.h)
   static const PXR_NS::TfToken& ResetsXformStack();
+  // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
+  // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };
 
 // Builds its contents from the prim as it is now, not as it was when made: downstream scene indices keep the input
@@ -46,7 +49,10 @@ class LazyContainer final : public PXR_NS::HdContainerDataSource {
 };
 
 // The source facts of `prim` (the prosceniumSource container's contents), `imaged` if Hydra images it; null for none.
-PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged);
+// Facts that can be animated (authored purpose visibility) are UsdImaging attribute data sources on `globals`: they
+// read at its time and are flagged time-varying, so a time change dirties them.
+PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged,
+                                               const PXR_NS::UsdImagingDataSourceStageGlobals& globals);
 
 // Whether USD computes the extent of `prim` for the filter when none is authored: point-based prims that Hydra
 // doesn't draw as meshes, such as curves and points.

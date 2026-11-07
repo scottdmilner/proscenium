@@ -5,11 +5,14 @@
 //
 // Each drawn copy of a gprim is a drawn copy's partition holding an object and its bounds mesh, which the stub
 // application layer draws as its bounds. A mesh's copies share its provisional geometry description; any other gprim's
-// copy is a placeholder. Per-copy content crosses as structure-of-arrays buffers in Blender's element types, so a
-// consumer reads each once per plan; paths stay tuples.
+// copy is a placeholder. A copy takes each destination's participation from its effective visibility and purpose; an
+// invisible copy stays in the plan, shown in neither, and a copy whose purpose neither destination includes is left
+// out, as is a guide no opinion makes explicitly visible. Per-copy content crosses as structure-of-arrays buffers in
+// Blender's element types, so a consumer reads each once per plan; paths stay tuples.
 #pragma once
 
 #include <pxr/base/gf/matrix4d.h>
+#include <pxr/base/tf/token.h>
 #include <pxr/base/vt/array.h>
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/path.h>
@@ -40,6 +43,16 @@ struct PlanningContext {
 
   // Throws std::invalid_argument for a unit scale that isn't positive and finite.
   PlanningContext(double scale, int version);
+};
+
+// The binding settings planning reads (DECISIONS.md "Conversion and purpose settings"): each destination's USD
+// purposes. The planner adds guide to the viewport's, so a guide explicitly visible displays there (VIS-04).
+struct PlanSettings {
+  PXR_NS::TfTokenVector viewportPurposes;  // sorted, each once
+  PXR_NS::TfTokenVector renderPurposes;
+
+  // Throws std::invalid_argument for a name that isn't a USD purpose.
+  PlanSettings(PXR_NS::TfTokenVector viewport, PXR_NS::TfTokenVector render);
 };
 
 // One managed resource, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its identity is
@@ -90,16 +103,19 @@ struct Plan {
   // it a marker).
   PXR_NS::VtIntArray copyPlaceholders;
   PXR_NS::VtFloatArray placeholderBounds;  // 6 each, as GeometryDescription::extent
+  PXR_NS::VtBoolArray copyViewport;        // whether it displays in the viewport
+  PXR_NS::VtBoolArray copyRender;          // whether it displays in the final render
   std::vector<GeometryDescription> geometries;
 };
 
 using PlanPtr = std::shared_ptr<const Plan>;
 
 // Runs without the GIL. Throws std::invalid_argument for a representation version the planner doesn't plan.
-PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context);
+PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context);
 
 // EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform as
-// Hydra's own values compose it, ignoring a reset transform stack inside an instance, by source. Only the known-gap
+// Hydra's own values compose it, ignoring a reset transform stack inside an instance, by source, whatever its
+// visibility and purpose. Only the known-gap
 // check for OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes, and the
 // check must fail once Hydra honors the reset so the workaround can go.
 std::vector<std::pair<PXR_NS::SdfPath, PXR_NS::GfMatrix4d>> HydraComposedWorlds(const Snapshot& snapshot);

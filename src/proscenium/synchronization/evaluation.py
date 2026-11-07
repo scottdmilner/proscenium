@@ -56,7 +56,9 @@ def plans(
     except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
         return Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
     try:
+        # The spec's default purposes (DECISIONS.md "Conversion and purpose settings"); D2 passes the binding's own.
+        settings = _core.PlanSettings(("default", "proxy"), ("default", "render"))
         context = _core.PlanningContext(scene.unit_settings.scale_length, application.REPRESENTATION_VERSION)
-        return [_core.plan(snapshot, context) for snapshot in snapshots]
+        return [_core.plan(snapshot, settings, context) for snapshot in snapshots]
     except Exception as error:  # noqa: BLE001
         return Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")
