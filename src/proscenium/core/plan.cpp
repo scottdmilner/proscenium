@@ -1,12 +1,67 @@
 #include "plan.h"
 
+#include <pxr/base/gf/range3d.h>
+#include <pxr/imaging/hd/extentSchema.h>
+#include <pxr/imaging/hd/instancedBySchema.h>
+#include <pxr/imaging/hd/primOriginSchema.h>
+#include <pxr/imaging/hd/sceneIndexPrimView.h>
+#include <pxr/imaging/hd/tokens.h>
+#include <pxr/imaging/hd/xformSchema.h>
+
+#include <algorithm>
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace proscenium {
+namespace {
+
+// The snapshot's data sources are static copies; offset 0 is their only sample.
+constexpr HdSampledDataSource::Time kNow = 0.0F;
+
+// Temporary: what M5's minimal planner reads of a drawn gprim outside native and point instancing.
+struct DrawnGprim {
+  SdfPath source;                   // on the composed stage, never a Hydra path
+  GfMatrix4d world{1.0};            // USD's row-vector convention
+  std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
+};
+
+// The gprim's values, or nothing for a prim the minimal planner doesn't draw: one that isn't a gprim, or one under
+// native or point instancing, whose source and instance context M6's planner derives.
+std::optional<DrawnGprim> ReadGprim(const HdSceneIndexPrim& prim, const SdfPath& path) {
+  if (!prim.dataSource || !HdPrimTypeIsGprim(prim.primType)) return std::nullopt;
+  if (HdInstancedBySchema::GetFromParent(prim.dataSource)) return std::nullopt;
+  DrawnGprim gprim;
+  // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices that
+  // convert it keep that.
+  const SdfPath origin =
+      HdPrimOriginSchema::GetFromParent(prim.dataSource).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
+  gprim.source = origin.IsEmpty() ? path : origin;
+  if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(prim.dataSource).GetMatrix())
+    gprim.world = matrix->GetTypedValue(kNow);
+  if (const HdExtentSchema extent = HdExtentSchema::GetFromParent(prim.dataSource)) {
+    const HdVec3dDataSourceHandle min = extent.GetMin();
+    const HdVec3dDataSourceHandle max = extent.GetMax();
+    if (min && max) gprim.bounds = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));
+  }
+  return gprim;
+}
+
+std::vector<DrawnGprim> DrawnGprims(const Snapshot& snapshot) {
+  std::vector<DrawnGprim> gprims;
+  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.scene, SdfPath::AbsoluteRootPath())) {
+    if (std::optional<DrawnGprim> gprim = ReadGprim(snapshot.scene->GetPrim(path), path))
+      gprims.push_back(std::move(*gprim));
+  }
+  std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
+  return gprims;
+}
+
+}  // namespace
 
 const char* RoleName(Role role) {
   switch (role) {
@@ -26,7 +81,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
   auto plan = std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}});
-  for (const DrawnGprim& gprim : snapshot.gprims) {
+  for (const DrawnGprim& gprim : DrawnGprims(snapshot)) {
     // M5 captures no instancing, so each copy has one object, and its source entity is its source path.
     const std::size_t object = plan->resources.size();
     Placeholder placeholder{object, object + 1, gprim.world, {}};

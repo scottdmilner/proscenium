@@ -1,29 +1,22 @@
 #include "scene_index_chain.h"
 
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
-#include <pxr/imaging/hd/extentSchema.h>
-#include <pxr/imaging/hd/instancedBySchema.h>
-#include <pxr/imaging/hd/primOriginSchema.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/sceneIndexPrimView.h>
 #include <pxr/imaging/hd/tokens.h>
-#include <pxr/imaging/hd/xformSchema.h>
 #include <pxr/imaging/hdsi/extComputationPrimvarPruningSceneIndex.h>
 #include <pxr/imaging/hdsi/implicitSurfaceSceneIndex.h>
 #include <pxr/imaging/hdsi/nurbsApproximatingSceneIndex.h>
 #include <pxr/usdImaging/usdImaging/stageSceneIndex.h>
 
-#include <algorithm>
 #include <memory>
 #include <stdexcept>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace proscenium {
 namespace {
-
-// Hydra samples a value at a shutter offset from the chain's time; the snapshot takes the time itself.
-constexpr HdSampledDataSource::Time kNow = 0.0F;
 
 HdContainerDataSourceHandle ImplicitSurfacesToMesh() {
   auto toMesh = HdRetainedTypedSampledDataSource<TfToken>::New(HdsiImplicitSurfaceSceneIndexTokens->toMesh);
@@ -32,26 +25,19 @@ HdContainerDataSourceHandle ImplicitSurfacesToMesh() {
                                             HdPrimTypeTokens->capsule, toMesh, HdPrimTypeTokens->plane, toMesh);
 }
 
-// The gprim's values, or nothing for a prim M5's capture doesn't draw: one that isn't a gprim, or one under native
-// or point instancing, whose source and instance context M6's capture derives.
-std::optional<DrawnGprim> ReadGprim(const HdSceneIndexBase& scene, const SdfPath& path) {
-  const HdSceneIndexPrim prim = scene.GetPrim(path);
-  if (!prim.dataSource || !HdPrimTypeIsGprim(prim.primType)) return std::nullopt;
-  if (HdInstancedBySchema::GetFromParent(prim.dataSource)) return std::nullopt;
-  DrawnGprim gprim;
-  // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices that
-  // convert it keep that.
-  const SdfPath origin =
-      HdPrimOriginSchema::GetFromParent(prim.dataSource).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
-  gprim.source = origin.IsEmpty() ? path : origin;
-  if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(prim.dataSource).GetMatrix())
-    gprim.world = matrix->GetTypedValue(kNow);
-  if (const HdExtentSchema extent = HdExtentSchema::GetFromParent(prim.dataSource)) {
-    const HdVec3dDataSourceHandle min = extent.GetMin();
-    const HdVec3dDataSourceHandle max = extent.GetMax();
-    if (min && max) gprim.bounds = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));
+// A new prim container holding a frozen copy of each planned schema the prim has, and nothing else. HdMakeStaticCopy
+// samples every value at the chain's current time into retained data sources, so the copy no longer reads the stage.
+HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle& source) {
+  if (!source) return nullptr;
+  TfTokenVector names;
+  std::vector<HdDataSourceBaseHandle> copies;
+  for (const TfToken& name : PlannedSchemas()) {
+    if (const HdDataSourceBaseHandle schema = source->Get(name)) {
+      names.push_back(name);
+      copies.push_back(HdMakeStaticCopy(schema));
+    }
   }
-  return gprim;
+  return HdRetainedContainerDataSource::New(names.size(), names.data(), copies.data());
 }
 
 }  // namespace
@@ -84,13 +70,16 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   if (!terminal_) throw std::runtime_error("The scene index chain has been released");
   indices_.stageSceneIndex->SetTime(time);
   indices_.stageSceneIndex->ApplyPendingUpdates();
+  // Depth-first, parents before children, so the retained scene index gets each parent first.
+  std::vector<HdRetainedSceneIndex::AddedPrimEntry> entries;
+  for (const SdfPath& path : HdSceneIndexPrimView(terminal_, SdfPath::AbsoluteRootPath())) {
+    const HdSceneIndexPrim prim = terminal_->GetPrim(path);
+    entries.push_back({path, prim.primType, CopyPlannedSchemas(prim.dataSource)});
+  }
   auto snapshot = std::make_shared<Snapshot>();
   snapshot->time = time;
-  for (const SdfPath& path : HdSceneIndexPrimView(terminal_, SdfPath::AbsoluteRootPath())) {
-    if (std::optional<DrawnGprim> gprim = ReadGprim(*terminal_, path)) snapshot->gprims.push_back(std::move(*gprim));
-  }
-  std::sort(snapshot->gprims.begin(), snapshot->gprims.end(),
-            [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
+  snapshot->scene = HdRetainedSceneIndex::New();
+  snapshot->scene->AddPrims(entries);
   return snapshot;
 }
 
