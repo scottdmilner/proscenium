@@ -1,14 +1,15 @@
-"""M5's stub application layer: a placeholder per partition, prepared apart (pipeline.md#blender-application).
+"""M5's stub application layer: each drawn copy as its bounds, prepared apart (pipeline.md#blender-application).
 
-Each of the plan's placeholders becomes an object drawing its bounding box and the bounds mesh it draws: the eight
-corners of its local bounds, or no vertices when the plan has none. They're prepared in a staging collection no scene
+Each of the plan's drawn copies becomes an object drawing its bounding box and the bounds mesh it draws: the eight
+corners of its local bounds, a mesh's provisional geometry description's or a placeholder's, or no vertices when the
+plan has none. They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
 generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.entry_keys), and the entries preparation makes are the manifest a publication writes.
 
-A cache call has it key the published placeholders' transforms at the time codes it caches, in an action per object
+A cache call has it key the published copies' transforms at the time codes it caches, in an action per object
 (key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the keys it
 added and unassigns the actions it made. M7 replaces this layer; a sheared world transform, which needs a shear
 parent, is M7's, as are cached bounds and content appearing at a cached time code.
@@ -25,9 +26,7 @@ from mathutils import Matrix
 from ..binding.persistence import manifests
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from pxr import Gf
+    from collections.abc import Mapping, Sequence
 
     from ..core import _core
     from .prepared_work import PreparedWork
@@ -36,7 +35,7 @@ REPRESENTATION_VERSION = 1  # the representation this layer applies, which the p
 
 
 def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork) -> None:
-    """Make plan's placeholders in work's staging collection, holding each datablock as it's made (TXN-08).
+    """Make plan's drawn copies in work's staging collection, holding each datablock as it's made (TXN-08).
 
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
     take. Raises whatever Blender raises; what was made before stays in work, held.
@@ -46,21 +45,23 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in resources
     ]
     keys = manifests.entry_keys(published, identities)
-    for placeholder in plan.placeholders:
-        mesh_key, object_key = keys[placeholder.bounds_mesh], keys[placeholder.object]
-        source = resources[placeholder.object].entity
+    worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
+    for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
+        (mesh_index,) = resources[object_index].uses  # its bounds mesh
+        mesh_key, object_key = keys[mesh_index], keys[object_index]
+        source = resources[object_index].entity
         name = source.rsplit("/", 1)[-1]
         mesh = bpy.data.meshes.new(name)
-        work.track(mesh_key, identities[placeholder.bounds_mesh].role, mesh)
-        mesh.from_pydata(_corners(list(placeholder.bounds)), [], [])
+        work.track(mesh_key, identities[mesh_index].role, mesh)
+        mesh.from_pydata(_corners(bounds[copy]), [], [])
         obj = bpy.data.objects.new(name, mesh)
-        work.track(object_key, identities[placeholder.object].role, obj)
+        work.track(object_key, identities[object_index].role, obj)
         work.staging.objects.link(obj)
         obj.display_type = "BOUNDS"
-        obj.matrix_world = _world(placeholder.world)
+        obj.matrix_world = _world(worlds, copy)
         for index, key, datablock in (
-            (placeholder.bounds_mesh, mesh_key, mesh),
-            (placeholder.object, object_key, obj),
+            (mesh_index, mesh_key, mesh),
+            (object_index, object_key, obj),
         ):
             resource = resources[index]
             uses = [keys[used] for used in resource.uses]
@@ -72,20 +73,21 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
 def key_time_codes(
     plans: Mapping[float, _core.Plan], published: manifests.Manifest, own: float, work: PreparedWork
 ) -> dict[str, manifests.EntryChange]:
-    """Key each published placeholder's transform at each of plans' time codes; the manifest changes it makes.
+    """Key each published copy's transform at each of plans' time codes; the manifest changes it makes.
 
-    Each change to a published object is undoable through work.undo. A placeholder object first keyed gets an
-    action, made and held in work, and is keyed at own, the generation's
-    time code, as it shows it, too. Keys are constant, so a frame shows the latest key at or before it. The changes are
-    each new action's entry, with its object's identity, and its object's, using it. A placeholder the published
-    generation lacks, as one appearing only at a cached time code, is M7's. Raises whatever Blender raises.
+    Each change to a published object is undoable through work.undo. A copy's object first keyed gets an action, made
+    and held in work, and is keyed at own, the generation's time code, as it shows it, too. Keys are constant, so a
+    frame shows the latest key at or before it. The changes are each new action's entry, with its object's identity,
+    and its object's, using it. A copy the published generation lacks, as one appearing only at a cached time code, is
+    M7's. Raises whatever Blender raises.
     """
     keys = {identity: key for key, e in published.entries.items() if (identity := e.identity) is not None}
     changes: dict[str, manifests.EntryChange] = {}
     for time_code, plan in plans.items():
         resources = plan.resources  # each read builds the tuple anew
-        for placeholder in plan.placeholders:
-            resource = resources[placeholder.object]
+        worlds = memoryview(plan.copy_worlds)
+        for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
+            resource = resources[object_index]
             object_identity = manifests.CopyResourceIdentity(
                 manifests.RepresentationRole(resource.role), resource.entity, resource.place
             )
@@ -105,7 +107,7 @@ def key_time_codes(
                 changes[object_key] = manifests.EntryChange(entry.covers, entry.role, uses, entry.place)
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
-            _insert_keys(action, obj, time_code, _world(placeholder.world), work)
+            _insert_keys(action, obj, time_code, _world(worlds, copy), work)
     return changes
 
 
@@ -113,7 +115,7 @@ def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: Prepar
     """Give obj an action, held in work under action_key, keyed at own with the transform obj shows."""
     action = bpy.data.actions.new(obj.name)
     work.track(action_key, manifests.RepresentationRole.ACTION, action)
-    work.undo.append(obj.animation_data_clear)  # a placeholder has no animation data before its first action
+    work.undo.append(obj.animation_data_clear)  # a copy's object has no animation data before its first action
     obj.animation_data_create().action = action
     _insert_keys(action, obj, own, obj.matrix_world, work)
 
@@ -123,7 +125,7 @@ def _insert_keys(
 ) -> None:
     """Key obj's transform in its action at time_code to world's, constant until its next key, undoably in work."""
     location, rotation, scale = world.decompose()
-    # Slices, since the stubs don't make a Vector iterable; a placeholder keeps the default rotation mode.
+    # Slices, since the stubs don't make a Vector iterable; a copy's object keeps the default rotation mode.
     parts = {"location": location[:], "rotation_euler": rotation.to_euler("XYZ")[:], "scale": scale[:]}
     for data_path, values in parts.items():
         for index, value in enumerate(values):
@@ -139,7 +141,19 @@ def _remove_key(fcurve: bpy.types.FCurve, time_code: float) -> None:
         points.remove(point)
 
 
-def _corners(bounds: list[float]) -> list[tuple[float, float, float]]:
+def _bounds(plan: _core.Plan) -> list[Sequence[float]]:
+    """Each copy's local bounds as (min x, y, z, max x, y, z), or empty for none."""
+    extents = [memoryview(g.extent).tolist() for g in plan.geometries]
+    placeholder_bounds = memoryview(plan.placeholder_bounds).tolist()
+    geometries = memoryview(plan.copy_geometries).tolist()
+    placeholders = memoryview(plan.copy_placeholders).tolist()
+    return [
+        extents[g] if g >= 0 else placeholder_bounds[6 * p : 6 * p + 6] if p >= 0 else []
+        for g, p in zip(geometries, placeholders, strict=True)
+    ]
+
+
+def _corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
     """The eight corners of (min x, y, z, max x, y, z), or none for no bounds."""
     if not bounds:
         return []
@@ -147,6 +161,7 @@ def _corners(bounds: list[float]) -> list[tuple[float, float, float]]:
     return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
 
 
-def _world(matrix: Gf.Matrix4d) -> Matrix:
-    """A plan's world matrix as Blender's: USD multiplies row vectors, Blender column vectors."""
-    return Matrix([[matrix[row, col] for col in range(4)] for row in range(4)]).transposed()
+def _world(worlds: memoryview, copy: int) -> Matrix:
+    """A copy's world matrix from the plan's buffer, whose 16 floats each are Blender's column-major layout."""
+    columns = worlds[16 * copy : 16 * copy + 16].tolist()
+    return Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed()

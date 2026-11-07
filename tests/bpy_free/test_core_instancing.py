@@ -17,7 +17,7 @@ from fixtures import appearance, evaluation
 from proscenium.binding.source_access import source_entities
 from proscenium.core import _core
 
-from .plan_checks import assert_world, placeholders, plan_at
+from .plan_checks import assert_world, copies, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,22 +53,45 @@ def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
 
 def test_transforms_copies_and_contexts(transforms: evaluation.TransformsScene) -> None:
     plan = plan_at(transforms.stage, 0.0)
-    shown = placeholders(plan)
+    shown = copies(plan)
     assert set(shown) == set(transforms.world)
-    for path, placeholder in shown.items():
-        assert_world(placeholder, transforms.world_at(path, 0.0))
+    for path, copy in shown.items():
+        assert_world(copy, transforms.world_at(path, 0.0))
     assert _contexts(plan) == {path: transforms.instance_context.get(path, ()) for path in transforms.world}
 
 
 def test_nested_copies_and_contexts(stress: appearance.StressScene) -> None:
     plan = plan_at(stress.stage, 0.0)
-    shown = placeholders(plan)
+    shown = copies(plan)
     assert set(shown) == set(stress.world)
-    for path, placeholder in shown.items():
-        assert_world(placeholder, stress.world[path])
+    for path, copy in shown.items():
+        assert_world(copy, stress.world[path])
     contexts = _contexts(plan)
     assert contexts == {path: _usd_context(stress.stage, path) for path in stress.world}
     assert max(len(c) for c in contexts.values()) == 2  # nested instances, so the check above covers nesting
+
+
+def test_copies_of_a_mesh_share_its_geometry_description(stress: appearance.StressScene) -> None:
+    # Provisional (M8 keys a mesh by its content): one description per mesh Hydra draws. Hydra may split one USD
+    # prototype into several of its own, so copies sharing a description are copies of one USD prototype mesh, not the
+    # converse.
+    plan = plan_at(stress.stage, 0.0)
+    shown = copies(plan)
+    sharing: dict[int, list[str]] = {}
+    for path, copy in shown.items():
+        assert stress.stage.GetPrimAtPath(path).GetTypeName() == "Mesh", path
+        assert (copy.geometry >= 0, copy.placeholder) == (True, -1), path
+        sharing.setdefault(copy.geometry, []).append(path)
+    assert sorted(sharing) == list(range(len(plan.geometries)))
+    assert len(plan.geometries) < len(shown)  # some copies share, so the checks below could fail
+    for geometry, paths in sharing.items():
+        description = plan.geometries[geometry]
+        assert description.source == min(paths)  # its first copy's, in source order
+        assert description.content_key == description.source
+        prims = [stress.stage.GetPrimAtPath(p) for p in paths]
+        assert len({p.GetPrimInPrototype().GetPath() if p.IsInstanceProxy() else p.GetPath() for p in prims}) == 1
+        extent = UsdGeom.Mesh(prims[0]).GetExtentAttr().Get(Usd.TimeCode(0.0))
+        assert memoryview(description.extent).tolist() == [*extent[0], *extent[1]]
 
 
 def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appearance.StressScene) -> None:
@@ -81,7 +104,7 @@ def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appeara
 
 def test_point_instancer_prototypes_have_no_copies(tmp_path: Path) -> None:
     with evaluation.unsupported_content(tmp_path) as unsupported:
-        sources = set(placeholders(plan_at(unsupported.stage, 0.0)))
+        sources = set(copies(plan_at(unsupported.stage, 0.0)))
     assert sources.isdisjoint(unsupported.not_drawn)
 
 

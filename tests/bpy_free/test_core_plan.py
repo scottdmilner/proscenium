@@ -1,4 +1,4 @@
-"""The core captures a snapshot through its Hydra chain and plans a placeholder per drawn gprim (M5 plan, Phase B).
+"""The core captures a snapshot through its Hydra chain and plans a drawn copy per drawn gprim (M5 plan, Phase B).
 
 Expected values come from how the transaction scenes are built (fixtures/transaction.py, checked against UsdGeom by
 test_transaction_fixtures.py), and identities from what the spec derives them from (lifecycle.md, Representation Roles
@@ -18,10 +18,11 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from support.usd import open_fresh
 
+from .plan_checks import CONTEXT, copies
+
 if TYPE_CHECKING:
     from pathlib import Path
 
-CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
 TIME_CODES = [None, 0.0, 7.5, 10.0, 20.0]
 
 
@@ -40,13 +41,10 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
         [p.resources for p in plan.partitions],
         [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
         [(c.element, c.source) for c in plan.correspondence],
-        [(p.object, p.bounds_mesh, p.world, list(p.bounds)) for p in plan.placeholders],
+        [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
+        [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
+        [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
     )
-
-
-def _sources(plan: _core.Plan) -> dict[str, _core.Placeholder]:
-    """Each placeholder by the source path its object covers."""
-    return {plan.resources[p.object].covers[0]: p for p in plan.placeholders}
 
 
 def _identity(resource: _core.Resource) -> tuple[str, str, int]:
@@ -55,15 +53,34 @@ def _identity(resource: _core.Resource) -> tuple[str, str, int]:
 
 
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
-def test_a_placeholder_per_drawn_gprim(policy: PayloadPolicy, tmp_path: Path) -> None:
+def test_a_copy_per_drawn_gprim(policy: PayloadPolicy, tmp_path: Path) -> None:
     with transaction.failed_settings(tmp_path) as scene:
         plan = _plan(open_fresh(scene.root, policy.load_set))
-        placeholders = _sources(plan)
-        assert placeholders.keys() == DRAWN[policy]
-        for placeholder in placeholders.values():
-            assert list(placeholder.bounds) == [*EXTENT[0], *EXTENT[1]]
-            view = memoryview(placeholder.bounds)  # ty: ignore[invalid-argument-type] - the stubs omit Vt's buffers
-            assert (view.format, view.ndim, view.readonly) == ("f", 1, True)
+        shown = copies(plan)
+        assert shown.keys() == DRAWN[policy]
+        assert plan.copy_count == len(shown) == len(plan.correspondence)
+        for copy in shown.values():
+            assert copy.bounds == (*EXTENT[0], *EXTENT[1])  # each a mesh's, with no placeholder
+            assert (copy.geometry >= 0, copy.placeholder) == (True, -1)
+
+
+def test_copy_content_crosses_as_blenders_element_types(tmp_path: Path) -> None:
+    with transaction.retirement_failure(tmp_path) as scene:
+        plan = _plan(scene.caller)
+    count = plan.copy_count
+    buffers = {
+        "copy_worlds": ("f", 16 * count),
+        "copy_objects": ("i", count),
+        "copy_geometries": ("i", count),
+        "copy_placeholders": ("i", count),
+        "placeholder_bounds": ("f", 0),  # the scene's gprims are all meshes
+    }
+    for name, (element, length) in buffers.items():
+        view = memoryview(getattr(plan, name))
+        assert (view.format, view.ndim, view.readonly, len(view)) == (element, 1, True, length), name
+    for geometry in plan.geometries:
+        view = memoryview(geometry.extent)
+        assert (view.format, view.ndim, view.readonly, len(view)) == ("f", 1, True, 6)
 
 
 @pytest.mark.parametrize("time_code", TIME_CODES)
@@ -71,8 +88,8 @@ def test_world_transforms_at_the_time_code(time_code: float | None, tmp_path: Pa
     with transaction.retirement_failure(tmp_path) as scene:
         plan = _plan(scene.caller, time_code)
         assert plan.time_code == _time_code(time_code)
-        for source, placeholder in _sources(plan).items():
-            assert placeholder.world.ExtractTranslation() == translation(source, time_code)
+        for source, copy in copies(plan).items():
+            assert copy.world.ExtractTranslation() == translation(source, time_code)
 
 
 def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None:
@@ -80,15 +97,14 @@ def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None
         plan = _plan(scene.caller)
         assert len({_identity(r) for r in plan.resources}) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         assert len(plan.resources) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
-        for source, placeholder in _sources(plan).items():
-            obj, mesh = plan.resources[placeholder.object], plan.resources[placeholder.bounds_mesh]
-            assert (obj.role, obj.covers, obj.uses) == ("object", (source,), (placeholder.bounds_mesh,))
+        shown = copies(plan)
+        for source, copy in shown.items():
+            obj, mesh = plan.resources[copy.object], plan.resources[copy.bounds_mesh]
+            assert (obj.role, obj.covers, obj.uses) == ("object", (source,), (copy.bounds_mesh,))
             assert (mesh.role, mesh.covers, mesh.uses) == ("bounds mesh", (source,), ())
-        assert sorted(p.resources for p in plan.partitions) == sorted(
-            (p.object, p.bounds_mesh) for p in plan.placeholders
-        )
+        assert sorted(p.resources for p in plan.partitions) == sorted((c.object, c.bounds_mesh) for c in shown.values())
         assert sorted((c.element, c.source) for c in plan.correspondence) == sorted(
-            (p.object, source) for source, p in _sources(plan).items()
+            (c.object, source) for source, c in shown.items()
         )
 
 
@@ -96,9 +112,9 @@ def test_identities_follow_role_and_source_entity(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
         for time_code in TIME_CODES:
             plan = _plan(scene.caller, time_code)
-            for source, placeholder in _sources(plan).items():
-                assert _identity(plan.resources[placeholder.object]) == ("object", source, 0)
-                assert _identity(plan.resources[placeholder.bounds_mesh]) == ("bounds mesh", source, 0)
+            for source, copy in copies(plan).items():
+                assert _identity(plan.resources[copy.object]) == ("object", source, 0)
+                assert _identity(plan.resources[copy.bounds_mesh]) == ("bounds mesh", source, 0)
 
 
 def test_planning_is_deterministic(tmp_path: Path) -> None:
@@ -114,12 +130,12 @@ def test_snapshot_outlives_edits_and_release(tmp_path: Path) -> None:
         before = chain.capture(0.0)
         planned = _contents(_core.plan(before, CONTEXT))
         scene.edit()
-        after = _sources(_core.plan(chain.capture(0.0), CONTEXT))
+        after = copies(_core.plan(chain.capture(0.0), CONTEXT))
         assert after["/World/Sub"].world.ExtractTranslation() == SUB_EDITED
         chain.release()
         # Neither the edit nor the released chain reaches what the first capture copied.
         assert _contents(_core.plan(before, CONTEXT)) == planned
-        assert _sources(_core.plan(before, CONTEXT))["/World/Sub"].world.ExtractTranslation() == translation(
+        assert copies(_core.plan(before, CONTEXT))["/World/Sub"].world.ExtractTranslation() == translation(
             "/World/Sub", 0.0
         )
 

@@ -37,7 +37,9 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
         [p.resources for p in plan.partitions],
         [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
         [(c.element, c.source) for c in plan.correspondence],
-        [(p.object, p.bounds_mesh, p.world, list(p.bounds)) for p in plan.placeholders],
+        [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
+        [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
+        [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
     )
 
 
@@ -66,10 +68,12 @@ def test_lent_buffers_outlive_the_plan_snapshot_chain_and_stage(transforms: eval
     stage = open_fresh(transforms.root)
     chain = _core.SceneIndexChain(stage)
     plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), CONTEXT)
-    lent = [p.bounds for p in plan.placeholders]
-    values = [list(b) for b in lent]
-    assert values and all(v == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0] for v in values)  # the Tetra's extent
+    extents = [g.extent for g in plan.geometries]
+    # The Tetra's extent.
+    assert extents and all(memoryview(e).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0] for e in extents)
+    lent = [*extents, plan.copy_worlds, plan.copy_objects, plan.copy_geometries]
+    values = [memoryview(b).tolist() for b in lent]
     chain.release()
     del plan, chain, stage
     gc.collect()
-    assert [list(b) for b in lent] == values
+    assert [memoryview(b).tolist() for b in lent] == values

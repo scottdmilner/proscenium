@@ -3,9 +3,10 @@
 // equal plans. Sources are composed-stage paths, and the plan's parts name its resources by their positions in
 // Plan::resources, which mean something within that plan only.
 //
-// M5's minimal planner gives each drawn copy of a gprim a placeholder: a drawn copy's partition holding an object and
-// its bounds mesh. M6 replaces the planner; the envelope (partitions, ownership entries, correspondence, and content)
-// stays.
+// Each drawn copy of a gprim is a drawn copy's partition holding an object and its bounds mesh, which the stub
+// application layer draws as its bounds. A mesh's copies share its provisional geometry description; any other gprim's
+// copy is a placeholder. Per-copy content crosses as structure-of-arrays buffers in Blender's element types, so a
+// consumer reads each once per plan; paths stay tuples.
 #pragma once
 
 #include <pxr/base/gf/matrix4d.h>
@@ -17,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -64,12 +66,14 @@ struct CorrespondenceEntry {
   PXR_NS::SdfPathVector instanceContext;
 };
 
-struct Placeholder {
-  std::size_t object;
-  std::size_t boundsMesh;
-  PXR_NS::GfMatrix4d world{1.0};  // USD's row-vector convention
-  // Local bounds as (min x, min y, min z, max x, max y, max z); empty when the gprim has none.
-  PXR_NS::VtFloatArray bounds;
+// Provisional (M8 replaces it): a mesh's geometry, shared by every drawn copy of the mesh.
+struct GeometryDescription {
+  PXR_NS::SdfPath source;  // its first drawn copy's, in source order
+  // Local bounds as (min x, min y, min z, max x, max y, max z); empty when Hydra gives the mesh none.
+  PXR_NS::VtFloatArray extent;
+  // Provisional: the source's path, one per mesh Hydra draws, so a prototype's mesh is shared by its copies. M8 keys
+  // a mesh by its content.
+  std::string contentKey;
 };
 
 struct Plan {
@@ -77,8 +81,16 @@ struct Plan {
   PlanningContext context;
   std::vector<Partition> partitions;
   std::vector<Resource> resources;
-  std::vector<CorrespondenceEntry> correspondence;
-  std::vector<Placeholder> placeholders;
+  std::vector<CorrespondenceEntry> correspondence;  // one per drawn copy, in the copies' order
+  // The drawn copies, in source order, one element (or 16) per copy.
+  PXR_NS::VtFloatArray copyWorlds;    // 16 each: the world matrix in Blender's layout, which is USD's row-major one
+  PXR_NS::VtIntArray copyObjects;     // its object, in resources
+  PXR_NS::VtIntArray copyGeometries;  // its geometry description, in geometries; -1 for none
+  // Its placeholder, in placeholderBounds; -1 for none, and for a copy with neither a geometry nor bounds (C5 makes
+  // it a marker).
+  PXR_NS::VtIntArray copyPlaceholders;
+  PXR_NS::VtFloatArray placeholderBounds;  // 6 each, as GeometryDescription::extent
+  std::vector<GeometryDescription> geometries;
 };
 
 using PlanPtr = std::shared_ptr<const Plan>;

@@ -15,7 +15,7 @@ from pxr import Gf, Usd, UsdGeom, Vt
 from fixtures import evaluation
 from proscenium.core import _core
 
-from .plan_checks import CONTEXT, assert_box, placeholders, plan_at
+from .plan_checks import CONTEXT, assert_box, copies, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -42,14 +42,16 @@ def _usd_box(stage: Usd.Stage, path: str, time: float) -> tuple[Gf.Matrix4d, Gf.
 
 
 def test_placeholders_show_authored_or_computed_bounds(unsupported: evaluation.UnsupportedScene) -> None:
-    shown = placeholders(plan_at(unsupported.stage, 0.0))
+    shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
         if expected.type_name == "PointInstancer":
             continue  # the minimal planner draws gprims only; Phase C plans point instancers
         assert path in shown, path
+        assert shown[path].geometry == -1, path  # not a mesh
         if expected.bounds is None:  # a marker
-            assert len(shown[path].bounds) == 0, path
+            assert shown[path].placeholder == -1, path
         else:
+            assert shown[path].placeholder >= 0, path
             assert_box(shown[path], expected.world, *expected.bounds)
 
 
@@ -63,7 +65,7 @@ def test_stage_edits_reach_computed_extents_and_unimaged_prims(unsupported: eval
         tangents = UsdGeom.Xformable(stage.GetPrimAtPath(TANGENTS))
         tangents.GetPrim().GetAttribute("xformOp:translate").Set(Gf.Vec3d(9, 5, 0))
         tangents.AddScaleOp().Set(Gf.Vec3f(2, 2, 2))  # a new op, so a new op order
-        shown = placeholders(_core.plan(chain.capture(Usd.TimeCode(0.0)), CONTEXT))
+        shown = copies(_core.plan(chain.capture(Usd.TimeCode(0.0)), CONTEXT))
     finally:
         chain.release()
     for path in (COMBED, DOTS, TANGENTS):
@@ -83,7 +85,7 @@ def test_time_changes_reach_computed_extents_and_unimaged_prims(unsupported: eva
     chain = _core.SceneIndexChain(stage)
     try:
         # One chain, moved from one time code to the next, as a cache call moves it.
-        shown = {t: placeholders(_core.plan(chain.capture(Usd.TimeCode(t)), CONTEXT)) for t in (0.0, 10.0)}
+        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), CONTEXT)) for t in (0.0, 10.0)}
     finally:
         chain.release()
     for time, at in shown.items():

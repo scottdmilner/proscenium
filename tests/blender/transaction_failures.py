@@ -36,11 +36,11 @@ def failing_preparation(
         held.append((role, d))
         hold(work, entry_key, role, d)
 
-    def failing_world(matrix: Any) -> Any:  # called once a placeholder's resources are made
-        worlds.append(matrix)
+    def failing_world(buffer: memoryview, copy: int) -> Any:  # called once a copy's resources are made
+        worlds.append(copy)
         if len(worlds) * len(transaction.ROLES_PER_PLACEHOLDER) == scene.prepared_before_failure:
             raise RuntimeError("injected preparation failure")
-        return world(matrix)
+        return world(buffer, copy)
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
         failing.update(next(d for r, d in held if r == role) for role in scene.failed_disposals)

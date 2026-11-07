@@ -112,15 +112,13 @@ void WrapPlan() {
       .add_property(
           "source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); })
       .add_property("instance_context", +[](const CorrespondenceEntry& e) { return PathStrings(e.instanceContext); });
-  bp::class_<Placeholder>("Placeholder", bp::no_init)
+  // Arrays cross as copy-on-write copies, sharing the plan's storage.
+  bp::class_<GeometryDescription>("GeometryDescription", bp::no_init)
       .add_property(
-          "object", +[](const Placeholder& p) { return p.object; })
+          "source", +[](const GeometryDescription& g) { return g.source.GetString(); })
       .add_property(
-          "bounds_mesh", +[](const Placeholder& p) { return p.boundsMesh; })
-      .add_property(
-          "world", +[](const Placeholder& p) { return p.world; })
-      // A copy-on-write copy, sharing the plan's storage.
-      .add_property("bounds", +[](const Placeholder& p) { return p.bounds; });
+          "extent", +[](const GeometryDescription& g) { return g.extent; })
+      .add_property("content_key", +[](const GeometryDescription& g) { return g.contentKey; });
   bp::class_<PlanView>("Plan", bp::no_init)
       .add_property(
           "time_code", +[](const PlanView& p) { return p.data->time; })
@@ -132,7 +130,19 @@ void WrapPlan() {
           "resources", +[](const PlanView& p) { return ToTuple(p.data->resources); })
       .add_property(
           "correspondence", +[](const PlanView& p) { return ToTuple(p.data->correspondence); })
-      .add_property("placeholders", +[](const PlanView& p) { return ToTuple(p.data->placeholders); });
+      .add_property(
+          "copy_count", +[](const PlanView& p) { return p.data->copyObjects.size(); })
+      .add_property(
+          "copy_worlds", +[](const PlanView& p) { return p.data->copyWorlds; })
+      .add_property(
+          "copy_objects", +[](const PlanView& p) { return p.data->copyObjects; })
+      .add_property(
+          "copy_geometries", +[](const PlanView& p) { return p.data->copyGeometries; })
+      .add_property(
+          "copy_placeholders", +[](const PlanView& p) { return p.data->copyPlaceholders; })
+      .add_property(
+          "placeholder_bounds", +[](const PlanView& p) { return p.data->placeholderBounds; })
+      .add_property("geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("context")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }

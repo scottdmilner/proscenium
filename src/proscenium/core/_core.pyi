@@ -1,5 +1,7 @@
 # Types of the compiled core, proscenium.core._core (module.cpp), so ty checks its callers without a build.
-from pxr import Gf, Usd, Vt
+from collections.abc import Buffer
+
+from pxr import Gf, Usd
 
 def usd_version() -> tuple[int, int, int]: ...
 def _post_tf_error(message: str, then_throw: bool = False) -> None: ...  # for tests of error translation only
@@ -63,20 +65,22 @@ class CorrespondenceEntry:
     @property
     def instance_context(self) -> tuple[str, ...]: ...  # provisional: native-instance roots, outermost first
 
-class Placeholder:
+class GeometryDescription:
+    """Provisional (M8 replaces it): a mesh's geometry, shared by every drawn copy of the mesh."""
+
     @property
-    def object(self) -> int: ...
+    def source(self) -> str: ...  # its first drawn copy's, in source order
     @property
-    def bounds_mesh(self) -> int: ...
+    def extent(self) -> Buffer: ...  # local (min x, y, z, max x, y, z), a read-only 'f' Vt.FloatArray; empty for none
     @property
-    def world(self) -> Gf.Matrix4d: ...  # USD's row-vector convention
-    @property
-    def bounds(self) -> Vt.FloatArray: ...  # (min x, y, z, max x, y, z), a read-only 'f' buffer; empty for none
+    def content_key(self) -> str: ...  # provisional: its source's path; M8 keys a mesh by its content
 
 class Plan:
     """The immutable display plan.
 
-    Each read of a tuple property builds the tuple anew, converting every element, so read one once per use.
+    Each read of a tuple property builds the tuple anew, converting every element, so read one once per use. Drawn
+    copies are in source order, one per correspondence entry, and their content is read-only buffers (Vt arrays), one
+    element per copy unless noted, which lend the plan's storage without copying.
     """
 
     @property
@@ -90,7 +94,19 @@ class Plan:
     @property
     def correspondence(self) -> tuple[CorrespondenceEntry, ...]: ...
     @property
-    def placeholders(self) -> tuple[Placeholder, ...]: ...
+    def copy_count(self) -> int: ...
+    @property
+    def copy_worlds(self) -> Buffer: ...  # 'f', 16 each: the world matrix in Blender's layout (USD's row-major one)
+    @property
+    def copy_objects(self) -> Buffer: ...  # 'i': its object, in resources
+    @property
+    def copy_geometries(self) -> Buffer: ...  # 'i': its geometry description, in geometries; -1 for none
+    @property
+    def copy_placeholders(self) -> Buffer: ...  # 'i': its placeholder, in placeholder_bounds; -1 for none
+    @property
+    def placeholder_bounds(self) -> Buffer: ...  # 'f', 6 each: local (min x, y, z, max x, y, z)
+    @property
+    def geometries(self) -> tuple[GeometryDescription, ...]: ...
 
 def plan(snapshot: Snapshot, context: PlanningContext) -> Plan: ...  # ValueError for an unplanned version
 

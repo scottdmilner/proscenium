@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <optional>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -18,13 +20,30 @@ PXR_NAMESPACE_USING_DIRECTIVE
 namespace proscenium {
 namespace {
 
-// Temporary: what M5's minimal planner reads of a drawn copy of a gprim.
+// What the planner reads of a drawn copy of a gprim.
 struct DrawnGprim {
   SdfPath source;                   // on the composed stage, never a Hydra path
   SdfPathVector instanceContext;    // native-instance roots, outermost first
   GfMatrix4d world{1.0};            // USD's row-vector convention
   std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
+  const PrimRecord* mesh;           // the Hydra mesh it is a copy of; null for any other gprim
 };
+
+// (min x, min y, min z, max x, max y, max z) appended to `values`.
+void AppendBounds(const GfRange3d& bounds, VtFloatArray& values) {
+  for (const GfVec3d& corner : {bounds.GetMin(), bounds.GetMax()})
+    for (std::size_t i = 0; i < GfVec3d::dimension; ++i) values.push_back(static_cast<float>(corner[i]));
+}
+
+// The matrix's 16 elements appended to `values` in USD's row-major layout, which is Blender's column-major one: USD
+// multiplies row vectors and Blender column vectors, so each holds the other's transpose.
+void AppendWorld(const GfMatrix4d& world, VtFloatArray& values) {
+  for (int row = 0; row < 4; ++row) {
+    const GfVec4d elements = world.GetRow(row);
+    for (std::size_t column = 0; column < GfVec4d::dimension; ++column)
+      values.push_back(static_cast<float>(elements[column]));
+  }
+}
 
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
 bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
@@ -42,7 +61,8 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
     // the same hydraRoot, so it is checked once.
     const bool resets = instances.ResetsBelow(prim.path, copies.front().hydraRoot);
     for (const DrawnCopy& copy : copies) {
-      DrawnGprim gprim{copy.Map(prim.path), copy.context, resets ? local : local * copy.world, prim.extent};
+      const PrimRecord* mesh = prim.type == HdPrimTypeTokens->mesh ? &prim : nullptr;
+      DrawnGprim gprim{copy.Map(prim.path), copy.context, resets ? local : local * copy.world, prim.extent, mesh};
       // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices
       // that convert it keep that.
       if (copy.context.empty() && !prim.originPath.IsEmpty()) gprim.source = prim.originPath;
@@ -72,24 +92,39 @@ PlanningContext::PlanningContext(double scale, int version) : unitScale(scale), 
 PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
-  auto plan = std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}});
+  auto plan = std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}});
   const PrimTable table = ReadPrims(snapshot);
   InstanceResolver instances(table, /*honorResets=*/true);
-  for (const DrawnGprim& gprim : DrawnGprims(table, instances)) {
+  const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
+  plan->copyWorlds.reserve(16 * gprims.size());
+  // Each mesh's description, made for its first copy in source order, so its source is deterministic.
+  std::unordered_map<const PrimRecord*, int> geometries;
+  for (const DrawnGprim& gprim : gprims) {
     // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
     const std::size_t object = plan->resources.size();
-    Placeholder placeholder{object, object + 1, gprim.world, {}};
-    if (gprim.bounds) {
-      const GfVec3d& min = gprim.bounds->GetMin();
-      const GfVec3d& max = gprim.bounds->GetMax();
-      placeholder.bounds = {static_cast<float>(min[0]), static_cast<float>(min[1]), static_cast<float>(min[2]),
-                            static_cast<float>(max[0]), static_cast<float>(max[1]), static_cast<float>(max[2])};
-    }
-    plan->partitions.push_back({{placeholder.object, placeholder.boundsMesh}});
-    plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, {placeholder.boundsMesh}});
+    const std::size_t boundsMesh = object + 1;
+    plan->partitions.push_back({{object, boundsMesh}});
+    plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, {boundsMesh}});
     plan->resources.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
-    plan->correspondence.push_back({placeholder.object, gprim.source, gprim.instanceContext});
-    plan->placeholders.push_back(std::move(placeholder));
+    plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
+    AppendWorld(gprim.world, plan->copyWorlds);
+    plan->copyObjects.push_back(static_cast<int>(object));
+    int geometry = -1;
+    int placeholder = -1;
+    if (gprim.mesh) {
+      const auto [found, added] = geometries.try_emplace(gprim.mesh, static_cast<int>(plan->geometries.size()));
+      if (added) {
+        GeometryDescription description{gprim.source, {}, gprim.source.GetString()};
+        if (gprim.bounds) AppendBounds(*gprim.bounds, description.extent);
+        plan->geometries.push_back(std::move(description));
+      }
+      geometry = found->second;
+    } else if (gprim.bounds) {
+      placeholder = static_cast<int>(plan->placeholderBounds.size() / 6);
+      AppendBounds(*gprim.bounds, plan->placeholderBounds);
+    }
+    plan->copyGeometries.push_back(geometry);
+    plan->copyPlaceholders.push_back(placeholder);
   }
   return plan;
 }

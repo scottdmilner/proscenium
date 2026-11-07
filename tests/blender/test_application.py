@@ -1,4 +1,4 @@
-"""M5's stub application layer: preparing a plan's placeholders apart from the display (M5 plan, D3 and D4).
+"""M5's stub application layer: preparing a plan's drawn copies apart from the display (M5 plan, D3 and D4).
 
 Plans come from the core on the transaction scenes; expected values come from how the scene is built
 (fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
@@ -11,9 +11,10 @@ from typing import TYPE_CHECKING
 
 import bpy
 import pytest
+from mathutils import Matrix
 from pxr import Usd
 
-from fixtures import transaction
+from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
 from proscenium.binding.persistence.ledgers import OriginatingOperation
@@ -82,7 +83,7 @@ def _records() -> list[object]:
     return [{k: v.to_dict() for k, v in id_.items()} for id_ in (*bpy.data.scenes, *bpy.data.collections)]
 
 
-def test_a_placeholder_per_partition_in_no_scene(bindings: Bindings, tmp_path: Path) -> None:
+def test_a_drawn_copy_per_partition_in_no_scene(bindings: Bindings, tmp_path: Path) -> None:
     # TXN-05: an object drawing its bounds, and its bounds mesh, per drawn gprim, linked only in the staging collection.
     with transaction.retirement_failure(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
@@ -116,6 +117,32 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
                 assert work.entries[used].identity == bounds_mesh
             assert entry.identity == CopyResourceIdentity(entry.role, entry.covers[0], 0)
         Manifest(work.entries)  # a whole manifest
+
+
+def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
+    # The plan's copy_worlds holds Blender's layout, so foreach_set writes it as it stands, and the stub's objects get
+    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, and mirrored copies; a
+    # sheared one needs a shear parent (C4).
+    with evaluation.transforms(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        expected = {
+            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed() for p, w in scene.world.items()
+        }
+        sources = [c.source for c in plan.correspondence]
+        made = [bpy.data.objects.new(f"copy-{copy:04}", None) for copy in range(plan.copy_count)]
+        assert list(bpy.data.objects) == made  # in copy order, so foreach_set's buffer lines up
+        bpy.data.objects.foreach_set("matrix_world", plan.copy_worlds)
+        work = _prepared(_binding(bindings), plan)
+        prepared = {work.entries[_key(work, obj)].covers[0]: obj for obj in work.staging.objects}
+        for source, obj in zip(sources, made, strict=True):
+            if source in scene.sheared:
+                continue
+            assert _close(obj.matrix_world, expected[source]), source
+            assert _close(prepared[source].matrix_world, expected[source]), source
+
+
+def _close(shown: Matrix, expected: Matrix) -> bool:
+    return all(abs(shown[r][c] - expected[r][c]) <= 1e-5 for r in range(4) for c in range(4))
 
 
 def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> None:

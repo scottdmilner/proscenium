@@ -23,7 +23,7 @@ The compiled core and its C++ source. It reads Hydra scene indices ([DECISIONS.m
 | `snapshot.h`, `snapshot.cpp` | `Snapshot`, the evaluated source snapshot: a retained scene index of static copies of the schemas planning reads (`PlannedSchemas`), borrowing nothing from the chain. |
 | `prim_record.h`, `prim_record.cpp` | Plain records of what planning reads from a snapshot, and the table of them by path. |
 | `prim_reader.h`, `prim_reader.cpp` | The reader of those records, once per plan. |
-| `plan.h`, `plan.cpp` | The planning context, the display plan's envelope, and M5's minimal planner, one placeholder per drawn copy of a gprim. |
+| `plan.h`, `plan.cpp` | The planning context, the display plan's envelope, and the planner: each drawn copy of a gprim in a copy table of read-only buffers, a mesh's copies sharing its provisional geometry description and any other gprim's copy a placeholder. |
 | `CMakeLists.txt` | The build, against the locked Blender release's headers, linking only Blender's `usd_ms`. `tools/build_extension.py` runs it through `tools/native_build.py`. |
 | `.clang-format` | The C++ style, run as a pre-commit hook (the checks are the repository's root `.clang-tidy`). |
 | `.gitignore` | Ignores the built module, `_core.*.so` or `_core.*.pyd`, which the build puts in this directory and only the zip ships. |
