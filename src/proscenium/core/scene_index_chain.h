@@ -9,6 +9,7 @@
 #include <pxr/usdImaging/usdImaging/sceneIndices.h>
 
 #include "snapshot.h"
+#include "source_info_scene_index.h"
 #include "stage_handle.h"
 
 namespace proscenium {
@@ -37,6 +38,7 @@ class SceneIndexChain {
  private:
   StageHandle handle_;
   PXR_NS::UsdImagingSceneIndices indices_;
+  SourceInfoSceneIndexRefPtr sourceInfo_;    // right after the stage scene index; null once released
   PXR_NS::HdSceneIndexBaseRefPtr terminal_;  // the last in the chain, which captures read; null once released
 };
 

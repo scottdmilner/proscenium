@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "source_facts.h"
+
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace proscenium {
@@ -30,10 +32,18 @@ struct DrawnGprim {
   std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
 };
 
+// Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
+bool IsGprim(const HdSceneIndexPrim& prim) {
+  if (HdPrimTypeIsGprim(prim.primType)) return true;
+  const auto info = HdContainerDataSource::Cast(prim.dataSource->Get(SourceInfoTokens::Schema()));
+  const auto isGprim = info ? HdBoolDataSource::Cast(info->Get(SourceInfoTokens::IsGprim())) : nullptr;
+  return isGprim && isGprim->GetTypedValue(kNow);
+}
+
 // The gprim's values, or nothing for a prim the minimal planner doesn't draw: one that isn't a gprim, or one under
 // native or point instancing, whose source and instance context M6's planner derives.
 std::optional<DrawnGprim> ReadGprim(const HdSceneIndexPrim& prim, const SdfPath& path) {
-  if (!prim.dataSource || !HdPrimTypeIsGprim(prim.primType)) return std::nullopt;
+  if (!prim.dataSource || !IsGprim(prim)) return std::nullopt;
   if (HdInstancedBySchema::GetFromParent(prim.dataSource)) return std::nullopt;
   DrawnGprim gprim;
   // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices that

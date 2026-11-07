@@ -46,8 +46,16 @@ SceneIndexChain::SceneIndexChain(const UsdStagePtr& stage) : handle_(stage) {
   UsdImagingCreateSceneIndicesInfo info;
   info.stage = TfCreateRefPtrFromProtectedWeakPtr(handle_.Stage());
   info.addDrawModeSceneIndex = false;
+  // Right after the stage scene index, where paths are still USD paths.
+  const UsdStagePtr stagePtr = handle_.Stage();
+  info.overridesSceneIndexCallback = [this, stagePtr](const HdSceneIndexBaseRefPtr& input) -> HdSceneIndexBaseRefPtr {
+    sourceInfo_ = SourceInfoSceneIndex::New(input, stagePtr);
+    return sourceInfo_;
+  };
   // Flattens transforms, visibility, and purpose at every instancing level.
   indices_ = UsdImagingCreateSceneIndices(info);
+  // Every capture relies on the filter.
+  if (!sourceInfo_) throw std::runtime_error("UsdImagingCreateSceneIndices didn't call the overrides callback");
   HdSceneIndexBaseRefPtr scene = indices_.finalSceneIndex;
   // Skinned points become plain primvars; implicit surfaces and NURBS become meshes, as M6's planner reads them.
   scene = HdSiExtComputationPrimvarPruningSceneIndex::New(scene);
@@ -60,14 +68,17 @@ SceneIndexChain::SceneIndexChain(const UsdStagePtr& stage) : handle_(stage) {
 SceneIndexChain::~SceneIndexChain() { Release(); }
 
 void SceneIndexChain::Release() {
+  if (sourceInfo_) sourceInfo_->Detach();
   if (indices_.stageSceneIndex) indices_.stageSceneIndex->SetStage(nullptr);
   terminal_.Reset();
+  sourceInfo_.Reset();
   indices_ = {};
   handle_.Release();
 }
 
 SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   if (!terminal_) throw std::runtime_error("The scene index chain has been released");
+  sourceInfo_->SetTime(time);
   indices_.stageSceneIndex->SetTime(time);
   indices_.stageSceneIndex->ApplyPendingUpdates();
   // Depth-first, parents before children, so the retained scene index gets each parent first.

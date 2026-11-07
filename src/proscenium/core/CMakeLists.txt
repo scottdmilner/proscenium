@@ -37,6 +37,8 @@ Python_add_library(_core MODULE WITH_SOABI
   plan.cpp
   scene_index_chain.cpp
   snapshot.cpp
+  source_facts.cpp
+  source_info_scene_index.cpp
   stage_handle.cpp
 )
 target_compile_features(_core PRIVATE cxx_std_17)

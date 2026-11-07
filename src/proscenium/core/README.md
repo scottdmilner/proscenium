@@ -17,6 +17,8 @@ The compiled core and its C++ source. It reads Hydra scene indices ([DECISIONS.m
 | `errors.h`, `errors.cpp` | Error translation for every entry point: Tf errors and C++ exceptions become Python exceptions. |
 | `stage_handle.h`, `stage_handle.cpp` | `StageHandle`, the core's reference to a stage it was given, which it drops on `Release()` so the core never keeps a released stage alive. |
 | `scene_index_chain.h`, `scene_index_chain.cpp` | `SceneIndexChain`, the Hydra scene-index chain over an evaluation stage, and its capture of a snapshot at a time code. |
+| `source_info_scene_index.h`, `source_info_scene_index.cpp` | `SourceInfoSceneIndex`, the source-info filter right after the stage scene index: UsdImaging's prim data for prims Hydra doesn't image, and computed extents for curves and points. |
+| `source_facts.h`, `source_facts.cpp` | What the filter reads from USD: the `prosceniumSource` container's tokens and facts, its lazily rebuilt containers, and computed extents. |
 | `snapshot.h`, `snapshot.cpp` | `Snapshot`, the evaluated source snapshot: a retained scene index of static copies of the schemas planning reads (`PlannedSchemas`), borrowing nothing from the chain. |
 | `plan.h`, `plan.cpp` | The planning context, the display plan's envelope, and M5's minimal planner, one placeholder per drawn gprim. |
 | `CMakeLists.txt` | The build, against the locked Blender release's headers, linking only Blender's `usd_ms`. `tools/build_extension.py` runs it through `tools/native_build.py`. |
