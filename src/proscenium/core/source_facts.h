@@ -19,6 +19,9 @@ namespace proscenium {
 struct SourceInfoTokens {
   static const PXR_NS::TfToken& Schema();   // prosceniumSource
   static const PXR_NS::TfToken& IsGprim();  // bool, on a prim Hydra doesn't image: whether USD's type is a gprim
+  // bool, on an xformable prim whose op order resets the transform stack, which Hydra's flattening hides
+  // (WORKAROUND for OpenUSD #862, ResetsBelow in instancing.h)
+  static const PXR_NS::TfToken& ResetsXformStack();
 };
 
 // Builds its contents from the prim as it is now, not as it was when made: downstream scene indices keep the input
@@ -42,8 +45,8 @@ class LazyContainer final : public PXR_NS::HdContainerDataSource {
   PXR_NS::HdContainerDataSourceHandle built_;
 };
 
-// The source facts of a prim Hydra doesn't image (the prosceniumSource container's contents); null for none.
-PXR_NS::HdContainerDataSourceHandle UnimagedSourceInfo(const PXR_NS::UsdPrim& prim);
+// The source facts of `prim` (the prosceniumSource container's contents), `imaged` if Hydra images it; null for none.
+PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged);
 
 // Whether USD computes the extent of `prim` for the filter when none is authored: point-based prims that Hydra
 // doesn't draw as meshes, such as curves and points.

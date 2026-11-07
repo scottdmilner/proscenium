@@ -1,0 +1,104 @@
+"""Drawn copies inside native instances, through the minimal plan (M6 plan, B3).
+
+Each copy's source is its instance-proxy path on the composed stage, with its instance context, and its world
+transform honors a reset transform stack inside an instance (WORKAROUND for OpenUSD #862), on F-TRANSFORMS' case
+"reset-stack" (XFORM-01, XFORM-02) and F-NESTED-STRESS' "transforms" (XFORM-02, XFORM-03). A point instancer's
+prototypes have no copies (DEFER-01). Expected values come from the fixtures, or from USD's own APIs.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from pxr import Gf, Sdf, Usd, UsdGeom
+
+from fixtures import appearance, evaluation
+from proscenium.binding.source_access import source_entities
+from proscenium.core import _core
+
+from .plan_checks import assert_world, placeholders, plan_at
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
+
+
+@pytest.fixture
+def transforms(tmp_path: Path) -> Iterator[evaluation.TransformsScene]:
+    with evaluation.transforms(tmp_path) as scene:
+        yield scene
+
+
+@pytest.fixture
+def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
+    with appearance.nested_stress(tmp_path) as scene:
+        yield scene
+
+
+def _contexts(plan: _core.Plan) -> dict[str, tuple[str, ...]]:
+    return {c.source: c.instance_context for c in plan.correspondence}
+
+
+def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
+    """The native-instance roots `path` lies in, outermost first, from USD."""
+    roots: list[str] = []
+    ancestor = stage.GetPrimAtPath(path).GetParent()
+    while ancestor and not ancestor.IsPseudoRoot():
+        if ancestor.IsInstance():
+            roots.append(str(ancestor.GetPath()))
+        ancestor = ancestor.GetParent()
+    return tuple(reversed(roots))
+
+
+def test_transforms_copies_and_contexts(transforms: evaluation.TransformsScene) -> None:
+    plan = plan_at(transforms.stage, 0.0)
+    shown = placeholders(plan)
+    assert set(shown) == set(transforms.world)
+    for path, placeholder in shown.items():
+        assert_world(placeholder, transforms.world_at(path, 0.0))
+    assert _contexts(plan) == {path: transforms.instance_context.get(path, ()) for path in transforms.world}
+
+
+def test_nested_copies_and_contexts(stress: appearance.StressScene) -> None:
+    plan = plan_at(stress.stage, 0.0)
+    shown = placeholders(plan)
+    assert set(shown) == set(stress.world)
+    for path, placeholder in shown.items():
+        assert_world(placeholder, stress.world[path])
+    contexts = _contexts(plan)
+    assert contexts == {path: _usd_context(stress.stage, path) for path in stress.world}
+    assert max(len(c) for c in contexts.values()) == 2  # nested instances, so the check above covers nesting
+
+
+def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appearance.StressScene) -> None:
+    plan = plan_at(stress.stage, 0.0)
+    for resource in plan.resources:
+        assert resource.covers == (resource.entity,)
+        assert source_entities.identifier(Sdf.Path(resource.entity)) == resource.entity
+        assert stress.stage.GetPrimAtPath(resource.entity).IsInstanceProxy(), resource.entity
+
+
+def test_point_instancer_prototypes_have_no_copies(tmp_path: Path) -> None:
+    with evaluation.unsupported_content(tmp_path) as unsupported:
+        sources = set(placeholders(plan_at(unsupported.stage, 0.0)))
+    assert sources.isdisjoint(unsupported.not_drawn)
+
+
+def test_known_gap_hydra_ignores_a_reset_inside_an_instance(stress: appearance.StressScene) -> None:
+    # WORKAROUND for OpenUSD #862 (InstanceResolver::ResetsBelow in core/instancing.h): Hydra's own composition, a
+    # copy's flattened transform then its instance's, is wrong exactly for the copies under a reset inside an
+    # instance. This fails once Hydra honors the reset, and the workaround can go.
+    chain = _core.SceneIndexChain(stress.stage)
+    try:
+        hydra = _core._hydra_composed_worlds(chain.capture(Usd.TimeCode(0.0)))  # noqa: SLF001 - the known-gap hook
+    finally:
+        chain.release()
+    cache = UsdGeom.XformCache()
+
+    def usd(path: str) -> Gf.Matrix4d:
+        return cache.GetLocalToWorldTransform(stress.stage.GetPrimAtPath(path))
+
+    assert set(hydra) == set(stress.world)
+    wrong = {path for path, world in hydra.items() if not Gf.IsClose(world, usd(path), 1e-6)}
+    assert wrong == {path for path in stress.world if path.endswith("/Pinned/Pin")}

@@ -1,6 +1,7 @@
 #include "scene_index_chain.h"
 
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
+#include <pxr/imaging/hd/primvarsSchema.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
 #include <pxr/imaging/hd/sceneIndexPrimView.h>
 #include <pxr/imaging/hd/tokens.h>
@@ -36,6 +37,21 @@ HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle
       names.push_back(name);
       copies.push_back(HdMakeStaticCopy(schema));
     }
+  }
+  // Only the planned primvars, so no prim's geometry is copied before planning reads it.
+  TfTokenVector primvarNames;
+  std::vector<HdDataSourceBaseHandle> primvarCopies;
+  const HdPrimvarsSchema primvars = HdPrimvarsSchema::GetFromParent(source);
+  for (const TfToken& name : primvars ? PlannedPrimvars() : TfTokenVector()) {
+    if (const HdContainerDataSourceHandle primvar = primvars.GetPrimvar(name).GetContainer()) {
+      primvarNames.push_back(name);
+      primvarCopies.push_back(HdMakeStaticCopy(primvar));
+    }
+  }
+  if (!primvarNames.empty()) {
+    names.push_back(HdPrimvarsSchema::GetSchemaToken());
+    copies.push_back(
+        HdRetainedContainerDataSource::New(primvarNames.size(), primvarNames.data(), primvarCopies.data()));
   }
   return HdRetainedContainerDataSource::New(names.size(), names.data(), copies.data());
 }

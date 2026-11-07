@@ -40,7 +40,8 @@ Extra markers, added per test: `alab` for tests that need ALab (`PROSCENIUM_ALAB
 tests/
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
-│   └── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
+│   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
+│   └── plan_checks.py        the core's plans at a time code, and placeholders' corners within the bounds tolerance
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   ├── published.py          the whole published generation and the file's datablocks, compared around a failure

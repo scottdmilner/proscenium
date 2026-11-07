@@ -3,8 +3,8 @@
 // equal plans. Sources are composed-stage paths, and the plan's parts name its resources by their positions in
 // Plan::resources, which mean something within that plan only.
 //
-// M5's minimal planner gives each drawn gprim a placeholder: a drawn copy's partition holding an object and its
-// bounds mesh. M6 replaces the planner; the envelope (partitions, ownership entries, correspondence, and content)
+// M5's minimal planner gives each drawn copy of a gprim a placeholder: a drawn copy's partition holding an object and
+// its bounds mesh. M6 replaces the planner; the envelope (partitions, ownership entries, correspondence, and content)
 // stays.
 #pragma once
 
@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "snapshot.h"
@@ -57,8 +58,10 @@ struct Partition {
 
 // A display element and the source entity it represents (interaction-contract.md "Two Layers and the Live Stage").
 struct CorrespondenceEntry {
-  std::size_t element;  // the object that shows it
-  PXR_NS::SdfPath source;
+  std::size_t element;     // the object that shows it
+  PXR_NS::SdfPath source;  // an instance-proxy path inside native instances
+  // Provisional (M10 completes instance descriptions): the native-instance roots the source lies in, outermost first.
+  PXR_NS::SdfPathVector instanceContext;
 };
 
 struct Placeholder {
@@ -82,5 +85,11 @@ using PlanPtr = std::shared_ptr<const Plan>;
 
 // Runs without the GIL. Throws std::invalid_argument for a representation version the planner doesn't plan.
 PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context);
+
+// EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform as
+// Hydra's own values compose it, ignoring a reset transform stack inside an instance, by source. Only the known-gap
+// check for OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes, and the
+// check must fail once Hydra honors the reset so the workaround can go.
+std::vector<std::pair<PXR_NS::SdfPath, PXR_NS::GfMatrix4d>> HydraComposedWorlds(const Snapshot& snapshot);
 
 }  // namespace proscenium

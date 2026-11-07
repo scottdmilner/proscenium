@@ -3,6 +3,9 @@
 //   a prim without an adapter (UsdImagingDataSourcePrim: transform, visibility, purpose, extent), so flattening
 //   applies them, and whether its USD type is a gprim.
 // - For curves and points without an authored extent, USD's computed extent, so their placeholders show bounds.
+// - For an xformable prim, whether it resets the transform stack (WORKAROUND for OpenUSD #862, ResetsBelow in
+//   instancing.h).
+// Prims inside prototypes are read at their stage paths (/__Prototype_N/...), and their facts propagate with them.
 // It runs right after the stage scene index (UsdImagingCreateSceneIndices' overrides callback), where paths are still
 // USD paths. Its containers read USD when built, at the chain's current time, and are rebuilt when their prim is
 // dirtied: downstream scene indices keep input containers between notices, so values fixed for good would go stale.

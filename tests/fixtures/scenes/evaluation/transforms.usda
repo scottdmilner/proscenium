@@ -7,7 +7,8 @@
 # - Sheared: a matrix op whose axes aren't orthogonal;
 # - Reset: a mesh that resets the transform stack, ignoring its parent's translate;
 # - Instanced: a native instance of Kit, whose Pinned mesh resets the transform stack inside the instance
-#   (OpenUSD #862: Hydra's flattening hides it), so it ignores the instance root and its ancestors;
+#   (OpenUSD #862: Hydra's flattening hides it), so it ignores the instance root and its ancestors, and whose
+#   Socket, a nested instance of Part, resets it on its own root, so its mesh ignores Kit and Instanced too;
 # - Payloaded: a payload's mesh, rotated inside the payload and translated outside it;
 # - Animated: a translate sampled at 0, 10, 20, and 30, equal at 10 and 20, so its world transform holds
 #   between them and before the first and after the last sample.
@@ -160,6 +161,26 @@ class "Prototypes"
         {
             double3 xformOp:translate = (0, 3, 0)
             uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate"]
+        }
+
+        def Xform "Socket" (
+            instanceable = true
+            references = </Prototypes/Part>
+        )
+        {
+            double3 xformOp:translate = (0, 0, 7)
+            uniform token[] xformOpOrder = ["!resetXformStack!", "xformOp:translate"]
+        }
+    }
+
+    def Xform "Part"
+    {
+        def Mesh "Geom" (
+            references = </Shapes/Tetra>
+        )
+        {
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
         }
     }
 }

@@ -83,7 +83,7 @@ void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
   if (!dirtied.empty()) _SendPrimsDirtied(dirtied);
 }
 
-// For a prim Hydra doesn't image, UsdImaging's prim data and its source facts; for curves and points without an
+// The prim's source facts; for a prim Hydra doesn't image, UsdImaging's prim data; for curves and points without an
 // authored extent, USD's computed one. One container per prim, built from USD when first read after it is dirtied.
 HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, bool imaged) const {
   const std::scoped_lock lock(mutex_);
@@ -97,11 +97,9 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, boo
         auto overlay = [&added](const HdContainerDataSourceHandle& more) {
           if (more) added = added ? HdOverlayContainerDataSource::New(added, more) : more;
         };
-        if (!imaged) {
-          if (const HdContainerDataSourceHandle info = UnimagedSourceInfo(prim))
-            overlay(HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info));
-          overlay(UsdImagingDataSourcePrim::New(prim.GetPath(), prim, *self->globals_));
-        }
+        if (const HdContainerDataSourceHandle info = SourceInfo(prim, imaged))
+          overlay(HdRetainedContainerDataSource::New(SourceInfoTokens::Schema(), info));
+        if (!imaged) overlay(UsdImagingDataSourcePrim::New(prim.GetPath(), prim, *self->globals_));
         if (ComputesExtent(prim) && !UsdGeomBoundable(prim).GetExtentAttr().HasAuthoredValue()) {
           overlay(ComputedExtent(prim, self->time_));
           if (ComputedExtentVaries(prim))
@@ -124,7 +122,6 @@ HdSceneIndexPrim SourceInfoSceneIndex::GetPrim(const SdfPath& primPath) const {
   // prim it does image, such as an Xform or Scope, already has it; adding a visibility there would override an
   // invisible ancestor's.
   const bool imaged = prim.dataSource && prim.dataSource->Get(UsdImagingUsdPrimInfoSchema::GetSchemaToken());
-  if (imaged && !ComputesExtent(usdPrim)) return prim;
   const HdContainerDataSourceHandle added = Added(usdPrim, imaged);
   prim.dataSource = prim.dataSource ? HdOverlayContainerDataSource::New(prim.dataSource, added) : added;
   return prim;

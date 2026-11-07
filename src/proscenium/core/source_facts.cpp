@@ -9,8 +9,10 @@
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/nurbsPatch.h>
 #include <pxr/usd/usdGeom/pointBased.h>
+#include <pxr/usd/usdGeom/xformable.h>
 
 #include <utility>
+#include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -23,6 +25,11 @@ const TfToken& SourceInfoTokens::Schema() {
 
 const TfToken& SourceInfoTokens::IsGprim() {
   static const TfToken token("isGprim");
+  return token;
+}
+
+const TfToken& SourceInfoTokens::ResetsXformStack() {
+  static const TfToken token("resetsXformStack");
   return token;
 }
 
@@ -50,11 +57,23 @@ HdDataSourceBaseHandle LazyContainer::Get(const TfToken& name) {
   return built ? built->Get(name) : nullptr;
 }
 
-HdContainerDataSourceHandle UnimagedSourceInfo(const UsdPrim& prim) {
+HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged) {
+  TfTokenVector names;
+  std::vector<HdDataSourceBaseHandle> values;
+  const HdDataSourceBaseHandle yes = HdRetainedTypedSampledDataSource<bool>::New(true);
   // A HermiteCurves is a gprim Hydra has no adapter data for, so the planner can still give it a placeholder.
-  if (!prim.IsA<UsdGeomGprim>()) return nullptr;
-  return HdRetainedContainerDataSource::New(SourceInfoTokens::IsGprim(),
-                                            HdRetainedTypedSampledDataSource<bool>::New(true));
+  if (!imaged && prim.IsA<UsdGeomGprim>()) {
+    names.push_back(SourceInfoTokens::IsGprim());
+    values.push_back(yes);
+  }
+  // WORKAROUND for OpenUSD #862 (ResetsBelow in instancing.h): Hydra marks every flattened transform as resetting the
+  // stack, so only USD can say which prims reset it.
+  if (const UsdGeomXformable xformable{prim}; xformable && xformable.GetResetXformStack()) {
+    names.push_back(SourceInfoTokens::ResetsXformStack());
+    values.push_back(yes);
+  }
+  if (names.empty()) return nullptr;
+  return HdRetainedContainerDataSource::New(names.size(), names.data(), values.data());
 }
 
 // Point instancers and volumes are left out: their extents would mean evaluating prototypes or reading field files

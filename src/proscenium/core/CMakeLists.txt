@@ -33,8 +33,11 @@ endif()
 
 Python_add_library(_core MODULE WITH_SOABI
   errors.cpp
+  instancing.cpp
   module.cpp
   plan.cpp
+  prim_reader.cpp
+  prim_record.cpp
   scene_index_chain.cpp
   snapshot.cpp
   source_facts.cpp

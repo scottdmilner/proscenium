@@ -16,6 +16,8 @@ namespace proscenium {
 
 // The schemas a capture copies, the only ones planning reads.
 const PXR_NS::TfTokenVector& PlannedSchemas();
+// The primvars a capture copies, out of each prim's primvars schema: an instancer's instance transforms.
+const PXR_NS::TfTokenVector& PlannedPrimvars();
 
 struct Snapshot {
   PXR_NS::UsdTimeCode time;

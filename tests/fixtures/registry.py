@@ -459,7 +459,8 @@ FIXTURES: dict[str, Fixture] = {
             (
                 # Ordered ops, a pivot through an inverted op, a matrix op, and a translate on a mesh.
                 Case("ordered-ops", SYNC, SUCCESS, ("XFORM-01",), 1),
-                # A reset transform stack outside and inside a native instance (OpenUSD #862).
+                # A reset transform stack outside and inside a native instance, and on a nested instance's root
+                # (OpenUSD #862).
                 Case("reset-stack", SYNC, SUCCESS, ("XFORM-01", "XFORM-02"), 1),
                 # Negative and nonuniform scale, and shear.
                 Case("scale-and-shear", SYNC, SUCCESS, ("XFORM-03",), 1),

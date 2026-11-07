@@ -1,8 +1,8 @@
 """Evaluation fixtures: the scenes M6's capture and planner are checked on, from scenes/evaluation/.
 
 - transforms (F-TRANSFORMS): each kind of transform the planner places, a reset transform stack outside and
-  inside a native instance, a payload, a translate sampled over time, and a projective matrix in a layer of
-  its own.
+  inside a native instance and on a nested instance's root, a payload, a translate sampled over time, and a
+  projective matrix in a layer of its own.
 - units_up_axis (F-UNITS-UP-AXIS): one scene as a Y-up stage in centimeters and a Z-up stage in meters, for
   coordinate conversion into target scenes of different unit scales.
 - visibility_purpose (F-VISIBILITY-PURPOSE): effective visibility, inherited and sampled over time, apart from
@@ -151,6 +151,8 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
             "/World/Reset/Pinned": translate(0, 5, 0),  # the reset drops Reset's translate
             "/World/Instanced/Kit/Body": world(kit, instanced),
             "/World/Instanced/Kit/Pinned": translate(0, 3, 0),  # drops Kit's and Instanced's (OpenUSD #862)
+            # Socket's reset, on a nested instance's root, drops Kit's and Instanced's too (OpenUSD #862).
+            "/World/Instanced/Kit/Socket/Geom": world(translate(2, 0, 0), translate(0, 0, 7)),
             "/World/Payloaded/Geom": world(rotate((1, 0, 0), 90), translate(0, 0, -5)),
             ANIMATED: translate(0, 0, 0),
         },
@@ -161,6 +163,7 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
         instance_context={
             "/World/Instanced/Kit/Body": ("/World/Instanced/Kit",),
             "/World/Instanced/Kit/Pinned": ("/World/Instanced/Kit",),
+            "/World/Instanced/Kit/Socket/Geom": ("/World/Instanced/Kit", "/World/Instanced/Kit/Socket"),
         },
         projective="/World/Projective/Geom",
         projective_world=projective,

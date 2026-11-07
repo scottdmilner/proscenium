@@ -80,6 +80,14 @@ PlanView MakePlan(const SnapshotView& snapshot, const PlanningContext& context) 
   });
 }
 
+// EXCEPTION to the rule against test-only API (with the user, 2026-11-06); see HydraComposedWorlds in plan.h.
+bp::dict HydraComposedWorldsDict(const SnapshotView& snapshot) {
+  const auto worlds = Guarded([&] { return HydraComposedWorlds(*snapshot.data); });
+  bp::dict result;
+  for (const auto& [source, world] : worlds) result[source.GetString()] = world;
+  return result;
+}
+
 void WrapPlan() {
   bp::class_<PlanningContext>("PlanningContext",
                               bp::init<double, int>((bp::arg("unit_scale"), bp::arg("representation_version"))))
@@ -101,7 +109,9 @@ void WrapPlan() {
   bp::class_<CorrespondenceEntry>("CorrespondenceEntry", bp::no_init)
       .add_property(
           "element", +[](const CorrespondenceEntry& e) { return e.element; })
-      .add_property("source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); });
+      .add_property(
+          "source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); })
+      .add_property("instance_context", +[](const CorrespondenceEntry& e) { return PathStrings(e.instanceContext); });
   bp::class_<Placeholder>("Placeholder", bp::no_init)
       .add_property(
           "object", +[](const Placeholder& p) { return p.object; })
@@ -124,6 +134,7 @@ void WrapPlan() {
           "correspondence", +[](const PlanView& p) { return ToTuple(p.data->correspondence); })
       .add_property("placeholders", +[](const PlanView& p) { return ToTuple(p.data->placeholders); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("context")));
+  bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }
 
 }  // namespace

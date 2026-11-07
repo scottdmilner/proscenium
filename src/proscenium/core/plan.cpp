@@ -1,12 +1,7 @@
 #include "plan.h"
 
 #include <pxr/base/gf/range3d.h>
-#include <pxr/imaging/hd/extentSchema.h>
-#include <pxr/imaging/hd/instancedBySchema.h>
-#include <pxr/imaging/hd/primOriginSchema.h>
-#include <pxr/imaging/hd/sceneIndexPrimView.h>
 #include <pxr/imaging/hd/tokens.h>
-#include <pxr/imaging/hd/xformSchema.h>
 
 #include <algorithm>
 #include <cmath>
@@ -15,57 +10,44 @@
 #include <utility>
 #include <vector>
 
-#include "source_facts.h"
+#include "instancing.h"
+#include "prim_reader.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
 namespace proscenium {
 namespace {
 
-// The snapshot's data sources are static copies; offset 0 is their only sample.
-constexpr HdSampledDataSource::Time kNow = 0.0F;
-
-// Temporary: what M5's minimal planner reads of a drawn gprim outside native and point instancing.
+// Temporary: what M5's minimal planner reads of a drawn copy of a gprim.
 struct DrawnGprim {
   SdfPath source;                   // on the composed stage, never a Hydra path
+  SdfPathVector instanceContext;    // native-instance roots, outermost first
   GfMatrix4d world{1.0};            // USD's row-vector convention
   std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
 };
 
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
-bool IsGprim(const HdSceneIndexPrim& prim) {
-  if (HdPrimTypeIsGprim(prim.primType)) return true;
-  const auto info = HdContainerDataSource::Cast(prim.dataSource->Get(SourceInfoTokens::Schema()));
-  const auto isGprim = info ? HdBoolDataSource::Cast(info->Get(SourceInfoTokens::IsGprim())) : nullptr;
-  return isGprim && isGprim->GetTypedValue(kNow);
-}
+bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
 
-// The gprim's values, or nothing for a prim the minimal planner doesn't draw: one that isn't a gprim, or one under
-// native or point instancing, whose source and instance context M6's planner derives.
-std::optional<DrawnGprim> ReadGprim(const HdSceneIndexPrim& prim, const SdfPath& path) {
-  if (!prim.dataSource || !IsGprim(prim)) return std::nullopt;
-  if (HdInstancedBySchema::GetFromParent(prim.dataSource)) return std::nullopt;
-  DrawnGprim gprim;
-  // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices that
-  // convert it keep that.
-  const SdfPath origin =
-      HdPrimOriginSchema::GetFromParent(prim.dataSource).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
-  gprim.source = origin.IsEmpty() ? path : origin;
-  if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(prim.dataSource).GetMatrix())
-    gprim.world = matrix->GetTypedValue(kNow);
-  if (const HdExtentSchema extent = HdExtentSchema::GetFromParent(prim.dataSource)) {
-    const HdVec3dDataSourceHandle min = extent.GetMin();
-    const HdVec3dDataSourceHandle max = extent.GetMax();
-    if (min && max) gprim.bounds = GfRange3d(min->GetTypedValue(kNow), max->GetTypedValue(kNow));
-  }
-  return gprim;
-}
-
-std::vector<DrawnGprim> DrawnGprims(const Snapshot& snapshot) {
+// A drawn copy of each gprim in `table`, sorted by source, with its world transform composed by `instances`.
+std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& instances) {
   std::vector<DrawnGprim> gprims;
-  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.scene, SdfPath::AbsoluteRootPath())) {
-    if (std::optional<DrawnGprim> gprim = ReadGprim(snapshot.scene->GetPrim(path), path))
-      gprims.push_back(std::move(*gprim));
+  for (const PrimRecord& prim : table.prims) {
+    if (!IsGprim(prim)) continue;
+    const std::vector<DrawnCopy>& copies = instances.CopiesOf(prim);
+    if (copies.empty()) continue;
+    // Flattened: in its prototype's namespace inside instances, else the world.
+    const GfMatrix4d local = prim.matrix.value_or(GfMatrix4d(1.0));
+    // A reset inside the prototype drops the instance's transform too (WORKAROUND for OpenUSD #862). Every copy has
+    // the same hydraRoot, so it is checked once.
+    const bool resets = instances.ResetsBelow(prim.path, copies.front().hydraRoot);
+    for (const DrawnCopy& copy : copies) {
+      DrawnGprim gprim{copy.Map(prim.path), copy.context, resets ? local : local * copy.world, prim.extent};
+      // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices
+      // that convert it keep that.
+      if (copy.context.empty() && !prim.originPath.IsEmpty()) gprim.source = prim.originPath;
+      gprims.push_back(std::move(gprim));
+    }
   }
   std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
   return gprims;
@@ -91,8 +73,10 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
   auto plan = std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}});
-  for (const DrawnGprim& gprim : DrawnGprims(snapshot)) {
-    // M5 captures no instancing, so each copy has one object, and its source entity is its source path.
+  const PrimTable table = ReadPrims(snapshot);
+  InstanceResolver instances(table, /*honorResets=*/true);
+  for (const DrawnGprim& gprim : DrawnGprims(table, instances)) {
+    // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
     const std::size_t object = plan->resources.size();
     Placeholder placeholder{object, object + 1, gprim.world, {}};
     if (gprim.bounds) {
@@ -104,10 +88,18 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanningContext& context) {
     plan->partitions.push_back({{placeholder.object, placeholder.boundsMesh}});
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, {placeholder.boundsMesh}});
     plan->resources.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
-    plan->correspondence.push_back({placeholder.object, gprim.source});
+    plan->correspondence.push_back({placeholder.object, gprim.source, gprim.instanceContext});
     plan->placeholders.push_back(std::move(placeholder));
   }
   return plan;
+}
+
+std::vector<std::pair<SdfPath, GfMatrix4d>> HydraComposedWorlds(const Snapshot& snapshot) {
+  const PrimTable table = ReadPrims(snapshot);
+  InstanceResolver instances(table, /*honorResets=*/false);
+  std::vector<std::pair<SdfPath, GfMatrix4d>> worlds;
+  for (const DrawnGprim& gprim : DrawnGprims(table, instances)) worlds.emplace_back(gprim.source, gprim.world);
+  return worlds;
 }
 
 }  // namespace proscenium

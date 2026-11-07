@@ -59,7 +59,9 @@ class CorrespondenceEntry:
     @property
     def element(self) -> int: ...  # the object that shows it
     @property
-    def source(self) -> str: ...
+    def source(self) -> str: ...  # an instance-proxy path inside native instances
+    @property
+    def instance_context(self) -> tuple[str, ...]: ...  # provisional: native-instance roots, outermost first
 
 class Placeholder:
     @property
@@ -91,3 +93,8 @@ class Plan:
     def placeholders(self) -> tuple[Placeholder, ...]: ...
 
 def plan(snapshot: Snapshot, context: PlanningContext) -> Plan: ...  # ValueError for an unplanned version
+
+# EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform, by source,
+# as Hydra's own values compose it, ignoring a reset transform stack inside an instance. Only the known-gap check for
+# OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes.
+def _hydra_composed_worlds(snapshot: Snapshot) -> dict[str, Gf.Matrix4d]: ...
