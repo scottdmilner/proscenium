@@ -1,6 +1,6 @@
 # Phase 3 Notes
 
-Findings and design notes for [Phase 3 — USD Stage Editor](../PROJECT.md#phase-3--usd-stage-editor), kept so they aren't lost before Phase 3 begins. Nothing here is a requirement: requirements are in [PROJECT.md](../PROJECT.md), [spec/](../spec/invariants.md), and [testing/](../testing/strategy.md), and where a note conflicts with them, they win. A note that becomes a requirement moves into the spec, with its matrix rows.
+Findings and design notes for [Phase 3 — USD Stage Editor](../PROJECT.md#phase-3--usd-stage-editor), kept for Phase 3 work, some of which may proceed alongside Phases 1 and 2 ([DECISIONS.md](../DECISIONS.md) "Phase 3 ordering"). Nothing here is a requirement: requirements are in [PROJECT.md](../PROJECT.md), [spec/](../spec/invariants.md), and [testing/](../testing/strategy.md), and where a note conflicts with them, they win. A note that becomes a requirement moves into the spec, with its matrix rows.
 
 | File | Contents |
 |---|---|
