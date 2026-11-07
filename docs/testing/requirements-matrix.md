@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-400 rows: 324 behavior, 17 contract, 59 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5.
+401 rows: 324 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5.
 
 ## PROJECT.md
 
@@ -402,7 +402,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [VIS-02](../spec/support/visibility.md#visibility-and-purpose) | Viewport \| default, proxy | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
 | [VIS-04](../spec/support/visibility.md#visibility-and-purpose) | A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport. | behavior |  | M6 | 1 / M12 | `F-UNIVERSE-MEMBERSHIP` | Set by M6. |
-| [MODEL-01](../spec/support/visibility.md#models-and-unsupported-content) | Expose model kind and available asset metadata. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [MODEL-01](../spec/support/visibility.md#models-and-unsupported-content) | Expose model kind and available asset metadata. | behavior |  | M7 | 1 / M12 | — | Set by M7. *Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md "Browsing universe and inspection metadata set").* |
 | [MODEL-03](../spec/support/visibility.md#models-and-unsupported-content) | Support is decided per behavior, not per prim type. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-04](../spec/support/visibility.md#models-and-unsupported-content) | Use a bounding-box placeholder when usable bounds are available. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
 | [MODEL-05](../spec/support/visibility.md#models-and-unsupported-content) | Otherwise create an empty marker and warn. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
@@ -444,6 +444,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [AINT-02](../testing/acceptance.md#interior-correctness) | Material fixtures use headless render assertions on controlled scenes | process |  | M9 | 1 / M12 | — | Set by M9. |
 | [ATIME-01](../testing/acceptance.md#sampled-time-codes) | Synchronization and caching must work at any time code. | process |  | M6 | 1 / M12 | — | Set by M6. |
 | [ATIME-02](../testing/acceptance.md#sampled-time-codes) | Each time-varying fixture declares its topology and visibility transitions from how it is built | process |  | M6 | 1 / M12 | — | Set by M6. |
+| [ATIME-03](../testing/acceptance.md#sampled-time-codes) | A bespoke fixture's selected authored sample times are all of them, or 8 spread evenly when it has more, and it has 2 seeded samples. | process |  | M6 | 1 / M12 | — | Set by M6. *Counts settled with the user, 2026-11-06 (M6 plan).* |
 | [ABND-01](../testing/acceptance.md#bounds-comparison-contract) | M4 defines in this section, for the chosen representation: whether expected bounds come from evaluated geometry or authored extent hints | contract |  | M4 | 1 / M4 | — | The M4 decision record: the Bounds Comparison Contract in acceptance.md states, for the chosen representation, each item this row lists (M4 plan, F4). |
 | [ABND-02](../testing/acceptance.md#bounds-comparison-contract) | The bounds check reuses decisions made elsewhere rather than making its own. | process |  | M7 | 1 / M12 | — | Set by M7. |
 | [ABND-03](../testing/acceptance.md#bounds-comparison-contract) | each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too | process |  | M7 | 1 / M12 | — | Set by M7. |

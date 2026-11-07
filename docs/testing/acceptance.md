@@ -63,7 +63,9 @@ Synchronization and caching must work **at any time code**. That remains a behav
 - The USD default time code.
 - Deterministically seeded additional samples where practical.
 
-Each time-varying fixture declares its topology and visibility transitions from how it is built, and seeds its additional samples from its fixture ID. Non-integer offsets are binary fractions, so every sampled time code is exactly representable. M6, the first milestone with time-varying fixtures, sets how many authored and seeded samples are kept, with fewer for production-scale fixtures. A fixture without time-varying content is evaluated at the default time code unless a case names another.
+Each time-varying fixture declares its topology and visibility transitions from how it is built, and seeds its additional samples from its fixture ID. Non-integer offsets are binary fractions, so every sampled time code is exactly representable. A fixture without time-varying content is evaluated at the default time code unless a case names another.
+
+A bespoke fixture's selected authored sample times are all of them, or 8 spread evenly when it has more, and it has 2 seeded samples. A production-scale fixture has no authored or seeded samples beyond the other kinds listed above, since each sample costs a synchronization at scale.
 
 ## Bounds Comparison Contract
 

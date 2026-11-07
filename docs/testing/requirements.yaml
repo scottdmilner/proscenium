@@ -1592,6 +1592,8 @@ requirements:
     rows:
       - id: MODEL-01
         quote: "Expose model kind and available asset metadata."
+        delivery: M7
+        note: "Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md \"Browsing universe and inspection metadata set\")."
       - id: MODEL-03
         quote: "Support is decided per behavior, not per prim type."
       - id: MODEL-04
@@ -1760,6 +1762,10 @@ requirements:
       - id: ATIME-02
         quote: "Each time-varying fixture declares its topology and visibility transitions from how it is built"
         delivery: M6
+      - id: ATIME-03
+        quote: "A bespoke fixture's selected authored sample times are all of them, or 8 spread evenly when it has more, and it has 2 seeded samples."
+        delivery: M6
+        note: "Counts settled with the user, 2026-11-06 (M6 plan)."
 
   - section: testing/acceptance.md#bounds-comparison-contract
     kind: process

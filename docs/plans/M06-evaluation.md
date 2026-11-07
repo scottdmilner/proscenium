@@ -1,0 +1,155 @@
+# M6 — Snapshot evaluation and representation planning: plan
+
+How M6 will build the product's evaluation and planning in the compiled core: the scene-index chain and its capture into an evaluated source snapshot, the planner that turns a snapshot, binding settings, and a planning context into a display plan, and the binding settings planning reads. It also sets the order of work. Requirements are in the [M6 milestone](../milestones/M06-evaluation.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M5 plan](M05-architecture.md).
+
+M6 delivers the matrix rows whose `delivery` is M6: ARCH-04, SNAP-08, SNAP-10, SNAP-11, SNAP-16, SNAP-17, PLAN-08, PLAN-09, BIND-06, XFORM-01 to XFORM-03, XFORM-05, XFORM-06, CONV-01, CONV-03, CONV-08, VIS-01 to VIS-04, MODEL-03 to MODEL-06, DEFER-01, TMETA-01 to TMETA-04, AFIX-06, and ATIME-01 to ATIME-03. It owns the DECISIONS.md rows "Evaluated snapshot form" and "Conversion and purpose settings", and the sampled time codes' counts in [Sampled Time Codes](../testing/acceptance.md#sampled-time-codes).
+
+## Starting point
+
+- **The plan boundary exists, with a minimal path through it** (M5 B1). `core/scene_index_chain.h` holds `SceneIndexChain`: UsdImaging's scene indices without the draw-mode one, then the ext-computation primvar pruning, implicit-surface, NURBS-approximating, and dependency-forwarding filters, as the bridge chains them. Its `Capture(time)` copies each drawn gprim outside native and point instancing into a `Snapshot` of plain values: source path, world matrix, and local extent. `core/plan.h`'s `BuildPlan(snapshot, context)` gives each one a drawn copy's partition: an `object` that uses its `bounds mesh`, a correspondence entry, and a placeholder whose bounds are a 6-float `Vt.FloatArray`. Both types are labeled temporary. `PlanningContext` holds the unit scale and the representation version, and the planner reads only the version.
+- **The transaction calls it through one module.** `synchronization/evaluation.py`'s `plans(...)` builds the chain, captures each time code inside `BindingStages.changed_layers()`, releases the chain, and plans. The transaction and `cache` share it, so a layer changed during either discards the attempt (CONS-03). A failure there is a fatal `evaluation-failed` or `planning-failed` diagnostic. On ALab its capture took 0.71 to 0.84 s of a synchronization ([M5 plan](M05-architecture.md), F3).
+- **The plan's tuple properties convert every element on each read** (M5 F3). The stub application layer reads each one once per plan, and `_core.pyi` says so. Large content has to cross as read-only buffers (the core's boundary rules).
+- **Diagnostics are ready for content** (M5 C1, C2). `DiagnosticCode` is the documented code list, each code with one category and one severity. The content categories exist, but no code reports them yet. A result's state derives from its own diagnostics, so the first content diagnostics make results complete with issues.
+- **Requested settings hold only the payload policy** (`binding/source_access/binding_settings.py`), in binding configuration version 1. M3 left conversion and purpose settings to M6, and BIND-06 with them ([M3 plan](M03-bindings.md), "Conversion and purpose settings are M6's"). No release has written a binding configuration yet.
+- **The bridge holds what M6 ports** (`tools/feasibility/hydra_bridge/src/`, [its README](../../tools/feasibility/hydra_bridge/src/README.md)). It is evidence, not product code:
+  - the source-info filter (`source_info_scene_index`, `source_facts`), which supplies what the UsdImaging chain drops;
+  - the capture into a retained scene index (`capture`, `snapshot`);
+  - the reverse mapping from instancers to source paths and instance contexts (`instancing`);
+  - the planner's objects, placeholders, visibility, and destinations (`planner`);
+  - batch groups (`batch_groups`, M4 D8);
+  - each object's dirtied aspects (M4 E3).
+
+  M1b's correctness cases checked these against USD: transforms, nested instances, purpose visibility, untranslated types, and implicit shapes ([record](../feasibility/runtime-record.md#prototype-correctness-m1b-phase-c)). The bridge carries two labeled workarounds: OpenUSD #862 (reset transform stacks hidden by flattening, in instances) and #3690 (collection bindings inside instances, which is M9's).
+- **M4's decisions fix what the plan describes:**
+  - objects, with copies alike but for placement batched in groups of at least 5 (DECISIONS.md "Display representation");
+  - partitions of a drawn copy, a batch, or one shared datablock ("Partition unit");
+  - roles and identities from M5 ("Representation roles and resource identities"): a sheared copy has an `object` and a `shear parent`, and a placeholder has a `bounds mesh`;
+  - what varies, predicted from Hydra's dirtying ("Time-sampled data representation").
+
+## Settled with the user (2026-11-06)
+
+1. **The snapshot is a retained scene index,** as the bridge's is: an `HdMakeStaticCopy` of the schemas planning reads, per prim. It is Hydra-native, so Hydra's traversal and debug printing work on it, and its containers can be shared between captures, which M13's incremental capture builds on. It is opaque to Python and tested through the plan.
+2. **The conversion and purpose settings:**
+   - one `coordinate_conversion` flag, off by default, which turns on units and up-axis together (CONV-01);
+   - `viewport_purposes` and `render_purposes` as sets of USD purposes, defaulting to the spec's table: viewport `default` and `proxy`, final render `default` and `render`.
+
+   A guide made explicitly visible displays in the viewport whatever the settings say (VIS-04). The settings name what a user chooses, and the planner adds `guide` to the viewport's purposes, since a guide is invisible unless `guideVisibility` says otherwise.
+3. **MODEL-01 moves to M7.** Callers browse the live stage through the USD API, and there is no inspection metadata set (DECISIONS.md "Browsing universe and inspection metadata set"), so the snapshot and plan carry kind only where planning reads it. MODEL-01's oracle reads kind and `assetInfo` from the binding's live stage on `F-KIND-HIERARCHY`, and M7 delivers it with the inspection layer.
+4. **How many time codes a time-varying fixture's tests exercise.** [Sampled Time Codes](../testing/acceptance.md#sampled-time-codes) lists the time codes each such fixture is tested at. Each is synchronized at, and cached into a generation synchronized at another. The list includes "selected authored sample times" and "deterministically seeded additional samples", and leaves how many of each to M6:
+   - bespoke fixtures: their authored sample times, up to 8 spread evenly when there are more, plus 2 seeded time codes;
+   - production-scale fixtures: only the list's other kinds (the start and end, a non-integer interior time code, before the start and after the end, and the default time code), with no authored or seeded ones beyond them.
+5. **A mesh in M6's plan is a drawn copy with a provisional geometry description,** labeled as such in the plan types. The description holds its source, its local extent, and a provisional content key. It gets no diagnostic, since M8 replaces it, and the stub draws it as a bounds box.
+
+## Phases
+
+Each phase ends with a review by the user before the next starts. Each phase lists its commits in order. Every commit is one feature and passes `pre-commit` and the test suite on its own:
+
+- A spec change lands with its matrix rows, its `invariants.md` bullet, and its DECISIONS.md row.
+- A new fixture lands with:
+  - its registry entry;
+  - its Named Contract Fixtures row;
+  - its mention in the milestone's Tests section;
+  - a row that uses it.
+- Code lands with its tests.
+- A decision lands with its line in the phase's decision log.
+
+If a commit grows past one feature, it splits, and this list is updated in the same commit.
+
+### Phase A — Contracts in the spec and matrix
+
+1. **The M6 plan:** this file.
+2. **The settled decisions,** each with its rows: the DECISIONS.md rows "Evaluated snapshot form" and "Conversion and purpose settings"; the sample counts in [Sampled Time Codes](../testing/acceptance.md#sampled-time-codes), with ATIME's quotes; MODEL-01's delivery moved to M7, with the M6 and M7 milestone files; and the M6 milestone's Tests saying the settings join the configuration in version 1, with no migration.
+3. **The metamorphic relations M6 chooses** (TMETA-02, TMETA-03). Each states the input change, the expected effect, and the requirement behind it. They are recorded in this plan's Phase A log and in each test's docstring. Suggested:
+   - Translating a root prim shifts its displayed descendants' world transforms and bounds by that translation and changes nothing else (XFORM-01).
+   - Turning conversion on prefixes every world transform with the spec's correction matrix C, and changes no local bounds or participation (CONV-01, CONV-03, CONV-08).
+   - Changing a destination's purposes changes only that destination's participation flags (VIS-02, VIS-03).
+   - Switching the payload policy and back gives the plan of never switching (AFIX-06).
+   - Capturing at a time code whose evaluated values equal another's gives the same plan, but for its time code (XFORM-06).
+   - Making a prim instanceable, or not, leaves each drawn copy's source path, world transform, participation, and bounds unchanged; only instance contexts and provisional sharing differ (ARCH-05's premise, checked here on the plan).
+4. **Fixtures,** as `.usda` scenes with a comment stating their purpose, under generators that copy them. Each case cites its rows. Suggested:
+   - **`F-TRANSFORMS`:** ordered transform operations, matrix ops, negative and nonuniform scale, shear, and transforms authored on meshes. It has reset transform stacks outside and inside a native instance (#862), and a mesh beneath an unsupported typed ancestor that has transforms and visibility (ARCH-04). Animated ops declare their transitions (ATIME-02). Rows: XFORM-01 to XFORM-03, XFORM-05, XFORM-06, ARCH-04.
+   - **`F-UNITS-UP-AXIS`:** a Y-up stage in centimeters and a Z-up stage in meters, synchronized into target scenes of unit scale 1 and 0.01. Rows: CONV-01, CONV-03, CONV-08.
+   - **`F-VISIBILITY-PURPOSE`:** inherited invisibility and each purpose, a purpose inherited from an ancestor, proxy and render pairs, and visibility that changes over time with declared transitions. Rows: VIS-01 to VIS-03, MODEL-06.
+   - **`F-UNSUPPORTED-CONTENT`:**
+     - untranslated Hydra types with an authored extent, with a computed one (curves, points), and with none (a volume);
+     - implicit surfaces and a NURBS patch (exact and inexact conversions);
+     - a point instancer (DEFER-01);
+     - an unsupported gprim whose transform, visibility, purpose, and kind still apply (MODEL-03).
+
+     Rows: SNAP-16, SNAP-17, MODEL-03 to MODEL-05, DEFER-01.
+   - `F-NESTED-STRESS` (XFORM-02, XFORM-03, instance contexts), `F-UNIVERSE-MEMBERSHIP` (VIS-04), and `F-MULTI-BINDING` (BIND-06) gain cases.
+
+   `bpy_free/` tests check each scene against `UsdGeom`, as `test_transaction_fixtures.py` does.
+5. **Oracles on M6's rows, and M6 started:** every M6 row gets its oracle and every behavior row its fixture, M6 joins `started`, then `tools/matrix.py render`. Expected transforms, visibility, and bounds come from USD's APIs or the fixture's construction (`UsdGeom.Xformable`, `ComputeEffectiveVisibility`, `ComputeExtentFromPlugins`), never from Hydra.
+
+#### Phase A log
+
+- **A1, the plan,** with the five decisions settled with the user above.
+- **A2, the settled decisions.** DECISIONS.md gains "Evaluated snapshot form" (a retained scene index) and "Conversion and purpose settings" (`coordinate_conversion` off by default; `viewport_purposes` and `render_purposes` at the spec's defaults, the planner adding `guide` to the viewport's; binding configuration version 1 changed in place). [Sampled Time Codes](../testing/acceptance.md#sampled-time-codes) sets the counts in a paragraph of its own, ATIME-03: a bespoke fixture's authored sample times are all of them or 8 spread evenly, plus 2 seeded samples, and a production-scale fixture has only the list's other kinds. MODEL-01 moves to M7, whose Implements line and Tests name it on `F-KIND-HIERARCHY`; M6's Implements line excepts it, and its Tests say the settings join configuration version 1 with no migration.
+
+### Phase B — The chain and the capture
+
+1. **The source-info filter, with the facts M6 plans from,** ported from the bridge and placed right after the stage scene index:
+   - authored purpose visibility, as UsdImaging attribute data sources, so animated opinions read at the chain's time;
+   - whether a prim resets the transform stack, labeled `WORKAROUND for OpenUSD #862` at every site, with a known-gap check that fails once flattening keeps it;
+   - the USD type of prims Hydra doesn't image, with `UsdImagingDataSourcePrim` for their transform, visibility, purpose, and extent;
+   - USD's computed extent for curves and points without an authored one.
+
+   Its stage listener dirties what Hydra misses. Subset families, `doubleSided`, material bindings, and dropped attributes are M8's and M9's facts, which they add to the same filter.
+2. **The snapshot,** a retained scene index: what planning reads at one time code, the stage's `metersPerUnit` and `upAxis` (transforms.md), and the Tf errors and warnings posted while capturing each prim, as diagnostics. Nothing in it changes after capture, and it keeps alive every array it lends (SNAP-08, SNAP-10, SNAP-11). M5's `DrawnGprim` goes.
+3. **Source identities of drawn copies,** provisional: each copy's composed-stage source path and instance context (native-instance roots, outermost first), mapped back from Hydra's instancers as the bridge's `instancing` does, never from Hydra paths or instance indices. A point instancer stays one placeholder (DEFER-01). M10 completes the descriptions.
+4. **What depends on time** (a suggestion, M4 E3): a capture that forces its time dependencies once records the dirtied locators, which planning maps to each copy's varying aspects. The frames that `cache` adds confirm what varies, and nothing fails on a misprediction.
+
+### Phase C — The planner
+
+1. **The envelope's extensions,** with provisional instance and geometry descriptions labeled as such. Per-copy content crosses as structure-of-arrays read-only buffers in Blender's element types, so a consumer reads each once per plan. Suggested buffers:
+   - each copy's world matrix, 16 `'f'` per copy in Blender's convention;
+   - viewport and render participation as `'?'`;
+   - a placeholder's bounds as 6 `'f'` each.
+
+   Paths and diagnostics stay tuples.
+2. **Visibility and purpose** per destination, from the settings: effective inherited visibility kept apart from purpose, both destinations from one snapshot, guides shown only when explicitly visible (VIS-01 to VIS-04, MODEL-06).
+3. **Coordinate conversion:** off by default, so C is the identity. Otherwise C is built from the snapshot's `metersPerUnit` and `upAxis` and the context's unit scale, and prefixed to every world transform. Bounds and instances inherit it, and local geometry is unchanged (CONV-01, CONV-03, CONV-08).
+4. **Transforms Blender objects can't hold:** a sheared world matrix becomes an `object` and a `shear parent` whose product is exact. Suggested: a singular-value decomposition, so the parent holds rotation and scale and the child a rotation, both representable as location, rotation, and scale. A matrix no pair can hold, such as a projective one, is the nearest affine matrix with an approximation diagnostic (XFORM-03, XFORM-05).
+5. **Placeholders and markers:** a bounds box when usable bounds exist (an authored extent, else the filter's computed one), else an empty marker with a warning. Neither runs expensive evaluation for bounds. Untranslated types get aggregated `untranslated-type` diagnostics, and inexact filter conversions get approximation diagnostics (SNAP-16, SNAP-17, MODEL-04, MODEL-05). Each behavior is decided on its own, so an unsupported geometry type keeps its transform, visibility, and purpose, and supported descendants keep their ancestors' state (MODEL-03, ARCH-04).
+6. **Diagnostics across the boundary:** the core reports each diagnostic by its `DiagnosticCode` string, with the fields DIAG-02 lists, and Python builds the `Diagnostic`. A code the Python list lacks is a defect and raises. A `bpy_free` test checks that every code the core can emit is in the list.
+7. **Object order and names** (M4 C3): the plan orders its objects, batches' objects included, so the names application gives them land at the end of Blender's sorted ID lists whatever names users see, on a first synchronization and beside the display being replaced. Suggested: an ordinal per object from the plan, which application joins with an increasing generation counter ahead of the prim's name. Phase F measures it.
+8. **Batch groups** (M4 D8): copies alike but for placement, at least 5 to a group, grouped in the core. Their content key stays provisional until M8 defines mesh content. Suggested: a mesh's path below its innermost instance root, as M4 E3 split copies.
+9. **Determinism:** equal snapshot, settings, and context give equal plans, and planning reads nothing else: no stage, no clock, no environment (PLAN-08, PLAN-09). A plan built in a separate process gives each resource the same identity. That is the part of ROLE-02's oracle M5 D7 left unchecked.
+
+### Phase D — Settings, context, and the transaction
+
+1. **The conversion and purpose settings in binding configuration version 1** (with the user): `RequestedSettings` gains them, and `set_settings` changes them. Version 1 changes in place with no migration, since no release has written one, as M5 changed the ledger's. A record without the new fields is refused like any other invalid record. `F-SCHEMA-VERSIONS`' binding records gain the fields, and a failed migration stays checked on the sample records only. On `F-MULTI-BINDING`, setting one binding's settings leaves the others' (BIND-06).
+2. **The planning context and settings in the plan call:** `plan(snapshot, settings, context)` takes its three inputs. The context is captured from the target scene before planning: its unit scale and the representation version.
+3. **The product path in `synchronization/evaluation.py`:** the extended chain, capture, and planner replace the minimal path. Both stay inside `changed_layers()` (CONS-03). The snapshot's and plan's diagnostics join the attempt's, so content makes a result complete with issues (DIAG-10), and an unchanged refresh reports equal diagnostics (DIAG-07).
+4. **The stub application layer on the new envelope:** each drawn copy is drawn as its bounds, provisional meshes included, with its shear parent and names. The M5 suite passes unchanged. M7 replaces the stub.
+
+### Phase E — Time codes and metamorphic tests
+
+1. **Sampled time codes** (ATIME-01, ATIME-02, AFIX-06): a helper in `tests/support/` builds each time-varying fixture's samples from its declared transitions, the counts Phase A set, and seeds taken from its fixture ID. Non-integer offsets are binary fractions. Fixtures with payloads run under both policies.
+2. **Time-varying values** (XFORM-06): at each sample, the plan's transforms, participation, and bounds match USD at that time code. That holds for a synchronization's plan and for each plan a `cache` call builds. Topology changes are M8's (XFORM-07).
+3. **The metamorphic relations** from Phase A, on the bespoke fixtures, plus generated inputs from recorded seeds where they add cases (TMETA-01 to TMETA-04).
+
+### Phase F — Runtime costs
+
+1. **Capture and planning on ALab,** against the minimal path's 0.71 to 0.84 s, in the Blender binary with repeated runs, split into capture, planning, and the transfer across the boundary. Peak memory is recorded while the snapshot and plan are alive.
+2. **The same on Pixar's Kitchen set,** ad hoc evidence and never a requirement's only evidence: a mid-size real scene between the generated `updates-N` scenes and ALab, with 1,788 drawn copies, many native instances, and repeated groups of up to 174 ([record](../feasibility/runtime-record.md#batch-minimum-m4-phase-f)). It exercises instance contexts and batch groups at a real scene's shape. Its `metersPerUnit` and `upAxis` are read first, and the record says whether they make it a case for coordinate conversion.
+3. **Reading the plan:** buffers against tuples for per-copy content at ALab's and `updates-10000`'s copy counts.
+4. **Object names:** the stub's preparation on `updates-10000`, synchronized once and again, against M5 F3's 1.1 s and 7.9 s.
+
+Moore Lane and the OpenPBR Shader Playground add nothing M6 measures, so they aren't run. Moana Island isn't run either: opened whole it exhausts memory, and one element passed 8 GB in M4 with its point instancers left out, cause unknown ([record](../feasibility/runtime-record.md#moana-island-at-scale)).
+
+### Phase G — Close
+
+1. **Notes for M7, M8, M10, and M13** in their milestone files:
+   - M7: the envelope it applies (shear parents, markers, names, destinations);
+   - M8: the provisional mesh description and batch content key it replaces;
+   - M10: the provisional instance descriptions and point instancers;
+   - M13: what the snapshot's form gives incremental capture.
+2. **Close the decision log,** render the matrix, and confirm the exit condition: a supported initial snapshot is evaluated and planned deterministically, yielding an inspectable source hierarchy and a spatially meaningful plan, with no Blender objects or datablocks created. The plan tests run in `bpy_free/`, which checks the last clause.
+
+## Working agreements
+
+- Work happens on branch `m06-evaluation`. The user stages, commits, and pushes.
+- Planning docs state requirements; mechanisms are suggestions for the milestone that settles them.
+- Evidence claims only what a check tested; single runs and inferences are labeled.
