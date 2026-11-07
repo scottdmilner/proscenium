@@ -87,11 +87,16 @@ Preserve Phase 1 correctness while avoiding unnecessary work.
 
 See [Incremental Synchronization](spec/incremental.md) for detailed requirements.
 
-**Phase 2 must be complete before Phase 3 begins.**
-
 ### Phase 3 — USD Stage Editor
 
 Tools author USD changes and use the synchronizer as their display layer. Actual USD authoring tools are outside Phases 1 and 2.
+
+Phase 3 work that depends on the synchronizer begins after Phase 2 is complete: tools that select through the source selection model, show their edits through bindings, or take part in Blender's undo. Work that needs none of these may proceed alongside Phases 1 and 2 (DECISIONS.md "Phase 3 ordering"):
+
+- Prototypes and design notes in [phase3/](phase3/README.md), which are not requirements.
+- Authoring code that reads and writes USD without `bpy`, checked through the USD API and viewed with other USD tooling.
+
+Phase 3 work never adds to or changes the requirements of Phases 1 and 2. A contract change it suggests is decided like any other, in [DECISIONS.md](DECISIONS.md).
 
 Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal. The evaluation time code may change between any two synchronizations.
 
