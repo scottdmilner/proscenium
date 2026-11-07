@@ -51,6 +51,6 @@ def _registrations(addon: Any) -> dict[str, Any]:
         "handlers": sorted(
             event for event, fns in lists.items() if any(getattr(f, "__module__", None) == addon.__name__ for f in fns)
         ),
-        "namespaces": [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, addon.persistence.NAMESPACE)],
+        "namespaces": [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, addon.records.NAMESPACE)],
         "classes": [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
     }

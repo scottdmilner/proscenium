@@ -1,37 +1,10 @@
-"""Disposable in-memory state built from the records (lifecycle.md#undo-and-runtime-state).
+"""The bindings' runtime: lookups and writes on their records, read when called (lifecycle.md#undo-and-runtime-state).
 
-The upper tier of proscenium.binding: it may import proscenium.binding.persistence and the bpy-free code, never
-proscenium.api. Callers use what this module exports: what proscenium.api and proscenium.addon call, and the
-errors that reach their callers. The state itself is proscenium.binding.runtime.state's, lookups by binding identity are
-proscenium.binding.runtime.binding_configs', and ownership is proscenium.binding.runtime.ownership_index's.
+The upper tier of proscenium.binding: it may import proscenium.binding.persistence and the bpy-free code. It exports
+its modules: lookups by binding identity (binding_configs), copied-binding detection (copy_detection), every binding's
+stages (stage_tracking), ownership and manifests (ownership), and the pending-cleanup ledger (pending_cleanup).
 """
 
-from .binding_configs import (
-    DisabledBindingError,
-    FoundBinding,
-    copied_bindings,
-    create,
-    find_binding,
-    find_bindings,
-    set_config,
-)
-from .copy_detection import CopiedBinding
-from .current_stages import CurrentStages
-from .state import NotRegisteredError, invalidate, refresh_if_tags_changed, start_tracking, stop_tracking
+from . import binding_configs, copy_detection, ownership, pending_cleanup, stage_tracking
 
-__all__ = [
-    "CopiedBinding",
-    "CurrentStages",
-    "DisabledBindingError",
-    "FoundBinding",
-    "NotRegisteredError",
-    "copied_bindings",
-    "create",
-    "find_binding",
-    "find_bindings",
-    "invalidate",
-    "refresh_if_tags_changed",
-    "set_config",
-    "start_tracking",
-    "stop_tracking",
-]
+__all__ = ["binding_configs", "copy_detection", "ownership", "pending_cleanup", "stage_tracking"]

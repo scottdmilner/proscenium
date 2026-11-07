@@ -11,7 +11,8 @@
 
 **Decisions and deliverables:**
 
-- Extensions to the M5 plan envelope that carry evaluated content, with provisional instance and geometry descriptions labeled as such.
+- Extensions to the M5 plan envelope that carry evaluated content, with provisional instance and geometry descriptions labeled as such. Each read of one of the plan's tuple properties converts every element ([M5 plan](../plans/M05-architecture.md), F3), so large content crosses as read-only buffers, as the core's boundary rules say, and a consumer reads a tuple once per plan.
+- Capture and planning replace M5's minimal path in `synchronization/evaluation.py`, which the transaction and `cache` share inside `changed_layers()`, so a layer changed during either discards the attempt (CONS-03). The minimal path's capture took 0.71 to 0.84 s of a synchronization on ALab ([M5 plan](../plans/M05-architecture.md), F3).
 - Objects created so their names land at the end of Blender's sorted ID lists, whatever names users see: prim-derived names cost 6.68 s against 1.06 s in creation order at 30,001 objects ([M4 plan](../plans/M04-prototypes.md), C3). This applies to batches' objects too.
 - Batch groups in the plan: copies alike but for placement, at least 5 to a group (DECISIONS.md "Display representation"), grouped in the core ([M4 plan](../plans/M04-prototypes.md), D8).
 - What depends on time, from Hydra's dirtying, for `cache` to add: each object's dirtied aspects after the capture dirties its time dependencies, which predicted every varying copy on ALab ([M4 plan](../plans/M04-prototypes.md), E3). A suggestion; the frames confirm what varies.

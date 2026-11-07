@@ -1,6 +1,8 @@
-"""Each package imports only what its row allows; in binding, a tier imports only the tier below it.
+"""The import rules between proscenium's units: tiers, and public modules (src/proscenium/README.md#import-rules).
 
-See docs/plans/source-tiers-and-names.md#tiers and AGENTS.md#layout.
+Each unit imports only from itself and from units in lower tiers, and the lowest tier's units import only themselves.
+Between units, a public module (a package unit's exported module, or a module unit) is imported from its package, or
+names are imported from it.
 
 Imports are read from each module's source with ast, without importing it, so type-only imports count too.
 """
@@ -12,6 +14,7 @@ import functools
 import importlib.util
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 import proscenium
 
@@ -19,19 +22,24 @@ from .bpy_blocker import is_blender_origin
 
 PACKAGE = Path(proscenium.__file__).parent
 
-# What each package, and each bpy-free package or module, may import from proscenium, keyed by the unit's name under
-# proscenium: the bindings' code's units are binding's subpackages and results module. Other modules at the
-# package's top level, such as addon, may import any.
-BELOW_TIERS = {"core", "binding.source_access", "binding.results"}
-ALLOWED = {
-    "core": {"core"},
-    "binding": set(),  # binding/__init__.py imports none of its units
-    "binding.source_access": {"binding.source_access"},
-    "binding.results": {"binding.results"},
-    "binding.persistence": {"binding.persistence", *BELOW_TIERS},
-    "binding.runtime": {"binding.runtime", "binding.persistence", *BELOW_TIERS},
-    "api": {"api", "binding.runtime", "binding.persistence", *BELOW_TIERS},
-}
+# The units, each a package or a module, by name under proscenium, lowest tier first. proscenium/__init__.py, the
+# extension's entry, and binding/__init__.py, which groups binding's units, are no unit's.
+TIERS = (
+    ("core", "binding.source_access", "binding.results"),  # bpy-free, each importing only itself
+    ("binding.persistence",),
+    ("binding.runtime",),
+    ("synchronization",),
+    ("api",),
+    ("addon",),
+)
+TIER_OF = {unit: tier for tier, units in enumerate(TIERS) for unit in units}
+BPY_FREE = set(TIERS[0])
+
+
+def _allowed(unit: str) -> set[str]:
+    """The units unit may import: itself, and every unit in a lower tier unless it's in the lowest."""
+    tier = TIER_OF[unit]
+    return {unit} if tier == 0 else {u for u, t in TIER_OF.items() if t < tier} | {unit}
 
 
 def _unit(parts: list[str] | tuple[str, ...]) -> str:
@@ -44,7 +52,7 @@ def _module_name(path: Path) -> list[str]:
     return parts[:-1] if parts[-1] == "__init__" else parts
 
 
-def _imported(path: Path) -> list[tuple[int, str]]:
+def _imported(path: Path) -> list[ModuleImport]:
     """The proscenium modules path imports, with their line numbers, relative imports resolved."""
     module = _module_name(path)
     package = module if path.name == "__init__.py" else module[:-1]
@@ -52,113 +60,148 @@ def _imported(path: Path) -> list[tuple[int, str]]:
 
 
 def _submodule(target: str, name: str) -> str:
-    """target.name if that is a module of proscenium, else target."""
-    path = PACKAGE.parent.joinpath(*target.split("."), name)
-    return f"{target}.{name}" if path.with_suffix(".py").is_file() or (path / "__init__.py").is_file() else target
+    """target.name if that is a module of proscenium, else target.
+
+    Compared with the directory's entries, since a case-insensitive file system finds records.py for a name Records.
+    A compiled module, such as core's _core, is found by its type stub.
+    """
+    directory = PACKAGE.parent.joinpath(*target.split("."))
+    entries = {p.name for p in directory.iterdir()} if directory.is_dir() else set()
+    module = bool({f"{name}.py", f"{name}.pyi"} & entries) or (
+        name in entries and (directory / name / "__init__.py").is_file()
+    )
+    return f"{target}.{name}" if module else target
 
 
-def _imports_in(tree: ast.Module, package: list[str]) -> list[tuple[int, str]]:
+class ModuleImport(NamedTuple):
+    """A proscenium module an import reaches."""
+
+    line: int
+    name: str
+    via: str  # the package it was imported from, for "from package import module"; else empty, as for "from module
+    # import names"
+
+
+def _imports_in(tree: ast.Module, package: list[str]) -> list[ModuleImport]:
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            found += [(node.lineno, alias.name) for alias in node.names]
+            found += [ModuleImport(node.lineno, alias.name, "") for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
             base = package[: len(package) - node.level + 1] if node.level else []
             target = ".".join([*base, *([node.module] if node.module else [])])
             # "from package import x" imports the module x when there is one, and else a name from package
-            found += [(node.lineno, _submodule(target, alias.name)) for alias in node.names]
-    return [(line, name) for line, name in found if name.split(".")[0] == "proscenium"]
+            for alias in node.names:
+                name = _submodule(target, alias.name)
+                found.append(ModuleImport(node.lineno, name, target if name != target else ""))
+    return [i for i in found if i.name.split(".")[0] == "proscenium"]
 
 
-def _violations(path: Path, tier: str) -> list[str]:
-    return [
-        f"{path.relative_to(PACKAGE)}:{line} imports {name}" for line, name in _imported(path) if _crosses(name, tier)
-    ]
-
-
-def _crosses(name: str, tier: str) -> bool:
-    parts = name.split(".")[1:]
-    return bool(parts) and _unit(parts) not in ALLOWED[tier]
-
-
-def _tier(path: Path) -> str | None:
+def _own_unit(path: Path) -> str | None:
+    """The unit path belongs to, or None for a package's __init__.py that is no unit's."""
     parts = path.relative_to(PACKAGE).with_suffix("").parts
     if parts[-1] == "__init__":
         parts = parts[:-1]
-    return unit if parts and (unit := _unit(parts)) in ALLOWED else None
+    return unit if parts and (unit := _unit(parts)) in TIER_OF else None
 
 
-def test_tiers_import_only_below() -> None:
-    found = [v for path in sorted(PACKAGE.rglob("*.py")) if (tier := _tier(path)) for v in _violations(path, tier)]
-    assert not found, "\n".join(found)
-
-
-def test_every_module_is_in_a_tier_or_at_the_top() -> None:
-    # A new subpackage gets a row in ALLOWED, so the test above checks it.
-    stray = [p for p in PACKAGE.rglob("*.py") if len(p.relative_to(PACKAGE).parts) > 1 and _tier(p) is None]
-    assert not stray, stray
-
-
-# The tiers in binding; outside its own tier, a tier's modules are reached only through its package.
-BINDING_TIERS = {"binding.runtime", "binding.persistence"}
-# The modules that may reach a tier's module anyway, and which. The manifests aren't persistence's API until M5 calls
-# the ownership index, which reads and writes them, and the state holds them for it (persistence/__init__.py).
-REACH_EXCEPTIONS = {
-    Path("binding/runtime/ownership_index.py"): {"proscenium.binding.persistence.manifests"},
-    Path("binding/runtime/state.py"): {"proscenium.binding.persistence.manifests"},
-}
-
-
-def _reached_inside(path: Path, imports: list[tuple[int, str]]) -> list[str]:
-    """Of path's imports, those of the modules inside a unit of binding where only its package may be used.
-
-    Code outside binding uses each unit's package, and code in binding uses a tier's package from outside that tier.
-    """
-    own = _tier(path)
-    outside = path.relative_to(PACKAGE).parts[0] != "binding"
+def _wrong_way(path: Path, unit: str) -> list[str]:
+    """Of path's imports, read as unit's, those of units unit may not import."""
     return [
         f"{path.relative_to(PACKAGE)}:{line} imports {name}"
-        for line, name in imports
-        if name.startswith("proscenium.binding.")
-        and len(name.split(".")) > 3
-        and (unit := _unit(name.split(".")[1:])) != own
-        and (outside or unit in BINDING_TIERS)
-        and name not in REACH_EXCEPTIONS.get(path.relative_to(PACKAGE), set())
+        for line, name, _ in _imported(path)
+        if (parts := name.split(".")[1:]) and _unit(parts) not in _allowed(unit)
     ]
 
 
-def test_units_are_reached_through_their_packages() -> None:
-    found = [v for path in sorted(PACKAGE.rglob("*.py")) for v in _reached_inside(path, _imported(path))]
+def test_units_import_only_lower_tiers() -> None:
+    found = [v for path in sorted(PACKAGE.rglob("*.py")) if (unit := _own_unit(path)) for v in _wrong_way(path, unit)]
     assert not found, "\n".join(found)
 
 
-def test_an_import_inside_a_unit_is_found() -> None:
-    # Guards the test above: runtime may not reach persistence's modules, nor api source access's; persistence may.
-    module = [(1, "proscenium.binding.persistence.records"), (2, "proscenium.binding.source_access.binding_ids")]
-    assert len(_reached_inside(PACKAGE / "binding" / "runtime" / "state.py", module[:1])) == 1
-    assert len(_reached_inside(PACKAGE / "api" / "bindings.py", module[1:])) == 1
-    assert not _reached_inside(PACKAGE / "binding" / "persistence" / "binding_records.py", module[1:])
-    assert not _reached_inside(PACKAGE / "binding" / "persistence" / "binding_records.py", module[:1])
-    # "from package import module" reaches the module, and "from package import name" only the package.
-    imports = _imports_in(
-        ast.parse("from ..persistence import manifests, Loaded"), ["proscenium", "binding", "runtime"]
-    )
-    assert [name for _, name in imports] == [
-        "proscenium.binding.persistence.manifests",
-        "proscenium.binding.persistence",
+def test_every_module_is_a_units() -> None:
+    # A new unit gets a row in TIERS, so the tests check it; only the two grouping __init__.py files are no unit's.
+    stray = [p for p in PACKAGE.rglob("*.py") if _own_unit(p) is None]
+    assert sorted(p.relative_to(PACKAGE) for p in stray) == [Path("__init__.py"), Path("binding/__init__.py")]
+    assert not _imported(PACKAGE / "binding" / "__init__.py")  # so importing a bpy-free unit never imports bpy
+
+
+@functools.cache
+def _exports(package: str) -> frozenset[str]:
+    """The names a package of proscenium exports: its __init__.py's __all__."""
+    init = PACKAGE.parent.joinpath(*package.split("."), "__init__.py")
+    for node in ast.parse(init.read_text()).body:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+            return frozenset(ast.literal_eval(node.value))
+    return frozenset()
+
+
+def _in_form(name: str, via: str) -> bool:
+    """Whether an import of another unit's module name, from via, reaches it through a public module.
+
+    A package unit's public modules are those its package exports, and a module unit is public itself. One is imported
+    from its package, or names are imported from it.
+    """
+    unit = f"proscenium.{_unit(name.split('.')[1:])}"
+    package, _, module = name.rpartition(".")
+    if PACKAGE.parent.joinpath(*unit.split(".")).is_dir():
+        public = package == unit and module in _exports(unit)
+    else:
+        public = name == unit
+    return public and via in (package, "")
+
+
+def _out_of_form(path: Path, imports: list[ModuleImport]) -> list[str]:
+    """Of path's imports of other units, those that don't take the one form."""
+    own = _own_unit(path)
+    return [
+        f"{path.relative_to(PACKAGE)}:{line} imports {name}"
+        for line, name, via in imports
+        if (parts := name.split(".")[1:])
+        and (unit := _unit(parts)) in TIER_OF
+        and unit != own
+        and not _in_form(name, via)
     ]
+
+
+def test_units_import_each_other_in_one_form() -> None:
+    found = [v for path in sorted(PACKAGE.rglob("*.py")) for v in _out_of_form(path, _imported(path))]
+    assert not found, "\n".join(found)
+
+
+def test_an_import_out_of_form_is_found() -> None:
+    # Guards the test above, from a runtime module: a public module from its package, and names from a public module,
+    # take the form; a name from a package, and an unexported module or a name from one, don't.
+    module = PACKAGE / "binding" / "runtime" / "copy_detection.py"
+    runtime = ["proscenium", "binding", "runtime"]
+
+    def out_of_form(code: str) -> int:
+        return len(_out_of_form(module, _imports_in(ast.parse(code), runtime)))
+
+    assert out_of_form("from ..persistence import manifests, records") == 0
+    assert out_of_form("from .. import results") == 0
+    assert out_of_form("from ...core import _core") == 0
+    assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
+    assert out_of_form("from ..persistence.manifests import Manifest, RepresentationRole") == 0
+    assert out_of_form("from ..results import Diagnostic, Result") == 0
+    assert out_of_form("from ..persistence import Manifest") == 1
+    assert out_of_form("from ...synchronization import application") == 1
+    assert out_of_form("from ...synchronization.application import prepare") == 1
 
 
 def test_a_wrong_way_import_is_found() -> None:
-    # Guards the tests above: the API module, read as if it were in persistence, imports above that tier.
+    # Guards the tests above: the API module, read as if it were persistence's, imports above that tier; and the
+    # lowest tier's units import only themselves.
     api = PACKAGE / "api" / "bindings.py"
-    assert any("imports proscenium.binding.runtime" in v for v in _violations(api, "binding.persistence"))
+    assert any("imports proscenium.binding.runtime" in v for v in _wrong_way(api, "binding.persistence"))
+    assert _allowed("binding.results") == {"binding.results"}
 
 
-def test_an_absolute_import_of_a_tier_is_found() -> None:
+def test_an_absolute_import_of_a_unit_is_found() -> None:
     # Guards the tests above: "from proscenium.binding import x" names the unit it imports.
     imports = _imports_in(ast.parse("from proscenium.binding import runtime"), ["proscenium", "core"])
-    assert [(name, _crosses(name, "core")) for _, name in imports] == [("proscenium.binding.runtime", True)]
+    assert [name for _, name, _ in imports] == ["proscenium.binding.runtime"]
+    assert "binding.runtime" not in _allowed("core")
 
 
 def _blender_imports_in(tree: ast.Module) -> list[tuple[int, str]]:
@@ -188,8 +231,8 @@ def _is_blender(top: str) -> bool:
 
 
 def _bpy_free(path: Path) -> bool:
-    """Whether path must import without bpy: the bpy-free units, and the packages that hold them (AGENTS.md#layout)."""
-    return _tier(path) in {*BELOW_TIERS, "binding"} or path == PACKAGE / "__init__.py"
+    """Whether path must import without bpy: the lowest tier's units, and the packages that hold them."""
+    return _own_unit(path) in BPY_FREE or path in (PACKAGE / "__init__.py", PACKAGE / "binding" / "__init__.py")
 
 
 def test_bpy_free_code_never_imports_blender() -> None:
@@ -207,5 +250,5 @@ def test_a_blender_import_is_found() -> None:
     # bundled packages, and the standard library are allowed. The bpy-free code is the units and their packages.
     code = "import os\nimport pxr.Usd\ndef f() -> None:\n    import bpy\n    from mathutils import Vector\n"
     assert [name for _, name in _blender_imports_in(ast.parse(code))] == ["bpy", "mathutils"]
-    assert _bpy_free(PACKAGE / "binding" / "source_access" / "binding_ids.py")
+    assert _bpy_free(PACKAGE / "binding" / "source_access" / "identifiers.py")
     assert not _bpy_free(PACKAGE / "binding" / "persistence" / "records.py")

@@ -1,0 +1,17 @@
+#usda 1.0
+# Sublayer of the transaction fixtures' scene (see root.usda): it authors Sub, the drawn mesh whose
+# translation F-SOURCE-CHANGE edits in this layer while a binding evaluates.
+(
+    defaultPrim = "World"
+)
+
+over "World"
+{
+    def Mesh "Sub" (
+        prepend references = @./tetra.usda@
+    )
+    {
+        double3 xformOp:translate = (0, -3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

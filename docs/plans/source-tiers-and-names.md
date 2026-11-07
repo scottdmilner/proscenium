@@ -6,18 +6,20 @@ How `src/proscenium/` is arranged so its structure shows in the tree, and how it
 
 `src/proscenium/` holds three packages: `api/`, what callers use; `binding/`, the bindings' code; and `core/`, the compiled core. The bindings' code and the core are separate packages, so the Blender-facing code and the core and its Hydra code change independently.
 
-Tiers apply only inside `binding/`: `runtime/` is above `persistence/`, and each imports only the tier below it and the bpy-free code, `core/`, `binding/source_access/`, and `binding/results.py`. `api/` is a separate package that uses `binding`'s units, and is not a tier:
+The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers, and the lowest tier's units import only themselves:
 
-| Package | Holds | May import |
+| Tier | Unit | Holds |
 |---|---|---|
-| `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) | `binding.runtime`, `binding.persistence`, and the bpy-free code |
-| `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) | `binding.persistence`, and the bpy-free code |
-| `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) | the bpy-free code |
-| `core/` | The compiled core: its C++ source and built module | `core` |
-| `binding/source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers | `binding.source_access` |
-| `binding/results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) | nothing |
+| 6 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
+| 5 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
+| 4 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
+| 3 | `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) |
+| 2 | `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) |
+| 1 | `core/` | The compiled core: its C++ source and built module |
+| 1 | `binding/source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers |
+| 1 | `binding/results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) |
 
-Code outside `binding/` imports its units, `runtime`, `persistence`, `source_access`, and `results`, and uses what each exports, never the modules inside them, so calls read as `runtime.start_tracking()`. Inside `binding/`, a tier is reached only through its package too: `runtime` calls `persistence.read_configs()`. The manifests are the one exception until M5 calls the ownership index, their only user. `binding/__init__.py` imports none of them, so importing a bpy-free unit never imports `bpy`. `addon.py` registers the extension and its handlers, which drive `binding.runtime` and `api`, so it may import any of them. The bpy-free code is a different axis from the tiers: it holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `binding/source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called tiers, and the packages packages, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
+Units reach each other through public modules. A package unit's `__init__.py` exports its public modules, and nothing else, so a module it doesn't export is the unit's own; a module unit is public itself. Code in another unit imports a public module from its package and names each use through it, so calls read as `state.start_tracking()` and `configs.read_configs()`. Where those uses would nest, as results' do in building a result from a diagnostic and its code, it imports the names from the module instead (`from ..binding.results import Diagnostic, DiagnosticCode, Result`), which reaches no further into the unit. Module names are unique across `src/proscenium/` and name what the module holds, so a use names its unit without repeating itself. `binding/__init__.py` imports none of its units, so importing a lowest-tier unit never imports `bpy`. The lowest tier holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `binding/source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called tiers, and the packages packages, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
 
 A `bpy_free` test reads every module's imports with `ast`, without importing it, and fails on an import against this table.
 
@@ -41,18 +43,18 @@ src/proscenium/
     persistence/
       __init__.py                the records, and the reads and writes runtime, api, and addon use
       records.py                 the versioned-record framework
-      binding_records.py         BindingConfig, DestinationTag, BindingIndex
+      configs.py         BindingConfig, DestinationTag, BindingIndex
       manifests.py               ManifestEntry, Manifest, and their records
       binding_state.py           Generation, LastAttempt
       selection.py               PersistentSelection
     results.py                   Result, ResultState, Diagnostic, DiagnosticCategory, Severity
     source_access/
       __init__.py                the stages, BindingId, RequestedSettings
-      binding_stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
-      stage_registry.py          StageRegistry
-      binding_ids.py             BindingId
+      stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
+      registry.py          StageRegistry
+      identifiers.py             BindingId
       canonical_candidate.py     the canonical-candidate rule
-      requested_settings.py      RequestedSettings
+      binding_settings.py      RequestedSettings
       source_entities.py
   core/                          the compiled core: _core and its C++ source
 ```
@@ -93,7 +95,7 @@ These go in AGENTS.md's Style section:
 | `Category` | `DiagnosticCategory` | |
 | `Refusal`, `Refused`, `RecordRefused` | `RefusalReason`, `RefusedRecord`, `RefusedRecordError` | A reason, a value, and an exception |
 | `Schema.kind`, `Schema.record` | `Schema.name`, `Schema.record_type` | `record` is a type |
-| `bindings.update()`, `all_bindings()`, `tagged_collections()` | `binding_records.write_config()`, `read_configs()`, `read_tags()` | They write and read records |
+| `bindings.update()`, `all_bindings()`, `tagged_collections()` | `configs.write_config()`, `read_configs()`, `read_tags()` | They write and read records |
 | `BindingNotFound`, `Disabled`, `NotTracking`, `SourceUnavailable`, `_Stale` | `BindingNotFoundError`, `BindingDisabledError`, `NotRegisteredError`, `SourceUnavailableError`, `StaleError` | |
 
 ### Stored field names
@@ -134,4 +136,5 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 - **The runtime split (commit 4).** `binding_configs.py`, not `configs.py`: the package exports `configs()`, which would replace a submodule of that name. The modules call each other's helpers through the module, so the tests that patch `current_state` and `_add_share` patch them in one place.
 - **Copied bindings (commit 7).** `copy_detection.py`, not `copied_bindings.py`, for the reason `binding_configs.py` is: the package exports `copied_bindings()`. It is named for the `CopyDetection` it returns.
 - **The API (commit 12).** The blender tests' `sync` fixture is `bindings`, for the `Bindings` it gives, so *synchronization* names only an attempt in the tests too. The spec section keeps its name, Synchronization API.
+- **Units in tiers, reached through public modules (M5, with the user, after M5's D4).** Two export styles, names from most packages and modules from persistence, made the rules a list of per-package cases, and exporting names made each package's `__init__.py` restate its modules' APIs. So every unit is in one tier table, from `addon.py` down, and every package unit exports its modules, each use named through one, or, where those uses would nest, imported by name from the module. Modules were renamed so a use doesn't repeat its module: `binding_records.py` is `configs.py`, `ledger.py` `ledgers.py` (also since runtime's `ledger()` would shadow it), `binding_ids.py` `identifiers.py`, `binding_stages.py` `stages.py`, `stage_registry.py` `registry.py`, `requested_settings.py` `binding_settings.py` (`settings` would be shadowed by `BindingConfig.settings`, a stored field), and runtime's `current_stages.py` `stage_tracking.py`. `api/bindings.py` keeps its name, which the spec states, and re-exports `RequestedSettings` and `Result`, the types its callers pass and receive, so callers outside `proscenium` import only it. `SceneRecords.records()` is `records_found()`, since it would shadow `records` in its class.
 - **Reads in persistence (after commit 14).** The binding records' functions that decode records are `read_configs()` and `read_tags()`. `scene_bindings()`, `index_texts()`, and `tagged_uids()` find where records are without decoding them, so they keep names for what they return.

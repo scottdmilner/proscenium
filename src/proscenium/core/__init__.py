@@ -7,3 +7,7 @@ into a process that already has that library.
 # Importing pxr.Usd loads Blender's usd_ms, which only processes without bpy (such as tests/bpy_free) lack, and
 # registers the Python converters for USD types that _core's arguments use, which any process may lack.
 from pxr import Usd  # noqa: F401
+
+from . import _core
+
+__all__ = ["_core"]

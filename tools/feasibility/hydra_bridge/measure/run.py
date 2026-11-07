@@ -11,6 +11,8 @@ directory.
         --scenarios all --representation batched   # M4 Phase D: the batched display
     uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
         --modes viewport importer-viewport   # M4 Phase D: viewport frame time, in windows on the screen
+    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes uncached \
+        --out build/hydra-bridge/measure-uncached   # M5 Phase S: lookups without the bindings' cache
 
 Each run is sampled from outside with psutil (resident memory, CPU time, threads; on macOS also the physical
 footprint) and aligned with the stage markers the child writes. Raw runs go to <out>/runs/, the summary to
@@ -222,9 +224,10 @@ def main() -> int:
         "--modes",
         nargs="*",
         default=MODES,
-        choices=[*MODES, "interaction", "ownership", "viewport", "importer-viewport"],
+        choices=[*MODES, "interaction", "ownership", "uncached", "viewport", "importer-viewport"],
         help="synchronization modes; interaction and ownership (M4 Phase C) time the interaction functions, or "
-        "the first ownership lookup after an undo, after one; viewport and importer-viewport (M4 Phase D) time "
+        "the first ownership lookup after an undo, after one; uncached (M5 Phase S) times lookups without the "
+        "bindings' cache against it; viewport and importer-viewport (M4 Phase D) time "
         "the 3D view's frames after one, in a window on the screen",
     )
     parser.add_argument(

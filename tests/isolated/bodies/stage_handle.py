@@ -1,4 +1,4 @@
-"""Isolated body: the core's StageHandle keeps a stage alive only until release().
+"""Isolated body: the core's StageHandle and SceneIndexChain keep a stage alive only until release().
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_stage_handle.py.
 """
@@ -51,6 +51,36 @@ def release_while_caller_holds() -> dict[str, Any]:
     handle.release()  # idempotent
     result = {"stage_after_release": handle.stage() == stage}
     del handle
+    gc.collect()
+    result["caller_stage_valid"] = bool(stage.GetPseudoRoot())
+    return result
+
+
+def chain_caller_drops_then_release() -> dict[str, Any]:
+    """The caller drops its stage while a scene index chain captures from it, then the chain is released."""
+    stage = Usd.Stage.CreateInMemory()
+    identifier = stage.GetRootLayer().identifier
+    chain = _core.SceneIndexChain(stage)
+    result: dict[str, Any] = {"is_callers_stage": chain.stage() == stage}
+    del stage
+    gc.collect()
+    chain.capture(0.0)
+    result["alive_while_held"] = chain.stage() is not None and bool(Sdf.Layer.Find(identifier))
+    chain.release()
+    result["expired_after_release"] = _expired(identifier)
+    result["stage_after_release"] = chain.stage() is not None
+    result["released"] = chain.released
+    return result
+
+
+def chain_release_while_caller_holds() -> dict[str, Any]:
+    """Releasing and deleting a scene index chain leaves a stage the caller still holds alive."""
+    stage = Usd.Stage.CreateInMemory()
+    chain = _core.SceneIndexChain(stage)
+    chain.capture(0.0)
+    chain.release()
+    result = {"stage_after_release": chain.stage() == stage}
+    del chain
     gc.collect()
     result["caller_stage_valid"] = bool(stage.GetPseudoRoot())
     return result

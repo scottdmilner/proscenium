@@ -342,7 +342,8 @@ class SavedDisplay:
     """A binding's published display as plain data: nothing publishes until M5, so a test builds it in Blender.
 
     An empty object for /World and, parented to it, a mesh object for /World/Ref with one material.
-    entries holds each resource identity's covers, role, and uses, as its manifest entry stores them.
+    entries holds each entry's covers, role, uses, and place, as its manifest entry stores them, by a name that
+    support.manifests.key makes the entry key; uses names entries the same way.
     """
 
     parent_location: tuple[float, float, float]
@@ -350,7 +351,7 @@ class SavedDisplay:
     vertices: tuple[tuple[float, float, float], ...]
     faces: tuple[tuple[int, ...], ...]
     material_color: tuple[float, float, float, float]
-    entries: dict[str, tuple[tuple[str, ...], str, tuple[str, ...]]]
+    entries: dict[str, tuple[tuple[str, ...], str, tuple[str, ...], int | None]]
 
 
 DISPLAY = SavedDisplay(
@@ -360,10 +361,10 @@ DISPLAY = SavedDisplay(
     faces=((0, 1, 2, 3),),
     material_color=(0.8, 0.2, 0.1, 1.0),
     entries={
-        "world": (("/World",), "prim", ()),
-        "ref": (("/World/Ref",), "prim", ("ref-mesh",)),
-        "ref-mesh": (("/World/Ref",), "mesh", ("ref-material",)),
-        "ref-material": (("/World/Ref",), "material", ()),
+        "world": (("/World",), "object", (), 0),
+        "ref": (("/World/Ref",), "object", ("ref-mesh",), 0),
+        "ref-mesh": (("/World/Ref",), "mesh", ("ref-material",), None),
+        "ref-material": (("/World/Ref",), "material", (), None),
     },
 )
 

@@ -6,9 +6,9 @@ Copied bindings on each copy route, and binding indexes lost, cleared, duplicate
 The routes are Blender operations, and the generator runs without bpy, so it gives a binding's source and,
 for each route, the outcome the canonical-candidate rule gives what that route leaves, derived from the
 rule and the route (D1 in docs/plans/M03-bindings.md), never from running it; tests/support/copies.py
-runs the routes, on a binding "Shot" on the scene "Scene" whose destination holds the managed object
-"Managed". Candidates are counted as the rule counts them: binding records, then tagged collections no
-record names.
+runs the routes, on a binding "Shot" on the scene "Scene" whose destination holds what its synchronization of
+Scene.TRANSACTION published: a placeholder per drawn gprim (fixtures.transaction). Candidates are counted as the
+rule counts them: local collections holding a binding record whose target scene exists.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class Outcome:
 @dataclass(frozen=True)
 class Route:
     outcome: Outcome
-    reopened: Outcome | None = None  # after save and reopen, where it differs
+    reopened: Outcome | None = None  # after save and reopen, where it differs from after synchronizing
     index_untouched: bool = True  # the file keeps one index, whose entry names the original destination
 
 
@@ -44,18 +44,21 @@ INDEXED = Outcome(2, canonical=True, reason=DecisionReason.INDEXED)
 UNIQUE = Outcome(1, canonical=True, reason=DecisionReason.UNIQUE)
 
 ROUTES: dict[str, Route] = {
-    # Copy routes: the index names the original, whose record and destination refer to each other.
-    "collection-copy": Route(INDEXED),  # Collection.copy(): a tagged collection no record names
+    # Copy routes: two collections hold the binding's records, and the index names the original.
+    "collection-copy": Route(INDEXED),  # Collection.copy(): its records name the original's scene
     "deep-collection-copy": Route(INDEXED),  # Outliner > Duplicate Collection's inferred state (D1), by hand
-    "full-copy-scene": Route(INDEXED),  # a second scene and destination referring to each other
-    "linked-copy-scene": Route(INDEXED),  # a second scene's record naming the original destination
+    "full-copy-scene": Route(INDEXED),  # a second scene, and a destination whose records name it
     "append": Route(INDEXED),  # the destination appended from a copy of the file brings its scene
-    "record-copy": Route(Outcome(3, canonical=True, reason=DecisionReason.INDEXED)),  # records assigned by script
-    # The index lost, cleared, or disagreeing: the fallback, or nothing, decides.
-    "index-lost": Route(Outcome(2, canonical=False, reason=DecisionReason.SEVERAL_MUTUAL), index_untouched=False),
-    "index-lost-linked-copy": Route(Outcome(2, canonical=True, reason=DecisionReason.MUTUAL), index_untouched=False),
-    "entry-cleared": Route(Outcome(2, canonical=True, reason=DecisionReason.MUTUAL), index_untouched=False),
-    "none-mutual": Route(Outcome(2, canonical=False, reason=DecisionReason.NONE_MUTUAL), index_untouched=False),
+    "record-copy": Route(INDEXED),  # records assigned by script to another collection
+    # A linked-copy scene shares the destination, so it adds no candidate.
+    "linked-copy-scene": Route(UNIQUE),
+    # The index lost, cleared, or disagreeing: nothing decides between two candidates, and one is unique.
+    "index-lost": Route(Outcome(2, canonical=False, reason=DecisionReason.NOT_INDEXED), index_untouched=False),
+    "index-lost-collection-copy": Route(
+        Outcome(2, canonical=False, reason=DecisionReason.NOT_INDEXED), index_untouched=False
+    ),
+    "index-lost-linked-copy": Route(UNIQUE, index_untouched=False),  # its synchronization restores the entry
+    "entry-cleared": Route(UNIQUE, index_untouched=False),  # its synchronization replaces the entry
     "index-disagrees": Route(Outcome(2, canonical=False, reason=DecisionReason.INDEX_DISAGREES), index_untouched=False),
     "unreadable-index": Route(
         Outcome(2, canonical=False, reason=DecisionReason.UNREADABLE_INDEX), index_untouched=False
@@ -79,5 +82,5 @@ class AmbiguityScene:
 @contextmanager
 def ownership_ambiguity(dest: Path) -> Generator[AmbiguityScene]:
     """F-OWNERSHIP-AMBIGUITY: a source for the binding each route copies, in its own directory under dest."""
-    root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
+    root = copy_scene(Scene.TRANSACTION, dest / "source") / "root.usda"
     yield AmbiguityScene(root=root, routes=dict(ROUTES))

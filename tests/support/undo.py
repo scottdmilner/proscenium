@@ -5,6 +5,12 @@ What works in background mode is recorded in docs/feasibility/runtime-record.md#
 - With global undo off, `ed.undo` fails its poll, so undo cannot be exercised.
 
 Push a base step before the change under test; the first undo returns to it.
+
+Undo only from a pushed state, as with a window, where every operator pushes a step. Blender's undo reuses the
+datablocks it believes unchanged since the last step, and a change made since without a push isn't seen: a collection
+that gained a link to a new object is reused with it while the object is freed, and the depsgraph Blender builds around
+the undo reads the freed object (runtime-record.md#undo). A test that checks an operation pushed no step undoes with
+undo_unpushed.
 """
 
 from __future__ import annotations
@@ -39,6 +45,15 @@ def undo(steps: int = 1) -> None:
     for _ in range(steps):
         assert bpy.ops.ed.undo.poll(), "no undo step available"  # ty: ignore[missing-argument]
         bpy.ops.ed.undo()
+
+
+def undo_unpushed(steps: int = 1) -> None:
+    """Undo `steps` steps from a state changed since the last push: pushed first, then undone past.
+
+    The extra step is the current state's, so the first undo lands where an undo without it would have.
+    """
+    push("unpushed changes")
+    undo(steps + 1)
 
 
 def redo(steps: int = 1) -> None:

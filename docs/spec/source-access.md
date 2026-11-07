@@ -27,24 +27,24 @@ Binding configuration must not cross-contaminate other bindings. Opening or sync
 Callers reach a binding through a **binding handle**: an immutable value that holds only the binding's persistent identifier, never a Blender datablock or cached binding state. Methods that use the binding's records look it up when called; `release` addresses runtime state directly. Two handles are equal when their identifiers are.
 
 - `synchronize(time_code=None)` synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame ([Transforms and Time Codes](support/transforms.md#transforms-and-time-codes)). The time code is the attempt's, not a setting of the binding: the caller derives it at each synchronization, and the attempt uses the binding's requested settings.
-- `cache(time_codes)` caches the published generation's time-varying values at each given time code without synchronizing ([Cached Time Codes](pipeline.md#cached-time-codes)), and returns an immutable result as `synchronize` does. `time_codes` is a collection of USD time codes, such as a frame range; one time code is a collection of one.
+- `cache(time_codes)` caches the published generation's time-varying values at each given time code without synchronizing ([Cached Time Codes](pipeline.md#cached-time-codes)), and returns an immutable result as `synchronize` does. `time_codes` is a collection of USD time codes, such as a frame range; one time code is a collection of one. The default time code isn't one to cache: passing it is misuse, and the call raises and caches nothing.
 - The requested settings (payload policy, conversion, purpose, UV-set names) change only through `set_settings(...)`, which records them without synchronizing.
 - `reload(layers=None)` rereads the binding's source layers from disk on request ([Layer State and Reloading](#layer-state-and-reloading)) without synchronizing; the next synchronization displays them.
 - `attach(stage, confirm=False)` attaches the caller's stage to this binding and returns an immutable result. A different stored root-layer identifier requires `confirm=True`; without it the result is a fatal failure with a source-confirmation-required diagnostic and nothing changes.
 - `release()` drops this binding's source and evaluation stages and returns `None`. It is idempotent, changes no persistent records or saved display, and remains valid after undo or removal of the binding.
-- `synchronize` returns an immutable result: its result state and deduplicated diagnostics ([Diagnostics](pipeline.md#diagnostics)). An expected failure, such as an unavailable source, is a result, not an exception.
+- `synchronize` returns an immutable result ([Diagnostics](pipeline.md#diagnostics)) holding its result state; its own deduplicated diagnostics, with a pending-cleanup diagnostic for each resource it left pending; the time codes it attempted, a synchronization's one or those a cache call hadn't cached; and the binding's current cleanup status, apart from its own diagnostics. An expected failure, such as an unavailable source, is a result, not an exception.
 - A handle whose binding no longer exists, for example after undo or binding removal, raises when used except for `release()`.
-- Exceptions report misuse only, such as a call made during another synchronization.
+- Exceptions report misuse only, such as a call made during another synchronization, and defects, such as a failed write to the pending-cleanup ledger.
 
 Operations that span bindings belong to the process's bindings: creating a binding, finding a scene's bindings, and reporting copied bindings ([Copied Bindings](#copied-bindings)). Attachment and release belong to each binding's handle.
 
 `create_binding(scene, *, payload_policy=LOAD_ALL, name="USD Display")` creates an unattached binding with a dedicated destination named for `name`. It opens no source stage; the caller attaches one through the returned handle.
 
-Design note (settled by M3; M5 settles the result's fields): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
+Design note (settled by M3 and M5): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
 ## Source Consistency
 
-- Synchronization is synchronous and non-reentrant.
+- Synchronization is synchronous and non-reentrant. While a synchronization, a `cache` call, or a cleanup retry is running, a call to `synchronize`, `cache`, `attach`, `release`, `reload`, or `retry_cleanup` on any binding raises before changing anything. `set_settings` may be called, and the running attempt keeps the settings it started with.
 - The caller must not mutate an attached stage or its contributing layers during a synchronization.
 - Where a source change during evaluation can be detected, the attempt is discarded before publication.
 
@@ -62,7 +62,7 @@ Callers may attach the same stage to several bindings or open separate stages ov
 
 ## Copied Bindings
 
-Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or scene, appending managed content from another `.blend`, or copying a binding record together with its manifest. The bindings in a `.blend` that share one binding identity are its **candidates**: each scene's binding record for it, and each destination collection tagged with it that no binding record names, as a collection duplicated on its own is. A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it.
+Custom properties can be copied by duplication; do not assume they guarantee uniqueness. A binding can be copied by duplicating its destination collection or its target scene, appending it from another `.blend`, or copying its records to another collection by script. A binding's records are on its destination collection, naming its identity and its target scene ([Binding State](lifecycle.md#binding-state)). The bindings in a `.blend` that share one binding identity are its **candidates**: each local collection whose binding record names that identity and a target scene that exists. A binding's identity is not unique when it has two or more candidates, or two or more binding indexes name it.
 
 - A binding whose identity is not unique is **disabled pending repair**: it keeps its display, does not refresh, and reports the ambiguity until the user makes it a new binding or detaches it.
 - A deterministic, documented rule decides which candidate remains canonical. If the rule cannot decide, all candidates are disabled.
@@ -70,21 +70,19 @@ Custom properties can be copied by duplication; do not assume they guarantee uni
 - A binding's handle reaches its canonical candidate. A scene lists the bindings whose canonical candidate is on it and, for a binding with none, those with a candidate on it. Every candidate of an identity that isn't unique is reported, with which one is canonical, or that none is.
 - A binding with no canonical candidate refuses synchronization, reloading, and settings changes with a fatal diagnostic naming its candidates, before accessing its source.
 - Whether a candidate is disabled is derived from the records whenever they are read, never stored, so it survives save/reopen and no copy carries it. Detection writes nothing.
-- Detection runs when a `.blend` is loaded, after undo and redo, when scenes are added or removed, and before each synchronization.
+- Detection runs at every lookup of a binding, reading the records as they are, so the next call that reaches an identity finds its copies.
 
 ### Canonical Candidate
 
 Each `.blend` holds a **binding index**, with one entry per binding identity naming that binding's destination. The index is held outside every binding's own datablocks, and nothing in a binding refers to it, so copying a binding's datablocks does not copy the index.
 
 - Creating a binding adds its index entry. Removing a binding removes its entry.
-- A candidate is canonical when the index names its destination and its binding record and destination refer to each other.
-- If the index has no entry for the identity, or its entry names no destination, then the one candidate whose binding record and destination refer to each other is canonical.
+- A candidate is canonical when the index's entry for its identity names its collection.
 - Otherwise the rule cannot decide, and all candidates are disabled. This includes:
   - more than one index naming the identity;
   - a binding index that can't be read, for an identity with two or more candidates;
-  - an index naming a destination whose binding record does not refer back;
-  - with no usable index entry, two or more candidates whose binding record and destination refer to each other, or none.
-- A write to the canonical candidate's binding records restores its missing index entry, when its record and destination refer to each other. An entry naming no destination is kept.
+  - no index entry for the identity, or one naming none of its candidates.
+- A write to a unique binding's records restores its index entry when the index has none for it, or one naming no collection, so a lost index doesn't disable both sides of a later copy.
 - A binding linked from another `.blend` is not a candidate. It is library data, read-only in the linking file, and its identity belongs to its library, so it never makes a local binding's identity non-unique.
 
 ## Source Stages

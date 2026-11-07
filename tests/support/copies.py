@@ -1,17 +1,18 @@
 """F-OWNERSHIP-AMBIGUITY's routes, run in Blender, and the file's records by name (fixtures.copies).
 
-Each route acts on a binding "Shot" on the scene "Scene", whose destination holds the managed object
-"Managed" with a manifest naming it. Routes that bring data from another .blend save a copy of the open
+Each route acts on a binding "Shot" on the scene "Scene", whose destination holds the content its synchronization
+published, with the manifest naming it. Routes that bring data from another .blend save a copy of the open
 file beside it first, so the other file holds the same binding.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import binding_records, manifests, records
+from proscenium.binding.persistence import configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
 
@@ -19,7 +20,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access.identifiers import BindingId
+
+
+MANAGED = "Still"  # one of the published objects: /World/Still's placeholder
 
 
 def run(route: str, tmp_path: Path) -> None:
@@ -61,18 +65,16 @@ def _shot() -> bpy.types.Collection:
 
 
 def _index_text() -> bpy.types.Text:
-    [text] = binding_records.index_texts()
+    [text] = configs.index_texts()
     return text
 
 
 def _write_entries(change: Callable[[dict[BindingId, bpy.types.Collection | None]], None]) -> None:
-    index = records.read(_index_text(), binding_records.INDEX_KEY, binding_records.INDEX)
+    index = records.read(_index_text(), configs.INDEX_KEY, configs.INDEX)
     assert isinstance(index, Loaded)
     destinations = dict(index.record.destinations)
     change(destinations)
-    records.write(
-        _index_text(), binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations)
-    )
+    records.write(_index_text(), configs.INDEX_KEY, configs.INDEX, configs.BindingIndex(destinations))
 
 
 def _copy_collection(_: Path) -> bpy.types.Collection:
@@ -85,7 +87,7 @@ def _copy_collection(_: Path) -> bpy.types.Collection:
 def _deep_copy_collection(tmp_path: Path) -> None:
     """Outliner > Duplicate Collection's state, inferred from the full-copy scene (D1).
 
-    The objects copied, and the copy's manifest naming the copies, its tag the original's.
+    The objects copied, and the copy's manifest naming the copies, its other records the original's.
     """
     copy = _copy_collection(tmp_path)
     copies = {}
@@ -96,8 +98,8 @@ def _deep_copy_collection(tmp_path: Path) -> None:
     manifest = manifests.read_manifest(copy)
     assert isinstance(manifest, Loaded)
     entries = {
-        key: type(entry)(copies.get(entry.datablock, entry.datablock), entry.covers, entry.role, entry.uses)
-        for key, entry in manifest.record.entries.items()
+        entry_key: replace(entry, datablock=copies.get(entry.datablock, entry.datablock))
+        for entry_key, entry in manifest.record.entries.items()
     }
     manifests.write_manifest(copy, Manifest(entries))
 
@@ -126,7 +128,7 @@ def _load(tmp_path: Path, attr: str, name: str, *, link: bool) -> list[bpy.types
 
 
 def _append(tmp_path: Path) -> None:
-    """Append the destination from a copy of the file, linking it under the scene: its tag brings its scene."""
+    """Append the destination from a copy of the file, linking it under the scene: its records bring their scene."""
     for collection in _load(tmp_path, "collections", "Shot", link=False):
         assert isinstance(collection, bpy.types.Collection)
         _scene().collection.children.link(collection)
@@ -140,15 +142,14 @@ def _link(tmp_path: Path) -> None:
 
 def _append_index(tmp_path: Path) -> None:
     """A user appends the other file's index Text; its entry's pointer brings the destination, and its scene."""
-    _load(tmp_path, "texts", binding_records.INDEX_NAME, link=False)
+    _load(tmp_path, "texts", configs.INDEX_NAME, link=False)
 
 
 def _copy_records(_: Path) -> None:
-    """A script copies the binding's records, by assignment, onto a new scene and collection."""
+    """A script copies the binding's records, by assignment, onto a new collection on a new scene."""
     scene = bpy.data.scenes.new("Scripted")
-    destination = bpy.data.collections.new("ScriptedDest")
+    destination = bpy.data.collections.new("Shot Scripted")  # found after "Shot"
     scene.collection.children.link(destination)
-    scene[records.NAMESPACE] = _scene()[records.NAMESPACE]
     destination[records.NAMESPACE] = _shot()[records.NAMESPACE]
 
 
@@ -156,26 +157,24 @@ def _lose_index(_: Path) -> None:
     bpy.data.texts.remove(_index_text())
 
 
-def _remove_tag(_: Path) -> None:
-    del _shot()[records.NAMESPACE][binding_records.TAG_KEY]
-
-
 def _clear_entries(_: Path) -> None:
     _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations)))
 
 
 def _disagree(tmp_path: Path) -> None:
-    copy = _copy_collection(tmp_path)
-    _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations, copy)))
+    """A collection copy, and the index's entry naming a collection that holds neither's records."""
+    _copy_collection(tmp_path)
+    elsewhere = bpy.data.collections.new("Elsewhere")
+    _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations, elsewhere)))
 
 
 def _unreadable_index(_: Path) -> None:
-    _index_text()[records.NAMESPACE][binding_records.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
+    _index_text()[records.NAMESPACE][configs.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
 
 
 def _duplicate_object(_: Path) -> None:
-    """Object > Duplicate (Shift+D) on the managed object."""
-    obj = bpy.data.objects["Managed"]
+    """Object > Duplicate (Shift+D) on a managed object."""
+    obj = _shot().objects[MANAGED]
     view_layer = bpy.context.view_layer
     assert view_layer is not None
     obj.select_set(True)
@@ -199,9 +198,9 @@ ROUTES: dict[str, Callable[[Path], object]] = {
     "append": _append,
     "record-copy": _copy_records,
     "index-lost": _then(_lose_index, _copy_scene("FULL_COPY")),
+    "index-lost-collection-copy": _then(_lose_index, _copy_collection),
     "index-lost-linked-copy": _then(_lose_index, _copy_scene("LINK_COPY")),
     "entry-cleared": _then(_clear_entries, _copy_scene("LINK_COPY")),
-    "none-mutual": _then(_lose_index, _remove_tag, _copy_scene("LINK_COPY")),
     "index-disagrees": _disagree,
     "unreadable-index": _then(_unreadable_index, _copy_scene("FULL_COPY")),
     "two-indexes": _append_index,

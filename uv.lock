@@ -504,6 +504,11 @@ version = "0.1.0"
 source = { editable = "." }
 
 [package.dev-dependencies]
+build = [
+    { name = "cmake" },
+    { name = "ninja" },
+    { name = "packaging" },
+]
 dev = [
     { name = "bpy" },
     { name = "bpy-site-packages" },
@@ -525,10 +530,35 @@ dev = [
     { name = "types-pyyaml" },
     { name = "types-usd" },
 ]
+lint = [
+    { name = "clang-format" },
+    { name = "clang-tidy" },
+    { name = "fake-bpy-module-5-2" },
+    { name = "pre-commit" },
+    { name = "ruff" },
+    { name = "ty" },
+    { name = "types-pyyaml" },
+    { name = "types-usd" },
+]
+test = [
+    { name = "bpy" },
+    { name = "bpy-site-packages" },
+    { name = "filelock" },
+    { name = "psutil" },
+    { name = "pytest" },
+    { name = "pytest-xdist" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
+build = [
+    { name = "cmake", specifier = ">=3.26" },
+    { name = "ninja", specifier = ">=1.13.2" },
+    { name = "packaging", specifier = ">=26.3" },
+]
 dev = [
     { name = "bpy", specifier = "~=5.2.0" },
     { name = "bpy-site-packages", directory = "tools/bpy-site-packages" },
@@ -549,6 +579,26 @@ dev = [
     { name = "ty", specifier = ">=0.0.84" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
     { name = "types-usd", specifier = ">=24.5.2" },
+]
+lint = [
+    { name = "clang-format", specifier = ">=23.1.3" },
+    { name = "clang-tidy", specifier = ">=22.1.8" },
+    { name = "fake-bpy-module-5-2", specifier = ">=20260730" },
+    { name = "pre-commit", specifier = ">=4.6.2" },
+    { name = "ruff", specifier = ">=0.16.10" },
+    { name = "ty", specifier = ">=0.0.84" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
+    { name = "types-usd", specifier = ">=24.5.2" },
+]
+test = [
+    { name = "bpy", specifier = "~=5.2.0" },
+    { name = "bpy-site-packages", directory = "tools/bpy-site-packages" },
+    { name = "filelock", specifier = ">=3.20" },
+    { name = "psutil", specifier = ">=7.2.2" },
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]

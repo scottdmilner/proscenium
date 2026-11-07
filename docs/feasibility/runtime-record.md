@@ -86,6 +86,13 @@ All runtimes here are background mode.
 
 Other datablock types and other kinds of change were not tested. Because held references fail only in some cases, they are easy to miss in testing, which supports the rule in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state).
 
+**Undo from a state changed since the last push** (M5, 2026-11-06; the bpy wheel, Blender 5.2.2):
+- **The case:** a collection linked in the scene before two pushes, then a new object linked into it without a push, then `ed.undo`. It reads freed memory: the depsgraph Blender builds around the undo reads an object's animation data (`BKE_fcurves_id_cb`, from `is_object_visibility_animated`) after the object is freed.
+- **Where it crashed:** it segfaulted in CI on Linux and Windows. On macOS it passed unless freed memory was scribbled over (`MallocScribble=1 MallocPreScribble=1`), and then it segfaulted every time.
+- **Variants:** the same object created but linked nowhere, and pushed changes followed by an undo, didn't crash.
+- **The explanation:** Blender's undo reuses the datablocks it believes unchanged since the last step, and a change made since without a push isn't seen. This is an inference from these cases.
+- **What it means:** with a window every operator pushes a step, so an undo starts from a pushed state. Tests undo only from one: one that checks an operation pushed no step pushes the current state first (`tests/support/undo.py`, `undo_unpushed`).
+
 ### In-memory source candidates
 
 Tested the design-note candidate from [Source Stages](../spec/source-access.md#source-stages): a private stage per binding over the caller's root and session layers. It was opened with `Usd.Stage.OpenMasked(root, session, resolverContext, mask, load)` under `BlockStageCaches`. The caller's settings were then reproduced with `MuteAndUnmuteLayers` and `SetInterpolationType`.
@@ -1452,6 +1459,132 @@ Medians over the three runs; a frame's first visit and a revisit are each run's 
 #### Moana Island at scale
 
 Disney's Moana Island scene (`island/usd/island.usda`, 16 GB) exhausted this machine's 32 GB through the bridge when opened whole (by the user), so it was surveyed one element at a time, each in a child process killed past 8 GB of resident memory (ad hoc, one run). Every element is a native instance of a prototype, and its point instancers hold about 31 million instances, 23.0 million in `isBeach` alone. The bridge plans each point instance as a copy (D6): the elements small enough to plan with their instances took about 13 KB of resident memory per planned copy, meshes included (`isBayCedarA1`: 219,005 copies at a 2.9 GB peak), so the whole island's instances would need hundreds of GB. `isDunesB` (65,228 prims, 5.5 million mesh points) passed 8 GB even with its point instancers left out, for a cause not investigated. So scenes of millions of point instances can't be planned instance by instance at all; their batches would need to come from an instancer's arrays without a record per instance.
+
+### Lookups without the bindings' cache (M5 Phase S)
+
+Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) is needed at scale: lookups without it, against it, with the baseline's display as a binding's manifest, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, 2026-11-06). The cache was removed after this measurement (DECISIONS.md "Binding records read when called"), so the rows with it can't be measured again; `measure/run.py --scenes updates alab --modes uncached --repeats 3 --out build/hydra-bridge/measure-uncached` now times the runtime's own lookups, which are the rows without it.
+
+**Method** (`measure/uncached_timing.py`):
+- **The manifest:** written as C5 writes it ([Ownership lookup after undo](#ownership-lookup-after-undo-m4-phase-c)), one binding's, so every file has one binding.
+- **With the cache:** `ownership_index.ownership()` of one object, and of 1,000; the first `ownership()` after `state.invalidate()`, as after an undo; and `binding_configs.find_binding()`.
+- **Ownership without the cache, by scan:** every binding record and every manifest read through `configs` and `manifests`, then the claims on the object.
+- **Ownership without the cache, by users:** `bpy.data.user_map(subset=...)` of the objects, the collections holding binding records among their users (a manifest's pointer is a user), and a scan of those manifests' stored entries for the pointers; of one object, and of 1,000 at once, as a box select asks. Each way without the cache gave the cache's claims, checked in every run, for the one object and each of the 1,000.
+- **A binding lookup without the cache:** every collection's binding records and the index read, and `canonical_candidate.decide` for the identity.
+- **The manifest read whole**, as a synchronization without the cache would read it.
+- **Statistics:** three processes per scene after a warmup, ten repeats each; each process's median, as a median and range over the processes.
+
+| Operation (ms) | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Manifest entries | 306 | 3,006 | 11,185 | 30,006 |
+| cached ownership, one | 0.002 | 0.002 | 0.002 | 0.002 |
+| cached ownership, 1,000 (301 in updates-100) | 0.504 | 1.703 | 1.628 | 1.676 |
+| **first ownership after the state is dropped** | 1.373 | 13.112 | **52.452 (51.803–56.938)** | **158.076 (152.137–188.141)** |
+| **no cache, ownership by scan** | 1.025 | 10.813 | 42.904 (41.757–46.175) | **127.973 (126.092–133.235)** |
+| no cache, ownership by users, one | 0.131 | 1.377 | 9.139 (8.548–9.959) | 22.135 (21.926–22.680) |
+| no cache, ownership by users, 1,000 at once (301) | 0.760 | 3.540 | 11.515 (11.148–13.516) | 25.881 (25.473–28.446) |
+| cached binding lookup | 0.003 | 0.003 | 0.003 | 0.003 |
+| no cache, binding lookup by scan | 0.013 | 0.013 | 0.013 | 0.013 |
+| no cache, the manifest read whole | 1.014 | 11.179 | 43.232 (41.214–44.528) | 123.835 (119.076–124.418) |
+
+**Findings:**
+- **Ownership by scan needs the cache at scale:** it costs about what rebuilding the cache does, over the 50 ms interaction budget at 30,006 entries and near it on ALab, so a cache that answers it from memory is needed if ownership is looked up that way.
+- **Ownership by users fits the budget without a cache** on every scene measured: 9 ms on ALab and 22 ms at 30,006 entries for one object, and 12 ms and 26 ms for 1,000 at once. It grows with the file, since `user_map` walks every datablock; these files hold the display and little else (11,188 datablocks of the kinds counted on ALab), so a file with more unmanaged content costs more, which wasn't measured. Against the cache's microseconds it suits a lookup per operation, such as a pick or a box select, not one per redraw.
+- **A binding lookup needs no cache with one binding:** 13 µs without it. More bindings weren't measured in the binary; in the bpy wheel, ad hoc, a scan with 100 bindings took 0.52 ms.
+- **The first lookup after an undo is over budget on ALab here,** 52 ms against C5's 43.9 ms in the same environment, where each first lookup also followed a real undo; ownership by users is cheaper than it at every scale measured.
+
+### The undo step of a synchronization (M5 Phase F)
+
+What the one undo step a published synchronization pushes ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) holds, for M5's full rebuild, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, 2026-11-06). Reproduce with `measure/undo_memory.py --scenes updates alab --exclude updates-10000 --repeats 3`.
+
+**Method** (`measure/undo_memory.py`), in a fresh background process per run, with global undo on:
+- **The steps:** the display is built and a step pushed, as after a first synchronization; then three times one object is moved and a step pushed; then four times the whole display is rebuilt from the same plan, the one it replaces removed in one `batch_remove`, the depsgraph evaluated, and a step pushed, as after synchronizing again. Then one undo and one redo, timed.
+- **The memory:** the heap in use (`memory.py`), read around each push, and around each rebuild with its push. A control run per scene does the same with global undo off, pushing nothing.
+- **Statistics:** three processes per scene and setting; each process's median over its steps, as a median and range over the processes. Blender's preferences as found: 32 undo steps, no memory limit.
+- **Left out:** `updates-10000`, whose first rebuild hadn't finished removing the display it replaced after 11 minutes, with the time in `batch_remove` (sampled); removal's cost is Phase F's F2.
+
+| Measure | updates-100 | updates-1000 | ALab |
+|---|---|---|---|
+| Objects; objects, meshes, and materials | 301; 306 | 3,001; 3,006 | 7,018; 11,185 |
+| Heap of the built display (MB) | 9 | 85 | 1,340 (1,339–1,343) |
+| `.blend`, uncompressed (MB) | 1 | 8 | 1,117 |
+| A push after moving one object (MB) | 0.0 | 0.1 | 4.5 |
+| A push after a rebuild (MB) | 1 | 8 | 58 |
+| **A rebuild and its push, undo on (MB)** | 1.0 | 8.8 (8.6–8.9) | **1,195 (1,195–1,195)** |
+| A rebuild, undo off (MB) | 0.1 | 0.7 (0.7–0.8) | 0.0 (−0.9–0.0) |
+| Heap after every step, undo on / off (MB) | 15 / 9 | 136 / 88 | 6,228 / 1,338 |
+| A push after a rebuild (ms) | 1 | 5 (4–7) | 77 (65–79) |
+| Undo; redo (ms) | 10; 9 | 88; 97 | 272 (261–277); 236 (222–238) |
+
+Two variants on ALab, one process each, without the control: with 2 undo steps, the rebuilds' growth was 1,191, 1,194, −15, and 8 MB; with a 2,048 MB undo memory limit and 32 steps, 1,195, 1,198, 1,156, and 1,185 MB, the heap after every step 6,184 MB.
+
+**Findings:**
+- **A full rebuild's step holds about the display's size:** 1.2 GB on ALab, about its uncompressed `.blend` (1.1 GB), and 8.8 MB against 8 MB on `updates-1000`; with undo off a rebuild leaves nothing. On ALab the push itself grew the heap by only 58 MB, and the rest of the growth came at the rebuild before it, which grew 1.14 GB with undo on and nothing with it off. That a step shares the replaced meshes' arrays, so removing them frees nothing while it lives, is an inference: it fits the 2-step variant, whose growth stopped once the oldest step was dropped.
+- **A step that keeps its datablocks is small:** moving one object pushed 4.5 MB on ALab, so a step grows with the datablocks a synchronization replaces, not with the display.
+- **Only the step count bounds it:** at Blender's default of 32 steps, synchronizing ALab again 32 times would hold about 38 GB, more than this machine's memory (an extrapolation: five steps were measured). The undo memory limit didn't bound it in the variant measured, which is consistent with the limit counting only a step's own data, about 58 MB here.
+- **Pushing, undoing, and redoing are fast** beside a rebuild: 77 ms to push after ALab's 12 s rebuild, and 0.27 s to undo.
+- **Not measured:** a windowed Blender, Linux and Windows, batched displays, and more than five steps.
+
+### The shared removal's cost (M5 Phase F)
+
+What `removal.remove_unused`, which disposal, retirement, and a cleanup retry share, costs at scale, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/removal_cost.py --scenes updates alab --repeats 3`.
+
+**Method** (`measure/removal_cost.py`), in a fresh background process per run:
+- **The file:** the display built twice, as a synchronization again holds it before retirement, the published one and the prepared one. Each removal is from the published one, its objects unlinked from their collection first, as publication unlinks them.
+- **The cases:** one call of `batch_remove` with one new empty, ten times; units of 1 and 100 objects through `remove_unused`; a unit of 100 objects one of which fails, injected by wrapping the module's `_batch_remove`, through `remove_unused`, which halves the failing call, and through one call per datablock after it, which the removal made before this phase; and the rest of the display through `remove_unused`, each level's call timed by the wrapper. `bpy.data.user_map` of the same datablocks is timed before each.
+- **Statistics:** three processes per scene; each case as a median and range over them. On `updates-100` the units take every object, so its rest is only the meshes and materials.
+
+| Case (ms) | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Datablocks in the file (objects, meshes, materials) | 612 | 6,012 | 22,370 | 60,012 |
+| One call of one empty | 0.1 | 1.3 | 13.2 (12.5–17.9) | 25.6 (25.2–28.7) |
+| `user_map` of one object; of the rest of the display | 0.2; 0.1 | 1.6; 2.2 | 11.0; 13.9 | 17.2; 23.9 |
+| One object | 0.3 | 2.7 | 27.6 (23.1–29.8) | 46.5 (44.7–48.6) |
+| 100 objects, one call | 1.3 | 33.5 (26.0–36.7) | 148 (126–150) | 837 (791–1,008) |
+| 100 objects, one failing: halving, 15 calls | 1.4 | 42.2 (32.8–45.8) | 205 (189–206) | 1,010 (962–1,139) |
+| 100 objects, one failing: one call each after it, 101 calls | 4.8 | 128 (119–147) | 1,356 (1,234–1,440) | 3,461 (2,697–3,924) |
+| **The rest of the display, 2 calls** | 0.3 (7 datablocks) | 167 (2,707) | **4,981 (3,930–5,309)** (10,886) | **83,554 (77,616–90,304)** (29,707) |
+
+Ad hoc probes, one run each in the same binary: of 30,000 objects, removing 1,000 took 1.7 to 2.1 s whether they were linked or unlinked, and whether they shared one mesh or each had its own; in a file of only 32,000 objects with their meshes, removing them all took 3.4 s.
+
+**Findings:**
+- **A call costs more the more the file keeps:** 13 ms for one empty on ALab and 26 ms at 60,012 datablocks, as M4 found (about 20 ms), and 100 objects 0.15 s and 0.84 s. Across these cases a call's time is roughly proportional to the datablocks it removes times those left in the file, at 30 to 100 ns a pair, an inference from these points: removing nearly everything is cheap (3.4 s for 32,000), and retiring a full display while its replacement is in the file is not.
+- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M14's incremental updates do, would.
+- **`user_map` is small** beside the removal: 11 to 14 ms on ALab, 17 to 24 ms at 60,012 datablocks.
+- **Halving a failing call** found the one failure among 100 objects in 15 calls, 205 ms on ALab, where one call per datablock took 101 calls and 1,356 ms, since each pays a call's cost. The removal halves since this phase.
+- **Not measured:** a windowed Blender, whose event loop may clear what a background process accumulates between calls; Linux and Windows; batched displays.
+
+### The product's synchronization, step by step (M5 Phase F)
+
+Where a synchronization's and a cache call's time goes in the product, against M5's stub application layer, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/synchronization_profile.py --scenes updates alab --repeats 3`.
+
+**Method** (`measure/synchronization_profile.py`), in a fresh background process per run:
+- **The calls:** a binding made and attached through the API, then `synchronize` at the scene's time code, `synchronize` again at it (a full rebuild retiring the first generation), and `cache` at the next three time codes. The API pushes its undo step as with a window (`_pushes_undo` patched true).
+- **The steps:** each module function the transaction and cache call reach their steps through, wrapped and timed; a time includes the steps it calls.
+- **The display:** the stub's placeholders, an object and a bounds mesh for each prim the core's minimal path captures (731 on ALab, against the bridge's 7,018 objects), so this measures M5's own work around evaluation and application, not M7's display.
+- **Statistics:** three processes per scene, each step as a median and range over them. The machine's load average was under 4 when the runs began.
+
+| Step (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Placeholders; manifest entries | 1,001; 3,003 | 731; 2,193 | 10,001; 30,003 |
+| **Synchronize** | **240 (239–245)** | **1,023 (972–1,048)** | **2,684 (2,678–2,722)** |
+| `acquire`; `plans` (the core's capture, M6's) | 16; 67 | 140; 768 | 171; 760 |
+| `prepare` (the stub, M7's) | 106 | 67 | 1,060 |
+| `publish`, its manifest write included | 13 | 10 | 158 |
+| Undo push | 37 | 27 | 516 |
+| **Synchronize again** | **229 (227–231)** | **836 (833–851)** | **9,431 (9,414–10,981)** |
+| Manifest read; `plans`; `prepare` | 7; 54; 99 | 5; 712; 71 | 72; 712; 7,851 |
+| `publish`; `retire` (`user_map` in it) | 18; 3.9 (0.9) | 12; 2.6 (0.5) | 208; 53 (15) |
+| Undo push | 48 | 32 | 530 |
+| **Cache, three time codes** | **278 (276–292)** | **999 (984–1,026)** | **3,237 (3,228–3,318)** |
+| Manifest reads (2); `plans`; `key_time_codes` (the stub) | 15; 63; 174 | 11; 839; 125 | 239; 827; 1,887 |
+| `set_manifest_entries` | 30 | 23 | 413 |
+
+**Findings:**
+- **M5's own steps are a small part on ALab:** reading and writing the manifest, publication, retirement, and the records, 10 to 40 ms in each call, and the undo push 27 to 32 ms. The core's capture is 75 to 85% of each call there, and the stub's application most of the rest.
+- **The plan's tuples were read once per placeholder:** each read of `Plan.resources` builds the tuple anew, converting every resource, and the stub read it several times a placeholder, so `prepare` and `key_time_codes` grew with the square of the plan. Read once per plan, `prepare` on `updates-1000` fell from 760 to 105 ms, a synchronization from 897 to 250 ms, and a cache call from 937 to 296 ms (one process each, before and after).
+- **Synchronizing `updates-10000` again** spent 7.9 s in the stub's `prepare`, against 1.1 s the first time: its placeholders are named for their prims, which collide while the old display is still in the file, as M4 found of object names ([its findings](#measurements-m4-phase-c)). M7's objects are named too.
+- **At 30,003 manifest entries,** the manifest's whole write is 124 to 150 ms, a read 72 ms, a cache call's two reads 239 ms and its update by entry 413 ms, and the undo push 0.5 s. The update read the manifest again; it now takes the one the cache call read, so a call reads it once (not measured since).
+- **Not measured:** M7's display, a windowed Blender, Linux and Windows.
 
 ### Distribution (M1b Phase F)
 

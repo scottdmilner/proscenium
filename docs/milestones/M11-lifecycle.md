@@ -9,13 +9,14 @@
 **Decisions and deliverables:**
 
 - The Cleanup, Detach, and Remove binding operations, as specified in Ownership and Lifecycle. Detach releases surviving content as-is and removes binding-specific metadata and controls without requiring baking or reconstruction.
+- Cleanup builds on M5's `retry_cleanup` and its shared removal (`synchronization/removal.py`), which reads users once, removes a level at a time, users first, releases intact what anything else uses, and halves a failing `batch_remove` call to find what fails. The ledger holds only removals that failed, a ledger write that fails raises as a defect, and a retry that commits pushes one undo step ([M5 plan](../plans/M05-architecture.md), S2 to S4, D12, F2).
 - A lifecycle failure-safety decision record and implementation: staging/rollback, logical commit points, resumable disposal, outcome reporting, and retention of unresolved ownership information during binding removal. Evaluate retaining configuration until cleanup completes and retaining cleanup information independently after removal, using M5's chosen tracking mechanism.
 - Duplicate-representation detection and removal, and handling of content with copied or missing ownership evidence, as specified in Ownership and Lifecycle.
 - User-facing repair of bindings disabled pending repair: make a new binding, or detach.
   - Repair starts from M3's report of copied bindings (`Bindings.copied()`): each identity that isn't unique, its candidates by scene and destination, and which one is canonical, if any ([M3 plan](../plans/M03-bindings.md), D10).
-  - A repair that gives a binding another destination moves the destination's tag and the binding's index entry with it; otherwise the old destination remains a copy ([Copied Bindings](../spec/source-access.md#copied-bindings)).
-  - Whether a repair may give a binding whose destination was removed a new destination ([Removed Destination](../spec/lifecycle.md#removed-destination)), decided with M5.
-  - Detection runs at each load, undo, redo, change of scenes, and synchronization; a binding record or index changed by a script on an existing scene is found at the next of these. Lifecycle operations that act on copies look for them first, as synchronization does.
+  - A repair that moves a binding to another collection moves its records and its index entry with it; otherwise the old collection remains a copy ([Copied Bindings](../spec/source-access.md#copied-bindings)).
+  - Cleanup reaches the pending work of a binding removed with its destination or target scene, which stays in the ledger ([Removed Destination](../spec/lifecycle.md#removed-destination), DEST-10).
+  - Detection runs at every lookup, so a binding record or index changed by a script is found by the next call. Lifecycle operations that act on copies look for them first, as synchronization does.
 - Undo/redo of every lifecycle operation.
 
 **Tests:**

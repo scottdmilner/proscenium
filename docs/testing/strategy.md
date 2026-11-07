@@ -42,11 +42,12 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-PRIVATE-STAGE` | **Evaluation-stage fidelity:** an attached stage's settings differ from defaults and change between synchronizations. |
 | `F-CACHED-STAGE` | **Cached-stage isolation:** a caller may attach a cached source stage; an ambient cache context never supplies a binding's evaluation stage, which is distinct from the source stage and every other binding's evaluation stage and is never placed in a stage cache. |
 | `F-MULTI-BINDING` | **Independent bindings on one source:** bindings with different settings and payload policies sharing a caller-supplied stage, bindings on stages callers opened from `.usd`, `.usda`, and `.usdc` copies of one scene, and an anonymous stage containing the flattened scene whose unsaved opinions can be displayed without those files. |
-| `F-SOURCE-CHANGE` | **Source change during evaluation:** a contributing layer changes while the binding evaluates; the attempt is discarded before publication. |
+| `F-SOURCE-CHANGE` | **Source change during evaluation:** a contributing layer changes while the binding evaluates; the attempt is discarded before publication. The source changing after a generation is synchronized, by an edit, a reload, or a new attachment, makes `cache` cache nothing. |
 | `F-REATTACH` | **Release and reattachment:** a caller's stage independently attached to two binding handles, released through one handle, replaced with explicit confirmation for a different root layer, and restored through persistent binding identifiers after reopening. |
 | `F-SCHEMA-VERSIONS` | **Schema versions:** binding, ownership, and pending-cleanup records at an older supported version, at an older version whose migration fails, at a newer version, and unreadable. |
 | `F-BINDING-STATE` | **Binding state through handles:** bindings created, configured, synchronized, saved and reopened, undone, and removed through handles, with a persistent selection over two bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
+| `F-CACHED-TIME-CODES` | **Cached time codes:** time codes cached in a published generation, a `cache` call that fails, a generation synchronized at the default time code, and synchronizing again. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
 | `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |

@@ -22,25 +22,27 @@ from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
-    DiagnosticCategory,
     RequestedSettings,
     Result,
-    ResultState,
-    Severity,
 )
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, records
-from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex, DestinationTag
+from proscenium.binding.persistence import binding_state, configs, manifests, records
 from proscenium.binding.persistence.binding_state import Generation, LastAttempt
-from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecordError
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.persistence.configs import BindingConfig, BindingIndex
+from proscenium.binding.persistence.manifests import MANIFEST_KEY
+from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecord, RefusedRecordError
+from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
+from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
+from support.destinations import destination
 from support.usd import binding_on_file, open_fresh
 
 if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
+
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -53,50 +55,59 @@ def _root(tmp_path: Path) -> Path:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    """The binding's configuration as its record stores it, read from the scenes, not the bindings' state."""
-    [config] = [c for _, binding_id, c in binding_records.read_configs() if binding_id == handle.binding_id]
+    """The binding's configuration as its record stores it, read from the collections, not the bindings' state."""
+    [config] = [c for _, binding_id, c in configs.read_configs() if binding_id == handle.binding_id]
     assert isinstance(config, Loaded)
     return config.record
 
 
 def _index() -> BindingIndex:
-    [text] = binding_records.index_texts()
-    result = records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    [text] = configs.index_texts()
+    result = records.read(text, configs.INDEX_KEY, configs.INDEX)
     assert isinstance(result, Loaded)
     return result.record
 
 
-def _destination_tag(collection: bpy.types.Collection) -> DestinationTag:
-    result = records.read(collection, binding_records.TAG_KEY, binding_records.TAG)
-    assert isinstance(result, Loaded)
-    return result.record
+def _holding(handle: BindingHandle) -> list[str]:
+    """The names of the collections holding the binding's configuration."""
+    return [c.name for c, binding_id, _ in configs.read_configs() if binding_id == handle.binding_id]
+
+
+def _unsupported(binding_id: BindingId, stored: object) -> bpy.types.Collection:
+    """A collection on the scene holding a stored configuration for binding_id, as damage or a newer version left it."""
+    collection = bpy.data.collections.new("Broken")
+    _scene().collection.children.link(collection)
+    collection[NAMESPACE] = {configs.config_key(binding_id): stored}
+    return collection
 
 
 # Records.
 
 
-def test_creating_a_binding_writes_records_that_refer_to_each_other(bindings: Bindings) -> None:
-    # COPY-07, API-10, SRC-09: creation stores settings and creates no runtime stage.
+def test_creating_a_binding_writes_its_records_on_its_destination(bindings: Bindings) -> None:
+    # COPY-07, API-10, SRC-09, STATE-08: creation stores the target scene and settings on the destination, indexes
+    # it, and creates no runtime stage.
     handle = bindings.create_binding(_scene(), name="Shot")
     destination = bpy.data.collections["Shot"]
-    assert _config(handle) == BindingConfig(RequestedSettings(PayloadPolicy.LOAD_ALL), destination=destination)
+    assert _config(handle) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL))
+    assert _holding(handle) == ["Shot"]
+    assert records.keys(_scene()) == []  # no scene holds a binding record
     assert handle.live_stage() is None
     assert bindings.stages.get(handle.binding_id) is None
     assert destination.name in _scene().collection.children
-    assert _destination_tag(destination) == DestinationTag(handle.binding_id, _scene())
     assert _index() == BindingIndex({handle.binding_id: destination})
-    [text] = binding_records.index_texts()
+    [text] = configs.index_texts()
     assert text.name.startswith(".")
     assert text.use_fake_user
 
 
 def test_the_payload_policy_is_stored_as_its_value(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene(), payload_policy=PayloadPolicy.LOAD_NONE)
-    stored = records.stored(_scene(), binding_records.config_key(handle.binding_id))
+    stored = records.stored(bpy.data.collections["USD Display"], configs.config_key(handle.binding_id))
     assert stored == {
         records.VERSION_KEY: 1,
+        "scene": _scene(),
         "root_layer_identifier": None,
-        "destination": bpy.data.collections["USD Display"],
         "settings": {"payload_policy": "load_none"},
     }
     config = _config(handle)
@@ -113,7 +124,8 @@ def test_a_scenes_bindings(bindings: Bindings, tmp_path: Path) -> None:
 
 
 def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
-    # STATE-01: identifiers, destinations, and settings survive independently of runtime attachments.
+    # STATE-01, STATE-08: identifiers, destinations, target scenes, and settings survive independently of runtime
+    # attachments.
     with source_access.binding_state(tmp_path) as scene:
         first = bindings.create_binding(_scene(), payload_policy=PayloadPolicy.LOAD_NONE, name="F")
         second = bindings.create_binding(_scene(), name="A")
@@ -122,28 +134,23 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path) -> 
         identifier = scene.caller.GetRootLayer().identifier
     save_and_reopen(tmp_path / "bindings.blend")
     f, a = bpy.data.collections["F"], bpy.data.collections["A"]
-    assert _config(first) == BindingConfig(
-        RequestedSettings(PayloadPolicy.LOAD_NONE), root_layer_identifier=identifier, destination=f
-    )
-    assert _config(second) == BindingConfig(
-        RequestedSettings(PayloadPolicy.LOAD_ALL), root_layer_identifier=identifier, destination=a
-    )
-    assert bindings.in_scene(_scene()) == [first, second]
-    assert _destination_tag(f) == DestinationTag(first.binding_id, _scene())
-    assert _destination_tag(a) == DestinationTag(second.binding_id, _scene())
+    assert _config(first) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_NONE), identifier)
+    assert _config(second) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL), identifier)
+    assert (_holding(first), _holding(second)) == (["F"], ["A"])
+    assert sorted(h.binding_id for h in bindings.in_scene(_scene())) == sorted([first.binding_id, second.binding_id])
     assert _index() == BindingIndex({first.binding_id: f, second.binding_id: a})
 
 
 def test_creation_has_a_default_destination_name(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene())
-    assert _config(handle).destination == bpy.data.collections["USD Display"]
+    assert _holding(handle) == ["USD Display"]
     assert handle.live_stage() is None
 
 
 def test_an_unreadable_index_stops_creation_before_any_change(bindings: Bindings, tmp_path: Path) -> None:
     binding_on_file(bindings, _scene(), _root(tmp_path))
-    [text] = binding_records.index_texts()
-    text[NAMESPACE][binding_records.INDEX_KEY] = {records.VERSION_KEY: 99}
+    [text] = configs.index_texts()
+    text[NAMESPACE][configs.INDEX_KEY] = {records.VERSION_KEY: 99}
     collections = len(bpy.data.collections)
     with pytest.raises(RefusedRecordError):
         binding_on_file(bindings, _scene(), _root(tmp_path / "other"))
@@ -154,9 +161,9 @@ def test_an_unreadable_index_stops_creation_before_any_change(bindings: Bindings
 def test_two_indexes_stop_creation(bindings: Bindings, tmp_path: Path) -> None:
     # Copies the canonical-candidate rule can't decide between; repairing them is not creation's job.
     binding_on_file(bindings, _scene(), _root(tmp_path))
-    [text] = binding_records.index_texts()
+    [text] = configs.index_texts()
     text.copy()  # ID.copy copies the ID properties, the index record with them
-    assert len(binding_records.index_texts()) == 2
+    assert len(configs.index_texts()) == 2
     collections = len(bpy.data.collections)
     with pytest.raises(ValueError, match="2 binding indexes"):
         binding_on_file(bindings, _scene(), _root(tmp_path / "other"))
@@ -197,7 +204,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
     handle.attach(open_fresh(scene.root))
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -206,20 +213,22 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root)
         before = _config(handle)
-        assert handle.synchronize(Usd.TimeCode.Default()) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(Usd.TimeCode.Default()) == Result(time_codes=(Usd.TimeCode(Usd.TimeCode.Default()),))
         assert _config(handle) == before  # API-02
         live = handle.live_stage()
         assert live is not None and live != scene.caller
-        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
         assert handle.live_stage() == live  # the same attachment after a second refresh
-        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result(ResultState.SUCCESS)
+        assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
         assert live.GetLoadSet()  # not applied: nothing synchronized
-        assert binding_state.read_last_attempt(_scene(), handle.binding_id) is None
-        assert handle.reload() == Result(ResultState.SUCCESS)
+        # Still the last synchronization's attempt: set_settings records none.
+        last = binding_state.read_last_attempt(destination(handle))
+        assert last == Loaded(binding_state.LastAttempt(PayloadPolicy.LOAD_ALL, 3.0, ()), 1)
+        assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
-        assert handle.synchronize(3) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
         assert live.GetLoadSet()  # the caller's load set is protected
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None and stages.evaluation_stage is not None
@@ -248,7 +257,7 @@ def test_undoing_creation_makes_handles_raise(bindings: Bindings, tmp_path: Path
             with pytest.raises(BindingNotFoundError):
                 call()
     undo.redo()
-    assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 # Reopening.
@@ -277,15 +286,15 @@ def test_reopening_f_binding_state_synchronizes_nothing(
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         handle.synchronize(0)
-        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, ())
-        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ResultState.SUCCESS, ())
+        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, SourceRevision("saved"), ())
+        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ())
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
-        binding_state.write_last_attempt(_scene(), handle.binding_id, attempt)
+        binding_state.write_last_attempt(destination(handle), attempt)
         save_and_reopen(tmp_path / "reopen.blend")
         assert bindings.stages.get(handle.binding_id) is None
         assert handle.live_stage() is None
         assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(generation, 1)
-        assert binding_state.read_last_attempt(_scene(), handle.binding_id) == Loaded(attempt, 1)
+        assert binding_state.read_last_attempt(destination(handle)) == Loaded(attempt, 1)
 
 
 def test_an_attached_source_is_unavailable_after_reopening(
@@ -295,13 +304,13 @@ def test_an_attached_source_is_unavailable_after_reopening(
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
-        assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
-        assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
+        assert handle.attach(scene.caller) == Result()
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 # A configuration that can't be read.
@@ -312,8 +321,8 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
     # SCHEMA-03: F-SCHEMA-VERSIONS' binding configurations, as another extension version or damage left them.
     with record_fixtures.schema_versions(tmp_path) as versions:
         stored = versions.bindings[name]
-        handle = BindingHandle(binding_records.new_identifier())
-        _scene()[NAMESPACE] = {binding_records.config_key(handle.binding_id): stored}
+        handle = BindingHandle(configs.new_identifier())
+        collection = _unsupported(handle.binding_id, stored)
         for result in (
             handle.attach(Usd.Stage.CreateInMemory()),
             handle.synchronize(0),
@@ -322,15 +331,16 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
         ):
             assert result.state is ResultState.FATAL_FAILURE
             [diagnostic] = result.diagnostics
-            assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED_RECORD, Severity.ERROR)
-            refused = records.load(binding_records.CONFIG, stored)
+            assert diagnostic.code == DiagnosticCode.UNSUPPORTED_RECORD
+            refused = records.load(configs.CONFIG, stored)
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
             assert diagnostic.message == refused.message
+        assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
         with pytest.raises(RefusedRecordError):
             handle.requested_settings()
-        assert bindings.in_scene(_scene()) == [handle]
-        assert records.stored(_scene(), binding_records.config_key(handle.binding_id)) == stored
+        assert bindings.in_scene(_scene()) == [handle]  # on the scene linking its collection
+        assert records.stored(collection, configs.config_key(handle.binding_id)) == stored
 
 
 @pytest.mark.parametrize("name", ["newer", "invalid-root", "unknown-policy", "unknown-field", "no-settings"])
@@ -339,11 +349,31 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
     # records.write alone lets through.
     with record_fixtures.schema_versions(tmp_path) as versions:
         stored = versions.bindings[name]
-        binding_id = binding_records.new_identifier()
-        _scene()[NAMESPACE] = {binding_records.config_key(binding_id): stored}
+        binding_id = configs.new_identifier()
+        collection = _unsupported(binding_id, stored)
+        config = BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL))
         with pytest.raises(RefusedRecordError):
-            runtime.set_config(binding_id, BindingConfig(RequestedSettings(PayloadPolicy.LOAD_ALL)))
-        assert records.stored(_scene(), binding_records.config_key(binding_id)) == stored
+            runtime.binding_configs.set_config(binding_id, config)
+        assert records.stored(collection, configs.config_key(binding_id)) == stored
+
+
+def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Bindings, tmp_path: Path) -> None:
+    # ROLE-01 on F-SCHEMA-VERSIONS' "unknown-role": the manifest is refused as invalid, and the binding refuses to
+    # synchronize, saying why, before reading its source.
+    with record_fixtures.schema_versions(tmp_path) as versions, source_access.binding_state(tmp_path) as scene:
+        stored = versions.manifests["unknown-role"]
+        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        destination = bpy.data.collections["Shot"]
+        destination[NAMESPACE][MANIFEST_KEY] = stored
+        refused = manifests.read_manifest(destination)
+        assert isinstance(refused, RefusedRecord)
+        assert refused.refusal is versions.manifests_refused["unknown-role"]
+        assert "hologram" in refused.message
+        diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, handle.binding_id, refused.message)
+        assert handle.synchronize(0) == Result(diagnostic, time_codes=(Usd.TimeCode(0),))
+        stages = bindings.stages.get(handle.binding_id)
+        assert stages is not None and stages.evaluation_stage is None  # never acquired
+        assert records.stored(destination, MANIFEST_KEY) == stored
 
 
 # The attachment contract (source-access.md#source-identity).
@@ -353,9 +383,9 @@ def test_attachment_changes_only_its_binding(bindings: Bindings, tmp_path: Path)
     # SID-08, API-11: each handle attaches independently, even for the same stage.
     a, b, c = (bindings.create_binding(_scene()) for _ in range(3))
     with source_access.reattach(tmp_path) as scene:
-        assert a.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert a.attach(scene.caller) == Result()
         assert [h.live_stage() for h in (a, b, c)] == [scene.caller, None, None]
-        assert b.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert b.attach(scene.caller) == Result()
         assert [h.live_stage() for h in (a, b, c)] == [scene.caller, scene.caller, None]
 
 
@@ -378,19 +408,19 @@ def test_an_open_file_does_not_supply_an_attachment(bindings: Bindings, tmp_path
         before = _config(handle)
         for result in (handle.synchronize(0), handle.reload()):
             assert result.state is ResultState.FATAL_FAILURE
-            assert [d.category for d in result.diagnostics] == [DiagnosticCategory.UNAVAILABLE_SOURCE]
+            assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.live_stage() is None
         assert _config(handle) == before
-        assert handle.attach(scene.caller) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.caller) == Result()
         assert handle.live_stage() == scene.caller
-        assert handle.synchronize(0) == Result(ResultState.SUCCESS)
+        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 
 def test_a_stage_over_the_same_root_layer_reattaches(bindings: Bindings, tmp_path: Path) -> None:
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.same_root) == Result()
         assert handle.live_stage() == scene.same_root
 
 
@@ -400,20 +430,18 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
     with source_access.reattach(tmp_path) as scene:
         a.attach(scene.caller)
         b.attach(scene.caller)
-        assert a.synchronize(0) == Result(ResultState.SUCCESS)
+        assert a.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
         stages = bindings.stages.get(a.binding_id)
         assert stages is not None
         evaluation = stages.evaluation_stage
         before = [_config(h) for h in (a, b)]
         refused = a.attach(scene.other_root)
         assert refused.state is ResultState.FATAL_FAILURE
-        assert [(d.category, d.severity) for d in refused.diagnostics] == [
-            (DiagnosticCategory.SOURCE_CONFIRMATION_REQUIRED, Severity.ERROR)
-        ]
+        assert [d.code for d in refused.diagnostics] == [DiagnosticCode.SOURCE_CONFIRMATION_REQUIRED]
         assert [_config(h) for h in (a, b)] == before
         assert stages.evaluation_stage == evaluation
         assert [h.live_stage() for h in (a, b)] == [scene.caller, scene.caller]
-        assert a.attach(scene.other_root, confirm=True) == Result(ResultState.SUCCESS)
+        assert a.attach(scene.other_root, confirm=True) == Result()
         assert _config(a).root_layer_identifier == scene.other_root.GetRootLayer().identifier
         assert _config(b) == before[1]
         assert [h.live_stage() for h in (a, b)] == [scene.other_root, scene.caller]
@@ -430,7 +458,7 @@ def test_reattachment_uses_the_persistent_binding_identity(bindings: Bindings, t
         restored = BindingHandle(a.binding_id)
         assert restored in bindings.in_scene(_scene())
         assert restored.live_stage() is b.live_stage() is None
-        assert restored.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert restored.attach(scene.same_root) == Result()
         assert a.live_stage() == scene.same_root
         assert b.live_stage() is None
 
@@ -446,7 +474,7 @@ def test_anonymous_overlays_keep_binding_opinions_independent(bindings: Bindings
                 caller = Usd.Stage.Open(overlay)
             caller.GetPrimAtPath("/World").GetAttribute("rootValue").Set(value)
             handle = bindings.create_binding(_scene())
-            assert handle.attach(caller) == Result(ResultState.SUCCESS)
+            assert handle.attach(caller) == Result()
             assert handle.synchronize(0).state is ResultState.SUCCESS
             callers.append(caller)
             handles.append(handle)
@@ -470,7 +498,7 @@ def test_the_stored_identifier_is_the_records_after_undo(bindings: Bindings, tmp
         undo.push("replace")
         undo.undo()
         assert _config(handle).root_layer_identifier == scene.caller.GetRootLayer().identifier
-        assert handle.attach(scene.same_root) == Result(ResultState.SUCCESS)
+        assert handle.attach(scene.same_root) == Result()
 
 
 # The records' namespace.
@@ -484,13 +512,12 @@ def test_the_namespace_is_registered_so_the_panel_hides_it(extension: ModuleType
 
 
 def test_records_stay_readable_with_the_extension_unregistered(bindings: Bindings, tmp_path: Path) -> None:
-    # The records are raw ID properties, readable without the namespace's registered class; the API is not,
-    # since its in-memory state needs the extension's handlers.
+    # The records are raw ID properties, readable without the namespace's registered class, and the API reads them
+    # when called, so it needs no handler.
     handle = binding_on_file(bindings, _scene(), _root(tmp_path))
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     expected = _config(handle)
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
-    assert _config(handle) == replace(expected, destination=bpy.data.collections["root"])
-    with pytest.raises(runtime.NotRegisteredError):
-        handle.requested_settings()
+    assert _config(handle) == replace(expected, scene=_scene())  # a reference from before the reopen is stale
+    assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_NONE)

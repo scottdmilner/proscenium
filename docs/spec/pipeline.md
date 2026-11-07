@@ -110,9 +110,9 @@ Acquire source
 - **Publication** switches the whole generation together (see [Binding State](lifecycle.md#binding-state)). It never leaves a silently mixed old/new result.
 - **After publication,** retirement failures do not fail the synchronization. Obsolete resources that could not be removed stay persistently tracked as pending cleanup, become noncanonical, are excluded from the active display and correspondence, and are reported with retryable cleanup diagnostics.
 
-Ownership tracking covers newly created prepared resources before subsequent fallible work, with enough persistent evidence to recover from failed disposal. They remain isolated from the active display until publication. Reused published resources remain protected by the existing manifest and are never disposal candidates. Publication makes the new resources active and marks obsolete resources for retirement. Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state.
+The attempt tracks each newly created prepared resource before subsequent fallible work, so a failure partway disposes of everything prepared so far. Only a resource whose disposal or retirement fails becomes persistent pending cleanup; one the attempt removes leaves no persistent record. Prepared resources remain isolated from the active display until publication. Reused published resources remain protected by the existing manifest and are never disposal candidates. Publication makes the new resources active and hands the obsolete ones to retirement. Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state.
 
-Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable.
+Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable. Neither is a failed write to the pending-cleanup ledger, once the attempt has found it readable: it is a defect, and raises.
 
 These guarantees apply equally to incremental mutations in Phase 2.
 
@@ -126,6 +126,7 @@ A published generation displays the time code it was synchronized at, and each t
 - One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping.
 - Caching publishes no new generation. Correspondence and ownership gain only what a cached time code adds, such as an element that first appears there.
 - A call that fails caches none of its time codes and leaves the published generation as it was, its prepared work under the failure safety of the [Synchronization Transaction](#synchronization-transaction). Its source-semantic diagnostics exist before Blender data is mutated, as a synchronization's do.
+- A call records no last attempt, whether it succeeds or fails: its result reports its diagnostics, and the last attempt remains the last synchronization's.
 - A call never fails because of how content varies: whatever a synchronization at a time code displays, a cached time code displays too, such as faces whose materials change, a point instance whose prototype changes, bounds that appear or vanish, and a constant primvar blocked at some time codes.
 - If the source has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different source states.
 - A generation synchronized at the USD default time code has no time-varying values: `cache` caches nothing and reports success.
@@ -149,11 +150,11 @@ Distinguish:
 - Pending cleanup (retryable disposal of prepared or obsolete resources).
 - Fatal failure.
 
-Include binding, source path, property/asset identifier, severity, and fallback where applicable.
+Include binding, source path, property/asset identifier, severity, and fallback where applicable. Each diagnostic also has a stable code naming its problem, such as `untranslated-type`, so callers and tests identify it without reading its message.
 
 Aggregate repeated problems. Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history. Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work. Report current cleanup status separately from historical attempt results and deduplicate by operation and resource. An unchanged refresh produces equivalent deduplicated source/display diagnostics. Current cleanup diagnostics may change with unresolved work under [Resource Stability](lifecycle.md#resource-stability); resolved cleanup diagnostics are removed rather than accumulated as history.
 
-Each synchronization reports one result state, derived from its diagnostics:
+Each synchronization reports one result state, derived from its own diagnostics. Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it.
 
 - **Success:** no diagnostics in any category other than source state.
 - **Completed with issues:** at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure.

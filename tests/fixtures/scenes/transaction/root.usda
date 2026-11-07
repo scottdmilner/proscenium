@@ -1,0 +1,49 @@
+#usda 1.0
+# Root layer of the scene shared by the synchronization-transaction fixtures (tests/fixtures/transaction.py):
+# F-FAILED-SETTINGS, F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE, F-RETIREMENT-FAILURE, and
+# F-SOURCE-CHANGE. Four drawn meshes, each tetra.usda's tetrahedron with its extent authored, so M5's minimal
+# planner gives each one placeholder with known bounds:
+# - Still, authored here, never moving;
+# - Mover, authored here, whose translation varies over time codes 0 to 20 and has a different default;
+# - Sub, from sub.usda, the contributing layer F-SOURCE-CHANGE edits;
+# - Payloaded/Tetra, through a payload, so a load-none binding draws the other three only.
+(
+    defaultPrim = "World"
+    subLayers = [
+        @./sub.usda@
+    ]
+    startTimeCode = 0
+    endTimeCode = 20
+)
+
+def Xform "World"
+{
+    def Mesh "Still" (
+        prepend references = @./tetra.usda@
+    )
+    {
+        double3 xformOp:translate = (-3, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Mover" (
+        prepend references = @./tetra.usda@
+    )
+    {
+        # Linear interpolation gives (t, 0, 0) at time code t; the default time code gives (0, 5, 0).
+        double3 xformOp:translate = (0, 5, 0)
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 0, 0),
+            20: (20, 0, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Payloaded" (
+        prepend payload = @./payload.usda@
+    )
+    {
+        double3 xformOp:translate = (0, 0, 3)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

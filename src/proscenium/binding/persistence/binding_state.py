@@ -3,15 +3,16 @@
 The published generation is what the display was produced with: the generation record and the
 ownership manifest beside it on the destination collection (proscenium.binding.persistence.manifests), and the
 correspondence M7 adds. The generation record holds the time code it was synchronized at and those M5's cache
-added to it since (pipeline.md#cached-time-codes). It describes the destination's content, so it travels with the
-destination on copy routes, as the manifest does.
+added to it since (pipeline.md#cached-time-codes), and the source revision it was synchronized from, which cache
+compares with the binding's current one; it's stored, so undo restores it with the generation it describes. It
+describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
 
-The last attempt is the most recent synchronization attempt and its result. It is on the target
-scene beside the binding's configuration, under its own key: it exists without a destination or a
-publication, and reading the configuration doesn't load its diagnostics.
+The last attempt is the most recent synchronization attempt and its result. It is on the destination beside the
+binding's configuration and the generation, under its own key: it exists without a publication, and reading the
+configuration doesn't load its diagnostics.
 
-Nothing writes these records before M5's synchronization transaction, so M5 can still refine their
-version 1 fields.
+The synchronization transaction writes both (proscenium.synchronization): the generation as part of publication,
+and the last attempt at every attempt's end.
 """
 
 from __future__ import annotations
@@ -21,19 +22,19 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from ..results import Diagnostic, ResultState
-from ..source_access import PayloadPolicy
+from .. import results
+from ..source_access import stages
 from . import records
 from .records import Schema
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access.binding_ids import BindingId
+    from ..source_access import identifiers
     from .records import Loaded, RefusedRecord
 
 GENERATION_KEY = "generation"
-ATTEMPT_PREFIX = "attempt."
+ATTEMPT_KEY = "attempt"
 
 
 def stored_time(time_code: Usd.TimeCode) -> float | None:
@@ -48,10 +49,10 @@ def time_code(stored: float | None) -> Usd.TimeCode:
 
 def _settle(record: Any) -> None:
     """Turn a stored record's plain values back into the fields' types; ValueError or TypeError if they can't be."""
-    object.__setattr__(record, "payload_policy", PayloadPolicy(record.payload_policy))
+    object.__setattr__(record, "payload_policy", stages.PayloadPolicy(record.payload_policy))
     if not isinstance(record.time_code, float | None):
         raise TypeError("a time code is a float, or None for the default time code")
-    diagnostics = tuple(d if isinstance(d, Diagnostic) else Diagnostic(**d) for d in record.diagnostics)
+    diagnostics = tuple(d if isinstance(d, results.Diagnostic) else results.Diagnostic(**d) for d in record.diagnostics)
     object.__setattr__(record, "diagnostics", diagnostics)
 
 
@@ -59,10 +60,11 @@ def _settle(record: Any) -> None:
 class Generation:
     """What a binding's published display was produced with."""
 
-    binding_id: BindingId
-    payload_policy: PayloadPolicy
+    binding_id: identifiers.BindingId
+    payload_policy: stages.PayloadPolicy
     time_code: float | None  # see stored_time
-    diagnostics: tuple[Diagnostic, ...]  # its source/display diagnostics
+    source_revision: stages.SourceRevision  # BindingStages.source_revision when it was synchronized
+    diagnostics: tuple[results.Diagnostic, ...]  # its source/display diagnostics
     # The time codes cached in it since, sorted, without its own; one at the default time code has none to cache.
     cached_time_codes: tuple[float, ...] = ()
 
@@ -70,6 +72,10 @@ class Generation:
         _settle(self)
         if type(self.binding_id) is not str:
             raise TypeError("a generation names its binding")
+        if type(self.source_revision) is not str:
+            raise TypeError("a source revision is a string")
+        if not self.source_revision:
+            raise ValueError("a generation names the source revision it was synchronized from")
         cached = tuple(self.cached_time_codes)  # a stored one comes back as an ID-property array
         if not all(type(t) is float for t in cached):
             raise TypeError("a cached time code is a float")
@@ -86,14 +92,17 @@ class Generation:
 class LastAttempt:
     """The most recent synchronization attempt: what it asked for, and how it ended."""
 
-    payload_policy: PayloadPolicy
+    payload_policy: stages.PayloadPolicy
     time_code: float | None  # see stored_time
-    result: ResultState
-    diagnostics: tuple[Diagnostic, ...]
+    diagnostics: tuple[results.Diagnostic, ...]
 
     def __post_init__(self) -> None:
         _settle(self)
-        object.__setattr__(self, "result", ResultState(self.result))
+
+    @property
+    def result(self) -> results.ResultState:
+        """How it ended, from its diagnostics."""
+        return results.result_state(self.diagnostics)
 
 
 GENERATION = Schema("generation", version=1, record_type=Generation)
@@ -113,14 +122,19 @@ def write_generation(destination: bpy.types.Collection, generation: Generation) 
     records.write(destination, GENERATION_KEY, GENERATION, generation)
 
 
-def read_last_attempt(scene: bpy.types.Scene, binding_id: BindingId) -> Loaded[LastAttempt] | RefusedRecord | None:
-    """The binding's last attempt on scene, why it can't be read, or None if it has none."""
-    return records.read(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT)
+def remove_generation(destination: bpy.types.Collection) -> None:
+    """Remove the destination's published generation, if it has one; raises as write_generation does."""
+    records.remove(destination, GENERATION_KEY, GENERATION)
 
 
-def write_last_attempt(scene: bpy.types.Scene, binding_id: BindingId, attempt: LastAttempt) -> None:
-    """Store the binding's last attempt on scene.
+def read_last_attempt(destination: bpy.types.Collection) -> Loaded[LastAttempt] | RefusedRecord | None:
+    """The binding's last attempt on its destination, why it can't be read, or None if it has none."""
+    return records.read(destination, ATTEMPT_KEY, ATTEMPT)
+
+
+def write_last_attempt(destination: bpy.types.Collection, attempt: LastAttempt) -> None:
+    """Store the binding's last attempt on its destination.
 
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.
     """
-    records.write(scene, ATTEMPT_PREFIX + binding_id, ATTEMPT, attempt)
+    records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)

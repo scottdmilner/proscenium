@@ -127,9 +127,9 @@ def test_offline(tmp_path: Path) -> None:
     # The display covers prims its source composes, and moving the source away leaves nothing at root.
     with source_access.offline(tmp_path) as scene:
         stage = open_fresh(scene.root)
-        covered = {path for covers, _, _ in scene.display.entries.values() for path in covers}
+        covered = {path for covers, *_ in scene.display.entries.values() for path in covers}
         assert all(stage.GetPrimAtPath(path) for path in covered)
-        uses = {use for _, _, used in scene.display.entries.values() for use in used}
+        uses = {use for _, _, used, _ in scene.display.entries.values() for use in used}
         assert uses <= scene.display.entries.keys()
         del stage
         scene.move_away()

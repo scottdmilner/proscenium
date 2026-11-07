@@ -5,8 +5,9 @@ manifest through M3's runtime: one entry per object, shear parent, placeholder m
 object entry covers its source and uses its mesh and materials; a mesh or material entry covers the sources of
 its users, as M5's realistic covers would.
 
-Every undo or redo drops the bindings' state, and the next lookup rebuilds it, reading every manifest
-(lifecycle.md#undo-and-runtime-state). So after each undo and redo this times the first `ownership()` of an
+M4 measured this with M3's cache of the bindings' records, which every undo or redo dropped; since M5 Phase S nothing
+is cached, and every lookup reads the records (lifecycle.md#undo-and-runtime-state). After each undo and redo this
+times the first `ownership.of()` of an
 object the step didn't change, then a second, cached one. The undo pushes, undos, and redos are timed too: they
 are Blender's cost of an undo step at this scale, which background mode allows with global undo on.
 """
@@ -43,49 +44,54 @@ def _stats(values: list[float]) -> dict[str, Any]:
 
 
 def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict[str, Any]:
-    """The display's manifest entries, by resource identity."""
+    """The display's manifest entries, by entry key: a random one for each resource, as a publication gives."""
+    from collections import defaultdict
+
     from apply import SHEAR_PARENT
 
-    from proscenium.binding.persistence.manifests import ManifestEntry
+    from proscenium.binding.persistence.manifests import ManifestEntry, RepresentationRole, new_entry_key
 
+    key: defaultdict[str, str] = defaultdict(new_entry_key)  # each resource's name here -> its entry key
     users: dict[int, list[str]] = {}
     found: dict[str, Any] = {}
     for index, (record, obj) in enumerate(zip(records, display.objects, strict=True)):
         mesh = record["mesh"]
-        uses = [] if mesh is None else [f"mesh:{mesh}"]
-        uses += [f"material:{m}" for m in dict.fromkeys(record["material_slots"]) if m is not None]
+        uses = [] if mesh is None else [key[f"mesh:{mesh}"]]
+        uses += [key[f"material:{m}"] for m in dict.fromkeys(record["material_slots"]) if m is not None]
+        source = [record["source"]]
         if mesh is not None:
             users.setdefault(mesh, []).append(record["source"])
         elif obj.data is not None:  # a placeholder's own bounds
-            found[f"bounds:{index}"] = ManifestEntry(obj.data, [record["source"]], "placeholder bounds", [])
-            uses.append(f"bounds:{index}")
+            found[key[f"bounds:{index}"]] = ManifestEntry(obj.data, source, RepresentationRole.BOUNDS_MESH, [], 0)
+            uses.append(key[f"bounds:{index}"])
         if obj.parent is not None and SHEAR_PARENT in obj.parent:
-            found[f"shear:{index}"] = ManifestEntry(obj.parent, [record["source"]], "shear parent", [])
-        found[f"object:{index}"] = ManifestEntry(obj, [record["source"]], "object", uses)
+            found[key[f"shear:{index}"]] = ManifestEntry(obj.parent, source, RepresentationRole.SHEAR_PARENT, [], 0)
+        found[key[f"object:{index}"]] = ManifestEntry(obj, source, RepresentationRole.OBJECT, uses, 0)
     for index, mesh in enumerate(display.meshes):
-        found[f"mesh:{index}"] = ManifestEntry(mesh, sorted(set(users.get(index, []))), "mesh", [])
+        covers = sorted(set(users.get(index, [])))
+        found[key[f"mesh:{index}"]] = ManifestEntry(mesh, covers, RepresentationRole.MESH, [])
     for index, material in enumerate(display.materials):
-        found[f"material:{index}"] = ManifestEntry(material, list(materials[index]["sources"]), "material", [])
+        covers = list(materials[index]["sources"])
+        found[key[f"material:{index}"]] = ManifestEntry(material, covers, RepresentationRole.MATERIAL, [])
     return found
 
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time undo, redo, and the lookups after each."""
     from proscenium.binding.persistence.manifests import Manifest
-    from proscenium.binding.runtime import ownership_index, state
+    from proscenium.binding.runtime import ownership
 
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = True
     built, manifest = _seconds(lambda: Manifest(entries(display, records, materials)))
-    written, _ = _seconds(lambda: ownership_index.set_manifest(binding_id, manifest))
+    written, _ = _seconds(lambda: ownership.set_manifest(binding_id, manifest))
     # An object no step below changes, found by name after each undo, since undo re-reads datablocks.
     name = display.objects[-1].name
     moved = display.objects[0].name
     # Found before each timing: Blender finds a datablock by name by scanning the list.
     target = bpy.data.objects[name]
-    lookup, owned = _seconds(lambda: ownership_index.ownership(target))
+    lookup, owned = _seconds(lambda: ownership.of(target))
     pushes, undos, redos, first, cached = [], [], [], [], []
-    rebuilds = state.rebuild_count()
     seconds, _ = _seconds(lambda: bpy.ops.ed.undo_push(message="published"))
     pushes.append(seconds)
     for step in range(REPEATS):
@@ -96,16 +102,13 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
             seconds, _ = _seconds(undone)
             times.append(seconds)
             target = bpy.data.objects[name]
-            seconds, result = _seconds(partial(ownership_index.ownership, target))
+            seconds, result = _seconds(partial(ownership.of, target))
             first.append(seconds)
             assert result.status == owned.status, (result, owned)
-            seconds, _ = _seconds(partial(ownership_index.ownership, target))
+            seconds, _ = _seconds(partial(ownership.of, target))
             cached.append(seconds)
     return {
         "entries": len(manifest.entries),
-        # It changes as the undo or redo handlers drop the state, before and after, and as the next lookup
-        # rebuilds it: three times for each.
-        "rebuild_count changes": state.rebuild_count() - rebuilds,
         "undos and redos": len(undos) + len(redos),
         "status": str(owned.status),
         "timings": {
@@ -116,6 +119,6 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
             "undo": _stats(undos),
             "redo": _stats(redos),
             "first ownership after undo or redo": _stats(first),
-            "cached ownership": _stats(cached),
+            "second ownership": _stats(cached),
         },
     }

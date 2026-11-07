@@ -2,13 +2,23 @@
 
 from __future__ import annotations
 
+import itertools
+import uuid
+from contextlib import contextmanager
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NewType
 
-from pxr import Sdf, Usd
+from pxr import Sdf, Tf, Usd
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Generator, Iterable, Iterator
+
+# What a binding's evaluated source was at some moment: equal revisions mean nothing it evaluates changed between
+# them. Unique in the process and to it, so a generation synchronized in another session never matches one.
+SourceRevision = NewType("SourceRevision", str)
+
+_PROCESS = uuid.uuid4().hex
+_revision_numbers = itertools.count(1)
 
 
 class PayloadPolicy(StrEnum):
@@ -47,6 +57,18 @@ def dirty_layers(stage: Usd.Stage) -> list[str]:
     return [layer.identifier for layer in contributing_layers(stage) if layer.dirty]
 
 
+class _SourceRevisions:
+    """A binding's current source revision, which its evaluation stage's listener advances."""
+
+    current: SourceRevision
+
+    def __init__(self) -> None:
+        self.advance()
+
+    def advance(self) -> None:
+        self.current = SourceRevision(f"{_PROCESS}.{next(_revision_numbers)}")
+
+
 class BindingStages:
     """A binding's attached source stage and its own reused evaluation stage.
 
@@ -54,16 +76,26 @@ class BindingStages:
     and interpolation at each acquisition. Its payload policy comes from the binding's configuration.
     The source is held until explicit release so its layers and unsaved edits have a clear lifetime.
     Layers are evaluated as loaded; only reload() rereads them.
+
+    The source revision changes with anything the evaluation stage evaluates: an edit to one of its layers, a
+    reload that rereads one, a caller's setting or a payload policy that an acquisition matches, and every
+    attachment and new evaluation stage. An acquisition that matches nothing new leaves it.
     """
 
     _source_stage: Usd.Stage | None
     _evaluation_stage: Usd.Stage | None
     _payload_policy: PayloadPolicy | None  # the evaluation stage's: opened under it, or loaded or unloaded to it
+    _revisions: _SourceRevisions
+    # Advances the revision on the evaluation stage's ObjectsChanged; it holds the revisions, not self, so it keeps
+    # nothing else alive, and is revoked when dropped.
+    _listener: Tf.Notice.Listener | None
 
     def __init__(self) -> None:
         self._source_stage = None
         self._evaluation_stage = None
         self._payload_policy = None
+        self._revisions = _SourceRevisions()
+        self._listener = None
 
     @property
     def evaluation_stage(self) -> Usd.Stage | None:
@@ -75,9 +107,38 @@ class BindingStages:
         """The source stage, which callers inspect and browse (the binding's live stage)."""
         return self._source_stage
 
+    @property
+    def source_revision(self) -> SourceRevision:
+        """What the evaluated source is now, for a generation to be compared with (pipeline.md#cached-time-codes)."""
+        return self._revisions.current
+
+    @contextmanager
+    def changed_layers(self) -> Generator[set[str]]:
+        """While open, the identifiers of the evaluation stage's layers that change, filled in as they do.
+
+        For a diagnostic naming the layers that changed during an evaluation (source-access.md#source-consistency).
+        The layers are those the stage composes on entry, its anonymous session layer included. Raises
+        SourceUnavailableError before the first acquisition.
+        """
+        stage = self._evaluation_stage
+        if stage is None:
+            raise SourceUnavailableError("No stage is evaluated")
+        used = set(stage.GetUsedLayers())
+        changed: set[str] = set()
+
+        def gather(notice: Sdf.Notice.LayersDidChange, _sender: object) -> None:
+            changed.update(layer.identifier for layer in notice.GetLayers() if layer in used)
+
+        listener = Tf.Notice.RegisterGlobally(Sdf.Notice.LayersDidChange, gather)
+        try:
+            yield changed
+        finally:
+            listener.Revoke()
+
     def attach(self, stage: Usd.Stage) -> None:
-        """Attach stage, letting go of an evaluation stage over another stage's layers."""
+        """Attach stage, letting go of an evaluation stage over another stage's layers; the revision changes."""
         self._source_stage = stage
+        self._revisions.advance()
         evaluation = self._evaluation_stage
         if evaluation is not None and (
             evaluation.GetRootLayer() != stage.GetRootLayer() or evaluation.GetSessionLayer() != stage.GetSessionLayer()
@@ -86,8 +147,12 @@ class BindingStages:
 
     def drop_evaluation_stage(self) -> None:
         """Let go of the evaluation stage, keeping the attachment; the next acquisition reopens it."""
+        if self._listener is not None:
+            self._listener.Revoke()
+        self._listener = None
         self._evaluation_stage = None
         self._payload_policy = None
+        self._revisions.advance()
 
     def release(self) -> None:
         """Let go of the attached stage and the evaluation stage over its layers: the binding is unattached."""
@@ -151,6 +216,8 @@ class BindingStages:
                 )
             self._evaluation_stage = stage
             self._payload_policy = payload_policy
+            revisions = self._revisions
+            self._listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, lambda *_: revisions.advance(), stage)
         elif stage.GetPopulationMask() != attached.GetPopulationMask():
             # Reused: the caller may have changed its mask since the last acquisition.
             stage.SetPopulationMask(attached.GetPopulationMask())

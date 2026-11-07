@@ -13,12 +13,13 @@ import bpy
 from proscenium.binding.persistence import binding_state
 from proscenium.binding.persistence.binding_state import Generation
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
-from proscenium.binding.runtime import ownership_index
-from proscenium.binding.source_access import PayloadPolicy
+from proscenium.binding.runtime import ownership
+from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
+from support.manifests import key
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access.identifiers import BindingId
 
 
 def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, display: SavedDisplay) -> None:
@@ -36,9 +37,14 @@ def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, di
     for each in (parent, obj):
         destination.objects.link(each)
     datablocks = {"world": parent, "ref": obj, "ref-mesh": mesh, "ref-material": material}
-    entries = {key: ManifestEntry(datablocks[key], *entry) for key, entry in display.entries.items()}
-    ownership_index.set_manifest(binding_id, Manifest(entries))
-    binding_state.write_generation(destination, Generation(binding_id, PayloadPolicy.LOAD_ALL, 0.0, ()))
+    entries = {
+        key(name): ManifestEntry(datablocks[name], covers, role, [key(u) for u in uses], place)  # ty: ignore[invalid-argument-type] - a stored role's string
+        for name, (covers, role, uses, place) in display.entries.items()
+    }
+    ownership.set_manifest(binding_id, Manifest(entries))
+    binding_state.write_generation(
+        destination, Generation(binding_id, PayloadPolicy.LOAD_ALL, 0.0, SourceRevision("saved"), ())
+    )
     view_layer = bpy.context.view_layer
     assert view_layer is not None
     view_layer.update()  # matrix_world is computed at the update, and saved with the file

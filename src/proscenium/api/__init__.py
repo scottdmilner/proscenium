@@ -1,5 +1,8 @@
 """What callers use: the binding handle and the process's bindings (source-access.md#synchronization-api).
 
-Not a tier: it may import proscenium.binding's runtime, persistence, and the bpy-free code, using
-what each package exports.
+It exports its module, bindings, which proscenium.addon imports.
 """
+
+from . import bindings
+
+__all__ = ["bindings"]
