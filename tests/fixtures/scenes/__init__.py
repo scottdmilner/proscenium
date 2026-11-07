@@ -23,6 +23,7 @@ class Scene(Enum):
     INTERACTION = "interaction"  # one layer each for F-KIND-HIERARCHY, F-NESTED-SELECTION, F-UNIVERSE-MEMBERSHIP
     APPEARANCE = "appearance"  # F-APPEARANCE-CASES (with its texture), F-NESTED-STRESS, and point instancers
     TRANSACTION = "transaction"  # layers for every generator in fixtures/transaction.py
+    EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py
 
     @property
     def path(self) -> Path:

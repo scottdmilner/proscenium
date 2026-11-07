@@ -14,8 +14,8 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
 | [ARCH-01](../PROJECT.md#core-architecture) | The USD hierarchy must remain accessible through source inspection | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [ARCH-04](../PROJECT.md#core-architecture) | Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [ARCH-05](../PROJECT.md#core-architecture) | Source hierarchy and selection identities are independent of display partitioning. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [ARCH-04](../PROJECT.md#core-architecture) | Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
+| [ARCH-05](../PROJECT.md#core-architecture) | Source hierarchy and selection identities are independent of display partitioning. | behavior |  | M7 | 1 / M12 | `F-NESTED-STRESS` | Set by M7. |
 | [ARCH-06](../PROJECT.md#core-architecture) | Tools address USD entities through the source selection model. | contract |  | M2 | 1 / M4 | — | The M2 decision record: the interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log; M4 finalized it (M4 plan, F2). |
 | [ARCH-08](../PROJECT.md#core-architecture) | Keep the performance tests around for later | process |  | M4 | 1 / M14 | — | The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M14 its Phase 2 targets. |
 | [PH1-01](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Manual refresh is required. | behavior |  | M12 | 1 / M12 | — | Set by M12. |
@@ -32,14 +32,14 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
-| [SNAP-08](../spec/pipeline.md#evaluated-source-snapshot) | This model must not contain Blender datablock references. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [SNAP-10](../spec/pipeline.md#evaluated-source-snapshot) | Snapshot data cannot change during planning or application. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [SNAP-11](../spec/pipeline.md#evaluated-source-snapshot) | The snapshot keeps alive whatever storage it lends out, such as shared arrays. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [SNAP-08](../spec/pipeline.md#evaluated-source-snapshot) | This model must not contain Blender datablock references. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
+| [SNAP-10](../spec/pipeline.md#evaluated-source-snapshot) | Snapshot data cannot change during planning or application. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
+| [SNAP-11](../spec/pipeline.md#evaluated-source-snapshot) | The snapshot keeps alive whatever storage it lends out, such as shared arrays. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
 | [SNAP-13](../spec/pipeline.md#evaluated-source-snapshot) | Application does not retain borrowed buffers beyond the synchronization that supplied them. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [SNAP-16](../spec/pipeline.md#evaluated-source-snapshot) | Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact. | behavior |  | M6 | 1 / M12 | — | Set by M6. *Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
-| [SNAP-17](../spec/pipeline.md#evaluated-source-snapshot) | Hydra prim types the core does not translate | behavior |  | M6 | 1 / M12 | — | Set by M6. *Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
-| [PLAN-08](../spec/pipeline.md#display-plan) | Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [PLAN-09](../spec/pipeline.md#display-plan) | Anything planning depends on must arrive through one of its three inputs. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [SNAP-16](../spec/pipeline.md#evaluated-source-snapshot) | Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. *Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
+| [SNAP-17](../spec/pipeline.md#evaluated-source-snapshot) | Hydra prim types the core does not translate | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. *Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it.* |
+| [PLAN-08](../spec/pipeline.md#display-plan) | Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
+| [PLAN-09](../spec/pipeline.md#display-plan) | Anything planning depends on must arrive through one of its three inputs. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
 | [APP-05](../spec/pipeline.md#blender-application) | Report failures that only application can detect as diagnostics | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [APP-06](../spec/pipeline.md#blender-application) | When a resource fails during application, abort the transaction unless the plan already authorized a fallback for that resource. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [APP-08](../spec/pipeline.md#blender-application) | Application must not query USD to fill in unresolved source semantics. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
@@ -303,11 +303,11 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
-| [XFORM-01](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [XFORM-02](../spec/support/transforms.md#transforms-and-time-codes) | Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
-| [XFORM-03](../spec/support/transforms.md#transforms-and-time-codes) | Support matrix transforms, negative and nonuniform scale, and shear. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
-| [XFORM-05](../spec/support/transforms.md#transforms-and-time-codes) | Diagnose approximations when exact representation is unavailable. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [XFORM-06](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes. | behavior | **high** | M6 | 1 / M12 | — | Set by M6. |
+| [XFORM-01](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
+| [XFORM-02](../spec/support/transforms.md#transforms-and-time-codes) | Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS`, `F-TRANSFORMS` | Set by M6. |
+| [XFORM-03](../spec/support/transforms.md#transforms-and-time-codes) | Support matrix transforms, negative and nonuniform scale, and shear. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS`, `F-TRANSFORMS` | Set by M6. |
+| [XFORM-05](../spec/support/transforms.md#transforms-and-time-codes) | Diagnose approximations when exact representation is unavailable. | behavior |  | M6 | 1 / M12 | `F-TRANSFORMS` | Set by M6. |
+| [XFORM-06](../spec/support/transforms.md#transforms-and-time-codes) | Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes. | behavior | **high** | M6 | 1 / M12 | `F-TRANSFORMS`, `F-VISIBILITY-PURPOSE` | Set by M6. |
 | [XFORM-07](../spec/support/transforms.md#transforms-and-time-codes) | including topology changes. | behavior |  | M8 | 1 / M12 | — | Set by M8. |
 | [XFORM-08](../spec/support/transforms.md#transforms-and-time-codes) | the DECISIONS.md row "Time-sampled data representation" records the animation data used and why | contract |  | M4 | 1 / M4 | — | The M4 decision record: the DECISIONS.md row "Time-sampled data representation" states the representation adopted for cached time codes and the animation data it authors, and why, with the M4 plan's Phase E measurements of playback, construction, memory, and .blend size. |
 | [XFORM-09](../spec/support/transforms.md#transforms-and-time-codes) | Authored animation data and its caches are managed content | behavior |  | M7 | 1 / M12 | — | Set by M7. |
@@ -316,11 +316,11 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [XFORM-12](../spec/support/transforms.md#transforms-and-time-codes) | Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included. | behavior |  | M5 | 1 / M12 | `F-MULTI-BINDING` | Synchronizing without a time code at frame 7 with subframe 0.25 attempts and records 7.25, and leaves the scene's frame rate and playback range unchanged. |
 | [XFORM-13](../spec/support/transforms.md#transforms-and-time-codes) | A display shows each time code cached in its generation | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [XFORM-14](../spec/support/transforms.md#transforms-and-time-codes) | Interaction answers for the time code the display shows. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CONV-01](../spec/support/transforms.md#coordinate-conversion) | Units/up-axis conversion is configurable and disabled by default. When disabled, the correction matrix is the identity. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [CONV-01](../spec/support/transforms.md#coordinate-conversion) | Units/up-axis conversion is configurable and disabled by default. When disabled, the correction matrix is the identity. | behavior |  | M6 | 1 / M12 | `F-UNITS-UP-AXIS` | Set by M6. |
 | [CONV-02](../spec/support/transforms.md#coordinate-conversion) | Enabled conversion respects the target scene's unit scale without changing scene settings. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CONV-03](../spec/support/transforms.md#coordinate-conversion) | Converted results are consistent for geometry, transforms, bounds, and instances. | behavior | **high** | M6 | 1 / M12 | — | Set by M6. |
+| [CONV-03](../spec/support/transforms.md#coordinate-conversion) | Converted results are consistent for geometry, transforms, bounds, and instances. | behavior | **high** | M6 | 1 / M12 | `F-UNITS-UP-AXIS` | Set by M6. |
 | [CONV-07](../spec/support/transforms.md#coordinate-conversion) | If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CONV-08](../spec/support/transforms.md#coordinate-conversion) | scale = stage.metersPerUnit / target_scene.unit_settings.scale_length | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [CONV-08](../spec/support/transforms.md#coordinate-conversion) | scale = stage.metersPerUnit / target_scene.unit_settings.scale_length | behavior |  | M6 | 1 / M12 | `F-UNITS-UP-AXIS` | Set by M6. |
 ## spec/support/geometry.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
@@ -398,16 +398,16 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
-| [VIS-01](../spec/support/visibility.md#visibility-and-purpose) | Respect effective inherited visibility separately from purpose. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [VIS-02](../spec/support/visibility.md#visibility-and-purpose) | Viewport \| default, proxy | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS` | Set by M6. |
+| [VIS-01](../spec/support/visibility.md#visibility-and-purpose) | Respect effective inherited visibility separately from purpose. | behavior |  | M6 | 1 / M12 | `F-VISIBILITY-PURPOSE` | Set by M6. |
+| [VIS-02](../spec/support/visibility.md#visibility-and-purpose) | Viewport \| default, proxy | behavior |  | M6 | 1 / M12 | `F-VISIBILITY-PURPOSE` | Set by M6. |
+| [VIS-03](../spec/support/visibility.md#visibility-and-purpose) | Exclude guide by default. Support both destinations from the same evaluated snapshot. | behavior | **high** | M6 | 1 / M12 | `F-NESTED-STRESS`, `F-VISIBILITY-PURPOSE` | Set by M6. |
 | [VIS-04](../spec/support/visibility.md#visibility-and-purpose) | A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport. | behavior |  | M6 | 1 / M12 | `F-UNIVERSE-MEMBERSHIP` | Set by M6. |
 | [MODEL-01](../spec/support/visibility.md#models-and-unsupported-content) | Expose model kind and available asset metadata. | behavior |  | M7 | 1 / M12 | — | Set by M7. *Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md "Browsing universe and inspection metadata set").* |
-| [MODEL-03](../spec/support/visibility.md#models-and-unsupported-content) | Support is decided per behavior, not per prim type. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [MODEL-04](../spec/support/visibility.md#models-and-unsupported-content) | Use a bounding-box placeholder when usable bounds are available. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [MODEL-05](../spec/support/visibility.md#models-and-unsupported-content) | Otherwise create an empty marker and warn. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [MODEL-06](../spec/support/visibility.md#models-and-unsupported-content) | Respect transforms, visibility, and purpose. | behavior |  | M6 | 1 / M12 | — | Set by M6. |
-| [DEFER-01](../spec/support/visibility.md#deferred-and-out-of-scope) | Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry | behavior |  | M6 | 1 / M12 | — | Set by M6. |
+| [MODEL-03](../spec/support/visibility.md#models-and-unsupported-content) | Support is decided per behavior, not per prim type. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
+| [MODEL-04](../spec/support/visibility.md#models-and-unsupported-content) | Use a bounding-box placeholder when usable bounds are available. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
+| [MODEL-05](../spec/support/visibility.md#models-and-unsupported-content) | Otherwise create an empty marker and warn. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
+| [MODEL-06](../spec/support/visibility.md#models-and-unsupported-content) | Respect transforms, visibility, and purpose. | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
+| [DEFER-01](../spec/support/visibility.md#deferred-and-out-of-scope) | Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry | behavior |  | M6 | 1 / M12 | `F-UNSUPPORTED-CONTENT` | Set by M6. |
 ## testing/strategy.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |

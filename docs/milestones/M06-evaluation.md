@@ -21,7 +21,9 @@
 **Tests:**
 
 - Snapshot and plan assertions for the initial scope, including sharing, correspondence, and diagnostics.
-- Time-code and settings changes, including the USD default time code and coordinate conversion with different supplied unit scales and up-axis settings.
+- Transforms on `F-TRANSFORMS` and `F-NESTED-STRESS`, and unsupported content and its descendants on `F-UNSUPPORTED-CONTENT`.
+- Time-code and settings changes, including the USD default time code and coordinate conversion with different supplied unit scales and up-axis settings (`F-UNITS-UP-AXIS`).
+- Visibility and purpose for both destinations from one snapshot on `F-VISIBILITY-PURPOSE` and `F-NESTED-STRESS`, and a guide made explicitly visible on `F-UNIVERSE-MEMBERSHIP`.
 - Determinism: identical snapshot, settings, and planning context yield identical plans.
 - Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to binding configuration version 1, with no migration, since no release has written one (DECISIONS.md "Conversion and purpose settings").
 - Per-behavior dispatch: an unsupported behavior on a prim does not suppress its supported behaviors.

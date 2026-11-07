@@ -52,9 +52,11 @@ requirements:
         delivery: M7
       - id: ARCH-04
         quote: "Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors."
+        fixtures: [F-UNSUPPORTED-CONTENT]
         delivery: M6
       - id: ARCH-05
         quote: "Source hierarchy and selection identities are independent of display partitioning."
+        fixtures: [F-NESTED-STRESS]
         delivery: M7
       - id: ARCH-06
         quote: "Tools address USD entities through the source selection model."
@@ -128,18 +130,23 @@ requirements:
     rows:
       - id: SNAP-08
         quote: "This model must not contain Blender datablock references."
+        fixtures: [F-TRANSFORMS]
       - id: SNAP-10
         quote: "Snapshot data cannot change during planning or application."
+        fixtures: [F-TRANSFORMS]
       - id: SNAP-11
         quote: "The snapshot keeps alive whatever storage it lends out, such as shared arrays."
+        fixtures: [F-TRANSFORMS]
       - id: SNAP-13
         quote: "Application does not retain borrowed buffers beyond the synchronization that supplied them."
         delivery: M7
       - id: SNAP-16
         quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
+        fixtures: [F-UNSUPPORTED-CONTENT]
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
       - id: SNAP-17
         quote: "Hydra prim types the core does not translate"
+        fixtures: [F-UNSUPPORTED-CONTENT]
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
 
   - section: spec/pipeline.md#display-plan
@@ -148,8 +155,10 @@ requirements:
     rows:
       - id: PLAN-08
         quote: "Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan."
+        fixtures: [F-TRANSFORMS]
       - id: PLAN-09
         quote: "Anything planning depends on must arrive through one of its three inputs."
+        fixtures: [F-TRANSFORMS]
 
   - section: spec/pipeline.md#blender-application
     delivery: M7
@@ -1251,18 +1260,21 @@ requirements:
     rows:
       - id: XFORM-01
         quote: "Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes."
+        fixtures: [F-TRANSFORMS]
       - id: XFORM-02
         quote: "Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-TRANSFORMS]
         risk: high
       - id: XFORM-03
         quote: "Support matrix transforms, negative and nonuniform scale, and shear."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-TRANSFORMS]
         risk: high
       - id: XFORM-05
         quote: "Diagnose approximations when exact representation is unavailable."
+        fixtures: [F-TRANSFORMS]
       - id: XFORM-06
         quote: "Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes."
+        fixtures: [F-TRANSFORMS, F-VISIBILITY-PURPOSE]
         risk: high
       - id: XFORM-07
         quote: "including topology changes."
@@ -1300,17 +1312,20 @@ requirements:
     rows:
       - id: CONV-01
         quote: "Units/up-axis conversion is configurable and disabled by default. When disabled, the correction matrix is the identity."
+        fixtures: [F-UNITS-UP-AXIS]
       - id: CONV-02
         quote: "Enabled conversion respects the target scene's unit scale without changing scene settings."
         delivery: M7
       - id: CONV-03
         quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
+        fixtures: [F-UNITS-UP-AXIS]
         risk: high
       - id: CONV-07
         quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
         delivery: M7
       - id: CONV-08
         quote: "scale = stage.metersPerUnit / target_scene.unit_settings.scale_length"
+        fixtures: [F-UNITS-UP-AXIS]
 
   # --- spec/support/geometry.md ---------------------------------------------------------------
 
@@ -1576,11 +1591,13 @@ requirements:
     rows:
       - id: VIS-01
         quote: "Respect effective inherited visibility separately from purpose."
+        fixtures: [F-VISIBILITY-PURPOSE]
       - id: VIS-02
         quote: "Viewport | default, proxy"
+        fixtures: [F-VISIBILITY-PURPOSE]
       - id: VIS-03
         quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-VISIBILITY-PURPOSE]
         risk: high
       - id: VIS-04
         quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
@@ -1596,12 +1613,16 @@ requirements:
         note: "Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md \"Browsing universe and inspection metadata set\")."
       - id: MODEL-03
         quote: "Support is decided per behavior, not per prim type."
+        fixtures: [F-UNSUPPORTED-CONTENT]
       - id: MODEL-04
         quote: "Use a bounding-box placeholder when usable bounds are available."
+        fixtures: [F-UNSUPPORTED-CONTENT]
       - id: MODEL-05
         quote: "Otherwise create an empty marker and warn."
+        fixtures: [F-UNSUPPORTED-CONTENT]
       - id: MODEL-06
         quote: "Respect transforms, visibility, and purpose."
+        fixtures: [F-UNSUPPORTED-CONTENT]
 
   - section: spec/support/visibility.md#deferred-and-out-of-scope
     delivery: M6
@@ -1609,6 +1630,7 @@ requirements:
     rows:
       - id: DEFER-01
         quote: "Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry"
+        fixtures: [F-UNSUPPORTED-CONTENT]
 
   # --- testing/strategy.md --------------------------------------------------------------------
 

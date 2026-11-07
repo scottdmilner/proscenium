@@ -61,6 +61,8 @@ tests/
     ├── records.py            the generator for F-SCHEMA-VERSIONS, and its test schema
     ├── transaction.py        generators for F-FAILED-SETTINGS, F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE,
     │                         F-RETIREMENT-FAILURE, F-SOURCE-CHANGE, F-CACHED-TIME-CODES
+    ├── evaluation.py         generators for F-TRANSFORMS, F-UNITS-UP-AXIS, F-VISIBILITY-PURPOSE,
+    │                         F-UNSUPPORTED-CONTENT
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
         └── __init__.py       the Scene index and copy_scene

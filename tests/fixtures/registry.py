@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, copies, interaction, source_access, transaction
+from . import appearance, copies, evaluation, interaction, source_access, transaction
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -142,6 +142,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("whole-stage", SYNC, SUCCESS, ("BIND-08", "BIND-09"), 1),
                 # The time code given, the default included, or else the target scene's current frame's.
                 Case("time-codes", SYNC, SUCCESS, ("BIND-05", "XFORM-12"), 1),
+                # Each binding's own conversion and purpose settings: setting one binding's leaves the others'.
+                Case("conversion-and-purposes", SYNC, SUCCESS, ("BIND-06",), 1),
             ),
         ),
         Fixture(
@@ -403,8 +405,19 @@ FIXTURES: dict[str, Fixture] = {
         Fixture(
             "F-NESTED-STRESS",
             "Nested instance plus shear plus appearance variation",
-            ("M4", "M10"),
+            ("M4", "M6", "M10"),
             appearance.nested_stress,
+            (
+                # Each copy's world transform inside nested instances: shear, negative determinants, nonuniform
+                # scale, and a reset transform stack inside an instance.
+                Case("transforms", SYNC, SUCCESS, ("XFORM-02", "XFORM-03"), 1),
+                # Proxy, render, and guide meshes: each destination's participation from one snapshot.
+                Case("purposes", SYNC, SUCCESS, ("VIS-03",), 1),
+                # Relation 1: translating World moves every copy but Pinned's, which reset the transform stack.
+                Case("root-translation", SYNC, SUCCESS, ("XFORM-02",), 1),
+                # Relation 6: with no instance roots instanceable, the same copies at the same places.
+                Case("instanceable", SYNC, SUCCESS, ("ARCH-05",), 1),
+            ),
         ),
         Fixture(
             "F-APPEARANCE-CASES",
@@ -431,8 +444,91 @@ FIXTURES: dict[str, Fixture] = {
         Fixture(
             "F-UNIVERSE-MEMBERSHIP",
             "Browsing-universe membership and exclusions",
-            ("M2", "M4", "M7"),
+            ("M2", "M4", "M6", "M7"),
             interaction.universe_membership,
+            (
+                # A guide made explicitly visible by an ancestor's guideVisibility displays in the viewport.
+                Case("explicit-guide", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("VIS-04",), 1),
+            ),
+        ),
+        Fixture(
+            "F-TRANSFORMS",
+            "Transforms the planner places",
+            ("M6",),
+            evaluation.transforms,
+            (
+                # Ordered ops, a pivot through an inverted op, a matrix op, and a translate on a mesh.
+                Case("ordered-ops", SYNC, SUCCESS, ("XFORM-01",), 1),
+                # A reset transform stack outside and inside a native instance (OpenUSD #862).
+                Case("reset-stack", SYNC, SUCCESS, ("XFORM-01", "XFORM-02"), 1),
+                # Negative and nonuniform scale, and shear.
+                Case("scale-and-shear", SYNC, SUCCESS, ("XFORM-03",), 1),
+                # A projective matrix: placed by its affine part, with an approximation diagnostic.
+                Case("projective", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("XFORM-05",), 1),
+                # The sampled translate at each sampled time code, synchronized and cached.
+                Case("time-codes", SYNC, SUCCESS, ("XFORM-06",), 1),
+                Case("cached-time-codes", Operation.CACHE, SUCCESS, ("XFORM-06",), 1),
+                # The snapshot holds no Blender data, and neither a stage edit after capture nor the stage's
+                # release changes it or what it lends.
+                Case("snapshot-independence", SYNC, SUCCESS, ("SNAP-08", "SNAP-10", "SNAP-11"), 1),
+                # Equal snapshot, settings, and context give equal plans, which read nothing else.
+                Case("determinism", SYNC, SUCCESS, ("PLAN-08", "PLAN-09"), 1),
+                # Relation 1: translating World moves every copy but those that reset the transform stack.
+                Case("root-translation", SYNC, SUCCESS, ("XFORM-01", "XFORM-02"), 1),
+                # Relation 4: the payload policy switched to load-none and back gives the first plan.
+                Case("payload-round-trip", SYNC, SUCCESS, ("PLAN-08",), 1),
+                # Relation 5: time codes with equal values give plans equal but for their time codes.
+                Case("equal-values", SYNC, SUCCESS, ("XFORM-06", "PLAN-08"), 1),
+            ),
+        ),
+        Fixture(
+            "F-UNITS-UP-AXIS",
+            "Units and up-axis conversion",
+            ("M6",),
+            evaluation.units_up_axis,
+            (
+                # Conversion off: the correction is the identity, whatever the stage's units and up axis.
+                Case("conversion-off", SYNC, SUCCESS, ("CONV-01",), 1),
+                # Relation 2: conversion on prefixes the spec's correction to every world transform, for
+                # geometry, bounds, and instances alike, in target scenes of each unit scale.
+                Case("conversion-on", SYNC, SUCCESS, ("CONV-01", "CONV-03", "CONV-08"), 1),
+            ),
+        ),
+        Fixture(
+            "F-VISIBILITY-PURPOSE",
+            "Visibility and purpose",
+            ("M6",),
+            evaluation.visibility_purpose,
+            (
+                # An invisible ancestor hides its descendants, whatever their purpose.
+                Case("inherited-visibility", SYNC, SUCCESS, ("VIS-01",), 1),
+                # Each destination's default purposes, both destinations from one snapshot.
+                Case("default-purposes", SYNC, SUCCESS, ("VIS-02", "VIS-03"), 1),
+                # Relation 3: changing one destination's purposes changes only its participation.
+                Case("purpose-settings", SYNC, SUCCESS, ("VIS-02", "VIS-03"), 1),
+                # Visibility sampled over time, at each sampled time code and its transitions.
+                Case("time-varying", SYNC, SUCCESS, ("VIS-01", "XFORM-06"), 1),
+            ),
+        ),
+        Fixture(
+            "F-UNSUPPORTED-CONTENT",
+            "Unsupported content and filter conversions",
+            ("M6",),
+            evaluation.unsupported_content,
+            (
+                # Untranslated types as bounds boxes: authored extents as given, else USD's computed ones.
+                Case("placeholders", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-17", "MODEL-04"), 1),
+                # A volume without bounds: an empty marker and a warning.
+                Case("marker", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-17", "MODEL-05"), 1),
+                # Implicit shapes and a NURBS patch as meshes, the inexact ones diagnosed as approximations.
+                Case("approximations", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-16",), 1),
+                # A point instancer: one placeholder, and nothing for its prototype.
+                Case("point-instancer", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DEFER-01",), 1),
+                # Each behavior decided on its own: a placeholder keeps its transform, visibility, and purpose.
+                Case("per-behavior", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("MODEL-03", "MODEL-06"), 1),
+                # A supported mesh beneath unsupported curves takes their transform and purpose.
+                Case("unsupported-ancestor", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("ARCH-04",), 1),
+            ),
         ),
     )
 }

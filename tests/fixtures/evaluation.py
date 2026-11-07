@@ -1,0 +1,354 @@
+"""Evaluation fixtures: the scenes M6's capture and planner are checked on, from scenes/evaluation/.
+
+- transforms (F-TRANSFORMS): each kind of transform the planner places, a reset transform stack outside and
+  inside a native instance, a payload, a translate sampled over time, and a projective matrix in a layer of
+  its own.
+- units_up_axis (F-UNITS-UP-AXIS): one scene as a Y-up stage in centimeters and a Z-up stage in meters, for
+  coordinate conversion into target scenes of different unit scales.
+- visibility_purpose (F-VISIBILITY-PURPOSE): effective visibility, inherited and sampled over time, apart from
+  each purpose, and each destination's participation.
+- unsupported_content (F-UNSUPPORTED-CONTENT): placeholders and markers for untranslated types, the filters'
+  conversions to meshes, a point instancer, and a mesh beneath an unsupported ancestor.
+
+Each copies its layers from Scene.EVALUATION, opens them as the caller's live stages, and yields what the
+scene is built to display, written out from the layer by hand: world transforms are composed here from the
+ops each layer authors, in USD's row-vector convention, never read from USD. Time codes are floats, or None
+for the default time code. tests/bpy_free/test_evaluation_fixtures.py checks these against USD's own APIs.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from pxr import Gf, Usd
+
+from proscenium.binding.source_access.stages import PayloadPolicy
+from support.usd import open_fresh
+
+from .scenes import Scene, copy_scene
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Iterable
+    from pathlib import Path
+
+Bounds = tuple[Gf.Vec3d, Gf.Vec3d]  # (min, max), local
+UNIT_BOUNDS: Bounds = (Gf.Vec3d(0, 0, 0), Gf.Vec3d(1, 1, 1))  # the Tetra every mesh references
+VIEWPORT_PURPOSES = frozenset({"default", "proxy"})  # the settings' defaults (DECISIONS.md "Conversion and
+RENDER_PURPOSES = frozenset({"default", "render"})  # purpose settings")
+LOAD = {PayloadPolicy.LOAD_ALL: Usd.Stage.LoadAll, PayloadPolicy.LOAD_NONE: Usd.Stage.LoadNone}
+
+
+def translate(x: float, y: float, z: float) -> Gf.Matrix4d:
+    return Gf.Matrix4d().SetTranslate(Gf.Vec3d(x, y, z))
+
+
+def rotate(axis: tuple[float, float, float], degrees: float) -> Gf.Matrix4d:
+    return Gf.Matrix4d().SetRotate(Gf.Rotation(Gf.Vec3d(*axis), degrees))
+
+
+def scale(x: float, y: float, z: float) -> Gf.Matrix4d:
+    return Gf.Matrix4d().SetScale(Gf.Vec3d(x, y, z))
+
+
+def local(*ops: Gf.Matrix4d) -> Gf.Matrix4d:
+    """A prim's local transform from its ops in xformOpOrder's order: the last op applies to points first."""
+    result = Gf.Matrix4d(1)
+    for op in ops:
+        result = op * result
+    return result
+
+
+def world(*locals_: Gf.Matrix4d) -> Gf.Matrix4d:
+    """A prim's world transform from its own local transform and its ancestors', innermost first."""
+    result = Gf.Matrix4d(1)
+    for matrix in locals_:
+        result = result * matrix
+    return result
+
+
+@dataclass(frozen=True)
+class TimeVariation:
+    """How a time-varying fixture varies, from how it is built (acceptance.md#sampled-time-codes, ATIME-02)."""
+
+    start: float  # the stage's startTimeCode
+    end: float  # its endTimeCode
+    samples: tuple[float, ...]  # every authored sample time
+    transitions: tuple[float, ...]  # time codes where topology or visibility changes
+
+
+# --- F-TRANSFORMS --------------------------------------------------------------------------------------------
+
+ANIMATED = "/World/Animated/Geom"
+ANIMATED_SAMPLES = ((0.0, 0.0), (10.0, 10.0), (20.0, 10.0), (30.0, 0.0))  # (time code, translate x)
+PAYLOAD_MESHES = frozenset({"/World/Payloaded/Geom"})
+
+
+def animated_x(time_code: float | None) -> float:
+    """Animated's translate x at time_code: linear between samples, held outside them, 0 at the default."""
+    if time_code is None:
+        return 0.0  # only samples are authored, so the default time code has no opinion
+    (t0, x0), *rest = ANIMATED_SAMPLES
+    if time_code <= t0:
+        return x0
+    for t1, x1 in rest:
+        if time_code <= t1:
+            return x0 + (x1 - x0) * (time_code - t0) / (t1 - t0)
+        t0, x0 = t1, x1
+    return x0
+
+
+@dataclass
+class TransformsScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage, loading everything
+    projective_root: Path
+    projective_stage: Usd.Stage  # transforms_projective.usda's
+    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform at the default time code, Animated's at 0
+    payload_meshes: frozenset[str]  # drawn only under load-all
+    negative: frozenset[str]  # world transform with a negative determinant
+    sheared: frozenset[str]  # world transform whose axes aren't orthogonal
+    resets: frozenset[str]  # reset the transform stack, so a root's translation doesn't move them
+    instance_context: dict[str, tuple[str, ...]]  # drawn mesh inside instances -> instance roots, outermost first
+    projective: str  # in projective_stage: the mesh placed by its matrix's affine part, with a diagnostic
+    projective_world: Gf.Matrix4d  # its world transform as authored, projective column included
+    projective_affine: Gf.Matrix4d  # that matrix with its last column (0, 0, 0, 1)
+    variation: TimeVariation
+    equal_time_codes: tuple[tuple[float, float], ...]  # pairs whose evaluated values are equal (relation 5)
+
+    def drawn(self, policy: PayloadPolicy) -> frozenset[str]:
+        return frozenset(self.world) - (self.payload_meshes if policy is PayloadPolicy.LOAD_NONE else frozenset())
+
+    def world_at(self, path: str, time_code: float | None) -> Gf.Matrix4d:
+        return translate(animated_x(time_code), 0, 0) if path == ANIMATED else self.world[path]
+
+
+@contextmanager
+def transforms(dest: Path) -> Generator[TransformsScene]:
+    """F-TRANSFORMS: see scenes/evaluation/transforms.usda and transforms_projective.usda."""
+    root, projective_root = (
+        copy_scene(Scene.EVALUATION, dest) / name for name in ("transforms.usda", "transforms_projective.usda")
+    )
+    ordered = local(translate(1, 2, 3), rotate((0, 0, 1), 90), scale(2, 1, 1))
+    pivot = translate(1, 0, 0)
+    pivoted = local(translate(0, 4, 0), pivot, rotate((0, 0, 1), 90), pivot.GetInverse())
+    matrix = Gf.Matrix4d((0, 1, 0, 0), (-1, 0, 0, 0), (0, 0, 1, 0), (5, 0, 0, 1))
+    sheared = Gf.Matrix4d((1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (-5, 0, 0, 1))
+    instanced, kit = translate(0, 0, 10), translate(1, 0, 0)
+    projective = Gf.Matrix4d((1, 0, 0, 0.25), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1))
+    yield TransformsScene(
+        root=root,
+        stage=open_fresh(root),
+        projective_root=projective_root,
+        projective_stage=open_fresh(projective_root),
+        world={
+            "/World/Ordered/OnMesh": world(translate(0, 0, 1), ordered),
+            "/World/Pivoted/Geom": pivoted,
+            "/World/Matrix/Geom": matrix,
+            "/World/Mirrored/Geom": local(translate(0, -3, 0), scale(-1, 2, 0.5)),
+            "/World/Sheared/Geom": sheared,
+            "/World/Reset/Pinned": translate(0, 5, 0),  # the reset drops Reset's translate
+            "/World/Instanced/Kit/Body": world(kit, instanced),
+            "/World/Instanced/Kit/Pinned": translate(0, 3, 0),  # drops Kit's and Instanced's (OpenUSD #862)
+            "/World/Payloaded/Geom": world(rotate((1, 0, 0), 90), translate(0, 0, -5)),
+            ANIMATED: translate(0, 0, 0),
+        },
+        payload_meshes=PAYLOAD_MESHES,
+        negative=frozenset({"/World/Mirrored/Geom"}),
+        sheared=frozenset({"/World/Sheared/Geom"}),
+        resets=frozenset({"/World/Reset/Pinned", "/World/Instanced/Kit/Pinned"}),
+        instance_context={
+            "/World/Instanced/Kit/Body": ("/World/Instanced/Kit",),
+            "/World/Instanced/Kit/Pinned": ("/World/Instanced/Kit",),
+        },
+        projective="/World/Projective/Geom",
+        projective_world=projective,
+        projective_affine=Gf.Matrix4d((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1)),
+        variation=TimeVariation(start=0.0, end=30.0, samples=(0.0, 10.0, 20.0, 30.0), transitions=()),
+        # Before the first sample and at it, after the last and at it, and two between the equal samples.
+        equal_time_codes=((-5.0, 0.0), (35.0, 30.0), (12.5, 17.25)),
+    )
+
+
+# --- F-UNITS-UP-AXIS -----------------------------------------------------------------------------------------
+
+UNIT_SCALES = (1.0, 0.01)  # the target scenes' unit_settings.scale_length the cases synchronize into
+
+
+@dataclass
+class UnitsScene:
+    roots: dict[str, Path]  # "y-up-cm", "z-up-m" -> its root layer
+    stages: dict[str, Usd.Stage]  # the caller's live stage of each
+    meters_per_unit: dict[str, float]
+    up_axis: dict[str, str]
+    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform in source units, the same in both stages
+    bounds: Bounds  # every mesh's local extent
+    instance_context: dict[str, tuple[str, ...]]
+
+    def correction(self, stage: str, scale_length: float) -> Gf.Matrix4d:
+        """The spec's correction matrix C, in USD's row-vector convention: world * correction (CONV-08).
+
+        scale = metersPerUnit / scale_length, then +90 degrees about X for a Y-up stage, as
+        transforms.md#coordinate-conversion's C = R_upaxis @ Scale(scale) gives it in column vectors.
+        """
+        factor = self.meters_per_unit[stage] / scale_length
+        up = rotate((1, 0, 0), 90) if self.up_axis[stage] == "Y" else Gf.Matrix4d(1)
+        return scale(factor, factor, factor) * up
+
+
+@contextmanager
+def units_up_axis(dest: Path) -> Generator[UnitsScene]:
+    """F-UNITS-UP-AXIS: see scenes/evaluation/units_y_up_cm.usda and units_z_up_m.usda."""
+    scenes = copy_scene(Scene.EVALUATION, dest)
+    roots = {"y-up-cm": scenes / "units_y_up_cm.usda", "z-up-m": scenes / "units_z_up_m.usda"}
+    yield UnitsScene(
+        roots=roots,
+        stages={key: open_fresh(path) for key, path in roots.items()},
+        meters_per_unit={"y-up-cm": 0.01, "z-up-m": 1.0},
+        up_axis={"y-up-cm": "Y", "z-up-m": "Z"},
+        world={
+            "/World/Box": translate(100, 20, 50),
+            "/World/Kit/Body": world(translate(0, 100, 0), translate(0, 0, 200)),
+        },
+        bounds=(Gf.Vec3d(0, 0, 0), Gf.Vec3d(10, 10, 10)),
+        instance_context={"/World/Kit/Body": ("/World/Kit",)},
+    )
+
+
+# --- F-VISIBILITY-PURPOSE ------------------------------------------------------------------------------------
+
+BLINKING = "/World/Blinking"
+
+
+@dataclass
+class VisibilityScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage
+    purpose: dict[str, str]  # drawn mesh -> its computed purpose
+    always_invisible: frozenset[str]  # invisible at every time code
+    blinking: str  # invisible from 10 until 20, visible otherwise, the default time code included
+    variation: TimeVariation
+    equal_time_codes: tuple[tuple[float, float], ...]  # pairs whose evaluated values are equal (relation 5)
+
+    def visible(self, path: str, time_code: float | None) -> bool:
+        """Effective visibility: an invisible ancestor or sample makes a mesh invisible; guides aren't covered."""
+        if path in self.always_invisible:
+            return False
+        return not (path == self.blinking and time_code is not None and 10.0 <= time_code < 20.0)
+
+    def displays(self, path: str, time_code: float | None, purposes: Iterable[str]) -> bool:
+        """Whether a destination including purposes shows the mesh. No guide is explicitly visible here."""
+        return self.purpose[path] != "guide" and self.purpose[path] in set(purposes) and self.visible(path, time_code)
+
+
+@contextmanager
+def visibility_purpose(dest: Path) -> Generator[VisibilityScene]:
+    """F-VISIBILITY-PURPOSE: see scenes/evaluation/visibility_purpose.usda."""
+    root = copy_scene(Scene.EVALUATION, dest) / "visibility_purpose.usda"
+    yield VisibilityScene(
+        root=root,
+        stage=open_fresh(root),
+        purpose={
+            "/World/Hidden/Child": "default",
+            "/World/Shown/Default": "default",
+            "/World/Shown/Proxy": "proxy",
+            "/World/Shown/Render": "render",
+            "/World/Shown/Guide": "guide",
+            "/World/ProxyGroup/Inherits": "proxy",  # inherited from ProxyGroup
+            "/World/Pair/ProxyGeo": "proxy",
+            "/World/Pair/RenderGeo": "render",
+            BLINKING: "default",
+        },
+        always_invisible=frozenset({"/World/Hidden/Child"}),
+        blinking=BLINKING,
+        variation=TimeVariation(start=0.0, end=20.0, samples=(0.0, 10.0, 20.0), transitions=(10.0, 20.0)),
+        equal_time_codes=((0.0, 5.0), (10.0, 15.0), (20.0, 25.0)),  # tokens hold between samples
+    )
+
+
+# --- F-UNSUPPORTED-CONTENT -----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Placeholder:
+    """What the planner shows for untranslated content: a bounds box, or an empty marker when bounds is None."""
+
+    type_name: str  # the prim's USD type
+    world: Gf.Matrix4d
+    bounds: Bounds | None  # local: the authored extent as given, else USD's computed one for curves and points
+    computed: bool  # bounds came from USD's computation, since none is authored
+    viewport: bool  # displays there under the default purposes
+    render: bool
+
+
+@dataclass
+class UnsupportedScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage
+    placeholders: dict[str, Placeholder]  # each with an untranslated-type diagnostic; markers also warn
+    exact_conversions: frozenset[str]  # implicit shapes the filters turn into meshes exactly
+    approximated: frozenset[str]  # those turned into meshes inexactly, each with an approximation diagnostic
+    not_drawn: frozenset[str]  # gprims drawn only through a point instancer, which is deferred (DEFER-01)
+    supported_beneath: dict[str, tuple[Gf.Matrix4d, str]]  # mesh beneath an unsupported prim -> (world, purpose)
+    kinds: dict[str, str]  # prim -> its authored kind
+
+
+@contextmanager
+def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
+    """F-UNSUPPORTED-CONTENT: see scenes/evaluation/unsupported_content.usda."""
+    root = copy_scene(Scene.EVALUATION, dest) / "unsupported_content.usda"
+
+    def box(*corners: tuple[float, float, float]) -> Bounds:
+        return Gf.Vec3d(*corners[0]), Gf.Vec3d(*corners[1])
+
+    def shown(type_name: str, at: Gf.Matrix4d, bounds: Bounds | None, *, computed: bool = False) -> Placeholder:
+        return Placeholder(type_name, at, bounds, computed, viewport=True, render=True)
+
+    yield UnsupportedScene(
+        root=root,
+        stage=open_fresh(root),
+        placeholders={
+            "/World/Boxed": shown("BasisCurves", Gf.Matrix4d(1), box((-1, -1, -1), (2, 2, 2))),
+            # Points 0 to 2 on z, widened by half the constant width 0.2.
+            "/World/Combed": shown(
+                "BasisCurves", translate(3, 0, 0), box((-0.1, -0.1, -0.1), (0.1, 0.1, 2.1)), computed=True
+            ),
+            # Points 0 and 1 on x, widened by half their width 0.5.
+            "/World/Dots": shown(
+                "Points", translate(6, 0, 0), box((-0.25, -0.25, -0.25), (1.25, 0.25, 0.25)), computed=True
+            ),
+            "/World/Tangents": shown("HermiteCurves", translate(9, 0, 0), box((0, 0, 0), (1, 1, 0))),
+            "/World/Fog": shown("Volume", translate(0, 3, 0), None),
+            "/World/Scatter": shown("PointInstancer", translate(0, 12, 0), box((0, 0, 0), (5, 1, 1))),
+            "/World/Placed/Strand": Placeholder(
+                "BasisCurves",
+                world(rotate((0, 0, 1), 90), translate(0, 15, 0)),
+                box((0, 0, 0), (2, 0, 1)),
+                computed=False,
+                viewport=False,  # render purpose
+                render=True,
+            ),
+            "/World/Veiled": Placeholder(
+                "BasisCurves",
+                translate(0, 18, 0),
+                box((0, 0, 0), (0, 1, 0)),
+                computed=False,
+                viewport=False,
+                render=False,
+            ),
+            "/World/Parent": Placeholder(
+                "BasisCurves",
+                translate(0, 21, 0),
+                box((0, 0, 0), (0, 0, 1)),
+                computed=False,
+                viewport=False,
+                render=True,
+            ),
+        },
+        exact_conversions=frozenset({"/World/Shapes/Box"}),
+        approximated=frozenset({"/World/Shapes/Ball", "/World/Shapes/Sheet"}),
+        not_drawn=frozenset({"/World/Scatter/Prototypes/Tetra"}),
+        supported_beneath={"/World/Parent/Child": (world(translate(1, 0, 0), translate(0, 21, 0)), "render")},
+        kinds={"/World/Placed": "component"},
+    )

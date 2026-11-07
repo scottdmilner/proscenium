@@ -67,6 +67,10 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-KIND-HIERARCHY` | **Kind hierarchy:** an assembly, group, and component above meshes, a mesh under no model, components outside a valid model hierarchy, and intermediate prims with nothing Hydra needs to keep; selection by kind and expansion follow the composed stage. |
 | `F-NESTED-SELECTION` | **Selection floors in nested native instances:** one prototype used inside and outside an outer instance, and a kind on an instance root; nothing inside instance contents is a selection target. |
 | `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a guide made explicitly visible by an ancestor's `guideVisibility`, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |
+| `F-TRANSFORMS` | **Transforms the planner places:** ordered transform operations, a pivot, matrix ops, negative and nonuniform scale, shear, transforms authored on meshes, reset transform stacks outside and inside a native instance, a payload, a translate sampled over time with two equal samples, and a projective matrix in a layer of its own. |
+| `F-UNITS-UP-AXIS` | **Units and up-axis conversion:** one scene as a Y-up stage in centimeters and a Z-up stage in meters, with a mesh and a native instance, synchronized into target scenes of different unit scales with conversion off and on. |
+| `F-VISIBILITY-PURPOSE` | **Visibility and purpose:** inherited invisibility, a mesh of each purpose, an inherited purpose, a proxy and render pair, and visibility sampled over time with declared transitions. |
+| `F-UNSUPPORTED-CONTENT` | **Unsupported content:** untranslated types with authored, computed, and no bounds, implicit shapes and a NURBS patch converted exactly and inexactly, a point instancer, a placeholder whose transform, visibility, and purpose still apply, and a supported mesh beneath an unsupported ancestor. |
 
 ## Incremental Synchronization Tests
 
