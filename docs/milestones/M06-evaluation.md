@@ -17,6 +17,8 @@
 - Batch groups in the plan: copies alike but for placement, at least 5 to a group (DECISIONS.md "Display representation"), grouped in the core ([M4 plan](../plans/M04-prototypes.md), D8).
 - What depends on time, from Hydra's dirtying, for `cache` to add: each object's dirtied aspects after the capture dirties its time dependencies, which predicted every varying copy on ALab ([M4 plan](../plans/M04-prototypes.md), E3). A suggestion; the frames confirm what varies.
 - Snapshot capture from the scene-index chain (M1b adopted Hydra), following the [Hydra design note](../spec/pipeline.md#evaluated-source-snapshot). Imaging adapters and filters replace much custom display-semantic evaluation; source inspection and project validation remain.
+- Capture and planning in parallel, as the bridge's are. M1b's gate passed only with parallel planning: with serial planning, ALab's Hydra stages took 2.12 s against Blender construction's 1.91 s, and parallel mesh building took planning from 1.20 s to 0.26 s ([M1b plan](../plans/M01b-evaluation-gate.md#phase-e-log)). The bridge's capture copies prims in one parallel pass. Reads must not overlap `SetTime`, `ApplyPendingUpdates`, or stage edits ([M1b plan](../plans/M01b-evaluation-gate.md#threading-and-errors)), and holding the GIL while waiting on workers deadlocks ([M1b research](../plans/M01b-research/01-hydra-core.md), §5).
+- Diagnostics as the bridge collects them ([M1b plan](../plans/M01b-evaluation-gate.md#phase-b-log)): a `TfErrorMark` per prim read, warnings attributed to the prim a thread is reading, deduplicated since Hydra posts a warning on each read of a value, and warnings posted while the chain is built joined to the first capture's.
 
 **Tests:**
 

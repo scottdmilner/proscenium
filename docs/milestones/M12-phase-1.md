@@ -9,6 +9,11 @@
 - Completed binding settings, manual-sync controls, inspection UI, and diagnostics UI, including requested/published/last-attempt display and current cleanup status with explicit retry controls.
 - Completed support matrices and deployment documentation.
 - Phase 1 baselines, as defined in Acceptance Criteria.
+- What earlier measurements set beside them:
+  - M1b's adoption criterion 4 ([M1b plan](../plans/M01b-evaluation-gate.md#phase-f--decision)): at ALab scale against Blender's importer in its matched configuration, end-to-end time and peak memory each at most 2× the importer's, and the Hydra stages (capture, planning, and transfer) faster than Blender construction. M4's provisional budgets are 1.5× the importer's time and 2× its peak ([M4 plan](../plans/M04-prototypes.md#settled-with-the-user-2026-10-27)).
+  - Blender's importer with scene instancing on drops materials bound at an instance root, so comparisons on instancing scenes use its expanded configuration, without scene instancing ([M1b plan](../plans/M01b-evaluation-gate.md#phase-e-log)).
+  - The live heap is read only in the macOS binary: Blender's Linux and Windows release builds replace malloc with TBB's proxy, and their working-set and resident-set counters are unchecked against another tool ([record](../feasibility/runtime-record.md#measurements-m1b-phase-e)).
+- Deployment documentation covers updating: the compiled module never unloads and its converters are process-global, so an in-session update reuses the old ones, and updating or uninstalling while loaded is untested ([M1b plan](../plans/M01b-evaluation-gate.md#native-build-and-boundary)).
 
 **Tests:**
 

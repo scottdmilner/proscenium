@@ -70,6 +70,8 @@ M1b adopted a C++ core that reads Hydra scene indices ([DECISIONS.md](docs/DECIS
   - Values the core gives Hydra are Vt's own types; a type made in the core's module isn't recognized by USD's code.
   - The core never keeps a released stage alive.
   - Each workaround for an OpenUSD bug is labeled `WORKAROUND for OpenUSD #<issue>` at every site, and a known-gap check fails when the bug stops reproducing.
+  - Code that reads Hydra from worker threads never overlaps `SetTime`, `ApplyPendingUpdates`, or stage edits, collects Tf errors per thread, and releases the GIL while waiting on its workers; holding it deadlocks.
+  - A Tf-factory type, such as a scene-index plugin or an adapter, registers through an exported USD helper, as Hf's plugin registry does, never by deriving from a header-only factory base. A type registered that way can't be manufactured on macOS.
 - **Style:** C++17, warnings as the core's CMakeLists.txt sets them, and no warnings in any platform's build. clang-format and clang-tidy run as pre-commit hooks on the core and on the Hydra bridge in `tools/feasibility/`. Each has its own `.clang-format`; clang-tidy's checks are in the root `.clang-tidy`, which covers both and includes the C++ Core Guidelines checks, and every clang-tidy warning fails.
   - **Pointers:** no owning raw pointers; `TfCreateRefPtr(new ...)`, as Tf's ref-counted types require, is the exception. A raw `T*` is non-owning and means something when null (a lookup that found nothing, an absent optional argument), and its declaration says what null means. Anything never null is a reference, or `std::reference_wrapper` in a container.
   - **Exceptions to a check:** a `NOLINT` names its check and says why the code needs it.
