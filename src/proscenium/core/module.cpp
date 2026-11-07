@@ -175,6 +175,12 @@ void WrapPlan() {
           "copy_viewport", +[](const PlanView& p) { return p.data->copyViewport; })
       .add_property(
           "copy_render", +[](const PlanView& p) { return p.data->copyRender; })
+      .add_property(
+          "copy_shears", +[](const PlanView& p) { return p.data->copyShears; })
+      .add_property(
+          "shear_parent_worlds", +[](const PlanView& p) { return p.data->shearParentWorlds; })
+      .add_property(
+          "shear_object_bases", +[](const PlanView& p) { return p.data->shearObjectBases; })
       .add_property("geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));

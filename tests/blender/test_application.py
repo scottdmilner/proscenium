@@ -122,8 +122,9 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
 
 def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
     # The plan's copy_worlds holds Blender's layout, so foreach_set writes it as it stands, and the stub's objects get
-    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, and mirrored copies; a
-    # sheared one needs a shear parent (C4).
+    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
+    # copies. Blender's objects hold no shear, so foreach_set loses it, and the stub's sheared copy shows it through its
+    # unselectable shear parent, as Blender composes them from what each stores.
     with evaluation.transforms(tmp_path) as scene:
         plan = _plan(scene.stage, 0.0)
         expected = {
@@ -134,12 +135,21 @@ def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path:
         assert list(bpy.data.objects) == made  # in copy order, so foreach_set's buffer lines up
         bpy.data.objects.foreach_set("matrix_world", plan.copy_worlds)
         work = _prepared(_binding(bindings), plan)
-        prepared = {work.entries[_key(work, obj)].covers[0]: obj for obj in work.staging.objects}
+        prepared = {
+            work.entries[key].covers[0]: obj
+            for obj in work.staging.objects
+            if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+        }
         for source, obj in zip(sources, made, strict=True):
-            if source in scene.sheared:
+            shown = prepared[source]
+            if source not in scene.sheared:
+                assert _close(obj.matrix_world, expected[source]), source
+                assert (shown.parent, _close(shown.matrix_world, expected[source])) == (None, True), source
                 continue
-            assert _close(obj.matrix_world, expected[source]), source
-            assert _close(prepared[source].matrix_world, expected[source]), source
+            parent = shown.parent
+            assert parent is not None and parent.hide_select, source
+            assert shown.matrix_parent_inverse == Matrix.Identity(4), source
+            assert _close(parent.matrix_world @ shown.matrix_basis, expected[source]), source
 
 
 def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_path: Path) -> None:

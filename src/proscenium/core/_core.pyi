@@ -127,6 +127,12 @@ class Plan:
     @property
     def copy_render(self) -> Buffer: ...  # '?': whether it displays in the final render
     @property
+    def copy_shears(self) -> Buffer: ...  # 'i': its shear split, in the two buffers below; -1 for none
+    @property
+    def shear_parent_worlds(self) -> Buffer: ...  # 'f', 16 each, as copy_worlds: its shear parent's world matrix
+    @property
+    def shear_object_bases(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
+    @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
 
 def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version

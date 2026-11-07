@@ -3,11 +3,13 @@
 #include <pxr/base/gf/range3d.h>
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/gf/vec3d.h>
+#include <pxr/base/gf/vec4d.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/tokens.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <optional>
@@ -71,6 +73,49 @@ GfMatrix4d Correction(const Snapshot& snapshot, const PlanSettings& settings, co
   return correction;
 }
 
+// The matrix's affine part: a Blender object can't hold a projective column. C6 diagnoses the approximation (XFORM-05).
+GfMatrix4d Affine(GfMatrix4d world) {
+  world.SetColumn(3, GfVec4d(0.0, 0.0, 0.0, 1.0));
+  return world;
+}
+
+// The bridge's tolerance (apply.py's SHEAR_TOLERANCE): a float32 matrix's rounding never reaches it.
+constexpr double kShearTolerance = 1e-6;
+
+// Whether the affine `world` shears: whether any two of its axes, USD's rows, aren't orthogonal.
+bool Sheared(const GfMatrix4d& world) {
+  const std::array<GfVec3d, 3> axes{GfVec3d(world.GetRow3(0)), GfVec3d(world.GetRow3(1)), GfVec3d(world.GetRow3(2))};
+  for (const auto& [i, j] : {std::pair{0, 1}, std::pair{0, 2}, std::pair{1, 2}}) {
+    const GfVec3d& a = axes.at(i);
+    const GfVec3d& b = axes.at(j);
+    if (std::abs(GfDot(a, b)) > kShearTolerance * a.GetLength() * b.GetLength()) return true;
+  }
+  return false;
+}
+
+// A sheared world transform as the shear parent's world transform and its object's basis, neither sheared, as the
+// bridge's apply.py splits it. GfMatrix4d::Factor gives world = r * s * r^T * u * t in USD's row vectors, r and u
+// rotations: the object takes r, and its parent the scale s, then the rotation r^T * u, then the translation t. A
+// reflection in either rotation moves into a negative scale.
+std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
+  GfMatrix4d r(1.0);
+  GfMatrix4d u(1.0);
+  GfMatrix4d projection(1.0);
+  GfVec3d scale(0.0);
+  GfVec3d translation(0.0);
+  // False for a singular matrix, whose zero scales Factor clamps, so the split is still exact to float precision.
+  world.Factor(&r, &scale, &u, &translation, &projection);
+  const GfMatrix4d negate = GfMatrix4d().SetScale(-1.0);
+  if (r.GetDeterminant3() < 0.0) r = negate * r;  // r * s * r^T is unchanged
+  if (u.GetDeterminant3() < 0.0) {
+    u = negate * u;
+    scale = -scale;
+  }
+  const GfMatrix4d parent =
+      GfMatrix4d().SetScale(scale) * r.GetTranspose() * u * GfMatrix4d().SetTranslate(translation);
+  return {parent, r};
+}
+
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
 bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
 
@@ -117,6 +162,8 @@ const char* RoleName(Role role) {
       return "object";
     case Role::kBoundsMesh:
       return "bounds mesh";
+    case Role::kShearParent:
+      return "shear parent";
   }
   throw std::invalid_argument("Not a representation role");
 }
@@ -139,7 +186,8 @@ PlanningContext::PlanningContext(double scale, int version) : unitScale(scale), 
 PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
-  auto plan = std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+  auto plan =
+      std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
   TfTokenVector viewport = settings.viewportPurposes;
   if (!Includes(viewport, UsdGeomTokens->guide)) viewport.push_back(UsdGeomTokens->guide);
   const PrimTable table = ReadPrims(snapshot);
@@ -156,15 +204,33 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     if ((!inViewport && !inRender) || (gprim.purpose == UsdGeomTokens->guide && !gprim.explicitGuide)) continue;
     plan->copyViewport.push_back(gprim.visible && inViewport);
     plan->copyRender.push_back(gprim.visible && inRender);
+    // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
+    const GfMatrix4d world = Affine(gprim.world * correction);
+    const bool sheared = Sheared(world);
     // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
     const std::size_t object = plan->resources.size();
     const std::size_t boundsMesh = object + 1;
-    plan->partitions.push_back({{object, boundsMesh}});
-    plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, {boundsMesh}});
+    const std::size_t shearParent = object + 2;
+    Partition partition{{object, boundsMesh}};
+    std::vector<std::size_t> uses{boundsMesh};
+    if (sheared) {
+      partition.resources.push_back(shearParent);
+      uses.push_back(shearParent);
+    }
+    plan->partitions.push_back(std::move(partition));
+    plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, std::move(uses)});
     plan->resources.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
+    if (sheared) plan->resources.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
     plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
-    // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
-    AppendWorld(gprim.world * correction, plan->copyWorlds);
+    AppendWorld(world, plan->copyWorlds);
+    int shear = -1;
+    if (sheared) {
+      shear = static_cast<int>(plan->shearParentWorlds.size() / 16);
+      const auto [parentWorld, objectBasis] = ShearSplit(world);
+      AppendWorld(parentWorld, plan->shearParentWorlds);
+      AppendWorld(objectBasis, plan->shearObjectBases);
+    }
+    plan->copyShears.push_back(shear);
     plan->copyObjects.push_back(static_cast<int>(object));
     int geometry = -1;
     int placeholder = -1;

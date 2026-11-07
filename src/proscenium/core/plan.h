@@ -4,7 +4,9 @@
 // Plan::resources, which mean something within that plan only.
 //
 // Each drawn copy of a gprim is a drawn copy's partition holding an object and its bounds mesh, which the stub
-// application layer draws as its bounds. A mesh's copies share its provisional geometry description; any other gprim's
+// application layer draws as its bounds, and a shear parent when its world transform shears: a Blender object holds
+// only location, rotation, and scale, so the object and its parent each hold one, and their product is the world
+// transform (XFORM-03). A mesh's copies share its provisional geometry description; any other gprim's
 // copy is a placeholder. A copy takes each destination's participation from its effective visibility and purpose; an
 // invisible copy stays in the plan, shown in neither, and a copy whose purpose neither destination includes is left
 // out, as is a guide no opinion makes explicitly visible. Per-copy content crosses as structure-of-arrays buffers in
@@ -30,7 +32,7 @@
 namespace proscenium {
 
 // The representation roles M5's planner gives (DECISIONS.md "Representation roles and resource identities").
-enum class Role : std::uint8_t { kObject, kBoundsMesh };
+enum class Role : std::uint8_t { kObject, kBoundsMesh, kShearParent };
 
 // The role's name in the vocabulary, as ownership entries store it.
 const char* RoleName(Role role);
@@ -108,6 +110,11 @@ struct Plan {
   PXR_NS::VtFloatArray placeholderBounds;  // 6 each, as GeometryDescription::extent
   PXR_NS::VtBoolArray copyViewport;        // whether it displays in the viewport
   PXR_NS::VtBoolArray copyRender;          // whether it displays in the final render
+  PXR_NS::VtIntArray copyShears;           // its shear split, in the two arrays below; -1 for none
+  // A sheared copy's world transform split in two, 16 each in Blender's layout as copyWorlds: its shear parent's world
+  // transform, and its object's basis below that parent. Neither shears, and the basis has no translation.
+  PXR_NS::VtFloatArray shearParentWorlds;
+  PXR_NS::VtFloatArray shearObjectBases;
   std::vector<GeometryDescription> geometries;
 };
 

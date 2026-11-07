@@ -2,7 +2,8 @@
 
 Each of the plan's drawn copies becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, a mesh's provisional geometry description's or a placeholder's, or no vertices when the
-plan has none, hidden in each destination it doesn't display in. They're prepared in a staging collection no scene
+plan has none, hidden in each destination it doesn't display in, under an unselectable empty for a sheared copy's
+shear parent. They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
 generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
@@ -11,8 +12,8 @@ The roles are a copy's, so each prepared resource takes the key of the published
 
 A cache call has it key the published copies' transforms at the time codes it caches, in an action per object
 (key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the keys it
-added and unassigns the actions it made. M7 replaces this layer; a sheared world transform, which needs a shear
-parent, is M7's, as are cached bounds, visibility, and content appearing at a cached time code.
+added and unassigns the actions it made. M7 replaces this layer; a shear that changes over time is M7's, as are
+cached bounds, visibility, and content appearing at a cached time code.
 """
 
 from __future__ import annotations
@@ -47,24 +48,39 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     keys = manifests.entry_keys(published, identities)
     worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
+    shears = memoryview(plan.copy_shears).tolist()
+    parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
     for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
-        (mesh_index,) = resources[object_index].uses  # its bounds mesh
+        # The object's uses: its bounds mesh, and a sheared copy's shear parent.
+        used = {identities[u].role: u for u in resources[object_index].uses}
+        mesh_index = used[manifests.RepresentationRole.BOUNDS_MESH]
         mesh_key, object_key = keys[mesh_index], keys[object_index]
         source = resources[object_index].entity
         name = source.rsplit("/", 1)[-1]
         mesh = bpy.data.meshes.new(name)
         work.track(mesh_key, identities[mesh_index].role, mesh)
         mesh.from_pydata(_corners(bounds[copy]), [], [])
+        made: list[tuple[int, str, bpy.types.ID]] = [(mesh_index, mesh_key, mesh)]
         obj = bpy.data.objects.new(name, mesh)
         work.track(object_key, identities[object_index].role, obj)
         work.staging.objects.link(obj)
+        made.append((object_index, object_key, obj))
         obj.display_type = "BOUNDS"
         obj.hide_viewport, obj.hide_render = not viewport[copy], not render[copy]
-        obj.matrix_world = _world(worlds, copy)
-        for index, key, datablock in (
-            (mesh_index, mesh_key, mesh),
-            (object_index, object_key, obj),
-        ):
+        if (shear := shears[copy]) < 0:
+            obj.matrix_world = _world(worlds, copy)
+        else:
+            # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
+            parent_index = used[manifests.RepresentationRole.SHEAR_PARENT]
+            parent = bpy.data.objects.new(f"{name} shear", None)
+            work.track(keys[parent_index], identities[parent_index].role, parent)
+            work.staging.objects.link(parent)
+            made.append((parent_index, keys[parent_index], parent))
+            parent.hide_select = True  # so a pick lands on the object
+            parent.matrix_world = _world(parent_worlds, shear)
+            obj.parent = parent
+            obj.matrix_basis = _world(bases, shear)
+        for index, key, datablock in made:
             resource = resources[index]
             uses = [keys[used] for used in resource.uses]
             work.entries[key] = manifests.ManifestEntry(
@@ -109,7 +125,11 @@ def key_time_codes(
                 changes[object_key] = manifests.EntryChange(entry.covers, entry.role, uses, entry.place)
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
-            _insert_keys(action, obj, time_code, _world(worlds, copy), work)
+            world = _world(worlds, copy)
+            # Below a shear parent, the basis that shows world while the parent keeps its transform; a copy whose
+            # shear changes over time is M7's.
+            basis = world if obj.parent is None else obj.parent.matrix_world.inverted() @ world
+            _insert_keys(action, obj, time_code, basis, work)
     return changes
 
 
@@ -119,14 +139,14 @@ def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: Prepar
     work.track(action_key, manifests.RepresentationRole.ACTION, action)
     work.undo.append(obj.animation_data_clear)  # a copy's object has no animation data before its first action
     obj.animation_data_create().action = action
-    _insert_keys(action, obj, own, obj.matrix_world, work)
+    _insert_keys(action, obj, own, obj.matrix_basis, work)
 
 
 def _insert_keys(
-    action: bpy.types.Action, obj: bpy.types.Object, time_code: float, world: Matrix, work: PreparedWork
+    action: bpy.types.Action, obj: bpy.types.Object, time_code: float, basis: Matrix, work: PreparedWork
 ) -> None:
-    """Key obj's transform in its action at time_code to world's, constant until its next key, undoably in work."""
-    location, rotation, scale = world.decompose()
+    """Key obj's transform in its action at time_code to basis, constant until its next key, undoably in work."""
+    location, rotation, scale = basis.decompose()
     # Slices, since the stubs don't make a Vector iterable; a copy's object keeps the default rotation mode.
     parts = {"location": location[:], "rotation_euler": rotation.to_euler("XYZ")[:], "scale": scale[:]}
     for data_path, values in parts.items():
@@ -163,7 +183,7 @@ def _corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
     return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
 
 
-def _world(worlds: memoryview, copy: int) -> Matrix:
-    """A copy's world matrix from the plan's buffer, whose 16 floats each are Blender's column-major layout."""
-    columns = worlds[16 * copy : 16 * copy + 16].tolist()
+def _world(matrices: memoryview, index: int) -> Matrix:
+    """Matrix `index` of a plan's buffer of them, whose 16 floats each are Blender's column-major layout."""
+    columns = matrices[16 * index : 16 * index + 16].tolist()
     return Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed()

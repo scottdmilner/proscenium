@@ -31,6 +31,7 @@ class Copy:
     bounds: tuple[float, ...]  # local: its geometry's extent, else its placeholder's bounds; empty for none
     viewport: bool  # displays in the viewport
     render: bool  # displays in the final render
+    shear: tuple[Gf.Matrix4d, Gf.Matrix4d] | None  # a sheared copy's shear parent's world, and its object's basis
 
 
 def plan_at(stage: Usd.Stage, time: float, settings: _core.PlanSettings = SETTINGS) -> _core.Plan:
@@ -50,20 +51,30 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
     placeholders = memoryview(plan.copy_placeholders).tolist()
     bounds = memoryview(plan.placeholder_bounds).tolist()
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
+    shears = memoryview(plan.copy_shears).tolist()
+    parent_worlds = memoryview(plan.shear_parent_worlds).tolist()
+    bases = memoryview(plan.shear_object_bases).tolist()
     extents = [tuple(memoryview(g.extent).tolist()) for g in plan.geometries]
     sources = {c.element: c.source for c in plan.correspondence}
+    resources = plan.resources
     shown: dict[str, Copy] = {}
     for copy, (obj, geometry, placeholder) in enumerate(zip(objects, geometries, placeholders, strict=True)):
         if geometry >= 0:
             local = extents[geometry]
         else:
             local = tuple(bounds[6 * placeholder : 6 * placeholder + 6]) if placeholder >= 0 else ()
-        (bounds_mesh,) = plan.resources[obj].uses
-        world = Gf.Matrix4d(*worlds[16 * copy : 16 * copy + 16])  # row-major, USD's layout
+        (bounds_mesh,) = (u for u in resources[obj].uses if resources[u].role == "bounds mesh")
+        shear = shears[copy]
+        split = None if shear < 0 else (_matrix(parent_worlds, shear), _matrix(bases, shear))
+        shown_in = bool(viewport[copy]), bool(render[copy])
         shown[sources[obj]] = Copy(
-            obj, bounds_mesh, world, geometry, placeholder, local, bool(viewport[copy]), bool(render[copy])
+            obj, bounds_mesh, _matrix(worlds, copy), geometry, placeholder, local, *shown_in, split
         )
     return shown
+
+
+def _matrix(matrices: Sequence[float], index: int) -> Gf.Matrix4d:
+    return Gf.Matrix4d(*matrices[16 * index : 16 * index + 16])  # row-major, USD's layout
 
 
 def xyz(v: Gf.Vec3d | Sequence[float]) -> XYZ:
