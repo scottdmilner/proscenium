@@ -8,6 +8,7 @@
 #include <pxr/imaging/hdsi/extComputationPrimvarPruningSceneIndex.h>
 #include <pxr/imaging/hdsi/implicitSurfaceSceneIndex.h>
 #include <pxr/imaging/hdsi/nurbsApproximatingSceneIndex.h>
+#include <pxr/usd/usdGeom/metrics.h>
 #include <pxr/usdImaging/usdImaging/stageSceneIndex.h>
 
 #include <memory>
@@ -103,11 +104,11 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
     const HdSceneIndexPrim prim = terminal_->GetPrim(path);
     entries.push_back({path, prim.primType, CopyPlannedSchemas(prim.dataSource)});
   }
-  auto snapshot = std::make_shared<Snapshot>();
-  snapshot->time = time;
-  snapshot->scene = HdRetainedSceneIndex::New();
-  snapshot->scene->AddPrims(entries);
-  return snapshot;
+  const HdRetainedSceneIndexRefPtr scene = HdRetainedSceneIndex::New();
+  scene->AddPrims(entries);
+  const UsdStagePtr stage = handle_.Stage();
+  return std::make_shared<Snapshot>(
+      Snapshot{time, scene, UsdGeomGetStageMetersPerUnit(stage), UsdGeomGetStageUpAxis(stage)});
 }
 
 }  // namespace proscenium

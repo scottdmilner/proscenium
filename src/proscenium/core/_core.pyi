@@ -29,16 +29,21 @@ class Snapshot:
     """An immutable capture at one time code, which only planning reads."""
 
 class PlanSettings:
-    """The binding settings planning reads: each destination's USD purposes. Raises ValueError for another name.
+    """The binding settings planning reads. Raises ValueError for a name that isn't a USD purpose.
 
-    The planner adds guide to the viewport's, so a guide explicitly visible displays there.
+    Each destination's USD purposes, the planner adding guide to the viewport's, so a guide explicitly visible displays
+    there; and whether units and up axis are converted, which off makes the correction matrix the identity.
     """
 
-    def __init__(self, viewport_purposes: Iterable[str], render_purposes: Iterable[str]) -> None: ...
+    def __init__(
+        self, viewport_purposes: Iterable[str], render_purposes: Iterable[str], coordinate_conversion: bool = False
+    ) -> None: ...
     @property
     def viewport_purposes(self) -> tuple[str, ...]: ...  # sorted, each once
     @property
     def render_purposes(self) -> tuple[str, ...]: ...
+    @property
+    def coordinate_conversion(self) -> bool: ...
 
 class PlanningContext:
     """Plain values captured before planning. Raises ValueError for a unit scale not positive and finite."""

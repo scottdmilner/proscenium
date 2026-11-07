@@ -1,6 +1,8 @@
 #include "plan.h"
 
 #include <pxr/base/gf/range3d.h>
+#include <pxr/base/gf/rotation.h>
+#include <pxr/base/gf/vec3d.h>
 #include <pxr/imaging/hd/tokens.h>
 #include <pxr/usd/usdGeom/imageable.h>
 #include <pxr/usd/usdGeom/tokens.h>
@@ -59,6 +61,16 @@ bool Includes(const TfTokenVector& purposes, const TfToken& purpose) {
   return std::find(purposes.begin(), purposes.end(), purpose) != purposes.end();
 }
 
+// The correction matrix C, which every world transform takes last: in USD's row vectors, the scale
+// metersPerUnit / unitScale, then +90 degrees about X for a Y-up stage. That is transforms.md's C = R_upaxis @
+// Scale(scale) in Blender's column vectors. The identity with conversion off.
+GfMatrix4d Correction(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context) {
+  if (!settings.coordinateConversion) return GfMatrix4d(1.0);
+  GfMatrix4d correction = GfMatrix4d().SetScale(snapshot.metersPerUnit / context.unitScale);
+  if (snapshot.upAxis == UsdGeomTokens->y) correction *= GfMatrix4d().SetRotate(GfRotation(GfVec3d::XAxis(), 90.0));
+  return correction;
+}
+
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
 bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
 
@@ -109,8 +121,8 @@ const char* RoleName(Role role) {
   throw std::invalid_argument("Not a representation role");
 }
 
-PlanSettings::PlanSettings(TfTokenVector viewport, TfTokenVector render)
-    : viewportPurposes(std::move(viewport)), renderPurposes(std::move(render)) {
+PlanSettings::PlanSettings(TfTokenVector viewport, TfTokenVector render, bool conversion)
+    : viewportPurposes(std::move(viewport)), renderPurposes(std::move(render)), coordinateConversion(conversion) {
   for (TfTokenVector* purposes : {&viewportPurposes, &renderPurposes}) {
     for (const TfToken& purpose : *purposes)
       if (!Includes(UsdGeomImageable::GetOrderedPurposeTokens(), purpose))
@@ -133,6 +145,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   const PrimTable table = ReadPrims(snapshot);
   InstanceResolver instances(table, /*honorResets=*/true);
   const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
+  const GfMatrix4d correction = Correction(snapshot, settings, context);
   plan->copyWorlds.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
   std::unordered_map<const PrimRecord*, int> geometries;
@@ -150,7 +163,8 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, {boundsMesh}});
     plan->resources.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
     plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
-    AppendWorld(gprim.world, plan->copyWorlds);
+    // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
+    AppendWorld(gprim.world * correction, plan->copyWorlds);
     plan->copyObjects.push_back(static_cast<int>(object));
     int geometry = -1;
     int placeholder = -1;

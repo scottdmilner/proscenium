@@ -37,8 +37,7 @@ const char* RoleName(Role role);
 
 // The planning context (pipeline.md "Display Plan"): plain values Python captures before planning.
 struct PlanningContext {
-  // The target scene's unit scale, which coordinate conversion reads (transforms.md); conversion is M6's.
-  double unitScale = 1.0;
+  double unitScale = 1.0;         // the target scene's, which coordinate conversion reads
   int representationVersion = 1;  // the representation the application layer applies; the planner plans only 1
 
   // Throws std::invalid_argument for a unit scale that isn't positive and finite.
@@ -46,13 +45,17 @@ struct PlanningContext {
 };
 
 // The binding settings planning reads (DECISIONS.md "Conversion and purpose settings"): each destination's USD
-// purposes. The planner adds guide to the viewport's, so a guide explicitly visible displays there (VIS-04).
+// purposes, and whether units and up axis are converted. The planner adds guide to the viewport's purposes, so a
+// guide explicitly visible displays there (VIS-04).
 struct PlanSettings {
   PXR_NS::TfTokenVector viewportPurposes;  // sorted, each once
   PXR_NS::TfTokenVector renderPurposes;
+  // Off: the correction matrix is the identity. On: every world transform takes the stage's units and up axis to
+  // the target scene's (transforms.md "Coordinate Conversion", CONV-01, CONV-03, CONV-08).
+  bool coordinateConversion = false;
 
   // Throws std::invalid_argument for a name that isn't a USD purpose.
-  PlanSettings(PXR_NS::TfTokenVector viewport, PXR_NS::TfTokenVector render);
+  PlanSettings(PXR_NS::TfTokenVector viewport, PXR_NS::TfTokenVector render, bool conversion);
 };
 
 // One managed resource, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its identity is

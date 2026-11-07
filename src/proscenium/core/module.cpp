@@ -87,10 +87,10 @@ bp::tuple TokenStrings(const TfTokenVector& tokens) {
   return bp::tuple(items);
 }
 
-std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const bp::object& render) {
+std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const bp::object& render, bool conversion) {
   TfTokenVector viewportPurposes = Tokens(viewport);
   TfTokenVector renderPurposes = Tokens(render);
-  return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes); });
+  return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes, conversion); });
 }
 
 PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
@@ -111,10 +111,13 @@ bp::dict HydraComposedWorldsDict(const SnapshotView& snapshot) {
 void WrapPlan() {
   bp::class_<PlanSettings, std::shared_ptr<PlanSettings>>("PlanSettings", bp::no_init)
       .def("__init__", bp::make_constructor(&NewPlanSettings, bp::default_call_policies(),
-                                            (bp::arg("viewport_purposes"), bp::arg("render_purposes"))))
+                                            (bp::arg("viewport_purposes"), bp::arg("render_purposes"),
+                                             bp::arg("coordinate_conversion") = false)))
       .add_property(
           "viewport_purposes", +[](const PlanSettings& s) { return TokenStrings(s.viewportPurposes); })
-      .add_property("render_purposes", +[](const PlanSettings& s) { return TokenStrings(s.renderPurposes); });
+      .add_property(
+          "render_purposes", +[](const PlanSettings& s) { return TokenStrings(s.renderPurposes); })
+      .add_property("coordinate_conversion", +[](const PlanSettings& s) { return s.coordinateConversion; });
   bp::class_<PlanningContext>("PlanningContext",
                               bp::init<double, int>((bp::arg("unit_scale"), bp::arg("representation_version"))))
       .add_property(
