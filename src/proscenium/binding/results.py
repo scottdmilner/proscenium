@@ -71,6 +71,8 @@ class DiagnosticCode(StrEnum):
     INVALID_INSTANCER = "invalid-instancer"  # instancing data that can't be resolved
     USD_WARNING = "usd-warning"  # a Tf warning USD or Hydra posted reading the source: mostly something declined
     USD_ERROR = "usd-error"  # a Tf error USD or Hydra posted reading the source: content it couldn't read
+    UNTRANSLATED_TYPE = "untranslated-type"  # a type not translated, shown by a placeholder or marker (its fallback)
+    APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
@@ -93,6 +95,8 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.INVALID_INSTANCER: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
     DiagnosticCode.USD_WARNING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
     DiagnosticCode.USD_ERROR: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
+    DiagnosticCode.UNTRANSLATED_TYPE: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.APPROXIMATED_GEOMETRY: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
 }
 
 

@@ -23,12 +23,18 @@ enum class DiagnosticCode : std::uint8_t {
   kInvalidInstancer,       // instancing data that can't be resolved
   kUsdWarning,             // a Tf warning USD or Hydra posted while reading the source: mostly something declined
   kUsdError,               // a Tf error USD or Hydra posted while reading the source: content it couldn't read
+  kUntranslatedType,       // a prim whose type the core doesn't translate, shown by a placeholder or marker
+  kApproximatedGeometry,   // a filter's inexact conversion to a mesh, such as a sphere's (SNAP-16)
 };
 
 // Every code the core reports, which Python's list must hold.
-constexpr std::array kDiagnosticCodes{DiagnosticCode::kProjectiveTransform, DiagnosticCode::kUnsupportedInstancing,
-                                      DiagnosticCode::kInvalidInstancer, DiagnosticCode::kUsdWarning,
-                                      DiagnosticCode::kUsdError};
+inline constexpr std::array kDiagnosticCodes{DiagnosticCode::kProjectiveTransform,
+                                             DiagnosticCode::kUnsupportedInstancing,
+                                             DiagnosticCode::kInvalidInstancer,
+                                             DiagnosticCode::kUsdWarning,
+                                             DiagnosticCode::kUsdError,
+                                             DiagnosticCode::kUntranslatedType,
+                                             DiagnosticCode::kApproximatedGeometry};
 
 // The code's name in Python's list.
 const char* DiagnosticCodeName(DiagnosticCode code);

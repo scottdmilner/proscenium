@@ -110,10 +110,13 @@ def test_a_warning_inside_a_prototype_is_reported_once_per_usd_prim(tmp_path: Pa
             )
             for name in names
         }
-        warnings = _usd_warnings(plan_at(stage, 0.0))
-    assert {w.source_path: f"{len(copies['Strand'])} drawn copies" in w.message for w in warnings} == {
-        sources[0]: True for sources in copies.values()
-    }
+        diagnostics = planning.plan_diagnostics(BINDING, plan_at(stage, 0.0))
+    # UsdImaging's warning, and the planner's untranslated-type, each once per prim.
+    for code in (DiagnosticCode.USD_WARNING, DiagnosticCode.UNTRANSLATED_TYPE):
+        reported = [d for d in diagnostics if d.code is code]
+        assert {d.source_path: f"{len(copies['Strand'])} drawn copies" in d.message for d in reported} == {
+            sources[0]: True for sources in copies.values()
+        }, code
     assert all(len(sources) == 6 for sources in copies.values())
 
 

@@ -99,6 +99,7 @@ def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None
         assert len(plan.resources) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         shown = copies(plan)
         for source, copy in shown.items():
+            assert copy.bounds_mesh is not None  # the scene's gprims are all meshes
             obj, mesh = plan.resources[copy.object], plan.resources[copy.bounds_mesh]
             assert (obj.role, obj.covers, obj.uses) == ("object", (source,), (copy.bounds_mesh,))
             assert (mesh.role, mesh.covers, mesh.uses) == ("bounds mesh", (source,), ())
@@ -113,6 +114,7 @@ def test_identities_follow_role_and_source_entity(tmp_path: Path) -> None:
         for time_code in TIME_CODES:
             plan = _plan(scene.caller, time_code)
             for source, copy in copies(plan).items():
+                assert copy.bounds_mesh is not None
                 assert _identity(plan.resources[copy.object]) == ("object", source, 0)
                 assert _identity(plan.resources[copy.bounds_mesh]) == ("bounds mesh", source, 0)
 

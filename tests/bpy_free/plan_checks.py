@@ -24,7 +24,7 @@ class Copy:
     """A drawn copy as the plan's copy table gives it."""
 
     object: int  # in resources
-    bounds_mesh: int  # in resources: the object's one use
+    bounds_mesh: int | None  # in resources: one of the object's uses; None for an empty marker's
     world: Gf.Matrix4d  # USD's row-vector convention
     geometry: int  # in geometries; -1 for none
     placeholder: int  # in placeholder_bounds; -1 for none
@@ -63,7 +63,7 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
             local = extents[geometry]
         else:
             local = tuple(bounds[6 * placeholder : 6 * placeholder + 6]) if placeholder >= 0 else ()
-        (bounds_mesh,) = (u for u in resources[obj].uses if resources[u].role == "bounds mesh")
+        bounds_mesh = next((u for u in resources[obj].uses if resources[u].role == "bounds mesh"), None)
         shear = shears[copy]
         split = None if shear < 0 else (_matrix(parent_worlds, shear), _matrix(bases, shear))
         shown_in = bool(viewport[copy]), bool(render[copy])

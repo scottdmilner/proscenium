@@ -10,6 +10,7 @@
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/nurbsPatch.h>
 #include <pxr/usd/usdGeom/pointBased.h>
+#include <pxr/usd/usdGeom/pointInstancer.h>
 #include <pxr/usd/usdGeom/tokens.h>
 #include <pxr/usd/usdGeom/xformable.h>
 #include <pxr/usdImaging/usdImaging/dataSourceAttribute.h>
@@ -38,6 +39,11 @@ const TfToken& SourceInfoTokens::ResetsXformStack() {
 
 const TfToken& SourceInfoTokens::InstancePrototype() {
   static const TfToken token("instancePrototype");
+  return token;
+}
+
+const TfToken& SourceInfoTokens::UsdType() {
+  static const TfToken token("usdType");
   return token;
 }
 
@@ -80,6 +86,10 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
   if (const UsdGeomXformable xformable{prim}; xformable && xformable.GetResetXformStack()) {
     names.push_back(SourceInfoTokens::ResetsXformStack());
     values.push_back(yes);
+  }
+  if ((prim.IsA<UsdGeomGprim>() && !prim.IsA<UsdGeomMesh>()) || prim.IsA<UsdGeomPointInstancer>()) {
+    names.push_back(SourceInfoTokens::UsdType());
+    values.push_back(HdRetainedTypedSampledDataSource<TfToken>::New(prim.GetTypeName()));
   }
   if (prim.IsInstance()) {
     names.push_back(SourceInfoTokens::InstancePrototype());

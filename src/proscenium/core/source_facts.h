@@ -27,6 +27,9 @@ struct SourceInfoTokens {
   // Hydra's instance aggregation makes, so a problem with it is reported once per USD prim. A token, since Hydra's
   // prototype propagation reroots path-valued data sources into the copy's namespace.
   static const PXR_NS::TfToken& InstancePrototype();
+  // token, on a gprim other than a mesh and on a point instancer: its USD type, which the planner's diagnostics name.
+  // Meshes, nearly every gprim, carry none, so their prims need no container for it.
+  static const PXR_NS::TfToken& UsdType();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };

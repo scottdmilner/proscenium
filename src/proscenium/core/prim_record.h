@@ -51,6 +51,7 @@ struct PrimRecord {
   PurposeVisibility purposeVisibility;  // source-info filter: authored guide, proxy, and render visibility
   PXR_NS::SdfPath originPath;           // primOrigin/scenePath: prototype-relative inside prototypes
   PXR_NS::TfToken instancePrototype;    // source-info filter: on an instance root, its USD prototype's path
+  PXR_NS::TfToken usdType;              // source-info filter: on a gprim other than a mesh or a point instancer
   std::optional<PXR_NS::GfMatrix4d> matrix;  // flattened
   std::optional<PXR_NS::GfRange3d> extent;   // local
   std::vector<PrimvarRecord> primvars;       // the snapshot's, PlannedPrimvars() only

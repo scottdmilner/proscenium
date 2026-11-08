@@ -172,6 +172,23 @@ def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_p
         assert hidden["/World/Hidden/Child"] == (True, True)
 
 
+def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_path: Path) -> None:
+    # MODEL-05 on F-UNSUPPORTED-CONTENT: the volume without usable bounds; every placeholder with bounds draws its box.
+    with evaluation.unsupported_content(tmp_path) as scene:
+        work = _prepared(_binding(bindings), _plan(scene.stage, 0.0))
+        shown = {
+            work.entries[key].covers[0]: obj
+            for obj in work.staging.objects
+            if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+        }
+        for path, expected in scene.placeholders.items():
+            data = shown[path].data
+            if expected.bounds is None:
+                assert data is None, path
+            else:
+                assert isinstance(data, bpy.types.Mesh) and len(data.vertices) == 8, path
+
+
 def _close(shown: Matrix, expected: Matrix) -> bool:
     return all(abs(shown[r][c] - expected[r][c]) <= 1e-5 for r in range(4) for c in range(4))
 

@@ -41,6 +41,7 @@ struct DrawnGprim {
   TfToken purpose;                  // USD's name
   bool visible;                     // effectively, for its own purpose
   bool explicitGuide;               // a guide whose nearest guideVisibility opinion is visible
+  TfToken usdType;                  // for a gprim other than a mesh, and a point instancer; else empty
 };
 
 // (min x, min y, min z, max x, max y, max z) appended to `values`.
@@ -124,8 +125,16 @@ std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
   return {parent, r};
 }
 
-// Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
-bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
+// Whether the prim is drawn: a gprim, by its Hydra type, or for a prim Hydra doesn't image, by its USD type; or a point
+// instancer, which the spec defers (DEFER-01), so the planner shows it as one placeholder, as the bridge's does with
+// point instancers off. Hydra gives a point instancer no instance locations (HdInstancerTopologySchema).
+bool IsDrawn(const PrimRecord& prim) {
+  return HdPrimTypeIsGprim(prim.type) || prim.isGprim || (prim.instancer && prim.instancer->instanceLocations.empty());
+}
+
+// Whether a filter's conversion of a prim of USD type `type` to a mesh is exact: a cube's and a plane's are; a
+// sphere's, cylinder's, cone's, capsule's, and NURBS patch's are tessellated (SNAP-16).
+bool ConvertsExactly(const TfToken& type) { return type == UsdGeomTokens->Cube || type == UsdGeomTokens->Plane; }
 
 // The composed-stage source of the prim drawn in `copy`: an instance-proxy path inside instances. Outside instancing,
 // the stage scene index names a prim by its USD path, and the filtering scene indices that convert it keep that.
@@ -221,7 +230,7 @@ void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, Inst
 std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& instances) {
   std::vector<DrawnGprim> gprims;
   for (const PrimRecord& prim : table.prims) {
-    if (!IsGprim(prim)) continue;
+    if (!IsDrawn(prim)) continue;
     const std::vector<DrawnCopy>& copies = instances.CopiesOf(prim);
     if (copies.empty()) continue;
     // Flattened: in its prototype's namespace inside instances, else the world.
@@ -235,7 +244,7 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
       const TfToken* opinion = PurposeVisibilityOpinion(table, prim, copy);
       const bool explicitGuide = purpose == UsdGeomTokens->guide && opinion && *opinion == UsdGeomTokens->visible;
       gprims.push_back({SourceOf(prim, copy), copy.context, resets ? local : local * copy.world, prim.extent, &prim,
-                        &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide});
+                        &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide, prim.usdType});
     }
   }
   std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
@@ -309,20 +318,47 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                   *gprim.prim, *gprim.copy, gprim.source);
     const GfMatrix4d world = Affine(corrected);
     const bool sheared = Sheared(world);
-    // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
+    // Each behavior is decided on its own (MODEL-03): content the core doesn't translate keeps its transform,
+    // participation, and correspondence. A mesh is a provisional geometry description; a filter's inexact conversion
+    // to one is an approximation. Any other gprim is a placeholder, a bounds box from its usable bounds (MODEL-04), or
+    // with none, an empty marker (MODEL-05), its untranslated-type diagnostic naming which.
+    const GfRange3d* bounds = gprim.bounds ? &*gprim.bounds : nullptr;  // null when Hydra gives it none
+    const bool marker = !gprim.mesh && !bounds;
+    if (gprim.mesh && !gprim.usdType.IsEmpty() && !ConvertsExactly(gprim.usdType))
+      planned.Add({DiagnosticCode::kApproximatedGeometry,
+                   {},
+                   "Its type, " + gprim.usdType.GetString() + ", is drawn as a mesh approximating its surface",
+                   {},
+                   {},
+                   {}},
+                  *gprim.prim, *gprim.copy, gprim.source);
+    if (!gprim.mesh) {
+      const TfToken& type = gprim.usdType.IsEmpty() ? gprim.prim->type : gprim.usdType;
+      planned.Add(
+          {DiagnosticCode::kUntranslatedType,
+           {},
+           "Its type, " + type.GetString() + ", isn't translated, so " +
+               (marker ? "an empty marker stands in, since it has no usable bounds" : "a box of its bounds stands in"),
+           {},
+           {},
+           marker ? "empty marker" : "bounding box"},
+          *gprim.prim, *gprim.copy, gprim.source);
+    }
+    // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances. A
+    // marker's object holds no data.
     const std::size_t object = plan->resources.size();
-    const std::size_t boundsMesh = object + 1;
-    const std::size_t shearParent = object + 2;
-    Partition partition{{object, boundsMesh}};
-    std::vector<std::size_t> uses{boundsMesh};
-    if (sheared) {
-      partition.resources.push_back(shearParent);
-      uses.push_back(shearParent);
+    Partition partition{{object}};
+    std::vector<std::size_t> uses;
+    std::vector<Resource> owned;
+    if (!marker) owned.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
+    if (sheared) owned.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
+    for (std::size_t i = 0; i < owned.size(); ++i) {
+      partition.resources.push_back(object + 1 + i);
+      uses.push_back(object + 1 + i);
     }
     plan->partitions.push_back(std::move(partition));
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, std::move(uses)});
-    plan->resources.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
-    if (sheared) plan->resources.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
+    plan->resources.insert(plan->resources.end(), owned.begin(), owned.end());
     plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
     AppendWorld(world, plan->copyWorlds);
     int shear = -1;
@@ -340,13 +376,13 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
       const auto [found, added] = geometries.try_emplace(gprim.mesh, static_cast<int>(plan->geometries.size()));
       if (added) {
         GeometryDescription description{gprim.source, {}, gprim.source.GetString()};
-        if (gprim.bounds) AppendBounds(*gprim.bounds, description.extent);
+        if (bounds) AppendBounds(*bounds, description.extent);
         plan->geometries.push_back(std::move(description));
       }
       geometry = found->second;
-    } else if (gprim.bounds) {
+    } else if (bounds) {
       placeholder = static_cast<int>(plan->placeholderBounds.size() / 6);
-      AppendBounds(*gprim.bounds, plan->placeholderBounds);
+      AppendBounds(*bounds, plan->placeholderBounds);
     }
     plan->copyGeometries.push_back(geometry);
     plan->copyPlaceholders.push_back(placeholder);

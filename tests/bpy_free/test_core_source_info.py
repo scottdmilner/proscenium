@@ -44,8 +44,6 @@ def _usd_box(stage: Usd.Stage, path: str, time: float) -> tuple[Gf.Matrix4d, Gf.
 def test_placeholders_show_authored_or_computed_bounds(unsupported: evaluation.UnsupportedScene) -> None:
     shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
-        if expected.type_name == "PointInstancer":
-            continue  # the minimal planner draws gprims only; Phase C plans point instancers
         assert path in shown, path
         assert shown[path].geometry == -1, path  # not a mesh
         if expected.bounds is None:  # a marker

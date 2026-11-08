@@ -2,10 +2,10 @@
 
 Each of the plan's drawn copies becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, a mesh's provisional geometry description's or a placeholder's, or no vertices when the
-plan has none, hidden in each destination it doesn't display in, under an unselectable empty for a sheared copy's
-shear parent. They're prepared in a staging collection no scene
-links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
-generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
+plan has none. An empty marker's object holds no data. Each object is hidden in each destination it doesn't display
+in, and a sheared copy's sits under an unselectable empty, its shear parent. They're prepared in a staging collection
+no scene links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the
+published generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.entry_keys), and the entries preparation makes are the manifest a publication writes.
@@ -51,16 +51,18 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     shears = memoryview(plan.copy_shears).tolist()
     parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
     for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
-        # The object's uses: its bounds mesh, and a sheared copy's shear parent.
+        # The object's uses: its bounds mesh, but for an empty marker's, and a sheared copy's shear parent.
         used = {identities[u].role: u for u in resources[object_index].uses}
-        mesh_index = used[manifests.RepresentationRole.BOUNDS_MESH]
-        mesh_key, object_key = keys[mesh_index], keys[object_index]
+        object_key = keys[object_index]
         source = resources[object_index].entity
         name = source.rsplit("/", 1)[-1]
-        mesh = bpy.data.meshes.new(name)
-        work.track(mesh_key, identities[mesh_index].role, mesh)
-        mesh.from_pydata(_corners(bounds[copy]), [], [])
-        made: list[tuple[int, str, bpy.types.ID]] = [(mesh_index, mesh_key, mesh)]
+        made: list[tuple[int, str, bpy.types.ID]] = []
+        mesh = None
+        if (mesh_index := used.get(manifests.RepresentationRole.BOUNDS_MESH)) is not None:
+            mesh = bpy.data.meshes.new(name)
+            work.track(keys[mesh_index], identities[mesh_index].role, mesh)
+            mesh.from_pydata(_corners(bounds[copy]), [], [])
+            made.append((mesh_index, keys[mesh_index], mesh))
         obj = bpy.data.objects.new(name, mesh)
         work.track(object_key, identities[object_index].role, obj)
         work.staging.objects.link(obj)

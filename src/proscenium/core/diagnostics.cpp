@@ -29,6 +29,10 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
       return "usd-warning";
     case DiagnosticCode::kUsdError:
       return "usd-error";
+    case DiagnosticCode::kUntranslatedType:
+      return "untranslated-type";
+    case DiagnosticCode::kApproximatedGeometry:
+      return "approximated-geometry";
   }
   throw std::invalid_argument("Not a diagnostic code");
 }

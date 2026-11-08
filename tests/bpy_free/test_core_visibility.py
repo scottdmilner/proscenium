@@ -201,8 +201,6 @@ def test_placeholders_take_visibility_and_purpose(tmp_path: Path) -> None:
     with evaluation.unsupported_content(tmp_path) as unsupported:
         shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
-        if expected.type_name == "PointInstancer":
-            continue  # C5 plans point instancers
         assert (shown[path].viewport, shown[path].render) == (expected.viewport, expected.render), path
     for path, (_, purpose) in unsupported.supported_beneath.items():
         assert (shown[path].viewport, shown[path].render) == (purpose in VIEWPORT_PURPOSES, purpose in RENDER_PURPOSES)
