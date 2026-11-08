@@ -22,7 +22,6 @@ from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
-    RequestedSettings,
     Result,
 )
 from proscenium.binding import runtime
@@ -32,6 +31,7 @@ from proscenium.binding.persistence.configs import BindingConfig, BindingIndex
 from proscenium.binding.persistence.manifests import MANIFEST_KEY
 from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecord, RefusedRecordError
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
+from proscenium.binding.source_access.binding_settings import new_settings
 from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support import undo
 from support.blend import save_and_reopen
@@ -89,7 +89,7 @@ def test_creating_a_binding_writes_its_records_on_its_destination(bindings: Bind
     # it, and creates no runtime stage.
     handle = bindings.create_binding(_scene(), name="Shot")
     destination = bpy.data.collections["Shot"]
-    assert _config(handle) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL))
+    assert _config(handle) == BindingConfig(_scene(), new_settings(PayloadPolicy.LOAD_ALL))
     assert _holding(handle) == ["Shot"]
     assert records.keys(_scene()) == []  # no scene holds a binding record
     assert handle.live_stage() is None
@@ -108,7 +108,12 @@ def test_the_payload_policy_is_stored_as_its_value(bindings: Bindings) -> None:
         records.VERSION_KEY: 1,
         "scene": _scene(),
         "root_layer_identifier": None,
-        "settings": {"payload_policy": "load_none"},
+        "settings": {
+            "payload_policy": "load_none",
+            "coordinate_conversion": False,
+            "viewport_purposes": ["default", "proxy"],
+            "render_purposes": ["default", "render"],
+        },
     }
     config = _config(handle)
     assert config.settings.payload_policy is PayloadPolicy.LOAD_NONE
@@ -134,8 +139,8 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path) -> 
         identifier = scene.caller.GetRootLayer().identifier
     save_and_reopen(tmp_path / "bindings.blend")
     f, a = bpy.data.collections["F"], bpy.data.collections["A"]
-    assert _config(first) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_NONE), identifier)
-    assert _config(second) == BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL), identifier)
+    assert _config(first) == BindingConfig(_scene(), new_settings(PayloadPolicy.LOAD_NONE), identifier)
+    assert _config(second) == BindingConfig(_scene(), new_settings(PayloadPolicy.LOAD_ALL), identifier)
     assert (_holding(first), _holding(second)) == (["F"], ["A"])
     assert sorted(h.binding_id for h in bindings.in_scene(_scene())) == sorted([first.binding_id, second.binding_id])
     assert _index() == BindingIndex({first.binding_id: f, second.binding_id: a})
@@ -182,6 +187,32 @@ def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) 
         changed.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         assert [_config(h) for h in (other, attached)] == before
         assert _config(changed).settings.payload_policy is PayloadPolicy.LOAD_NONE
+
+
+def test_conversion_and_purpose_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) -> None:
+    # BIND-06 on F-MULTI-BINDING: each binding keeps its own conversion and purpose settings, recorded in its
+    # configuration, and a purpose USD doesn't define is refused, changing nothing.
+    with source_access.multi_binding(tmp_path) as scene:
+        root = scene.roots[".usda"]
+        changed, other = binding_on_file(bindings, _scene(), root), binding_on_file(bindings, _scene(), root)
+        assert changed.requested_settings() == new_settings(PayloadPolicy.LOAD_ALL)  # off, and the spec's purposes
+        before = _config(other)
+        result = changed.set_settings(
+            coordinate_conversion=True, viewport_purposes=["default", "guide"], render_purposes={"render"}
+        )
+        assert result.is_success
+        assert _config(other) == before
+        settings = _config(changed).settings
+        expected = (True, ("default", "guide"), ("render",), PayloadPolicy.LOAD_ALL)
+        assert (
+            settings.coordinate_conversion,
+            settings.viewport_purposes,
+            settings.render_purposes,
+            settings.payload_policy,
+        ) == expected
+        with pytest.raises(ValueError, match="preview"):
+            changed.set_settings(viewport_purposes=["preview"])
+        assert _config(changed).settings == settings
 
 
 # Handles across undo, redo, and save/reopen.
@@ -351,7 +382,7 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
         stored = versions.bindings[name]
         binding_id = configs.new_identifier()
         collection = _unsupported(binding_id, stored)
-        config = BindingConfig(_scene(), RequestedSettings(PayloadPolicy.LOAD_ALL))
+        config = BindingConfig(_scene(), new_settings(PayloadPolicy.LOAD_ALL))
         with pytest.raises(RefusedRecordError):
             runtime.binding_configs.set_config(binding_id, config)
         assert records.stored(collection, configs.config_key(binding_id)) == stored
@@ -520,4 +551,4 @@ def test_records_stay_readable_with_the_extension_unregistered(bindings: Binding
     addon.unregister()
     save_and_reopen(tmp_path / "unregistered.blend")
     assert _config(handle) == replace(expected, scene=_scene())  # a reference from before the reopen is stale
-    assert handle.requested_settings() == RequestedSettings(PayloadPolicy.LOAD_NONE)
+    assert handle.requested_settings() == new_settings(PayloadPolicy.LOAD_NONE)

@@ -141,9 +141,22 @@ class BindingHandle:
         """Cache the published generation at each of time_codes without synchronizing (Bindings.cache)."""
         return BINDINGS.cache(self.binding_id, time_codes)
 
-    def set_settings(self, *, payload_policy: stages.PayloadPolicy | None = None) -> Result:
+    def set_settings(
+        self,
+        *,
+        payload_policy: stages.PayloadPolicy | None = None,
+        coordinate_conversion: bool | None = None,
+        viewport_purposes: Iterable[str] | None = None,
+        render_purposes: Iterable[str] | None = None,
+    ) -> Result:
         """Record requested settings without synchronizing (Bindings.set_settings)."""
-        return BINDINGS.set_settings(self.binding_id, payload_policy=payload_policy)
+        return BINDINGS.set_settings(
+            self.binding_id,
+            payload_policy=payload_policy,
+            coordinate_conversion=coordinate_conversion,
+            viewport_purposes=viewport_purposes,
+            render_purposes=render_purposes,
+        )
 
     def reload(self, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request (Bindings.reload)."""
@@ -186,7 +199,7 @@ class Bindings:
         name: str = "USD Display",
     ) -> BindingHandle:
         """Create an unattached binding on scene with a new destination named name."""
-        return BindingHandle(binding_configs.create(scene, RequestedSettings(payload_policy), name))
+        return BindingHandle(binding_configs.create(scene, binding_settings.new_settings(payload_policy), name))
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene.
@@ -235,17 +248,31 @@ class Bindings:
 
     @_reporting_cleanup
     def set_settings(
-        self, binding_id: identifiers.BindingId, *, payload_policy: stages.PayloadPolicy | None = None
+        self,
+        binding_id: identifiers.BindingId,
+        *,
+        payload_policy: stages.PayloadPolicy | None = None,
+        coordinate_conversion: bool | None = None,
+        viewport_purposes: Iterable[str] | None = None,
+        render_purposes: Iterable[str] | None = None,
     ) -> Result:
-        """Record requested settings without synchronizing."""
+        """Record requested settings without synchronizing; each one not given keeps its value.
+
+        Raises ValueError or TypeError, changing nothing, for a value RequestedSettings refuses, such as a purpose USD
+        doesn't define.
+        """
+        given = {
+            "payload_policy": payload_policy,
+            "coordinate_conversion": coordinate_conversion,
+            "viewport_purposes": None if viewport_purposes is None else tuple(viewport_purposes),
+            "render_purposes": None if render_purposes is None else tuple(render_purposes),
+        }
         found = self._found(binding_id)
         if not found.usable:
             return _refused(found)
         config = found.usable_config()
-        if payload_policy is not None:
-            settings = dataclasses.replace(config.settings, payload_policy=payload_policy)
-            config = dataclasses.replace(config, settings=settings)
-        binding_configs.set_config(binding_id, config)
+        settings = dataclasses.replace(config.settings, **{k: v for k, v in given.items() if v is not None})
+        binding_configs.set_config(binding_id, dataclasses.replace(config, settings=settings))
         return Result()
 
     @_exclusive
