@@ -19,6 +19,7 @@
   - Each destination's materials are resolved only where the object displays there: resolving both made a proxy-only prim's `full` binding a material nothing displayed.
   - The Windows bpy wheel omits six USD plugins' resources, `usdShaders` among them (a Blender install rule), so any Sdr lookup of UsdPreviewSurface raises there; the binary is authoritative ([M1b plan](../plans/M01b-evaluation-gate.md#phase-a-log)).
 - Ownership and reuse rules for translated materials, images, node groups, and dependencies.
+- Materials refresh incrementally on M7's framework, including external assets changed without any USD edit, such as a texture edited in place, which no notice reports (DISC-03).
 - From M4 ([M4 plan](../plans/M04-prototypes.md)): a material reads a copy's constant primvars through an Attribute node of type Object for an object and Instancer for a batch's instance, so translation chooses it by representation (D1); a copy's own constant color is its object color, which Solid shading's Object color shows (D10, D13); and a reader's fallback comes from the translated material or is written per copy, also where a cached time code blocks the primvar (B4, F5).
 
 **Tests:**
@@ -27,5 +28,6 @@
 - Material inputs accept per-instance data supplied through hand-constructed plans.
 - Headless render assertions on controlled material fixtures.
 - `F-SHARED-MATERIAL-FAILURE` and `F-OFFLINE`.
+- `F-TEXTURE-IN-PLACE`, and incremental refresh of binding, network, and parameter changes, each equal to a clean rebuild.
 
 **Exit condition:** the material grammar works within the chosen display representation, and material and image failures leave the published generation unchanged.

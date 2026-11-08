@@ -1548,7 +1548,7 @@ Ad hoc probes, one run each in the same binary: of 30,000 objects, removing 1,00
 
 **Findings:**
 - **A call costs more the more the file keeps:** 13 ms for one empty on ALab and 26 ms at 60,012 datablocks, as M4 found (about 20 ms), and 100 objects 0.15 s and 0.84 s. Across these cases a call's time is roughly proportional to the datablocks it removes times those left in the file, at 30 to 100 ns a pair, an inference from these points: removing nearly everything is cheap (3.4 s for 32,000), and retiring a full display while its replacement is in the file is not.
-- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M14's incremental updates do, would.
+- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M7's incremental updates do, would.
 - **`user_map` is small** beside the removal: 11 to 14 ms on ALab, 17 to 24 ms at 60,012 datablocks.
 - **Halving a failing call** found the one failure among 100 objects in 15 calls, 205 ms on ALab, where one call per datablock took 101 calls and 1,356 ms, since each pays a call's cost. The removal halves since this phase.
 - **Not measured:** a windowed Blender, whose event loop may clear what a background process accumulates between calls; Linux and Windows; batched displays.

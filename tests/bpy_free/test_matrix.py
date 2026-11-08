@@ -60,7 +60,7 @@ def test_field_problems_are_reported(loaded: matrix.Matrix) -> None:
     m.rows.append(dataclasses.replace(_row(m, "LAYER-03")))  # duplicate ID
     _row(m, "LAYER-01").fixtures = ["F-NOT-REGISTERED"]
     _row(m, "SRC-06").delivery = "M99"
-    _row(m, "LAYER-06").qualified_by = "M14"  # Phase 1 behavior qualifies in M12
+    _row(m, "LAYER-06").qualified_by = "M13"  # Phase 1 behavior qualifies in M12
     _row(m, "LAYER-07").risk = "medium"  # only "high" is a risk M4 assigns
     problems = "\n".join(matrix.check(m))
     for expected in [
@@ -93,8 +93,8 @@ def test_invariant_citing_a_row_outside_its_links_is_reported(loaded: matrix.Mat
 
 
 def test_milestones_are_the_milestone_files() -> None:
-    # M1 to M14, and the evaluation gate M1b; the directory's README is none.
-    assert matrix.milestones() == {f"M{n}" for n in range(1, 15)} | {"M1b"}
+    # M1 to M13, and the evaluation gate M1b; the directory's README is none.
+    assert matrix.milestones() == {f"M{n}" for n in range(1, 14)} | {"M1b"}
 
 
 # The Markdown parser and loader, on small docs and matrices written under tmp_path.

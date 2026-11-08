@@ -26,7 +26,7 @@ Cross-cutting guarantees that every milestone must preserve, whatever feature it
 - Publication switches the whole generation together; there is never a silently mixed old/new result. → [Synchronization Transaction](pipeline.md#synchronization-transaction) (TXN-06)
 - Retirement failures after publication do not fail the synchronization; leftovers stay tracked, noncanonical, and retryable. → [Synchronization Transaction](pipeline.md#synchronization-transaction) (TXN-07)
 - Failed disposal before publication leaves inactive, persistent, retryable cleanup work; the attempt remains failed and the published generation is unchanged. → [Synchronization Transaction](pipeline.md#synchronization-transaction), [Pending Cleanup](lifecycle.md#pending-cleanup) (TXN-03, PEND-01)
-- These guarantees apply equally to Phase 2 incremental mutations. Undo grouping is not a substitute for them. → [Synchronization Transaction](pipeline.md#synchronization-transaction) (TXN-12)
+- These guarantees apply equally to incremental mutations. Undo grouping is not a substitute for them. → [Synchronization Transaction](pipeline.md#synchronization-transaction) (TXN-12)
 
 ## Ownership
 

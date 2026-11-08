@@ -425,10 +425,10 @@ FIXTURES: dict[str, Fixture] = {
             ("M4",),
             appearance.appearance_cases,
         ),
-        Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M13",)),
-        Fixture("F-SAME-VALUES", "Same evaluated values at a different time (Phase 2)", ("M12", "M13")),
+        Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M9",)),
+        Fixture("F-SAME-VALUES", "Same evaluated values at a different time", ("M7", "M12")),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
-        Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M12", "M14")),
+        Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M7", "M12")),
         Fixture(
             "F-KIND-HIERARCHY",
             "Kind hierarchy with organizational prims Hydra does not keep",

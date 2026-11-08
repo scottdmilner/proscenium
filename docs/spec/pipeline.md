@@ -114,7 +114,7 @@ The attempt tracks each newly created prepared resource before subsequent fallib
 
 Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable. Neither is a failed write to the pending-cleanup ledger, once the attempt has found it readable: it is a defect, and raises.
 
-These guarantees apply equally to incremental mutations in Phase 2.
+These guarantees apply equally to incremental mutations.
 
 Undo grouping is **not** a substitute for failure-safe staging or rollback.
 
