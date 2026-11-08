@@ -50,6 +50,10 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
     shears = memoryview(plan.copy_shears).tolist()
     parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
+    # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
+    # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
+    # published display of as many, ad hoc).
+    hidden: dict[str, list[bool]] = {"hide_viewport": [], "hide_render": []}
     for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
         # The object's uses: its bounds mesh, but for an empty marker's, and a sheared copy's shear parent.
         used = {identities[u].role: u for u in resources[object_index].uses}
@@ -68,7 +72,8 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         work.staging.objects.link(obj)
         made.append((object_index, object_key, obj))
         obj.display_type = "BOUNDS"
-        obj.hide_viewport, obj.hide_render = not viewport[copy], not render[copy]
+        hidden["hide_viewport"].append(not viewport[copy])
+        hidden["hide_render"].append(not render[copy])
         if (shear := shears[copy]) < 0:
             obj.matrix_world = _world(worlds, copy)
         else:
@@ -77,6 +82,8 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
             parent = bpy.data.objects.new(f"{name} shear", None)
             work.track(keys[parent_index], identities[parent_index].role, parent)
             work.staging.objects.link(parent)
+            hidden["hide_viewport"].append(False)
+            hidden["hide_render"].append(False)
             made.append((parent_index, keys[parent_index], parent))
             parent.hide_select = True  # so a pick lands on the object
             parent.matrix_world = _world(parent_worlds, shear)
@@ -88,6 +95,8 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
             work.entries[key] = manifests.ManifestEntry(
                 datablock, list(resource.covers), identities[index].role, uses, resource.place
             )
+    for flag, values in hidden.items():
+        work.staging.objects.foreach_set(flag, values)
 
 
 def key_time_codes(
