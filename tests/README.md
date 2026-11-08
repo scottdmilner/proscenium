@@ -41,7 +41,8 @@ tests/
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
 │   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
-│   └── plan_checks.py        the core's plans at a time code, drawn copies by source, and their corners within the bounds tolerance
+│   ├── plan_checks.py        the core's plans at a time code, drawn copies by source, and their corners within the bounds tolerance
+│   └── plan_process.py       every part of a plan as plain values, and a script printing a scene's plan from a fresh process
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   ├── published.py          the whole published generation and the file's datablocks, compared around a failure
