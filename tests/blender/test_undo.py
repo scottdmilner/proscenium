@@ -192,7 +192,7 @@ def test_background_mode_pushes_no_step(bindings: Bindings, tmp_path: Path) -> N
         assert handle.synchronize(time_code).state is ResultState.SUCCESS
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, records.Loaded)
-        assert (generation.record.payload_policy, generation.record.time_code) == (policy, time_code)
+        assert (generation.record.settings.payload_policy, generation.record.time_code) == (policy, time_code)
         undo.undo_unpushed()
         assert MARKER not in bpy.data.objects
 

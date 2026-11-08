@@ -256,7 +256,7 @@ FIXTURES: dict[str, Fixture] = {
         Fixture(
             "F-CACHED-TIME-CODES",
             "Cached time codes",
-            ("M5",),
+            ("M5", "M6"),
             transaction.cached_time_codes,
             (
                 # Time codes cached in the generation: no new generation, last attempt, or undo step.
@@ -269,6 +269,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("default-time-code-given", Operation.CACHE, FAILURE, ("API-14",), 1),
                 # Synchronizing again holds only the new time code.
                 Case("synchronize-again", SYNC, SUCCESS, ("CACHE-07",), 1),
+                # After the target scene's unit scale changes, cache needs a synchronization, caching nothing.
+                Case("changed-unit-scale", Operation.CACHE, FAILURE, ("CACHE-12",), 1),
             ),
         ),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),

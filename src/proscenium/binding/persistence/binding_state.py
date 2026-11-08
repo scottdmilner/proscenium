@@ -1,15 +1,15 @@
 """A binding's published generation and last attempt (lifecycle.md#binding-state).
 
-The published generation is what the display was produced with: the generation record and the
-ownership manifest beside it on the destination collection (proscenium.binding.persistence.manifests), and the
-correspondence M7 adds. The generation record holds the time code it was synchronized at and those M5's cache
-added to it since (pipeline.md#cached-time-codes), and the source revision it was synchronized from, which cache
-compares with the binding's current one; it's stored, so undo restores it with the generation it describes. It
+The published generation is what the display was produced with: the generation record and the ownership manifest
+beside it on the destination collection (proscenium.binding.persistence.manifests), and the correspondence M7 adds.
+The generation record holds the settings and time code it was synchronized at, those M5's cache added to it since
+(pipeline.md#cached-time-codes), and the source revision and target scene's unit scale it was synchronized from,
+which cache compares with the current ones; it's stored, so undo restores it with the generation it describes. It
 describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
 
-The last attempt is the most recent synchronization attempt and its result. It is on the destination beside the
-binding's configuration and the generation, under its own key: it exists without a publication, and reading the
-configuration doesn't load its diagnostics.
+The last attempt is the most recent synchronization attempt, the settings it requested, and its result. It is on the
+destination beside the binding's configuration and the generation, under its own key: it exists without a
+publication, and reading the configuration doesn't load its diagnostics.
 
 The synchronization transaction writes both (proscenium.synchronization): the generation as part of publication,
 and the last attempt at every attempt's end.
@@ -17,13 +17,15 @@ and the last attempt at every attempt's end.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
 from .. import results
-from ..source_access import stages
+from ..source_access import binding_settings, stages
 from . import records
 from .records import Schema
 
@@ -49,7 +51,10 @@ def time_code(stored: float | None) -> Usd.TimeCode:
 
 def _settle(record: Any) -> None:
     """Turn a stored record's plain values back into the fields' types; ValueError or TypeError if they can't be."""
-    object.__setattr__(record, "payload_policy", stages.PayloadPolicy(record.payload_policy))
+    if isinstance(record.settings, Mapping):
+        object.__setattr__(record, "settings", binding_settings.RequestedSettings(**record.settings))
+    if not isinstance(record.settings, binding_settings.RequestedSettings):
+        raise TypeError("the settings are not a group")
     if not isinstance(record.time_code, float | None):
         raise TypeError("a time code is a float, or None for the default time code")
     diagnostics = tuple(d if isinstance(d, results.Diagnostic) else results.Diagnostic(**d) for d in record.diagnostics)
@@ -61,7 +66,8 @@ class Generation:
     """What a binding's published display was produced with."""
 
     binding_id: identifiers.BindingId
-    payload_policy: stages.PayloadPolicy
+    settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
+    unit_scale: float  # its target scene's then, which planning applied
     time_code: float | None  # see stored_time
     source_revision: stages.SourceRevision  # BindingStages.source_revision when it was synchronized
     diagnostics: tuple[results.Diagnostic, ...]  # its source/display diagnostics
@@ -72,6 +78,10 @@ class Generation:
         _settle(self)
         if type(self.binding_id) is not str:
             raise TypeError("a generation names its binding")
+        if type(self.unit_scale) is not float:
+            raise TypeError("a unit scale is a float")
+        if not (math.isfinite(self.unit_scale) and self.unit_scale > 0):
+            raise ValueError("a unit scale is positive and finite")
         if type(self.source_revision) is not str:
             raise TypeError("a source revision is a string")
         if not self.source_revision:
@@ -92,7 +102,7 @@ class Generation:
 class LastAttempt:
     """The most recent synchronization attempt: what it asked for, and how it ended."""
 
-    payload_policy: stages.PayloadPolicy
+    settings: binding_settings.RequestedSettings  # the binding's requested settings when it started
     time_code: float | None  # see stored_time
     diagnostics: tuple[results.Diagnostic, ...]
 

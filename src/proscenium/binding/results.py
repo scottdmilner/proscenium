@@ -58,7 +58,7 @@ class DiagnosticCode(StrEnum):
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
-    NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source changed since it
+    NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
     PLANNING_FAILED = "planning-failed"
     PREPARATION_FAILED = "preparation-failed"  # making or keying the display's resources failed, so it was undone
     PUBLICATION_FAILED = "publication-failed"  # publishing, or recording cached time codes, failed, so it was undone

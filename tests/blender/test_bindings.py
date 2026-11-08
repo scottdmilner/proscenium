@@ -255,7 +255,7 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
         assert live.GetLoadSet()  # not applied: nothing synchronized
         # Still the last synchronization's attempt: set_settings records none.
         last = binding_state.read_last_attempt(destination(handle))
-        assert last == Loaded(binding_state.LastAttempt(PayloadPolicy.LOAD_ALL, 3.0, ()), 1)
+        assert last == Loaded(binding_state.LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 3.0, ()), 1)
         assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
@@ -317,8 +317,10 @@ def test_reopening_f_binding_state_synchronizes_nothing(
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         handle.synchronize(0)
-        generation = Generation(handle.binding_id, PayloadPolicy.LOAD_ALL, 0.0, SourceRevision("saved"), ())
-        attempt = LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ())
+        generation = Generation(
+            handle.binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 0.0, SourceRevision("saved"), ()
+        )
+        attempt = LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ())
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
         binding_state.write_last_attempt(destination(handle), attempt)
         save_and_reopen(tmp_path / "reopen.blend")

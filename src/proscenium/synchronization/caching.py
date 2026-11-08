@@ -44,7 +44,8 @@ def cache(
     config is a usable binding's, and time_codes numeric. The result names the time codes it attempted, those the
     generation hadn't cached, in order. A generation synchronized at the default time code has nothing to cache, so
     the call succeeds caching nothing (CACHE-06); one with no generation, or whose source changed since it was
-    synchronized, needs synchronizing, so the call fails caching nothing (CACHE-05).
+    synchronized, or whose target scene's unit scale changed since, needs synchronizing, so the call fails caching
+    nothing (CACHE-05, CACHE-12).
     """
     scene, destination = config.scene, binding_configs.required_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
@@ -68,7 +69,7 @@ def cache(
 
     binding_stages = current.attached(binding_id)
     try:
-        evaluation_stage = binding_stages.acquire(published.payload_policy)
+        evaluation_stage = binding_stages.acquire(published.settings.payload_policy)
     except stages.SourceUnavailableError as error:
         return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), time_codes=attempted)
     # Checked even when every time code is cached, so a call never reports success over a source that changed. The
@@ -77,10 +78,16 @@ def cache(
     if binding_stages.source_revision != published.source_revision:
         message = "The source changed since the binding was synchronized; synchronize it before caching time codes"
         return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
+    # The plans would apply another scale than the display's, so its time codes would disagree (CACHE-12).
+    if scene.unit_settings.scale_length != published.unit_scale:
+        message = "The target scene's unit scale changed since the binding was synchronized; synchronize it first"
+        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
     if not new:
         return Result()
     own = evaluation.source_state(binding_id, evaluation_stage)
-    planned = evaluation.plans(binding_id, binding_stages, evaluation_stage, scene, attempted)
+    planned = evaluation.plans(
+        binding_id, binding_stages, evaluation_stage, published.settings, published.unit_scale, attempted
+    )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, time_codes=attempted)
 

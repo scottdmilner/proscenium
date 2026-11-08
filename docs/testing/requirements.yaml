@@ -278,6 +278,11 @@ requirements:
         quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
         fixtures: [F-SOURCE-CHANGE]
         oracle: "On F-SOURCE-CHANGE, after a synchronization, an edit to sub.usda, a reload of its rewritten file, or attaching the stage again each make cache return a failure saying the binding needs synchronizing, caching nothing; without a change, the same call caches."
+      - id: CACHE-12
+        quote: "If the target scene's unit scale has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "On F-CACHED-TIME-CODES, after a synchronization, a changed unit scale on the target scene makes cache return a failure saying the binding needs synchronizing, caching nothing, its cached time codes included; with the scale set back, or after synchronizing again, the same call caches."
+        delivery: M6
       - id: CACHE-06
         quote: "A generation synchronized at the USD default time code has no time-varying values"
         fixtures: [F-CACHED-TIME-CODES]

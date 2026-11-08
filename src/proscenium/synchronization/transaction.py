@@ -55,7 +55,7 @@ def synchronize(
     binding_configs.restore_entry(binding_id, record)
     result = Result(*_attempt(binding_id, config, destination, current, time_code), time_codes=(time_code,))
     stored_time = binding_state.stored_time(time_code)
-    attempt = binding_state.LastAttempt(config.settings.payload_policy, stored_time, result.diagnostics)
+    attempt = binding_state.LastAttempt(config.settings, stored_time, result.diagnostics)
     binding_state.write_last_attempt(destination, attempt)
     return result
 
@@ -79,16 +79,16 @@ def _attempt(
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
     if (refused := prepared_work.untrackable(binding_id)) is not None:
         return (refused,)
-    policy = config.settings.payload_policy
+    settings, unit_scale = config.settings, scene.unit_settings.scale_length
     stages_ = current.attached(binding_id)
     try:
-        evaluation_stage = stages_.acquire(policy)
+        evaluation_stage = stages_.acquire(settings.payload_policy)
     except stages.SourceUnavailableError as error:
         return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
     revision = stages_.source_revision
     own = evaluation.source_state(binding_id, evaluation_stage)
     # Before preparation nothing in Blender has changed, so a failure only reports.
-    planned = evaluation.plans(binding_id, stages_, evaluation_stage, scene, (time_code,))
+    planned = evaluation.plans(binding_id, stages_, evaluation_stage, settings, unit_scale, (time_code,))
     if isinstance(planned, Diagnostic):
         return (*own, planned)
     [plan] = planned
@@ -101,7 +101,7 @@ def _attempt(
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
         return (*own, failed, *prepared_work.dispose(work))
     described = binding_state.Generation(
-        binding_id, policy, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
+        binding_id, settings, unit_scale, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
     )
     try:
         before = None if manifest is None else published

@@ -17,10 +17,9 @@ from . import application
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import bpy
     from pxr import Usd
 
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_settings, identifiers
 
 
 # Every code the core can report is in the documented list: a core built against another list fails here, on import,
@@ -56,13 +55,14 @@ def plans(
     binding_id: identifiers.BindingId,
     binding_stages: stages.BindingStages,
     evaluation_stage: Usd.Stage,
-    scene: bpy.types.Scene,
+    settings: binding_settings.RequestedSettings,
+    unit_scale: float,
     time_codes: Sequence[Usd.TimeCode],
 ) -> list[_core.Plan] | Diagnostic:
     """The display's plan at each of time_codes, in their order, or the fatal diagnostic saying why there are none.
 
-    evaluation_stage is binding_stages' evaluation stage, acquired; scene is the target scene, whose unit scale the
-    plans apply.
+    evaluation_stage is binding_stages' evaluation stage, acquired under settings' payload policy; the plans apply
+    settings' conversion and purposes, and unit_scale, the target scene's.
     """
     try:
         with binding_stages.changed_layers() as changed:
@@ -77,9 +77,10 @@ def plans(
     except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
         return Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
     try:
-        # The spec's default purposes (DECISIONS.md "Conversion and purpose settings"); D2 passes the binding's own.
-        settings = _core.PlanSettings(("default", "proxy"), ("default", "render"))
-        context = _core.PlanningContext(scene.unit_settings.scale_length, application.REPRESENTATION_VERSION)
-        return [_core.plan(snapshot, settings, context) for snapshot in snapshots]
+        planned = _core.PlanSettings(
+            settings.viewport_purposes, settings.render_purposes, settings.coordinate_conversion
+        )
+        context = _core.PlanningContext(unit_scale, application.REPRESENTATION_VERSION)
+        return [_core.plan(snapshot, planned, context) for snapshot in snapshots]
     except Exception as error:  # noqa: BLE001
         return Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")

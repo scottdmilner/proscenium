@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-404 rows: 327 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
+405 rows: 328 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
 
 ## PROJECT.md
 
@@ -63,6 +63,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CACHE-11](../spec/pipeline.md#cached-time-codes) | A call records no last attempt, whether it succeeds or fails | behavior |  | M5 | 1 / M12 | `F-CACHED-TIME-CODES` | After F-CACHED-TIME-CODES' successful and failing calls, the last attempt equals the synchronization's before them, and each call's result holds its own diagnostics. |
 | [CACHE-10](../spec/pipeline.md#cached-time-codes) | A call never fails because of how content varies | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-05](../spec/pipeline.md#cached-time-codes) | If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing | behavior |  | M5 | 1 / M12 | `F-SOURCE-CHANGE` | On F-SOURCE-CHANGE, after a synchronization, an edit to sub.usda, a reload of its rewritten file, or attaching the stage again each make cache return a failure saying the binding needs synchronizing, caching nothing; without a change, the same call caches. |
+| [CACHE-12](../spec/pipeline.md#cached-time-codes) | If the target scene's unit scale has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing | behavior |  | M6 | 1 / M12 | `F-CACHED-TIME-CODES` | On F-CACHED-TIME-CODES, after a synchronization, a changed unit scale on the target scene makes cache return a failure saying the binding needs synchronizing, caching nothing, its cached time codes included; with the scale set back, or after synchronizing again, the same call caches. |
 | [CACHE-06](../spec/pipeline.md#cached-time-codes) | A generation synchronized at the USD default time code has no time-varying values | behavior |  | M5 | 1 / M12 | `F-CACHED-TIME-CODES` | Synchronized at the default time code, cache at any time codes caches nothing and reports success. |
 | [CACHE-07](../spec/pipeline.md#cached-time-codes) | Synchronizing again produces a new generation, holding only its own time code. | behavior |  | M5 | 1 / M12 | `F-CACHED-TIME-CODES` | Synchronizing at 10 after caching gives a generation whose cached time codes are 10 alone, and the display shows 10's values at every frame. |
 | [CACHE-08](../spec/pipeline.md#cached-time-codes) | The display never synchronizes or caches on its own. | behavior |  | M7 | 1 / M12 | — | Set by M7. |

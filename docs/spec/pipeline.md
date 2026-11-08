@@ -129,6 +129,7 @@ A published generation displays the time code it was synchronized at, and each t
 - A call records no last attempt, whether it succeeds or fails: its result reports its diagnostics, and the last attempt remains the last synchronization's.
 - A call never fails because of how content varies: whatever a synchronization at a time code displays, a cached time code displays too, such as faces whose materials change, a point instance whose prototype changes, bounds that appear or vanish, and a constant primvar blocked at some time codes.
 - If the source has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different source states.
+- If the target scene's unit scale has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different unit scales.
 - A generation synchronized at the USD default time code has no time-varying values: `cache` caches nothing and reports success.
 - Synchronizing again produces a new generation, holding only its own time code.
 
