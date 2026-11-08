@@ -6,8 +6,8 @@
 
 namespace proscenium {
 
-// Every prim of the snapshot as a record, read once. Serial, as capture is, until C6's per-thread error collection
-// lets it run in parallel as the bridge's does.
+// Every prim of the snapshot as a record, read once, in parallel, as the bridge's reader does. It reads only the
+// snapshot's static copies; a Tf error posted on a worker thread would be printed, not raised, as in the bridge.
 PrimTable ReadPrims(const Snapshot& snapshot);
 
 }  // namespace proscenium

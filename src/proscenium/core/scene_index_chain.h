@@ -30,7 +30,8 @@ class SceneIndexChain {
 
   // Moves the chain to `time`, applies the stage's edits since the last capture, and copies what planning reads from
   // the terminal scene index into a new snapshot, with the Tf errors and warnings posted meanwhile as its diagnostics.
-  // Runs without the GIL. Throws std::runtime_error once released.
+  // Runs without the GIL, copying prims in parallel: the caller holds the GIL nowhere a worker waits, and makes no
+  // stage edit meanwhile. Throws std::runtime_error once released.
   SnapshotPtr Capture(PXR_NS::UsdTimeCode time);
 
   // Drops the chain and the handle's reference, so the core keeps no released stage alive. Idempotent.

@@ -1,5 +1,6 @@
 #include "scene_index_chain.h"
 
+#include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/dependencyForwardingSceneIndex.h>
 #include <pxr/imaging/hd/primvarsSchema.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
@@ -129,17 +130,21 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
     }
     HarvestErrors(mark, SdfPath(), chain);
   }
-  // Each prim's read opens its own mark, so an error is the prim's, and the collector attributes its warnings to it.
-  std::vector<HdRetainedSceneIndex::AddedPrimEntry> entries;
-  entries.reserve(paths.size());
+  // One parallel pass, as the bridge's capture copies: Hydra's reads are threadsafe, and nothing changes the chain
+  // until the pass ends. Each prim's read opens its own mark, so an error is the prim's, and the collector attributes
+  // the thread's warnings to it; one posted on a thread Hydra hands part of a read to names that thread's prim, or
+  // none.
+  std::vector<HdRetainedSceneIndex::AddedPrimEntry> entries(paths.size());
   std::vector<Diagnostics> errors(paths.size());
-  for (std::size_t i = 0; i < paths.size(); ++i) {
-    const TfDiagnosticCollector::ScopedSource source(paths[i]);
-    const TfErrorMark mark;
-    const HdSceneIndexPrim prim = terminal_->GetPrim(paths[i]);
-    entries.push_back({paths[i], prim.primType, CopyPlannedSchemas(prim.dataSource)});
-    HarvestErrors(mark, paths[i], errors[i]);
-  }
+  WorkParallelForN(paths.size(), [&](std::size_t begin, std::size_t end) {
+    for (std::size_t i = begin; i < end; ++i) {
+      const TfDiagnosticCollector::ScopedSource source(paths[i]);
+      const TfErrorMark mark;
+      const HdSceneIndexPrim prim = terminal_->GetPrim(paths[i]);
+      entries[i] = {paths[i], prim.primType, CopyPlannedSchemas(prim.dataSource)};
+      HarvestErrors(mark, paths[i], errors[i]);
+    }
+  });
   const HdRetainedSceneIndexRefPtr scene = HdRetainedSceneIndex::New();
   scene->AddPrims(entries);
   // A warning attributed to a prim is its own; the rest the chain posted.

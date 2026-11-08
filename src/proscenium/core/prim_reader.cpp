@@ -1,5 +1,6 @@
 #include "prim_reader.h"
 
+#include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/instancedBySchema.h>
 #include <pxr/imaging/hd/instancerTopologySchema.h>
@@ -14,6 +15,7 @@
 #include <cstddef>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "source_facts.h"
 
@@ -99,12 +101,21 @@ bool ReadPrim(const HdSceneIndexBase& scene, const SdfPath& path, PrimRecord& re
 }  // namespace
 
 PrimTable ReadPrims(const Snapshot& snapshot) {
+  SdfPathVector paths;
+  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.scene, SdfPath::AbsoluteRootPath())) paths.push_back(path);
+  // One parallel pass, as the bridge's reader: the snapshot is never changed after capture.
+  std::vector<PrimRecord> records(paths.size());
+  std::vector<char> present(paths.size(), 0);  // not vector<bool>, whose packed bits parallel writes would race on
+  WorkParallelForN(paths.size(), [&](std::size_t begin, std::size_t end) {
+    for (std::size_t i = begin; i < end; ++i)
+      present[i] = static_cast<char>(ReadPrim(*snapshot.scene, paths[i], records[i]));
+  });
   PrimTable table;
-  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.scene, SdfPath::AbsoluteRootPath())) {
-    PrimRecord record;
-    if (!ReadPrim(*snapshot.scene, path, record)) continue;
-    table.index.emplace(path, table.prims.size());
-    table.prims.push_back(std::move(record));
+  table.prims.reserve(records.size());
+  for (std::size_t i = 0; i < records.size(); ++i) {
+    if (!present[i]) continue;
+    table.index.emplace(records[i].path, table.prims.size());
+    table.prims.push_back(std::move(records[i]));
   }
   return table;
 }
