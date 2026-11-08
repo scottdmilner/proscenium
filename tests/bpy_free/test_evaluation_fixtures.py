@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 MESH, BOUNDABLE = Tf.Type.Find(UsdGeom.Mesh), Tf.Type.Find(UsdGeom.Boundable)
-POINT_INSTANCER = Tf.Type.Find(UsdGeom.PointInstancer)
+POINT_INSTANCER, GPRIM = Tf.Type.Find(UsdGeom.PointInstancer), Tf.Type.Find(UsdGeom.Gprim)
 
 
 def _time(time_code: float | None) -> Usd.TimeCode:
@@ -221,9 +221,9 @@ def unsupported(tmp_path: Path) -> Iterator[evaluation.UnsupportedScene]:
 
 
 def test_unsupported_inventory(unsupported: evaluation.UnsupportedScene) -> None:
-    drawn = _drawn(unsupported.stage, BOUNDABLE)  # gprims, the point instancer, and the volume
+    drawn = _drawn(unsupported.stage, BOUNDABLE)  # gprims and the volume
     expected = set(unsupported.placeholders) | unsupported.exact_conversions | unsupported.approximated
-    assert drawn == expected | unsupported.not_drawn | set(unsupported.supported_beneath)
+    assert drawn == expected | set(unsupported.supported_beneath)
 
 
 def test_unsupported_placeholders(unsupported: evaluation.UnsupportedScene) -> None:
@@ -256,12 +256,10 @@ def test_unsupported_authored_extent_differs_from_computed(unsupported: evaluati
     assert prim.GetExtentAttr().Get() != UsdGeom.Boundable.ComputeExtentFromPlugins(prim, Usd.TimeCode.Default())
 
 
-def test_unsupported_conversions_and_instancer(unsupported: evaluation.UnsupportedScene) -> None:
+def test_unsupported_conversions(unsupported: evaluation.UnsupportedScene) -> None:
     types = {path: unsupported.stage.GetPrimAtPath(path).GetTypeName() for path in unsupported.approximated}
     assert types == {"/World/Shapes/Ball": "Sphere", "/World/Shapes/Sheet": "NurbsPatch"}
     assert {unsupported.stage.GetPrimAtPath(p).GetTypeName() for p in unsupported.exact_conversions} == {"Cube"}
-    instancer = UsdGeom.PointInstancer(unsupported.stage.GetPrimAtPath("/World/Scatter"))
-    assert [str(t) for t in instancer.GetPrototypesRel().GetTargets()] == sorted(unsupported.not_drawn)
 
 
 def test_unsupported_ancestor_state(unsupported: evaluation.UnsupportedScene) -> None:
@@ -364,6 +362,6 @@ def test_point_instancer_prototypes_are_drawn_only_as_copies(points: evaluation.
     under = {
         str(prim.GetPath())
         for prim in Usd.PrimRange(points.stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
-        if prim.IsA(MESH) and any(a.IsA(POINT_INSTANCER) for a in _ancestors(prim))
+        if prim.IsA(GPRIM) and any(a.IsA(POINT_INSTANCER) for a in _ancestors(prim))
     }
     assert under == points.prototypes

@@ -68,6 +68,8 @@ void ReadSourceInfo(const HdContainerDataSourceHandle& source, PrimRecord& recor
   record.resetsXformStack = ValueOf(HdBoolDataSource::Cast(info->Get(SourceInfoTokens::ResetsXformStack())));
   record.instancePrototype = ValueOf(HdTokenDataSource::Cast(info->Get(SourceInfoTokens::InstancePrototype())));
   record.usdType = ValueOf(HdTokenDataSource::Cast(info->Get(SourceInfoTokens::UsdType())));
+  if (const auto ids = HdTypedSampledDataSource<VtInt64Array>::Cast(info->Get(SourceInfoTokens::PointIds())))
+    record.pointIds = ids->GetTypedValue(kNow);
   for (const TfToken& purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
     if (const auto visibility = HdTokenDataSource::Cast(info->Get(purpose)))
       record.purposeVisibility.emplace_back(purpose, visibility->GetTypedValue(kNow));

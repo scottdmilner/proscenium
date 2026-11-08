@@ -8,7 +8,7 @@
 - visibility_purpose (F-VISIBILITY-PURPOSE): effective visibility, inherited and sampled over time, apart from
   each purpose, and each destination's participation.
 - unsupported_content (F-UNSUPPORTED-CONTENT): placeholders and markers for untranslated types, the filters'
-  conversions to meshes, a point instancer, and a mesh beneath an unsupported ancestor.
+  conversions to meshes, and a mesh beneath an unsupported ancestor.
 - point_instancers (F-POINT-INSTANCERS): point instancers' copies by their point-instance paths, by index and by
   authored id, and inside native instances.
 
@@ -311,7 +311,6 @@ class UnsupportedScene:
     placeholders: dict[str, Placeholder]  # each with an untranslated-type diagnostic; markers also warn
     exact_conversions: frozenset[str]  # implicit shapes the filters turn into meshes exactly
     approximated: frozenset[str]  # those turned into meshes inexactly, each with an approximation diagnostic
-    not_drawn: frozenset[str]  # gprims drawn only through a point instancer, which is deferred (DEFER-01)
     supported_beneath: dict[str, tuple[Gf.Matrix4d, str]]  # mesh beneath an unsupported prim -> (world, purpose)
     kinds: dict[str, str]  # prim -> its authored kind
 
@@ -342,7 +341,6 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
             ),
             "/World/Tangents": shown("HermiteCurves", translate(9, 0, 0), box((0, 0, 0), (1, 1, 0))),
             "/World/Fog": shown("Volume", translate(0, 3, 0), None),
-            "/World/Scatter": shown("PointInstancer", translate(0, 12, 0), box((0, 0, 0), (5, 1, 1))),
             "/World/Placed/Strand": Placeholder(
                 "BasisCurves",
                 world(rotate((0, 0, 1), 90), translate(0, 15, 0)),
@@ -370,7 +368,6 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
         },
         exact_conversions=frozenset({"/World/Shapes/Box"}),
         approximated=frozenset({"/World/Shapes/Ball", "/World/Shapes/Sheet"}),
-        not_drawn=frozenset({"/World/Scatter/Prototypes/Tetra"}),
         supported_beneath={"/World/Parent/Child": (world(translate(1, 0, 0), translate(0, 21, 0)), "render")},
         kinds={"/World/Placed": "component"},
     )
@@ -391,7 +388,7 @@ class PointInstancerScene:
     floors: dict[str, str]  # drawn copy -> its floor: the outermost native-instance root or point instancer
     invisible: frozenset[str]  # drawn copies of points the instancer hides (invisibleIds)
     primvars: dict[str, dict[str, float | int]]  # drawn copy -> its point's per-point and its instancer's constant ones
-    prototypes: frozenset[str]  # the prims under an instancer's prototypes: no copy at their own paths
+    prototypes: frozenset[str]  # the gprims under an instancer's prototypes: no copy at their own paths
 
 
 @contextmanager
@@ -428,7 +425,7 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
     scatter_world = local(translate(10, 0, 0), rotate((0, 0, 1), 90))
     frames = {
         0: translate(0, 0, 0),
-        1: rotate((1, 1, 1), 120) * translate(1, 0, 0),
+        1: scale(2, 1, 1) * rotate((1, 1, 1), 120) * translate(1, 0, 0),
         2: scale(1, 2, 1) * translate(2, 0, 0),
         3: translate(3, 0, 0),
     }
@@ -466,6 +463,7 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
                 f"{protos}/Rock",
                 f"{protos}/Pebble/Geom",
                 f"{protos}/Unused",
+                f"{protos}/Wisp",
                 f"{tagged}/Protos/Rock",
                 "/World/Kits/KitA/Spray/Protos/Pellet",
                 "/World/Kits/KitB/Spray/Protos/Pellet",

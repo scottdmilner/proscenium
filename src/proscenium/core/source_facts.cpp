@@ -47,6 +47,11 @@ const TfToken& SourceInfoTokens::UsdType() {
   return token;
 }
 
+const TfToken& SourceInfoTokens::PointIds() {
+  static const TfToken token("pointIds");
+  return token;
+}
+
 LazyContainer::LazyContainer(std::function<HdContainerDataSourceHandle()> build, std::function<uint64_t()> generation)
     : build_(std::move(build)), generation_(std::move(generation)) {}
 
@@ -90,6 +95,13 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
   if ((prim.IsA<UsdGeomGprim>() && !prim.IsA<UsdGeomMesh>()) || prim.IsA<UsdGeomPointInstancer>()) {
     names.push_back(SourceInfoTokens::UsdType());
     values.push_back(HdRetainedTypedSampledDataSource<TfToken>::New(prim.GetTypeName()));
+  }
+  if (const UsdGeomPointInstancer instancer{prim}) {
+    if (const UsdAttribute ids = instancer.GetIdsAttr(); ids && ids.HasAuthoredValue()) {
+      names.push_back(SourceInfoTokens::PointIds());
+      values.push_back(UsdImagingDataSourceAttributeNew(
+          ids, globals, prim.GetPath(), HdDataSourceLocator(SourceInfoTokens::Schema(), SourceInfoTokens::PointIds())));
+    }
   }
   if (prim.IsInstance()) {
     names.push_back(SourceInfoTokens::InstancePrototype());

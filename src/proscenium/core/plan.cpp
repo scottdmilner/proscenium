@@ -41,7 +41,7 @@ struct DrawnGprim {
   TfToken purpose;                  // USD's name
   bool visible;                     // effectively, for its own purpose
   bool explicitGuide;               // a guide whose nearest guideVisibility opinion is visible
-  TfToken usdType;                  // for a gprim other than a mesh, and a point instancer; else empty
+  TfToken usdType;                  // for a gprim other than a mesh; else empty
 };
 
 // (min x, min y, min z, max x, max y, max z) appended to `values`.
@@ -125,11 +125,17 @@ std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
   return {parent, r};
 }
 
-// Whether the prim is drawn: a gprim, by its Hydra type, or for a prim Hydra doesn't image, by its USD type; or a point
-// instancer, which the spec defers (DEFER-01), so the planner shows it as one placeholder, as the bridge's does with
-// point instancers off. Hydra gives a point instancer no instance locations (HdInstancerTopologySchema).
-bool IsDrawn(const PrimRecord& prim) {
-  return HdPrimTypeIsGprim(prim.type) || prim.isGprim || (prim.instancer && prim.instancer->instanceLocations.empty());
+// Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
+bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
+
+// The Hydra paths of the point instancers in `table`. Under one, a prim Hydra doesn't image at its own path is drawn
+// only through the instancer's copies of its prototypes, as the bridge's planner decides: a prototype's original, or a
+// prim no point draws.
+SdfPathVector PointInstancers(const PrimTable& table) {
+  SdfPathVector paths;
+  for (const PrimRecord& prim : table.prims)
+    if (prim.instancer && prim.instancer->instanceLocations.empty()) paths.push_back(prim.path);
+  return paths;
 }
 
 // Whether a filter's conversion of a prim of USD type `type` to a mesh is exact: a cube's and a plane's are; a
@@ -229,8 +235,13 @@ void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, Inst
 // A drawn copy of each gprim in `table`, sorted by source, with its world transform composed by `instances`.
 std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& instances) {
   std::vector<DrawnGprim> gprims;
+  const SdfPathVector pointInstancers = PointInstancers(table);
   for (const PrimRecord& prim : table.prims) {
-    if (!IsDrawn(prim)) continue;
+    if (!IsGprim(prim)) continue;
+    if (prim.type.IsEmpty() && !prim.instancedBy &&
+        std::any_of(pointInstancers.begin(), pointInstancers.end(),
+                    [&](const SdfPath& instancer) { return prim.path.HasPrefix(instancer); }))
+      continue;
     const std::vector<DrawnCopy>& copies = instances.CopiesOf(prim);
     if (copies.empty()) continue;
     // Flattened: in its prototype's namespace inside instances, else the world.

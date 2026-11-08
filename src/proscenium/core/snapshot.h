@@ -18,7 +18,8 @@ namespace proscenium {
 
 // The schemas a capture copies, the only ones planning reads.
 const PXR_NS::TfTokenVector& PlannedSchemas();
-// The primvars a capture copies, out of each prim's primvars schema: an instancer's instance transforms.
+// The primvars a capture copies, out of each prim's primvars schema: a native instancer's instance transforms, and a
+// point instancer's per-point translations, rotations, and scales.
 const PXR_NS::TfTokenVector& PlannedPrimvars();
 
 struct Snapshot {

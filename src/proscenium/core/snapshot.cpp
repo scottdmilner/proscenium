@@ -28,7 +28,8 @@ const TfTokenVector& PlannedSchemas() {
 }
 
 const TfTokenVector& PlannedPrimvars() {
-  static const TfTokenVector primvars{HdInstancerTokens->instanceTransforms};
+  static const TfTokenVector primvars{HdInstancerTokens->instanceTransforms, HdInstancerTokens->instanceTranslations,
+                                      HdInstancerTokens->instanceRotations, HdInstancerTokens->instanceScales};
   return primvars;
 }
 

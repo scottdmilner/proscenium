@@ -3,10 +3,11 @@
 # (DECISIONS.md "Point instancers"):
 # - Scatter authors no ids, so each point is named by its index: Leaf (an Xform with its own translation, holding
 #   the mesh Blade) at points 0 and 2, Rock (a mesh prototype root) at point 1, and Pebble (a native instance of
-#   Stone) at point 3. Each point has its own position, point 1 an orientation of 120 degrees about (1, 1, 1),
-#   exact in half precision, and point 2 a nonuniform scale, so the order they compose in shows. Point 2 is
-#   invisible (invisibleIds, by index). heat is per point (varying) and groupId constant, on the instancer.
-#   Unused is under its prototypes but no point draws it.
+#   Stone) at point 3. Each point has its own position; point 1 has an orientation of 120 degrees about (1, 1, 1),
+#   exact in half precision, and a nonuniform scale, so the order they compose in shows, and point 2 another scale.
+#   Point 2 is invisible (invisibleIds, by index). heat is per point (varying) and groupId constant, on the
+#   instancer. Unused, a mesh, and Wisp, HermiteCurves, which Hydra doesn't image, are under its prototypes, but no
+#   point draws them, and UsdImaging warns about Wisp.
 # - Tagged authors ids, 10, -3, and 7, each point named by its id, -3 as n3; 7 is invisible (invisibleIds, by id).
 # - Kits holds two native instances of Kit, whose prototype holds the point instancer Spray: each instance's copies
 #   of Spray's points, the instancer named by its instance-proxy path, under the instance root as their floor.
@@ -28,7 +29,7 @@ def Xform "World"
         int[] protoIndices = [0, 1, 0, 2]
         point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)]
         quath[] orientations = [(1, 0, 0, 0), (0.5, 0.5, 0.5, 0.5), (1, 0, 0, 0), (1, 0, 0, 0)]
-        float3[] scales = [(1, 1, 1), (1, 1, 1), (1, 2, 1), (1, 1, 1)]
+        float3[] scales = [(1, 1, 1), (2, 1, 1), (1, 2, 1), (1, 1, 1)]
         int64[] invisibleIds = [2]
         float[] primvars:heat = [0.5, 1.5, 2.5, 3.5] (
             interpolation = "varying"
@@ -70,6 +71,14 @@ def Xform "World"
                 references = </Shapes/Triangle>
             )
             {
+            }
+
+            def HermiteCurves "Wisp"
+            {
+                int[] curveVertexCounts = [2]
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                point3f[] points = [(0, 0, 0), (1, 1, 0)]
+                vector3f[] tangents = [(1, 0, 0), (1, 0, 0)]
             }
         }
     }

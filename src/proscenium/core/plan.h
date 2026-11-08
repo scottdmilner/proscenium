@@ -3,15 +3,15 @@
 // equal plans. Sources are composed-stage paths, and the plan's parts name its resources by their positions in
 // Plan::resources, which mean something within that plan only.
 //
-// Each drawn copy of a gprim, or of a point instancer, which is deferred, is a drawn copy's partition holding an object
-// and its bounds mesh, which the stub application layer draws as its bounds, but for an empty marker's, which holds no
-// data, and a shear parent when its world transform shears: a Blender object holds
-// only location, rotation, and scale, so the object and its parent each hold one, and their product is the world
-// transform (XFORM-03). A mesh's copies share its provisional geometry description; any other gprim's
-// copy is a placeholder. A copy takes each destination's participation from its effective visibility and purpose; an
-// invisible copy stays in the plan, shown in neither, and a copy whose purpose neither destination includes is left
-// out, as is a guide no opinion makes explicitly visible. Per-copy content crosses as structure-of-arrays buffers in
-// Blender's element types, so a consumer reads each once per plan; paths stay tuples.
+// Each drawn copy of a gprim, a native instance's or a point instancer's copies included, is a drawn copy's partition
+// holding an object and its bounds mesh, which the stub application layer draws as its bounds, but for an empty
+// marker's, which holds no data, and a shear parent when its world transform shears: a Blender object holds only
+// location, rotation, and scale, so the object and its parent each hold one, and their product is the world transform
+// (XFORM-03). A mesh's copies share its provisional geometry description; any other gprim's copy is a placeholder. A
+// copy takes each destination's participation from its effective visibility and purpose; an invisible copy stays in the
+// plan, shown in neither, and a copy whose purpose neither destination includes is left out, as is a guide no opinion
+// makes explicitly visible. Per-copy content crosses as structure-of-arrays buffers in Blender's element types, so a
+// consumer reads each once per plan; paths stay tuples.
 #pragma once
 
 #include <pxr/base/gf/matrix4d.h>

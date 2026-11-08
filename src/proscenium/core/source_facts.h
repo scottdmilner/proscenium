@@ -30,6 +30,9 @@ struct SourceInfoTokens {
   // token, on a gprim other than a mesh and on a point instancer: its USD type, which the planner's diagnostics name.
   // Meshes, nearly every gprim, carry none, so their prims need no container for it.
   static const PXR_NS::TfToken& UsdType();
+  // int64 array, on a point instancer that authors ids: each point's id, which names its copies (DECISIONS.md "Point
+  // instancers"). Hydra keeps none. A UsdImaging attribute data source, so animated ids read at the chain's time.
+  static const PXR_NS::TfToken& PointIds();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };

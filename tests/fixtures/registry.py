@@ -518,13 +518,11 @@ FIXTURES: dict[str, Fixture] = {
             evaluation.unsupported_content,
             (
                 # Untranslated types as bounds boxes: authored extents as given, else USD's computed ones.
-                Case("placeholders", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-17", "MODEL-04"), 1),
+                Case("placeholders", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-17", "MODEL-04", "DEFER-01"), 1),
                 # A volume without bounds: an empty marker and a warning.
                 Case("marker", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-17", "MODEL-05"), 1),
                 # Implicit shapes and a NURBS patch as meshes, the inexact ones diagnosed as approximations.
-                Case("approximations", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-16",), 1),
-                # A point instancer: one placeholder, and nothing for its prototype.
-                Case("point-instancer", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DEFER-01",), 1),
+                Case("approximations", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-16", "DEFER-01"), 1),
                 # Each behavior decided on its own: a placeholder keeps its transform, visibility, and purpose.
                 Case("per-behavior", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("MODEL-03", "MODEL-06"), 1),
                 # A supported mesh beneath unsupported curves takes their transform and purpose.

@@ -1,10 +1,10 @@
 """Placeholders, markers, and their diagnostics, through the plan, on F-UNSUPPORTED-CONTENT (M6 plan, C5).
 
-Each untranslated prim, the point instancer included (DEFER-01), is a placeholder with one untranslated-type
-diagnostic naming its source path, whose fallback says what stands in: a box of its usable bounds (MODEL-04), or with
-none an empty marker, an object holding no data (MODEL-05). Its other behaviors stay (MODEL-03). A filter's inexact
-conversion to a mesh is an approximation, and an exact one reports nothing (SNAP-16). Expected values come from the
-fixture.
+Each untranslated prim, such as the curves and points the spec defers (DEFER-01), is a placeholder with one
+untranslated-type diagnostic naming its source path, whose fallback says what stands in: a box of its usable bounds
+(MODEL-04), or with none an empty marker, an object holding no data (MODEL-05). Its other behaviors stay (MODEL-03). A
+filter's inexact conversion to a mesh is an approximation, and an exact one reports nothing (SNAP-16). Expected values
+come from the fixture.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _diagnostics(scene: evaluation.UnsupportedScene, code: DiagnosticCode) -> di
 def test_each_untranslated_prim_has_one_diagnostic_naming_its_fallback(
     unsupported: evaluation.UnsupportedScene,
 ) -> None:
-    # SNAP-17, MODEL-04, MODEL-05: the basis curves, points, HermiteCurves, volume, and point instancer.
+    # SNAP-17, MODEL-04, MODEL-05: the basis curves, points, HermiteCurves, and volume.
     untranslated = _diagnostics(unsupported, DiagnosticCode.UNTRANSLATED_TYPE)
     assert untranslated.keys() == unsupported.placeholders.keys()
     for path, expected in unsupported.placeholders.items():
@@ -69,7 +69,7 @@ def test_a_prim_without_usable_bounds_is_an_empty_marker(unsupported: evaluation
 
 def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.UnsupportedScene) -> None:
     # MODEL-03: beside its diagnostic, each placeholder has its world transform, participation, and correspondence
-    # entry; DEFER-01: the point instancer is one placeholder from its authored extent, and its prototype no copy.
+    # entry.
     plan = plan_at(unsupported.stage, 0.0)
     shown = copies(plan)
     entries = {c.source for c in plan.correspondence}
@@ -77,10 +77,6 @@ def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.Unsuppo
         assert path in entries, path
         assert_world(shown[path], expected.world)
         assert (shown[path].viewport, shown[path].render) == (expected.viewport, expected.render), path
-    scatter = unsupported.placeholders["/World/Scatter"].bounds
-    assert scatter is not None
-    assert shown["/World/Scatter"].bounds == (*scatter[0], *scatter[1])
-    assert entries.isdisjoint(unsupported.not_drawn)
 
 
 def test_inexact_filter_conversions_are_approximations(unsupported: evaluation.UnsupportedScene) -> None:

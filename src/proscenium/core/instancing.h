@@ -1,13 +1,15 @@
-// Provisional (M6 plan, B3; M10 completes them): the drawn copies of a prim inside native instances, mapped back from
-// Hydra's instancers to composed-stage sources, as HdxPrimOriginInfo does: walk instancedBy upward and fold in each
-// level's instanceLocations and instance transforms. Sources and contexts are never Hydra paths or instance indices.
-// A point instancer's prototypes have no copies (DEFER-01).
+// Provisional (M6 plan, B3 and C11; M10 completes them): the drawn copies of a prim inside native instances or a point
+// instancer's prototypes, mapped back from Hydra's instancers to composed-stage sources, as HdxPrimOriginInfo does:
+// walk instancedBy upward and fold in each level's instanceLocations and instance transforms, or a point instancer's
+// points. Sources and contexts are never Hydra paths or instance indices: a point instancer's copy is named by its
+// point-instance path (DECISIONS.md "Point instancers").
 #pragma once
 
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/path.h>
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -22,9 +24,10 @@ namespace proscenium {
 struct DrawnCopy {
   PXR_NS::SdfPath hydraRoot = PXR_NS::SdfPath::AbsoluteRootPath();
   PXR_NS::SdfPath usdRoot = PXR_NS::SdfPath::AbsoluteRootPath();
-  PXR_NS::SdfPathVector context;      // native-instance roots on the composed stage, outermost first
-  PXR_NS::GfMatrix4d world{1.0};      // the innermost instance root's, USD's row-vector convention
-  PXR_NS::SdfPath hydraInstanceRoot;  // the innermost instance root's Hydra path; empty outside instancing
+  PXR_NS::SdfPathVector context;  // native-instance roots on the composed stage, outermost first
+  PXR_NS::GfMatrix4d world{1.0};  // the innermost instance root's, USD's row-vector convention
+  // The innermost native-instance root's Hydra path; empty outside native instancing and for a point's copy.
+  PXR_NS::SdfPath hydraInstanceRoot;
   bool visible = true;  // every enclosing instancer's mask, which folds in each instance root's visibility
   // The nearest authored guide, proxy, and render visibility at or above the innermost instance root, per purpose.
   PurposeVisibility purposeVisibility;
@@ -75,6 +78,9 @@ class InstanceResolver {
                                             int depth);
   std::vector<DrawnCopy> Expand(const PrimRecord& instancer, const InstancerRecord& topology,
                                 const PXR_NS::SdfPath& prototypeRoot, int depth);
+  // A point instancer's copies of prototype `p`: one per point drawing it, of each copy of the instancer.
+  std::vector<DrawnCopy> ExpandPoints(const PrimRecord& instancer, const InstancerRecord& topology, std::size_t p,
+                                      int depth);
   // Instancers are reported by Hydra path in the message: a native instancer has no source entity.
   void Report(const PXR_NS::SdfPath& hydraPath, DiagnosticCode code, const std::string& message);
 

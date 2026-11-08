@@ -3,7 +3,9 @@
 A source entity is identified by its prim path in the composed stage, persisted as the path
 string. Inside native-instance contents that is the instance-proxy path, which carries the
 instance context: two copies of a prototype's prim through different instances have different
-identifiers. It is never a Hydra-generated path or an instancer index. The instance context and
+identifiers. A point instancer's copy is identified by its point-instance path, which names the
+point by its authored id or its index and which no prim has (DECISIONS.md "Point instancers").
+It is never a Hydra-generated path or a Hydra instance index. The instance context and
 the entity's floor are computed from a stage when needed, never stored, so an identifier resolves
 against whichever generation is published next.
 """

@@ -2,8 +2,8 @@
 
 Each copy's source is its instance-proxy path on the composed stage, with its instance context, and its world
 transform honors a reset transform stack inside an instance (WORKAROUND for OpenUSD #862), on F-TRANSFORMS' case
-"reset-stack" (XFORM-01, XFORM-02) and F-NESTED-STRESS' "transforms" (XFORM-02, XFORM-03). A point instancer's
-prototypes have no copies (DEFER-01). Expected values come from the fixtures, or from USD's own APIs.
+"reset-stack" (XFORM-01, XFORM-02) and F-NESTED-STRESS' "transforms" (XFORM-02, XFORM-03). Point instancers'
+copies are test_core_point_instancers.py's. Expected values come from the fixtures, or from USD's own APIs.
 """
 
 from __future__ import annotations
@@ -100,12 +100,6 @@ def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appeara
         assert resource.covers == (resource.entity,)
         assert source_entities.identifier(Sdf.Path(resource.entity)) == resource.entity
         assert stress.stage.GetPrimAtPath(resource.entity).IsInstanceProxy(), resource.entity
-
-
-def test_point_instancer_prototypes_have_no_copies(tmp_path: Path) -> None:
-    with evaluation.unsupported_content(tmp_path) as unsupported:
-        sources = set(copies(plan_at(unsupported.stage, 0.0)))
-    assert sources.isdisjoint(unsupported.not_drawn)
 
 
 def test_known_gap_hydra_ignores_a_reset_inside_an_instance(stress: appearance.StressScene) -> None:
