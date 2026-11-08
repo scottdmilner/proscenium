@@ -69,6 +69,8 @@ class DiagnosticCode(StrEnum):
     PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
     UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
     INVALID_INSTANCER = "invalid-instancer"  # instancing data that can't be resolved
+    USD_WARNING = "usd-warning"  # a Tf warning USD or Hydra posted reading the source: mostly something declined
+    USD_ERROR = "usd-error"  # a Tf error USD or Hydra posted reading the source: content it couldn't read
 
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
@@ -89,6 +91,8 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.PROJECTIVE_TRANSFORM: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
     DiagnosticCode.UNSUPPORTED_INSTANCING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
     DiagnosticCode.INVALID_INSTANCER: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
+    DiagnosticCode.USD_WARNING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.USD_ERROR: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
 }
 
 

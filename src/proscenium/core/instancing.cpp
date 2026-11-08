@@ -170,6 +170,7 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
       copy.usdRoot = outer.Map(locations[index]);
       copy.context = outer.context;
       copy.context.push_back(copy.usdRoot);
+      copy.hydraInstanceRoot = locations[index];
       // Row vectors: the instance's own transform first, then the outer copy's, unless it resets.
       const GfMatrix4d& own = (*transforms)[index];
       copy.world = resets ? own : own * outer.world;

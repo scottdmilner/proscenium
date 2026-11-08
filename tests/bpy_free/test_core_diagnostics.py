@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
+from pxr import Usd
 
 from fixtures import appearance, evaluation
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
@@ -19,7 +20,7 @@ from proscenium.binding.source_access.identifiers import BindingId
 from proscenium.core import _core
 from proscenium.synchronization import evaluation as planning
 
-from .plan_checks import plan_at
+from .plan_checks import CONTEXT, SETTINGS, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -71,6 +72,49 @@ def test_valid_content_plans_with_no_diagnostics(
         stages = scene.stages.values() if isinstance(scene, evaluation.UnitsScene) else [scene.stage]
         for stage in stages:
             assert plan_at(stage, 0.0).diagnostics == ()
+
+
+def _usd_warnings(plan: _core.Plan) -> list[Diagnostic]:
+    return [d for d in planning.plan_diagnostics(BINDING, plan) if d.code is DiagnosticCode.USD_WARNING]
+
+
+def test_a_warning_usd_posts_while_capturing_names_its_prim(tmp_path: Path) -> None:
+    # UsdImaging warns that its HermiteCurves adapter has no data-source support, on F-UNSUPPORTED-CONTENT's Tangents,
+    # while the chain is built and again whenever a capture lists Tangents' children: one diagnostic per capture,
+    # naming Tangents, through one chain and its later captures alike.
+    with evaluation.unsupported_content(tmp_path) as unsupported:
+        chain = _core.SceneIndexChain(unsupported.stage)
+        try:
+            plans = [_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT) for t in (0.0, 1.0, 1.0)]
+        finally:
+            chain.release()
+    for plan in plans:
+        (warning,) = _usd_warnings(plan)
+        assert (warning.source_path, warning.category) == ("/World/Tangents", DiagnosticCategory.UNSUPPORTED)
+
+
+def test_a_warning_inside_a_prototype_is_reported_once_per_usd_prim(tmp_path: Path) -> None:
+    # Two HermiteCurves in F-NESTED-STRESS' Leaf prototype, which Hydra's instance aggregation splits into several
+    # prototypes of its own: one warning for each, for all of its copies, naming the first in source order and counting
+    # them.
+    names = ("Strand", "Wisp")
+    with appearance.nested_stress(tmp_path) as stress:
+        stage = stress.stage
+        for name in names:
+            stage.DefinePrim(f"/Prototypes/Leaf/{name}", "HermiteCurves")
+        copies = {
+            name: sorted(
+                str(prim.GetPath())
+                for prim in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
+                if prim.GetName() == name and prim.IsInstanceProxy()
+            )
+            for name in names
+        }
+        warnings = _usd_warnings(plan_at(stage, 0.0))
+    assert {w.source_path: f"{len(copies['Strand'])} drawn copies" in w.message for w in warnings} == {
+        sources[0]: True for sources in copies.values()
+    }
+    assert all(len(sources) == 6 for sources in copies.values())
 
 
 def test_a_code_the_list_lacks_raises() -> None:

@@ -36,6 +36,11 @@ const TfToken& SourceInfoTokens::ResetsXformStack() {
   return token;
 }
 
+const TfToken& SourceInfoTokens::InstancePrototype() {
+  static const TfToken token("instancePrototype");
+  return token;
+}
+
 LazyContainer::LazyContainer(std::function<HdContainerDataSourceHandle()> build, std::function<uint64_t()> generation)
     : build_(std::move(build)), generation_(std::move(generation)) {}
 
@@ -75,6 +80,10 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
   if (const UsdGeomXformable xformable{prim}; xformable && xformable.GetResetXformStack()) {
     names.push_back(SourceInfoTokens::ResetsXformStack());
     values.push_back(yes);
+  }
+  if (prim.IsInstance()) {
+    names.push_back(SourceInfoTokens::InstancePrototype());
+    values.push_back(HdRetainedTypedSampledDataSource<TfToken>::New(prim.GetPrototype().GetPath().GetToken()));
   }
   // Authored opinions only: the fallbacks depend on having no opinion anywhere up the hierarchy.
   if (const UsdGeomImageable imageable{prim}) {

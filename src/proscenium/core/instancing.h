@@ -22,9 +22,10 @@ namespace proscenium {
 struct DrawnCopy {
   PXR_NS::SdfPath hydraRoot = PXR_NS::SdfPath::AbsoluteRootPath();
   PXR_NS::SdfPath usdRoot = PXR_NS::SdfPath::AbsoluteRootPath();
-  PXR_NS::SdfPathVector context;  // native-instance roots on the composed stage, outermost first
-  PXR_NS::GfMatrix4d world{1.0};  // the innermost instance root's, USD's row-vector convention
-  bool visible = true;            // every enclosing instancer's mask, which folds in each instance root's visibility
+  PXR_NS::SdfPathVector context;      // native-instance roots on the composed stage, outermost first
+  PXR_NS::GfMatrix4d world{1.0};      // the innermost instance root's, USD's row-vector convention
+  PXR_NS::SdfPath hydraInstanceRoot;  // the innermost instance root's Hydra path; empty outside instancing
+  bool visible = true;  // every enclosing instancer's mask, which folds in each instance root's visibility
   // The nearest authored guide, proxy, and render visibility at or above the innermost instance root, per purpose.
   PurposeVisibility purposeVisibility;
 

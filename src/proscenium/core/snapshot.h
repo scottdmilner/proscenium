@@ -12,6 +12,8 @@
 
 #include <memory>
 
+#include "diagnostics.h"
+
 namespace proscenium {
 
 // The schemas a capture copies, the only ones planning reads.
@@ -26,6 +28,9 @@ struct Snapshot {
   // "Coordinate Conversion").
   double metersPerUnit;
   PXR_NS::TfToken upAxis;  // UsdGeomTokens' y or z
+  // The Tf errors and warnings posted while capturing, each exact repeat once: first the chain's own, with no source
+  // (those posted while building it join its first capture), then each prim's, about its Hydra path, in prim order.
+  Diagnostics diagnostics;
 };
 
 using SnapshotPtr = std::shared_ptr<const Snapshot>;

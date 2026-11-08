@@ -23,6 +23,10 @@ struct SourceInfoTokens {
   // bool, on an xformable prim whose op order resets the transform stack, which Hydra's flattening hides
   // (WORKAROUND for OpenUSD #862, ResetsBelow in instancing.h)
   static const PXR_NS::TfToken& ResetsXformStack();
+  // token, on an instance root: its USD prototype's path (/__Prototype_N), which names the USD prim behind each copy
+  // Hydra's instance aggregation makes, so a problem with it is reported once per USD prim. A token, since Hydra's
+  // prototype propagation reroots path-valued data sources into the copy's namespace.
+  static const PXR_NS::TfToken& InstancePrototype();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };

@@ -50,6 +50,7 @@ struct PrimRecord {
   PXR_NS::TfToken purpose;              // flattened, in Hydra's names (USD's default is geometry); empty for none
   PurposeVisibility purposeVisibility;  // source-info filter: authored guide, proxy, and render visibility
   PXR_NS::SdfPath originPath;           // primOrigin/scenePath: prototype-relative inside prototypes
+  PXR_NS::TfToken instancePrototype;    // source-info filter: on an instance root, its USD prototype's path
   std::optional<PXR_NS::GfMatrix4d> matrix;  // flattened
   std::optional<PXR_NS::GfRange3d> extent;   // local
   std::vector<PrimvarRecord> primvars;       // the snapshot's, PlannedPrimvars() only

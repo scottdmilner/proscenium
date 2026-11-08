@@ -17,7 +17,8 @@ namespace proscenium {
 class SceneIndexChain {
  public:
   // The stage arrives as a weak pointer, as StageHandle's does, and the chain's stage scene index holds its own
-  // strong reference until Release(). Throws std::invalid_argument for an expired or null stage.
+  // strong reference until Release(). Throws std::invalid_argument for an expired or null stage. Tf errors posted
+  // while building it raise; its warnings join the first capture's diagnostics.
   explicit SceneIndexChain(const PXR_NS::UsdStagePtr& stage);
   ~SceneIndexChain();
   SceneIndexChain(const SceneIndexChain&) = delete;
@@ -28,7 +29,8 @@ class SceneIndexChain {
   PXR_NS::UsdStagePtr Stage() const { return handle_.Stage(); }
 
   // Moves the chain to `time`, applies the stage's edits since the last capture, and copies what planning reads from
-  // the terminal scene index into a new snapshot. Runs without the GIL. Throws std::runtime_error once released.
+  // the terminal scene index into a new snapshot, with the Tf errors and warnings posted meanwhile as its diagnostics.
+  // Runs without the GIL. Throws std::runtime_error once released.
   SnapshotPtr Capture(PXR_NS::UsdTimeCode time);
 
   // Drops the chain and the handle's reference, so the core keeps no released stage alive. Idempotent.
@@ -36,10 +38,13 @@ class SceneIndexChain {
   bool Released() const { return handle_.Released(); }
 
  private:
+  void Build();  // the chain's scene indices, over the handle's stage
+
   StageHandle handle_;
   PXR_NS::UsdImagingSceneIndices indices_;
   SourceInfoSceneIndexRefPtr sourceInfo_;    // right after the stage scene index; null once released
   PXR_NS::HdSceneIndexBaseRefPtr terminal_;  // the last in the chain, which captures read; null once released
+  Diagnostics pending_;  // warnings posted while building the chain, until the first capture takes them
 };
 
 }  // namespace proscenium

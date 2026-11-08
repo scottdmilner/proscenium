@@ -12,9 +12,11 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -34,6 +36,7 @@ struct DrawnGprim {
   GfMatrix4d world{1.0};            // USD's row-vector convention
   std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
   const PrimRecord* prim;           // the Hydra prim it is a copy of
+  const DrawnCopy* copy;            // the resolver's, which outlives it
   const PrimRecord* mesh;           // the same, for a mesh; null for any other gprim
   TfToken purpose;                  // USD's name
   bool visible;                     // effectively, for its own purpose
@@ -124,6 +127,96 @@ std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
 bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
 
+// The composed-stage source of the prim drawn in `copy`: an instance-proxy path inside instances. Outside instancing,
+// the stage scene index names a prim by its USD path, and the filtering scene indices that convert it keep that.
+SdfPath SourceOf(const PrimRecord& prim, const DrawnCopy& copy) {
+  return copy.context.empty() && !prim.originPath.IsEmpty() ? prim.originPath : copy.Map(prim.path);
+}
+
+// Problems repeated across a USD prim's copies, each reported once, a repeated problem aggregated (with the user): at
+// its first copy in source order, across every Hydra prim that copies it, its message counting the copies it covers.
+// The USD prim is found only when a problem is reported, so planning without problems pays nothing for it.
+class CopyReports {
+ public:
+  // `table` must outlive the reports.
+  CopyReports(const PrimTable& table, Diagnostics& to) : table_(table), to_(to) {}
+
+  // Reports `diagnostic` about `copies` of `prim`, or adds them to an equal problem's report.
+  void Add(Diagnostic diagnostic, const PrimRecord& prim, const std::vector<DrawnCopy>& copies) {
+    // Every copy of a Hydra prim copies one USD prim.
+    Report& report = Find(std::move(diagnostic), UsdPrimOf(prim, copies.front()));
+    for (const DrawnCopy& copy : copies) Count(report, SourceOf(prim, copy));
+  }
+
+  // Reports `diagnostic` about one copy of `prim`, at `source`, or adds it to an equal problem's report.
+  void Add(Diagnostic diagnostic, const PrimRecord& prim, const DrawnCopy& copy, const SdfPath& source) {
+    Count(Find(std::move(diagnostic), UsdPrimOf(prim, copy)), source);
+  }
+
+  // Names each report's first copy and counts its copies in its message.
+  void Finish() {
+    for (auto& [key, report] : reports_) {
+      Diagnostic& diagnostic = to_[report.index];
+      diagnostic.source = report.first;
+      if (report.count > 1)
+        diagnostic.message +=
+            " (for its " + std::to_string(report.count) + " drawn copies; the first in source order is named)";
+    }
+  }
+
+ private:
+  struct Report {
+    std::size_t index = 0;  // in to_
+    SdfPath first;
+    std::size_t count = 0;
+  };
+
+  // The USD prim behind `prim` in `copy`, named the same for every copy Hydra's instance aggregation makes of it:
+  // inside instances, its path in its innermost instance root's USD prototype (/__Prototype_N/...), else its own
+  // path, which outside instancing is its USD path. Without the prototype fact, the Hydra prim stands for it.
+  [[nodiscard]] SdfPath UsdPrimOf(const PrimRecord& prim, const DrawnCopy& copy) const {
+    const PrimRecord* root = copy.hydraInstanceRoot.IsEmpty() ? nullptr : table_.Find(copy.hydraInstanceRoot);
+    if (!root || root->instancePrototype.IsEmpty()) return prim.path;
+    return SdfPath(root->instancePrototype).AppendPath(prim.path.MakeRelativePath(copy.hydraRoot));
+  }
+
+  Report& Find(Diagnostic diagnostic, SdfPath usdPrim) {
+    const auto [found, added] = reports_.try_emplace({diagnostic.code, diagnostic.message, std::move(usdPrim)});
+    if (added) {
+      found->second.index = to_.size();
+      to_.push_back(std::move(diagnostic));
+    }
+    return found->second;
+  }
+
+  static void Count(Report& report, const SdfPath& source) {
+    if (report.count++ == 0 || source < report.first) report.first = source;
+  }
+
+  const PrimTable& table_;
+  Diagnostics& to_;
+  std::map<std::tuple<DiagnosticCode, std::string, SdfPath>, Report> reports_;
+};
+
+// The snapshot's diagnostics as the plan's, each about a prim reported once per USD prim (CopyReports). One about no
+// prim, or a prim with no copies, names no source, and its message names the Hydra prim, as the bridge's planner does.
+void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, InstanceResolver& instances,
+                          Diagnostics& to) {
+  CopyReports reports(table, to);
+  for (Diagnostic diagnostic : snapshot.diagnostics) {
+    const PrimRecord* prim = diagnostic.source.IsEmpty() ? nullptr : table.Find(diagnostic.source);
+    const std::vector<DrawnCopy>* copies = prim ? &instances.CopiesOf(*prim) : nullptr;
+    if (copies && !copies->empty()) {
+      reports.Add(std::move(diagnostic), *prim, *copies);
+      continue;
+    }
+    if (!diagnostic.source.IsEmpty()) diagnostic.message += " (Hydra prim " + diagnostic.source.GetString() + ")";
+    diagnostic.source = SdfPath();
+    to.push_back(std::move(diagnostic));
+  }
+  reports.Finish();
+}
+
 // A drawn copy of each gprim in `table`, sorted by source, with its world transform composed by `instances`.
 std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& instances) {
   std::vector<DrawnGprim> gprims;
@@ -141,19 +234,8 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
     for (const DrawnCopy& copy : copies) {
       const TfToken* opinion = PurposeVisibilityOpinion(table, prim, copy);
       const bool explicitGuide = purpose == UsdGeomTokens->guide && opinion && *opinion == UsdGeomTokens->visible;
-      DrawnGprim gprim{copy.Map(prim.path),
-                       copy.context,
-                       resets ? local : local * copy.world,
-                       prim.extent,
-                       &prim,
-                       mesh,
-                       purpose,
-                       EffectivelyVisible(table, prim, copy),
-                       explicitGuide};
-      // Outside instancing, the stage scene index names a prim by its USD path, and the filtering scene indices
-      // that convert it keep that.
-      if (copy.context.empty() && !prim.originPath.IsEmpty()) gprim.source = prim.originPath;
-      gprims.push_back(std::move(gprim));
+      gprims.push_back({SourceOf(prim, copy), copy.context, resets ? local : local * copy.world, prim.extent, &prim,
+                        &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide});
     }
   }
   std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
@@ -199,12 +281,11 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   const PrimTable table = ReadPrims(snapshot);
   InstanceResolver instances(table, /*honorResets=*/true);
   const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
-  plan->diagnostics = instances.Diagnostics();
-  // The Hydra prims with a projective copy: each is reported once, a repeated problem aggregated, at its first such
-  // copy in source order, so the copies of a prim inside a prototype share one diagnostic, whose message counts them.
-  // Each reported prim's diagnostic index in plan->diagnostics and how many copies it covers, and by prim, its entry.
-  std::vector<std::pair<std::size_t, std::size_t>> projective;
-  std::unordered_map<const PrimRecord*, std::size_t> projectivePrims;
+  // Capture's first, then the resolver's, which mapping capture's can add to, then planning's own.
+  AddSourceDiagnostics(snapshot, table, instances, plan->diagnostics);
+  plan->diagnostics.insert(plan->diagnostics.end(), instances.Diagnostics().begin(), instances.Diagnostics().end());
+  // Planning's own problems with a copy, reported once per USD prim.
+  CopyReports planned(table, plan->diagnostics);
   const GfMatrix4d correction = Correction(snapshot, settings, context);
   plan->copyWorlds.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
@@ -218,14 +299,14 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyRender.push_back(gprim.visible && inRender);
     // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
     const GfMatrix4d corrected = gprim.world * correction;
-    if (corrected.GetColumn(3) != AffineColumn()) {
-      const auto [found, added] = projectivePrims.try_emplace(gprim.prim, projective.size());
-      if (added) {
-        projective.emplace_back(plan->diagnostics.size(), 0);
-        plan->diagnostics.push_back({DiagnosticCode::kProjectiveTransform, gprim.source, {}, {}, {}, {}});
-      }
-      ++projective[found->second].second;
-    }
+    if (corrected.GetColumn(3) != AffineColumn())
+      planned.Add({DiagnosticCode::kProjectiveTransform,
+                   {},
+                   "The world transform's projective part is dropped, so it is placed by its affine part",
+                   {},
+                   {},
+                   {}},
+                  *gprim.prim, *gprim.copy, gprim.source);
     const GfMatrix4d world = Affine(corrected);
     const bool sheared = Sheared(world);
     // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
@@ -270,12 +351,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyGeometries.push_back(geometry);
     plan->copyPlaceholders.push_back(placeholder);
   }
-  for (const auto& [index, count] : projective) {
-    plan->diagnostics[index].message =
-        count == 1 ? "The world transform's projective part is dropped, so it is placed by its affine part"
-                   : "The world transform's projective part is dropped, so its " + std::to_string(count) +
-                         " drawn copies are placed by their affine part; the first in source order is named";
-  }
+  planned.Finish();
   return plan;
 }
 
