@@ -18,6 +18,7 @@ from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, Resul
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.synchronization import removal
+from support.blend import prim_name
 from support.destinations import destination
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ def _fail_retirement(monkeypatch: pytest.MonkeyPatch) -> None:
     remove = removal._batch_remove  # noqa: SLF001 - the step's module function
 
     def failing(datablocks: Sequence[bpy.types.ID]) -> None:
-        if any(d.name.split(".")[0] == FAILING for d in datablocks):
+        if any(prim_name(d) == FAILING for d in datablocks):
             raise RuntimeError("injected failure")
         remove(datablocks)
 
@@ -104,7 +105,7 @@ def test_a_failed_retirement_completes_with_issues(
         assert all(e.diagnostic.resource == k for k, e in ledger.items())
         assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(ledger.items()))
         leftovers = [e.datablock for e in ledger.values()]
-        assert sorted(d.name for d in leftovers if d is not None) == [FAILING, FAILING]
+        assert sorted(prim_name(d) for d in leftovers if d is not None) == [FAILING, FAILING]
         for datablock in leftovers:
             assert datablock is not None and datablock.session_uid in old_uids
             assert ownership.of(datablock).claims == ()  # noncanonical: no manifest names it
@@ -172,7 +173,7 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         handle = _binding(bindings, scene)
         first, second = scene.time_codes
         assert handle.synchronize(first).state is ResultState.SUCCESS
-        kept = bpy.data.collections["Shot"].objects[FAILING]
+        (kept,) = (o for o in bpy.data.collections["Shot"].objects if prim_name(o) == FAILING)
         mesh = kept.data
         users = bpy.data.collections.new("Mine")
         bpy.data.scenes["Scene"].collection.children.link(users)

@@ -1,16 +1,33 @@
-"""Save/reopen support, and a collection's content as plain data, for tests in the bpy wheel or the Blender binary."""
+"""Save/reopen, collection content, and managed names, for tests in the bpy wheel or the Blender binary.
+
+A collection's content comes back as plain data, and a managed datablock's name gives back the prim it is named for.
+"""
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 import bpy
+
+# A managed object's name before its prim's (DECISIONS.md "Managed object names"), as application.py writes it.
+_MANAGED_PREFIX = re.compile(r"~\d{6}\.\d{7} ")
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
     from mathutils import Vector
+
+
+def prim_name(datablock: bpy.types.ID) -> str:
+    """The name of the prim a managed datablock is named for.
+
+    An object's or bounds mesh's name after its generation and ordinal, or another datablock's name without Blender's
+    numeric suffix (`Still.001`).
+    """
+    name = _MANAGED_PREFIX.sub("", datablock.name, count=1)
+    return name if name != datablock.name else name.split(".")[0]
 
 
 def save_and_reopen(path: Path) -> None:

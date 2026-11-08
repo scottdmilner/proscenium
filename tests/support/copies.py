@@ -15,6 +15,7 @@ import bpy
 from proscenium.binding.persistence import configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
+from support import blend
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -24,6 +25,12 @@ if TYPE_CHECKING:
 
 
 MANAGED = "Still"  # one of the published objects: /World/Still's placeholder
+
+
+def managed_object(prim: str) -> bpy.types.Object:
+    """The published object named for `prim` in the Shot binding's collection."""
+    (obj,) = (o for o in _shot().objects if blend.prim_name(o) == prim)
+    return obj
 
 
 def run(route: str, tmp_path: Path) -> None:
@@ -174,7 +181,7 @@ def _unreadable_index(_: Path) -> None:
 
 def _duplicate_object(_: Path) -> None:
     """Object > Duplicate (Shift+D) on a managed object."""
-    obj = _shot().objects[MANAGED]
+    obj = managed_object(MANAGED)
     view_layer = bpy.context.view_layer
     assert view_layer is not None
     obj.select_set(True)

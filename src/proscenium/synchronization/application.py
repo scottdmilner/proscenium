@@ -3,9 +3,10 @@
 Each of the plan's drawn copies becomes an object drawing its bounding box and the bounds mesh it draws: the eight
 corners of its local bounds, a mesh's provisional geometry description's or a placeholder's, or no vertices when the
 plan has none. An empty marker's object holds no data. Each object is hidden in each destination it doesn't display
-in, and a sheared copy's sits under an unselectable empty, its shear parent. They're prepared in a staging collection
-no scene links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the
-published generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
+in, and a sheared copy's sits under an unselectable empty, its shear parent. Objects and their bounds meshes are named
+so each lands at the end of Blender's sorted lists (_MANAGED_NAME). They're prepared in a staging collection no scene
+links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
+generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.entry_keys), and the entries preparation makes are the manifest a publication writes.
@@ -19,6 +20,8 @@ cached bounds, visibility, and content appearing at a cached time code.
 from __future__ import annotations
 
 import functools
+import itertools
+import re
 from typing import TYPE_CHECKING
 
 import bpy
@@ -31,6 +34,11 @@ if TYPE_CHECKING:
 
     from ..core import _core
     from .prepared_work import PreparedWork
+
+# A managed object's name, which its bounds mesh shares: a tilde, which sorts after ASCII letters, digits, and most
+# punctuation, then its generation and its ordinal in the plan's order, zero-padded, then its prim's name, so each lands
+# at the end of Blender's sorted lists (DECISIONS.md "Managed object names").
+_MANAGED_NAME = re.compile(r"~(\d{6})\.\d{7} ")
 
 REPRESENTATION_VERSION = 1  # the representation this layer applies, which the planning context names
 
@@ -50,6 +58,9 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
     shears = memoryview(plan.copy_shears).tolist()
     parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
+    # Objects, and their bounds meshes, are named in the plan's order after a new generation (DECISIONS.md "Managed
+    # object names").
+    prefix, ordinals = f"~{_next_generation():06d}.", itertools.count()
     # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
     # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
     # published display of as many, ad hoc).
@@ -61,13 +72,14 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         source = resources[object_index].entity
         name = source.rsplit("/", 1)[-1]
         made: list[tuple[int, str, bpy.types.ID]] = []
+        object_name = f"{prefix}{next(ordinals):07d} {name}"
         mesh = None
         if (mesh_index := used.get(manifests.RepresentationRole.BOUNDS_MESH)) is not None:
-            mesh = bpy.data.meshes.new(name)
+            mesh = bpy.data.meshes.new(object_name)
             work.track(keys[mesh_index], identities[mesh_index].role, mesh)
             mesh.from_pydata(_corners(bounds[copy]), [], [])
             made.append((mesh_index, keys[mesh_index], mesh))
-        obj = bpy.data.objects.new(name, mesh)
+        obj = bpy.data.objects.new(object_name, mesh)
         work.track(object_key, identities[object_index].role, obj)
         work.staging.objects.link(obj)
         made.append((object_index, object_key, obj))
@@ -79,7 +91,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         else:
             # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
             parent_index = used[manifests.RepresentationRole.SHEAR_PARENT]
-            parent = bpy.data.objects.new(f"{name} shear", None)
+            parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
             work.track(keys[parent_index], identities[parent_index].role, parent)
             work.staging.objects.link(parent)
             hidden["hide_viewport"].append(False)
@@ -172,6 +184,18 @@ def _remove_key(fcurve: bpy.types.FCurve, time_code: float) -> None:
     points = fcurve.keyframe_points
     if (point := next((p for p in points if p.co[0] == time_code), None)) is not None:
         points.remove(point)
+
+
+def _next_generation() -> int:
+    """One more than the generation in the last managed object name, or 0 for none.
+
+    Blender keeps its objects sorted by name, so the last is usually managed and found at once; a user object sorting
+    after the managed ones is passed over.
+    """
+    for obj in reversed(bpy.data.objects):
+        if match := _MANAGED_NAME.match(obj.name):
+            return int(match.group(1)) + 1
+    return 0
 
 
 def _bounds(plan: _core.Plan) -> list[Sequence[float]]:

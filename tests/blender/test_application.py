@@ -189,6 +189,42 @@ def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_pa
                 assert isinstance(data, bpy.types.Mesh) and len(data.vertices) == 8, path
 
 
+def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindings, tmp_path: Path) -> None:
+    # DECISIONS.md "Managed object names": a tilde, the generation, and the object's ordinal in the plan's order, then
+    # its prim's name, so each new object sorts after every existing one, the display it replaces' included; its bounds
+    # mesh shares its name. A sheared copy's shear parent takes the next ordinal after its object. On F-TRANSFORMS,
+    # beside a user's objects.
+    with evaluation.transforms(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        for name in ("Chair", "zebra", "~zzz user"):  # the last sorts after every managed name
+            bpy.data.objects.new(name, None)
+        binding_id = _binding(bindings)
+        first, second = _prepared(binding_id, plan), _prepared(binding_id, plan)
+        for generation, work in enumerate((first, second)):
+            made = [d for d in work.datablocks.values() if isinstance(d, bpy.types.Object)]
+            names = sorted(o.name for o in made)
+            expected_count = sum(1 for r in plan.resources if r.role in ("object", "shear parent"))
+            assert len(names) == expected_count
+            assert names == [
+                f"~{generation:06d}.{ordinal:07d} {name.split(' ', 1)[1]}" for ordinal, name in enumerate(names)
+            ]
+        # In the plan's order: each object's prim, then a shear parent's after its object.
+        resources = plan.resources
+        prims = [
+            r.entity.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
+            for r in resources
+            if r.role in ("object", "shear parent")
+        ]
+        assert [n.split(" ", 1)[1] for n in sorted(o.name for o in first.staging.objects)] == prims
+        # The managed objects follow the user's, but for the one named to sort after them, the second generation's after
+        # the first's.
+        managed = [o.name for o in (*first.staging.objects, *second.staging.objects)]
+        assert [o.name for o in bpy.data.objects] == ["Chair", "zebra", *sorted(managed), "~zzz user"]
+        assert max(o.name for o in first.staging.objects) < min(o.name for o in second.staging.objects)
+        for obj in (*first.staging.objects, *second.staging.objects):
+            assert obj.data is None or obj.data.name == obj.name, obj.name
+
+
 def _close(shown: Matrix, expected: Matrix) -> bool:
     return all(abs(shown[r][c] - expected[r][c]) <= 1e-5 for r in range(4) for c in range(4))
 
