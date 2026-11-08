@@ -122,7 +122,17 @@ def test_transforms_projective(transforms: evaluation.TransformsScene) -> None:
     affine = Gf.Matrix4d(matrix)
     affine.SetColumn(3, Gf.Vec4d(0, 0, 0, 1))
     assert _close(affine, transforms.projective_affine)
-    assert _drawn(transforms.projective_stage) == {transforms.projective}
+    stage = transforms.projective_stage
+    assert _drawn(stage) == {transforms.projective, *transforms.projective_instanced}
+    for path, expected in transforms.projective_instanced.items():
+        assert stage.GetPrimAtPath(path).IsInstanceProxy(), path
+        world = _world(stage, path)
+        assert world.GetColumn(3) != Gf.Vec4d(0, 0, 0, 1), path
+        world.SetColumn(3, Gf.Vec4d(0, 0, 0, 1))
+        assert _close(world, expected), path
+    assert transforms.projective_reported == tuple(
+        sorted((transforms.projective, min(transforms.projective_instanced)))
+    )
 
 
 # --- F-UNITS-UP-AXIS -----------------------------------------------------------------------------------------

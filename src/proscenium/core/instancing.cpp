@@ -9,6 +9,7 @@
 #include <array>
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <utility>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -91,7 +92,11 @@ const std::vector<DrawnCopy>& InstanceResolver::CopiesOf(const PrimRecord& prim,
   if (!prim.instancedBy) return top_;
   const InstancedByRecord& by = *prim.instancedBy;
   // Native instancing gives each prototype copy exactly one instancer.
-  if (by.instancers.size() != 1 || by.prototypeRoots.size() != 1) return none_;
+  if (by.instancers.size() != 1 || by.prototypeRoots.size() != 1) {
+    Report(prim.path, DiagnosticCode::kUnsupportedInstancing,
+           "Prims instanced by several instancers are not translated");
+    return none_;
+  }
   return CopiesUnder(by.instancers[0], by.prototypeRoots[0], depth);
 }
 
@@ -102,7 +107,11 @@ const std::vector<DrawnCopy>& InstanceResolver::CopiesUnder(  // NOLINT(misc-no-
   // survive later insertions.
   std::vector<DrawnCopy>& copies = cache_[prototypeRoot];
   const PrimRecord* record = table_.Find(instancer);
-  if (record && record->instancer && depth <= kMaxDepth)
+  if (!record || !record->instancer)
+    Report(instancer, DiagnosticCode::kInvalidInstancer, "The instancer is missing or has no topology");
+  else if (depth > kMaxDepth)
+    Report(instancer, DiagnosticCode::kInvalidInstancer, "Instancing nests too deeply");
+  else
     copies = Expand(*record, *record->instancer, prototypeRoot, depth);
   return copies;
 }
@@ -111,11 +120,20 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
     const PrimRecord& instancer, const InstancerRecord& topology, const SdfPath& prototypeRoot, int depth) {
   const auto found = std::find(topology.prototypes.cbegin(), topology.prototypes.cend(), prototypeRoot);
   const auto p = static_cast<std::size_t>(found - topology.prototypes.cbegin());
-  if (found == topology.prototypes.cend() || p >= topology.instanceIndices.size()) return {};
+  if (found == topology.prototypes.cend() || p >= topology.instanceIndices.size()) {
+    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+           "Prototype root " + prototypeRoot.GetString() + " has no instances");
+    return {};
+  }
   // A point instancer has no instance locations; its prototypes are deferred (DEFER-01).
   const VtArray<SdfPath>& locations = topology.instanceLocations;
+  if (locations.empty()) return {};
   const std::optional<VtMatrix4dArray> transforms = InstanceTransforms(instancer);
-  if (locations.empty() || !transforms) return {};
+  if (!transforms) {
+    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+           "The native instancer has no unindexed instance transforms");
+    return {};
+  }
   const std::vector<DrawnCopy>& outers = CopiesOf(instancer, depth + 1);
   if (outers.empty()) return {};
   // The instances in range, each with what its instance root and its ancestors inside the outer prototype give it:
@@ -128,14 +146,20 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
   };
   const SdfPath& outerRoot = outers.front().hydraRoot;
   std::vector<Instance> instances;
+  bool invalidIndex = false;
   for (const int k : topology.instanceIndices[p]) {
     const auto index = static_cast<std::size_t>(k);
-    if (k < 0 || index >= locations.size() || index >= transforms->size()) continue;
+    if (k < 0 || index >= locations.size() || index >= transforms->size()) {
+      invalidIndex = true;
+      continue;
+    }
     Instance instance{index, ResetsBelow(locations[index], outerRoot), {}};
     for (std::size_t i = 0; i < Purposes().size(); ++i)
       instance.opinions.at(i) = NearestOpinion(table_, locations[index], outerRoot, Purposes().at(i));
     instances.push_back(instance);
   }
+  if (invalidIndex)
+    Report(instancer.path, DiagnosticCode::kInvalidInstancer, "Instance indices out of range were skipped");
   const VtBoolArray& mask = topology.mask;
   std::vector<DrawnCopy> copies;
   copies.reserve(outers.size() * instances.size());
@@ -161,6 +185,10 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
     }
   }
   return copies;
+}
+
+void InstanceResolver::Report(const SdfPath& hydraPath, DiagnosticCode code, const std::string& message) {
+  diagnostics_.push_back({code, SdfPath(), message + " (Hydra prim " + hydraPath.GetString() + ")", {}, {}, {}});
 }
 
 }  // namespace proscenium

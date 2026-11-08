@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,7 +33,8 @@ struct DrawnGprim {
   SdfPathVector instanceContext;    // native-instance roots, outermost first
   GfMatrix4d world{1.0};            // USD's row-vector convention
   std::optional<GfRange3d> bounds;  // local; absent when Hydra gives the gprim no extent
-  const PrimRecord* mesh;           // the Hydra mesh it is a copy of; null for any other gprim
+  const PrimRecord* prim;           // the Hydra prim it is a copy of
+  const PrimRecord* mesh;           // the same, for a mesh; null for any other gprim
   TfToken purpose;                  // USD's name
   bool visible;                     // effectively, for its own purpose
   bool explicitGuide;               // a guide whose nearest guideVisibility opinion is visible
@@ -73,9 +75,12 @@ GfMatrix4d Correction(const Snapshot& snapshot, const PlanSettings& settings, co
   return correction;
 }
 
-// The matrix's affine part: a Blender object can't hold a projective column. C6 diagnoses the approximation (XFORM-05).
+// An affine matrix's last column.
+GfVec4d AffineColumn() { return {0.0, 0.0, 0.0, 1.0}; }
+
+// The matrix's affine part: a Blender object can't hold a projective column (XFORM-05).
 GfMatrix4d Affine(GfMatrix4d world) {
-  world.SetColumn(3, GfVec4d(0.0, 0.0, 0.0, 1.0));
+  world.SetColumn(3, AffineColumn());
   return world;
 }
 
@@ -140,6 +145,7 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
                        copy.context,
                        resets ? local : local * copy.world,
                        prim.extent,
+                       &prim,
                        mesh,
                        purpose,
                        EffectivelyVisible(table, prim, copy),
@@ -187,12 +193,18 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
   auto plan =
-      std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+      std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
   TfTokenVector viewport = settings.viewportPurposes;
   if (!Includes(viewport, UsdGeomTokens->guide)) viewport.push_back(UsdGeomTokens->guide);
   const PrimTable table = ReadPrims(snapshot);
   InstanceResolver instances(table, /*honorResets=*/true);
   const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
+  plan->diagnostics = instances.Diagnostics();
+  // The Hydra prims with a projective copy: each is reported once, a repeated problem aggregated, at its first such
+  // copy in source order, so the copies of a prim inside a prototype share one diagnostic, whose message counts them.
+  // Each reported prim's diagnostic index in plan->diagnostics and how many copies it covers, and by prim, its entry.
+  std::vector<std::pair<std::size_t, std::size_t>> projective;
+  std::unordered_map<const PrimRecord*, std::size_t> projectivePrims;
   const GfMatrix4d correction = Correction(snapshot, settings, context);
   plan->copyWorlds.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
@@ -205,7 +217,16 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyViewport.push_back(gprim.visible && inViewport);
     plan->copyRender.push_back(gprim.visible && inRender);
     // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
-    const GfMatrix4d world = Affine(gprim.world * correction);
+    const GfMatrix4d corrected = gprim.world * correction;
+    if (corrected.GetColumn(3) != AffineColumn()) {
+      const auto [found, added] = projectivePrims.try_emplace(gprim.prim, projective.size());
+      if (added) {
+        projective.emplace_back(plan->diagnostics.size(), 0);
+        plan->diagnostics.push_back({DiagnosticCode::kProjectiveTransform, gprim.source, {}, {}, {}, {}});
+      }
+      ++projective[found->second].second;
+    }
+    const GfMatrix4d world = Affine(corrected);
     const bool sheared = Sheared(world);
     // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances.
     const std::size_t object = plan->resources.size();
@@ -248,6 +269,12 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     }
     plan->copyGeometries.push_back(geometry);
     plan->copyPlaceholders.push_back(placeholder);
+  }
+  for (const auto& [index, count] : projective) {
+    plan->diagnostics[index].message =
+        count == 1 ? "The world transform's projective part is dropped, so it is placed by its affine part"
+                   : "The world transform's projective part is dropped, so its " + std::to_string(count) +
+                         " drawn copies are placed by their affine part; the first in source order is named";
   }
   return plan;
 }

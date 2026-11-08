@@ -14,6 +14,7 @@ The compiled core and its C++ source. It reads Hydra scene indices ([DECISIONS.m
 | File | Holds |
 |---|---|
 | `module.cpp` | The Python module, `proscenium.core._core`. |
+| `diagnostics.h`, `diagnostics.cpp` | The source-side diagnostics the core reports, each named by a code from Python's `DiagnosticCode` list, and every code it can report. |
 | `errors.h`, `errors.cpp` | Error translation for every entry point: Tf errors and C++ exceptions become Python exceptions. |
 | `stage_handle.h`, `stage_handle.cpp` | `StageHandle`, the core's reference to a stage it was given, which it drops on `Release()` so the core never keeps a released stage alive. |
 | `scene_index_chain.h`, `scene_index_chain.cpp` | `SceneIndexChain`, the Hydra scene-index chain over an evaluation stage, and its capture of a snapshot at a time code. |

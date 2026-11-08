@@ -109,6 +109,24 @@ bp::dict HydraComposedWorldsDict(const SnapshotView& snapshot) {
 }
 
 void WrapPlan() {
+  bp::class_<Diagnostic>("Diagnostic", bp::no_init)
+      .add_property(
+          "code", +[](const Diagnostic& d) { return DiagnosticCodeName(d.code); })
+      .add_property(
+          "source_path", +[](const Diagnostic& d) { return d.source.GetString(); })
+      .add_property(
+          "message", +[](const Diagnostic& d) { return d.message; })
+      .add_property(
+          "property_path", +[](const Diagnostic& d) { return d.property.GetString(); })
+      .add_property(
+          "asset", +[](const Diagnostic& d) { return d.asset; })
+      .add_property("fallback", +[](const Diagnostic& d) { return d.fallback; });
+  bp::def(
+      "diagnostic_codes", +[] {
+        bp::list names;
+        for (const DiagnosticCode code : kDiagnosticCodes) names.append(DiagnosticCodeName(code));
+        return bp::tuple(names);
+      });
   bp::class_<PlanSettings, std::shared_ptr<PlanSettings>>("PlanSettings", bp::no_init)
       .def("__init__", bp::make_constructor(&NewPlanSettings, bp::default_call_policies(),
                                             (bp::arg("viewport_purposes"), bp::arg("render_purposes"),
@@ -181,7 +199,9 @@ void WrapPlan() {
           "shear_parent_worlds", +[](const PlanView& p) { return p.data->shearParentWorlds; })
       .add_property(
           "shear_object_bases", +[](const PlanView& p) { return p.data->shearObjectBases; })
-      .add_property("geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); });
+      .add_property(
+          "geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); })
+      .add_property("diagnostics", +[](const PlanView& p) { return ToTuple(p.data->diagnostics); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }

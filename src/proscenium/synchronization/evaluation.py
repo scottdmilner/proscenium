@@ -23,6 +23,27 @@ if TYPE_CHECKING:
     from ..binding.source_access import identifiers
 
 
+# Every code the core can report is in the documented list: a core built against another list fails here, on import,
+# rather than at the first diagnostic it reports (DiagnosticCode raises ValueError for one it lacks).
+_CORE_CODES = frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes())
+
+
+def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:
+    """The plan's source-side diagnostics as the binding's, in its order."""
+    return tuple(
+        Diagnostic(
+            DiagnosticCode(d.code),
+            binding_id,
+            d.message,
+            source_path=d.source_path,
+            property_path=d.property_path,
+            asset=d.asset,
+            fallback=d.fallback,
+        )
+        for d in plan.diagnostics
+    )
+
+
 def source_state(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
     """The informational diagnostics on the source's state that a display of it reports: its dirty layers."""
     if not (dirty := stages.dirty_layers(evaluation_stage)):

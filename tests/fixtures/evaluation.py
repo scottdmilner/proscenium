@@ -114,6 +114,10 @@ class TransformsScene:
     projective: str  # in projective_stage: the mesh placed by its matrix's affine part, with a diagnostic
     projective_world: Gf.Matrix4d  # its world transform as authored, projective column included
     projective_affine: Gf.Matrix4d  # that matrix with its last column (0, 0, 0, 1)
+    # In projective_stage: the copies of the same mesh inside two native instances -> their worlds by the affine part.
+    projective_instanced: dict[str, Gf.Matrix4d]
+    # The source each approximation diagnostic names, in source order: the mesh, and the instanced mesh's first copy.
+    projective_reported: tuple[str, ...]
     variation: TimeVariation
     equal_time_codes: tuple[tuple[float, float], ...]  # pairs whose evaluated values are equal (relation 5)
 
@@ -122,6 +126,13 @@ class TransformsScene:
 
     def world_at(self, path: str, time_code: float | None) -> Gf.Matrix4d:
         return translate(animated_x(time_code), 0, 0) if path == ANIMATED else self.world[path]
+
+
+def affine(matrix: Gf.Matrix4d) -> Gf.Matrix4d:
+    """The matrix with its last column (0, 0, 0, 1): the part a Blender object can hold."""
+    result = Gf.Matrix4d(matrix)
+    result.SetColumn(3, Gf.Vec4d(0, 0, 0, 1))
+    return result
 
 
 @contextmanager
@@ -167,7 +178,13 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
         },
         projective="/World/Projective/Geom",
         projective_world=projective,
-        projective_affine=Gf.Matrix4d((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1)),
+        projective_affine=affine(projective),
+        # The whole world transform's affine part: the projective term reaches the instance's translation.
+        projective_instanced={
+            f"/World/Kits/{kit}/Projective/Geom": affine(projective * translate(0, y, 0))
+            for kit, y in (("KitA", 5), ("KitB", 10))
+        },
+        projective_reported=("/World/Kits/KitA/Projective/Geom", "/World/Projective/Geom"),
         variation=TimeVariation(start=0.0, end=30.0, samples=(0.0, 10.0, 20.0, 30.0), transitions=()),
         # Before the first sample and at it, after the last and at it, and two between the equal samples.
         equal_time_codes=((-5.0, 0.0), (35.0, 30.0), (12.5, 17.25)),

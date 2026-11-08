@@ -32,6 +32,7 @@ if(NOT EXISTS "${USD_LIBRARY}")
 endif()
 
 Python_add_library(_core MODULE WITH_SOABI
+  diagnostics.cpp
   errors.cpp
   instancing.cpp
   module.cpp

@@ -28,6 +28,28 @@ class SceneIndexChain:
 class Snapshot:
     """An immutable capture at one time code, which only planning reads."""
 
+class Diagnostic:
+    """A source-side problem the core reports; Python builds the binding's Diagnostic from it.
+
+    Its code is in binding.results.DiagnosticCode, which gives its category and severity. Fields that don't apply are
+    empty.
+    """
+
+    @property
+    def code(self) -> str: ...
+    @property
+    def source_path(self) -> str: ...  # a composed-stage path
+    @property
+    def message(self) -> str: ...
+    @property
+    def property_path(self) -> str: ...
+    @property
+    def asset(self) -> str: ...
+    @property
+    def fallback(self) -> str: ...
+
+def diagnostic_codes() -> tuple[str, ...]: ...  # every code the core reports
+
 class PlanSettings:
     """The binding settings planning reads. Raises ValueError for a name that isn't a USD purpose.
 
@@ -134,6 +156,8 @@ class Plan:
     def shear_object_bases(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
     @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]: ...  # in the order found; once per prim for its copies
 
 def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version
 

@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "diagnostics.h"
 #include "snapshot.h"
 
 namespace proscenium {
@@ -115,6 +116,8 @@ struct Plan {
   // transform, and its object's basis below that parent. Neither shears, and the basis has no translation.
   PXR_NS::VtFloatArray shearParentWorlds;
   PXR_NS::VtFloatArray shearObjectBases;
+  // In the order found. A problem repeated across a prim's copies is reported once; Python aggregates any other repeat.
+  std::vector<Diagnostic> diagnostics;
   std::vector<GeometryDescription> geometries;
 };
 

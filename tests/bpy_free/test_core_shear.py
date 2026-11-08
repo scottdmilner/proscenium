@@ -87,6 +87,8 @@ def test_a_reflection_in_a_sheared_copy_moves_into_a_negative_scale(stress: appe
 def test_a_projective_matrix_places_its_mesh_by_its_affine_part(transforms: evaluation.TransformsScene) -> None:
     # XFORM-05 on F-TRANSFORMS' projective layer; its approximation diagnostic is C6's.
     shown = copies(plan_at(transforms.projective_stage, 0.0))
-    copy = shown[transforms.projective]
-    assert copy.world.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1)
-    assert_world(copy, transforms.projective_affine)
+    expected = {transforms.projective: transforms.projective_affine, **transforms.projective_instanced}
+    assert shown.keys() == expected.keys()
+    for path, world in expected.items():
+        assert shown[path].world.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1), path
+        assert_world(shown[path], world)

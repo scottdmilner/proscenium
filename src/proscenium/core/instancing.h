@@ -8,9 +8,11 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/path.h>
 
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "diagnostics.h"
 #include "prim_record.h"
 
 namespace proscenium {
@@ -50,7 +52,7 @@ class InstanceResolver {
   InstanceResolver(const PrimTable& table, bool honorResets);
 
   // Every drawn copy of `prim`, all with one hydraRoot: outside instancing one, the identity; none under a point
-  // instancer, and none when Hydra's instancing data can't be resolved (C6 reports it).
+  // instancer, and none when Hydra's instancing data can't be resolved, which the resolver reports once.
   const std::vector<DrawnCopy>& CopiesOf(const PrimRecord& prim);
 
   // WORKAROUND for OpenUSD #862: whether `path` or an ancestor below `prototypeRoot` resets the transform stack, so a
@@ -61,6 +63,9 @@ class InstanceResolver {
   // honorResets_, and outside instancing, where the flattened transform is the world transform either way.
   [[nodiscard]] bool ResetsBelow(PXR_NS::SdfPath path, const PXR_NS::SdfPath& prototypeRoot) const;
 
+  // What it found unresolvable so far, as the bridge's resolver reports it, in the order found.
+  [[nodiscard]] const std::vector<Diagnostic>& Diagnostics() const { return diagnostics_; }
+
  private:
   const std::vector<DrawnCopy>& CopiesOf(const PrimRecord& prim, int depth);
   // The copies of everything under `prototypeRoot`, one per instance of each copy of `instancer`; Expand reads
@@ -69,12 +74,15 @@ class InstanceResolver {
                                             int depth);
   std::vector<DrawnCopy> Expand(const PrimRecord& instancer, const InstancerRecord& topology,
                                 const PXR_NS::SdfPath& prototypeRoot, int depth);
+  // Instancers are reported by Hydra path in the message: a native instancer has no source entity.
+  void Report(const PXR_NS::SdfPath& hydraPath, DiagnosticCode code, const std::string& message);
 
   const PrimTable& table_;
   bool honorResets_;
   const std::vector<DrawnCopy> top_{DrawnCopy()};
   const std::vector<DrawnCopy> none_;
   std::unordered_map<PXR_NS::SdfPath, std::vector<DrawnCopy>, PXR_NS::SdfPath::Hash> cache_;  // by prototype root
+  std::vector<Diagnostic> diagnostics_;
 };
 
 }  // namespace proscenium

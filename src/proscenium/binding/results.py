@@ -65,6 +65,10 @@ class DiagnosticCode(StrEnum):
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
+    # Source-side content, which the compiled core reports (core.diagnostics.h).
+    PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
+    UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
+    INVALID_INSTANCER = "invalid-instancer"  # instancing data that can't be resolved
 
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
@@ -82,6 +86,9 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.CLEANUP_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.PROJECTIVE_TRANSFORM: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
+    DiagnosticCode.UNSUPPORTED_INSTANCING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.INVALID_INSTANCER: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
 }
 
 
