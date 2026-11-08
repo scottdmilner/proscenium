@@ -152,7 +152,7 @@ requirements:
       - id: SNAP-17
         quote: "Hydra prim types the core does not translate"
         fixtures: [F-UNSUPPORTED-CONTENT]
-        oracle: "On F-UNSUPPORTED-CONTENT, each untranslated prim (the basis curves, points, HermiteCurves, the volume, and the point instancer) has one placeholder at its source path and one untranslated-type diagnostic, aggregated by problem."
+        oracle: "On F-UNSUPPORTED-CONTENT, each untranslated prim (the basis curves, points, HermiteCurves, and the volume) has one placeholder at its source path and one untranslated-type diagnostic, aggregated by problem."
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
 
   - section: spec/pipeline.md#display-plan
@@ -1089,6 +1089,11 @@ requirements:
         quote: "Hydra paths and nesting are never used for grouping or selection expansion."
         fixtures: [F-KIND-HIERARCHY]
         oracle: "Expansion of a group or assembly target reaches every displayed mesh beneath it on the composed stage, although its intermediate prims carry nothing Hydra keeps."
+      - id: ICON-42
+        quote: "A copy a point instancer draws is named by its point-instance path"
+        delivery: M6
+        fixtures: [F-POINT-INSTANCERS]
+        oracle: "Each drawn copy of F-POINT-INSTANCERS' point instancers has the point-instance path, source entity, and instance context the fixture gives, which tests/bpy_free/test_evaluation_fixtures.py derives from UsdGeom.PointInstancer: __index_<index> for Scatter, which authors no ids, __id_<id> for Tagged's ids, n for -3, each followed by the prim's path below its prototype root's parent; inside Kits' native instances, the instancer's instance-proxy path, after the instance root in the context; and Pebble's native instance inside Scatter's prototype, after the point. Resource identities follow from them (ROLE-02)."
 
   - section: spec/interaction-contract.md#browsing-universe
     delivery: M7
@@ -1111,9 +1116,9 @@ requirements:
         fixtures: [F-UNIVERSE-MEMBERSHIP]
         oracle: "displayed is false for the materials scope, an organizational Xform with nothing displayed beneath, and invisible and guide-only subtrees."
       - id: ICON-15
-        quote: "Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe."
-        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
-        oracle: "displayed is false for instance-proxy paths, an unloaded payload root, inactive prims, and an abstract prim."
+        quote: "Instance-proxy descendants, point-instance paths, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe."
+        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION, F-POINT-INSTANCERS]
+        oracle: "displayed is false for instance-proxy paths, point-instance paths, an unloaded payload root, inactive prims, and an abstract prim."
       - id: ICON-16
         quote: "It is derived from correspondence, not stored"
 
@@ -1140,10 +1145,10 @@ requirements:
         fixtures: [F-KIND-HIERARCHY]
         oracle: "select_targets accepts the prim level and any registered model kind."
       - id: ICON-19
-        quote: "The floor of an entity is the outermost native-instance root enclosing it"
+        quote: "The floor of an entity is the outermost native-instance root or point instancer enclosing it"
         delivery: M10
-        fixtures: [F-NESTED-SELECTION]
-        oracle: "A pick anywhere in instance contents, including a nested instance, resolves to the outermost instance root as its floor; no target is inside instance contents."
+        fixtures: [F-NESTED-SELECTION, F-POINT-INSTANCERS]
+        oracle: "A pick anywhere in instance contents, including a nested instance, resolves to the outermost instance root as its floor, and a pick on a point instancer's copy to the instancer, or to the outermost native-instance root enclosing it (F-POINT-INSTANCERS' Kits); no target is inside instance contents."
       - id: ICON-20
         quote: "At the prim level, the target is the floor."
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
@@ -1469,6 +1474,15 @@ requirements:
         quote: "Per-instance displayColor, inherited material assignments, and named primvars driving supported material inputs."
         fixtures: [F-NESTED-STRESS]
         risk: high
+      - id: INST-08
+        quote: "Point instancers: each point's copies of its prototype, with the point's transform and its visibility through the instancer's mask and invisibleIds, including point instancers inside native instances."
+        delivery: M6
+        fixtures: [F-POINT-INSTANCERS]
+        oracle: "On F-POINT-INSTANCERS, the plan has a drawn copy for each point and mesh of its prototype, Pebble's native instance's included, and none for the instancers themselves or for a prototype prim at its own path (Unused included); each copy's world transform is the fixture's, as UsdGeom.PointInstancer composes it with its prototype root's transform, within the bounds comparison contract's tolerance; the points invisibleIds hides (Scatter's index 2, Tagged's id 7) display in neither destination and the rest in both; Kits' two instances each have Spray's two points."
+        note: "Delivered by M6 with the user, 2026-11-07 (DECISIONS.md \"Point instancers\"), within M10's section."
+      - id: INST-09
+        quote: "A point instancer's per-point primvars, on its points' copies as an instance root's primvars are on its instance's."
+        fixtures: [F-POINT-INSTANCERS]
 
   - section: spec/support/instancing.md#geometry-sharing
     delivery: M10
@@ -1653,9 +1667,10 @@ requirements:
     phase: 1
     rows:
       - id: DEFER-01
-        quote: "Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry"
+        quote: "Deferred areas include curves, NURBS patches, points, elementary geometry"
         fixtures: [F-UNSUPPORTED-CONTENT]
-        oracle: "On F-UNSUPPORTED-CONTENT, each deferred type is a placeholder with a diagnostic or a diagnosed approximation: the point instancer one placeholder from its authored extent, with no drawn copy of its prototype; curves and points placeholders (SNAP-17); the Sphere and NURBS patch approximations (SNAP-16)."
+        oracle: "On F-UNSUPPORTED-CONTENT, each deferred type is a placeholder with a diagnostic or a diagnosed approximation: curves and points placeholders (SNAP-17); the Sphere and NURBS patch approximations (SNAP-16)."
+        note: "Point instancers left the deferred list with the user, 2026-11-07 (DECISIONS.md \"Point instancers\"); INST-08 and ICON-42 cover them."
 
   # --- testing/strategy.md --------------------------------------------------------------------
 

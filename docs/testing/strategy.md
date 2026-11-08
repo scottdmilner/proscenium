@@ -71,6 +71,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-UNITS-UP-AXIS` | **Units and up-axis conversion:** one scene as a Y-up stage in centimeters and a Z-up stage in meters, with a mesh and a native instance, synchronized into target scenes of different unit scales with conversion off and on. |
 | `F-VISIBILITY-PURPOSE` | **Visibility and purpose:** inherited invisibility, a mesh of each purpose, an inherited purpose, a proxy and render pair, and visibility sampled over time with declared transitions. |
 | `F-UNSUPPORTED-CONTENT` | **Unsupported content:** untranslated types with authored, computed, and no bounds, implicit shapes and a NURBS patch converted exactly and inexactly, a point instancer, a placeholder whose transform, visibility, and purpose still apply, and a supported mesh beneath an unsupported ancestor. |
+| `F-POINT-INSTANCERS` | **Point instancers:** a point instancer without ids, points of each prototype kind (an Xform, a mesh root, a native instance) with their own transforms, a point hidden by `invisibleIds`, per-point and constant primvars, and an unused prototype child; one with ids, a negative one included; and one inside two native instances. |
 
 ## Incremental Synchronization Tests
 

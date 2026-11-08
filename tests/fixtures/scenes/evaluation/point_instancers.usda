@@ -1,0 +1,162 @@
+#usda 1.0
+# F-POINT-INSTANCERS (tests/fixtures/evaluation.py): point instancers' copies, each named by its point-instance path
+# (DECISIONS.md "Point instancers"):
+# - Scatter authors no ids, so each point is named by its index: Leaf (an Xform with its own translation, holding
+#   the mesh Blade) at points 0 and 2, Rock (a mesh prototype root) at point 1, and Pebble (a native instance of
+#   Stone) at point 3. Each point has its own position, point 1 an orientation of 120 degrees about (1, 1, 1),
+#   exact in half precision, and point 2 a nonuniform scale, so the order they compose in shows. Point 2 is
+#   invisible (invisibleIds, by index). heat is per point (varying) and groupId constant, on the instancer.
+#   Unused is under its prototypes but no point draws it.
+# - Tagged authors ids, 10, -3, and 7, each point named by its id, -3 as n3; 7 is invisible (invisibleIds, by id).
+# - Kits holds two native instances of Kit, whose prototype holds the point instancer Spray: each instance's copies
+#   of Spray's points, the instancer named by its instance-proxy path, under the instance root as their floor.
+# Every mesh is a triangle with an authored extent.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def PointInstancer "Scatter"
+    {
+        double3 xformOp:translate = (10, 0, 0)
+        float xformOp:rotateZ = 90
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateZ"]
+        rel prototypes = [</World/Scatter/Protos/Leaf>, </World/Scatter/Protos/Rock>, </World/Scatter/Protos/Pebble>]
+        int[] protoIndices = [0, 1, 0, 2]
+        point3f[] positions = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)]
+        quath[] orientations = [(1, 0, 0, 0), (0.5, 0.5, 0.5, 0.5), (1, 0, 0, 0), (1, 0, 0, 0)]
+        float3[] scales = [(1, 1, 1), (1, 1, 1), (1, 2, 1), (1, 1, 1)]
+        int64[] invisibleIds = [2]
+        float[] primvars:heat = [0.5, 1.5, 2.5, 3.5] (
+            interpolation = "varying"
+        )
+        int primvars:groupId = 7 (
+            interpolation = "constant"
+        )
+
+        def Scope "Protos"
+        {
+            def Xform "Leaf"
+            {
+                double3 xformOp:translate = (0, 0, 5)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+
+                def Mesh "Blade" (
+                    references = </Shapes/Triangle>
+                )
+                {
+                }
+            }
+
+            def Mesh "Rock" (
+                references = </Shapes/Triangle>
+            )
+            {
+            }
+
+            def Xform "Pebble" (
+                instanceable = true
+                references = </Prototypes/Stone>
+            )
+            {
+                double3 xformOp:translate = (0, 0, 1)
+                uniform token[] xformOpOrder = ["xformOp:translate"]
+            }
+
+            def Mesh "Unused" (
+                references = </Shapes/Triangle>
+            )
+            {
+            }
+        }
+    }
+
+    def PointInstancer "Tagged"
+    {
+        double3 xformOp:translate = (0, 10, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        rel prototypes = [</World/Tagged/Protos/Rock>]
+        int[] protoIndices = [0, 0, 0]
+        int64[] ids = [10, -3, 7]
+        point3f[] positions = [(0, 0, 0), (2, 0, 0), (4, 0, 0)]
+        int64[] invisibleIds = [7]
+
+        def Scope "Protos"
+        {
+            def Mesh "Rock" (
+                references = </Shapes/Triangle>
+            )
+            {
+            }
+        }
+    }
+
+    def Xform "Kits"
+    {
+        def Xform "KitA" (
+            instanceable = true
+            references = </Prototypes/Kit>
+        )
+        {
+            double3 xformOp:translate = (0, 20, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "KitB" (
+            instanceable = true
+            references = </Prototypes/Kit>
+        )
+        {
+            double3 xformOp:translate = (0, 30, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    def Xform "Stone"
+    {
+        def Mesh "Geom" (
+            references = </Shapes/Triangle>
+        )
+        {
+        }
+    }
+
+    def Xform "Kit"
+    {
+        def PointInstancer "Spray"
+        {
+            double3 xformOp:translate = (1, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            rel prototypes = [</Prototypes/Kit/Spray/Protos/Pellet>]
+            int[] protoIndices = [0, 0]
+            point3f[] positions = [(0, 0, 0), (0, 2, 0)]
+
+            def Scope "Protos"
+            {
+                def Mesh "Pellet" (
+                    references = </Shapes/Triangle>
+                )
+                {
+                }
+            }
+        }
+    }
+}
+
+class "Shapes"
+{
+    def Mesh "Triangle"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [3]
+        int[] faceVertexIndices = [0, 1, 2]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        uniform token subdivisionScheme = "none"
+    }
+}

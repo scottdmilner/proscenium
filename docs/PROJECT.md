@@ -123,7 +123,7 @@ Each entry links to the section that defines the term in full.
 |---|---|
 | **Binding** | The association of one USD source with a managed destination collection, a target scene, and settings. See [Bindings and Source Access](spec/source-access.md#bindings-and-source-access). |
 | **Managed / unmanaged content** | Managed content is Blender content that a binding's ownership records claim. Everything else, including detached content, is unmanaged. See [Ownership and Lifecycle](spec/lifecycle.md#ownership-and-lifecycle). |
-| **Source entity** | A USD prim, plus its instance context where applicable, as addressed by the source selection model. |
+| **Source entity** | A USD prim, plus its instance context where applicable, or a point instancer's copy of one, named by its point-instance path, as addressed by the source selection model. |
 | **Instance context** | The chain of native-instance roots through which a prim inside shared instance contents is reached. It distinguishes the separate uses of the same shared contents. |
 | **Correspondence** | The two-way mapping between source entities and the display resources that represent them. See [Source Inspection and Interaction](spec/interaction.md#source-inspection-and-interaction). |
 | **Source coverage** | The set of source entities a display resource represents. It may contain many entities. |

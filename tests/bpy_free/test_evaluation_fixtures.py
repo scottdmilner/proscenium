@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 MESH, BOUNDABLE = Tf.Type.Find(UsdGeom.Mesh), Tf.Type.Find(UsdGeom.Boundable)
+POINT_INSTANCER = Tf.Type.Find(UsdGeom.PointInstancer)
 
 
 def _time(time_code: float | None) -> Usd.TimeCode:
@@ -275,3 +276,94 @@ def test_unsupported_kinds(unsupported: evaluation.UnsupportedScene) -> None:
     for path, kind in unsupported.kinds.items():
         assert Usd.ModelAPI(unsupported.stage.GetPrimAtPath(path)).GetKind() == kind
         assert Kind.Registry.IsA(kind, Kind.Tokens.model)
+
+
+# --- F-POINT-INSTANCERS --------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def points(tmp_path: Path) -> Iterator[evaluation.PointInstancerScene]:
+    with evaluation.point_instancers(tmp_path) as scene:
+        yield scene
+
+
+def _point_copies(stage: Usd.Stage) -> dict[str, dict[str, object]]:
+    """Each point instancer's copies by point-instance path, as UsdGeom composes them, with what names each."""
+    cache = UsdGeom.XformCache()
+    found: dict[str, dict[str, object]] = {}
+    for prim in Usd.PrimRange(stage.GetPseudoRoot(), Usd.TraverseInstanceProxies()):
+        if not prim.IsA(POINT_INSTANCER):
+            continue
+        instancer = UsdGeom.PointInstancer(prim)
+        code = Usd.TimeCode(0.0)
+        # Each prototype root's own transform included, and every point, the mask's hidden ones too.
+        include, ignore = UsdGeom.PointInstancer.IncludeProtoXform, UsdGeom.PointInstancer.IgnoreMask
+        frames = instancer.ComputeInstanceTransformsAtTime(code, code, include, ignore)
+        mask = instancer.ComputeMaskAtTime(code) or [True] * len(frames)
+        ids = instancer.GetIdsAttr().Get(code)
+        roots = instancer.GetPrototypesRel().GetForwardedTargets()
+        heat = UsdGeom.PrimvarsAPI(prim).GetPrimvar("heat")
+        group = UsdGeom.PrimvarsAPI(prim).GetPrimvar("groupId")
+        native = tuple(str(a.GetPath()) for a in reversed(list(_ancestors(prim))) if a.IsInstance())
+        instancer_world = cache.GetLocalToWorldTransform(prim)
+        for index, proto in enumerate(instancer.GetProtoIndicesAttr().Get(code)):
+            point_id = index if ids is None else ids[index]
+            name = f"__index_{index}" if ids is None else f"__id_{'n' if point_id < 0 else ''}{abs(point_id)}"
+            point = f"{prim.GetPath()}/{name}"
+            root = stage.GetPrimAtPath(roots[proto])
+            for mesh in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
+                if not mesh.IsA(MESH):
+                    continue
+                below = mesh.GetPath().MakeRelativePath(root.GetPath().GetParentPath())
+                path = f"{point}/{below}"
+                inside = mesh.GetPath() if mesh != root else None
+                relative = Gf.Matrix4d(1) if inside is None else cache.ComputeRelativeTransform(mesh, root)[0]
+                nested = tuple(
+                    f"{point}/{a.GetPath().MakeRelativePath(root.GetPath().GetParentPath())}"
+                    for a in reversed(list(_ancestors(mesh, root)))
+                    if a.IsInstance()
+                )
+                found[path] = {
+                    "world": relative * frames[index] * instancer_world,
+                    "source": str(mesh.GetPath()),
+                    "context": (*native, str(prim.GetPath()), point, *nested),
+                    "floor": native[0] if native else str(prim.GetPath()),
+                    "visible": bool(mask[index]),
+                    "primvars": {
+                        **({"heat": heat.Get(code)[index]} if heat else {}),
+                        **({"groupId": group.Get(code)} if group else {}),
+                    },
+                }
+    return found
+
+
+def _ancestors(prim: Usd.Prim, stop: Usd.Prim | None = None) -> Iterator[Usd.Prim]:
+    """Prim's ancestors, innermost first, up to but excluding the pseudo-root, or stop's parent when given."""
+    parent = prim.GetParent()
+    end = stop.GetParent() if stop is not None else None
+    while parent and not parent.IsPseudoRoot() and parent != end:
+        yield parent
+        parent = parent.GetParent()
+
+
+def test_point_instancer_copies(points: evaluation.PointInstancerScene) -> None:
+    found = _point_copies(points.stage)
+    assert found.keys() == points.world.keys()
+    for path, usd in found.items():
+        assert _close(usd["world"], points.world[path]), path  # ty: ignore[invalid-argument-type]
+        assert usd["source"] == points.sources[path], path
+        assert usd["context"] == points.instance_context[path], path
+        assert usd["floor"] == points.floors[path], path
+        assert usd["visible"] == (path not in points.invisible), path
+        if path in points.primvars:
+            assert usd["primvars"] == pytest.approx(points.primvars[path]), path
+    assert {p for p, usd in found.items() if usd["primvars"]} == points.primvars.keys()
+
+
+def test_point_instancer_prototypes_are_drawn_only_as_copies(points: evaluation.PointInstancerScene) -> None:
+    under = {
+        str(prim.GetPath())
+        for prim in Usd.PrimRange(points.stage.GetPseudoRoot(), Usd.TraverseInstanceProxies())
+        if prim.IsA(MESH) and any(a.IsA(POINT_INSTANCER) for a in _ancestors(prim))
+    }
+    assert under == points.prototypes

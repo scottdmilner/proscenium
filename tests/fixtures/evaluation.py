@@ -9,6 +9,8 @@
   each purpose, and each destination's participation.
 - unsupported_content (F-UNSUPPORTED-CONTENT): placeholders and markers for untranslated types, the filters'
   conversions to meshes, a point instancer, and a mesh beneath an unsupported ancestor.
+- point_instancers (F-POINT-INSTANCERS): point instancers' copies by their point-instance paths, by index and by
+  authored id, and inside native instances.
 
 Each copies its layers from Scene.EVALUATION, opens them as the caller's live stages, and yields what the
 scene is built to display, written out from the layer by hand: world transforms are composed here from the
@@ -371,4 +373,102 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
         not_drawn=frozenset({"/World/Scatter/Prototypes/Tetra"}),
         supported_beneath={"/World/Parent/Child": (world(translate(1, 0, 0), translate(0, 21, 0)), "render")},
         kinds={"/World/Placed": "component"},
+    )
+
+
+# --- F-POINT-INSTANCERS --------------------------------------------------------------------------------------
+
+
+@dataclass
+class PointInstancerScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage
+    world: dict[str, Gf.Matrix4d]  # drawn copy, by its point-instance path -> world transform
+    sources: dict[str, str]  # drawn copy -> the composed-stage prim it is a copy of
+    instance_context: dict[
+        str, tuple[str, ...]
+    ]  # drawn copy -> native-instance roots, instancer, point, outermost first
+    floors: dict[str, str]  # drawn copy -> its floor: the outermost native-instance root or point instancer
+    invisible: frozenset[str]  # drawn copies of points the instancer hides (invisibleIds)
+    primvars: dict[str, dict[str, float | int]]  # drawn copy -> its point's per-point and its instancer's constant ones
+    prototypes: frozenset[str]  # the prims under an instancer's prototypes: no copy at their own paths
+
+
+@contextmanager
+def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
+    """F-POINT-INSTANCERS: see scenes/evaluation/point_instancers.usda."""
+    root = copy_scene(Scene.EVALUATION, dest) / "point_instancers.usda"
+    scatter, tagged, protos = "/World/Scatter", "/World/Tagged", "/World/Scatter/Protos"
+    # Each prototype's prims drawn per point, by their path below the prototype root's parent, with their transforms
+    # relative to it, the root's own included, as UsdGeomPointInstancer composes a point's prototype.
+    leaf = {"Leaf/Blade": translate(0, 0, 5)}
+    rock = {"Rock": Gf.Matrix4d(1)}
+    pebble = {"Pebble/Geom": translate(0, 0, 1)}
+    world: dict[str, Gf.Matrix4d] = {}
+    sources: dict[str, str] = {}
+    contexts: dict[str, tuple[str, ...]] = {}
+    floors: dict[str, str] = {}
+    primvars: dict[str, dict[str, float | int]] = {}
+
+    def draw(
+        instancer: str, point: str, prims: dict[str, Gf.Matrix4d], frame: Gf.Matrix4d, outer: tuple[str, ...] = ()
+    ) -> None:
+        # frame: the point's scale, then orientation, then position, then the instancer's world transform.
+        for below, prim_local in prims.items():
+            path = f"{instancer}/{point}/{below}"
+            world[path] = prim_local * frame
+            sources[path] = f"{instancer}/Protos/{below}"  # each instancer keeps its prototypes in its own Protos
+            context = (*outer, instancer, f"{instancer}/{point}")
+            if below.startswith("Pebble/"):  # Pebble is a native instance inside the point's prototype
+                context = (*context, f"{instancer}/{point}/Pebble")
+            contexts[path] = context
+            floors[path] = outer[0] if outer else instancer
+
+    # Scatter: its translate, then rotateZ, so in row vectors the rotation applies first.
+    scatter_world = local(translate(10, 0, 0), rotate((0, 0, 1), 90))
+    frames = {
+        0: translate(0, 0, 0),
+        1: rotate((1, 1, 1), 120) * translate(1, 0, 0),
+        2: scale(1, 2, 1) * translate(2, 0, 0),
+        3: translate(3, 0, 0),
+    }
+    drawn = {0: leaf, 1: rock, 2: leaf, 3: pebble}
+    for index, prims in drawn.items():
+        draw(scatter, f"__index_{index}", prims, frames[index] * scatter_world)
+        for below in prims:
+            primvars[f"{scatter}/__index_{index}/{below}"] = {"heat": index + 0.5, "groupId": 7}
+    # Tagged: ids 10, -3, and 7.
+    for point, x in (("__id_10", 0), ("__id_n3", 2), ("__id_7", 4)):
+        draw(tagged, point, rock, translate(x, 0, 0) * translate(0, 10, 0))
+    # Each Kit instance's Spray, translated inside the prototype.
+    for kit, y in (("KitA", 20), ("KitB", 30)):
+        spray = f"/World/Kits/{kit}/Spray"
+        for index, position in ((0, translate(0, 0, 0)), (1, translate(0, 2, 0))):
+            draw(
+                spray,
+                f"__index_{index}",
+                {"Pellet": Gf.Matrix4d(1)},
+                position * translate(1, 0, 0) * translate(0, y, 0),
+                outer=(f"/World/Kits/{kit}",),
+            )
+    yield PointInstancerScene(
+        root=root,
+        stage=open_fresh(root),
+        world=world,
+        sources=sources,
+        instance_context=contexts,
+        floors=floors,
+        invisible=frozenset({f"{scatter}/__index_2/Leaf/Blade", f"{tagged}/__id_7/Rock"}),
+        primvars=primvars,
+        prototypes=frozenset(
+            {
+                f"{protos}/Leaf/Blade",
+                f"{protos}/Rock",
+                f"{protos}/Pebble/Geom",
+                f"{protos}/Unused",
+                f"{tagged}/Protos/Rock",
+                "/World/Kits/KitA/Spray/Protos/Pellet",
+                "/World/Kits/KitB/Spray/Protos/Pellet",
+            }
+        ),
     )

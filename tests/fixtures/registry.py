@@ -531,5 +531,21 @@ FIXTURES: dict[str, Fixture] = {
                 Case("unsupported-ancestor", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("ARCH-04",), 1),
             ),
         ),
+        Fixture(
+            "F-POINT-INSTANCERS",
+            "Point instancers",
+            ("M6", "M10"),
+            evaluation.point_instancers,
+            (
+                # Each point's copies of its prototype, its transform and visibility, named by index.
+                Case("points-by-index", SYNC, SUCCESS, ("INST-08", "ICON-42"), 1),
+                # Points named by their authored ids, a negative one included.
+                Case("points-by-id", SYNC, SUCCESS, ("INST-08", "ICON-42"), 1),
+                # A point instancer inside native instances: its instance-proxy path, under the root as floor.
+                Case("inside-native-instances", SYNC, SUCCESS, ("INST-08", "ICON-42", "ICON-19"), 1),
+                # Each point's per-point primvars, and its instancer's constant ones, on its copies.
+                Case("per-point-primvars", SYNC, SUCCESS, ("INST-09",), 1),
+            ),
+        ),
     )
 }

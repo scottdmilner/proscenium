@@ -1,6 +1,6 @@
 # M6 — Snapshot evaluation and representation planning
 
-**Implements:** [Evaluated Source Snapshot](../spec/pipeline.md#evaluated-source-snapshot), [Display Plan](../spec/pipeline.md#display-plan), [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), except time-varying topology (M8); the planning side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion) (M7 covers the application side); [Visibility and Purpose](../spec/support/visibility.md#visibility-and-purpose), and [Models and Unsupported Content](../spec/support/visibility.md#models-and-unsupported-content), except exposing model kind and asset metadata (M7).
+**Implements:** [Evaluated Source Snapshot](../spec/pipeline.md#evaluated-source-snapshot), [Display Plan](../spec/pipeline.md#display-plan), [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), except time-varying topology (M8); the planning side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion) (M7 covers the application side); [Visibility and Purpose](../spec/support/visibility.md#visibility-and-purpose), and [Models and Unsupported Content](../spec/support/visibility.md#models-and-unsupported-content), except exposing model kind and asset metadata (M7); and point instancers in [Supported Instancing](../spec/support/instancing.md#supported-instancing), with their point-instance paths ([Source Entities and Hierarchy](../spec/interaction-contract.md#source-entities-and-hierarchy)), except per-point primvars (M10).
 
 **Depends on:** M3 (identifier schemes), M5 (layer interfaces and diagnostics).
 
@@ -29,6 +29,7 @@
 - Determinism: identical snapshot, settings, and planning context yield identical plans.
 - Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to binding configuration version 1, with no migration, since no release has written one (DECISIONS.md "Conversion and purpose settings").
 - Per-behavior dispatch: an unsupported behavior on a prim does not suppress its supported behaviors.
+- Point instancers' copies, transforms, visibility, and point-instance paths, by index, by authored id, and inside native instances, on `F-POINT-INSTANCERS`.
 - Expected transforms, visibility, and bounds come from the spec or from how the fixture is built (for example, UsdGeom computations), never from Hydra's own output. An untranslated Hydra prim type yields a placeholder and diagnostic.
 
 **Exit condition:** a supported initial snapshot can be evaluated and planned deterministically, yielding an inspectable source hierarchy and a spatially meaningful plan, with no Blender objects or datablocks created.
