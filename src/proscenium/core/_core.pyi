@@ -114,6 +114,20 @@ class GeometryDescription:
     @property
     def content_key(self) -> str: ...  # provisional: its source's path; M8 keys a mesh by its content
 
+class BatchGroup:
+    """Copies a batch shows as instances of one prototype. Provisional: M9 and M10 add materials, color, primvars."""
+
+    @property
+    def geometry(self) -> int: ...  # in Plan.geometries
+    @property
+    def viewport(self) -> bool: ...
+    @property
+    def render(self) -> bool: ...
+    @property
+    def repeat(self) -> int: ...  # among groups with the same key, by coincident world transform
+    @property
+    def members(self) -> Buffer: ...  # 'i': copy indices, ascending
+
 class Plan:
     """The immutable display plan.
 
@@ -157,7 +171,12 @@ class Plan:
     @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
     @property
-    def diagnostics(self) -> tuple[Diagnostic, ...]: ...  # in the order found; once per prim for its copies
+    def diagnostics(self) -> tuple[Diagnostic, ...]: ...
+    def batch_groups(
+        self, minimum: int
+    ) -> tuple[
+        tuple[BatchGroup, ...], Buffer
+    ]: ...  # groups, and single copies  # in the order found; once per prim for its copies
 
 def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version
 

@@ -8,7 +8,8 @@
 #   Point 2 is invisible (invisibleIds, by index). heat is per point (varying) and groupId constant, on the
 #   instancer. Unused, a mesh, and Wisp, HermiteCurves, which Hydra doesn't image, are under its prototypes, but no
 #   point draws them, and UsdImaging warns about Wisp.
-# - Tagged authors ids, 10, -3, and 7, each point named by its id, -3 as n3; 7 is invisible (invisibleIds, by id).
+# - Tagged authors ids, 10, -3, 7, and 12, each point named by its id, -3 as n3; 7 is invisible (invisibleIds, by id),
+#   and 12 sits where 10 does, so their copies coincide and can't share a batch.
 # - Kits holds two native instances of Kit, whose prototype holds the point instancer Spray: each instance's copies
 #   of Spray's points, the instancer named by its instance-proxy path, under the instance root as their floor.
 # Every mesh is a triangle with an authored extent.
@@ -88,9 +89,9 @@ def Xform "World"
         double3 xformOp:translate = (0, 10, 0)
         uniform token[] xformOpOrder = ["xformOp:translate"]
         rel prototypes = [</World/Tagged/Protos/Rock>]
-        int[] protoIndices = [0, 0, 0]
-        int64[] ids = [10, -3, 7]
-        point3f[] positions = [(0, 0, 0), (2, 0, 0), (4, 0, 0)]
+        int[] protoIndices = [0, 0, 0, 0]
+        int64[] ids = [10, -3, 7, 12]
+        point3f[] positions = [(0, 0, 0), (2, 0, 0), (4, 0, 0), (0, 0, 0)]
         int64[] invisibleIds = [7]
 
         def Scope "Protos"

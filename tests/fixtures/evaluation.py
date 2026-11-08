@@ -434,8 +434,8 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
         draw(scatter, f"__index_{index}", prims, frames[index] * scatter_world)
         for below in prims:
             primvars[f"{scatter}/__index_{index}/{below}"] = {"heat": index + 0.5, "groupId": 7}
-    # Tagged: ids 10, -3, and 7.
-    for point, x in (("__id_10", 0), ("__id_n3", 2), ("__id_7", 4)):
+    # Tagged: ids 10, -3, 7, and 12, which coincides with 10.
+    for point, x in (("__id_10", 0), ("__id_n3", 2), ("__id_7", 4), ("__id_12", 0)):
         draw(tagged, point, rock, translate(x, 0, 0) * translate(0, 10, 0))
     # Each Kit instance's Spray, translated inside the prototype.
     for kit, y in (("KitA", 20), ("KitB", 30)):

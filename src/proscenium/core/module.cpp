@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "batch_groups.h"
 #include "errors.h"
 #include "plan.h"
 #include "scene_index_chain.h"
@@ -93,6 +94,15 @@ std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const 
   return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes, conversion); });
 }
 
+// The plan's batch groups, which Python reads as plain values and Vt buffers.
+bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
+  const BatchGroups grouped = Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return GroupForBatches(*plan.data, minimum);
+  });
+  return bp::make_tuple(ToTuple(grouped.groups), grouped.single);
+}
+
 PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   return Guarded([&] {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
@@ -166,7 +176,18 @@ void WrapPlan() {
       .add_property(
           "extent", +[](const GeometryDescription& g) { return g.extent; })
       .add_property("content_key", +[](const GeometryDescription& g) { return g.contentKey; });
+  bp::class_<BatchGroup>("BatchGroup", bp::no_init)
+      .add_property(
+          "geometry", +[](const BatchGroup& g) { return g.geometry; })
+      .add_property(
+          "viewport", +[](const BatchGroup& g) { return g.viewport; })
+      .add_property(
+          "render", +[](const BatchGroup& g) { return g.render; })
+      .add_property(
+          "repeat", +[](const BatchGroup& g) { return g.repeat; })
+      .add_property("members", +[](const BatchGroup& g) { return g.members; });
   bp::class_<PlanView>("Plan", bp::no_init)
+      .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))
       .add_property(
           "time_code", +[](const PlanView& p) { return p.data->time; })
       .add_property(
