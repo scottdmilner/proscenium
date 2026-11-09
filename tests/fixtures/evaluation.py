@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Usd
 
 from proscenium.binding.source_access.stages import PayloadPolicy
+from support.time_codes import TimeVariation
 from support.usd import open_fresh
 
 from .scenes import Scene, copy_scene
@@ -68,16 +69,6 @@ def world(*locals_: Gf.Matrix4d) -> Gf.Matrix4d:
     for matrix in locals_:
         result = result * matrix
     return result
-
-
-@dataclass(frozen=True)
-class TimeVariation:
-    """How a time-varying fixture varies, from how it is built (acceptance.md#sampled-time-codes, ATIME-02)."""
-
-    start: float  # the stage's startTimeCode
-    end: float  # its endTimeCode
-    samples: tuple[float, ...]  # every authored sample time
-    transitions: tuple[float, ...]  # time codes where topology or visibility changes
 
 
 # --- F-TRANSFORMS --------------------------------------------------------------------------------------------
