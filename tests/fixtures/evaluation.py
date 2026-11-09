@@ -102,7 +102,7 @@ class TransformsScene:
     payload_meshes: frozenset[str]  # drawn only under load-all
     negative: frozenset[str]  # world transform with a negative determinant
     sheared: frozenset[str]  # world transform whose axes aren't orthogonal
-    resets: frozenset[str]  # reset the transform stack, so a root's translation doesn't move them
+    resets: frozenset[str]  # reset the transform stack on their own prims (Socket/Geom's is on its instance root)
     instance_context: dict[str, tuple[str, ...]]  # drawn mesh inside instances -> instance roots, outermost first
     projective: str  # in projective_stage: the mesh placed by its matrix's affine part, with a diagnostic
     projective_world: Gf.Matrix4d  # its world transform as authored, projective column included

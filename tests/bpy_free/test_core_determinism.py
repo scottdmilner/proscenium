@@ -3,7 +3,7 @@
 Equal snapshots, settings, and contexts give plans equal in every part and its order, whether built twice from one
 snapshot, from two captures at one time code, or in separate processes (PLAN-08); a plan built after its stage and
 chain are released equals one built while they were alive (PLAN-09); and a plan in a separate process gives each
-resource the same identity (ROLE-02). Relations 4 and 5, which PLAN-08's oracle also names, are Phase E's.
+resource the same identity (ROLE-02). Relations 4 and 5, which PLAN-08's oracle also names, are test_relations.py's.
 """
 
 from __future__ import annotations
