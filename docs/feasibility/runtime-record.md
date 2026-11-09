@@ -1700,6 +1700,39 @@ What reading a plan's per-copy content costs in Python, as a tuple property and 
 - **These are the stub's costs, not M7's:** M7's display replaces `prepare` and `key_time_codes`.
 - **Not measured:** a windowed Blender, Linux and Windows.
 
+### Retiring a large display (M6 Phase F)
+
+What retiring the obsolete display costs when a synchronization rebuilds it, with global undo on and off, in the bpy wheel and the binary, with the stub's display, in the environment of [Capture and planning](#capture-and-planning-m6-phase-f) (2026-11-09, load average 6.7 to 14.2 read around the runs). Reproduce the profile with `measure/synchronization_profile.py --scenes updates alab --exclude updates-100 --repeats 3 --undo on off --runtimes binary wheel`.
+
+**Retirement released the obsolete display instead of removing it** once an undo step had been pushed. The profile pushes the API's step as a window does, and in every scene, runtime, and undo setting its file held the old display after synchronizing again: 15,005 datablocks on `updates-1000` and 150,005 on `updates-10000` after the cache call, where the same calls without the push leave 9,003, 3,001 each of objects, meshes, and actions (ad hoc). Ad hoc, in the wheel and the binary:
+- **The cause:** after the push, the view layer has a base for each published object. Publication unlinks the obsolete objects, but their bases stay until the next depsgraph update: an obsolete object had 0 users and no collections but was still in `view_layer.objects`, and `bpy.data.user_map` named the Scene its user. `removal.remove_unused` takes a user it doesn't know as the object's being in use, so it released all 6,002 obsolete objects and meshes on `updates-1000`, and the synchronization succeeded.
+- **A resync removes it:** with each scene's view layers updated (`ViewLayer.update()`) before `user_map`, the Scene was no longer a user and every obsolete datablock was removed. Reading `view_layer.objects` didn't resync the bases.
+- **Why background runs remove:** with no undo step pushed, a background process never makes the bases, so the test suite and the [M5 runs](#the-shared-removals-cost-m5-phase-f) that removed through `remove_unused` directly don't show it. The 90 s ad hoc retirement of `updates-10000` with global undo off, in the wheel, pushed no step either; that the near-zero retirement with undo on was this release is an inference, since that run wasn't repeated.
+- **Not tested:** a windowed Blender, which updates the depsgraph between events but not within a synchronization.
+
+**What the profile's retirement cost while it released** (three processes per configuration):
+
+| `retire` (ms), synchronizing again | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Binary, undo on; off | 26; 26 | 33; 32 | 190; 195 |
+| Wheel, undo on; off | 11; 11 | 48; 33 | 243; 247 |
+
+**Removing for real** (ad hoc, the binary, one process per scene and setting): synchronizing again with the API's push, each scene's view layers updated first:
+
+| | Resync | `batch_remove` of the objects | of their meshes | `remove_unused` |
+|---|---|---|---|---|
+| updates-1000, undo on; off | 0.14 s; 0.15 s | 0.24 s; 0.24 s | 0.11 s; 0.11 s | 0.38 s; 0.38 s |
+| ALab (6,679 objects), undo on; off | 0.59 s; 0.30 s | 3.2 s; 2.9 s | 0.47 s; 0.41 s | 3.7 s; 3.3 s |
+| updates-10000 (30,001), undo on; off | 3.8 s; 1.9 s | 104 s; 105 s | 15 s; 19 s | 120 s; 124 s |
+
+**Where the time goes** (a native sample of 10 s of the objects' `batch_remove` on `updates-10000`, undo off): every main-thread sample is in `id_delete`, 78% (5,968 of 7,664) in `BKE_libblock_remap_multiple_locked`'s own code, inlined, so what it loops over isn't known from the sample, and 22% (1,683) in `WM_main_remove_notifier_reference`, which scans the window manager's notifier queue for each removed ID. That the queue holds a notifier for each object linked earlier in the process, so this part grows with the objects removed times those linked, is an inference, not tested.
+
+**Findings:**
+- **Global undo doesn't change the cost:** removal took the same time with it on and off, in the binary, and the profile's figures were alike in the wheel and the binary.
+- **Retiring 30,001 objects while their replacements are in the file takes about two minutes,** 89 to 105 s of it the objects' one `batch_remove` call; 6,679 on ALab take 3.3 to 3.7 s, as [M5 found](#the-shared-removals-cost-m5-phase-f) (5.0 s with the baseline's display).
+- **For M7:** retirement must not take a stale view-layer base for a user ([M7](../milestones/M07-application.md)); a resync costs a depsgraph update, 0.3 to 0.6 s on ALab and 1.9 to 3.8 s at 30,001 objects here. **For M11's cleanup:** the remap and notifier scans are Blender's, per call, so removing less, as incremental refresh does, would lower them (inferred).
+- **Not measured:** a windowed Blender, Linux and Windows, batched displays, and the remap's inlined loop.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
