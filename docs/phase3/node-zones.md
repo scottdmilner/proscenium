@@ -14,7 +14,7 @@ Evidence is marked as in the other notes:
 - **Pair by uid, stored on the begin.** Each node gets a uid from a counter on the tree, and a begin stores its end's uid. The tree's `update` repairs pairs after a copy and unpairs a begin whose end is gone.
 - **Work out what a zone holds from the links,** in code that doesn't import bpy, cached until the links or pairs change.
 - **Draw each zone as a rounded convex hull from a `PRE_VIEW` draw handler,** which draws under the nodes, and cache each zone's hull until one of its nodes moves or resizes.
-- **Keep the zone rules apart from the drawing,** so they test in `bpy_free`, and could move to the core if the editor's graph lives there.
+- **Keep the zone rules apart from the drawing,** so they test in `bpy_free`. The stage editor's membership is its C++ cook module's ([Node Tree](node-tree.md#what-a-zone-holds)); the front end's rules decide only the outline.
 
 ## Blender's zones aren't open to add-ons
 
@@ -47,7 +47,9 @@ The prototype's rules, which `bench.py` checks:
 4. A zone is nested in another when its begin and end both lie in it; a node belongs to the innermost zone that holds it. A zone with only one of its two nodes in another overlaps it, and is reported as a problem.
 5. A link is invalid when it leaves a zone other than through the zone's end, feeds back into the zone's begin, or takes the end's output back into the zone. Invalid links are drawn red by setting `NodeLink.is_valid`.
 
-These rules are the prototype's. **Not checked:** how closely they match Geometry Nodes', which also has to decide, for example, where a node fed by both a zone and the outside belongs. The editor's own evaluation should decide them, since what a zone holds is what it runs per element.
+These rules are the prototype's. **Not checked:** how closely they match Geometry Nodes', which also has to decide, for example, where a node fed by both a zone and the outside belongs.
+
+The stage editor's layer zones decide membership in its cook ([Node Tree](node-tree.md#what-a-zone-holds)): a zone holds its Editable Layer chain, since rule 1 through every link would pull another zone's node in through a value output such as Create Prim's Prim. Rule 2 applies there only to drawing the outline. For-each zones, later, need their own downstream rule, along the begin's per-element outputs, since what a for-each zone holds is what it runs per element.
 
 **Checked:** Blender resets every link's validity after the tree's Python `update` returns, so invalid links have to be marked from a timer registered in `update`.
 
@@ -87,7 +89,6 @@ Convex hulls of two zones overlap whenever their nodes interleave on screen, as 
 
 ## Open questions
 
-- Should the stage editor's graph, and its zone rules, live in Python or in the core?
 - Which zone kinds will the editor have (for each prim, for each variant, an edit target), and does each need its own rules for what it holds?
 - What should happen when a user drags a node into a zone's outline without linking it? In the prototype nothing does: the outline only shows what the links make.
 - Should zones also show in the editor's node interface, such as a begin's sockets matching its end's, as Geometry Nodes' zone items do?

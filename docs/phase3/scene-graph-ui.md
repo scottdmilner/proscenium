@@ -13,7 +13,11 @@ Timings are single runs unless stated, and varied by about 2× between runs. Win
 ## Recommendation
 
 - **Build the tree as a virtualized `UIList`** in a sidebar, over a model kept apart from drawing. Each visible row is an empty collection item, and `draw_item` reads that row from the model, so only the row count enters Blender's data. It got Blender's theme, scrolling, tooltips, and DPI scaling with nothing extra, and kept up at 100,000 rows in a group.
-- **Host it in the 3D View sidebar first.** A dedicated pane, an editor whose header is hidden and whose sidebar is dragged nearly full width, is the next candidate. The Properties editor, the toolbar, and the Tool Settings strip don't suit a tree.
+- **Host it in two places, over one model and drawing:**
+  - **The 3D View sidebar,** showing a binding's stage and selecting with the viewport ([Selection with the Viewport](#selection-with-the-viewport)). That's where the tree was checked.
+  - **The node editor's sidebar,** beside the stage editor's node tree, showing its active Viewer's stage ([Node Tree](node-tree.md#viewer)). No binding displays that stage, so selecting a row there selects no Blender objects.
+
+  A dedicated pane, an editor whose header is hidden and whose sidebar is dragged nearly full width, is the next candidate. The Properties editor, the toolbar, and the Tool Settings strip don't suit a tree.
 - **Take Left and Right with one modal operator** that passes every other event on. Keymaps can't reach plain arrow keys over a list. A Python modal operator costs about 1.7 µs per event.
 - **Search the whole stage, and show each match under its ancestors.** The UIList's own filter can't do that. At a million prims, a Python traversal is too slow for typing, and an index is the fix.
 - **Keep the row model and the search independent of the drawing,** so they test in `bpy_free` and could move into the core.
@@ -149,6 +153,8 @@ Cost, **Checked** headless:
 
 ## Selection with the viewport
 
+The tree in the 3D View sidebar shows a binding's stage and selects with the viewport. The tree in the node editor's sidebar shows the Viewer's stage, which no binding displays, so it selects nothing ([Node Tree](node-tree.md#viewer)).
+
 Possible in both directions. **Not checked:** neither direction was built.
 - **Tree to viewport:** the active row's update callback maps the prim to its Blender objects and selects them. In Proscenium, that mapping goes through the inspection layer's selection targets ([interaction contract](../spec/interaction-contract.md#two-layers-and-the-live-stage)), so the tree and the viewport agree on instance contexts. Prims with no Blender object (unloaded, inactive, class, over) have nothing to select.
 - **Viewport to tree:** Blender has no event for a selection change. Two ways to notice one:
@@ -161,10 +167,11 @@ Possible in both directions. **Not checked:** neither direction was built.
 
 ## Where the tree can go
 
-- **3D View sidebar: works.** **Checked.**
+- **3D View sidebar: works, and hosts a binding's stage.** **Checked.**
   - The tree's tab is its own.
   - The keys work over it.
   - The sidebar can be dragged wide.
+- **Node editor sidebar: hosts the Viewer's stage,** beside the node tree. **Not checked:** it takes the same panel class as the 3D View's sidebar with another editor type, and whether the keys reach it as they do there.
 - **A dedicated pane: the next candidate.** **Not checked.**
   - The idea: an editor whose header is hidden (`space.show_region_header = False`) and whose sidebar shows the tree, dragged nearly full width. A Text Editor costs little to draw, and its sidebar has one tab of Blender's own.
   - Its main area stays, mostly unused, beside the sidebar.
@@ -178,7 +185,7 @@ Possible in both directions. **Not checked:** neither direction was built.
   - The Tool Settings strip (`TOOL_HEADER`) is one row high and shows panels only as popovers. A popover button there drew, and clicking it called the panel's draw. The popover itself didn't show in a screenshot.
   - A popover closes when the cursor leaves it, so the tree would close whenever the cursor went back to the viewport.
 - **Other places, Not checked:**
-  - another editor's sidebar (Image, Node, Graph), which takes the same panel class with a different editor type;
+  - another editor's sidebar (Image, Graph), which takes the same panel class with a different editor type;
   - a panel opened by a hotkey (`wm.call_panel(..., keep_open=True)`);
   - an operator's dialog;
   - the file browser's sidebar in a bind operator's file dialog, where a prim tree beside the chosen USD file could suit choosing what to bind.
