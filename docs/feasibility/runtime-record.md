@@ -1586,6 +1586,65 @@ Where a synchronization's and a cache call's time goes in the product, against M
 - **At 30,003 manifest entries,** the manifest's whole write is 124 to 150 ms, a read 72 ms, a cache call's two reads 239 ms and its update by entry 413 ms, and the undo push 0.5 s. The update read the manifest again; it now takes the one the cache call read, so a call reads it once (not measured since).
 - **Not measured:** M7's display, a windowed Blender, Linux and Windows.
 
+### Capture and planning (M6 Phase F)
+
+What the core's evaluation and planning cost by stage, with the memory the snapshot and plan hold, on ALab and Pixar's Kitchen set, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, AC power, 2026-11-09). Other processes (backup and security scanning) kept the load average at 6.4 to 9.4 when the runs began, where M5's ran under 4. Reproduce with `measure/evaluation_cost.py --scenes alab --files Kitchen_set/Kitchen_set_instanced.usd --repeats 3`.
+
+**Method** (`measure/evaluation_cost.py`), in a fresh background process per run:
+- **The scenes:** ALab's measurement entry point at time 1004 ([Phase E](#measurements-m1b-phase-e)), its point instancers deactivated, and `Kitchen_set_instanced.usd` at its start time code, 0, as it is. Each is opened, attached to a binding's stages, and acquired under load-all, as a synchronization does.
+- **The stages:** three times in each process, the scene-index chain built, the time code captured, the chain released, the snapshot planned under the default settings at a unit scale of 1, planned again with coordinate conversion on and that plan dropped, the plan read across the boundary, and its copies grouped in batches of at least 5; then the snapshot and plan dropped with a `gc.collect()`. Reading the plan is each tuple property converted once (with each geometry description's extent), each buffer viewed, and the buffers the stub turns into lists turned into lists. The first time is reported apart from the other two, a synchronization again.
+- **The measures:** each stage's wall time, the process's CPU time over it, all threads', as cores, and the live heap (`memory.py`) after it, as what is held above the evaluation stage; the process's lifetime peak footprint.
+- **Statistics:** three processes per scene; each process's median over its iterations, as a median and range over the processes.
+
+| | ALab | Kitchen set |
+|---|---|---|
+| Drawn copies; of them in native instances | 6,679; 5,948 | 1,788; 1,788 |
+| Instance contexts; geometry descriptions | 1,417; 3,945 | 425; 1,462 |
+| Batch groups (minimum 5); their copies; the largest | 169; 2,244; 77 | 7; 284; 174 |
+| Placeholders, shears, diagnostics | none | none |
+| `metersPerUnit`; `upAxis` | 0.01, authored; Y | 0.01, UsdGeom's fallback (unauthored); Z |
+
+| Stage (ms) | ALab, first | ALab, again | Kitchen set, first | Kitchen set, again |
+|---|---|---|---|---|
+| Stage open; acquire (once) | 549; 171 | | 64; 12 | |
+| **Chain built** | **323 (316–349)** | **306 (306–317)** | **96 (91–115)** | **83 (81–89)** |
+| **Capture** | **97 (90–107)** | **77 (74–80)** | **22 (20–31)** | **21 (21–24)** |
+| Chain released | 33 (29–35) | 25 (24–25) | 6.7 (5.5–7.1) | 5.6 (5.0–6.2) |
+| **Planning** | **25 (24–27)** | **19 (18–20)** | **5.5 (4.7–6.3)** | **3.9 (3.9–4.0)** |
+| Planning, converting | 16 (16–19) | 17 (16–30) | 3.7 (3.2–4.8) | 3.7 (3.6–3.7) |
+| Tuples read | 8.0 (6.8–8.1) | 4.3 (4.0–6.2) | 3.5 (3.4–3.7) | 1.2 (1.2–1.3) |
+| Buffers viewed; to lists | 0.0; 0.2 | 0.0; 0.2 | 0.0; 0.1 | 0.0; 0.0 |
+| Batch groups | 3.3 (3.3–3.4) | 3.3 (3.1–4.7) | 0.8 (0.8–0.9) | 0.8 (0.8–0.8) |
+| Snapshot and plan dropped | 34 (33–35) | 33 (32–36) | 17 (16–18) | 15 (14–15) |
+
+Cores: building the chain 3.7 to 4.7, capture 5.0 to 6.2, planning 1.6 to 2.6, and every other stage about 1.
+
+| Live heap, first (MB) | ALab | Kitchen set |
+|---|---|---|
+| The opened stage; the evaluation stage acquired, above it | 95; 24 | 15; 2 |
+| Held above the evaluation stage: chain built; after capture | 35; 93 | 8; 25 |
+| After the chain's release: the snapshot | 17 | 4 |
+| With the plan; with the plan read | 23; 25 | 6; 7 |
+| A converted plan alone | 4 | 1 |
+| After the snapshot and plan are dropped | 7 | 2 |
+| Peak footprint of the process | 368 (367–368) | 193 (189–193) |
+
+**The chain's release** dropped the stage scene index after `SetStage(nullptr)` until this phase. On ALab, one process each, six releases took 0.42 to 0.51 s with it and 0.025 to 0.041 s without it (ad hoc). In a native sample of those with it, 1,350 of the release's 1,394 samples were in `SetStage`: it sends every prim's removal, which UsdImaging's native-instance filters answer by adding prims again and hashing their bindings, resolving asset paths. With the snapshot and plan alive, all 2,982 of ALab's layers expired after the release either way (ad hoc). The core releases without it since this phase ([M6 plan](../plans/M06-evaluation.md#phase-f-log), F1).
+
+**Where building the chain goes** (ad hoc, one process, twelve builds on ALab in the binary, natively sampled): all of it but 2% is the stage scene index's `_Populate`, which announces every prim, and each filter's handling of the announcement. 68% (1,327 of 1,944 samples) is UsdImaging's native-instance aggregation, per instance: hashing the data sources instances must share to be aggregated (812), which include the model schema's draw mode and asset-valued attributes, resolved through Ar's default resolver to an `lstat` of each path (305), and copying them (207). The rest is Hydra's flattening and prototype-propagating filters. The core's own filters barely appear. Which asset-valued attributes the hash reads isn't known from the sample; the model schema's card textures are a guess. `UsdImagingCreateSceneIndices` fixes the aggregated data sources' names, which `UsdImagingNiPrototypePropagatingSceneIndex::New` takes as an argument, so a chain assembled without that function could leave out the model schema, which a chain without the draw-mode scene index doesn't read; that wasn't tried.
+
+**Conversion** (ad hoc, in the bpy wheel, one run): both scenes are conversion cases, ALab for its units and up axis and the Kitchen set for its units alone, a scale of 0.01 at a unit scale of 1. With conversion on, every copy's world transform was its world transform with conversion off times the spec's correction ([Transforms and Time Codes](../spec/support/transforms.md)), within 1e-7 relatively, the 32-bit floats' precision, and each copy kept its object.
+
+**Findings:**
+- **Capture and planning take 0.49 s on ALab the first time and 0.43 s again,** from building the chain to the plan read, against the minimal path's 0.71 to 0.84 s ([M5 Phase F](#the-products-synchronization-step-by-step-m5-phase-f)), which released the chain with `SetStage(nullptr)`. On the Kitchen set they take 0.13 s and 0.12 s.
+- **Building the chain is most of it:** 0.31 to 0.32 s on ALab and 0.08 to 0.10 s on the Kitchen set, every time, since `evaluation.plans` builds a chain per call. Capture is 0.08 to 0.10 s on ALab on 5 to 6 cores, and planning 0.02 to 0.03 s. A chain kept between synchronizations, as M7's incremental capture keeps one, wouldn't pay it again; that is an inference, not measured. Within a build, the time is UsdImaging's, mostly its native-instance aggregation (above).
+- **The snapshot holds about 17 MB on ALab and 4 MB on the Kitchen set, the plan 6 MB and 2 MB,** with up to 2 MB more for the tuples read. The most held above the evaluation stage was 93 MB and 25 MB, after capture with the chain alive, whose release frees 76 MB and 20 MB.
+- **Conversion costs nothing measurable:** a converted plan took no longer than the first plan of the same snapshot (16 against 25 ms on ALab, 3.7 against 5.5 ms on the Kitchen set), which is consistent with its being one matrix product per copy; that the second planning is faster for being second is an inference.
+- **Batch groups are small and cheap** at these shapes: 3.3 ms on ALab and 0.8 ms on the Kitchen set, whose largest group, 174 copies, is the one [M4 found](#batch-minimum-m4-phase-f). Every Kitchen set copy is in a native instance, under 425 instance contexts, and 1,504 of its 1,788 copies stay single at a minimum of 5.
+- **Not the bridge's work:** the bridge's capture took 0.46 s on ALab on 8 cores, its snapshot 516 MB, and its planning 0.24 s on 5.9 cores with a 904 MB plan ([Phase E](#measurements-m1b-phase-e)), because it captured and planned each mesh's geometry and materials. M6's snapshot holds the eight schemas planning reads, and its plan a provisional description per mesh, so M8's and M9's content will add to both.
+- **Reading the plan is small:** 1 to 8 ms for the tuple properties, nearly all of the reading, and under 1 ms for every buffer, lists included.
+- **Not measured:** a windowed Blender, Linux and Windows, ALab with its point instancers, other time codes, and a quiet machine.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
