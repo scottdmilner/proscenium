@@ -15,7 +15,9 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
 from proscenium.binding.source_access import source_entities
+from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
+from support.usd import open_fresh
 
 from .plan_checks import assert_world, copies, plan_at
 
@@ -51,13 +53,15 @@ def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
     return tuple(reversed(roots))
 
 
-def test_transforms_copies_and_contexts(transforms: evaluation.TransformsScene) -> None:
-    plan = plan_at(transforms.stage, 0.0)
+@pytest.mark.parametrize("policy", list(PayloadPolicy))
+def test_transforms_copies_and_contexts(policy: PayloadPolicy, transforms: evaluation.TransformsScene) -> None:
+    # Under each payload policy, F-TRANSFORMS holding a payload (AFIX-06).
+    plan = plan_at(open_fresh(transforms.root, evaluation.LOAD[policy]), 0.0)
     shown = copies(plan)
-    assert set(shown) == set(transforms.world)
+    assert set(shown) == transforms.drawn(policy)
     for path, copy in shown.items():
         assert_world(copy, transforms.world_at(path, 0.0))
-    assert _contexts(plan) == {path: transforms.instance_context.get(path, ()) for path in transforms.world}
+    assert _contexts(plan) == {path: transforms.instance_context.get(path, ()) for path in transforms.drawn(policy)}
 
 
 def test_nested_copies_and_contexts(stress: appearance.StressScene) -> None:

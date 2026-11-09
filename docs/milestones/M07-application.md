@@ -45,6 +45,10 @@
 - The M4 interaction checks against the real display: `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, `F-UNIVERSE-MEMBERSHIP`.
 - Model kind and `assetInfo` read from a binding's live stage on `F-KIND-HIERARCHY` (MODEL-01).
 - End-to-end tests using M6-generated plans.
+- M6's tests of the stub, updated for the real application layer ([M6 plan](../plans/M06-evaluation.md), D4, E2):
+  - `blender/test_application.py` checks what the stub draws: each copy an object with `display_type` `BOUNDS` and a bounds mesh of its extent's eight corners, an empty marker holding no data, a sheared copy under an unselectable shear parent, hide flags, and managed names. Each check moves to what the real layer makes of the same plan.
+  - `blender/test_time_varying.py` checks a cache call's participation on its plans alone, since the stub keys only transforms; once M7 keys visibility, it also checks Blinking's hide flags in Blender at each cached time code. It reads a sheared copy's world transform through its shear parent and a copy's object by its manifest entry, as the stub makes them.
+  - `blender/test_planning_inputs.py` reads each copy's placement and hide flags from the stub's objects.
 - Cached time codes: synchronized at one sampled time code and cached at the others in more than one order, each frame displays what a clean synchronization at its time code does, whether they were cached in one call or several, and a frame between them the latest before it, with interaction answering for that time code; the display caches nothing on its own (CACHE-01, CACHE-08, CACHE-09, CACHE-10, XFORM-11, XFORM-13, XFORM-14).
 
 **Exit condition:** the application layer displays and inspects plans, refreshes incrementally with results equal to clean rebuilds for its change-matrix cases, passes the M5 failure-injection suite and `F-UNMANAGED-USER`, and meets the boundary rule in Blender Application.

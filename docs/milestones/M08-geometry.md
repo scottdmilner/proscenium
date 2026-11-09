@@ -37,5 +37,10 @@
 - Sharing assertions against M4's criteria: equivalent geometry and attribute requirements share resources; differing data remains correct where distinct resources are required.
 - The M5 failure-injection tests, rerun with geometry writes.
 - Incremental refresh of geometry changes: points, topology, normals, and primvars, each equal to a clean rebuild, rewriting only the affected meshes.
+- M6's tests of the provisional mesh description, updated for the mesh content that replaces it ([M6 plan](../plans/M06-evaluation.md), C1, C8, D4):
+  - `bpy_free/test_core_instancing.py` checks that copies share a description only among copies of one USD prototype mesh, its source their least and its content key that source's path. M8 shares meshes by content, as the bridge does, so copies of equal meshes share too.
+  - `bpy_free/test_core_plan.py`, `test_core_placeholders.py`, `plan_checks.py`, and the plan contents `test_core_snapshot.py` and `plan_process.py` compare read a mesh's copy as a description with an extent and a content key, and its bounds as that extent. They read the mesh content M8 plans.
+  - `bpy_free/test_core_batch_groups.py` groups copies by their description, the provisional batch content key; M8's key replaces it.
+  - `blender/test_application.py` checks a mesh's copy drawn as its extent's bounding box, and `blender/test_time_varying.py` checks no bounds, since none of its fixtures' bounds vary. M8 checks the mesh drawn, and at each sampled time code its points and topology as USD gives them (XFORM-07).
 
 **Exit condition:** safe supported geometry at any supplied time code, matching the support matrix, with source correspondence intact.

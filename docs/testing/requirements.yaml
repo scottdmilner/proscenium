@@ -1776,7 +1776,7 @@ requirements:
         delivery: M12
       - id: AFIX-06
         quote: "Fixtures with time-varying content are evaluated at the sampled time codes. Fixtures with payloads run under both payload policies."
-        oracle: "F-TRANSFORMS' cases run under both payload policies, and its and F-VISIBILITY-PURPOSE's time-varying cases at their sampled time codes, through the sampled-time-codes helper (Phase E)."
+        oracle: "F-TRANSFORMS' world transforms, at the default time code and at each sampled one, synchronized and cached, are checked under both payload policies (test_core_instancing.py, test_time_varying.py), as is the payload round trip (relation 4); its and F-VISIBILITY-PURPOSE's time-varying cases run at the time codes the sampled-time-codes helper gives them."
         delivery: M6
 
   - section: testing/acceptance.md#standard-end-to-end-checks
