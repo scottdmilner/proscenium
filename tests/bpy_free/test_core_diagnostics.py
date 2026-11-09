@@ -12,9 +12,10 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from pxr import Usd
+from pxr import Usd, UsdGeom
 
 from fixtures import appearance, evaluation
+from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
 from proscenium.binding.source_access.identifiers import BindingId
 from proscenium.core import _core
@@ -42,6 +43,7 @@ CONTENT = {
 def test_every_code_the_core_reports_is_a_documented_content_code() -> None:
     codes = _core.diagnostic_codes()
     assert codes and len(set(codes)) == len(codes)
+    assert set(codes) == results.CORE_CODES  # the codes whose wording is part of their problem
     for code in codes:
         diagnostic = Diagnostic(DiagnosticCode(code), BINDING, "")  # ValueError for a code the list lacks
         assert diagnostic.category in CONTENT, code
@@ -118,6 +120,29 @@ def test_a_warning_inside_a_prototype_is_reported_once_per_usd_prim(tmp_path: Pa
             sources[0]: True for sources in copies.values()
         }, code
     assert all(len(sources) == 6 for sources in copies.values())
+
+
+LISTED = 10  # the diagnostics one problem gets before one counts the rest (with the user; diagnostics.h)
+
+
+def test_a_problem_on_many_prims_lists_its_first_and_counts_the_rest(tmp_path: Path) -> None:
+    # DIAG-16 on F-UNSUPPORTED-CONTENT, with 25 more BasisCurves beside its own: of the BasisCurves boxes' one problem,
+    # an untranslated-type for each of the first ten in source order, then one naming no source and counting the
+    # rest; the other types' problems stay their own.
+    with evaluation.unsupported_content(tmp_path) as unsupported:
+        stage = unsupported.stage
+        added = [f"/World/Many/Curves{i:02}" for i in range(25)]
+        for path in added:
+            UsdGeom.BasisCurves.Define(stage, path).CreateExtentAttr([(0, 0, 0), (1, 1, 1)])
+        diagnostics = planning.plan_diagnostics(BINDING, plan_at(stage, 0.0))
+    curves = sorted([p for p, box in unsupported.placeholders.items() if box.type_name == "BasisCurves"] + added)
+    untranslated = [d for d in diagnostics if d.code is DiagnosticCode.UNTRANSLATED_TYPE]
+    boxed = [d for d in untranslated if "BasisCurves" in d.message]
+    assert [d.source_path for d in boxed] == [*curves[:LISTED], ""]
+    assert boxed[-1].message.endswith(f"(and {len(curves) - LISTED} more with the same problem, not listed)")
+    assert boxed[-1].fallback == "bounding box"
+    others = {p for p, box in unsupported.placeholders.items() if box.type_name != "BasisCurves"}
+    assert {d.source_path for d in untranslated if d not in boxed} == others
 
 
 def test_a_code_the_list_lacks_raises() -> None:

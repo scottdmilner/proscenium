@@ -168,14 +168,12 @@ class CopyReports {
     Count(Find(std::move(diagnostic), UsdPrimOf(prim, copy)), source);
   }
 
-  // Names each report's first copy and counts its copies in its message.
+  // Names each report's first copy and counts its copies, which Summarize words into its message.
   void Finish() {
     for (auto& [key, report] : reports_) {
       Diagnostic& diagnostic = to_[report.index];
       diagnostic.source = report.first;
-      if (report.count > 1)
-        diagnostic.message +=
-            " (for its " + std::to_string(report.count) + " drawn copies; the first in source order is named)";
+      diagnostic.copies = report.count;
     }
   }
 
@@ -225,7 +223,7 @@ void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, Inst
       reports.Add(std::move(diagnostic), *prim, *copies);
       continue;
     }
-    if (!diagnostic.source.IsEmpty()) diagnostic.message += " (Hydra prim " + diagnostic.source.GetString() + ")";
+    diagnostic.hydraPrim = diagnostic.source;
     diagnostic.source = SdfPath();
     to.push_back(std::move(diagnostic));
   }
@@ -325,7 +323,9 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                    "The world transform's projective part is dropped, so it is placed by its affine part",
                    {},
                    {},
-                   {}},
+                   {},
+                   {},
+                   0},
                   *gprim.prim, *gprim.copy, gprim.source);
     const GfMatrix4d world = Affine(corrected);
     const bool sheared = Sheared(world);
@@ -341,7 +341,9 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                    "Its type, " + gprim.usdType.GetString() + ", is drawn as a mesh approximating its surface",
                    {},
                    {},
-                   {}},
+                   {},
+                   {},
+                   0},
                   *gprim.prim, *gprim.copy, gprim.source);
     if (!gprim.mesh) {
       const TfToken& type = gprim.usdType.IsEmpty() ? gprim.prim->type : gprim.usdType;
@@ -352,7 +354,9 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                (marker ? "an empty marker stands in, since it has no usable bounds" : "a box of its bounds stands in"),
            {},
            {},
-           marker ? "empty marker" : "bounding box"},
+           marker ? "empty marker" : "bounding box",
+           {},
+           0},
           *gprim.prim, *gprim.copy, gprim.source);
     }
     // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances. A
@@ -399,6 +403,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyPlaceholders.push_back(placeholder);
   }
   planned.Finish();
+  Summarize(plan->diagnostics);
   return plan;
 }
 

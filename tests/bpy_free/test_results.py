@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from proscenium.binding import results
@@ -51,6 +53,14 @@ def test_a_repeated_problem_is_one_diagnostic() -> None:
     # DIAG-03: within one result, in the order first reported, with the first report's message.
     reworded = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "binding", "The source couldn't be evaluated")
     assert Result(FAILED, DIRTY, FAILED, reworded).diagnostics == (FAILED, DIRTY)
+
+
+def test_the_core_tells_its_problems_apart_by_their_wording() -> None:
+    # The core's message states its problem: two Tf warnings about one prim are two problems, and one repeated, as
+    # the plans of a cache call's time codes repeat it, is one.
+    warned = Diagnostic(DiagnosticCode.USD_WARNING, "binding", "No data-source support", source_path="/World/A")
+    other = replace(warned, message="An unsupported primvar")
+    assert Result(warned, other, warned).diagnostics == (warned, other)
 
 
 def test_problems_about_different_things_stay_apart() -> None:

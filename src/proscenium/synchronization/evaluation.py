@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..binding import results
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.source_access import stages
 from ..core import _core
@@ -22,9 +23,10 @@ if TYPE_CHECKING:
     from ..binding.source_access import binding_settings, identifiers
 
 
-# Every code the core can report is in the documented list: a core built against another list fails here, on import,
-# rather than at the first diagnostic it reports (DiagnosticCode raises ValueError for one it lacks).
-_CORE_CODES = frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes())
+# The core reports exactly the codes the documented list says it does: a core built against another list fails here, on
+# import, rather than at the first diagnostic it reports (DiagnosticCode raises ValueError for one it lacks).
+if frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes()) != results.CORE_CODES:
+    raise ImportError("The compiled core reports other diagnostic codes than binding.results.CORE_CODES")
 
 
 def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:

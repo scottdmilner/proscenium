@@ -315,6 +315,11 @@ requirements:
         quote: "Aggregate repeated problems."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "In F-PREPARATION-CLEANUP-FAILURE's repeat case, synchronizing again with disposal still failing reports each problem once per resource, never once per attempt, and a problem repeated within one attempt is one diagnostic."
+      - id: DIAG-16
+        quote: "A problem repeated across many source entities is reported for each of the first ten in source order, and once more counting the rest."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "F-UNSUPPORTED-CONTENT with 25 more BasisCurves beside its five: an untranslated-type diagnostic for each of the first ten BasisCurves in source order, then one naming no source that counts the other twenty; the other types' diagnostics are unchanged."
+        delivery: M6
       - id: DIAG-04
         quote: "Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history."
         fixtures: [F-FAILED-SETTINGS]
@@ -329,8 +334,8 @@ requirements:
         oracle: "Each result's cleanup status lists the ledger's current cleanup diagnostics, one per operation and resource, apart from its own diagnostics: in F-PREPARATION-CLEANUP-FAILURE's replace and repeat cases and in F-RETIREMENT-FAILURE."
       - id: DIAG-07
         quote: "An unchanged refresh produces equivalent deduplicated source/display diagnostics."
-        fixtures: [F-NO-OP-REFRESH, F-DIRTY-LAYER]
-        oracle: "Two synchronizations of F-DIRTY-LAYER with nothing changed between them report equal diagnostics in the same order; F-NO-OP-REFRESH extends this to content diagnostics."
+        fixtures: [F-NO-OP-REFRESH, F-DIRTY-LAYER, F-UNSUPPORTED-CONTENT]
+        oracle: "Two synchronizations of F-DIRTY-LAYER, or of F-UNSUPPORTED-CONTENT for its content diagnostics, with nothing changed between them report equal diagnostics in the same order; F-NO-OP-REFRESH extends this to every content case."
       - id: DIAG-08
         quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
@@ -345,8 +350,8 @@ requirements:
         oracle: "F-DIRTY-LAYER's synchronization reports success, holding only source-state diagnostics."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
-        fixtures: [F-RETIREMENT-FAILURE]
-        oracle: "F-RETIREMENT-FAILURE's synchronization reports completed with issues, holding pending-cleanup diagnostics and no fatal one; the content categories join with M6."
+        fixtures: [F-RETIREMENT-FAILURE, F-UNSUPPORTED-CONTENT]
+        oracle: "F-RETIREMENT-FAILURE's synchronization reports completed with issues, holding pending-cleanup diagnostics and no fatal one; F-UNSUPPORTED-CONTENT's reports completed with issues, holding the fixture's untranslated-type, approximation, and usd-warning diagnostics, each once, and no fatal one."
       - id: DIAG-11
         quote: "Fatal failure, including an unavailable source."
         fixtures: [F-OFFLINE]

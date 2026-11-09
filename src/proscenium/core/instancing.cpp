@@ -311,7 +311,7 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
 }
 
 void InstanceResolver::Report(const SdfPath& hydraPath, DiagnosticCode code, const std::string& message) {
-  diagnostics_.push_back({code, SdfPath(), message + " (Hydra prim " + hydraPath.GetString() + ")", {}, {}, {}});
+  diagnostics_.push_back({code, SdfPath(), message, {}, {}, {}, hydraPath, 0});
 }
 
 }  // namespace proscenium

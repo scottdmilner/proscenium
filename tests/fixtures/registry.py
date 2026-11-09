@@ -529,6 +529,10 @@ FIXTURES: dict[str, Fixture] = {
                 Case("per-behavior", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("MODEL-03", "MODEL-06"), 1),
                 # A supported mesh beneath unsupported curves takes their transform and purpose.
                 Case("unsupported-ancestor", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("ARCH-04",), 1),
+                # The plan's content diagnostics in the attempt's, each once, and again when nothing changed.
+                Case("content-diagnostics", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DIAG-07", "DIAG-10"), 1),
+                # One problem on many prims: its first ten listed, then one counting the rest.
+                Case("many-prims", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DIAG-16",), 1),
             ),
         ),
         Fixture(

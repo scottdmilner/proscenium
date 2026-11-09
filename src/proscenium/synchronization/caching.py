@@ -90,6 +90,7 @@ def cache(
     )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, time_codes=attempted)
+    own = (*own, *(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan)))
 
     work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.CACHE)
     before = manifests.Manifest({}) if manifest is None else manifest.record

@@ -28,6 +28,7 @@
 - Determinism: identical snapshot, settings, and planning context yield identical plans.
 - Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to binding configuration version 1, with no migration, since no release has written one (DECISIONS.md "Conversion and purpose settings").
 - A published generation records the settings and target unit scale it was planned with, and `cache` plans under them; after the target scene's unit scale changes, `cache` needs a synchronization, caching nothing (CACHE-12, `F-CACHED-TIME-CODES`).
+- The plan's content diagnostics in the attempt's, the generation's, and a cache call's, completing the result with issues and equal across an unchanged refresh (DIAG-07, DIAG-10); a problem on many prims listing its first ten and counting the rest (DIAG-16); on `F-UNSUPPORTED-CONTENT`.
 - Per-behavior dispatch: an unsupported behavior on a prim does not suppress its supported behaviors.
 - Point instancers' copies, transforms, visibility, and point-instance paths, by index, by authored id, and inside native instances, on `F-POINT-INSTANCERS`.
 - Expected transforms, visibility, and bounds come from the spec or from how the fixture is built (for example, UsdGeom computations), never from Hydra's own output. An untranslated Hydra prim type yields a placeholder and diagnostic.

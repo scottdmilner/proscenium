@@ -92,6 +92,7 @@ def _attempt(
     if isinstance(planned, Diagnostic):
         return (*own, planned)
     [plan] = planned
+    own = (*own, *evaluation.plan_diagnostics(binding_id, plan))  # content's, so they join the generation's too
 
     work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record

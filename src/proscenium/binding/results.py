@@ -75,6 +75,20 @@ class DiagnosticCode(StrEnum):
     APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
 
+# The codes the compiled core reports, whose messages state their problems (Diagnostic.problem);
+# synchronization.evaluation checks the core's list against it on import.
+CORE_CODES = frozenset(
+    {
+        DiagnosticCode.PROJECTIVE_TRANSFORM,
+        DiagnosticCode.UNSUPPORTED_INSTANCING,
+        DiagnosticCode.INVALID_INSTANCER,
+        DiagnosticCode.USD_WARNING,
+        DiagnosticCode.USD_ERROR,
+        DiagnosticCode.UNTRANSLATED_TYPE,
+        DiagnosticCode.APPROXIMATED_GEOMETRY,
+    }
+)
+
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.UNSAVED_LAYERS: (DiagnosticCategory.SOURCE_STATE, Severity.INFO),
     DiagnosticCode.NO_ATTACHED_STAGE: (DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR),
@@ -140,8 +154,13 @@ class Diagnostic:
 
     @property
     def problem(self) -> tuple[object, ...]:
-        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03)."""
-        return tuple(getattr(self, f.name) for f in fields(self) if f.name != "message")
+        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03).
+
+        The core's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
+        the problem; another's is prose about one, so it isn't.
+        """
+        worded = self.code in CORE_CODES
+        return tuple(getattr(self, f.name) for f in fields(self) if worded or f.name != "message")
 
 
 # The state each category gives a result on its own (pipeline.md#diagnostics); a result's is its worst diagnostic's.
