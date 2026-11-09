@@ -97,7 +97,7 @@ SceneIndexChain::~SceneIndexChain() { Release(); }
 
 void SceneIndexChain::Release() {
   if (sourceInfo_) sourceInfo_->Detach();
-  if (indices_.stageSceneIndex) indices_.stageSceneIndex->SetStage(nullptr);
+  // Destroying the stage scene index drops its stage reference.
   terminal_.Reset();
   sourceInfo_.Reset();
   indices_ = {};

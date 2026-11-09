@@ -201,6 +201,10 @@ The snapshot is opaque to Python and tested through the plan (M5 B1), so each co
 
 Moore Lane and the OpenPBR Shader Playground add nothing M6 measures, so they aren't run. Moana Island isn't run either: opened whole it exhausts memory, and one element passed 8 GB in M4 with its point instancers left out, cause unknown ([record](../feasibility/runtime-record.md#moana-island-at-scale)).
 
+#### Phase F log
+
+- **F1, the chain's release.** `SceneIndexChain::Release` drops the stage scene index without `SetStage(nullptr)`, which the bridge called: destroying the stage scene index drops its stage reference too, and `SetStage(nullptr)` first sends every prim's removal, which UsdImaging's native-instance filters answer by adding prims again and hashing their bindings, resolving asset paths. On ALab, in the Blender binary, one process each, six releases took 0.42 to 0.51 s with it and 0.025 to 0.041 s without it (ad hoc); in a native sample of those with it, 1,350 of the release's 1,394 samples were in `SetStage`. With the snapshot and plan alive, all 2,982 of ALab's layers expired after the release either way (ad hoc). `isolated/test_stage_handle.py` now also checks it on F-NESTED-STRESS's nested native instances: once the chain is released, every layer of a stage its caller dropped expires, and the snapshot it captured still plans. Mutation check: a release that kept the chain's scene indices alive failed it and the existing chain check.
+
 ### Phase G — Close
 
 1. **Notes for M7, M8, and M10** in their milestone files:
