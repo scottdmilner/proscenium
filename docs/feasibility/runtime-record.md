@@ -1645,6 +1645,32 @@ Cores: building the chain 3.7 to 4.7, capture 5.0 to 6.2, planning 1.6 to 2.6, a
 - **Reading the plan is small:** 1 to 8 ms for the tuple properties, nearly all of the reading, and under 1 ms for every buffer, lists included.
 - **Not measured:** a windowed Blender, Linux and Windows, ALab with its point instancers, other time codes, and a quiet machine.
 
+### Reading the plan (M6 Phase F)
+
+What reading a plan's per-copy content costs in Python, as a tuple property and as a buffer, at ALab's 6,679 copies and the generated `updates-N` scenes' 301, 3,001, and 30,001, in the environment of [Capture and planning](#capture-and-planning-m6-phase-f) (2026-11-09, load average 7.6 to 11.0 at the runs' start). Reproduce with `measure/evaluation_cost.py --scenes updates alab --repeats 3`.
+
+**Method:** the probe and statistics of [Capture and planning](#capture-and-planning-m6-phase-f), with stages after the plan's reading:
+- **Fields:** every field of each correspondence entry (its element, source, and instance context) and of each resource (role, entity, place, covers, and uses), two resources per copy, from the tuples already read.
+- **The same content both ways:** each copy's object index from a fresh read of the correspondence tuple, `[c.element for c in plan.correspondence]`, and from the `copy_objects` buffer, `memoryview(...).tolist()`; they are checked equal.
+- **Matrices:** each copy's world matrix made from the `copy_worlds` buffer as the stub makes it, a 16-float slice's list into a `mathutils.Matrix`, transposed.
+
+| Stage (ms), first; again | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Copies; resources | 301; 602 | 3,001; 6,002 | 6,679; 13,358 | 30,001; 60,002 |
+| Tuple properties read, all | 0.39; 0.13 | 3.7; 1.5 | 7.5; 4.4 | 31 (27–34); 25 (24–30) |
+| Correspondence entries' fields | 0.34; 0.29 | 3.0; 2.2 | 9.9; 8.2 | 42 (40–49); 31 (30–31) |
+| Resources' fields | 2.3; 0.44 | 5.7; 5.6 | 13.6; 13.7 | 89 (88–92); 59 (57–59) |
+| **Object indices from the tuple** | 0.06; 0.11 | 0.58; 0.58 | **1.74; 1.77** | **6.4 (6.2–6.8); 6.9 (5.8–7.0)** |
+| **Object indices from the buffer** | 0.01; 0.00 | 0.03; 0.03 | **0.06; 0.06** | **0.27; 0.29** |
+| Every buffer viewed; seven to lists | 0.04; 0.01 | 0.10; 0.08 | 0.24; 0.19 | 0.85; 0.75 |
+| Matrices from the buffer | 0.27; 0.26 | 2.5; 2.6 | 5.6; 6.2 | 28 (27–28); 58 (57–58) |
+
+**Findings:**
+- **A buffer is about 25 times cheaper per element than a tuple** for the same content: each copy's object index took about 220 ns from the correspondence tuple and 9 ns from the buffer, at ALab's and 30,001 copies alike.
+- **Reading every field of the tuples costs about 4.5 µs a copy** at 30,001 copies the first time (0.16 s with the tuples' conversion) and 3.8 µs again, against under 1 ms for every buffer. The resources' fields are two thirds of it, with two resources a copy and each holding two tuples (covers and uses) of its own; which field costs most wasn't measured. On ALab the same reading is 31 ms the first time.
+- **The buffer's own cost is nothing beside what Python builds from it:** a `mathutils.Matrix` per copy took 0.9 µs at 30,001 copies the first time, and 1.9 µs again, which wasn't investigated.
+- **Not measured:** Blender's bulk setters (`foreach_set`) taking the buffers directly, a windowed Blender, and Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

@@ -1,4 +1,4 @@
-"""M6 Phase F (F1, F2): the core's capture and planning, split by stage, with memory, in the Blender binary.
+"""M6 Phase F (F1 to F3): the core's capture and planning, split by stage, with memory, in the Blender binary.
 
     uv run python tools/feasibility/hydra_bridge/measure/evaluation_cost.py [--scenes alab] [--files SCENE.usd ...] \
         [--repeats 3]
@@ -9,7 +9,10 @@ captures the scene's time code (a file's start time code), releases the chain, p
 settings and a unit scale of 1, plans it again with coordinate conversion on and drops that plan, reads the plan
 across the boundary once, and groups its copies in batches of at least BATCH_MINIMUM, then drops the snapshot and
 plan. Reading the plan is every tuple property converted once (each description's extent with it), every buffer
-viewed, and the buffers the stub application layer turns into lists turned into lists. Each stage is timed by wall
+viewed, and the buffers the stub application layer turns into lists turned into lists. Then per copy (F3): every
+field of the tuples' elements read, each copy's object index from a fresh read of the correspondence tuple and from
+the copy_objects buffer, the same content, and each copy's world matrix made from the buffer as the stub makes it.
+Each stage is timed by wall
 clock and by the process's CPU time, all threads', and the live heap (memory.heap_in_use) is read after it. Raw runs
 go to <out>/runs/, the summary to <out>/summary.json and summary.md.
 """
@@ -35,7 +38,15 @@ ITERATIONS = 3  # chain, capture, plan, and read in one process: the first, then
 SCENES = ["alab"]  # run.py's groups
 BATCH_MINIMUM = 5  # DECISIONS.md "Display representation"
 STAGES = ["chain", "capture", "release chain", "plan", "plan, converting", "drop converted", "read tuples"]
-STAGES += ["read buffers", "buffers to lists", "batch groups", "drop"]
+STAGES += [
+    "read buffers",
+    "buffers to lists",
+    "correspondence fields",
+    "resource fields",
+    "objects from the tuple",
+    "objects from the buffer",
+]
+STAGES += ["matrices from the buffer", "batch groups", "drop"]
 TUPLES = ["partitions", "resources", "correspondence", "geometries", "diagnostics"]
 BUFFERS = [
     "copy_worlds",
@@ -84,6 +95,7 @@ def child(config: dict[str, Any]) -> None:
 
     import bpy
     import memory
+    from mathutils import Matrix
 
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd, UsdGeom
@@ -136,6 +148,21 @@ def child(config: dict[str, Any]) -> None:
         mark("read buffers")
         lists = {name: views[name].tolist() for name in LISTED}
         mark("buffers to lists")
+        entry_fields = [(c.element, c.source, c.instance_context) for c in read["correspondence"]]
+        mark("correspondence fields")
+        resource_fields = [(r.role, r.entity, r.place, r.covers, r.uses) for r in read["resources"]]
+        mark("resource fields")
+        from_tuple = [c.element for c in plan.correspondence]
+        mark("objects from the tuple")
+        from_buffer = memoryview(plan.copy_objects).tolist()
+        mark("objects from the buffer")
+        assert from_tuple == from_buffer
+        worlds = views["copy_worlds"]
+        matrices = []
+        for copy in range(plan.copy_count):  # as application._world
+            columns = worlds[16 * copy : 16 * copy + 16].tolist()
+            matrices.append(Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed())
+        mark("matrices from the buffer")
         groups, singles = plan.batch_groups(BATCH_MINIMUM)
         members = [len(memoryview(g.members)) for g in groups]
         mark("batch groups")
@@ -154,7 +181,23 @@ def child(config: dict[str, Any]) -> None:
             "largest batch group": max(members, default=0),
             "single copies": len(memoryview(singles)),
         }
-        del read, extents, views, lists, groups, singles, contexts, plan, snapshot
+        del (
+            read,
+            extents,
+            views,
+            lists,
+            entry_fields,
+            resource_fields,
+            from_tuple,
+            from_buffer,
+            worlds,
+            matrices,
+            groups,
+            singles,
+            contexts,
+            plan,
+            snapshot,
+        )
         gc.collect()
         mark("drop")
         iterations.append({"marks": list(marks), "counts": counts})
