@@ -7,7 +7,7 @@ disposal fails to remove enters the ledger.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import bpy
 import pytest
@@ -29,6 +29,8 @@ from support.usd import open_fresh
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from pxr import Gf
 
     from proscenium.api.bindings import Bindings
     from proscenium.binding.persistence.ledgers import LedgerEntry
@@ -172,21 +174,30 @@ def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_p
         assert hidden["/World/Hidden/Child"] == (True, True)
 
 
+def test_each_provisional_mesh_copy_draws_its_extent(bindings: Bindings, tmp_path: Path) -> None:
+    # On F-UNITS-UP-AXIS' Z-up stage in meters: each mesh's copy, the one inside a native instance included, is an
+    # object at its world transform drawing the mesh's authored extent, its provisional geometry description's.
+    with evaluation.units_up_axis(tmp_path) as scene:
+        work = _prepared(_binding(bindings), _plan(scene.stages["z-up-m"], 0.0))
+        shown = _shown(work)
+        assert shown.keys() == scene.world.keys()
+        for path, world in scene.world.items():
+            assert _close(shown[path].matrix_world, _blender(world)), path
+            assert _vertices(shown[path]) == pytest.approx(_box(scene.bounds)), path
+
+
 def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_path: Path) -> None:
-    # MODEL-05 on F-UNSUPPORTED-CONTENT: the volume without usable bounds; every placeholder with bounds draws its box.
+    # MODEL-05 on F-UNSUPPORTED-CONTENT: the volume without usable bounds; every placeholder with bounds draws its box,
+    # the authored extent or USD's computed one, at its world transform.
     with evaluation.unsupported_content(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.stage, 0.0))
-        shown = {
-            work.entries[key].covers[0]: obj
-            for obj in work.staging.objects
-            if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
-        }
+        shown = _shown(work)
         for path, expected in scene.placeholders.items():
-            data = shown[path].data
+            assert _close(shown[path].matrix_world, _blender(expected.world)), path
             if expected.bounds is None:
-                assert data is None, path
+                assert shown[path].data is None, path
             else:
-                assert isinstance(data, bpy.types.Mesh) and len(data.vertices) == 8, path
+                assert _vertices(shown[path]) == pytest.approx(_box(expected.bounds), rel=1e-6), path
 
 
 def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindings, tmp_path: Path) -> None:
@@ -397,3 +408,31 @@ def _fail_on_call(monkeypatch: pytest.MonkeyPatch, step: str, call: int) -> None
 def _key(work: PreparedWork, datablock: bpy.types.ID) -> str:
     [key] = [k for k, d in work.datablocks.items() if d == datablock]
     return key
+
+
+def _shown(work: PreparedWork) -> dict[str, bpy.types.Object]:
+    """The prepared copies' objects, by the source each shows."""
+    return {
+        work.entries[key].covers[0]: obj
+        for obj in work.staging.objects
+        if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+    }
+
+
+def _blender(matrix: Gf.Matrix4d) -> Matrix:
+    """USD's row-vector matrix as Blender's column-vector one."""
+    return Matrix([[matrix[r, c] for c in range(4)] for r in range(4)]).transposed()
+
+
+def _box(bounds: evaluation.Bounds) -> list[float]:
+    """The eight corners of (min, max), sorted, flattened for pytest.approx."""
+    low, high = (cast("Sequence[float]", corner) for corner in bounds)
+    corners = sorted((x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2]))
+    return [value for corner in corners for value in corner]
+
+
+def _vertices(obj: bpy.types.Object) -> list[float]:
+    """The vertices of obj's bounds mesh, sorted, flattened as _box's."""
+    mesh = obj.data
+    assert isinstance(mesh, bpy.types.Mesh)
+    return [value for vertex in sorted(v.co[:] for v in mesh.vertices) for value in vertex]
