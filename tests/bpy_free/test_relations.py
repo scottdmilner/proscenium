@@ -1,8 +1,10 @@
-"""Metamorphic relations 1, 4, 5, and 6 on the bespoke fixtures (M6 plan, A3 and E3).
+"""Metamorphic relations 1, 4, 5, and 6 on the bespoke fixtures, and 1 and 2 on generated inputs (M6 plan, A3).
 
 Each compares the plans of two inputs, captured and planned here under the default settings and context, conversion
-off. Relations 2 and 3 are test_core_conversion.py's and test_core_visibility.py's. Every fixture these run on has
-tests of its own expected values too (TMETA-01): test_evaluation_fixtures.py's and the fixtures' cases.
+off unless relation 2 turns it on. Relation 2 on F-UNITS-UP-AXIS and relation 3 are test_core_conversion.py's and
+test_core_visibility.py's. Generated hierarchies come from the seeds evaluation.GENERATED_SEEDS records, each a test
+parameter (TMETA-04). Every fixture and generated input these run on has tests of its own expected values too
+(TMETA-01): test_evaluation_fixtures.py's and the fixtures' cases.
 """
 
 from __future__ import annotations
@@ -15,17 +17,17 @@ from pxr import Gf, Usd, UsdGeom
 from fixtures import appearance, evaluation
 from proscenium.binding.source_access import stages
 from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.core import _core
 
-from .plan_checks import Copy, assert_world, copies, plan_at
+from .plan_checks import SETTINGS, Copy, assert_world, copies, plan_at
 from .plan_process import contents
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from proscenium.core import _core
-
 SHIFT = Gf.Vec3d(3.0, -2.0, 5.0)  # relation 1's translation
+CONVERTING = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES, coordinate_conversion=True)
 
 
 @pytest.fixture
@@ -59,17 +61,8 @@ def _diagnostics(plan: _core.Plan) -> list[object]:
     return contents(plan)["diagnostics"]
 
 
-@pytest.mark.parametrize("fixture", ["transforms", "stress"])
-def test_relation_1_root_translation(fixture: str, request: pytest.FixtureRequest) -> None:
-    """Relation 1, root translation (XFORM-01, XFORM-02).
-
-    Input: a translate op of t put first in World's xformOpOrder, so it applies after World's own ops. Effect: each
-    drawn copy's world transform W becomes W · T(t), in USD's row-vector convention, but for a copy beneath a reset
-    transform stack, which doesn't move; sources, instance contexts, participation, local bounds, and diagnostics are
-    unchanged. On F-TRANSFORMS "root-translation" and F-NESTED-STRESS "root-translation", whose Pinned copies stay put.
-    """
-    scene = request.getfixturevalue(fixture)
-    stage = scene.stage
+def _check_root_translation(stage: Usd.Stage) -> set[str]:
+    """Relation 1 on stage, as test_relation_1_root_translation states it; the copies that stay put."""
     before = plan_at(stage, 0.0)
     world = UsdGeom.Xformable(stage.GetPrimAtPath("/World"))
     order = world.GetOrderedXformOps()
@@ -80,15 +73,75 @@ def test_relation_1_root_translation(fixture: str, request: pytest.FixtureReques
     moved, shown = copies(before), copies(after)
     assert shown.keys() == moved.keys()
     pinned = {path for path in shown if _resets(stage, path)}
-    assert pinned  # so the fixed copies are checked
-    if fixture == "transforms":
-        assert scene.resets < pinned  # and Socket/Geom, below a nested instance root that resets it
     for path, copy in shown.items():
         translation = Gf.Matrix4d(1) if path in pinned else Gf.Matrix4d().SetTranslate(SHIFT)
         assert_world(copy, moved[path].world * translation)
         assert _unmoved(copy) == _unmoved(moved[path]), path
     assert contents(after)["correspondence"] == contents(before)["correspondence"]
     assert _diagnostics(after) == _diagnostics(before)
+    return pinned
+
+
+@pytest.mark.parametrize("fixture", ["transforms", "stress"])
+def test_relation_1_root_translation(fixture: str, request: pytest.FixtureRequest) -> None:
+    """Relation 1, root translation (XFORM-01, XFORM-02).
+
+    Input: a translate op of t put first in World's xformOpOrder, so it applies after World's own ops. Effect: each
+    drawn copy's world transform W becomes W · T(t), in USD's row-vector convention, but for a copy beneath a reset
+    transform stack, which doesn't move; sources, instance contexts, participation, local bounds, and diagnostics are
+    unchanged. On F-TRANSFORMS "root-translation" and F-NESTED-STRESS "root-translation", whose Pinned copies stay put.
+    """
+    scene = request.getfixturevalue(fixture)
+    pinned = _check_root_translation(scene.stage)
+    assert pinned  # so the fixed copies are checked
+    if fixture == "transforms":
+        assert scene.resets < pinned  # and Socket/Geom, below a nested instance root that resets it
+
+
+@pytest.mark.parametrize("seed", evaluation.GENERATED_SEEDS)
+def test_relation_1_on_generated_hierarchies(seed: int, tmp_path: Path) -> None:
+    """Relation 1, root translation (XFORM-01, XFORM-02), on a hierarchy generated from seed (TMETA-04).
+
+    Input and effect as test_relation_1_root_translation states them, on random translate, rotate, and scale ops,
+    negative and nonuniform scales, and resets of the transform stack (evaluation.generated_hierarchy).
+    """
+    with evaluation.generated_hierarchy(tmp_path, seed) as scene:
+        pinned = _check_root_translation(scene.stage)
+        assert pinned == {p for p in scene.world if any(p == r or p.startswith(f"{r}/") for r in scene.resets)}
+
+
+@pytest.mark.parametrize("scale_length", evaluation.UNIT_SCALES)
+@pytest.mark.parametrize("seed", evaluation.GENERATED_SEEDS)
+def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp_path: Path) -> None:
+    """Relation 2, conversion (CONV-01, CONV-03, CONV-08), on a hierarchy generated from seed (TMETA-04).
+
+    Input: coordinate_conversion turned on, planning one snapshot under both settings. Effect: each drawn copy's
+    world transform W becomes W · C, C the spec's correction for the stage's metersPerUnit and upAxis and the target
+    scene's unit scale (evaluation.correction); local bounds, sources, participation, and diagnostics are unchanged.
+    Relation 2 on F-UNITS-UP-AXIS is test_core_conversion.py's.
+    """
+    with evaluation.generated_hierarchy(tmp_path, seed) as scene:
+        chain = _core.SceneIndexChain(scene.stage)
+        try:
+            snapshot = chain.capture(Usd.TimeCode(0.0))
+        finally:
+            chain.release()
+        context = _core.PlanningContext(scale_length, 1)
+        off = _core.plan(snapshot, SETTINGS, context)
+        on = _core.plan(snapshot, CONVERTING, context)
+        correction = evaluation.correction(scene.meters_per_unit, scene.up_axis, scale_length)
+        plain, converted = copies(off), copies(on)
+        assert converted.keys() == plain.keys() == scene.world.keys()
+        for path, copy in converted.items():
+            assert_world(copy, scene.world[path] * correction)
+            assert_world(plain[path], scene.world[path])
+            assert (copy.bounds, copy.viewport, copy.render) == (
+                plain[path].bounds,
+                plain[path].viewport,
+                plain[path].render,
+            ), path
+        assert contents(on)["correspondence"] == contents(off)["correspondence"]
+        assert _diagnostics(on) == _diagnostics(off)
 
 
 def test_relation_4_payload_round_trip(transforms: evaluation.TransformsScene) -> None:

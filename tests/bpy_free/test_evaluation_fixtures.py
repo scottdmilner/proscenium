@@ -365,3 +365,40 @@ def test_point_instancer_prototypes_are_drawn_only_as_copies(points: evaluation.
         if prim.IsA(GPRIM) and any(a.IsA(POINT_INSTANCER) for a in _ancestors(prim))
     }
     assert under == points.prototypes
+
+
+# --- Generated transform hierarchies -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("seed", evaluation.GENERATED_SEEDS)
+def test_generated_hierarchy(seed: int, tmp_path: Path) -> None:
+    with evaluation.generated_hierarchy(tmp_path, seed) as scene:
+        stage = scene.stage
+        assert (UsdGeom.GetStageMetersPerUnit(stage), UsdGeom.GetStageUpAxis(stage)) == (
+            scene.meters_per_unit,
+            scene.up_axis,
+        )
+        assert _drawn(stage) == set(scene.world)
+        for path, expected in scene.world.items():
+            assert _close(_world(stage, path), expected), path
+        resetting = {str(p.GetPath()) for p in stage.Traverse() if UsdGeom.Xformable(p).GetResetXformStack()}
+        assert resetting == scene.resets
+
+
+def test_generated_hierarchies_cover_resets_and_shears(tmp_path: Path) -> None:
+    # Across the recorded seeds, so the relations run on them see both.
+    resets = shears = 0
+    for seed in evaluation.GENERATED_SEEDS:
+        with evaluation.generated_hierarchy(tmp_path / str(seed), seed) as scene:
+            resets += len(scene.resets)
+            shears += sum(_sheared(w) for w in scene.world.values())
+    assert resets and shears
+
+
+def test_one_seed_writes_the_same_layer(tmp_path: Path) -> None:
+    # TMETA-04: byte for byte; another seed writes another.
+    written = []
+    for name, seed in (("one", 17), ("again", 17), ("other", 29)):
+        with evaluation.generated_hierarchy(tmp_path / name, seed) as scene:
+            written.append(scene.root.read_bytes())
+    assert written[0] == written[1] != written[2]

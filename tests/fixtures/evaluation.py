@@ -11,6 +11,8 @@
   conversions to meshes, and a mesh beneath an unsupported ancestor.
 - point_instancers (F-POINT-INSTANCERS): point instancers' copies by their point-instance paths, by index and by
   authored id, and inside native instances.
+- generated_hierarchy: a transform hierarchy generated from a recorded seed, for relations 1 and 2 on generated
+  inputs (TMETA-04), written through Sdf onto hierarchy_base.usda.
 
 Each copies its layers from Scene.EVALUATION, opens them as the caller's live stages, and yields what the
 scene is built to display, written out from the layer by hand: world transforms are composed here from the
@@ -20,11 +22,12 @@ for the default time code. tests/bpy_free/test_evaluation_fixtures.py checks the
 
 from __future__ import annotations
 
+import random
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pxr import Gf, Usd
+from pxr import Gf, Sdf, Usd, Vt
 
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support.time_codes import TimeVariation
@@ -205,9 +208,14 @@ class UnitsScene:
         scale = metersPerUnit / scale_length, then +90 degrees about X for a Y-up stage, as
         transforms.md#coordinate-conversion's C = R_upaxis @ Scale(scale) gives it in column vectors.
         """
-        factor = self.meters_per_unit[stage] / scale_length
-        up = rotate((1, 0, 0), 90) if self.up_axis[stage] == "Y" else Gf.Matrix4d(1)
-        return scale(factor, factor, factor) * up
+        return correction(self.meters_per_unit[stage], self.up_axis[stage], scale_length)
+
+
+def correction(meters_per_unit: float, up_axis: str, scale_length: float) -> Gf.Matrix4d:
+    """The spec's correction matrix C for a stage's metersPerUnit and upAxis, as UnitsScene.correction gives it."""
+    factor = meters_per_unit / scale_length
+    up = rotate((1, 0, 0), 90) if up_axis == "Y" else Gf.Matrix4d(1)
+    return scale(factor, factor, factor) * up
 
 
 @contextmanager
@@ -461,3 +469,97 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
             }
         ),
     )
+
+
+# --- Generated transform hierarchies -------------------------------------------------------------------------
+
+GENERATED_SEEDS = (3, 17, 29, 101, 2026)  # recorded, so each generated input is reproducible (TMETA-04)
+_DEPTH = 3  # levels of Xforms below World, at most; the last holds only meshes
+_RESET = 0.15  # the chance a prim below World resets the transform stack
+
+
+@dataclass
+class HierarchyScene:
+    root: Path
+    stage: Usd.Stage  # the caller's live stage
+    seed: int
+    meters_per_unit: float
+    up_axis: str
+    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform, composed here from the ops written
+    resets: frozenset[str]  # the prims, meshes or Xforms, whose own ops reset the transform stack
+
+
+def _ops(rng: random.Random) -> list[tuple[str, object, Gf.Matrix4d]]:
+    """A prim's random ops, in xformOpOrder's order: (op type, value, matrix). Values are exact in binary."""
+    ops: list[tuple[str, object, Gf.Matrix4d]] = []
+    for _ in range(rng.randint(0, 3)):
+        kind = rng.choice(("translate", "rotateX", "rotateY", "rotateZ", "scale"))
+        if kind == "translate":
+            x, y, z = (rng.randint(-8, 8) / 2 for _ in range(3))
+            ops.append((kind, Gf.Vec3d(x, y, z), translate(x, y, z)))
+        elif kind == "scale":
+            x, y, z = (rng.choice((-1.0, 0.5, 1.0, 2.0)) for _ in range(3))
+            ops.append((kind, Gf.Vec3d(x, y, z), scale(x, y, z)))
+        else:
+            degrees = rng.randrange(-180, 181, 15)
+            axis = {"rotateX": (1, 0, 0), "rotateY": (0, 1, 0), "rotateZ": (0, 0, 1)}[kind]
+            ops.append((kind, float(degrees), rotate(axis, degrees)))
+    return ops
+
+
+def _write_ops(spec: Sdf.PrimSpec, ops: list[tuple[str, object, Gf.Matrix4d]], *, reset: bool) -> Gf.Matrix4d:
+    """Author ops on spec, after a reset of the transform stack if reset; its local transform."""
+    names = []
+    for index, (kind, value, _matrix) in enumerate(ops):
+        name = f"xformOp:{kind}:op{index}"
+        type_name = Sdf.ValueTypeNames.Double3 if kind in {"translate", "scale"} else Sdf.ValueTypeNames.Double
+        Sdf.AttributeSpec(spec, name, type_name).default = value
+        names.append(name)
+    order = Sdf.AttributeSpec(spec, "xformOpOrder", Sdf.ValueTypeNames.TokenArray, Sdf.VariabilityUniform)
+    order.default = Vt.TokenArray(["!resetXformStack!", *names] if reset else names)
+    return local(*(matrix for _kind, _value, matrix in ops))
+
+
+@contextmanager
+def generated_hierarchy(dest: Path, seed: int) -> Generator[HierarchyScene]:
+    """A transform hierarchy generated from seed onto scenes/evaluation/hierarchy_base.usda (TMETA-04).
+
+    World gets random ops, then up to three levels of Xforms below it, each with two to four children, a child a
+    mesh or, above the last level, an Xform too; every prim gets zero to three random translate, rotate, and scale
+    ops, negative and nonuniform scales included, so shears arise, and may reset the transform stack. The stage is
+    in centimeters or meters, Y-up or Z-up. Written to hierarchy.usda through Sdf, so one seed writes the same bytes.
+    """
+    rng = random.Random(seed)
+    base = Sdf.Layer.OpenAsAnonymous(str(copy_scene(Scene.EVALUATION, dest) / "hierarchy_base.usda"))
+    layer = Sdf.Layer.CreateNew(str(dest / "hierarchy.usda"))
+    layer.TransferContent(base)
+    layer.documentation = f"A generated transform hierarchy, seed {seed} (tests/fixtures/evaluation.py)"
+    meters_per_unit, up_axis = rng.choice((0.01, 1.0)), rng.choice(("Y", "Z"))
+    layer.pseudoRoot.SetInfo("metersPerUnit", meters_per_unit)
+    layer.pseudoRoot.SetInfo("upAxis", up_axis)
+    world_spec = layer.GetPrimAtPath("/World")
+    world_matrix = _write_ops(world_spec, _ops(rng), reset=False)
+    drawn: dict[str, Gf.Matrix4d] = {}
+    resets: set[str] = set()
+
+    def build(parent: Sdf.PrimSpec, parent_world: Gf.Matrix4d, depth: int) -> None:
+        for index in range(rng.randint(2, 4)):
+            mesh = depth == _DEPTH or rng.random() < 0.3
+            spec = Sdf.PrimSpec(parent, f"{'Mesh' if mesh else 'Group'}{index}", Sdf.SpecifierDef)
+            spec.typeName = "Mesh" if mesh else "Xform"
+            reset = rng.random() < _RESET
+            matrix = _write_ops(spec, _ops(rng), reset=reset)
+            path = str(spec.path)
+            if reset:
+                resets.add(path)
+            at = world(matrix) if reset else world(matrix, parent_world)
+            if mesh:
+                spec.referenceList.Prepend(Sdf.Reference(primPath="/Shapes/Tetra"))
+                drawn[path] = at
+            else:
+                build(spec, at, depth + 1)
+
+    build(world_spec, world_matrix, 1)
+    layer.Save()
+    root = dest / "hierarchy.usda"
+    yield HierarchyScene(root, open_fresh(root), seed, meters_per_unit, up_axis, drawn, frozenset(resets))
