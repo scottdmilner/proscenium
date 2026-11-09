@@ -1,6 +1,6 @@
 # M6 — Snapshot evaluation and representation planning
 
-**Implements:** [Evaluated Source Snapshot](../spec/pipeline.md#evaluated-source-snapshot), [Display Plan](../spec/pipeline.md#display-plan), [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), except time-varying topology (M8); the planning side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion) (M7 covers the application side); [Visibility and Purpose](../spec/support/visibility.md#visibility-and-purpose), and [Models and Unsupported Content](../spec/support/visibility.md#models-and-unsupported-content).
+**Implements:** [Evaluated Source Snapshot](../spec/pipeline.md#evaluated-source-snapshot), [Display Plan](../spec/pipeline.md#display-plan), [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), except time-varying topology (M8); the planning side of [Coordinate Conversion](../spec/support/transforms.md#coordinate-conversion) (M7 covers the application side); [Visibility and Purpose](../spec/support/visibility.md#visibility-and-purpose), and [Models and Unsupported Content](../spec/support/visibility.md#models-and-unsupported-content), except exposing model kind and asset metadata (M7); and point instancers in [Supported Instancing](../spec/support/instancing.md#supported-instancing), with their point-instance paths ([Source Entities and Hierarchy](../spec/interaction-contract.md#source-entities-and-hierarchy)), except per-point primvars (M10).
 
 **Depends on:** M3 (identifier schemes), M5 (layer interfaces and diagnostics).
 
@@ -15,16 +15,22 @@
 - Capture and planning replace M5's minimal path in `synchronization/evaluation.py`, which the transaction and `cache` share inside `changed_layers()`, so a layer changed during either discards the attempt (CONS-03). The minimal path's capture took 0.71 to 0.84 s of a synchronization on ALab ([M5 plan](../plans/M05-architecture.md), F3).
 - Objects created so their names land at the end of Blender's sorted ID lists, whatever names users see: prim-derived names cost 6.68 s against 1.06 s in creation order at 30,001 objects ([M4 plan](../plans/M04-prototypes.md), C3). This applies to batches' objects too.
 - Batch groups in the plan: copies alike but for placement, at least 5 to a group (DECISIONS.md "Display representation"), grouped in the core ([M4 plan](../plans/M04-prototypes.md), D8).
-- What depends on time, from Hydra's dirtying, for `cache` to add: each object's dirtied aspects after the capture dirties its time dependencies, which predicted every varying copy on ALab ([M4 plan](../plans/M04-prototypes.md), E3). A suggestion; the frames confirm what varies.
 - Snapshot capture from the scene-index chain (M1b adopted Hydra), following the [Hydra design note](../spec/pipeline.md#evaluated-source-snapshot). Imaging adapters and filters replace much custom display-semantic evaluation; source inspection and project validation remain.
+- Capture and planning in parallel, as the bridge's are. M1b's gate passed only with parallel planning: with serial planning, ALab's Hydra stages took 2.12 s against Blender construction's 1.91 s, and parallel mesh building took planning from 1.20 s to 0.26 s ([M1b plan](../plans/M01b-evaluation-gate.md#phase-e-log)). The bridge's capture copies prims in one parallel pass. Reads must not overlap `SetTime`, `ApplyPendingUpdates`, or stage edits ([M1b plan](../plans/M01b-evaluation-gate.md#threading-and-errors)), and holding the GIL while waiting on workers deadlocks ([M1b research](../plans/M01b-research/01-hydra-core.md), §5).
+- Diagnostics as the bridge collects them ([M1b plan](../plans/M01b-evaluation-gate.md#phase-b-log)): a `TfErrorMark` per prim read, warnings attributed to the prim a thread is reading, deduplicated since Hydra posts a warning on each read of a value, and warnings posted while the chain is built joined to the first capture's.
 
 **Tests:**
 
 - Snapshot and plan assertions for the initial scope, including sharing, correspondence, and diagnostics.
-- Time-code and settings changes, including the USD default time code and coordinate conversion with different supplied unit scales and up-axis settings.
+- Transforms on `F-TRANSFORMS` and `F-NESTED-STRESS`, and unsupported content and its descendants on `F-UNSUPPORTED-CONTENT`.
+- Time-code and settings changes, including the USD default time code and coordinate conversion with different supplied unit scales and up-axis settings (`F-UNITS-UP-AXIS`).
+- Visibility and purpose for both destinations from one snapshot on `F-VISIBILITY-PURPOSE` and `F-NESTED-STRESS`, and a guide made explicitly visible on `F-UNIVERSE-MEMBERSHIP`.
 - Determinism: identical snapshot, settings, and planning context yield identical plans.
-- Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to the binding configuration, as a version 2 migration.
+- Each binding's own conversion and purpose settings on `F-MULTI-BINDING`: setting one binding's leaves the others' (BIND-06). M6 adds them to binding configuration version 1, with no migration, since no release has written one (DECISIONS.md "Conversion and purpose settings").
+- A published generation records the settings and target unit scale it was planned with, and `cache` plans under them; after the target scene's unit scale changes, `cache` needs a synchronization, caching nothing (CACHE-12, `F-CACHED-TIME-CODES`).
+- The plan's content diagnostics in the attempt's, the generation's, and a cache call's, completing the result with issues and equal across an unchanged refresh (DIAG-07, DIAG-10); a problem on many prims listing its first ten and counting the rest (DIAG-16); on `F-UNSUPPORTED-CONTENT`.
 - Per-behavior dispatch: an unsupported behavior on a prim does not suppress its supported behaviors.
+- Point instancers' copies, transforms, visibility, and point-instance paths, by index, by authored id, and inside native instances, on `F-POINT-INSTANCERS`.
 - Expected transforms, visibility, and bounds come from the spec or from how the fixture is built (for example, UsdGeom computations), never from Hydra's own output. An untranslated Hydra prim type yields a placeholder and diagnostic.
 
 **Exit condition:** a supported initial snapshot can be evaluated and planned deterministically, yielding an inspectable source hierarchy and a spatially meaningful plan, with no Blender objects or datablocks created.

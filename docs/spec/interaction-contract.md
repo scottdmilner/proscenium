@@ -27,23 +27,25 @@ Interaction requires the binding's live stage. Without one, such as when a saved
 
 ## Source Entities and Hierarchy
 
-A source entity is a binding plus a USD prim path, with an instance context when the prim lies inside native-instance contents. Source paths are USD paths in the composed stage; Blender display names and parenting are never source identifiers.
+A source entity is a binding plus a USD prim path, with an instance context when the prim lies inside instance contents: a native instance's, or a point instancer's copies of its prototypes. Source paths are USD paths in the composed stage; Blender display names and parenting are never source identifiers.
+
+A copy a point instancer draws is named by its point-instance path: the instancer's path, then an element naming the point, `__id_<id>` by its authored id (`__id_n<id>` for a negative one) or `__index_<index>` when the instancer authors no ids, then the prim's path below its prototype root's parent, so it begins with the root's name. No prim has that path. Its instance context is the native-instance roots enclosing the instancer, then the instancer, then the point, then any native-instance roots inside the prototype, outermost first.
 
 The source hierarchy is the composed stage's: an entity's ancestors are the prefixes of its USD path, and model kinds are read from the live stage. Hydra may flatten, regroup, or omit prims, so Hydra paths and nesting are never used for grouping or selection expansion.
 
 ## Browsing Universe
 
-The browsing universe of a published generation is every prim outside native-instance contents that has a viewport display element of its own, or has one beneath it in the source hierarchy, including through native instances. Display elements include placeholders and empty markers for unsupported geometry. A source inspector browses the live stage and uses the universe to tell which prims are displayed and selectable.
+The browsing universe of a published generation is every prim outside native-instance contents that has a viewport display element of its own, or has one beneath it in the source hierarchy, including through native instances and point instancers. Display elements include placeholders and empty markers for unsupported geometry. A source inspector browses the live stage and uses the universe to tell which prims are displayed and selectable.
 
 - Membership uses the viewport destination's included purposes and evaluated visibility at the time code the display shows. Content displayed only in the final render destination is not in the universe.
 - Ancestors of displayed content are in the universe, including organizational prims that Hydra does not keep.
 - Prims with nothing displayed in their subtree are not in the universe: materials, shaders, empty organizational prims, and types without display support.
-- Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe. A later scene-graph inspector (Phase 3) may expose them; this contract does not.
-- The universe belongs to its published generation. It is derived from correspondence, not stored: the entities that display elements represent, outside instance contents (an element inside instance contents counts for its outermost instance root), plus the prefixes of their paths.
+- Instance-proxy descendants, point-instance paths, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe. A later scene-graph inspector (Phase 3) may expose them; this contract does not.
+- The universe belongs to its published generation. It is derived from correspondence, not stored: the entities that display elements represent, outside instance contents (an element inside instance contents counts for its floor), plus the prefixes of their paths.
 
 ## Picking
 
-A pick resolves to the binding and source entity of the display element hit, including its instance context when it lies inside native-instance contents. Resolution uses only the published generation's correspondence, never Blender names or parenting. A pick supplies what a ray cast returns: the object hit and its world matrix. For an object that shows one display element, the object names it; for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is. That a real viewport pick supplies this is assumed, not verified: an accepted risk ([Interaction Testing](interaction.md#interaction-testing)).
+A pick resolves to the binding and source entity of the display element hit, including its instance context when it lies inside instance contents. Resolution uses only the published generation's correspondence, never Blender names or parenting. A pick supplies what a ray cast returns: the object hit and its world matrix. For an object that shows one display element, the object names it; for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is. That a real viewport pick supplies this is assumed, not verified: an accepted risk ([Interaction Testing](interaction.md#interaction-testing)).
 
 ## Selection
 
@@ -51,7 +53,7 @@ Selection runs through both layers. The correspondence layer resolves a pick to 
 
 The caller supplies a selection level: either the prim level or a model kind.
 
-- The floor of an entity is the outermost native-instance root enclosing it, or the entity itself when it is not inside instance contents. The correspondence layer derives it from the entity's instance context. Nothing inside instance contents is a selection target.
+- The floor of an entity is the outermost native-instance root or point instancer enclosing it, or the entity itself when it is not inside instance contents. The correspondence layer derives it from the entity's instance context. Nothing inside instance contents is a selection target.
 - At the prim level, the target is the floor.
 - At a kind level, the inspection layer maps the floor to the nearest ancestor-or-self on the live stage whose kind is that kind or derives from it. A prim's kind is the one authored on it, whether or not its ancestors place it in a valid model hierarchy (`UsdPrim::IsModel`). When no such ancestor exists, or the floor is absent from the live stage, the target is the floor.
 

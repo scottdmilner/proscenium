@@ -85,7 +85,12 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     binding = {
         "scene": None,
         "root_layer_identifier": "/shot.usda",
-        "settings": {"payload_policy": "load_all"},
+        "settings": {
+            "payload_policy": "load_all",
+            "coordinate_conversion": False,
+            "viewport_purposes": ["default", "proxy"],
+            "render_purposes": ["default", "render"],
+        },
     }
     yield SchemaVersions(
         schema=SAMPLE,
@@ -116,7 +121,18 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
         bindings={
             "newer": {VERSION_KEY: 2, **binding, "units": 0.01},
             "invalid-root": {VERSION_KEY: 1, **binding, "root_layer_identifier": 7},
-            "unknown-policy": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_some"}},
+            "unknown-policy": {
+                VERSION_KEY: 1,
+                **binding,
+                "settings": {**binding["settings"], "payload_policy": "load_some"},
+            },
+            # Version 1 as M3 wrote it, before it gained the conversion and purpose settings in place.
+            "without-conversion-and-purposes": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_all"}},
+            "unknown-purpose": {
+                VERSION_KEY: 1,
+                **binding,
+                "settings": {**binding["settings"], "viewport_purposes": ["default", "preview"]},
+            },
             "no-settings": {
                 VERSION_KEY: 1,
                 **{k: v for k, v in binding.items() if k != "settings"},
@@ -133,6 +149,8 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "unknown-policy": RefusalReason.INVALID,
             "unknown-field": RefusalReason.INVALID,
             "no-settings": RefusalReason.INVALID,
+            "without-conversion-and-purposes": RefusalReason.INVALID,
+            "unknown-purpose": RefusalReason.INVALID,
         },
         manifests={
             "unknown-role": {

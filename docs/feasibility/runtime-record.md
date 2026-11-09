@@ -1548,7 +1548,7 @@ Ad hoc probes, one run each in the same binary: of 30,000 objects, removing 1,00
 
 **Findings:**
 - **A call costs more the more the file keeps:** 13 ms for one empty on ALab and 26 ms at 60,012 datablocks, as M4 found (about 20 ms), and 100 objects 0.15 s and 0.84 s. Across these cases a call's time is roughly proportional to the datablocks it removes times those left in the file, at 30 to 100 ns a pair, an inference from these points: removing nearly everything is cheap (3.4 s for 32,000), and retiring a full display while its replacement is in the file is not.
-- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M14's incremental updates do, would.
+- **A full rebuild's retirement** took 5.0 s on ALab, about 0.46 ms per datablock, as M4's retirement of the whole display (5.57 s), and 84 s at 29,707 datablocks. Splitting a level into more calls wouldn't lower it if the cost is per pair; removing less, as M7's incremental updates do, would.
 - **`user_map` is small** beside the removal: 11 to 14 ms on ALab, 17 to 24 ms at 60,012 datablocks.
 - **Halving a failing call** found the one failure among 100 objects in 15 calls, 205 ms on ALab, where one call per datablock took 101 calls and 1,356 ms, since each pays a call's cost. The removal halves since this phase.
 - **Not measured:** a windowed Blender, whose event loop may clear what a background process accumulates between calls; Linux and Windows; batched displays.
@@ -1585,6 +1585,153 @@ Where a synchronization's and a cache call's time goes in the product, against M
 - **Synchronizing `updates-10000` again** spent 7.9 s in the stub's `prepare`, against 1.1 s the first time: its placeholders are named for their prims, which collide while the old display is still in the file, as M4 found of object names ([its findings](#measurements-m4-phase-c)). M7's objects are named too.
 - **At 30,003 manifest entries,** the manifest's whole write is 124 to 150 ms, a read 72 ms, a cache call's two reads 239 ms and its update by entry 413 ms, and the undo push 0.5 s. The update read the manifest again; it now takes the one the cache call read, so a call reads it once (not measured since).
 - **Not measured:** M7's display, a windowed Blender, Linux and Windows.
+
+### Capture and planning (M6 Phase F)
+
+What the core's evaluation and planning cost by stage, with the memory the snapshot and plan hold, on ALab and Pixar's Kitchen set, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, AC power, 2026-11-09). Other processes (backup and security scanning) kept the load average at 6.4 to 9.4 when the runs began, where M5's ran under 4. Reproduce with `measure/evaluation_cost.py --scenes alab --files Kitchen_set/Kitchen_set_instanced.usd --repeats 3`.
+
+**Method** (`measure/evaluation_cost.py`), in a fresh background process per run:
+- **The scenes:** ALab's measurement entry point at time 1004 ([Phase E](#measurements-m1b-phase-e)), its point instancers deactivated, and `Kitchen_set_instanced.usd` at its start time code, 0, as it is. Each is opened, attached to a binding's stages, and acquired under load-all, as a synchronization does.
+- **The stages:** three times in each process, the scene-index chain built, the time code captured, the chain released, the snapshot planned under the default settings at a unit scale of 1, planned again with coordinate conversion on and that plan dropped, the plan read across the boundary, and its copies grouped in batches of at least 5; then the snapshot and plan dropped with a `gc.collect()`. Reading the plan is each tuple property converted once (with each geometry description's extent), each buffer viewed, and the buffers the stub turns into lists turned into lists. The first time is reported apart from the other two, a synchronization again.
+- **The measures:** each stage's wall time, the process's CPU time over it, all threads', as cores, and the live heap (`memory.py`) after it, as what is held above the evaluation stage; the process's lifetime peak footprint.
+- **Statistics:** three processes per scene; each process's median over its iterations, as a median and range over the processes.
+
+| | ALab | Kitchen set |
+|---|---|---|
+| Drawn copies; of them in native instances | 6,679; 5,948 | 1,788; 1,788 |
+| Instance contexts; geometry descriptions | 1,417; 3,945 | 425; 1,462 |
+| Batch groups (minimum 5); their copies; the largest | 169; 2,244; 77 | 7; 284; 174 |
+| Placeholders, shears, diagnostics | none | none |
+| `metersPerUnit`; `upAxis` | 0.01, authored; Y | 0.01, UsdGeom's fallback (unauthored); Z |
+
+| Stage (ms) | ALab, first | ALab, again | Kitchen set, first | Kitchen set, again |
+|---|---|---|---|---|
+| Stage open; acquire (once) | 549; 171 | | 64; 12 | |
+| **Chain built** | **323 (316–349)** | **306 (306–317)** | **96 (91–115)** | **83 (81–89)** |
+| **Capture** | **97 (90–107)** | **77 (74–80)** | **22 (20–31)** | **21 (21–24)** |
+| Chain released | 33 (29–35) | 25 (24–25) | 6.7 (5.5–7.1) | 5.6 (5.0–6.2) |
+| **Planning** | **25 (24–27)** | **19 (18–20)** | **5.5 (4.7–6.3)** | **3.9 (3.9–4.0)** |
+| Planning, converting | 16 (16–19) | 17 (16–30) | 3.7 (3.2–4.8) | 3.7 (3.6–3.7) |
+| Tuples read | 8.0 (6.8–8.1) | 4.3 (4.0–6.2) | 3.5 (3.4–3.7) | 1.2 (1.2–1.3) |
+| Buffers viewed; to lists | 0.0; 0.2 | 0.0; 0.2 | 0.0; 0.1 | 0.0; 0.0 |
+| Batch groups | 3.3 (3.3–3.4) | 3.3 (3.1–4.7) | 0.8 (0.8–0.9) | 0.8 (0.8–0.8) |
+| Snapshot and plan dropped | 34 (33–35) | 33 (32–36) | 17 (16–18) | 15 (14–15) |
+
+Cores: building the chain 3.7 to 4.7, capture 5.0 to 6.2, planning 1.6 to 2.6, and every other stage about 1.
+
+| Live heap, first (MB) | ALab | Kitchen set |
+|---|---|---|
+| The opened stage; the evaluation stage acquired, above it | 95; 24 | 15; 2 |
+| Held above the evaluation stage: chain built; after capture | 35; 93 | 8; 25 |
+| After the chain's release: the snapshot | 17 | 4 |
+| With the plan; with the plan read | 23; 25 | 6; 7 |
+| A converted plan alone | 4 | 1 |
+| After the snapshot and plan are dropped | 7 | 2 |
+| Peak footprint of the process | 368 (367–368) | 193 (189–193) |
+
+**The chain's release** dropped the stage scene index after `SetStage(nullptr)` until this phase. On ALab, one process each, six releases took 0.42 to 0.51 s with it and 0.025 to 0.041 s without it (ad hoc). In a native sample of those with it, 1,350 of the release's 1,394 samples were in `SetStage`: it sends every prim's removal, which UsdImaging's native-instance filters answer by adding prims again and hashing their bindings, resolving asset paths. With the snapshot and plan alive, all 2,982 of ALab's layers expired after the release either way (ad hoc). The core releases without it since this phase ([M6 plan](../plans/M06-evaluation.md#phase-f-log), F1).
+
+**Where building the chain goes** (ad hoc, one process, twelve builds on ALab in the binary, natively sampled): all of it but 2% is the stage scene index's `_Populate`, which announces every prim, and each filter's handling of the announcement. 68% (1,327 of 1,944 samples) is UsdImaging's native-instance aggregation, per instance: hashing the data sources instances must share to be aggregated (812), which include the model schema's draw mode and asset-valued attributes, resolved through Ar's default resolver to an `lstat` of each path (305), and copying them (207). The rest is Hydra's flattening and prototype-propagating filters. The core's own filters barely appear. Which asset-valued attributes the hash reads isn't known from the sample; the model schema's card textures are a guess. `UsdImagingCreateSceneIndices` fixes the aggregated data sources' names, which `UsdImagingNiPrototypePropagatingSceneIndex::New` takes as an argument, so a chain assembled without that function could leave out the model schema, which a chain without the draw-mode scene index doesn't read; that wasn't tried.
+
+**Conversion** (ad hoc, in the bpy wheel, one run): both scenes are conversion cases, ALab for its units and up axis and the Kitchen set for its units alone, a scale of 0.01 at a unit scale of 1. With conversion on, every copy's world transform was its world transform with conversion off times the spec's correction ([Transforms and Time Codes](../spec/support/transforms.md)), within 1e-7 relatively, the 32-bit floats' precision, and each copy kept its object.
+
+**Findings:**
+- **Capture and planning take 0.49 s on ALab the first time and 0.43 s again,** from building the chain to the plan read, against the minimal path's 0.71 to 0.84 s ([M5 Phase F](#the-products-synchronization-step-by-step-m5-phase-f)), which released the chain with `SetStage(nullptr)`. On the Kitchen set they take 0.13 s and 0.12 s.
+- **Building the chain is most of it:** 0.31 to 0.32 s on ALab and 0.08 to 0.10 s on the Kitchen set, every time, since `evaluation.plans` builds a chain per call. Capture is 0.08 to 0.10 s on ALab on 5 to 6 cores, and planning 0.02 to 0.03 s. A chain kept between synchronizations, as M7's incremental capture keeps one, wouldn't pay it again; that is an inference, not measured. Within a build, the time is UsdImaging's, mostly its native-instance aggregation (above).
+- **The snapshot holds about 17 MB on ALab and 4 MB on the Kitchen set, the plan 6 MB and 2 MB,** with up to 2 MB more for the tuples read. The most held above the evaluation stage was 93 MB and 25 MB, after capture with the chain alive, whose release frees 76 MB and 20 MB.
+- **Conversion costs nothing measurable:** a converted plan took no longer than the first plan of the same snapshot (16 against 25 ms on ALab, 3.7 against 5.5 ms on the Kitchen set), which is consistent with its being one matrix product per copy; that the second planning is faster for being second is an inference.
+- **Batch groups are small and cheap** at these shapes: 3.3 ms on ALab and 0.8 ms on the Kitchen set, whose largest group, 174 copies, is the one [M4 found](#batch-minimum-m4-phase-f). Every Kitchen set copy is in a native instance, under 425 instance contexts, and 1,504 of its 1,788 copies stay single at a minimum of 5.
+- **Not the bridge's work:** the bridge's capture took 0.46 s on ALab on 8 cores, its snapshot 516 MB, and its planning 0.24 s on 5.9 cores with a 904 MB plan ([Phase E](#measurements-m1b-phase-e)), because it captured and planned each mesh's geometry and materials. M6's snapshot holds the eight schemas planning reads, and its plan a provisional description per mesh, so M8's and M9's content will add to both.
+- **Reading the plan is small:** 1 to 8 ms for the tuple properties, nearly all of the reading, and under 1 ms for every buffer, lists included.
+- **Not measured:** a windowed Blender, Linux and Windows, ALab with its point instancers, other time codes, and a quiet machine.
+
+### Reading the plan (M6 Phase F)
+
+What reading a plan's per-copy content costs in Python, as a tuple property and as a buffer, at ALab's 6,679 copies and the generated `updates-N` scenes' 301, 3,001, and 30,001, in the environment of [Capture and planning](#capture-and-planning-m6-phase-f) (2026-11-09, load average 7.6 to 11.0 at the runs' start). Reproduce with `measure/evaluation_cost.py --scenes updates alab --repeats 3`.
+
+**Method:** the probe and statistics of [Capture and planning](#capture-and-planning-m6-phase-f), with stages after the plan's reading:
+- **Fields:** every field of each correspondence entry (its element, source, and instance context) and of each resource (role, entity, place, covers, and uses), two resources per copy, from the tuples already read.
+- **The same content both ways:** each copy's object index from a fresh read of the correspondence tuple, `[c.element for c in plan.correspondence]`, and from the `copy_objects` buffer, `memoryview(...).tolist()`; they are checked equal.
+- **Matrices:** each copy's world matrix made from the `copy_worlds` buffer as the stub makes it, a 16-float slice's list into a `mathutils.Matrix`, transposed.
+
+| Stage (ms), first; again | updates-100 | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Copies; resources | 301; 602 | 3,001; 6,002 | 6,679; 13,358 | 30,001; 60,002 |
+| Tuple properties read, all | 0.39; 0.13 | 3.7; 1.5 | 7.5; 4.4 | 31 (27–34); 25 (24–30) |
+| Correspondence entries' fields | 0.34; 0.29 | 3.0; 2.2 | 9.9; 8.2 | 42 (40–49); 31 (30–31) |
+| Resources' fields | 2.3; 0.44 | 5.7; 5.6 | 13.6; 13.7 | 89 (88–92); 59 (57–59) |
+| **Object indices from the tuple** | 0.06; 0.11 | 0.58; 0.58 | **1.74; 1.77** | **6.4 (6.2–6.8); 6.9 (5.8–7.0)** |
+| **Object indices from the buffer** | 0.01; 0.00 | 0.03; 0.03 | **0.06; 0.06** | **0.27; 0.29** |
+| Every buffer viewed; seven to lists | 0.04; 0.01 | 0.10; 0.08 | 0.24; 0.19 | 0.85; 0.75 |
+| Matrices from the buffer | 0.27; 0.26 | 2.5; 2.6 | 5.6; 6.2 | 28 (27–28); 58 (57–58) |
+
+**Findings:**
+- **A buffer is about 25 times cheaper per element than a tuple** for the same content: each copy's object index took about 220 ns from the correspondence tuple and 9 ns from the buffer, at ALab's and 30,001 copies alike.
+- **Reading every field of the tuples costs about 4.5 µs a copy** at 30,001 copies the first time (0.16 s with the tuples' conversion) and 3.8 µs again, against under 1 ms for every buffer. The resources' fields are two thirds of it, with two resources a copy and each holding two tuples (covers and uses) of its own; which field costs most wasn't measured. On ALab the same reading is 31 ms the first time.
+- **The buffer's own cost is nothing beside what Python builds from it:** a `mathutils.Matrix` per copy took 0.9 µs at 30,001 copies the first time, and 1.9 µs again, which wasn't investigated.
+- **Not measured:** Blender's bulk setters (`foreach_set`) taking the buffers directly, a windowed Blender, and Linux and Windows.
+
+### The product's synchronization with M6's plan (M6 Phase F)
+
+[M5's step-by-step profile](#the-products-synchronization-step-by-step-m5-phase-f) again, with M6's core and the stub as M6 leaves it, whose objects are named for their generation and their place in the plan before their prim's name, in the same environment (2026-11-09, load average 6.7 to 11.8 at the runs' start). Reproduce with `measure/synchronization_profile.py --scenes updates alab --exclude updates-100 --repeats 3`.
+
+**The display isn't M5's:** M6's plan draws every copy, an object and a bounds mesh each, so `updates-10000` has 30,001 objects against M5's 10,001 placeholders, and ALab 6,679 against 731. Each step's time is a median and range over three processes.
+
+| Step (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Objects; manifest entries | 3,001; 9,003 | 6,679; 20,037 | 30,001; 90,003 |
+| **Synchronize** | **557 (551–596)** | **1,729 (1,716–1,758)** | **6,212 (6,174–6,350)** |
+| `acquire`; `plans` | 15; 68 | 152; 460 | 161; 674 |
+| **`prepare`** | **304** | **726** | **3,262 (3,223–3,288)** |
+| `publish`, its manifest write included | 42 | 92 | 455 |
+| Undo push | 128 | 277 | 1,666 |
+| **Synchronize again** | **587 (583–628)** | **1,739 (1,739–1,791)** | **6,794 (6,715–7,232)** |
+| Manifest read; `plans`; **`prepare`** | 21; 54; **288** | 64; 458; **731** | 275; 672; **3,072 (3,055–3,232)** |
+| `publish`; `retire` (`user_map` in it) | 49; 26 (3.4) | 117; 33 (9.2) | 616; 194 (49) |
+| Undo push | 146 | 332 | 1,884 |
+| **Cache, three time codes** | **668 (665–673)** | **2,140 (2,066–2,145)** | **8,624 (8,607–8,736)** |
+| Manifest read; `plans`; `key_time_codes` (the stub) | 21; 78; 491 | 49; 619; 1,260 | 276; 997; 6,050 |
+| `set_manifest_entries` | 66 | 168 | 1,151 |
+
+**Findings:**
+- **Object names no longer collide:** synchronizing `updates-10000` again spent 3.07 s in the stub's `prepare` against 3.26 s the first time, where M5's placeholders, named for their prims, took 7.9 s against 1.1 s. A first `prepare` costs about what M5's did per object, 109 µs at 30,001 objects against M5's 106 µs at 10,001; the again-and-first ratio fell from 7.4 to 0.94.
+- **`plans` is a smaller part:** 0.46 s on ALab, against 0.71 to 0.77 s in M5's, as [Capture and planning](#capture-and-planning-m6-phase-f) found; the stub's work and the undo push are most of every call at these sizes now.
+- **The undo push grows with the display:** 1.7 to 1.9 s at 30,001 objects and their meshes, 0.28 to 0.33 s on ALab.
+- **These are the stub's costs, not M7's:** M7's display replaces `prepare` and `key_time_codes`.
+- **Not measured:** a windowed Blender, Linux and Windows.
+
+### Retiring a large display (M6 Phase F)
+
+What retiring the obsolete display costs when a synchronization rebuilds it, with global undo on and off, in the bpy wheel and the binary, with the stub's display, in the environment of [Capture and planning](#capture-and-planning-m6-phase-f) (2026-11-09, load average 6.7 to 14.2 read around the runs). Reproduce the profile with `measure/synchronization_profile.py --scenes updates alab --exclude updates-100 --repeats 3 --undo on off --runtimes binary wheel`.
+
+**Retirement released the obsolete display instead of removing it** once an undo step had been pushed. The profile pushes the API's step as a window does, and in every scene, runtime, and undo setting its file held the old display after synchronizing again: 15,005 datablocks on `updates-1000` and 150,005 on `updates-10000` after the cache call, where the same calls without the push leave 9,003, 3,001 each of objects, meshes, and actions (ad hoc). Ad hoc, in the wheel and the binary:
+- **The cause:** after the push, the view layer has a base for each published object. Publication unlinks the obsolete objects, but their bases stay until the next depsgraph update: an obsolete object had 0 users and no collections but was still in `view_layer.objects`, and `bpy.data.user_map` named the Scene its user. `removal.remove_unused` takes a user it doesn't know as the object's being in use, so it released all 6,002 obsolete objects and meshes on `updates-1000`, and the synchronization succeeded.
+- **A resync removes it:** with each scene's view layers updated (`ViewLayer.update()`) before `user_map`, the Scene was no longer a user and every obsolete datablock was removed. Reading `view_layer.objects` didn't resync the bases.
+- **Why background runs remove:** with no undo step pushed, a background process never makes the bases, so the test suite and the [M5 runs](#the-shared-removals-cost-m5-phase-f) that removed through `remove_unused` directly don't show it. The 90 s ad hoc retirement of `updates-10000` with global undo off, in the wheel, pushed no step either; that the near-zero retirement with undo on was this release is an inference, since that run wasn't repeated.
+- **Not tested:** a windowed Blender, which updates the depsgraph between events but not within a synchronization.
+
+**What the profile's retirement cost while it released** (three processes per configuration):
+
+| `retire` (ms), synchronizing again | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Binary, undo on; off | 26; 26 | 33; 32 | 190; 195 |
+| Wheel, undo on; off | 11; 11 | 48; 33 | 243; 247 |
+
+**Removing for real** (ad hoc, the binary, one process per scene and setting): synchronizing again with the API's push, each scene's view layers updated first:
+
+| | Resync | `batch_remove` of the objects | of their meshes | `remove_unused` |
+|---|---|---|---|---|
+| updates-1000, undo on; off | 0.14 s; 0.15 s | 0.24 s; 0.24 s | 0.11 s; 0.11 s | 0.38 s; 0.38 s |
+| ALab (6,679 objects), undo on; off | 0.59 s; 0.30 s | 3.2 s; 2.9 s | 0.47 s; 0.41 s | 3.7 s; 3.3 s |
+| updates-10000 (30,001), undo on; off | 3.8 s; 1.9 s | 104 s; 105 s | 15 s; 19 s | 120 s; 124 s |
+
+**Where the time goes** (a native sample of 10 s of the objects' `batch_remove` on `updates-10000`, undo off): every main-thread sample is in `id_delete`, 78% (5,968 of 7,664) in `BKE_libblock_remap_multiple_locked`'s own code, inlined, so what it loops over isn't known from the sample, and 22% (1,683) in `WM_main_remove_notifier_reference`, which scans the window manager's notifier queue for each removed ID. That the queue holds a notifier for each object linked earlier in the process, so this part grows with the objects removed times those linked, is an inference, not tested.
+
+**Findings:**
+- **Global undo doesn't change the cost:** removal took the same time with it on and off, in the binary, and the profile's figures were alike in the wheel and the binary.
+- **Retiring 30,001 objects while their replacements are in the file takes about two minutes,** 89 to 105 s of it the objects' one `batch_remove` call; 6,679 on ALab take 3.3 to 3.7 s, as [M5 found](#the-shared-removals-cost-m5-phase-f) (5.0 s with the baseline's display).
+- **For M7:** retirement must not take a stale view-layer base for a user ([M7](../milestones/M07-application.md)); a resync costs a depsgraph update, 0.3 to 0.6 s on ALab and 1.9 to 3.8 s at 30,001 objects here. **For M11's cleanup:** the remap and notifier scans are Blender's, per call, so removing less, as incremental refresh does, would lower them (inferred).
+- **Not measured:** a windowed Blender, Linux and Windows, batched displays, and the remap's inlined loop.
 
 ### Distribution (M1b Phase F)
 

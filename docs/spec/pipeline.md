@@ -114,7 +114,7 @@ The attempt tracks each newly created prepared resource before subsequent fallib
 
 Failure safety covers recoverable failures. Process termination, native crashes, and catastrophic allocation failure are not promised to be recoverable. Neither is a failed write to the pending-cleanup ledger, once the attempt has found it readable: it is a defect, and raises.
 
-These guarantees apply equally to incremental mutations in Phase 2.
+These guarantees apply equally to incremental mutations.
 
 Undo grouping is **not** a substitute for failure-safe staging or rollback.
 
@@ -129,6 +129,7 @@ A published generation displays the time code it was synchronized at, and each t
 - A call records no last attempt, whether it succeeds or fails: its result reports its diagnostics, and the last attempt remains the last synchronization's.
 - A call never fails because of how content varies: whatever a synchronization at a time code displays, a cached time code displays too, such as faces whose materials change, a point instance whose prototype changes, bounds that appear or vanish, and a constant primvar blocked at some time codes.
 - If the source has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different source states.
+- If the target scene's unit scale has changed since the generation was synchronized, `cache` caches nothing and reports that the binding needs synchronizing, so one generation's time codes never show different unit scales.
 - A generation synchronized at the USD default time code has no time-varying values: `cache` caches nothing and reports success.
 - Synchronizing again produces a new generation, holding only its own time code.
 
@@ -152,7 +153,7 @@ Distinguish:
 
 Include binding, source path, property/asset identifier, severity, and fallback where applicable. Each diagnostic also has a stable code naming its problem, such as `untranslated-type`, so callers and tests identify it without reading its message.
 
-Aggregate repeated problems. Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history. Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work. Report current cleanup status separately from historical attempt results and deduplicate by operation and resource. An unchanged refresh produces equivalent deduplicated source/display diagnostics. Current cleanup diagnostics may change with unresolved work under [Resource Stability](lifecycle.md#resource-stability); resolved cleanup diagnostics are removed rather than accumulated as history.
+Aggregate repeated problems. A problem repeated across many source entities is reported for each of the first ten in source order, and once more counting the rest. Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history. Unresolved cleanup diagnostics also persist with pending-cleanup ownership information, so a later attempt cannot erase pending work. Report current cleanup status separately from historical attempt results and deduplicate by operation and resource. An unchanged refresh produces equivalent deduplicated source/display diagnostics. Current cleanup diagnostics may change with unresolved work under [Resource Stability](lifecycle.md#resource-stability); resolved cleanup diagnostics are removed rather than accumulated as history.
 
 Each synchronization reports one result state, derived from its own diagnostics. Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it.
 

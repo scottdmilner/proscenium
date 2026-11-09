@@ -40,7 +40,9 @@ Extra markers, added per test: `alab` for tests that need ALab (`PROSCENIUM_ALAB
 tests/
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
-│   └── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
+│   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
+│   ├── plan_checks.py        the core's plans at a time code, drawn copies by source, and their corners within the bounds tolerance
+│   └── plan_process.py       every part of a plan as plain values, and a script printing a scene's plan from a fresh process
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
 │   ├── published.py          the whole published generation and the file's datablocks, compared around a failure
@@ -61,6 +63,8 @@ tests/
     ├── records.py            the generator for F-SCHEMA-VERSIONS, and its test schema
     ├── transaction.py        generators for F-FAILED-SETTINGS, F-PUBLICATION-FAILURE, F-PREPARATION-CLEANUP-FAILURE,
     │                         F-RETIREMENT-FAILURE, F-SOURCE-CHANGE, F-CACHED-TIME-CODES
+    ├── evaluation.py         generators for F-TRANSFORMS, F-UNITS-UP-AXIS, F-VISIBILITY-PURPOSE,
+    │                         F-UNSUPPORTED-CONTENT, F-POINT-INSTANCERS, and seeded transform hierarchies
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
         └── __init__.py       the Scene index and copy_scene
@@ -127,10 +131,11 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 |---|---|
 | `usd.py` | `open_fresh(path, load)`: open a stage that no stage cache can hand back. `binding_on_file(bindings, scene, root, ...)`: open a copied fixture and attach its stage under an independent key through `create_binding`. |
 | `destinations.py` | `destination(handle)`: the collection holding a binding's records, its destination, found through its canonical record. |
-| `blend.py` | `save_and_reopen(path)`: save and reopen the open file. Any bpy reference held across it is invalid afterwards. `collection_content(collection)`: a collection's objects as plain data (world matrices, parents, mesh geometry, and materials), read with bpy alone, to compare across a reopen or a process. |
-| `copies.py` | `run(route, tmp_path)`: run one of `F-OWNERSHIP-AMBIGUITY`'s copy routes on a published binding "Shot". `records_by_name()`: every record in the file, with ID pointers as names, and each collection's objects, to check that detection changed nothing. |
+| `blend.py` | `save_and_reopen(path)`: save and reopen the open file. Any bpy reference held across it is invalid afterwards. `collection_content(collection)`: a collection's objects as plain data (world matrices, parents, mesh geometry, and materials), read with bpy alone, to compare across a reopen or a process. `prim_name(datablock)`: the prim a managed object or bounds mesh is named for, after its generation and ordinal. |
+| `copies.py` | `run(route, tmp_path)`: run one of `F-OWNERSHIP-AMBIGUITY`'s copy routes on a published binding "Shot". `records_by_name()`: every record in the file, with ID pointers as names, and each collection's objects, to check that detection changed nothing. `managed_object(prim)`: the published object named for a prim. |
 | `manifests.py` | `key(name)`: a fixed entry key for an entry a test calls name, so assertions can name entries. `object_entry(datablock, entity, uses)`: an entry for a drawn copy's only object. |
 | `display.py` | `publish_by_hand(binding_id, destination, display)`: build `F-OFFLINE`'s saved display and record it as a publication would, since nothing publishes until M5. `expected_content(display)` is what `collection_content` reads from it. |
+| `time_codes.py` | `sampled(fixture_id, variation)`: a time-varying fixture's [sampled time codes](../docs/testing/acceptance.md#sampled-time-codes) by kind, from the `TimeVariation` its generator declares, seeded from its fixture ID; `.time_codes` gives them all, the default time code (`None`) first. `production_scale=True` leaves out the authored and seeded samples. |
 | `undo.py` | `push`, `undo`, `redo` an undo step, failing if none is available. Undo only from a pushed state: `undo_unpushed` pushes the current state first, for a test checking an operation pushed no step, since an undo over unpushed changes can read freed datablocks. `require_global_undo()` skips when global undo is off, where background-mode undo is unavailable (see the [feasibility record](../docs/feasibility/runtime-record.md#undo)). |
 | `interaction_oracle.py` | Expected results of the [interaction contract](../docs/spec/interaction-contract.md) on a fixture's live stage, from USD's own APIs: display elements, floors, the browsing universe, and kind-level targets. Checks of a representation's headless functions compare against it. |
 | `interaction_checks.py` | The checks of a representation's seven headless interaction functions against `interaction_oracle.py`, written once and reused by M4, M7, and M10. A representation passes an adapter, a `Display`, that publishes generations of an interaction fixture's live stage; `CHECKS` names each check, and each check names its matrix rows. Uses bpy, so it runs where the display does. |

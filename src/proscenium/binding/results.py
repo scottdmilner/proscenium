@@ -58,14 +58,36 @@ class DiagnosticCode(StrEnum):
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
     EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
-    NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source changed since it
+    NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
     PLANNING_FAILED = "planning-failed"
     PREPARATION_FAILED = "preparation-failed"  # making or keying the display's resources failed, so it was undone
     PUBLICATION_FAILED = "publication-failed"  # publishing, or recording cached time codes, failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
+    # Source-side content, which the compiled core reports (core.diagnostics.h).
+    PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
+    UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
+    INVALID_INSTANCER = "invalid-instancer"  # instancing data that can't be resolved
+    USD_WARNING = "usd-warning"  # a Tf warning USD or Hydra posted reading the source: mostly something declined
+    USD_ERROR = "usd-error"  # a Tf error USD or Hydra posted reading the source: content it couldn't read
+    UNTRANSLATED_TYPE = "untranslated-type"  # a type not translated, shown by a placeholder or marker (its fallback)
+    APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
+
+# The codes the compiled core reports, whose messages state their problems (Diagnostic.problem);
+# synchronization.evaluation checks the core's list against it on import.
+CORE_CODES = frozenset(
+    {
+        DiagnosticCode.PROJECTIVE_TRANSFORM,
+        DiagnosticCode.UNSUPPORTED_INSTANCING,
+        DiagnosticCode.INVALID_INSTANCER,
+        DiagnosticCode.USD_WARNING,
+        DiagnosticCode.USD_ERROR,
+        DiagnosticCode.UNTRANSLATED_TYPE,
+        DiagnosticCode.APPROXIMATED_GEOMETRY,
+    }
+)
 
 _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.UNSAVED_LAYERS: (DiagnosticCategory.SOURCE_STATE, Severity.INFO),
@@ -82,6 +104,13 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.CLEANUP_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.PROJECTIVE_TRANSFORM: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
+    DiagnosticCode.UNSUPPORTED_INSTANCING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.INVALID_INSTANCER: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
+    DiagnosticCode.USD_WARNING: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.USD_ERROR: (DiagnosticCategory.INVALID_DATA, Severity.WARNING),
+    DiagnosticCode.UNTRANSLATED_TYPE: (DiagnosticCategory.UNSUPPORTED, Severity.WARNING),
+    DiagnosticCode.APPROXIMATED_GEOMETRY: (DiagnosticCategory.APPROXIMATION, Severity.WARNING),
 }
 
 
@@ -125,8 +154,13 @@ class Diagnostic:
 
     @property
     def problem(self) -> tuple[object, ...]:
-        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03)."""
-        return tuple(getattr(self, f.name) for f in fields(self) if f.name != "message")
+        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03).
+
+        The core's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
+        the problem; another's is prose about one, so it isn't.
+        """
+        worded = self.code in CORE_CODES
+        return tuple(getattr(self, f.name) for f in fields(self) if worded or f.name != "message")
 
 
 # The state each category gives a result on its own (pipeline.md#diagnostics); a result's is its worst diagnostic's.

@@ -2,9 +2,9 @@
 
 **Implements:** [Ownership and Lifecycle](../spec/lifecycle.md#ownership-and-lifecycle), including [Detach As-Is](../spec/lifecycle.md#detach-as-is) and [Lifecycle Failure Safety](../spec/lifecycle.md#lifecycle-failure-safety), except stale-content retirement and external-usage protection (M7); [Copied Bindings](../spec/source-access.md#copied-bindings) repair, and the lifecycle undo/redo requirements in [Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state).
 
-**Depends on:** M5 (representation roles and pending-cleanup tracking), M7 (basic reconciliation), M10 (complete instancing and sharing).
+**Depends on:** M5 (representation roles and pending-cleanup tracking), M7 (incremental reconciliation), M10 (complete instancing and sharing).
 
-**Scope limits:** optimized repair of individual partitions without a full rebuild is Phase 2 work (M13/M14). M11 repairs damage correctly through full refresh.
+**Scope limits:** none beyond the spec sections it implements.
 
 **Decisions and deliverables:**
 
@@ -13,6 +13,7 @@
 - A lifecycle failure-safety decision record and implementation: staging/rollback, logical commit points, resumable disposal, outcome reporting, and retention of unresolved ownership information during binding removal. Evaluate retaining configuration until cleanup completes and retaining cleanup information independently after removal, using M5's chosen tracking mechanism.
 - Duplicate-representation detection and removal, and handling of content with copied or missing ownership evidence, as specified in Ownership and Lifecycle.
 - User-facing repair of bindings disabled pending repair: make a new binding, or detach.
+- Discovery of managed display damage, distinguished from legitimate external users (DISC-05), and its repair in the damaged partitions alone, on M7's incremental framework.
   - Repair starts from M3's report of copied bindings (`Bindings.copied()`): each identity that isn't unique, its candidates by scene and destination, and which one is canonical, if any ([M3 plan](../plans/M03-bindings.md), D10).
   - A repair that moves a binding to another collection moves its records and its index entry with it; otherwise the old collection remains a copy ([Copied Bindings](../spec/source-access.md#copied-bindings)).
   - Cleanup reaches the pending work of a binding removed with its destination or target scene, which stays in the ledger ([Removed Destination](../spec/lifecycle.md#removed-destination), DEST-10).
@@ -25,6 +26,7 @@
 - `F-OWNERSHIP-AMBIGUITY`, `F-DETACH-SHARED`, `F-DETACH-AS-IS`, `F-LIFECYCLE-FAILURE`, and `F-UNDO-AFTER-DAMAGE`.
 - `F-BINDING-STATE`: after a binding is removed, every method of a handle to it raises (API-08).
 - Detach with edited or deleted content, an unavailable USD source, shared instances, and binding-specific controls. Assert preservation of surviving ordinary Blender data, removal of binding associations, resolution of this binding's pending disposal tracking, and safe later refresh.
+- Failure injection during incremental mutation and disposal of its newly prepared resources, including persistent cleanup tracking and safe retry.
 - Inject failures before detach commit and during cleanup and removal. Assert the specified outcome, consistent ownership and correspondence, retained retry information after save/reopen, and undo/redo of committed partial progress.
 
 **Exit condition:** cleanup, detach, and binding removal pass `F-OWNERSHIP-AMBIGUITY`, `F-DETACH-SHARED`, `F-DETACH-AS-IS`, `F-LIFECYCLE-FAILURE`, and `F-UNDO-AFTER-DAMAGE` with the specified failure outcomes and correct undo/redo, even when Blender objects do not correspond individually to USD prims.

@@ -168,7 +168,7 @@ def _change(uses: tuple[str, ...] = ()) -> EntryChange:
 
 
 def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_path: Path) -> None:
-    # Phase 2 refreshes change some resources; an update writes only those, and the records then answer for it.
+    # An incremental refresh changes some resources; an update writes only those, and the records then answer for it.
     ids, _ = _two_managed(bindings, tmp_path)
     other, destination = ids[1], bpy.data.collections["Other"]
     a, b = bpy.data.objects["A"], bpy.data.objects["B"]

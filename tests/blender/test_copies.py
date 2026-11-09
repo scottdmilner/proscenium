@@ -191,7 +191,7 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
         routes.run("duplicated-object", tmp_path)
         [copy] = set(bpy.data.objects) - published
         assert ownership.of(copy).claims == ()
-        assert len(ownership.of(bpy.data.objects[routes.MANAGED]).claims) == 1
+        assert len(ownership.of(routes.managed_object(routes.MANAGED)).claims) == 1
         # Synchronizing again publishes new content, and still claims no copy.
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert ownership.of(copy).claims == ()

@@ -21,12 +21,12 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [spec/lifecycle.md](spec/lifecycle.md) | Ownership, lifecycle operations, detach, undo and runtime state, persistence |
 | [spec/interaction.md](spec/interaction.md) | Source inspection, interaction contract, interaction testing |
 | [spec/interaction-contract.md](spec/interaction-contract.md) | Draft interaction contract: browsing universe, inspection metadata, picking, selection, Blender selection |
-| [spec/incremental.md](spec/incremental.md) | Phase 2 change discovery and affected content |
+| [spec/incremental.md](spec/incremental.md) | Change discovery and affected content (Phase 1), and churn budgets (Phase 2) |
 | [spec/support/](spec/support/) | Supported scene state: [transforms](spec/support/transforms.md), [geometry](spec/support/geometry.md), [instancing](spec/support/instancing.md), [materials](spec/support/materials.md), [visibility and unsupported content](spec/support/visibility.md) |
 | [testing/strategy.md](testing/strategy.md) | Test layers and named contract fixtures |
 | [testing/acceptance.md](testing/acceptance.md) | Acceptance criteria: bespoke fixtures, standard checks, bounds contract, ALab production-scale validation, performance |
 | [testing/requirements-matrix.md](testing/requirements-matrix.md) | Requirement-to-test matrix, generated from [requirements.yaml](testing/requirements.yaml) |
-| [milestones/](milestones/README.md) | Implementation milestones M1–M14, including the M1b decision gate |
+| [milestones/](milestones/README.md) | Implementation milestones M1–M13, including the M1b decision gate |
 | [DECISIONS.md](DECISIONS.md) | Decision register: open decisions and chosen behavior |
 
 This file, `spec/`, and `testing/` establish project requirements and architectural direction. The milestone files detail implementation and reference those requirements; where they conflict, the requirement files take precedence. [spec/invariants.md](spec/invariants.md) summarizes cross-cutting guarantees, and the spec section each invariant links to is authoritative for details. Milestones describe planned work, not implementation status. Inspect the repository before assuming a feature exists.
@@ -68,24 +68,22 @@ Objects, collection instancing, Geometry Nodes, batching, or a hybrid are implem
 Synchronize supported content at a **USD time code supplied as an optional function parameter**, by default the target scene's current frame's. The USD default time code is permitted. A synchronized display then **caches the time-varying values of further time codes on request**, so Blender plays each cached time code back at its frame without synchronizing again.
 
 - Manual refresh is required.
-- Full traversal and rebuilding are acceptable.
-- Blender object identities need not survive refresh.
+- Update affected representations and their dependencies, and leave unaffected representations untouched during ordinary refresh, as defined in [Affected Content](spec/incremental.md#affected-content).
+- Preserve source selections where their source identities remain valid.
+- Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners.
+- Support manual refresh of attached sources, including stages callers opened from files.
 - Geometry is deduplicated wherever sharing preserves correct display, under the [Geometry Sharing](spec/support/instancing.md#geometry-sharing) contract.
 - Binding lifecycle, persistence, diagnostics, and failure safety are required.
 - The acceptance suite must pass, as defined in [Acceptance Criteria](testing/acceptance.md): bespoke fixture cases and assertions covering every Phase 1 requirement, as assigned by the requirement-to-test matrix, plus a production-scale check on ALab (ALab v2.3.0, techvar assets v2.2.0, `entry.usda`) at any time code under every payload policy.
 
-### Phase 2 — Incremental Synchronization
+See [Incremental Synchronization](spec/incremental.md) for change discovery and affected content.
 
-Preserve Phase 1 correctness while avoiding unnecessary work.
+### Phase 2 — Performance Qualification
 
-- Update affected representations and their dependencies.
-- Leave unaffected representations untouched during ordinary incremental refresh, as defined in [Affected Content](spec/incremental.md#affected-content).
-- Preserve source selections where their source identities remain valid.
-- Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners.
-- Establish and meet representative performance targets for synchronization and the required interaction operations.
-- Support manual refresh of attached sources, including stages callers opened from files.
+Preserve Phase 1 correctness while meeting performance targets.
 
-See [Incremental Synchronization](spec/incremental.md) for detailed requirements.
+- Establish and meet representative performance targets for synchronization and the required interaction operations, derived from Phase 1's baselines.
+- Bound replacement-affected resources by churn budgets, as defined in [Affected Content](spec/incremental.md#affected-content).
 
 ### Phase 3 — USD Stage Editor
 
@@ -123,7 +121,7 @@ Each entry links to the section that defines the term in full.
 |---|---|
 | **Binding** | The association of one USD source with a managed destination collection, a target scene, and settings. See [Bindings and Source Access](spec/source-access.md#bindings-and-source-access). |
 | **Managed / unmanaged content** | Managed content is Blender content that a binding's ownership records claim. Everything else, including detached content, is unmanaged. See [Ownership and Lifecycle](spec/lifecycle.md#ownership-and-lifecycle). |
-| **Source entity** | A USD prim, plus its instance context where applicable, as addressed by the source selection model. |
+| **Source entity** | A USD prim, plus its instance context where applicable, or a point instancer's copy of one, named by its point-instance path, as addressed by the source selection model. |
 | **Instance context** | The chain of native-instance roots through which a prim inside shared instance contents is reached. It distinguishes the separate uses of the same shared contents. |
 | **Correspondence** | The two-way mapping between source entities and the display resources that represent them. See [Source Inspection and Interaction](spec/interaction.md#source-inspection-and-interaction). |
 | **Source coverage** | The set of source entities a display resource represents. It may contain many entities. |

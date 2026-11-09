@@ -41,7 +41,7 @@ NOT_SCANNED = {INVARIANTS, "testing/requirements-matrix.md"}
 
 KINDS = {"behavior", "contract", "process"}
 RISKS = {"high"}  # M4's risk matrix (docs/plans/M04-prototypes.md#risk-matrix)
-QUALIFIER = {1: "M12", 2: "M14"}  # behavior rows qualify in their phase's qualification milestone
+QUALIFIER = {1: "M12", 2: "M13"}  # behavior rows qualify in their phase's qualification milestone
 ID = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{2}$")  # AREA-NN, e.g. FILE-03 or PH1-01
 # Fields a row may set, and fields a section group may set as defaults for its rows.
 ROW_FIELDS = {"id", "quote", "kind", "delivery", "phase", "fixtures", "oracle", "qualified_by", "note", "risk"}

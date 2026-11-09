@@ -73,6 +73,24 @@ def chain_caller_drops_then_release() -> dict[str, Any]:
     return result
 
 
+def chain_with_instances_drops_then_release(root: str) -> dict[str, Any]:
+    """As chain_caller_drops_then_release, on root's native instances, its snapshot and plan alive past the release."""
+    stage = Usd.Stage.Open(root)
+    identifiers = [layer.identifier for layer in stage.GetUsedLayers()]
+    chain = _core.SceneIndexChain(stage)
+    del stage
+    gc.collect()
+    snapshot = chain.capture(0.0)
+    settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+    plan = _core.plan(snapshot, settings, _core.PlanningContext(1.0, 1))
+    chain.release()
+    return {
+        "instanced": any(entry.instance_context for entry in plan.correspondence),
+        "expired_after_release": all(_expired(identifier) for identifier in identifiers),
+        "snapshot_plans": _core.plan(snapshot, settings, _core.PlanningContext(1.0, 1)).copy_count == plan.copy_count,
+    }
+
+
 def chain_release_while_caller_holds() -> dict[str, Any]:
     """Releasing and deleting a scene index chain leaves a stage the caller still holds alive."""
     stage = Usd.Stage.CreateInMemory()

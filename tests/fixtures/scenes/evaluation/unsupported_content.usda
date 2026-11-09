@@ -1,0 +1,157 @@
+#usda 1.0
+# F-UNSUPPORTED-CONTENT (tests/fixtures/evaluation.py): content the planner doesn't translate, each kept as a
+# placeholder or marker with a diagnostic, and the filters' conversions to meshes:
+# - Boxed is basis curves whose authored extent is looser than its points, so its placeholder shows the
+#   extent as given; Combed (basis curves with widths) and Dots (points with widths) author none, so theirs
+#   show USD's computed extent; Tangents is HermiteCurves, which Hydra doesn't image, with an authored extent;
+# - Fog is a Volume with no extent, which gets an empty marker and a warning, since nothing cheap gives it
+#   bounds;
+# - Shapes holds a Cube (exact as a mesh), a Sphere and a bicubic NurbsPatch (approximated as meshes);
+# - Placed is a component whose Strand, basis curves with an authored extent and render purpose, is rotated:
+#   its placeholder keeps its transform, purpose, and kind (MODEL-03, MODEL-06); Veiled is invisible
+#   basis curves, a placeholder in neither destination;
+# - Parent is basis curves with an authored extent, translated and of render purpose, whose Child mesh is
+#   supported and still takes its ancestor's transform and purpose (ARCH-04).
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def BasisCurves "Boxed"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(-1, -1, -1), (2, 2, 2)]
+        point3f[] points = [(0, 0, 0), (1, 1, 1)]
+        uniform token type = "linear"
+    }
+
+    def BasisCurves "Combed"
+    {
+        int[] curveVertexCounts = [2]
+        point3f[] points = [(0, 0, 0), (0, 0, 2)]
+        uniform token type = "linear"
+        float[] widths = [0.2] (
+            interpolation = "constant"
+        )
+        double3 xformOp:translate = (3, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Points "Dots"
+    {
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        float[] widths = [0.5, 0.5] (
+            interpolation = "vertex"
+        )
+        double3 xformOp:translate = (6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def HermiteCurves "Tangents"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        point3f[] points = [(0, 0, 0), (1, 0, 0)]
+        vector3f[] tangents = [(0, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (9, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Volume "Fog"
+    {
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Shapes"
+    {
+        double3 xformOp:translate = (0, 6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Box"
+        {
+            double size = 2
+        }
+
+        def Sphere "Ball"
+        {
+            double radius = 1.5
+            double3 xformOp:translate = (5, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        # Bicubic, one span each way: a curved surface below its control hull, which Hydra's approximation is.
+        def NurbsPatch "Sheet"
+        {
+            int uOrder = 4
+            int uVertexCount = 4
+            double[] uKnots = [0, 0, 0, 0, 1, 1, 1, 1]
+            int vOrder = 4
+            int vVertexCount = 4
+            double[] vKnots = [0, 0, 0, 0, 1, 1, 1, 1]
+            point3f[] points = [
+                (0, 0, 0), (1, 0, 1), (2, 0, 1), (3, 0, 0),
+                (0, 1, 1), (1, 1, 2), (2, 1, 2), (3, 1, 1),
+                (0, 2, 1), (1, 2, 2), (2, 2, 2), (3, 2, 1),
+                (0, 3, 0), (1, 3, 1), (2, 3, 1), (3, 3, 0),
+            ]
+            double3 xformOp:translate = (10, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "Placed" (
+        kind = "component"
+    )
+    {
+        double3 xformOp:translate = (0, 15, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def BasisCurves "Strand"
+        {
+            int[] curveVertexCounts = [2]
+            float3[] extent = [(0, 0, 0), (2, 0, 1)]
+            point3f[] points = [(0, 0, 0), (2, 0, 1)]
+            uniform token purpose = "render"
+            uniform token type = "linear"
+            float xformOp:rotateZ = 90
+            uniform token[] xformOpOrder = ["xformOp:rotateZ"]
+        }
+    }
+
+    def BasisCurves "Veiled"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (0, 1, 0)]
+        point3f[] points = [(0, 0, 0), (0, 1, 0)]
+        uniform token type = "linear"
+        token visibility = "invisible"
+        double3 xformOp:translate = (0, 18, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def BasisCurves "Parent"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (0, 0, 1)]
+        point3f[] points = [(0, 0, 0), (0, 0, 1)]
+        uniform token purpose = "render"
+        uniform token type = "linear"
+        double3 xformOp:translate = (0, 21, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Child"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 1)]
+            int[] faceVertexCounts = [3, 3, 3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+            uniform token subdivisionScheme = "none"
+            double3 xformOp:translate = (1, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ..binding import results
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.source_access import stages
 from ..core import _core
@@ -17,10 +18,31 @@ from . import application
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import bpy
     from pxr import Usd
 
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_settings, identifiers
+
+
+# The core reports exactly the codes the documented list says it does: a core built against another list fails here, on
+# import, rather than at the first diagnostic it reports (DiagnosticCode raises ValueError for one it lacks).
+if frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes()) != results.CORE_CODES:
+    raise ImportError("The compiled core reports other diagnostic codes than binding.results.CORE_CODES")
+
+
+def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:
+    """The plan's source-side diagnostics as the binding's, in its order."""
+    return tuple(
+        Diagnostic(
+            DiagnosticCode(d.code),
+            binding_id,
+            d.message,
+            source_path=d.source_path,
+            property_path=d.property_path,
+            asset=d.asset,
+            fallback=d.fallback,
+        )
+        for d in plan.diagnostics
+    )
 
 
 def source_state(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
@@ -35,13 +57,14 @@ def plans(
     binding_id: identifiers.BindingId,
     binding_stages: stages.BindingStages,
     evaluation_stage: Usd.Stage,
-    scene: bpy.types.Scene,
+    settings: binding_settings.RequestedSettings,
+    unit_scale: float,
     time_codes: Sequence[Usd.TimeCode],
 ) -> list[_core.Plan] | Diagnostic:
     """The display's plan at each of time_codes, in their order, or the fatal diagnostic saying why there are none.
 
-    evaluation_stage is binding_stages' evaluation stage, acquired; scene is the target scene, whose unit scale the
-    plans apply.
+    evaluation_stage is binding_stages' evaluation stage, acquired under settings' payload policy; the plans apply
+    settings' conversion and purposes, and unit_scale, the target scene's.
     """
     try:
         with binding_stages.changed_layers() as changed:
@@ -56,7 +79,10 @@ def plans(
     except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
         return Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
     try:
-        context = _core.PlanningContext(scene.unit_settings.scale_length, application.REPRESENTATION_VERSION)
-        return [_core.plan(snapshot, context) for snapshot in snapshots]
+        planned = _core.PlanSettings(
+            settings.viewport_purposes, settings.render_purposes, settings.coordinate_conversion
+        )
+        context = _core.PlanningContext(unit_scale, application.REPRESENTATION_VERSION)
+        return [_core.plan(snapshot, planned, context) for snapshot in snapshots]
     except Exception as error:  # noqa: BLE001
         return Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")

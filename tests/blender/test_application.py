@@ -1,4 +1,4 @@
-"""M5's stub application layer: preparing a plan's placeholders apart from the display (M5 plan, D3 and D4).
+"""M5's stub application layer: preparing a plan's drawn copies apart from the display (M5 plan, D3 and D4).
 
 Plans come from the core on the transaction scenes; expected values come from how the scene is built
 (fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
@@ -7,13 +7,14 @@ disposal fails to remove enters the ledger.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import bpy
 import pytest
+from mathutils import Matrix
 from pxr import Usd
 
-from fixtures import transaction
+from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
 from proscenium.binding.persistence.ledgers import OriginatingOperation
@@ -29,16 +30,19 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from pxr import Gf
+
     from proscenium.api.bindings import Bindings
     from proscenium.binding.persistence.ledgers import LedgerEntry
     from proscenium.binding.source_access.identifiers import BindingId
     from proscenium.synchronization.prepared_work import PreparedWork
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _plan(stage: Usd.Stage, time_code: float) -> _core.Plan:
-    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), CONTEXT)
+    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -82,7 +86,7 @@ def _records() -> list[object]:
     return [{k: v.to_dict() for k, v in id_.items()} for id_ in (*bpy.data.scenes, *bpy.data.collections)]
 
 
-def test_a_placeholder_per_partition_in_no_scene(bindings: Bindings, tmp_path: Path) -> None:
+def test_a_drawn_copy_per_partition_in_no_scene(bindings: Bindings, tmp_path: Path) -> None:
     # TXN-05: an object drawing its bounds, and its bounds mesh, per drawn gprim, linked only in the staging collection.
     with transaction.retirement_failure(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
@@ -116,6 +120,124 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
                 assert work.entries[used].identity == bounds_mesh
             assert entry.identity == CopyResourceIdentity(entry.role, entry.covers[0], 0)
         Manifest(work.entries)  # a whole manifest
+
+
+def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
+    # The plan's copy_worlds holds Blender's layout, so foreach_set writes it as it stands, and the stub's objects get
+    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
+    # copies. Blender's objects hold no shear, so foreach_set loses it, and the stub's sheared copy shows it through its
+    # unselectable shear parent, as Blender composes them from what each stores.
+    with evaluation.transforms(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        expected = {
+            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed() for p, w in scene.world.items()
+        }
+        sources = [c.source for c in plan.correspondence]
+        made = [bpy.data.objects.new(f"copy-{copy:04}", None) for copy in range(plan.copy_count)]
+        assert list(bpy.data.objects) == made  # in copy order, so foreach_set's buffer lines up
+        bpy.data.objects.foreach_set("matrix_world", plan.copy_worlds)
+        work = _prepared(_binding(bindings), plan)
+        prepared = {
+            work.entries[key].covers[0]: obj
+            for obj in work.staging.objects
+            if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+        }
+        for source, obj in zip(sources, made, strict=True):
+            shown = prepared[source]
+            if source not in scene.sheared:
+                assert _close(obj.matrix_world, expected[source]), source
+                assert (shown.parent, _close(shown.matrix_world, expected[source])) == (None, True), source
+                continue
+            parent = shown.parent
+            assert parent is not None and parent.hide_select, source
+            assert shown.matrix_parent_inverse == Matrix.Identity(4), source
+            assert _close(parent.matrix_world @ shown.matrix_basis, expected[source]), source
+
+
+def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_path: Path) -> None:
+    # The plan's participation as Blender's hide flags, on F-VISIBILITY-PURPOSE: an invisible copy hidden in both.
+    with evaluation.visibility_purpose(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        work = _prepared(_binding(bindings), plan)
+        hidden = {
+            work.entries[_key(work, obj)].covers[0]: (obj.hide_viewport, obj.hide_render)
+            for obj in work.staging.objects
+        }
+        assert hidden == {
+            path: (
+                not scene.displays(path, 0.0, evaluation.VIEWPORT_PURPOSES),
+                not scene.displays(path, 0.0, evaluation.RENDER_PURPOSES),
+            )
+            for path, purpose in scene.purpose.items()
+            if purpose != "guide"  # never explicitly visible, so not planned
+        }
+        assert hidden["/World/Hidden/Child"] == (True, True)
+
+
+def test_each_provisional_mesh_copy_draws_its_extent(bindings: Bindings, tmp_path: Path) -> None:
+    # On F-UNITS-UP-AXIS' Z-up stage in meters: each mesh's copy, the one inside a native instance included, is an
+    # object at its world transform drawing the mesh's authored extent, its provisional geometry description's.
+    with evaluation.units_up_axis(tmp_path) as scene:
+        work = _prepared(_binding(bindings), _plan(scene.stages["z-up-m"], 0.0))
+        shown = _shown(work)
+        assert shown.keys() == scene.world.keys()
+        for path, world in scene.world.items():
+            assert _close(shown[path].matrix_world, _blender(world)), path
+            assert _vertices(shown[path]) == pytest.approx(_box(scene.bounds)), path
+
+
+def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_path: Path) -> None:
+    # MODEL-05 on F-UNSUPPORTED-CONTENT: the volume without usable bounds; every placeholder with bounds draws its box,
+    # the authored extent or USD's computed one, at its world transform.
+    with evaluation.unsupported_content(tmp_path) as scene:
+        work = _prepared(_binding(bindings), _plan(scene.stage, 0.0))
+        shown = _shown(work)
+        for path, expected in scene.placeholders.items():
+            assert _close(shown[path].matrix_world, _blender(expected.world)), path
+            if expected.bounds is None:
+                assert shown[path].data is None, path
+            else:
+                assert _vertices(shown[path]) == pytest.approx(_box(expected.bounds), rel=1e-6), path
+
+
+def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindings, tmp_path: Path) -> None:
+    # DECISIONS.md "Managed object names": a tilde, the generation, and the object's ordinal in the plan's order, then
+    # its prim's name, so each new object sorts after every existing one, the display it replaces' included; its bounds
+    # mesh shares its name. A sheared copy's shear parent takes the next ordinal after its object. On F-TRANSFORMS,
+    # beside a user's objects.
+    with evaluation.transforms(tmp_path) as scene:
+        plan = _plan(scene.stage, 0.0)
+        for name in ("Chair", "zebra", "~zzz user"):  # the last sorts after every managed name
+            bpy.data.objects.new(name, None)
+        binding_id = _binding(bindings)
+        first, second = _prepared(binding_id, plan), _prepared(binding_id, plan)
+        for generation, work in enumerate((first, second)):
+            made = [d for d in work.datablocks.values() if isinstance(d, bpy.types.Object)]
+            names = sorted(o.name for o in made)
+            expected_count = sum(1 for r in plan.resources if r.role in ("object", "shear parent"))
+            assert len(names) == expected_count
+            assert names == [
+                f"~{generation:06d}.{ordinal:07d} {name.split(' ', 1)[1]}" for ordinal, name in enumerate(names)
+            ]
+        # In the plan's order: each object's prim, then a shear parent's after its object.
+        resources = plan.resources
+        prims = [
+            r.entity.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
+            for r in resources
+            if r.role in ("object", "shear parent")
+        ]
+        assert [n.split(" ", 1)[1] for n in sorted(o.name for o in first.staging.objects)] == prims
+        # The managed objects follow the user's, but for the one named to sort after them, the second generation's after
+        # the first's.
+        managed = [o.name for o in (*first.staging.objects, *second.staging.objects)]
+        assert [o.name for o in bpy.data.objects] == ["Chair", "zebra", *sorted(managed), "~zzz user"]
+        assert max(o.name for o in first.staging.objects) < min(o.name for o in second.staging.objects)
+        for obj in (*first.staging.objects, *second.staging.objects):
+            assert obj.data is None or obj.data.name == obj.name, obj.name
+
+
+def _close(shown: Matrix, expected: Matrix) -> bool:
+    return all(abs(shown[r][c] - expected[r][c]) <= 1e-5 for r in range(4) for c in range(4))
 
 
 def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> None:
@@ -286,3 +408,31 @@ def _fail_on_call(monkeypatch: pytest.MonkeyPatch, step: str, call: int) -> None
 def _key(work: PreparedWork, datablock: bpy.types.ID) -> str:
     [key] = [k for k, d in work.datablocks.items() if d == datablock]
     return key
+
+
+def _shown(work: PreparedWork) -> dict[str, bpy.types.Object]:
+    """The prepared copies' objects, by the source each shows."""
+    return {
+        work.entries[key].covers[0]: obj
+        for obj in work.staging.objects
+        if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+    }
+
+
+def _blender(matrix: Gf.Matrix4d) -> Matrix:
+    """USD's row-vector matrix as Blender's column-vector one."""
+    return Matrix([[matrix[r, c] for c in range(4)] for r in range(4)]).transposed()
+
+
+def _box(bounds: evaluation.Bounds) -> list[float]:
+    """The eight corners of (min, max), sorted, flattened for pytest.approx."""
+    low, high = (cast("Sequence[float]", corner) for corner in bounds)
+    corners = sorted((x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2]))
+    return [value for corner in corners for value in corner]
+
+
+def _vertices(obj: bpy.types.Object) -> list[float]:
+    """The vertices of obj's bounds mesh, sorted, flattened as _box's."""
+    mesh = obj.data
+    assert isinstance(mesh, bpy.types.Mesh)
+    return [value for vertex in sorted(v.co[:] for v in mesh.vertices) for value in vertex]

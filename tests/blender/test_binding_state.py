@@ -24,6 +24,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecordError,
 )
 from proscenium.binding.results import Diagnostic, DiagnosticCode
+from proscenium.binding.source_access.binding_settings import RequestedSettings, new_settings
 from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
 from support.blend import save_and_reopen
 from support.manifests import key, object_entry
@@ -39,6 +40,14 @@ DIRTY = Diagnostic(
 )
 UNAVAILABLE = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
 REVISION = SourceRevision("a revision")
+# Every setting off its default, so each round trip and comparison covers it.
+SETTINGS = RequestedSettings(PayloadPolicy.LOAD_NONE, True, ("default", "guide"), ("render",))
+STORED_SETTINGS = {
+    "payload_policy": "load_none",
+    "coordinate_conversion": True,
+    "viewport_purposes": ["default", "guide"],
+    "render_purposes": ["render"],
+}
 
 
 def _scene() -> bpy.types.Scene:
@@ -56,11 +65,11 @@ def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:
     cached = (13.0, 14.5) if time is not None else ()  # a generation at the default time code caches nothing
-    return Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, time, REVISION, (DIRTY,), cached)
+    return Generation(handle.binding_id, SETTINGS, 0.01, time, REVISION, (DIRTY,), cached)
 
 
 def _attempt(time: float | None = 20.0) -> LastAttempt:
-    return LastAttempt(PayloadPolicy.LOAD_ALL, time, (UNAVAILABLE,))
+    return LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), time, (UNAVAILABLE,))
 
 
 @pytest.mark.parametrize("time", [12.5, None], ids=["numeric", "default"])
@@ -72,6 +81,11 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path, tim
     save_and_reopen(tmp_path / "state.blend")
     assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(_generation(handle, time), 1)
     assert binding_state.read_last_attempt(_shot()) == Loaded(_attempt(time), 1)
+    assert destination_settings() == STORED_SETTINGS  # what the refusal cases change
+
+
+def destination_settings() -> dict[str, object]:
+    return _shot()[NAMESPACE][binding_state.GENERATION_KEY]["settings"].to_dict()
 
 
 def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindings, tmp_path: Path) -> None:
@@ -81,7 +95,7 @@ def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindin
     stored = destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict()
     del stored["cached_time_codes"]
     destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
-    expected = Generation(handle.binding_id, PayloadPolicy.LOAD_NONE, 12.5, REVISION, (DIRTY,))
+    expected = Generation(handle.binding_id, SETTINGS, 0.01, 12.5, REVISION, (DIRTY,))
     assert binding_state.read_generation(destination) == Loaded(expected, 1)
 
 
@@ -132,7 +146,11 @@ def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindin
     ("change", "refusal"),
     [
         ({VERSION_KEY: 2}, RefusalReason.NEWER),
-        ({"payload_policy": "load_some"}, RefusalReason.INVALID),
+        ({"settings": STORED_SETTINGS | {"payload_policy": "load_some"}}, RefusalReason.INVALID),
+        ({"settings": STORED_SETTINGS | {"render_purposes": ["preview"]}}, RefusalReason.INVALID),
+        ({"settings": {"payload_policy": "load_none"}}, RefusalReason.INVALID),  # without the other settings
+        ({"unit_scale": 0.0}, RefusalReason.INVALID),
+        ({"unit_scale": "one"}, RefusalReason.INVALID),
         ({"time_code": "twelve"}, RefusalReason.INVALID),
         ({"cached_time_codes": [14.5, 13.0]}, RefusalReason.INVALID),
         ({"cached_time_codes": [12.5, 13.0]}, RefusalReason.INVALID),

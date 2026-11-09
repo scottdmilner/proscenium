@@ -1,0 +1,71 @@
+#usda 1.0
+# F-TRANSFORMS' projective case (XFORM-05): a matrix op with a projective term in its last column, which no
+# Blender object can hold. The planner places the mesh by the matrix's affine part, with an approximation
+# diagnostic. Kits holds two native instances of a prototype with the same projective mesh, whose copies are
+# placed the same way under one diagnostic, a repeated problem aggregated. Its own layer, so the rest of
+# F-TRANSFORMS synchronizes with no diagnostics.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "Projective"
+    {
+        matrix4d xformOp:transform = ( (1, 0, 0, 0.25), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+
+        def Mesh "Geom"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 1)]
+            int[] faceVertexCounts = [3, 3, 3, 3]
+            int[] faceVertexIndices = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+            uniform token subdivisionScheme = "none"
+        }
+    }
+
+    def Xform "Kits"
+    {
+        def Xform "KitA" (
+            instanceable = true
+            references = </Prototypes/ProjectiveKit>
+        )
+        {
+            double3 xformOp:translate = (0, 5, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "KitB" (
+            instanceable = true
+            references = </Prototypes/ProjectiveKit>
+        )
+        {
+            double3 xformOp:translate = (0, 10, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    def Xform "ProjectiveKit"
+    {
+        def Xform "Projective"
+        {
+            matrix4d xformOp:transform = ( (1, 0, 0, 0.25), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def Mesh "Geom"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 1)]
+                int[] faceVertexCounts = [3, 3, 3, 3]
+                int[] faceVertexIndices = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+                uniform token subdivisionScheme = "none"
+            }
+        }
+    }
+}

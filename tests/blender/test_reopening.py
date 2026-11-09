@@ -25,6 +25,7 @@ from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
+from proscenium.binding.source_access.binding_settings import new_settings
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.blend import collection_content, save_and_reopen
@@ -174,7 +175,7 @@ def _managed(bindings: Bindings, tmp_path: Path, scene: bpy.types.Scene) -> Bind
     bpy.data.collections["Shot"].objects.link(obj)
     _scene().collection.objects.link(obj)
     ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
-    binding_state.write_last_attempt(destination(handle), LastAttempt(PayloadPolicy.LOAD_ALL, 0.0, ()))
+    binding_state.write_last_attempt(destination(handle), LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ()))
     assert ownership.of(obj).claims != ()
     return handle
 

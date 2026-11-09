@@ -82,7 +82,8 @@ def test_cached_time_codes_show_their_values_in_the_same_generation(bindings: Bi
         assert result.time_codes == tuple(Usd.TimeCode(t) for t in scene.cached)
         assert _generation() == binding_state.Generation(
             before.binding_id,
-            before.payload_policy,
+            before.settings,
+            before.unit_scale,
             before.time_code,
             before.source_revision,
             before.diagnostics,

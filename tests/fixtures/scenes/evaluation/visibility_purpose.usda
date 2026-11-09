@@ -1,0 +1,129 @@
+#usda 1.0
+# F-VISIBILITY-PURPOSE (tests/fixtures/evaluation.py): effective visibility kept apart from purpose, each
+# destination's participation following from both (VIS-01 to VIS-03):
+# - Hidden is invisible, so its Child, which authors nothing, is invisible too;
+# - Shown holds one mesh of each purpose: Default authors none, then Proxy, Render, and Guide, whose
+#   guideVisibility isn't authored, so it is invisible;
+# - ProxyGroup authors the proxy purpose, which its Inherits mesh, authoring none, inherits;
+# - Pair is a proxy and render pair, the viewport showing ProxyGeo and the final render RenderGeo;
+# - Blinking's visibility is sampled: inherited at 0, invisible at 10, inherited at 20. A token is held
+#   between samples, so it is invisible from 10 until 20, its declared transitions.
+# Every mesh is the Tetra under Shapes, each translated apart from the others.
+(
+    defaultPrim = "World"
+    endTimeCode = 20
+    metersPerUnit = 1
+    startTimeCode = 0
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "Hidden"
+    {
+        token visibility = "invisible"
+
+        def Mesh "Child" (
+            references = </Shapes/Tetra>
+        )
+        {
+        }
+    }
+
+    def Xform "Shown"
+    {
+        double3 xformOp:translate = (0, 2, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Default" (
+            references = </Shapes/Tetra>
+        )
+        {
+        }
+
+        def Mesh "Proxy" (
+            references = </Shapes/Tetra>
+        )
+        {
+            uniform token purpose = "proxy"
+            double3 xformOp:translate = (2, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Render" (
+            references = </Shapes/Tetra>
+        )
+        {
+            uniform token purpose = "render"
+            double3 xformOp:translate = (4, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "Guide" (
+            references = </Shapes/Tetra>
+        )
+        {
+            uniform token purpose = "guide"
+            double3 xformOp:translate = (6, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "ProxyGroup"
+    {
+        uniform token purpose = "proxy"
+        double3 xformOp:translate = (0, 4, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "Inherits" (
+            references = </Shapes/Tetra>
+        )
+        {
+        }
+    }
+
+    def Xform "Pair"
+    {
+        double3 xformOp:translate = (0, 6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "ProxyGeo" (
+            references = </Shapes/Tetra>
+        )
+        {
+            uniform token purpose = "proxy"
+        }
+
+        def Mesh "RenderGeo" (
+            references = </Shapes/Tetra>
+        )
+        {
+            uniform token purpose = "render"
+        }
+    }
+
+    def Mesh "Blinking" (
+        references = </Shapes/Tetra>
+    )
+    {
+        token visibility.timeSamples = {
+            0: "inherited",
+            10: "invisible",
+            20: "inherited",
+        }
+        double3 xformOp:translate = (0, 8, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+class "Shapes"
+{
+    def Mesh "Tetra"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        int[] faceVertexCounts = [3, 3, 3, 3]
+        int[] faceVertexIndices = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+        uniform token subdivisionScheme = "none"
+    }
+}

@@ -20,7 +20,7 @@
 #                 process: a development or test-process rule, checked by tooling or CI.
 #   delivery      The milestone that delivers it (milestone Implements lines).
 #   phase         1 or 2: the phase whose qualification covers it.
-#   qualified_by  Behavior rows: derived (Phase 1 -> M12, Phase 2 -> M14).
+#   qualified_by  Behavior rows: derived (Phase 1 -> M12, Phase 2 -> M13).
 #                 Other kinds: the milestone whose record or check confirms it.
 #   fixtures      Bespoke fixtures from tests/fixtures/registry.py.
 #   oracle        What the test or check asserts, from the spec or the fixture's construction.
@@ -32,7 +32,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2, M3, M4, M5]
+started: [M1, M1b, M2, M3, M4, M5, M6]
 
 # Retired on 2026-11-03: SRC-01 (binding-owned file stage), ICON-32 and ICON-33
 # (file-stage live identity and lazy opening). Never reuse these IDs.
@@ -52,9 +52,12 @@ requirements:
         delivery: M7
       - id: ARCH-04
         quote: "Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, the mesh beneath the unsupported Parent curves is a drawn copy with the world transform the fixture composes (Parent's translate, then its own) and Parent's render purpose, so it displays in the final render only, beside Parent's own placeholder."
         delivery: M6
       - id: ARCH-05
         quote: "Source hierarchy and selection identities are independent of display partitioning."
+        fixtures: [F-NESTED-STRESS]
         delivery: M7
       - id: ARCH-06
         quote: "Tools address USD entities through the source selection model."
@@ -64,10 +67,10 @@ requirements:
         oracle: "The M2 decision record: the interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log; M4 finalized it (M4 plan, F2)."
       - id: ARCH-08
         quote: "Keep the performance tests around for later"
-        oracle: "The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M14 its Phase 2 targets."
+        oracle: "The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M13 its Phase 2 targets."
         kind: process
         delivery: M4
-        qualified_by: M14
+        qualified_by: M13
 
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
     phase: 1
@@ -75,20 +78,24 @@ requirements:
       - id: PH1-01
         quote: "Manual refresh is required."
         delivery: M12
+      - id: PH2-02
+        quote: "Preserve source selections where their source identities remain valid."
+        delivery: M7
+        note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh (DECISIONS.md \"Partition unit\"); the ID keeps its prefix, since IDs are never reused."
+      - id: PH2-03
+        quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
+        delivery: M7
+        note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh."
       - id: PH1-02
         quote: "The acceptance suite must pass"
         kind: process
         delivery: M12
         qualified_by: M12
 
-  - section: PROJECT.md#phase-2--incremental-synchronization
+  - section: PROJECT.md#phase-2--performance-qualification
     phase: 2
-    delivery: M14
+    delivery: M13
     rows:
-      - id: PH2-02
-        quote: "Preserve source selections where their source identities remain valid."
-      - id: PH2-03
-        quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
       - id: PH2-04
         quote: "Establish and meet representative performance targets"
         risk: high
@@ -128,18 +135,28 @@ requirements:
     rows:
       - id: SNAP-08
         quote: "This model must not contain Blender datablock references."
+        fixtures: [F-TRANSFORMS]
+        oracle: "A snapshot of F-TRANSFORMS is captured and planned in a bpy_free test with Blender's modules blocked from import (bpy_blocker.py), and the plan's parts hold only composed-stage paths, numbers, strings, and Vt arrays."
       - id: SNAP-10
         quote: "Snapshot data cannot change during planning or application."
+        fixtures: [F-TRANSFORMS]
+        oracle: "On F-TRANSFORMS, after a snapshot is captured, the caller's stage is edited (a transform changed and a prim removed) and the chain moved to another time code; a plan built from that snapshot then equals the plan built from it before the edit."
       - id: SNAP-11
         quote: "The snapshot keeps alive whatever storage it lends out, such as shared arrays."
+        fixtures: [F-TRANSFORMS]
+        oracle: "On F-TRANSFORMS, every buffer a plan lends (world matrices, participation, bounds) keeps its values after the plan, its snapshot, the chain, and the stage are released and collected."
       - id: SNAP-13
         quote: "Application does not retain borrowed buffers beyond the synchronization that supplied them."
         delivery: M7
       - id: SNAP-16
         quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, the Sphere and the NURBS patch are provisional meshes, each with one approximation diagnostic naming its source path; the Cube, converted exactly, has none."
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
       - id: SNAP-17
         quote: "Hydra prim types the core does not translate"
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, each untranslated prim (the basis curves, points, HermiteCurves, and the volume) has one placeholder at its source path and one untranslated-type diagnostic, aggregated by problem."
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
 
   - section: spec/pipeline.md#display-plan
@@ -148,8 +165,12 @@ requirements:
     rows:
       - id: PLAN-08
         quote: "Planning is deterministic: the same snapshot, binding settings, and planning context yield the same plan."
+        fixtures: [F-TRANSFORMS]
+        oracle: "On F-TRANSFORMS, plans built twice from one snapshot, from two snapshots captured at one time code, and in separate processes, under the same settings and context, are equal in every part and its order: partitions, resources and their identities, correspondence, buffers, and diagnostics; relations 4 and 5 hold."
       - id: PLAN-09
         quote: "Anything planning depends on must arrive through one of its three inputs."
+        fixtures: [F-TRANSFORMS]
+        oracle: "The planner takes only the snapshot, the settings, and the planning context, and on F-TRANSFORMS a plan built after the stage and chain are released equals one built while they were alive; changing a setting or a context value changes only what the spec derives from it."
 
   - section: spec/pipeline.md#blender-application
     delivery: M7
@@ -223,9 +244,8 @@ requirements:
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "After F-PREPARATION-CLEANUP-FAILURE's failures, no leftover is linked in a scene or named by correspondence, and the published display's datablocks keep their values."
       - id: TXN-12
-        quote: "These guarantees apply equally to incremental mutations in Phase 2."
-        delivery: M14
-        phase: 2
+        quote: "These guarantees apply equally to incremental mutations."
+        delivery: M7
 
   - section: spec/pipeline.md#cached-time-codes
     delivery: M5
@@ -258,6 +278,11 @@ requirements:
         quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
         fixtures: [F-SOURCE-CHANGE]
         oracle: "On F-SOURCE-CHANGE, after a synchronization, an edit to sub.usda, a reload of its rewritten file, or attaching the stage again each make cache return a failure saying the binding needs synchronizing, caching nothing; without a change, the same call caches."
+      - id: CACHE-12
+        quote: "If the target scene's unit scale has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
+        fixtures: [F-CACHED-TIME-CODES]
+        oracle: "On F-CACHED-TIME-CODES, after a synchronization, a changed unit scale on the target scene makes cache return a failure saying the binding needs synchronizing, caching nothing, its cached time codes included; with the scale set back, or after synchronizing again, the same call caches."
+        delivery: M6
       - id: CACHE-06
         quote: "A generation synchronized at the USD default time code has no time-varying values"
         fixtures: [F-CACHED-TIME-CODES]
@@ -290,6 +315,11 @@ requirements:
         quote: "Aggregate repeated problems."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "In F-PREPARATION-CLEANUP-FAILURE's repeat case, synchronizing again with disposal still failing reports each problem once per resource, never once per attempt, and a problem repeated within one attempt is one diagnostic."
+      - id: DIAG-16
+        quote: "A problem repeated across many source entities is reported for each of the first ten in source order, and once more counting the rest."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "F-UNSUPPORTED-CONTENT with 25 more BasisCurves beside its five: an untranslated-type diagnostic for each of the first ten BasisCurves in source order, then one naming no source that counts the other twenty; the other types' diagnostics are unchanged."
+        delivery: M6
       - id: DIAG-04
         quote: "Source/display diagnostics belong to a published generation or to the last attempt and are kept separate from any attempt history."
         fixtures: [F-FAILED-SETTINGS]
@@ -304,8 +334,8 @@ requirements:
         oracle: "Each result's cleanup status lists the ledger's current cleanup diagnostics, one per operation and resource, apart from its own diagnostics: in F-PREPARATION-CLEANUP-FAILURE's replace and repeat cases and in F-RETIREMENT-FAILURE."
       - id: DIAG-07
         quote: "An unchanged refresh produces equivalent deduplicated source/display diagnostics."
-        fixtures: [F-NO-OP-REFRESH, F-DIRTY-LAYER]
-        oracle: "Two synchronizations of F-DIRTY-LAYER with nothing changed between them report equal diagnostics in the same order; F-NO-OP-REFRESH extends this to content diagnostics."
+        fixtures: [F-NO-OP-REFRESH, F-DIRTY-LAYER, F-UNSUPPORTED-CONTENT]
+        oracle: "Two synchronizations of F-DIRTY-LAYER, or of F-UNSUPPORTED-CONTENT for its content diagnostics, with nothing changed between them report equal diagnostics in the same order; F-NO-OP-REFRESH extends this to every content case."
       - id: DIAG-08
         quote: "resolved cleanup diagnostics are removed rather than accumulated as history."
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
@@ -320,8 +350,8 @@ requirements:
         oracle: "F-DIRTY-LAYER's synchronization reports success, holding only source-state diagnostics."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
-        fixtures: [F-RETIREMENT-FAILURE]
-        oracle: "F-RETIREMENT-FAILURE's synchronization reports completed with issues, holding pending-cleanup diagnostics and no fatal one; the content categories join with M6."
+        fixtures: [F-RETIREMENT-FAILURE, F-UNSUPPORTED-CONTENT]
+        oracle: "F-RETIREMENT-FAILURE's synchronization reports completed with issues, holding pending-cleanup diagnostics and no fatal one; F-UNSUPPORTED-CONTENT's reports completed with issues, holding the fixture's untranslated-type, approximation, and usd-warning diagnostics, each once, and no fatal one."
       - id: DIAG-11
         quote: "Fatal failure, including an unavailable source."
         fixtures: [F-OFFLINE]
@@ -1072,6 +1102,11 @@ requirements:
         quote: "Hydra paths and nesting are never used for grouping or selection expansion."
         fixtures: [F-KIND-HIERARCHY]
         oracle: "Expansion of a group or assembly target reaches every displayed mesh beneath it on the composed stage, although its intermediate prims carry nothing Hydra keeps."
+      - id: ICON-42
+        quote: "A copy a point instancer draws is named by its point-instance path"
+        delivery: M6
+        fixtures: [F-POINT-INSTANCERS]
+        oracle: "Each drawn copy of F-POINT-INSTANCERS' point instancers has the point-instance path, source entity, and instance context the fixture gives, which tests/bpy_free/test_evaluation_fixtures.py derives from UsdGeom.PointInstancer: __index_<index> for Scatter, which authors no ids, __id_<id> for Tagged's ids, n for -3, each followed by the prim's path below its prototype root's parent; inside Kits' native instances, the instancer's instance-proxy path, after the instance root in the context; and Pebble's native instance inside Scatter's prototype, after the point. Resource identities follow from them (ROLE-02)."
 
   - section: spec/interaction-contract.md#browsing-universe
     delivery: M7
@@ -1094,9 +1129,9 @@ requirements:
         fixtures: [F-UNIVERSE-MEMBERSHIP]
         oracle: "displayed is false for the materials scope, an organizational Xform with nothing displayed beneath, and invisible and guide-only subtrees."
       - id: ICON-15
-        quote: "Instance-proxy descendants, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe."
-        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION]
-        oracle: "displayed is false for instance-proxy paths, an unloaded payload root, inactive prims, and an abstract prim."
+        quote: "Instance-proxy descendants, point-instance paths, unloaded payload roots, inactive prims, abstract prims, and composition provenance are not in the universe."
+        fixtures: [F-UNIVERSE-MEMBERSHIP, F-NESTED-SELECTION, F-POINT-INSTANCERS]
+        oracle: "displayed is false for instance-proxy paths, point-instance paths, an unloaded payload root, inactive prims, and an abstract prim."
       - id: ICON-16
         quote: "It is derived from correspondence, not stored"
 
@@ -1123,10 +1158,10 @@ requirements:
         fixtures: [F-KIND-HIERARCHY]
         oracle: "select_targets accepts the prim level and any registered model kind."
       - id: ICON-19
-        quote: "The floor of an entity is the outermost native-instance root enclosing it"
+        quote: "The floor of an entity is the outermost native-instance root or point instancer enclosing it"
         delivery: M10
-        fixtures: [F-NESTED-SELECTION]
-        oracle: "A pick anywhere in instance contents, including a nested instance, resolves to the outermost instance root as its floor; no target is inside instance contents."
+        fixtures: [F-NESTED-SELECTION, F-POINT-INSTANCERS]
+        oracle: "A pick anywhere in instance contents, including a nested instance, resolves to the outermost instance root as its floor, and a pick on a point instancer's copy to the instancer, or to the outermost native-instance root enclosing it (F-POINT-INSTANCERS' Kits); no target is inside instance contents."
       - id: ICON-20
         quote: "At the prim level, the target is the floor."
         fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
@@ -1205,8 +1240,8 @@ requirements:
   # --- spec/incremental.md --------------------------------------------------------------------
 
   - section: spec/incremental.md#change-discovery
-    delivery: M13
-    phase: 2
+    delivery: M7
+    phase: 1
     rows:
       - id: DISC-01
         quote: "Manual refresh of an attached source, including after an explicit reload of its contributing layers."
@@ -1214,12 +1249,14 @@ requirements:
         quote: "Prim existence, activation, type, hierarchy, and variants."
       - id: DISC-03
         quote: "including external assets changed without any USD edit."
+        delivery: M9
         fixtures: [F-TEXTURE-IN-PLACE]
       - id: DISC-04
         quote: "including time changes that do not alter evaluated values."
         fixtures: [F-SAME-VALUES]
       - id: DISC-05
         quote: "Managed Blender content requiring repair, distinguished from legitimate external users of managed resources."
+        delivery: M11
         fixtures: [F-UNMANAGED-USER]
       - id: DISC-06
         quote: "Separate change discovery from dependency invalidation."
@@ -1229,17 +1266,18 @@ requirements:
         quote: "Editor-provided change descriptions may be hints, but are not the sole correctness mechanism."
 
   - section: spec/incremental.md#affected-content
-    delivery: M13
-    phase: 2
+    delivery: M7
+    phase: 1
     rows:
       - id: AFF-01
         quote: "Source-affected entities: source state actually changed."
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
+        delivery: M13
+        phase: 2
         risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
-        delivery: M14
         fixtures: [F-NO-OP-REFRESH]
         risk: high
 
@@ -1251,18 +1289,26 @@ requirements:
     rows:
       - id: XFORM-01
         quote: "Evaluate ordered transform operations, reset-transform-stack behavior, and transforms authored on meshes."
+        fixtures: [F-TRANSFORMS]
+        oracle: "On F-TRANSFORMS, each drawn copy's world transform in the plan is the one the fixture composes from the authored ops (ordered ops, the pivot through an inverted op, the matrix op, the translate on a mesh, and the payload's rotation), within the bounds comparison contract's tolerance; relation 1 holds."
       - id: XFORM-02
         quote: "Reconcile organizational relationships with reset-transform-stack behavior without requiring equivalent Blender parenting."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-TRANSFORMS]
+        oracle: "A copy beneath a reset transform stack takes only its own ops: F-TRANSFORMS' Reset/Pinned and Instanced/Kit/Pinned (inside the instance, OpenUSD #862) and F-NESTED-STRESS' Pinned copies have the fixtures' world transforms, within the bounds comparison contract's tolerance, and none moves under relation 1; each copy's world transform stands alone, with no parent but a shear parent."
         risk: high
       - id: XFORM-03
         quote: "Support matrix transforms, negative and nonuniform scale, and shear."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-TRANSFORMS]
+        oracle: "F-TRANSFORMS' Matrix, Mirrored, and Sheared copies and F-NESTED-STRESS' copies have the fixtures' world transforms, within the bounds comparison contract's tolerance; a sheared copy's object and shear parent multiply to its world transform, and each holds only a location, rotation, and scale."
         risk: high
       - id: XFORM-05
         quote: "Diagnose approximations when exact representation is unavailable."
+        fixtures: [F-TRANSFORMS]
+        oracle: "On F-TRANSFORMS' projective layer, the mesh is placed by its matrix's affine part, as the fixture gives it, with one approximation diagnostic naming its source path; the rest of F-TRANSFORMS plans with no diagnostics."
       - id: XFORM-06
         quote: "Evaluate supported time-varying values at the time code synchronized and at each one cached, including topology changes."
+        fixtures: [F-TRANSFORMS, F-VISIBILITY-PURPOSE]
+        oracle: "At each sampled time code of F-TRANSFORMS and F-VISIBILITY-PURPOSE (ATIME-03), the plan a synchronization builds there and the one a cache call builds there hold Animated's world transform and Blinking's participation as the fixtures give them; relation 5 holds. Topology is M8's (XFORM-07)."
         risk: high
       - id: XFORM-07
         quote: "including topology changes."
@@ -1300,17 +1346,23 @@ requirements:
     rows:
       - id: CONV-01
         quote: "Units/up-axis conversion is configurable and disabled by default. When disabled, the correction matrix is the identity."
+        fixtures: [F-UNITS-UP-AXIS]
+        oracle: "With conversion off, the default, every world transform in F-UNITS-UP-AXIS' plans, for both stages and both target unit scales, is its USD world transform: the correction is the identity."
       - id: CONV-02
         quote: "Enabled conversion respects the target scene's unit scale without changing scene settings."
         delivery: M7
       - id: CONV-03
         quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
+        fixtures: [F-UNITS-UP-AXIS]
+        oracle: "With conversion on, each drawn copy's world transform on F-UNITS-UP-AXIS, the mesh's and the instance's alike, is its USD world transform under the fixture's correction, within the bounds comparison contract's tolerance, and its local bounds are unchanged, so its world bounds follow; relation 2 holds."
         risk: high
       - id: CONV-07
         quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
         delivery: M7
       - id: CONV-08
         quote: "scale = stage.metersPerUnit / target_scene.unit_settings.scale_length"
+        fixtures: [F-UNITS-UP-AXIS]
+        oracle: "The correction for each stage and target unit scale is the fixture's: a uniform scale of metersPerUnit / scale_length, then +90 degrees about X for the Y-up stage; so the Z-up stage in meters into a scene of scale 1 plans as with conversion off."
 
   # --- spec/support/geometry.md ---------------------------------------------------------------
 
@@ -1438,6 +1490,15 @@ requirements:
         quote: "Per-instance displayColor, inherited material assignments, and named primvars driving supported material inputs."
         fixtures: [F-NESTED-STRESS]
         risk: high
+      - id: INST-08
+        quote: "Point instancers: each point's copies of its prototype, with the point's transform and its visibility through the instancer's mask and invisibleIds, including point instancers inside native instances."
+        delivery: M6
+        fixtures: [F-POINT-INSTANCERS]
+        oracle: "On F-POINT-INSTANCERS, the plan has a drawn copy for each point and mesh of its prototype, Pebble's native instance's included, and none for the instancers themselves or for a prototype prim at its own path (Unused included); each copy's world transform is the fixture's, as UsdGeom.PointInstancer composes it with its prototype root's transform, within the bounds comparison contract's tolerance; the points invisibleIds hides (Scatter's index 2, Tagged's id 7) display in neither destination and the rest in both; Kits' two instances each have Spray's two points."
+        note: "Delivered by M6 with the user, 2026-11-07 (DECISIONS.md \"Point instancers\"), within M10's section."
+      - id: INST-09
+        quote: "A point instancer's per-point primvars, on its points' copies as an instance root's primvars are on its instance's."
+        fixtures: [F-POINT-INSTANCERS]
 
   - section: spec/support/instancing.md#geometry-sharing
     delivery: M10
@@ -1576,15 +1637,21 @@ requirements:
     rows:
       - id: VIS-01
         quote: "Respect effective inherited visibility separately from purpose."
+        fixtures: [F-VISIBILITY-PURPOSE]
+        oracle: "On F-VISIBILITY-PURPOSE, a copy displays in a destination exactly when it is effectively visible and the destination includes its purpose: Hidden/Child in neither, though its purpose is default; Blinking in neither from 10 until 20 and in both otherwise."
       - id: VIS-02
         quote: "Viewport | default, proxy"
+        fixtures: [F-VISIBILITY-PURPOSE]
+        oracle: "Under the default settings, the viewport shows F-VISIBILITY-PURPOSE's default and proxy copies (Default, Proxy, Inherits, ProxyGeo, Blinking) and the final render its default and render copies (Default, Render, RenderGeo, Blinking); relation 3 holds."
       - id: VIS-03
         quote: "Exclude guide by default. Support both destinations from the same evaluated snapshot."
-        fixtures: [F-NESTED-STRESS]
+        fixtures: [F-NESTED-STRESS, F-VISIBILITY-PURPOSE]
+        oracle: "One snapshot of F-VISIBILITY-PURPOSE, and one of F-NESTED-STRESS, gives each copy's participation in both destinations as the fixture gives it, and with the default settings no guide displays in either."
         risk: high
       - id: VIS-04
         quote: "A guide prim whose effective visibility is explicitly visible, through an authored guideVisibility on it or an ancestor, displays in the viewport."
         fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "On F-UNIVERSE-MEMBERSHIP, under the default settings, the guide its ancestor's guideVisibility makes visible displays in the viewport and not in the final render, and the guides with no such opinion display in neither."
 
   - section: spec/support/visibility.md#models-and-unsupported-content
     delivery: M6
@@ -1592,21 +1659,34 @@ requirements:
     rows:
       - id: MODEL-01
         quote: "Expose model kind and available asset metadata."
+        delivery: M7
+        note: "Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md \"Browsing universe and inspection metadata set\")."
       - id: MODEL-03
         quote: "Support is decided per behavior, not per prim type."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, a prim's untranslated geometry leaves its other behaviors: each placeholder has its world transform, participation, and correspondence entry as the fixture gives them, beside its untranslated-type diagnostic."
       - id: MODEL-04
         quote: "Use a bounding-box placeholder when usable bounds are available."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "Each F-UNSUPPORTED-CONTENT placeholder with usable bounds is a box whose eight corners are its local bounds (the authored extent as given, else USD's computed extent) under its world transform, per the bounds comparison contract."
       - id: MODEL-05
         quote: "Otherwise create an empty marker and warn."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, the volume, with no authored extent and no computed one, is an empty marker at its world transform with a warning diagnostic naming its source path."
       - id: MODEL-06
         quote: "Respect transforms, visibility, and purpose."
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, placeholders take their transforms, visibility, and purpose: Strand and Parent display in the final render only, Veiled in neither, and each has the fixture's world transform."
 
   - section: spec/support/visibility.md#deferred-and-out-of-scope
     delivery: M6
     phase: 1
     rows:
       - id: DEFER-01
-        quote: "Deferred areas include point instancers, curves, NURBS patches, points, elementary geometry"
+        quote: "Deferred areas include curves, NURBS patches, points, elementary geometry"
+        fixtures: [F-UNSUPPORTED-CONTENT]
+        oracle: "On F-UNSUPPORTED-CONTENT, each deferred type is a placeholder with a diagnostic or a diagnosed approximation: curves and points placeholders (SNAP-17); the Sphere and NURBS patch approximations (SNAP-16)."
+        note: "Point instancers left the deferred list with the user, 2026-11-07 (DECISIONS.md \"Point instancers\"); INST-08 and ICON-42 cover them."
 
   # --- testing/strategy.md --------------------------------------------------------------------
 
@@ -1635,12 +1715,16 @@ requirements:
     rows:
       - id: TMETA-01
         quote: "They complement bespoke fixtures and never replace a fixture's own expected results."
+        oracle: "Every fixture a relation runs on also has tests of its own expected values (test_evaluation_fixtures.py and the fixtures' cases), which M6's close confirms for each relation test."
       - id: TMETA-02
         quote: "Each relation states the input change, the expected effect on the result, and the requirement that justifies it."
+        oracle: "Each relation test's docstring states its input change, expected effect, and requirement IDs as the M6 plan's A3 log lists them; M6's close checks them against it."
       - id: TMETA-03
         quote: "The milestone that delivers a behavior chooses its relations."
+        oracle: "The M6 plan's Phase A log records the relations M6 chooses (A3)."
       - id: TMETA-04
         quote: "provided each generated input is reproducible from a recorded seed."
+        oracle: "A relation run on generated hierarchies takes its seed as a test parameter, and a bpy_free test checks that one seed builds the same layer, byte for byte."
 
   - section: testing/strategy.md#named-contract-fixtures
     kind: process
@@ -1654,9 +1738,9 @@ requirements:
 
   - section: testing/strategy.md#incremental-synchronization-tests
     kind: process
-    delivery: M14
-    phase: 2
-    qualified_by: M14
+    delivery: M7
+    phase: 1
+    qualified_by: M12
     rows:
       - id: TINC-01
         quote: "Compare results against a clean full rebuild."
@@ -1671,7 +1755,7 @@ requirements:
     rows:
       - id: AFIX-01
         quote: "The requirement-to-test matrix covers every requirement applicable to Phases 1 and 2"
-        oracle: "tools/matrix.py check (completeness, quotes, invariants, references) passes in CI; coverage per phase is checked at M12 and M14."
+        oracle: "tools/matrix.py check (completeness, quotes, invariants, references) passes in CI; coverage per phase is checked at M12 and M13."
         qualified_by: M1
       - id: AFIX-07
         quote: "Requirements that are not runtime behavior are covered without a fixture"
@@ -1688,10 +1772,11 @@ requirements:
         delivery: M3
         oracle: "tests/bpy_free/test_fixture_cases.py: each case in tests/fixtures/registry.py declares an operation and outcome, cites behavior rows that list its fixture, and has the highest phase of those rows; every behavior row of a started milestone is cited by a case of each fixture it lists that has cases."
       - id: AFIX-05
-        quote: "M12 qualifies only Phase 1 cases and assertions. M14 qualifies Phase 2 cases and assertions and reruns Phase 1 coverage as regression checks."
+        quote: "M12 qualifies only Phase 1 cases and assertions. M13 qualifies Phase 2 cases and assertions and reruns Phase 1 coverage as regression checks."
         delivery: M12
       - id: AFIX-06
         quote: "Fixtures with time-varying content are evaluated at the sampled time codes. Fixtures with payloads run under both payload policies."
+        oracle: "F-TRANSFORMS' world transforms, at the default time code and at each sampled one, synchronized and cached, are checked under both payload policies (test_core_instancing.py, test_time_varying.py), as is the payload round trip (relation 4); its and F-VISIBILITY-PURPOSE's time-varying cases run at the time codes the sampled-time-codes helper gives them."
         delivery: M6
 
   - section: testing/acceptance.md#standard-end-to-end-checks
@@ -1756,10 +1841,17 @@ requirements:
     rows:
       - id: ATIME-01
         quote: "Synchronization and caching must work at any time code."
+        oracle: "A bpy_free test checks that the sampled-time-codes helper gives each time-varying fixture every kind of time code acceptance.md lists: start and end, a non-integer interior one, its transitions and midpoints, before the start and after the end, the default, and its seeded ones, each exactly representable."
         delivery: M6
       - id: ATIME-02
         quote: "Each time-varying fixture declares its topology and visibility transitions from how it is built"
+        oracle: "F-TRANSFORMS and F-VISIBILITY-PURPOSE declare their samples and transitions in a TimeVariation, which test_evaluation_fixtures.py checks against the authored time samples; the helper derives each fixture's seeds from its fixture ID."
         delivery: M6
+      - id: ATIME-03
+        quote: "A bespoke fixture's selected authored sample times are all of them, or 8 spread evenly when it has more, and it has 2 seeded samples."
+        oracle: "A bpy_free test checks that the helper keeps a bespoke fixture's authored sample times, all of them or 8 spread evenly, plus 2 seeded time codes, and gives a production-scale fixture no time codes beyond the other kinds."
+        delivery: M6
+        note: "Counts settled with the user, 2026-11-06 (M6 plan)."
 
   - section: testing/acceptance.md#bounds-comparison-contract
     kind: process
@@ -1895,23 +1987,23 @@ excluded:
     quotes: ["Synchronize supported content at a USD time code supplied as an optional function parameter"]
     restates: [BIND-05, API-09, CACHE-01]
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
-    quotes: ["Full traversal and rebuilding are acceptable.", "Blender object identities need not survive refresh."]
-    reason: "Phase 1 permissions."
+    quotes: ["Update affected representations and their dependencies, and leave unaffected representations untouched"]
+    restates: [AFF-01, AFF-03]
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["Support manual refresh of attached sources, including stages callers opened from files."]
+    restates: [SRC-05, BIND-03]
+  - section: PROJECT.md#phase-1--correct-snapshot-synchronization
+    quotes: ["See Incremental Synchronization for change discovery and affected content."]
+    reason: "Navigation."
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
     quotes: ["Geometry is deduplicated wherever sharing preserves correct display"]
     restates: [SHARE-01]
   - section: PROJECT.md#phase-1--correct-snapshot-synchronization
     quotes: ["Binding lifecycle, persistence, diagnostics, and failure safety are required."]
     reason: "Summary of the lifecycle, persistence, diagnostics, and transaction rows."
-  - section: PROJECT.md#phase-2--incremental-synchronization
-    quotes: ["Update affected representations and their dependencies.", "Leave unaffected representations untouched"]
-    restates: [AFF-01, AFF-03]
-  - section: PROJECT.md#phase-2--incremental-synchronization
-    quotes: ["Support manual refresh of attached sources, including stages callers opened from files."]
-    restates: [SRC-05, BIND-03]
-  - section: PROJECT.md#phase-2--incremental-synchronization
-    quotes: ["See Incremental Synchronization for detailed requirements."]
-    reason: "Navigation."
+  - section: PROJECT.md#phase-2--performance-qualification
+    quotes: ["Bound replacement-affected resources by churn budgets"]
+    restates: [AFF-02]
   - section: PROJECT.md#phase-3--usd-stage-editor
     quotes: ["Tools author USD changes and use the synchronizer", "Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal."]
     reason: "Phase 3, outside Phases 1 and 2."
@@ -1927,7 +2019,7 @@ excluded:
   - section: PROJECT.md#glossary
     reason: "Definitions."
   - section: spec/incremental.md
-    quotes: ["Phase 2 requirements. Phase goals are in Delivery Phases"]
+    quotes: ["Phase 1 requirements, but for the churn and performance budgets, which are Phase 2's."]
     reason: "File introduction."
   - section: spec/incremental.md#change-discovery
     quotes:
@@ -1947,7 +2039,7 @@ excluded:
       - "Target-scene unit scale and representation version."
     restates: [DISC-02]
   - section: spec/incremental.md#change-discovery
-    quotes: ["Design note (suggested, not settled; M1b adopted Hydra, and M13 decides)"]
+    quotes: ["Design note (suggested, not settled; M1b adopted Hydra, and M7 decides)"]
     reason: "Design note."
   - section: spec/incremental.md#affected-content
     quotes:
@@ -2362,8 +2454,8 @@ excluded:
   - section: PROJECT.md#project-overview
     quotes: ["Phases 1 and 2 do not author USD, export USD, or translate Blender edits back into USD."]
     reason: "Scope: no authoring, export, or write-back exists in Phases 1 and 2."
-  - section: PROJECT.md#phase-2--incremental-synchronization
-    quotes: ["Preserve Phase 1 correctness while avoiding unnecessary work."]
+  - section: PROJECT.md#phase-2--performance-qualification
+    quotes: ["Preserve Phase 1 correctness while meeting performance targets."]
     reason: "Restates AFIX-05."
   - section: PROJECT.md#compatibility-and-development
     quotes: ["Code that touches Blender stays in Python"]

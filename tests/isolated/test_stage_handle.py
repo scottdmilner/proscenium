@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fixtures import appearance
+
 from .harness import Runtime, run_isolated
 
 BODIES = Path(__file__).parent / "bodies"
@@ -38,6 +40,17 @@ def test_released_scene_index_chain_lets_a_dropped_stage_expire(wheel: Runtime, 
         "stage_after_release": False,
         "released": True,
     }
+
+
+def test_released_chain_lets_a_dropped_instancing_stage_expire(wheel: Runtime, tmp_path: Path) -> None:
+    # On F-NESTED-STRESS's nested native instances, whose filters a release must not leave holding the stage, with the
+    # snapshot and its plan still alive.
+    with appearance.nested_stress(tmp_path / "scene") as scene:
+        root = str(scene.root)
+    result = run_isolated(
+        wheel, BODIES / "stage_handle.py", "chain_with_instances_drops_then_release", tmp_path, root=root
+    )
+    assert result == {"instanced": True, "expired_after_release": True, "snapshot_plans": True}
 
 
 def test_scene_index_chain_release_leaves_a_caller_held_stage_alive(wheel: Runtime, tmp_path: Path) -> None:

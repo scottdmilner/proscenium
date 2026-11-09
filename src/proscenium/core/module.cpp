@@ -7,10 +7,12 @@
 
 #include <memory>
 #include <pxr/external/boost/python.hpp>
+#include <pxr/external/boost/python/stl_iterator.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "batch_groups.h"
 #include "errors.h"
 #include "plan.h"
 #include "scene_index_chain.h"
@@ -73,14 +75,77 @@ SnapshotView Capture(SceneIndexChain& chain, const UsdTimeCode& time) {
   });
 }
 
-PlanView MakePlan(const SnapshotView& snapshot, const PlanningContext& context) {
+// Each purpose name in an iterable of strings.
+TfTokenVector Tokens(const bp::object& names) {
+  TfTokenVector tokens;
+  for (bp::stl_input_iterator<std::string> name(names), end; name != end; ++name) tokens.emplace_back(*name);
+  return tokens;
+}
+
+bp::tuple TokenStrings(const TfTokenVector& tokens) {
+  bp::list items;
+  for (const TfToken& token : tokens) items.append(token.GetString());
+  return bp::tuple(items);
+}
+
+std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const bp::object& render, bool conversion) {
+  TfTokenVector viewportPurposes = Tokens(viewport);
+  TfTokenVector renderPurposes = Tokens(render);
+  return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes, conversion); });
+}
+
+// The plan's batch groups, which Python reads as plain values and Vt buffers.
+bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
+  const BatchGroups grouped = Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return GroupForBatches(*plan.data, minimum);
+  });
+  return bp::make_tuple(ToTuple(grouped.groups), grouped.single);
+}
+
+PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   return Guarded([&] {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
-    return PlanView{BuildPlan(*snapshot.data, context)};
+    return PlanView{BuildPlan(*snapshot.data, settings, context)};
   });
 }
 
+// EXCEPTION to the rule against test-only API (with the user, 2026-11-06); see HydraComposedWorlds in plan.h.
+bp::dict HydraComposedWorldsDict(const SnapshotView& snapshot) {
+  const auto worlds = Guarded([&] { return HydraComposedWorlds(*snapshot.data); });
+  bp::dict result;
+  for (const auto& [source, world] : worlds) result[source.GetString()] = world;
+  return result;
+}
+
 void WrapPlan() {
+  bp::class_<Diagnostic>("Diagnostic", bp::no_init)
+      .add_property(
+          "code", +[](const Diagnostic& d) { return DiagnosticCodeName(d.code); })
+      .add_property(
+          "source_path", +[](const Diagnostic& d) { return d.source.GetString(); })
+      .add_property(
+          "message", +[](const Diagnostic& d) { return d.message; })
+      .add_property(
+          "property_path", +[](const Diagnostic& d) { return d.property.GetString(); })
+      .add_property(
+          "asset", +[](const Diagnostic& d) { return d.asset; })
+      .add_property("fallback", +[](const Diagnostic& d) { return d.fallback; });
+  bp::def(
+      "diagnostic_codes", +[] {
+        bp::list names;
+        for (const DiagnosticCode code : kDiagnosticCodes) names.append(DiagnosticCodeName(code));
+        return bp::tuple(names);
+      });
+  bp::class_<PlanSettings, std::shared_ptr<PlanSettings>>("PlanSettings", bp::no_init)
+      .def("__init__", bp::make_constructor(&NewPlanSettings, bp::default_call_policies(),
+                                            (bp::arg("viewport_purposes"), bp::arg("render_purposes"),
+                                             bp::arg("coordinate_conversion") = false)))
+      .add_property(
+          "viewport_purposes", +[](const PlanSettings& s) { return TokenStrings(s.viewportPurposes); })
+      .add_property(
+          "render_purposes", +[](const PlanSettings& s) { return TokenStrings(s.renderPurposes); })
+      .add_property("coordinate_conversion", +[](const PlanSettings& s) { return s.coordinateConversion; });
   bp::class_<PlanningContext>("PlanningContext",
                               bp::init<double, int>((bp::arg("unit_scale"), bp::arg("representation_version"))))
       .add_property(
@@ -101,17 +166,28 @@ void WrapPlan() {
   bp::class_<CorrespondenceEntry>("CorrespondenceEntry", bp::no_init)
       .add_property(
           "element", +[](const CorrespondenceEntry& e) { return e.element; })
-      .add_property("source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); });
-  bp::class_<Placeholder>("Placeholder", bp::no_init)
       .add_property(
-          "object", +[](const Placeholder& p) { return p.object; })
+          "source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); })
+      .add_property("instance_context", +[](const CorrespondenceEntry& e) { return PathStrings(e.instanceContext); });
+  // Arrays cross as copy-on-write copies, sharing the plan's storage.
+  bp::class_<GeometryDescription>("GeometryDescription", bp::no_init)
       .add_property(
-          "bounds_mesh", +[](const Placeholder& p) { return p.boundsMesh; })
+          "source", +[](const GeometryDescription& g) { return g.source.GetString(); })
       .add_property(
-          "world", +[](const Placeholder& p) { return p.world; })
-      // A copy-on-write copy, sharing the plan's storage.
-      .add_property("bounds", +[](const Placeholder& p) { return p.bounds; });
+          "extent", +[](const GeometryDescription& g) { return g.extent; })
+      .add_property("content_key", +[](const GeometryDescription& g) { return g.contentKey; });
+  bp::class_<BatchGroup>("BatchGroup", bp::no_init)
+      .add_property(
+          "geometry", +[](const BatchGroup& g) { return g.geometry; })
+      .add_property(
+          "viewport", +[](const BatchGroup& g) { return g.viewport; })
+      .add_property(
+          "render", +[](const BatchGroup& g) { return g.render; })
+      .add_property(
+          "repeat", +[](const BatchGroup& g) { return g.repeat; })
+      .add_property("members", +[](const BatchGroup& g) { return g.members; });
   bp::class_<PlanView>("Plan", bp::no_init)
+      .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))
       .add_property(
           "time_code", +[](const PlanView& p) { return p.data->time; })
       .add_property(
@@ -122,8 +198,33 @@ void WrapPlan() {
           "resources", +[](const PlanView& p) { return ToTuple(p.data->resources); })
       .add_property(
           "correspondence", +[](const PlanView& p) { return ToTuple(p.data->correspondence); })
-      .add_property("placeholders", +[](const PlanView& p) { return ToTuple(p.data->placeholders); });
-  bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("context")));
+      .add_property(
+          "copy_count", +[](const PlanView& p) { return p.data->copyObjects.size(); })
+      .add_property(
+          "copy_worlds", +[](const PlanView& p) { return p.data->copyWorlds; })
+      .add_property(
+          "copy_objects", +[](const PlanView& p) { return p.data->copyObjects; })
+      .add_property(
+          "copy_geometries", +[](const PlanView& p) { return p.data->copyGeometries; })
+      .add_property(
+          "copy_placeholders", +[](const PlanView& p) { return p.data->copyPlaceholders; })
+      .add_property(
+          "placeholder_bounds", +[](const PlanView& p) { return p.data->placeholderBounds; })
+      .add_property(
+          "copy_viewport", +[](const PlanView& p) { return p.data->copyViewport; })
+      .add_property(
+          "copy_render", +[](const PlanView& p) { return p.data->copyRender; })
+      .add_property(
+          "copy_shears", +[](const PlanView& p) { return p.data->copyShears; })
+      .add_property(
+          "shear_parent_worlds", +[](const PlanView& p) { return p.data->shearParentWorlds; })
+      .add_property(
+          "shear_object_bases", +[](const PlanView& p) { return p.data->shearObjectBases; })
+      .add_property(
+          "geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); })
+      .add_property("diagnostics", +[](const PlanView& p) { return ToTuple(p.data->diagnostics); });
+  bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
+  bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }
 
 }  // namespace

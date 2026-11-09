@@ -13,6 +13,8 @@ Support:
 - Updates to shared contents.
 - Transitions between instanced and non-instanced representations.
 - Per-instance `displayColor`, inherited material assignments, and named primvars driving supported material inputs.
+- Point instancers: each point's copies of its prototype, with the point's transform and its visibility through the instancer's mask and `invisibleIds`, including point instancers inside native instances.
+- A point instancer's per-point primvars, on its points' copies as an instance root's primvars are on its instance's.
 
 Instance-root selection and instance-context correspondence follow the [interaction contract](../interaction.md#source-inspection-and-interaction).
 

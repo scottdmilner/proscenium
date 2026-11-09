@@ -21,8 +21,7 @@ Before working on any milestone, read [PROJECT.md](../PROJECT.md), [spec/invaria
 | [M10 — Complete native instancing](M10-instancing.md) | M4, M8, M9 |
 | [M11 — Ownership reconciliation, detach, and lifecycle operations](M11-lifecycle.md) | M5, M7, M10 |
 | [M12 — Complete and qualify Phase 1](M12-phase-1.md) | M1–M11, including M1b |
-| [M13 — Incremental change discovery and dependency invalidation](M13-change-discovery.md) | M10, M11, M12 |
-| [M14 — Incremental application and Phase 2 qualification](M14-phase-2.md) | M13 |
+| [M13 — Phase 2: performance targets and qualification](M13-phase-2.md) | M12 |
 
 ## Ordering Constraints
 
@@ -31,6 +30,7 @@ Before working on any milestone, read [PROJECT.md](../PROJECT.md), [spec/invaria
 - Evaluation/planning (M6) and application (M7) are deliberately separate milestones, and every later feature milestone extends both sides explicitly (see [Why the Boundary Is Enforced](../spec/pipeline.md#why-the-boundary-is-enforced)).
 - M4 freezes the primvar and material cases needed for backend feasibility before selecting a representation. M8 and M9 complete their support matrix and grammar before implementation; additions or changes affecting backend feasibility, sharing, or partitioning require rerunning the relevant M4 prototypes and updating the decision record and affected milestones.
 - Phase ordering follows [Delivery Phases](../PROJECT.md#delivery-phases).
+- Incremental refresh is Phase 1's (with the user, 2026-11-07; DECISIONS.md "Partition unit"): M7 builds its framework on the stub's content, and M8 to M11 each make their own content incremental as they build it, so no milestone builds full rebuilds to replace later.
 
 ## Milestone Structure
 
@@ -39,7 +39,7 @@ Each milestone uses this structure:
 - **Implements:** the spec sections whose requirements this milestone delivers.
   - An unqualified link puts every requirement in that section in scope, unless a scope limit says otherwise.
   - A qualified link puts only the named part in scope: "the X in [Section]", "[Section] schemas", or "[Section], except Y". A parenthetical names the milestone that owns the rest.
-  - Each requirement is delivered by one milestone. M2 defines contracts that later milestones implement, and M12 and M14 qualify work delivered earlier; their Implements lines overlap with others by design.
+  - Each requirement is delivered by one milestone. M2 defines contracts that later milestones implement, and M12 and M13 qualify work delivered earlier; their Implements lines overlap with others by design.
   - The requirement-to-test matrix (M1) covers every in-scope requirement, records its authoritative spec section, delivering milestone, fixture and test or oracle, and qualifying milestone, and takes precedence over Implements lines. M4 marks the high-risk entries, from its risk matrix. Invariant summaries reference the authoritative requirement ID; contract decisions update the matrix before implementation.
 - **Depends on:** earlier milestones and what they provide.
 - **Scope limits:** what this milestone deliberately leaves out.

@@ -1,15 +1,16 @@
 """M5 Phase F (F3): the product's synchronization and cache call against the stub, step by step, in the Blender binary.
 
     uv run python tools/feasibility/hydra_bridge/measure/synchronization_profile.py [--scenes updates alab] \
-        [--repeats 3]
+        [--repeats 3] [--undo on off] [--runtimes binary wheel]
 
 Each run makes a binding through the API (proscenium.api.bindings), attaches the scene's stage, and synchronizes at
 its time code, then synchronizes again at it, a full rebuild that retires the first generation, then caches CACHED
-later time codes. Global undo is on and the API pushes its step as it would with a window (its _pushes_undo patched
-true, since background mode pushes none). Each step of the transaction is timed by wrapping the module function it
-calls (STEPS), so a time includes the steps it calls; a step called more than once is summed, with its calls counted.
-The stub application layer makes placeholders for each drawn prim, not M7's display, so this measures M5's own work
-around it. Raw runs go to <out>/runs/, the summary to <out>/summary.json and summary.md.
+later time codes. Global undo is on, or as --undo says (M6 Phase F, F5), and the API pushes its step as it would with a
+window (its _pushes_undo patched true, since background mode pushes none). --runtimes runs it in the bpy wheel too.
+Each step of the transaction is timed by wrapping the module function it calls (STEPS), so a time includes the steps
+it calls; a step called more than once is summed, with its calls counted. The stub application layer makes an object
+and a bounds mesh for each drawn copy, not M7's display, so this measures the work around it. Raw runs go to
+<out>/runs/, the summary to <out>/summary.json and summary.md.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import argparse
 import functools
 import importlib
 import importlib.util
+import itertools
 import json
 import os
 import statistics
@@ -62,18 +64,20 @@ STEPS = [
 def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -> dict[str, Any]:
     work.mkdir(parents=True, exist_ok=True)
     (work / "config.json").write_text(json.dumps(config))
-    command = [
-        blender,
-        "--background",
-        "--factory-startup",
-        "--python-exit-code",
-        "1",
-        "--python",
-        str(Path(__file__).resolve()),
-        "--",
-        "child",
-        str(work / "config.json"),
-    ]
+    child_args = ["--", "child", str(work / "config.json")]
+    if config.get("runtime", "binary") == "wheel":
+        command = [sys.executable, str(Path(__file__).resolve()), *child_args]
+    else:
+        command = [
+            blender,
+            "--background",
+            "--factory-startup",
+            "--python-exit-code",
+            "1",
+            "--python",
+            str(Path(__file__).resolve()),
+            *child_args,
+        ]
     env = {**os.environ, "BLENDER_USER_RESOURCES": str(work / "user")}
     with (work / "log.txt").open("w") as log:
         returncode = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=env, timeout=timeout).returncode
@@ -95,7 +99,7 @@ def child(config: dict[str, Any]) -> None:
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
-    preferences.edit.use_global_undo = True
+    preferences.edit.use_global_undo = config.get("undo", True)
     api._pushes_undo = lambda: True  # noqa: SLF001  # ty: ignore[invalid-assignment] - as with a window
     timings: dict[str, dict[str, float]] = {}
 
@@ -176,11 +180,19 @@ def _stats(values: list[float]) -> dict[str, float]:
     return {"median": statistics.median(values), "min": min(values), "max": max(values)}
 
 
+def _label(config: dict[str, Any]) -> str:
+    """The scene's name, with its runtime and undo setting where they aren't the binary's with undo on."""
+    runtime, undo = config.get("runtime", "binary"), config.get("undo", True)
+    return config["scene name"] + (
+        "" if (runtime, undo) == ("binary", True) else f", {runtime}, undo {'on' if undo else 'off'}"
+    )
+
+
 def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
     """By scene and step: the step's and each timed function's seconds over the runs, with the first run's calls."""
     grouped: dict[str, list[dict[str, Any]]] = {}
     for run in runs:
-        grouped.setdefault(run["config"]["scene name"], []).append(run)
+        grouped.setdefault(_label(run["config"]), []).append(run)
     summary: dict[str, Any] = {}
     for name, group in grouped.items():
         results = [run["result"] for run in group if run["result"]]
@@ -247,6 +259,8 @@ def main() -> int:
     parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--undo", nargs="+", choices=["on", "off"], default=["on"], help="global undo settings")
+    parser.add_argument("--runtimes", nargs="+", choices=["binary", "wheel"], default=["binary"])
     parser.add_argument("--timeout", type=float, default=3600.0, help="per run (s)")
     parser.add_argument("--out", type=Path, default=ROOT / "build/hydra-bridge/synchronization-profile")
     parser.add_argument("--blender", default=find_blender())
@@ -264,13 +278,15 @@ def main() -> int:
     found = {name: scene for name, scene in run.scenes(args.scenes, out).items() if name not in args.exclude}
     runs = []
     for repeat in range(args.repeats):
-        for name, scene in found.items():
-            label = f"{name}-{repeat}"
+        for (name, scene), runtime, undo in itertools.product(found.items(), args.runtimes, args.undo):
+            label = f"{name}-{runtime}-undo-{undo}-{repeat}"
             work = out / "work" / label
             config = {
                 "scene name": name,
                 "scene": scene["path"],
                 "time": scene["time"],
+                "runtime": runtime,
+                "undo": undo == "on",
                 "work": str(work),
                 "result": str(work / "result.json"),
             }

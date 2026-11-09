@@ -28,7 +28,7 @@ Some results are hard to state in full in advance, but the spec says how they mu
   - Translating a root prim shifts the world transforms and bounds of its displayed descendants by that translation and changes nothing else.
   - Making a prim instanceable, or no longer instanceable, leaves displayed appearance, bounds, and correspondence unchanged; only resource sharing may differ.
   - Switching the payload policy and switching back gives the same result as never switching.
-  - Moving to a time code with identical evaluated values changes nothing, and in Phase 2 writes nothing.
+  - Moving to a time code with identical evaluated values changes nothing and writes nothing.
   - An incremental refresh gives the same result as a clean full rebuild (see [Incremental Synchronization Tests](#incremental-synchronization-tests)).
 - Relations run on bespoke fixtures. They may also run on generated inputs, provided each generated input is reproducible from a recorded seed.
 
@@ -61,12 +61,17 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-NESTED-STRESS` | **Nested instance plus shear plus appearance variation.** |
 | `F-APPEARANCE-CASES` | **Representation feasibility cases:** the primvar and material-connection cases of [Primvar Support Matrix](../spec/support/geometry.md#representation-feasibility-cases) and [Connection Grammar](../spec/support/materials.md#representation-feasibility-cases), one per scene subtree. |
 | `F-TEXTURE-IN-PLACE` | **Texture edited in place:** no USD property changes. |
-| `F-SAME-VALUES` | **Same evaluated values at a different time (Phase 2):** no unnecessary display writes. |
+| `F-SAME-VALUES` | **Same evaluated values at a different time:** no unnecessary display writes. |
 | `F-UNDO-AFTER-DAMAGE` | **Undo after partial external display damage.** |
-| `F-NO-OP-REFRESH` | **No-op refresh:** resource counts and diagnostics follow [Resource Stability](../spec/lifecycle.md#resource-stability), including separate pending-cleanup accounting and recovery; in Phase 2, zero unnecessary writes. |
+| `F-NO-OP-REFRESH` | **No-op refresh:** resource counts and diagnostics follow [Resource Stability](../spec/lifecycle.md#resource-stability), including separate pending-cleanup accounting and recovery, and zero unnecessary writes. |
 | `F-KIND-HIERARCHY` | **Kind hierarchy:** an assembly, group, and component above meshes, a mesh under no model, components outside a valid model hierarchy, and intermediate prims with nothing Hydra needs to keep; selection by kind and expansion follow the composed stage. |
 | `F-NESTED-SELECTION` | **Selection floors in nested native instances:** one prototype used inside and outside an outer instance, and a kind on an instance root; nothing inside instance contents is a selection target. |
 | `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a guide made explicitly visible by an ancestor's `guideVisibility`, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |
+| `F-TRANSFORMS` | **Transforms the planner places:** ordered transform operations, a pivot, matrix ops, negative and nonuniform scale, shear, transforms authored on meshes, reset transform stacks outside and inside a native instance, a payload, a translate sampled over time with two equal samples, and a projective matrix in a layer of its own. |
+| `F-UNITS-UP-AXIS` | **Units and up-axis conversion:** one scene as a Y-up stage in centimeters and a Z-up stage in meters, with a mesh and a native instance, synchronized into target scenes of different unit scales with conversion off and on. |
+| `F-VISIBILITY-PURPOSE` | **Visibility and purpose:** inherited invisibility, a mesh of each purpose, an inherited purpose, a proxy and render pair, and visibility sampled over time with declared transitions. |
+| `F-UNSUPPORTED-CONTENT` | **Unsupported content:** untranslated types with authored, computed, and no bounds, implicit shapes and a NURBS patch converted exactly and inexactly, a point instancer, a placeholder whose transform, visibility, and purpose still apply, and a supported mesh beneath an unsupported ancestor. |
+| `F-POINT-INSTANCERS` | **Point instancers:** a point instancer without ids, points of each prototype kind (an Xform, a mesh root, a native instance) with their own transforms, a point hidden by `invisibleIds`, per-point and constant primvars, and an unused prototype child; one with ids, a negative one included; and one inside two native instances. |
 
 ## Incremental Synchronization Tests
 
