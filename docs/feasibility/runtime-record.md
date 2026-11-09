@@ -1671,6 +1671,35 @@ What reading a plan's per-copy content costs in Python, as a tuple property and 
 - **The buffer's own cost is nothing beside what Python builds from it:** a `mathutils.Matrix` per copy took 0.9 µs at 30,001 copies the first time, and 1.9 µs again, which wasn't investigated.
 - **Not measured:** Blender's bulk setters (`foreach_set`) taking the buffers directly, a windowed Blender, and Linux and Windows.
 
+### The product's synchronization with M6's plan (M6 Phase F)
+
+[M5's step-by-step profile](#the-products-synchronization-step-by-step-m5-phase-f) again, with M6's core and the stub as M6 leaves it, whose objects are named for their generation and their place in the plan before their prim's name, in the same environment (2026-11-09, load average 6.7 to 11.8 at the runs' start). Reproduce with `measure/synchronization_profile.py --scenes updates alab --exclude updates-100 --repeats 3`.
+
+**The display isn't M5's:** M6's plan draws every copy, an object and a bounds mesh each, so `updates-10000` has 30,001 objects against M5's 10,001 placeholders, and ALab 6,679 against 731. Each step's time is a median and range over three processes.
+
+| Step (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Objects; manifest entries | 3,001; 9,003 | 6,679; 20,037 | 30,001; 90,003 |
+| **Synchronize** | **557 (551–596)** | **1,729 (1,716–1,758)** | **6,212 (6,174–6,350)** |
+| `acquire`; `plans` | 15; 68 | 152; 460 | 161; 674 |
+| **`prepare`** | **304** | **726** | **3,262 (3,223–3,288)** |
+| `publish`, its manifest write included | 42 | 92 | 455 |
+| Undo push | 128 | 277 | 1,666 |
+| **Synchronize again** | **587 (583–628)** | **1,739 (1,739–1,791)** | **6,794 (6,715–7,232)** |
+| Manifest read; `plans`; **`prepare`** | 21; 54; **288** | 64; 458; **731** | 275; 672; **3,072 (3,055–3,232)** |
+| `publish`; `retire` (`user_map` in it) | 49; 26 (3.4) | 117; 33 (9.2) | 616; 194 (49) |
+| Undo push | 146 | 332 | 1,884 |
+| **Cache, three time codes** | **668 (665–673)** | **2,140 (2,066–2,145)** | **8,624 (8,607–8,736)** |
+| Manifest read; `plans`; `key_time_codes` (the stub) | 21; 78; 491 | 49; 619; 1,260 | 276; 997; 6,050 |
+| `set_manifest_entries` | 66 | 168 | 1,151 |
+
+**Findings:**
+- **Object names no longer collide:** synchronizing `updates-10000` again spent 3.07 s in the stub's `prepare` against 3.26 s the first time, where M5's placeholders, named for their prims, took 7.9 s against 1.1 s. A first `prepare` costs about what M5's did per object, 109 µs at 30,001 objects against M5's 106 µs at 10,001; the again-and-first ratio fell from 7.4 to 0.94.
+- **`plans` is a smaller part:** 0.46 s on ALab, against 0.71 to 0.77 s in M5's, as [Capture and planning](#capture-and-planning-m6-phase-f) found; the stub's work and the undo push are most of every call at these sizes now.
+- **The undo push grows with the display:** 1.7 to 1.9 s at 30,001 objects and their meshes, 0.28 to 0.33 s on ALab.
+- **These are the stub's costs, not M7's:** M7's display replaces `prepare` and `key_time_codes`.
+- **Not measured:** a windowed Blender, Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
