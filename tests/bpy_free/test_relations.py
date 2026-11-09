@@ -9,6 +9,7 @@ parameter (TMETA-04). Every fixture and generated input these run on has tests o
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import pytest
@@ -116,9 +117,9 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
     """Relation 2, conversion (CONV-01, CONV-03, CONV-08), on a hierarchy generated from seed (TMETA-04).
 
     Input: coordinate_conversion turned on, planning one snapshot under both settings. Effect: each drawn copy's
-    world transform W becomes W · C, C the spec's correction for the stage's metersPerUnit and upAxis and the target
-    scene's unit scale (evaluation.correction); local bounds, sources, participation, and diagnostics are unchanged.
-    Relation 2 on F-UNITS-UP-AXIS is test_core_conversion.py's.
+    world transform W, its objects' product for a sheared copy, becomes W · C, C the spec's correction for the stage's
+    metersPerUnit and upAxis and the target scene's unit scale (evaluation.correction); local bounds, sources,
+    participation, and diagnostics are unchanged. Relation 2 on F-UNITS-UP-AXIS is test_core_conversion.py's.
     """
     with evaluation.generated_hierarchy(tmp_path, seed) as scene:
         chain = _core.SceneIndexChain(scene.stage)
@@ -134,6 +135,9 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
         assert converted.keys() == plain.keys() == scene.world.keys()
         for path, copy in converted.items():
             assert_world(copy, scene.world[path] * correction)
+            if copy.shear is not None:  # the object below its shear parent
+                parent, basis = copy.shear
+                assert_world(dataclasses.replace(copy, world=basis * parent), scene.world[path] * correction)
             assert_world(plain[path], scene.world[path])
             assert (copy.bounds, copy.viewport, copy.render) == (
                 plain[path].bounds,
@@ -185,7 +189,7 @@ def test_relation_6_instanceable(stress: appearance.StressScene) -> None:
 
     Input: instanceable turned off on every instance root, nested ones included. Effect: the same drawn copies, each
     keeping its source path, world transform, participation, and bounds; only instance contexts, now empty, and
-    provisional sharing differ. On F-NESTED-STRESS "instanceable".
+    provisional sharing differ, geometry descriptions and so batch groups. On F-NESTED-STRESS "instanceable".
     """
     stage = stress.stage
     before = plan_at(stage, 0.0)

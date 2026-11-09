@@ -59,9 +59,13 @@ def test_conversion_off_keeps_usd_world_transforms(
 @pytest.mark.parametrize("scale_length", SCALE_LENGTHS)
 @pytest.mark.parametrize("stage", ["y-up-cm", "z-up-m"])
 def test_conversion_prefixes_the_correction(units: evaluation.UnitsScene, stage: str, scale_length: float) -> None:
-    """Relation 2: turning conversion on applies C to each world transform and changes nothing else (CONV-03).
+    """Relation 2, conversion (CONV-01, CONV-03, CONV-08).
 
-    The plans compared come from one snapshot, so only the setting differs.
+    Input: coordinate_conversion turned on, planning one snapshot under both settings, so only the setting differs.
+    Effect: each drawn copy's world transform W becomes W · C, C the spec's correction for the stage's metersPerUnit
+    and upAxis and the target scene's unit scale, so a Z-up stage in meters into a scene of unit scale 1 plans as with
+    conversion off; local bounds, sources, instance contexts, participation, and diagnostics are unchanged. On
+    F-UNITS-UP-AXIS' stages; a sheared copy's objects are test_relations.py's, on generated hierarchies.
     """
     snapshot = _snapshot(units.stages[stage])
     off = _plan(snapshot, SETTINGS, scale_length)
@@ -76,6 +80,9 @@ def test_conversion_prefixes_the_correction(units: evaluation.UnitsScene, stage:
     }
     assert [(c.source, c.instance_context) for c in on.correspondence] == [
         (c.source, c.instance_context) for c in off.correspondence
+    ]
+    assert [(d.code, d.source_path, d.message) for d in on.diagnostics] == [
+        (d.code, d.source_path, d.message) for d in off.diagnostics
     ]
 
 
