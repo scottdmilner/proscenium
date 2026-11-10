@@ -37,7 +37,7 @@ An `AssetShelf` subclass shows only the USD stand-ins in a shelf in the 3D viewp
 class VIEW3D_AST_proscenium_usd(bpy.types.AssetShelf):
     bl_space_type = "VIEW_3D"
     bl_activate_operator = "PROSCENIUM_OT_add_usd_asset"  # click
-    bl_drag_operator = "PROSCENIUM_OT_add_usd_asset"      # drag
+    bl_drag_operator = "PROSCENIUM_OT_add_usd_asset"  # drag
     bl_options = {"NO_ASSET_DRAG"}
 
     @classmethod

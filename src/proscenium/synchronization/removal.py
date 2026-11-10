@@ -61,16 +61,8 @@ def remove_unused[K: Hashable](
     users = {key: {u.session_uid for u in user_map[d]} - ignored for key, d in present.items()}
     undecided = set(present)
     while undecided:
-        level: list[K] = []
         before = len(undecided)
-        for key in sorted(undecided, key=str):
-            using = {key_of.get(uid) for uid in users[key]}
-            if None in using or using & outcome.released:  # something besides the others uses it
-                outcome.released.add(key)
-            elif using & outcome.pending.keys():
-                outcome.pending[key] = "a resource using it couldn't be removed"
-            elif using <= outcome.removed:
-                level.append(key)
+        level = _classify_and_collect_removable(undecided, users, key_of, outcome)
         undecided -= outcome.released | outcome.pending.keys() | set(level)
         if len(undecided) == before:  # nothing decided: what's left uses each other
             break
@@ -83,6 +75,22 @@ def remove_unused[K: Hashable](
     for key in undecided:  # only datablocks using each other in a cycle are left
         outcome.pending[key] = "it and the resources using it use each other"
     return outcome
+
+
+def _classify_and_collect_removable[K: Hashable](
+    undecided: Collection[K], users: Mapping[K, set[int]], key_of: Mapping[int, K], outcome: RemovalOutcome[K]
+) -> list[K]:
+    """Release or leave pending each of undecided that is decided now; the keys whose users are all removed."""
+    level: list[K] = []
+    for key in sorted(undecided, key=str):
+        using = {key_of.get(uid) for uid in users[key]}
+        if None in using or using & outcome.released:  # something besides the others uses it
+            outcome.released.add(key)
+        elif using & outcome.pending.keys():
+            outcome.pending[key] = "a resource using it couldn't be removed"
+        elif using <= outcome.removed:
+            level.append(key)
+    return level
 
 
 def remove_datablocks_collecting_failures(datablocks: Sequence[bpy.types.ID]) -> dict[int, Exception]:

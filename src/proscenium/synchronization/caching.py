@@ -26,11 +26,14 @@ from ..binding.source_access import stages
 from . import application, evaluation, prepared_work
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Sequence
+
+    import bpy
 
     from ..binding.persistence import configs
     from ..binding.runtime import stage_tracking
     from ..binding.source_access import identifiers
+    from ..core import _core
 
 
 def cache(
@@ -51,18 +54,15 @@ def cache(
     assert scene is not None  # a binding's candidate names a target scene that exists
     manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
-    if isinstance(manifest, records.RefusedRecord):
-        return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message))
-    if isinstance(generation, records.RefusedRecord):
-        return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message))
-    if generation is None:
-        message = "The binding has no published generation to cache time codes in; synchronize it first"
-        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message))
+    if (unusable := _unusable_state_diagnostic(binding_id, manifest, generation)) is not None:
+        return Result(unusable)
+    # Narrowed for the type checker: the diagnostic covers a refused record and a missing generation.
+    assert generation is not None and not isinstance(generation, records.RefusedRecord)
+    assert not isinstance(manifest, records.RefusedRecord)
     published = generation.record
     if published.time_code is None:  # nothing in it varies with time
         return Result()
-    have = {published.time_code, *published.cached_time_codes}
-    new = sorted({t.GetValue() for t in time_codes} - have)
+    new = _uncached_values(published, time_codes)
     attempted = [Usd.TimeCode(t) for t in new]
     if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
         return Result(refused, time_codes=attempted)
@@ -75,13 +75,8 @@ def cache(
     # Checked even when every time code is cached, so a call never reports success over a source that changed. The
     # revision changes with anything evaluated: an edit, a reload that rereads a layer, an attachment, the evaluation
     # stage loaded to another payload policy since, or a new process.
-    if binding_stages.source_revision != published.source_revision:
-        message = "The source changed since the binding was synchronized; synchronize it before caching time codes"
-        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
-    # The plans would apply another scale than the display's, so its time codes would disagree (CACHE-12).
-    if scene.unit_settings.scale_length != published.unit_scale:
-        message = "The target scene's unit scale changed since the binding was synchronized; synchronize it first"
-        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
+    if (stale := _stale_message(binding_stages, published, scene)) is not None:
+        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, stale), time_codes=attempted)
     if not new:
         return Result()
     own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
@@ -90,10 +85,10 @@ def cache(
     )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, time_codes=attempted)
-    own = (*own, *(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan)))
+    own = (*own, *_plans_diagnostics(binding_id, planned))
 
     work = prepared_work.new_preparation_resources(binding_id, ledgers.OriginatingOperation.CACHE)
-    before = manifests.Manifest({}) if manifest is None else manifest.record
+    before = _published_manifest(manifest)
     try:
         changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
@@ -112,6 +107,49 @@ def cache(
         return Result(*own, failed, *_discarded(work), time_codes=attempted)
     prepared_work.remove_staging_and_clear_tracking(work)
     return Result(*own, time_codes=attempted)
+
+
+def _unusable_state_diagnostic(
+    binding_id: identifiers.BindingId,
+    manifest: records.LoadedRecord[manifests.Manifest] | records.RefusedRecord | None,
+    generation: records.LoadedRecord[binding_state.GenerationMetadata] | records.RefusedRecord | None,
+) -> Diagnostic | None:
+    """Why the stored manifest and generation can't be cached in: one is unreadable or there is no generation."""
+    for stored in (manifest, generation):
+        if isinstance(stored, records.RefusedRecord):
+            return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, stored.message)
+    if generation is None:
+        message = "The binding has no published generation to cache time codes in; synchronize it first"
+        return Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message)
+    return None
+
+
+def _uncached_values(published: binding_state.GenerationMetadata, time_codes: Collection[Usd.TimeCode]) -> list[float]:
+    """The numeric values of time_codes the generation hasn't cached, sorted."""
+    have = {published.time_code, *published.cached_time_codes}
+    return sorted({t.GetValue() for t in time_codes} - have)
+
+
+def _published_manifest(stored: records.LoadedRecord[manifests.Manifest] | None) -> manifests.Manifest:
+    """The stored manifest's value, or an empty manifest if there is none."""
+    return manifests.Manifest({}) if stored is None else stored.record
+
+
+def _plans_diagnostics(binding_id: identifiers.BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
+    """The source-side diagnostics of each of the plans, in order."""
+    return tuple(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan))
+
+
+def _stale_message(
+    binding_stages: stages.BindingStages, published: binding_state.GenerationMetadata, scene: bpy.types.Scene
+) -> str | None:
+    """Why the published generation needs synchronizing before caching, or None if it doesn't."""
+    if binding_stages.source_revision != published.source_revision:
+        return "The source changed since the binding was synchronized; synchronize it before caching time codes"
+    # The plans would apply another scale than the display's, so its time codes would disagree (CACHE-12).
+    if scene.unit_settings.scale_length != published.unit_scale:
+        return "The target scene's unit scale changed since the binding was synchronized; synchronize it first"
+    return None
 
 
 def _discarded(work: prepared_work.PreparationResources) -> tuple[Diagnostic, ...]:

@@ -61,7 +61,7 @@ src = ["src", "tools", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true
-select = ["E", "W", "F", "I", "A", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415", "RUF022"]
+select = ["E", "W", "F", "I", "A", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415", "RUF022", "C901"]
 ignore = [
     "ANN401", # Any is the honest type for untyped pxr/bpy objects
     "D105", "D107", # a magic method or __init__ is described by its class
@@ -72,6 +72,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D101", "D102", "D103"] # a test's name says what it checks
 "tools/feasibility/**/*.py" = ["D101", "D102", "D103"] # M1's evidence code, kept as it was measured
+"!src/**/*.py" = ["C901"] # only test complexity on code that ships
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"

@@ -125,7 +125,9 @@ plan.universe  # sorted USD paths; each object dict also has its "floor"
 _hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
 #   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
 _hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
-interaction = _hydra_bridge.SourceSelectionResolver(stage, plan)  # M4: the core interaction functions; elements are plan indices
+interaction = _hydra_bridge.SourceSelectionResolver(
+    stage, plan
+)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind
 interaction.displayed(paths), interaction.highlight_targets(targets)  # [bool]; elements at or beneath the targets

@@ -191,6 +191,21 @@ class Manifest:
             raise ValueError(f"datablocks made for resources the update doesn't change: {sorted(unchanged)}")
         if len(set(created.values())) != len(created):
             raise ValueError("two entries name one datablock")
+        made = self._entries_from_changes(changed, created)
+        entries = {key: e for key, e in self.entries.items() if key not in removed} | made
+        used = {u for e in made.values() for u in e.uses}
+        if removed:  # a scan, but of values in memory
+            used |= {u for e in entries.values() for u in e.uses if u in removed}
+        if missing := used - entries.keys():
+            raise ValueError(f"entries use resources the manifest doesn't have: {sorted(missing)}")
+        manifest = object.__new__(Manifest)  # checked above, so not again in __post_init__
+        object.__setattr__(manifest, "entries", MappingProxyType(entries))
+        return manifest
+
+    def _entries_from_changes(
+        self, changed: Mapping[str, ManifestEntryChange], created: Mapping[str, bpy.types.ID]
+    ) -> dict[str, ManifestEntry]:
+        """The entry each change makes, under its key, each checked."""
         made = {}
         for entry_key, change in changed.items():
             if type(change) is not ManifestEntryChange:
@@ -206,15 +221,7 @@ class Manifest:
             if not all(type(item) is str for item in (*entry.covers, *entry.uses)):
                 raise TypeError("an entry covers source-entity paths and uses entry keys, all strings")
             made[entry_key] = entry
-        entries = {key: e for key, e in self.entries.items() if key not in removed} | made
-        used = {u for e in made.values() for u in e.uses}
-        if removed:  # a scan, but of values in memory
-            used |= {u for e in entries.values() for u in e.uses if u in removed}
-        if missing := used - entries.keys():
-            raise ValueError(f"entries use resources the manifest doesn't have: {sorted(missing)}")
-        manifest = object.__new__(Manifest)  # checked above, so not again in __post_init__
-        object.__setattr__(manifest, "entries", MappingProxyType(entries))
-        return manifest
+        return made
 
 
 def _check_keys(entries: Mapping[str, object]) -> None:
