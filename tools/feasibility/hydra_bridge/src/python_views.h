@@ -55,8 +55,8 @@ struct PlanView {
 // are plan object indices; entities are (source, instance context) pairs, and resolve_pick also gives the floor.
 // Each runs without the GIL, and raises RuntimeError once the stage has expired; a level is None (the prim
 // level) or a registered kind, and anything else raises ValueError.
-struct InteractionView {
-    InteractionView(const pxr::UsdStagePtr &stage, const PlanView &plan);
+struct SourceSelectionResolverView {
+    SourceSelectionResolverView(const pxr::UsdStagePtr &stage, const PlanView &plan);
 
     [[nodiscard]] bp::object ResolvePick(std::size_t element) const;  // dict, or None for no element
     [[nodiscard]] bp::list SelectTargets(const bp::object &entities, const bp::object &level) const;
@@ -66,7 +66,7 @@ struct InteractionView {
     [[nodiscard]] bp::dict SelectionFromBlender(const bp::object &selected, const bp::object &active,
                                                 const bp::object &level) const;
 
-    Interaction interaction;
+    SourceSelectionResolver interaction;
 };
 
 // Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",

@@ -53,7 +53,7 @@ MODES = (("SET", "Set", ""), ("TOGGLE", "Toggle", ""), ("EXTEND", "Extend", ""),
 class Session:
     """A source selection over one batched display, and its mirror in Blender's selection."""
 
-    interaction: Any  # the bridge's Interaction over the display's plan
+    interaction: Any  # the bridge's SourceSelectionResolver over the display's plan
     display: BatchedDisplay
     view_layer: bpy.types.ViewLayer
     collection: bpy.types.Collection  # the display's, which holds every managed object

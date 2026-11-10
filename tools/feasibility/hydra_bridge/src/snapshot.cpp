@@ -2,15 +2,15 @@
 
 namespace hydra_bridge {
 
-const char *EventKindName(EventKind kind) {
+const char *SceneIndexEventKindName(SceneIndexEventKind kind) {
     switch (kind) {
-    case EventKind::Added:
+    case SceneIndexEventKind::Added:
         return "added";
-    case EventKind::Removed:
+    case SceneIndexEventKind::Removed:
         return "removed";
-    case EventKind::Dirtied:
+    case SceneIndexEventKind::Dirtied:
         return "dirtied";
-    case EventKind::Renamed:
+    case SceneIndexEventKind::Renamed:
         return "renamed";
     }
     return "added";

@@ -226,7 +226,7 @@ def _register_classes() -> None:
 def _select_over(session: Session) -> None:
     """Install Source Select over the session's display, or move it onto the display's latest plan."""
     display = session.display
-    interaction = native.Interaction(session.stage, display.plan)
+    interaction = native.SourceSelectionResolver(session.stage, display.plan)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     selection = select_tool.Session(
         interaction,

@@ -41,9 +41,9 @@ struct SourceSelection {
 
 // Every function raises SourceUnavailableError once the live stage has expired. A kind level is a registered
 // model kind; std::nullopt is the prim level.
-class Interaction {
+class SourceSelectionResolver {
 public:
-    Interaction(pxr::UsdStagePtr stage, PlanPtr plan);
+    SourceSelectionResolver(pxr::UsdStagePtr stage, PlanPtr plan);
 
     // The element's entity, or std::nullopt for an index that names no element of this generation.
     [[nodiscard]] std::optional<Entity> ResolvePick(std::size_t element) const;

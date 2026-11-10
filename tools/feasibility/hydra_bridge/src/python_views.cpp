@@ -286,15 +286,15 @@ bp::object SnapshotView::Dump(const bp::object &path) const {
 
 bp::list SnapshotView::Events() const {
     bp::list result;
-    for (const Event &event : data->events)
-        result.append(bp::make_tuple(EventKindName(event.kind), event.path.GetString()));
+    for (const SceneIndexEvent &event : data->events)
+        result.append(bp::make_tuple(SceneIndexEventKindName(event.kind), event.path.GetString()));
     return result;
 }
 
 bp::dict SnapshotView::DirtyLocators() const {
     bp::dict result;
-    for (const Event &event : data->events) {
-        if (event.kind != EventKind::Dirtied) continue;
+    for (const SceneIndexEvent &event : data->events) {
+        if (event.kind != SceneIndexEventKind::Dirtied) continue;
         bp::list locators = bp::extract<bp::list>(result.setdefault(event.path.GetString(), bp::list()));
         for (const std::string &locator : event.locators) locators.append(locator);
     }
@@ -303,8 +303,8 @@ bp::dict SnapshotView::DirtyLocators() const {
 
 bp::list SnapshotView::Renames() const {
     bp::list result;
-    for (const Event &event : data->events)
-        if (event.kind == EventKind::Renamed)
+    for (const SceneIndexEvent &event : data->events)
+        if (event.kind == SceneIndexEventKind::Renamed)
             result.append(bp::make_tuple(event.oldPath.GetString(), event.path.GetString()));
     return result;
 }
@@ -428,7 +428,7 @@ std::optional<TfToken> Level(const bp::object &value) {
     if (value.is_none()) return std::nullopt;
     TfToken level(String(value, "a level"));
     try {
-        Interaction::CheckLevel(level);
+        SourceSelectionResolver::CheckLevel(level);
     } catch (const std::invalid_argument &error) {
         Raise(PyExc_ValueError, error.what());
     }
@@ -437,7 +437,7 @@ std::optional<TfToken> Level(const bp::object &value) {
 
 // Runs `call` without the GIL, and raises the source's unavailability as RuntimeError.
 template <class Call>
-auto Unlocked(const Call &call) {
+auto CallWithoutGil(const Call &call) {
     std::optional<std::string> unavailable;
     std::optional<decltype(call())> result;
     {
@@ -474,13 +474,13 @@ void SetMaterialPurpose(const bp::object &name, TfToken &purpose) {
 
 }  // namespace
 
-InteractionView::InteractionView(const UsdStagePtr &stage, const PlanView &plan)
+SourceSelectionResolverView::SourceSelectionResolverView(const UsdStagePtr &stage, const PlanView &plan)
     : interaction(stage, plan.data) {
     if (!stage) Raise(PyExc_ValueError, "the live stage is invalid");
 }
 
-bp::object InteractionView::ResolvePick(std::size_t element) const {
-    const std::optional<Entity> entity = Unlocked([&] { return interaction.ResolvePick(element); });
+bp::object SourceSelectionResolverView::ResolvePick(std::size_t element) const {
+    const std::optional<Entity> entity = CallWithoutGil([&] { return interaction.ResolvePick(element); });
     if (!entity) return {};
     bp::dict record;
     record["source"] = entity->source.GetString();
@@ -489,7 +489,7 @@ bp::object InteractionView::ResolvePick(std::size_t element) const {
     return std::move(record);
 }
 
-bp::list InteractionView::SelectTargets(const bp::object &entities, const bp::object &level) const {
+bp::list SourceSelectionResolverView::SelectTargets(const bp::object &entities, const bp::object &level) const {
     std::vector<Entity> values;
     const bp::list list(entities);
     for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) {
@@ -498,26 +498,26 @@ bp::list InteractionView::SelectTargets(const bp::object &entities, const bp::ob
         values.push_back(Entity{PrimPath(pair[0]), PrimPaths(pair[1])});
     }
     const std::optional<TfToken> kind = Level(level);
-    return PathList(Unlocked([&] { return interaction.SelectTargets(values, kind); }));
+    return PathList(CallWithoutGil([&] { return interaction.SelectTargets(values, kind); }));
 }
 
-bp::list InteractionView::Displayed(const bp::object &paths) const {
+bp::list SourceSelectionResolverView::Displayed(const bp::object &paths) const {
     const SdfPathVector values = PrimPaths(paths, true);
     bp::list result;
-    for (const bool displayed : Unlocked([&] { return interaction.Displayed(values); })) result.append(displayed);
+    for (const bool displayed : CallWithoutGil([&] { return interaction.Displayed(values); })) result.append(displayed);
     return result;
 }
 
-bp::list InteractionView::HighlightTargets(const bp::object &targets) const {
+bp::list SourceSelectionResolverView::HighlightTargets(const bp::object &targets) const {
     const SdfPathVector values = PrimPaths(targets);
     bp::list result;
-    for (const std::size_t element : Unlocked([&] { return interaction.HighlightTargets(values); }))
+    for (const std::size_t element : CallWithoutGil([&] { return interaction.HighlightTargets(values); }))
         result.append(element);
     return result;
 }
 
-bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const bp::object &active,
-                                               const bp::object &level) const {
+bp::dict SourceSelectionResolverView::SelectionFromBlender(const bp::object &selected, const bp::object &active,
+                                                           const bp::object &level) const {
     std::vector<std::size_t> elements;
     const bp::list list(selected);
     for (Py_ssize_t i = 0, n = bp::len(list); i < n; ++i) elements.push_back(Element(list[i]));
@@ -525,7 +525,7 @@ bp::dict InteractionView::SelectionFromBlender(const bp::object &selected, const
         active.is_none() ? std::nullopt : std::optional<std::size_t>(Element(active));
     const std::optional<TfToken> kind = Level(level);
     const SourceSelection selection =
-        Unlocked([&] { return interaction.SelectionFromBlender(elements, activeElement, kind); });
+        CallWithoutGil([&] { return interaction.SelectionFromBlender(elements, activeElement, kind); });
     bp::dict result;
     result["targets"] = PathList(selection.targets);
     result["active"] = PathOrNone(selection.active);
@@ -616,12 +616,13 @@ void WrapViews() {
         .def("meshes_at", &PlanView::MeshesAt, bp::arg("indices"))
         .def("batch_groups", &PlanView::BatchGroups, bp::arg("minimum"))
         .add_property("diagnostics", &PlanView::Diagnostics);
-    bp::class_<InteractionView>("Interaction", bp::init<UsdStagePtr, PlanView>())
-        .def("resolve_pick", &InteractionView::ResolvePick)
-        .def("select_targets", &InteractionView::SelectTargets, (bp::arg("entities"), bp::arg("level") = bp::object()))
-        .def("displayed", &InteractionView::Displayed)
-        .def("highlight_targets", &InteractionView::HighlightTargets)
-        .def("selection_from_blender", &InteractionView::SelectionFromBlender,
+    bp::class_<SourceSelectionResolverView>("SourceSelectionResolver", bp::init<UsdStagePtr, PlanView>())
+        .def("resolve_pick", &SourceSelectionResolverView::ResolvePick)
+        .def("select_targets", &SourceSelectionResolverView::SelectTargets,
+             (bp::arg("entities"), bp::arg("level") = bp::object()))
+        .def("displayed", &SourceSelectionResolverView::Displayed)
+        .def("highlight_targets", &SourceSelectionResolverView::HighlightTargets)
+        .def("selection_from_blender", &SourceSelectionResolverView::SelectionFromBlender,
              (bp::arg("selected"), bp::arg("active") = bp::object(), bp::arg("level") = bp::object()));
     bp::def("build_plan", MakePlan,
             (bp::arg("snapshot"), bp::arg("viewport_purposes") = bp::object(),

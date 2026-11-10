@@ -66,7 +66,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `scene_index_graph.h/.cpp` | Builds the scene-index graph, advances it in time, and records the terminal's notices |
 | `source_info_scene_index.h/.cpp` | The source-info filter: the source facts Hydra drops (a `prosceniumSource` container), `UsdImagingDataSourcePrim` on its own stage globals for unimaged prims, and notices for edits Hydra misses |
 | `source_facts.h/.cpp` | What the filter reads from USD: the `prosceniumSource` tokens and lazy containers, UsdShade's bindings per material purpose, the materialBind family verdict, dropped attributes, and computed extents for point-based prims other than meshes and NURBS patches |
-| `snapshot.h/.cpp` | The snapshot: time, retained scene index, events (`EventKind`), diagnostics |
+| `snapshot.h/.cpp` | The snapshot: time, retained scene index, events (`SceneIndexEventKind`), diagnostics |
 | `prim_record.h/.cpp` | Plain records of what planning reads: mesh topology as `PxOsdMeshTopology`, primvars (indices kept), subsets, instancers, materials |
 | `prim_reader.h/.cpp` | `PlannedSchemas()`, the schemas capture copies, and the reader of those records: traversal by `HdSceneIndexPrimView`, materials through `HdDataSourceMaterialNetworkInterface` |
 | `instancing.h/.cpp` | Reverse mapping from instancers to USD sources, as `HdxPrimOriginInfo` does it: walks `instancedBy` upward and folds in `instanceLocations`, instance transforms, the instancer's visibility mask, the instance roots' own constant primvars and bindings, and purpose-visibility opinions at each level. With `PlanSettings::pointInstancers` (M4 Phase D, for measurement), a point instancer's points too, each with its transform, mask, and per-point primvars, and a provisional context entry naming the point. `BoundMaterial` combines the filter's UsdShade bindings with what's bound at or above each instance root (Hydra's flattened bindings are unusable inside instances). Switch source identity to `HdxPrimOriginInfo` once Blender's USD has its `cdata()` fix (plan log) |
@@ -125,7 +125,7 @@ plan.universe  # sorted USD paths; each object dict also has its "floor"
 _hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
 #   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
 _hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
-interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
+interaction = _hydra_bridge.SourceSelectionResolver(stage, plan)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind
 interaction.displayed(paths), interaction.highlight_targets(targets)  # [bool]; elements at or beneath the targets

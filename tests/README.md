@@ -108,6 +108,9 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 - Each call gets its own Blender user dir under the test's `tmp_path`.
 - The **`hydra_bridge`** fixture is the directory of M1b's compiled Hydra bridge (`tools/feasibility/hydra_bridge/`), which M4's prototype tests pass to their bodies. It builds the bridge from its sources once per run, into `build/hydra-bridge/` as `build.py` does; when nothing changed, the build only checks. `PROSCENIUM_HYDRA_BRIDGE` names a prebuilt one instead, as CI does on Linux, where the build must run on Blender's glibc floor.
 
+The bridge's `SourceSelectionResolver` resolves picks and selections using a plan's correspondence and the live stage.
+Its Python protocol is in `plan_types.py`; the reusable interaction checks exercise both display representations.
+
 Frame capture returns a `frames.CapturedFrameSequence`, whose `frames.DisplayAspect` values name what varies.
 Cached playback uses `keyframes.AnimationKeyWriter` and `mesh_caches.MeshHolderSynchronizationState`;
 `CachedDisplay.observed_varying_aspects()` reports variation found during playback, and

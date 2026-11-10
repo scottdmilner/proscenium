@@ -78,8 +78,9 @@ public:
           resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
         plan_->time = snapshot.time;
         // M4 Phase E: the two lookups DirtiedAspects maps to objects, from the snapshot's dirty notices.
-        for (const Event &event : snapshot.events) {
-            if (event.kind != EventKind::Dirtied) continue;  // added, removed, and renamed prims say nothing of time
+        for (const SceneIndexEvent &event : snapshot.events) {
+            if (event.kind != SceneIndexEventKind::Dirtied)
+                continue;  // added, removed, and renamed prims say nothing of time
             // Each prim's dirtied locators, once each: several notices can dirty one prim in a capture (the
             // filter's and UsdImaging's, and the time dependencies the previous capture handed on).
             std::vector<std::string> &locators = dirtiedLocators_[event.path];

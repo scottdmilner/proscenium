@@ -66,7 +66,7 @@ class BaselineDisplay:
         assert not errors, errors
         self._objects = self._apply.apply(plan, self.collection).objects
         self._records = plan.objects
-        self._interaction = self._native.Interaction(self.stage, plan)
+        self._interaction = self._native.SourceSelectionResolver(self.stage, plan)
 
     def managed_objects(self) -> list[bpy.types.Object]:
         return list(self._selection.managed(self.collection).values())
@@ -141,7 +141,7 @@ class BatchedDisplay(BaselineDisplay):
         assert not errors, errors
         self._display = self._batch.apply_batched(plan, self.collection)
         self._records = plan.objects
-        self._interaction = self._native.Interaction(self.stage, plan)
+        self._interaction = self._native.SourceSelectionResolver(self.stage, plan)
 
     @override
     def managed_objects(self) -> list[bpy.types.Object]:

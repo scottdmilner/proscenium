@@ -40,7 +40,7 @@ def main(argv: list[str]) -> None:
     collection = bpy.data.collections.new(Path(args.scene).stem)
     scene.collection.children.link(collection)
     display = batch.apply_batched(plan, collection, args.minimum)
-    interaction = native.Interaction(stage, plan)
+    interaction = native.SourceSelectionResolver(stage, plan)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     select_tool.register(
         select_tool.Session(

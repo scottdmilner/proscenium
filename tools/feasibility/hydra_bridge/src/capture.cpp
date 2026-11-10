@@ -40,17 +40,17 @@ HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle
 // The paths the notices since the previous capture name: exactly, or with all their descendants.
 class Affected {
 public:
-    explicit Affected(const std::vector<Event> &events) {
-        for (const Event &event : events) {
+    explicit Affected(const std::vector<SceneIndexEvent> &events) {
+        for (const SceneIndexEvent &event : events) {
             switch (event.kind) {
-            case EventKind::Added:
-            case EventKind::Dirtied:
+            case SceneIndexEventKind::Added:
+            case SceneIndexEventKind::Dirtied:
                 exact_.insert(event.path);
                 break;
-            case EventKind::Removed:
+            case SceneIndexEventKind::Removed:
                 subtrees_.insert(event.path);
                 break;
-            case EventKind::Renamed:
+            case SceneIndexEventKind::Renamed:
                 subtrees_.insert(event.oldPath);
                 subtrees_.insert(event.path);
                 break;
@@ -145,7 +145,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     if (timeDependencies) {
         const TfErrorMark mark;
         graph.DirtyTimeDependencies();
-        std::vector<Event> dirtied = graph.TakeEvents();
+        std::vector<SceneIndexEvent> dirtied = graph.TakeEvents();
         snapshot->events.insert(snapshot->events.end(), dirtied.begin(), dirtied.end());
         graph.RequeueEvents(std::move(dirtied));
         HarvestErrors(mark, SdfPath(), graphDiagnostics);

@@ -46,7 +46,7 @@ def _timed(repeats: int, call: Callable[[], Any]) -> tuple[dict[str, float], Any
 def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, target: Any, time_code: float) -> dict:
     """Every timing, by operation name, with the sizes it covered."""
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
-    interaction = native.Interaction(stage, plan)
+    interaction = native.SourceSelectionResolver(stage, plan)
     records = plan.objects
     universe = plan.universe
     results: dict[str, Any] = {}

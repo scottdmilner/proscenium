@@ -36,7 +36,7 @@ namespace {
 enum class Kind : std::uint8_t { None, Bool, Int, Float };
 
 // A value's elements, flattened, all of one kind.
-struct Flat {
+struct FlattenedPropertyValue {
     Kind kind = Kind::None;
     VtBoolArray bools;
     VtIntArray ints;
@@ -47,7 +47,7 @@ struct Flat {
     bool narrowed = false;  // an integer was wrapped to 32 bits
 };
 
-void Add(Flat &flat, bool value) {
+void Add(FlattenedPropertyValue &flat, bool value) {
     flat.kind = Kind::Bool;
     flat.bools.push_back(value);
 }
@@ -55,7 +55,7 @@ void Add(Flat &flat, bool value) {
 // Blender's integer ID properties are 32-bit: a wider value keeps its low 32 bits, two's complement, best
 // effort (as a C cast does), and the caller warns.
 template <class Integer>
-void AddInteger(Flat &flat, Integer value) {
+void AddInteger(FlattenedPropertyValue &flat, Integer value) {
     // Through uint32_t, whose wrap is defined; uint32_t to int32_t wraps on every compiler the bridge builds with.
     const auto held = static_cast<int32_t>(static_cast<uint32_t>(value));
     if constexpr (std::numeric_limits<Integer>::is_signed)
@@ -66,42 +66,42 @@ void AddInteger(Flat &flat, Integer value) {
     flat.ints.push_back(held);
 }
 
-void Add(Flat &flat, int value) { AddInteger(flat, value); }
-void Add(Flat &flat, unsigned char value) { AddInteger(flat, value); }
-void Add(Flat &flat, unsigned int value) { AddInteger(flat, value); }
-void Add(Flat &flat, int64_t value) { AddInteger(flat, value); }
-void Add(Flat &flat, uint64_t value) { AddInteger(flat, value); }
+void Add(FlattenedPropertyValue &flat, int value) { AddInteger(flat, value); }
+void Add(FlattenedPropertyValue &flat, unsigned char value) { AddInteger(flat, value); }
+void Add(FlattenedPropertyValue &flat, unsigned int value) { AddInteger(flat, value); }
+void Add(FlattenedPropertyValue &flat, int64_t value) { AddInteger(flat, value); }
+void Add(FlattenedPropertyValue &flat, uint64_t value) { AddInteger(flat, value); }
 
-void AddFloat(Flat &flat, double value) {
+void AddFloat(FlattenedPropertyValue &flat, double value) {
     flat.kind = Kind::Float;
     flat.doubles.push_back(value);
 }
 
-void Add(Flat &flat, GfHalf value) { AddFloat(flat, value); }
-void Add(Flat &flat, float value) { AddFloat(flat, value); }
-void Add(Flat &flat, double value) { AddFloat(flat, value); }
+void Add(FlattenedPropertyValue &flat, GfHalf value) { AddFloat(flat, value); }
+void Add(FlattenedPropertyValue &flat, float value) { AddFloat(flat, value); }
+void Add(FlattenedPropertyValue &flat, double value) { AddFloat(flat, value); }
 
 template <class Vec>
-void AddVector(Flat &flat, const Vec &value) {
+void AddVector(FlattenedPropertyValue &flat, const Vec &value) {
     flat.tuple = Vec::dimension;
     for (size_t i = 0; i < Vec::dimension; ++i) Add(flat, value[i]);
 }
 
-void Add(Flat &flat, const GfVec2i &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec3i &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec4i &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec2h &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec3h &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec4h &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec2f &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec3f &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec4f &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec2d &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec3d &value) { AddVector(flat, value); }
-void Add(Flat &flat, const GfVec4d &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec2i &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec3i &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec4i &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec2h &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec3h &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec4h &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec2f &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec3f &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec4f &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec2d &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec3d &value) { AddVector(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfVec4d &value) { AddVector(flat, value); }
 
 template <class Matrix>
-void AddMatrix(Flat &flat, const Matrix &value) {
+void AddMatrix(FlattenedPropertyValue &flat, const Matrix &value) {
     flat.tuple = Matrix::numColumns;
     flat.matrix = true;
     // Gf matrices index rows by int (vectors take size_t).
@@ -110,12 +110,12 @@ void AddMatrix(Flat &flat, const Matrix &value) {
             Add(flat, value.GetRow(row)[static_cast<size_t>(column)]);
 }
 
-void Add(Flat &flat, const GfMatrix2f &value) { AddMatrix(flat, value); }
-void Add(Flat &flat, const GfMatrix3f &value) { AddMatrix(flat, value); }
-void Add(Flat &flat, const GfMatrix4f &value) { AddMatrix(flat, value); }
-void Add(Flat &flat, const GfMatrix2d &value) { AddMatrix(flat, value); }
-void Add(Flat &flat, const GfMatrix3d &value) { AddMatrix(flat, value); }
-void Add(Flat &flat, const GfMatrix4d &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix2f &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix3f &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix4f &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix2d &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix3d &value) { AddMatrix(flat, value); }
+void Add(FlattenedPropertyValue &flat, const GfMatrix4d &value) { AddMatrix(flat, value); }
 
 template <class... Types>
 struct TypeList {};
@@ -126,10 +126,10 @@ using Supported = TypeList<bool, int, unsigned char, unsigned int, int64_t, uint
 
 // Fills `flat` from a value of a supported type, or a VtArray of one; `array` is whether the result stays an
 // array (a one-element array doesn't). False for any other type.
-bool Flatten(const VtValue &, Flat &, bool &, TypeList<>) { return false; }
+bool Flatten(const VtValue &, FlattenedPropertyValue &, bool &, TypeList<>) { return false; }
 
 template <class T, class... Rest>
-bool Flatten(const VtValue &value, Flat &flat, bool &array, TypeList<T, Rest...>) {
+bool Flatten(const VtValue &value, FlattenedPropertyValue &flat, bool &array, TypeList<T, Rest...>) {
     if (value.IsHolding<T>()) {
         Add(flat, value.UncheckedGet<T>());
         return true;
@@ -146,7 +146,7 @@ bool Flatten(const VtValue &value, Flat &flat, bool &array, TypeList<T, Rest...>
 }  // namespace
 
 std::optional<PropertyValue> ToProperty(const VtValue &value, std::string &why, std::string &warning) {
-    Flat flat;
+    FlattenedPropertyValue flat;
     bool array = false;
     if (!Flatten(value, flat, array, Supported{})) {
         why = "type " + value.GetTypeName() + " has no Blender property form";

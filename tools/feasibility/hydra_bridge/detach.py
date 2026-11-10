@@ -4,7 +4,7 @@ Detach releases what survives in the destination collection when it runs, Blende
 included, and reads no USD. The baseline ties Blender data to its binding only through ID properties
 (apply.OBJECT_PROPERTIES and MATERIAL_PROPERTIES), so those are what detach removes. It has no handlers,
 drivers, modifiers, node groups, or overlays, and its correspondence and selection associations live in the
-bridge's Interaction, not in Blender data.
+bridge's SourceSelectionResolver, not in Blender data.
 
 Everything else is ordinary Blender data and stays:
 - meshes, shared where they were, with the displayColor a mesh holds for all its copies (the plan's held_color);

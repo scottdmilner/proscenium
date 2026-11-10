@@ -21,12 +21,12 @@
 namespace hydra_bridge {
 
 // The scene-index observer notices, one per prim entry.
-enum class EventKind : std::uint8_t { Added, Removed, Dirtied, Renamed };
+enum class SceneIndexEventKind : std::uint8_t { Added, Removed, Dirtied, Renamed };
 
-const char *EventKindName(EventKind kind);  // "added", "removed", "dirtied", "renamed"
+const char *SceneIndexEventKindName(SceneIndexEventKind kind);  // "added", "removed", "dirtied", "renamed"
 
-struct Event {
-    EventKind kind;
+struct SceneIndexEvent {
+    SceneIndexEventKind kind;
     pxr::SdfPath path;                  // for a rename, the new path
     pxr::SdfPath oldPath;               // renamed only
     std::vector<std::string> locators;  // dirtied only
@@ -39,7 +39,7 @@ struct Snapshot {
     pxr::HdRetainedSceneIndexRefPtr scene;
     // Notices delivered since the previous capture, and a capture's own notices dirtying what depends on time
     // (capture.h).
-    std::vector<Event> events;
+    std::vector<SceneIndexEvent> events;
     size_t copied = 0;  // prims copied by this capture, rather than shared with the previous one
     // Errors and warnings posted while copying each prim, kept so a shared prim keeps its diagnostics.
     std::unordered_map<pxr::SdfPath, Diagnostics, pxr::SdfPath::Hash> primDiagnostics;

@@ -27,7 +27,7 @@ type AttributeArray = Vt.FloatArray | Vt.Vec2fArray | Vt.Vec3fArray | Vt.Vec4fAr
 type PlanArray = AttributeArray
 type PropertyScalar = bool | int | float
 type PropertyValue = PropertyScalar | list[PropertyScalar] | list[list[PropertyScalar]]
-type PathLike = Sdf.Path | str  # what Interaction takes as a path
+type PathLike = Sdf.Path | str  # what SourceSelectionResolver takes as a path
 
 
 class AttributeRecord(TypedDict):
@@ -131,7 +131,7 @@ class PlanDiff(TypedDict):
 
 
 class ResolvedEntity(TypedDict):
-    """An element's source entity, as Interaction.resolve_pick returns it."""
+    """An element's source entity, as SourceSelectionResolver.resolve_pick returns it."""
 
     source: str
     instance_context: tuple[str, ...]  # native instance roots, outermost first
@@ -143,8 +143,8 @@ class SourceSelection(TypedDict):
     active: str | None  # the active element's target
 
 
-class Interaction(Protocol):
-    """The module's Interaction (M4): the baseline's core interaction functions over a plan and the live stage.
+class SourceSelectionResolver(Protocol):
+    """Resolve source selections using a display plan's correspondence and the live stage.
 
     Elements are plan object indices; a level is None (the prim level) or a registered kind. Paths are taken as
     Sdf.Path or str and returned as str. Each raises RuntimeError once the live stage has expired.

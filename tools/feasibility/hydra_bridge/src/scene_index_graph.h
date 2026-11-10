@@ -25,12 +25,12 @@ public:
     void PrimsDirtied(const pxr::HdSceneIndexBase &, const DirtiedPrimEntries &entries) override;
     void PrimsRenamed(const pxr::HdSceneIndexBase &, const RenamedPrimEntries &entries) override;
 
-    std::vector<Event> Take();
+    std::vector<SceneIndexEvent> Take();
     // Puts `events` before any not yet taken, for the next Take.
-    void Requeue(std::vector<Event> events);
+    void Requeue(std::vector<SceneIndexEvent> events);
 
 private:
-    std::vector<Event> events_;
+    std::vector<SceneIndexEvent> events_;
 };
 
 class SceneIndexGraph {
@@ -49,8 +49,8 @@ public:
     // (UsdImagingStageSceneIndex's forceDirtyingTimeDeps). Notices reach the observer. Must not overlap reads.
     void DirtyTimeDependencies();
     const pxr::HdSceneIndexBaseRefPtr &Terminal() const { return terminal_; }
-    std::vector<Event> TakeEvents() { return observer_.Take(); }
-    void RequeueEvents(std::vector<Event> events) { observer_.Requeue(std::move(events)); }
+    std::vector<SceneIndexEvent> TakeEvents() { return observer_.Take(); }
+    void RequeueEvents(std::vector<SceneIndexEvent> events) { observer_.Requeue(std::move(events)); }
     // WORKAROUND for OpenUSD #3690 (copy_bindings.h). Call between advances, never alongside reads.
     std::shared_ptr<const CopyBindings> CopyBindingsNow() { return sourceInfo_->CurrentCopyBindings(); }
 
