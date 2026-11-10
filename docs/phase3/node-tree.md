@@ -13,9 +13,9 @@ Everything not marked is design: what the editor should do, for the user to sett
 ## Summary
 
 - **The tree is the source of truth.** Every layer the tree authors is a function of the tree and the files it reads, recooked when a change reaches what it depends on. Written files are the tree's output; the tree never reads them back.
-- **A layer read from a file is never authored into.** A Layer from File, and every layer it composes, holds the file as the process has it. Edits go into zones' layers, which are anonymous in memory and reach a stage only through links. A zone can own a file that a read layer composes, such as `lighting.usda` under a shot or a chair a set references: a Substitute Layer puts the zone in that file's place everywhere the composition names it, and Write saves the zone to it. A Layer from File linked straight to a Stage Output still yields the stage as written to the files.
+- **A layer read from a file is never authored into.** A Layer from File, and every layer it composes, holds the file as the process has it. Edits go into zones' layers, which are anonymous in memory and reach a stage only through links. A zone can own a file that a read layer composes, such as `lighting.usda` under a shot or a chair a set references: a Substitution Zone reads the root, names the files it composes as items, and puts each item's zone in that file's place everywhere the composition names it, and Write saves the zone to it. The zone's begin reads the root itself, so the tree has no second copy of the root without the zones; any other read layer that composes a zone's file warns.
 - **Layers flow along links.** A *Layer* socket carries a finished layer; an *Editable Layer* socket carries a layer being authored, and exists only inside the zone that authors it, apart from the active Viewer's input.
-- **A zone checks its edits against a context.** Its nodes see the zone's layer composed over a context derived from a File that Find Layer gives: the layers weaker than the file's position, for a sublayer, or the file's own sublayers, for a reference's or payload's target. A Layer linked to its Context Hint input overrides it. The Stage Outputs' stages only verify, warning of edits a stronger opinion hides.
+- **A zone checks its edits against a context.** Its nodes see the zone's layer composed over a context derived from a Substitution Zone item's File: the layers weaker than the file's position, for a sublayer, or the file's own sublayers, for a reference's or payload's target, each with its own item's zone in its place. A Layer linked to its Context Hint input overrides it. The Stage Outputs' stages only verify, warning of edits a stronger opinion hides.
 - **A node's place in its chain sets the order of authoring, not the strength of opinions.** Opinion strength is USD's: a layer's opinions are stronger than its sublayers', and a prim's own opinions are stronger than its arcs'.
 - **Value sockets are USD's value types,** one per stored type (`float3`, `double3`, `quatf`, …), with roles such as `color3f` chosen where an attribute is created.
 - **Prim sockets carry paths, not prims.** Each path is checked against the stage where it is used.
@@ -26,7 +26,7 @@ Everything not marked is design: what the editor should do, for the user to sett
 
 The first feature set:
 - Read USD layers from files.
-- Find a layer that a read layer composes, edit it in a zone, and substitute the zone into that composition, so the stage shows the whole composition with the edits.
+- Read a composition, pick layers it composes, edit each in a zone, and substitute the zones into that composition, so the stage shows the whole composition with the edits.
 - Author new layers, empty or from a template. In them, create and edit prims (type, specifier, API schemas, `active`, `kind`, `instanceable`), set or block attributes' default values, set transforms, author layer metadata, and author sublayers, references, payloads, variant sets, and relocates.
 - Write the authored layers to their files.
 
@@ -46,7 +46,7 @@ Later:
   - The cook unrolls the zone. Each run is one linear chain, so the rule of one Editable Layer in one chain holds, and a Create Prim inside makes a spec per variant, since each variant's path differs. Reports name the variant they came from, and inspection shows one variant's result at a time.
   - **Not checked:** whether a Python node tree can use `NodeSocketMenu` with items that change, or the Switch needs its own enum property; how a `CollectionProperty` list looks on a begin node, drawn as a UIList.
   - To decide: which variant the composed stage displays (the first in the list, a Default property on the begin node, or only what a Set Variant Selection selects).
-- **An Asset Path node** that outputs a File from a path Ar resolves, which arcs author verbatim, for resolver URIs, search paths, and expression variables (`` `"{SHOT}"` ``).
+- **Asset paths** that Ar resolves, in a path property or a File input, which arcs author verbatim, for resolver URIs, search paths, and expression variables (`` `"{SHOT}"` ``).
 - **A File In-Place Edit Zone,** which starts from its own file's content and writes back to it. Zones are separated by where their starting content comes from, not by who owns the file: a New Layer Zone never reads its file, while this zone reads it once and writes over it, a cycle. After a save the file holds the zone's edits, so a recook that read the file would apply them twice, and edits can't be made idempotent in general. The proposed design:
   - The zone recooks from a base it captured, never from the file, so changing a value recooks from the base.
   - **Save,** on the end node, writes the file and keeps the base, so the user can tweak and save again. It compares the file with the base before the first save, and with what it last saved after, and asks when they differ.
@@ -71,9 +71,10 @@ A zone's **chain** is the sequence of nodes reached from its begin's Editable La
 
 ### What a zone holds
 
-A zone holds its chain ([Layers as Values](#layers-as-values)). The chain is a single path, since an Editable Layer links to one input and never leaves its zone, so the cook finds it by following links forward from the begin. Membership decides which layer a node authors into and which stage it checks against; zones don't repeat in the first feature set, so it decides nothing that runs per element.
+A New Layer Zone or a Variant Zone holds its chain ([Layers as Values](#layers-as-values)). The chain is a single path, since an Editable Layer links to one input and never leaves its zone, so the cook finds it by following links forward from the begin. Membership decides which layer a node authors into and which stage it checks against; zones don't repeat in the first feature set, so it decides nothing that runs per element.
 - **A Variant Zone is a stretch of its parent's chain.** A node's innermost zone is the innermost begin and end pair around it on its chain, and that zone's variant path is where the node authors.
-- **Every other node belongs to no zone:** Prim, Match Prims, Value, Convert, Layer from File, Find Layer, Substitute Layer, the Stage Outputs, and the Viewer. Each outputs a value (a path, an expression, a constant, or a finished layer) and checks against no zone's stage. Matching and checks happen at the node that uses the value ([Where a Path Is Searched](#where-a-path-is-searched)), so a Prim node feeding two zones is cooked once and checked in each.
+- **A Substitution Zone holds the New Layer Zones its items' Files link into** ([Substitution Zone](#substitution-zone)). It authors nothing and has no chain: it decides which file each of those zones takes the place of, and which context it checks against.
+- **Every other node belongs to no zone:** Prim, Match Prims, Value, Convert, Layer from File, the Stage Outputs, and the Viewer. Each outputs a value (a path, an expression, a constant, or a finished layer) and checks against no zone's stage. Matching and checks happen at the node that uses the value ([Where a Path Is Searched](#where-a-path-is-searched)), so a Prim node feeding two zones is cooked once and checked in each.
 - **A chain node's value outputs may feed any node,** such as Create Prim's Prim output in one zone feeding a node in another, which then depends on that Create Prim ([Cooking the Layers](#cooking-the-layers)).
 
 [Node Zones](node-zones.md#what-a-zone-holds)' prototype rule 1, every node downstream of the begin, would pull the other zone's node in through that Prim link. For layer zones, downstream runs along Editable Layer links only. For-each zones, later, add their own: downstream along the begin's per-element outputs, where a value node fed by the current element runs per element and belongs inside.
@@ -84,10 +85,11 @@ Errors, each following from the chain:
 - **An authoring node in no chain:** its Editable Layer input is unlinked or doesn't trace back to a begin. It reports it, and the nodes after it pass nothing on.
 - **Overlapping zones:** pairs on one chain must nest as brackets, so begin 1, begin 2, end 1, end 2 is an error on both pairs. A Variant Zone whose begin isn't on a New Layer Zone's chain is an error.
 - **A mismatched pair:** an end that the chain of a begin other than its own reaches. Pairs are named by a relationship ([The Tree as Plain Data](#the-tree-as-plain-data)), not by structure, so this is checked.
+- **A Substitution Zone's own errors** are on its begin and its end ([Substitution Zone](#substitution-zone)). A New Layer Zone nested in one can hold a Variant Zone, and a Substitution Zone never sits on a chain.
 
 Muted nodes stay on their chain and pass their Editable Layer through.
 
-Drawing is the front end's, and the cook doesn't depend on it. A zone's outline takes its chain's members, and value nodes (Prim, Match Prims, Value, Convert) whose consumers are all in the zone, as Node Zones' rule 2 does. Nodes that output finished layers (Layer from File, Find Layer, Substitute Layer) are never drawn inside, since that would suggest the zone authors them, nor is a Viewer, including one linked partway down a chain, or a value node with consumers in two zones.
+Drawing is the front end's, and the cook doesn't depend on it. A chain zone's outline takes its chain's members, and value nodes (Prim, Match Prims, Value, Convert) whose consumers are all in the zone, as Node Zones' rule 2 does. A Layer from File is never drawn inside one, since that would suggest the zone authors it, nor is a Viewer, including one linked partway down a chain, or a value node with consumers in two zones. A Substitution Zone's outline takes its begin, its end, the New Layer Zones it holds whole, and value nodes whose consumers are all inside it: it shows which edits go into that composition.
 
 ### Order of authoring and strength of opinions
 
@@ -132,13 +134,14 @@ The node editor's inspection shows the resulting list op, since the chain's orde
 ### The zone's stage
 
 A zone's nodes check and search against its layer, as the chain has left it, composed over the zone's **context**. The zone's layer is stronger, and the context weaker. This is the stage Match Prims matches against, that Set Attribute reads attribute types from, that Prim search offers paths from, and that existence checks use. A department layer needs one: **Checked:** a layer opened as a stage on its own doesn't see a prim its sibling layer defines. The context is:
-- **Derived from the File,** when the zone's File comes from [Find Layer](#find-layer): the layers weaker than the File's position in that layer stack, such as `env.usda` for a `lighting.usda` that `shot.usda` sublayers above it. They're the layers as read from files: when another zone substitutes for one of them, the derived context still holds the file, and a Context Hint linked to that zone checks against its edits. Inspection shows the derived context ("checks against `env.usda`, from `shot.usda`"). Once layer offsets arrive, the root's offsets carry over into it.
-  - For a File that a reference or payload targets, the derived context is the file's own composition, what every arc to it brings in: the layers it sublayers. So it doesn't depend on which occurrence Find Layer found, since a file composed in several places is substituted at every one ([Substitute Layer](#substitute-layer)). Those sublayers sit under the file, not beside it, so once the zone takes the file's place they're composed only if the zone's own layer sublayers them. Two ways keep them:
-    - **Edit a sublayer instead of the file.** A department usually edits one of an asset's sublayers, such as `chair_look.usda`, which Find Layer lists too; its context is the layers weaker than it in the asset's layer stack, and nothing is lost.
-    - **Sublayer them explicitly,** to replace the file itself: the zone's chain has a Sublayer node fed by a Layer from File for each, which a one-time action on the begin node can create. Those files aren't written, so there's no cycle.
+- **Derived from the File,** when the zone's File comes from a [Substitution Zone](#substitution-zone)'s item: the layers weaker than the File's position in that layer stack, such as `env.usda` for a `lighting.usda` that `shot.usda` sublayers above it. They're composed as the Substitution Zone outputs them, so a file among them that is another item's, or that they compose, is that item's zone: with env and lighting both items of the shot's zone, lighting checks against env's edits, the opinions the Stage Output shows under it. Inspection shows the derived context ("checks against `env.usda`, from `shot.usda`"). Once layer offsets arrive, the root's offsets carry over into it.
+  - Positions come from the composition as read from files, which USD keeps acyclic, so a zone's context never holds the zone itself. The exception is a file composed both above and below another item, such as a `lighting.usda` that `shot.usda` sublayers and that a chair under `env.usda` also sublayers: its context would compose its own zone, and the item reports it.
+  - For a File that a reference or payload targets, the derived context is the file's own composition, what every arc to it brings in: the layers it sublayers. So it doesn't depend on which occurrence the item names, since a file composed in several places is substituted at every one ([Substitution Zone](#substitution-zone)). Those sublayers sit under the file, not beside it, so once the zone takes the file's place they're composed only if the zone's own layer sublayers them. Two ways keep them:
+    - **Edit a sublayer instead of the file.** A department usually edits one of an asset's sublayers, such as `chair_look.usda`, which the begin's search lists too; its context is the layers weaker than it in the asset's layer stack, and nothing is lost.
+    - **Sublayer them explicitly,** to replace the file itself: the zone's chain has a Sublayer node for each, fed by a Layer from File, or by that item's zone for one that is itself an item, which a one-time action on the begin node can create. Those files aren't written, so there's no cycle.
 
     Reading them from the file the zone writes, as a Template or a live copy of its `subLayers`, would be the cycle that keeps a New Layer Zone from reading its own file: after a save, the zone's own sublayers would come back and be added again. The zone warns for each of the file's sublayers its layer doesn't sublayer, naming both ways.
-- **The Layer linked to the Context Hint input,** which overrides the derived context. It's for a zone whose context Find Layer can't give: a layer that a root built in the tree sublayers, since Find Layer on that root's zone would be a cycle; a layer meant to sit over something the tree doesn't compose, such as a fix delivered to another department; and a target that should be checked against more than its own sublayers.
+- **The Layer linked to the Context Hint input,** which overrides the derived context. It's for a zone whose context no item can give: a layer that a root built in the tree sublayers, since a Substitution Zone reads only files; a layer meant to sit over something the tree doesn't compose, such as a fix delivered to another department; and a target that should be checked against more than its own sublayers.
 - **Empty** otherwise.
 
 The tree derives a context from nothing else, such as where the zone's output is linked, since relinking would then silently change what the zone checks against.
@@ -147,7 +150,7 @@ The tree derives a context from nothing else, such as where the zone's output is
 - A Context Hint link is an edge in the tree, so the tree's acyclicity rules out a zone's own output coming back as its context.
 - Inside a Variant Zone, the stage has that variant selected.
 
-A Context Hint link looks different from a link that composes, since it's only read for checks, and it's the exception: a File from Find Layer needs no link. Two ways to draw it:
+A Context Hint link looks different from a link that composes, since it's only read for checks, and it's the exception: a File from an item needs no link. Two ways to draw it:
 - **A dashed or dotted link.** Blender's `NodeLink` has no style property (**Checked:** its RNA properties are `is_valid`, `is_muted`, `from_node`, `to_node`, `from_socket`, `to_socket`, `is_hidden`, `multi_input_sort_id`), so a Python tree would draw its own overlay with the `gpu` module, as [Node Zones](node-zones.md) does for zone outlines.
 - **A hollow socket shape** that stays hollow when linked. `NodeSocket.display_shape` offers `CIRCLE_DOT`, `SQUARE_DOT`, and `DIAMOND_DOT` beside the solid shapes (**Checked**, by listing the enum). **Not checked:** how a `_DOT` shape looks once linked. The socket shape is the cheaper option, since Blender draws it.
 
@@ -157,19 +160,23 @@ A Context Hint link looks different from a link that composes, since it's only r
 ### Editing a layer in a composition the tree reads
 
 A root the tree doesn't own often composes layers owned by different files, and the tree owns only some of them. For example, `shot.usda` sublayers `anim.usda`, `lighting.usda`, and `env.usda`, strongest first, and the tree authors only lighting. The user displays the whole shot while editing lighting:
-1. A Layer from File reads `shot.usda`.
-2. A [Find Layer](#find-layer) on it names `lighting.usda`, and its File links into a zone's File input. The zone's context is derived from that File: `env.usda`.
-3. The zone's end links into a [Substitute Layer](#substitute-layer), whose Layer input is the same Layer from File. Its output feeds a Stage Output.
+1. A [Substitution Zone](#substitution-zone)'s begin reads `shot.usda`, and has one item, `lighting.usda`, picked from the files the shot composes.
+2. The item's File links into a New Layer Zone's File input, inside the Substitution Zone. The zone's context is derived from that File: `env.usda`.
+3. The New Layer Zone's end links into the item's input on the Substitution Zone's end, whose output feeds a Stage Output.
 
-Find Layer reads the Layer from File's output, not the Substitute Layer's, so there's no cycle. The zone is composed, so Write saves `lighting.usda` ([Writing](#writing)), and the read layers are never written. Verification warns where `anim.usda`, stronger than the zone, hides a lighting edit.
+The begin reads the files, and the end makes the substituted copies, so there's no cycle. The zone is composed, so Write saves `lighting.usda` ([Writing](#writing)), and the read layers are never written. Verification warns where `anim.usda`, stronger than the zone, hides a lighting edit.
 
-The zone replaces `lighting.usda` rather than editing it: a New Layer Zone never reads its own file, so when `lighting.usda` already exists, the zone warns that Write would discard its content. It can start from another file as its Template, such as another shot's lighting, but a substitution puts a zone only where the composition names the zone's own File, so keeping `lighting.usda`'s content while editing it waits for the File In-Place Edit Zone ([Scope](#scope)).
+The zone replaces `lighting.usda` rather than editing it: a New Layer Zone never reads its own file, so when `lighting.usda` already exists, the zone warns that Write would discard its content. It can start from another file as its Template, such as another shot's lighting, but an item puts a zone only where the composition names the item's file, so keeping `lighting.usda`'s content while editing it waits for the File In-Place Edit Zone ([Scope](#scope)).
 
-The same works at any depth: a zone can replace a sublayer of a sublayer, or an asset that a set references, such as `chair.usda` under `set.usda` under `shot.usda`.
+The same works at any depth: a zone can replace a sublayer of a sublayer, or an asset that a set references, such as `chair.usda` under `set.usda` under `shot.usda`. One Substitution Zone holds every zone edited in its root, as items of one begin and one end.
+
+**The tree shows the root one way.** The root's file is read only by the Substitution Zone's begin, which has no Layer output, so every stage, Template, Context Hint, and arc that reaches the root gets it with the zones in place, the composition Write's files will make. Two rules keep other reads from showing a file as it was before Write:
+- A Layer from File, or another Substitution Zone's root, that composes a zone's file without that zone in its place warns, naming the file and the zone. Two shots that reference one edited chair each read through their own Substitution Zone, and each has an item for `chair.usda` whose input takes the one chair zone's Layer.
+- A Layer from File or a Substitution Zone reading a zone's file itself is an error on both ([Writing](#writing)).
 
 **Every occurrence of the file is substituted.** Once Write saves the zone to its file, every arc to that file sees the edit, so substituting every occurrence makes the stage before Write match the stage after it. Substituting one occurrence would show a stage no written set of files can produce. Editing one occurrence is an override in a zone over the composition, or a new file referenced there. On ALab, one capacitor entity is named by 13 layers.
 
-**The substitution is scoped to the Substitute Layer.** A layer holding a file's identifier would take that file's place in every stage in the process that composes its path. So every zone's layer is anonymous, and Substitute Layer outputs anonymous copies that name the zone's layer in place of the file ([Substitute Layer](#substitute-layer)). Only what flows out of it sees the zone: a Layer from File linked straight to a Stage Output yields the stage as written, and other stages in the process, such as another binding or one Blender's own USD importer opened, see the files on disk. **Checked:** with `shot.usda` sublayering `anim`, `lighting`, and `env` on disk, a stage on such a copy had the layer stack copy, `anim`, zone, `env`, and the zone's value; a stage on `shot.usda` open at the same time had `shot`, `anim`, `lighting`, `env`, and the file's value; `Sdf.Layer.Find` of `lighting.usda` didn't return the zone; and neither stage reported composition errors.
+**The substitution is scoped to the Substitution Zone.** A layer holding a file's identifier would take that file's place in every stage in the process that composes its path. So every zone's layer is anonymous, and the Substitution Zone's end outputs anonymous copies that name the zone's layer in place of the file ([Substitution Zone](#substitution-zone)). Only what flows out of it sees the zone: other stages in the process, such as another binding or one Blender's own USD importer opened, see the files on disk. **Checked:** with `shot.usda` sublayering `anim`, `lighting`, and `env` on disk, a stage on such a copy had the layer stack copy, `anim`, zone, `env`, and the zone's value; a stage on `shot.usda` open at the same time had `shot`, `anim`, `lighting`, `env`, and the file's value; `Sdf.Layer.Find` of `lighting.usda` didn't return the zone; and neither stage reported composition errors.
 
 ### Cooking the layers
 
@@ -181,15 +188,15 @@ A zone's layer starts empty or as a copy of the zone's Template ([Templates](#ne
 
 A zone no Stage Output composes ([Writing](#writing)) still cooks, so its nodes report errors and inspection shows its layer.
 
-**The tree cooks as a DAG of tasks,** doing only the work a change requires. A zone is one task, since its chain runs in order and each node sees the stage as the nodes before it left it. Layer from File, Find Layer, and Substitute Layer are tasks of their own. Value nodes (Prim, Match Prims, Value, Convert) carry no stage and are computed as inputs to the tasks that use them. A zone depends on other tasks three ways, each with its own rule:
+**The tree cooks as a DAG of tasks,** doing only the work a change requires. A New Layer Zone is one task, since its chain runs in order and each node sees the stage as the nodes before it left it. Layer from File is a task of its own, and so are a Substitution Zone's begin and its end, with the zones it holds between them. Value nodes (Prim, Match Prims, Value, Convert) carry no stage and are computed as inputs to the tasks that use them. A zone depends on other tasks three ways, each with its own rule:
 1. **Its own content:** its nodes, and the value inputs into them, such as another zone's Create Prim's Prim output. The tree's change notices mark it ([The Tree as Plain Data](#the-tree-as-plain-data)), and the zone recooks.
 2. **Its Template's content,** which is copied into the zone: any change to the Template's layer recooks it.
-3. **What it reads:** its context, and the layers its chain's composition nodes name (Sublayer, Reference, Payload), whether another zone's output or a Substitute Layer's. A zone that references another authors only that zone's identifier, which stays stable since its layer is kept, so the other zone's content matters only through what this one read from it, such as a target prim's existence. It recooks only when a change reaches a recorded read.
+3. **What it reads:** its context, including the zones substituted into it, and the layers its chain's composition nodes name (Sublayer, Reference, Payload), whether another zone's output or a Substitution Zone's. A zone that references another authors only that zone's identifier, which stays stable since its layer is kept, so the other zone's content matters only through what this one read from it, such as a target prim's existence. It recooks only when a change reaches a recorded read.
 
 The other tasks:
-- **Layer from File** changes when its File input changes, and when its file is reread, on request ([Layer from File](#layer-from-file)); a reread layer's change notices then reach the tasks that read it.
-- **Find Layer** reads its input's sublayers and arcs, and its list and positions are recorded reads of that input, matched as a zone's are.
-- **Substitute Layer** redoes its copies only when its input or the set of substituted files changes ([Substitute Layer](#substitute-layer)).
+- **Layer from File** changes when its Path changes, and when its file is reread, on request ([Layer from File](#layer-from-file)); a reread layer's change notices then reach the tasks that read it.
+- **A Substitution Zone's begin** reads its root as Layer from File does, then its sublayers and arcs; its items' files and positions are recorded reads of the root, matched as a zone's are.
+- **A Substitution Zone's end** redoes its copies only when the root or the set of linked items changes ([Substitution Zone](#substitution-zone)). The copies name each zone's anonymous identifier, not its content, so they come before the zones they name: a zone whose context holds the copies reads its sibling zones through them, and recooks when a change reaches one of those reads.
 
 So recooking a base zone, or an asset a shot references, recooks only the zones that read what changed. **Checked,** with zones of 10,000 prims ([Measurements](#measurements)): recooking one department cost 14 ms of C++ authoring, and its transfer and recompose rose from 13 ms with 2 zones to 33 ms with 8, then stayed flat at 32 zones; a structural recook of the base stayed at about 40 ms; recooking all 32 zones took 1.1 s with C++ authoring.
 
@@ -240,7 +247,7 @@ So an attribute's type change is changed info, not a resync, and a change to a l
 
 Each node reports its own errors and warnings on itself.
 - A node with an error passes its Editable Layer through unchanged, and the nodes after it run, so the rest of the result still shows.
-- Composition errors (`UsdStage::GetCompositionErrors`), such as an unresolved asset path or a relocate USD rejects, are reported on the node that authored the arc ([Provenance](#provenance)). An arc in a file the tree reads reports on its Layer from File node.
+- Composition errors (`UsdStage::GetCompositionErrors`), such as an unresolved asset path or a relocate USD rejects, are reported on the node that authored the arc ([Provenance](#provenance)). An arc in a file the tree reads reports on the Layer from File node or Substitution Zone begin that reads it.
 - Verification warnings from a Stage Output's stage are reported on the node whose edit is hidden ([The Zone's Stage](#the-zones-stage)).
 - Write refuses while any node that some Stage Output depends on has an error, so a file never holds a result with an edit missing. Errors on nodes with no path of links to a Stage Output don't block Write.
 
@@ -262,7 +269,7 @@ The cook records, from its first version, which node authored each edit and wher
 - Only the last writer is kept. A node whose write a later node replaces is warned while authoring, as [List Edits](#list-edits) does for Explicit.
 - Inspection shows which node authored a value from it, and verification looks up its entries.
 
-**Composition errors map to nodes through the C++ error types' fields.** The source layer picks the table: a zone's, or, for a Substitute Layer's copy, that Substitute Layer node. Within it, an arc error's site path, arc type, and asset path pick the entry; a sublayer error's `layer` and `sublayerPath`; a relocate error's `layer`, source, and target. **Checked,** through a C++ module reading `UsdStage::GetCompositionErrors`, on a stage whose root sublayered a stronger layer, a zone, and a Substitute copy:
+**Composition errors map to nodes through the C++ error types' fields.** The source layer picks the table: a zone's, or, for a Substitution Zone's copy, that zone's end node. Within it, an arc error's site path, arc type, and asset path pick the entry; a sublayer error's `layer` and `sublayerPath`; a relocate error's `layer`, source, and target. **Checked,** through a C++ module reading `UsdStage::GetCompositionErrors`, on a stage whose root sublayered a stronger layer, a zone, and a Substitution Zone's copy:
 
 | Error | Fields |
 |---|---|
@@ -271,7 +278,7 @@ The cook records, from its first version, which node authored each edit and wher
 | reference to a missing prim | `targetLayer` `prop.usda`, `unresolvedPath` `/Nope` |
 | unresolved payload | as a reference, arc type payload |
 | missing sublayer | `layer` the zone, `sublayerPath` |
-| unresolved reference in a Substitute copy | `sourceLayer` the copy |
+| unresolved reference in a Substitution Zone's copy | `sourceLayer` the copy |
 | relocate with its target under its source; relocate of a reference's own prim | `layer`, `sourcePath`, `targetPath` |
 
 - The source layer was the layer that authored the arc, not the stage's root, and the site path carried the variant selection, matching the edit table's keys.
@@ -283,19 +290,19 @@ The cook records, from its first version, which node authored each edit and wher
 | Path came from | In memory | Written as |
 |---|---|---|
 | A zone, linked into Sublayer, Reference, or Payload | the zone's `anon:` identifier | the zone's file, relative to the file being written |
-| A file path: a File socket, or a relative path in a Template | absolute | relative to the file being written |
+| A file path: a Layer from File's Path, or a relative path in a Template | absolute | relative to the file being written |
 | An absolute path in a Template | as authored | as authored |
 | Typed into a node, such as `./tex.png` as an `asset` value | absolute, anchored to the zone's file, so the stage finds the texture before Write | exactly as typed |
 | Anything else, such as a resolver's identifier | as authored | as authored |
 
 - The typed case keeps the typed string, not one recomputed from the file, so `tex.png` stays `tex.png` for a resolver's search paths.
-- A path from a Template and one from a File socket can be the same absolute string yet be written differently, which is why the table records where each came from rather than inferring it.
-- When one string has two written forms in one layer, such as `/abs/x.png` typed in one node and built from a File in another, Write uses the File's and warns on the node that typed it.
+- A path from a Template and one from a Layer from File can be the same absolute string yet be written differently, which is why the table records where each came from rather than inferring it.
+- When one string has two written forms in one layer, such as `/abs/x.png` typed in one node and built from a Layer from File's Path in another, Write uses the Path's and warns on the node that typed it.
 
 ### Stage Outputs and the Viewer
 
 Each **Stage Output** node names one of the tree's stages: the stage composed on its input Layer as root layer. A tree may have several, such as an asset and the shot that references it, each tied to its own binding. That stage is the caller-supplied source its binding displays ([Source Stages](../spec/source-access.md#source-stages)). Its zones' layers are in-process edits, which the binding displays without their being written ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)).
-- An output makes no layer of its own: its root is a Layer from File's layer, a zone's layer, or a Substitute Layer's copy, whichever is linked in, and two outputs linked to one layer share it.
+- An output makes no layer of its own: its root is a Layer from File's layer, a zone's layer, or a Substitution Zone's copy, whichever is linked in, and two outputs linked to one layer share it.
 - The cook's result holds, for each Stage Output, keyed by its node's ID, the stage composed on the layer linked into it, with every payload loaded. It's the stage verification uses too, so each root is composed once. The front end hands it to the Stage Output's binding, whose own evaluation stage applies the binding's payload policy ([Source Stages](../spec/source-access.md#source-stages)), and maps each Stage Output to its binding, so the plain-data tree needs no binding identifiers.
 - A zone composed by two Stage Outputs is still written once, to its one File ([Writing](#writing)), and verified against both.
 
@@ -308,7 +315,7 @@ Stage metadata is read from the root layer only. **Checked:** a stage whose root
 ### Writing
 
 A **Write** operator saves each composed zone's layer to its zone's file, in the format its extension names (`.usda`, `.usdc`, `.usd`).
-- A zone is *composed* when a path of composition links runs from its end node to any Stage Output: each link enters a Sublayer, Reference, Payload, or Substitute Layer node, or a Stage Output itself. A Template, Context Hint, or Viewer link doesn't compose the zone it comes from, since that zone's layer isn't part of a Stage Output's stage, and viewing never decides what is saved.
+- A zone is *composed* when a path of composition links runs from its end node to any Stage Output: each link enters a Sublayer, Reference, or Payload node, an item's input on a Substitution Zone's end, or a Stage Output itself. A Template, Context Hint, or Viewer link doesn't compose the zone it comes from, since that zone's layer isn't part of a Stage Output's stage, and viewing never decides what is saved.
 - A zone that isn't composed warns that Write won't save it, and Write skips it, so a zone left unlinked while the user works on it never overwrites its file. That includes a zone linked only as another zone's Template or Context Hint, or only to the Viewer.
 - Composition is decided by links, not by what the stage currently shows: a zone referenced inside a variant that isn't selected is still composed, since the written file references it.
 - Layers read from files are never written.
@@ -317,7 +324,7 @@ A **Write** operator saves each composed zone's layer to its zone's file, in the
   - Paths the tree built from file paths, including a Template's relative paths, are written relative to the file that holds them.
   - A relative path typed into a zone, such as `./tex.png` as an `asset` value, is anchored to the zone's file in memory, so the stage finds it before Write, and written exactly as typed.
   - Any other asset path is written as authored, so a resolver's path is never broken.
-- Two zones with the same file, or a zone whose file a Layer from File node reads, is an error on both nodes.
+- Two zones with the same file, or a zone whose file a Layer from File or a Substitution Zone's begin reads, is an error on both nodes.
 - Overwriting a file the tree hasn't written asks first. A New Layer Zone discards the file's content, so it also warns while the user works ([New Layer Zone](#new-layer-zone)).
   - The record of what the tree has written is the paths alone, kept with the tree in the `.blend`. Its warning is a one-time one: once the tree has written a file, it never warns about that file again, even if someone changes the file afterward.
   - The record is the front end's: the node's warning and Write's question are both there, and the cook neither takes nor returns it.
@@ -329,7 +336,7 @@ Writing is separate from saving the `.blend`, which holds the tree but none of i
 | Socket | Carries | Links |
 |---|---|---|
 | Layer | A finished layer, by identifier | One output to any number of inputs |
-| File | A layer's file: the identifier it resolves to, and the path as authored with the layer it's relative to | Any number; an unlinked File input is a text field |
+| File | A file a Substitution Zone's root composes: the identifier composition resolved, and its position there | From a Substitution Zone's item to one New Layer Zone's File input; an unlinked File input is a text field |
 | Editable Layer | A layer being authored | One output to one input, inside its zone, and to the active Viewer |
 | Prim | One prim path | Any number; converts to Prims |
 | Prims | A path expression, matched where it is used | Any number |
@@ -337,7 +344,7 @@ Writing is separate from saving the `.blend`, which holds the tree but none of i
 
 A zone's Context Hint input is a Layer socket whose link is drawn apart from the others ([The Zone's Stage](#the-zones-stage)).
 
-A File names a layer three ways: a typed path, on an unlinked File input; Find Layer's path from a composition, which carries its position there; and later, an asset path Ar resolves ([Scope](#scope)). Substitute Layer finds a File by the identifier composition resolved, so a typed path that resolves to another file, through another relative spelling, a symlink, or a typo, reports that the input doesn't compose it rather than silently missing. File is apart from the `asset` value socket, an attribute value (`SdfAssetPath`) that Set Attribute authors.
+A File socket exists for one link: it hands a New Layer Zone the file it takes the place of, and the position its context comes from ([The Zone's Stage](#the-zones-stage)). Unlinked, a New Layer Zone's File input is a typed path, for a new file no read layer composes. Layer from File and a Substitution Zone's begin read a file named by a Path property, since nothing in the tree produces a file for them to read. A substitution matches an item by the identifier composition resolved, never by resolving a typed path, so another relative spelling, a symlink, or a typo can't make it miss. File is apart from the `asset` value socket, an attribute value (`SdfAssetPath`) that Set Attribute authors.
 
 **Checked:** a custom socket declared with `use_multi_input=True` took two links in a custom Python node tree.
 
@@ -376,35 +383,24 @@ Two rules hold across nodes:
 ### Layer from File
 
 Reads a layer.
-- **Inputs:** File, typed as a Blender path (`//` relative to the `.blend`) when unlinked ([The Tree as Plain Data](#the-tree-as-plain-data)).
+- **Properties:** Path, a Blender path (`//` relative to the `.blend`; [The Tree as Plain Data](#the-tree-as-plain-data)).
 - **Outputs:** Layer.
 - **Authors:** nothing. The layer is the process's shared copy, so it shows unsaved edits other tools made to it, and rereads only on request ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)).
-- **Reports:** a file that doesn't exist or doesn't parse.
-
-### Find Layer
-
-Names a layer that another layer composes ([Editing a Layer in a Composition the Tree Reads](#editing-a-layer-in-a-composition-the-tree-reads)).
-- **Inputs:** Layer, such as `shot.usda` from a Layer from File.
-- **Properties:** Layer, a search over the files its input composes, each listed once with how it's composed ("sublayer 2 of `shot.usda`", "referenced by 13 prims in 4 layers"). It also offers authored sublayer paths that don't resolve, so a department layer can start before its file exists.
-- **Outputs:** File: for a sublayer, with its position in that layer stack, from which a zone derives its context; for a reference's or payload's target, marked as one, since its context is its own sublayers ([The Zone's Stage](#the-zones-stage)).
-- **Authors:** nothing.
-- **Reports:** a layer its input no longer composes.
-
-A Substitute Layer replaces every occurrence of a file, so a position is for the context only, not an address the substitution needs. A file that is both a sublayer and a target, or a sublayer in two layer stacks, takes its context from the first occurrence listed, and the zone reports the others. The File carries the identifier composition resolved, so Find Layer doesn't resolve the path again. Sublayers are read from each layer's `subLayers` without composing. Arc targets need a composed stage, which loads payloads.
+- **Reports:** a file that doesn't exist or doesn't parse; a file it composes that a zone owns, as a warning that its output shows that file as it was before Write ([Editing a Layer in a Composition the Tree Reads](#editing-a-layer-in-a-composition-the-tree-reads)).
 
 ### New Layer Zone
 
 Authors a new layer. A begin node and an end node, paired as in [Node Zones](node-zones.md).
-- **Begin inputs:** File, where Write saves the layer, typed or from Find Layer; Template (Layer, optional), the layer the zone starts from; Context Hint (Layer, optional), overriding the context derived from the File ([The Zone's Stage](#the-zones-stage)).
+- **Begin inputs:** File, where Write saves the layer, typed or from a [Substitution Zone](#substitution-zone)'s item; Template (Layer, optional), the layer the zone starts from; Context Hint (Layer, optional), overriding the context derived from the File ([The Zone's Stage](#the-zones-stage)).
 - **Begin outputs:** Editable Layer: empty, or a copy of the Template.
 - **End inputs:** Editable Layer; Default Prim (Prim, optional), the root prim that a reference or payload without a target prim composes.
 - **End outputs:** Layer.
 - **Authors:** `defaultPrim`, when given, replacing the Template's.
-- **Reports:** a default prim that isn't a root prim of the layer; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone or a Layer from File node also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
+- **Reports:** a default prim that isn't a root prim of the layer; a sublayer of its target File that its layer doesn't sublayer, since its context checks against it ([The Zone's Stage](#the-zones-stage)); a file another zone, a Layer from File, or a Substitution Zone's begin also uses; a File that already exists and that the tree hasn't written, as a warning that Write would discard its content. The warning stops once the tree has written the file, by the front end's record of written paths ([Writing](#writing)). To keep the content, the zone writes another file, with the existing one as its Template or under it in its context; editing a file in place waits for the File In-Place Edit Zone ([Scope](#scope)).
 
 **Templates.** The zone's layer starts as a copy of the Template's prims and layer metadata, and the chain authors on top. The Template is an input like any other, read live and never written, so the tree stays the source of truth and the zone's file is pure output.
-- A Template is a Layer from File or another zone's output. This is how the tree duplicates a layer: the duplicate is a new zone, and its File gives it its own save path from the moment it exists, so no two zones write the same content to one file.
-- A relative asset path in the Template is relative to the Template's file, and copied verbatim it would resolve elsewhere or not at all. So the zone starts as a `TransferContent` copy, then one `UsdUtils.ModifyAssetPaths` pass makes each relative path an absolute path anchored to the Template's file: `./textures/wood.png` in `templates/template.usda` becomes `/…/templates/textures/wood.png`. The absolute paths are for memory only, since the zone's layer is anonymous, with no directory for a relative path to resolve against; Write makes them relative to the zone's own file, such as `../../templates/textures/wood.png` from `shots/seq/` ([Writing](#writing)). Substitute Layer's copies use the same routine.
+- A Template is a Layer from File, another zone's output, or a Substitution Zone's. This is how the tree duplicates a layer: the duplicate is a new zone, and its File gives it its own save path from the moment it exists, so no two zones write the same content to one file.
+- A relative asset path in the Template is relative to the Template's file, and copied verbatim it would resolve elsewhere or not at all. So the zone starts as a `TransferContent` copy, then one `UsdUtils.ModifyAssetPaths` pass makes each relative path an absolute path anchored to the Template's file: `./textures/wood.png` in `templates/template.usda` becomes `/…/templates/textures/wood.png`. The absolute paths are for memory only, since the zone's layer is anonymous, with no directory for a relative path to resolve against; Write makes them relative to the zone's own file, such as `../../templates/textures/wood.png` from `shots/seq/` ([Writing](#writing)). A Substitution Zone's copies use the same routine.
 
 **Checked,** on a Template with a relative path in each place one can live (sublayers; a reference and a payload, the payload as a bare `prop.usda`; a reference inside a variant; `asset` and `asset[]` values, time-sampled asset values, and a `<UDIM>` path; `customData`, `assetInfo`, and `customLayerData`; value clips' `assetPaths` and `manifestAssetPath`), and one absolute path:
 - `TransferContent` copies paths verbatim, so a copy resolved none of them: 9 of 9 asset values unresolved, 4 composition errors, and the sublayer's prim missing, whether the copy was anonymous or saved in another directory.
@@ -412,23 +408,29 @@ Authors a new layer. A begin node and an end node, paired as in [Node Zones](nod
 - Written relative to a zone file in `shots/seq/`, exported, and reopened, the zone matched the Template's stage again, with the absolute path still as authored.
 - With USD's default resolver, anchoring gives a filesystem path. **Not checked:** a custom resolver's anchored identifiers, and a bare path such as `prop.usda` that a resolver's search paths would find, which anchoring ties to the file beside the Template (here that file existed, so the result was the same).
 
-Zones sit side by side: one zone's Layer output links into another zone's Template, Context Hint, Sublayer, or Reference, or into a Substitute Layer. A cycle between zones is a cycle in the tree, which the tree's links already rule out.
+Zones sit side by side: one zone's Layer output links into another zone's Template, Context Hint, Sublayer, or Reference, or into an item's input on a Substitution Zone's end. A cycle between zones is a cycle in the tree, which the tree's links already rule out.
 
-### Substitute Layer
+### Substitution Zone
 
-Puts zones' layers in place of their files in a layer the tree reads, at every occurrence and any depth ([Editing a Layer in a Composition the Tree Reads](#editing-a-layer-in-a-composition-the-tree-reads)).
-- **Inputs:** Layer; Zones (Layer, multi-input), each a zone's output.
-- **Outputs:** Layer: an anonymous copy of the input that names each zone's layer wherever the composition names its File.
+Reads a root layer and puts zones' layers in place of files it composes, at every occurrence and any depth ([Editing a Layer in a Composition the Tree Reads](#editing-a-layer-in-a-composition-the-tree-reads)). A begin node and an end node, paired as in [Node Zones](node-zones.md), with one *item* per substituted file, as Geometry Nodes' zones have items: each item is an output on the begin and an input on the end.
+- **Begin properties:** Path, the root's file, as Layer from File's; Items, each a file the root composes, picked from a search that lists each once with how it's composed ("sublayer 2 of `shot.usda`", "referenced by 13 prims in 4 layers"). The search also offers authored sublayer paths that don't resolve, so a department layer can start before its file exists. It never offers the root itself, since there's nothing to substitute it into: a zone for the root is the stage's root.
+- **Begin outputs:** one File per item: for a sublayer, with its position in that layer stack, from which a zone derives its context; for a reference's or payload's target, marked as one, since its context is its own sublayers ([The Zone's Stage](#the-zones-stage)). The begin has no Layer output, so the root is never seen without its substitutions.
+- **End inputs:** one Layer per item, a zone's output.
+- **End outputs:** Layer: an anonymous copy of the root that names each linked zone's layer wherever the composition names that item's file, or the root itself while no item is linked.
 - **Authors:** nothing. The copies are never written.
-- **Reports:** a zone whose File its input doesn't compose, such as a File Find Layer found on another root; a File that is the input's root itself, since there's nothing to substitute it into: the zone's output is the stage's root.
+- **Reports:** on the begin, a file that doesn't exist or doesn't parse, and an item its root no longer composes. On the end, an unlinked item, as a warning that the stage shows its file as it was before Write; a linked zone whose File isn't the item's file, such as one nested in another root's Substitution Zone for a different file; and an item that the substituted composition no longer reaches, such as a chair whose set another item's zone replaces without referencing it, as a warning that its zone's edits don't show.
 
-How:
-- Walk the layer graph from the input, through each layer's own composition dependencies (`GetCompositionAssetDependencies`: sublayers, references, payloads, arcs inside variants), without composing or loading payloads. A dependency that doesn't open, such as a sublayer whose file doesn't exist yet, stays in the graph by its anchored path, so a zone for it can still take its place. **Not checked:** the probe below skipped dependencies that didn't open.
+An item's File usually links into a New Layer Zone nested in the Substitution Zone. A zone can also feed items of several Substitution Zones, one in each root that composes its file, such as a chair two shots reference: it takes its File and context from one item, and each other end checks that its item names the same file.
+
+A substitution replaces every occurrence of a file, so a position is for the context only, not an address the substitution needs. A file that is both a sublayer and a target, or a sublayer in two layer stacks, takes its context from the first occurrence listed, and the item reports the others. The File carries the identifier composition resolved, so nothing resolves the path again. Sublayers are read from each layer's `subLayers` without composing. Arc targets need a composed stage, which loads payloads.
+
+How the end makes its copies:
+- Walk the layer graph from the root, through each layer's own composition dependencies (`GetCompositionAssetDependencies`: sublayers, references, payloads, arcs inside variants), without composing or loading payloads. A dependency that doesn't open, such as a sublayer whose file doesn't exist yet, stays in the graph by its anchored path, so a zone for it can still take its place. **Not checked:** the probe below skipped dependencies that didn't open.
 - The ancestors are every layer from which a substituted file can be reached. Each is copied into an anonymous layer, the root included.
 - Each copy's asset paths are rewritten in one `UsdUtils.ModifyAssetPaths` pass, each mapped by what it resolves to from the original layer: a substituted file becomes its zone's identifier, an ancestor its copy's, and any other relative path becomes absolute. Paths are compared by resolved identifier, or by anchored path for one that doesn't open, so `./sets/../assets/chair.usda` and `../assets/chair.usda` name the same file.
-- The copies are redone only when the input or the set of substituted files changes. Recooking a zone moves content into the same anonymous layer, which the copies already name.
+- The copies are redone only when the root or the set of linked items changes. Recooking a zone moves content into the same anonymous layer, which the copies already name.
 
-It's a composition link, so a zone linked into it is composed ([Writing](#writing)).
+An item's input on the end is a composition link, so a zone linked into it is composed ([Writing](#writing)).
 
 **Checked** on a scene with a nested sublayer and a chair composed five ways: both zones took every occurrence (the nested sublayer, and the chair as a reference, a payload, a reference inside a variant, and a reference spelled through another directory); four ancestors were copied, and no copy named a substituted file; a relative reference that wasn't substituted, and a relative texture, still resolved; a stage on `shot.usda` open at the same time showed the files, without the zone among its layers and with `chair.usda` unchanged; neither stage reported composition errors.
 
@@ -440,7 +442,7 @@ It's a composition link, so a zone linked into it is composed ([Writing](#writin
 | most ancestors (a solder mesh) | 59 | 18.6 MB | 12 | 23 |
 | largest ancestors (a resistor mesh) | 59 | 18.6 MB | 11 | 19 |
 
-- Finding the ancestors took a further 12 to 14 ms, and walking the graph 0.1 s with its layers already open, as an input's stage holds them (3.8 to 10.7 s from cold).
+- Finding the ancestors took a further 12 to 14 ms, and walking the graph 0.1 s with its layers already open, as the begin's stage holds them (3.8 to 10.7 s from cold).
 - In all three, the zone contributed exactly the prim specs the file contributed on `entry.usda`, the file contributed none on the copy, both stages had 11,886 prims, and neither reported composition errors.
 - Rewriting with `Sdf.Layer.UpdateCompositionAssetDependency`, once per arc, gave the same results in 110 to 310 ms, since each call traverses the layer.
 - A new stage on the root copy took 0.24 to 0.33 s in one run and 1.6 to 2.1 s in another, paid only when the root copy is new.
@@ -460,7 +462,7 @@ Names the stage the editor's UI shows. A tree may hold several Viewer nodes, but
 - **Authors:** nothing.
 - **On a Layer,** its stage has that layer as root, as a Stage Output's does.
 - **On an Editable Layer partway down a chain,** the zone's cook copies its scratch layer into the Viewer's own anonymous layer, with `TransferContent`, as it passes the node the Viewer is linked after, and the Viewer's stage has that copy as root. It's one copy per cook of that zone, about a zone transfer's cost; running the chain a second time up to that node would author everything twice. Nodes after the Viewer's point still run and report.
-- **Context:** when the Viewer's input is a zone's Editable Layer or its end's Layer, the stage composes it over the zone's context ([The Zone's Stage](#the-zones-stage)), the stage that zone's nodes check against, so the view matches at every point in the chain and at its end. Off, the stage holds the layer alone. For any other Layer, such as a Layer from File's or a Substitute Layer's, there's no context, and the checkbox does nothing. Toggling it recomposes only the Viewer's stage.
+- **Context:** when the Viewer's input is a New Layer Zone's Editable Layer or its end's Layer, the stage composes it over the zone's context ([The Zone's Stage](#the-zones-stage)), the stage that zone's nodes check against, so the view matches at every point in the chain and at its end. Off, the stage holds the layer alone. For any other Layer, such as a Layer from File's or a Substitution Zone's, there's no context, and the checkbox does nothing. Toggling it recomposes only the Viewer's stage.
 - **What a change recooks:** linking the Viewer to another point in a chain recooks that zone once, to take the copy there; the zone's own result is unchanged, so its transfer sends no notice downstream. Any other change that reaches only the Viewer recooks no zone.
 - **Not composed:** a link into the Viewer doesn't make a zone composed for Write ([Writing](#writing)).
 - **Not converted:** its stage feeds no binding, so it isn't converted between USD's and Blender's axes and units.
@@ -696,9 +698,10 @@ def NodeTree "Tree"
 - **Prim names** map from Blender names reversibly: each `_` doubles to `__`, and each character USD's identifiers reject, including a leading digit, becomes `_<hex codepoint>_`. A single `_` always starts an escape, so decoding is unambiguous. **Checked** with `Sdf.Path.IsValidIdentifier` (USD 0.26's Python has no `IsValidPrimName`): 13 names, among them `N.001` → `N_2e_001`, `Set Attribute` → `Set_20_Attribute`, `1st` → `_31_st`, `Größe` and `日本語ノード` unchanged, `a😀b` → `a_1f600_b`, `_2e_` → `__2e__`, and a 63-character name, all encoded to valid identifiers, decoded exactly, and stayed distinct.
 - **Inputs, outputs, and properties** are `inputs:`, `outputs:`, and `props:` attributes. Layer and Editable Layer sockets are `opaque` attributes, USD's type for an attribute that only carries connections; other inputs have their own types, and an unauthored input reads the definition's default. **Checked:** an `opaque` attribute refused a value with an error, and its connection survived exporting the layer to text and importing it again.
 - **A begin node names its end** with `rel zone:end`, whose one target is the end prim. A relationship targets a prim in the tree itself, so it reads as the tree's own structure, unlike a Prim value, which names a prim in an authored layer.
+- **A Substitution Zone's items** are on its begin, each under a stable identifier from a counter on the begin, as node uids are ([Node Zones](node-zones.md#pairing)), which names its File output on the begin and its input on the end, such as `outputs:item_3:file` and `inputs:item_3:layer`. Its file is a `string` attribute under the same identifier on the begin, the path as composition resolved it. So reordering items, or picking another file for one, keeps its links.
 - **The front end strips reroutes, frames, and inactive Viewers.** The cook sees only the logical graph.
 - **Muting:** `node:mute` is authored only when true. Each node type's definition says what a muted node passes through, such as its Editable Layer, and the cook follows it.
-- **Paths are strings.** File, Prim, and Prims values are `string`s, as is any value a node authors as an `asset` or a path, such as Set Attribute's Value with Type `asset`; the node's definition names the type it authors. As `asset` values, USD's dependency tools would list a test tree's paths as its dependencies, and a relative path would anchor to the tree's file; as `SdfPath`s, copying the tree could remap paths that name prims in other layers. A string keeps the path as typed, which Write's mapping needs ([Writing](#writing)).
+- **Paths are strings.** Path properties and File, Prim, and Prims values are `string`s, as is any value a node authors as an `asset` or a path, such as Set Attribute's Value with Type `asset`; the node's definition names the type it authors. As `asset` values, USD's dependency tools would list a test tree's paths as its dependencies, and a relative path would anchor to the tree's file; as `SdfPath`s, copying the tree could remap paths that name prims in other layers. A string keeps the path as typed, which Write's mapping needs ([Writing](#writing)).
 - **Heavy data from Blender isn't in the tree.** A node that reads Blender data names its source with a string key and has an `int` serial, which the front end increments when the depsgraph reports that data changed, so a data change is a one-attribute change in the tree. The caller passes the buffers beside the tree, as `foreach_get` filled them, and the cook copies each into a `VtArray` with one `memcpy` only when its serial changed, otherwise keeping the array it has. Tests keep each buffer in a file beside the tree, such as `.npy`. Inline arrays wouldn't be copied, since a shared `VtArray` moves without copying, but they would make the tree large to compare, export, and read, and would tie the data's changes to the graph's.
 - **Node positions (`UsdUI`) appear only in test files,** to make them readable in USD tools. The front end doesn't write them, and the cook ignores the `ui:` namespace.
 
@@ -817,7 +820,7 @@ A Subdivision modifier at level 1, read from the evaluated object (`evaluated_ge
 
 The editor is a caller of the synchronizer, and its layers raise contract questions to decide in [DECISIONS.md](../DECISIONS.md) when Phase 3 work reaches them ("Phase 3 ordering"):
 - **Dirty layers:** unwritten zone layers are always dirty, so every synchronization reports the dirty-layer diagnostic ([Layer State and Reloading](../spec/source-access.md#layer-state-and-reloading)).
-- **Reload:** a binding's `reload` rereads every dirty contributing layer. Zones' layers and Substitute Layer's copies, a Stage Output's root among them, are anonymous, with no file to reread, so reloading would discard their content. Either reload skips layers the editor authors, or the editor recooks them after a reload.
+- **Reload:** a binding's `reload` rereads every dirty contributing layer. Zones' layers and Substitution Zones' copies, a Stage Output's root among them, are anonymous, with no file to reread, so reloading would discard their content. Either reload skips layers the editor authors, or the editor recooks them after a reload.
 - **Undo:** the tree is Blender data, so undo restores it, and its layers are recooked from it. A synchronization pushes one undo step ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)), so one run on undo would push a step and clear the redo stack.
 - **Incremental synchronization:** `TransferContent` compares content and notifies only what changed ([Cooking the Layers](#cooking-the-layers)), so an unchanged zone sends nothing. **Not checked:** whether a recooked zone's transfer, through the binding's synchronization, keeps Phase 2's [affected content](../spec/incremental.md#affected-content) as small as its notice.
 
@@ -834,7 +837,7 @@ Following "Phase 3 ordering", the cook can be written and tested without `bpy` a
 
 ## Open questions
 
-- **Names.** Is "New Layer Zone" the zone's name; "Layer", "Editable Layer", and "File" the sockets'; "Find Layer" and "Substitute Layer" the nodes'; and "Context Hint" the input's?
+- **Names.** Is "New Layer Zone" the zone's name; "Layer", "Editable Layer", and "File" the sockets'; "Substitution Zone" the zone that reads a root and substitutes into it, and "item" each file it substitutes; and "Context Hint" the input's?
 - **Value socket count:** about 30 socket types, one per stored type. A single Value socket that carries any type, checked when linked, would be one socket type, at the cost of showing no type until the tree cooks.
 - **Drawing a Context Hint link:** a dashed link drawn by the editor, or a hollow socket shape ([The Zone's Stage](#the-zones-stage))?
 - **Verification:** whether it runs on every cook or only on request. It looks up only the zone's own edits ([Provenance](#provenance)), but each output stage it looks them up in composes the whole stage.
