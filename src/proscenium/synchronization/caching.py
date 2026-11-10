@@ -65,26 +65,30 @@ def cache(
     new = _uncached_values(published, time_codes)
     attempted = [Usd.TimeCode(t) for t in new]
     if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
-        return Result(refused, time_codes=attempted)
+        return Result(refused, attempted_time_codes=attempted)
 
     binding_stages = current.get_or_create_binding_stages(binding_id)
     try:
-        evaluation_stage = binding_stages.acquire_evaluation_stage(published.settings.payload_policy)
+        evaluation_stage = binding_stages.acquire_evaluation_stage(published.applied_settings.payload_policy)
     except stages.SourceUnavailableError as error:
-        return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), time_codes=attempted)
+        return Result(
+            Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), attempted_time_codes=attempted
+        )
     # Checked even when every time code is cached, so a call never reports success over a source that changed. The
     # revision changes with anything evaluated: an edit, a reload that rereads a layer, an attachment, the evaluation
     # stage loaded to another payload policy since, or a new process.
     if (stale := _stale_message(binding_stages, published, scene)) is not None:
-        return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, stale), time_codes=attempted)
+        return Result(
+            Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, stale), attempted_time_codes=attempted
+        )
     if not new:
         return Result()
     own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
     planned = evaluation.evaluate_display_plans(
-        binding_id, binding_stages, evaluation_stage, published.settings, published.unit_scale, attempted
+        binding_id, binding_stages, evaluation_stage, published.applied_settings, published.unit_scale, attempted
     )
     if isinstance(planned, Diagnostic):
-        return Result(*own, planned, time_codes=attempted)
+        return Result(*own, planned, attempted_time_codes=attempted)
     own = (*own, *_plans_diagnostics(binding_id, planned))
 
     work = prepared_work.new_preparation_resources(binding_id, ledgers.OriginatingOperation.CACHE)
@@ -94,19 +98,19 @@ def cache(
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), time_codes=attempted)
+        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
-        work.undo.append(functools.partial(manifests.write_manifest, destination, before))
+        work.rollback_actions.append(functools.partial(manifests.write_manifest, destination, before))
         ownership.set_manifest_entries(binding_id, changes, created=work.datablocks, published=before)
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), time_codes=attempted)
+        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
     prepared_work.remove_staging_and_clear_tracking(work)
-    return Result(*own, time_codes=attempted)
+    return Result(*own, attempted_time_codes=attempted)
 
 
 def _unusable_state_diagnostic(

@@ -102,8 +102,8 @@ def test_a_failed_retirement_completes_with_issues(
         # The leftovers: the ledger's, each with the diagnostic naming its ledger key and role.
         ledger = _ledger()
         assert {e.diagnostic for e in ledger.values()} == set(result.diagnostics)
-        assert all(e.diagnostic.resource == k for k, e in ledger.items())
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(ledger.items()))
+        assert all(e.diagnostic.pending_resource_key == k for k, e in ledger.items())
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(ledger.items()))
         leftovers = [e.datablock for e in ledger.values()]
         assert sorted(prim_name(d) for d in leftovers if d is not None) == [FAILING, FAILING]
         for datablock in leftovers:
@@ -137,8 +137,8 @@ def test_a_repeated_retirement_failure_reports_each_leftover_once(
         assert set(again.diagnostics).isdisjoint(earlier.diagnostics)  # this attempt's leftovers, not the earlier
         after = _ledger()
         assert {k: after[k] for k in before} == before
-        assert set(again.cleanup_status) == {*earlier.diagnostics, *again.diagnostics}
-        assert len(again.cleanup_status) == len(after) == 4
+        assert set(again.pending_cleanup_diagnostics) == {*earlier.diagnostics, *again.diagnostics}
+        assert len(again.pending_cleanup_diagnostics) == len(after) == 4
 
 
 def test_a_replacement_takes_its_resources_identities(

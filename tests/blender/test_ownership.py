@@ -13,7 +13,7 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence
-from proscenium.binding.persistence import manifests, records
+from proscenium.binding.persistence import configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
 from proscenium.binding.persistence.records import (
     NAMESPACE,
@@ -194,7 +194,7 @@ def test_a_bindings_manifest_is_read_though_its_configuration_cant_be(bindings: 
     handle, manifest = _managed(bindings, tmp_path)
     named = {k: e.datablock.name for k, e in manifest.entries.items() if e.datablock is not None}
     config = bpy.data.collections["Shot"][NAMESPACE]["binding." + handle.binding_id]
-    config[VERSION_KEY] = 2
+    config[VERSION_KEY] = configs.CONFIG.version + 1
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
     read = ownership.manifest(handle.binding_id)
     assert isinstance(read, LoadedRecord)  # references from before the reopen are stale, so compared by name
@@ -220,7 +220,11 @@ def test_a_prepared_resource_takes_the_key_of_the_entry_with_its_identity(bindin
     object_at = manifests.CopyResourceIdentity(RepresentationRole.OBJECT, "/World/Pay", 0)
     found, other_place, other_role = manifests.existing_or_new_entry_keys(
         manifest,
-        [object_at, object_at._replace(place=1), object_at._replace(role=RepresentationRole.BOUNDS_MESH)],
+        [
+            object_at,
+            object_at._replace(object_index_in_copy=1),
+            object_at._replace(role=RepresentationRole.BOUNDS_MESH),
+        ],
     )
     assert found == key("b")
     assert len({other_place, other_role, *manifest.entries}) == 5
@@ -238,12 +242,12 @@ def test_entry_keys_are_random_and_stored_as_keys() -> None:
     [
         ({"role": ""}, "is not a valid RepresentationRole"),
         ({"role": "hologram"}, "is not a valid RepresentationRole"),  # ROLE-01: outside the vocabulary
-        ({"place": None}, "has a place among its copy's objects"),
-        ({"place": -1}, "has a place among its copy's objects"),
-        ({"covers": ["/World/Ref", "/World/Pay"]}, "covers one source entity"),
+        ({"object_index_in_copy": None}, "has a place among its copy's objects"),
+        ({"object_index_in_copy": -1}, "has a place among its copy's objects"),
+        ({"source_entity_paths": ["/World/Ref", "/World/Pay"]}, "covers one source entity"),
         # Not a list at all: ID properties can't hold a list mixing strings and ints.
-        ({"covers": "/World"}, "an entry covers a list of source-entity paths"),
-        ({"uses": ["nowhere"]}, "entries use resources the manifest doesn't have"),
+        ({"source_entity_paths": "/World"}, "an entry covers a list of source-entity paths"),
+        ({"dependency_entry_keys": ["nowhere"]}, "entries use resources the manifest doesn't have"),
     ],
 )
 def test_an_invalid_manifest_is_refused(
@@ -266,7 +270,7 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     # It claims nothing and is reported, and writing doesn't replace it.
     handle, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
-    destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
+    destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = manifests.MANIFEST.version + 1
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)

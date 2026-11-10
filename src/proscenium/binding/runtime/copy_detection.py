@@ -55,9 +55,9 @@ class BindingRecord:
 class CandidateReport:
     """One candidate of a copied binding, by scene and destination name, and whether it is canonical."""
 
-    scene: str | None  # the target scene its record names; None for a record that can't be read
-    destination: str  # the collection holding its record
-    canonical: bool
+    scene_name: str | None  # the target scene its record names; None for a record that can't be read
+    destination_name: str  # the collection holding its record
+    is_canonical: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +71,7 @@ class CopiedBinding:
     @property
     def disabled(self) -> bool:
         """Whether every candidate is disabled pending repair: the rule couldn't decide."""
-        return not any(c.canonical for c in self.candidates)
+        return not any(c.is_canonical for c in self.candidates)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +84,7 @@ class IdentityCandidates:
 
     def canonical_record(self) -> BindingRecord | None:
         """The canonical candidate's record, or None if every candidate is disabled."""
-        position = self.decision.canonical
+        position = self.decision.canonical_candidate_index
         return None if position is None else self.candidates[position]
 
 
@@ -114,7 +114,7 @@ def candidates_by_binding() -> dict[identifiers.BindingId, IdentityCandidates]:
 
 def copied_binding_report(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> CopiedBinding:
     """The identity's candidates by name, for reporting: names aren't identities, and may change."""
-    canonical = identity.decision.canonical
+    canonical = identity.decision.canonical_candidate_index
     reports = [
         CandidateReport(None if r.scene is None else r.scene.name, r.collection.name, position == canonical)
         for position, r in enumerate(identity.candidates)

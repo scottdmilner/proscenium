@@ -206,7 +206,7 @@ def test_a_source_change_during_evaluation_discards_the_attempt(
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics
         assert diagnostic.code is DiagnosticCode.SOURCE_CHANGED
-        assert [Path(layer) for layer in diagnostic.layers] == [scene.sub_layer]
+        assert [Path(layer) for layer in diagnostic.layer_identifiers] == [scene.sub_layer]
         assert (_published(handle), datablocks()) == (published, before)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert _published(handle)["content"] != published["content"]

@@ -43,7 +43,7 @@ def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:
             assert isinstance(entry.datablock, bpy.types.Object)
-            found[entry.covers[0]] = entry.datablock
+            found[entry.source_entity_paths[0]] = entry.datablock
     return found
 
 
@@ -111,8 +111,8 @@ def test_the_records_hold_what_the_synchronization_planned_under(bindings: Bindi
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
         assert isinstance(generation, records.LoadedRecord) and isinstance(attempt, records.LoadedRecord)
-        assert (generation.record.settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
-        assert attempt.record.settings == requested
+        assert (generation.record.applied_settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
+        assert attempt.record.attempted_settings == requested
 
 
 def _cached(bindings: Bindings, scene: transaction.CachedTimeCodesScene) -> BindingHandle:

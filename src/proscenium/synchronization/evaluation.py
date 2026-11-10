@@ -38,8 +38,8 @@ def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tup
             d.message,
             source_path=d.source_path,
             property_path=d.property_path,
-            asset=d.asset,
-            fallback=d.fallback,
+            asset_identifier=d.asset,
+            fallback_description=d.fallback,
         )
         for d in plan.diagnostics
     )
@@ -50,7 +50,7 @@ def source_state_diagnostics(binding_id: identifiers.BindingId, evaluation_stage
     if not (dirty := stages.dirty_layers(evaluation_stage)):
         return ()
     message = "Displaying layers with unsaved in-process edits"
-    return (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))),)
+    return (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layer_identifiers=tuple(sorted(dirty))),)
 
 
 def evaluate_display_plans(
@@ -75,7 +75,9 @@ def evaluate_display_plans(
                 chain.release()  # the core never keeps the stage alive
             if changed:  # what was captured may mix the source before and after the change (CONS-03)
                 message = "A contributing layer changed during evaluation, so the attempt was discarded"
-                return Diagnostic(DiagnosticCode.SOURCE_CHANGED, binding_id, message, layers=tuple(sorted(changed)))
+                return Diagnostic(
+                    DiagnosticCode.SOURCE_CHANGED, binding_id, message, layer_identifiers=tuple(sorted(changed))
+                )
     except Exception as error:  # noqa: BLE001 - any failure is the attempt's fatal diagnostic
         return Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, f"Evaluating the source failed: {error}")
     try:

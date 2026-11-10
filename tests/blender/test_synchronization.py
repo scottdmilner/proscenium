@@ -59,7 +59,7 @@ def test_the_time_code_is_the_attempts_not_a_setting(
     # API-02: the default time code and numeric ones are accepted, and none becomes a setting.
     handle = binding_on_file(bindings, _scene(), _root(tmp_path), payload_policy=PayloadPolicy.LOAD_NONE)
     before = handle.requested_settings()
-    assert handle.synchronize(time_code) == Result(time_codes=(Usd.TimeCode(time_code),))
+    assert handle.synchronize(time_code) == Result(attempted_time_codes=(Usd.TimeCode(time_code),))
     assert handle.requested_settings() == before
     stage = _evaluation(bindings, handle)
     assert read_values(stage) == DISK | {"payA": None, "payB": None}  # the attempt used the payload policy
@@ -97,7 +97,7 @@ def test_the_attempt_is_at_the_time_code_given(
         assert handle.attach(scene.caller).state is ResultState.SUCCESS
         _scene().frame_set(3)  # not the current frame's
         result = handle.synchronize(time_code)
-        assert (result.state, result.time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(time_code),))
+        assert (result.state, result.attempted_time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(time_code),))
         assert _recorded(handle) == (stored, stored)
 
 
@@ -110,7 +110,7 @@ def test_without_a_time_code_the_attempt_is_at_the_current_frames(bindings: Bind
         _scene().frame_set(7, subframe=0.25)
         before = _timing()
         result = handle.synchronize()
-        assert (result.state, result.time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(7.25),))
+        assert (result.state, result.attempted_time_codes) == (ResultState.SUCCESS, (Usd.TimeCode(7.25),))
         assert _recorded(handle) == (7.25, 7.25)
         assert _timing() == before
 
@@ -201,7 +201,7 @@ def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
             (DiagnosticCode.NO_ATTACHED_STAGE, DiagnosticCategory.UNAVAILABLE_SOURCE, Severity.ERROR)
         ]
     # A failed synchronization still names the time code it attempted; a reload attempts none.
-    assert (synchronized.time_codes, reloaded.time_codes) == ((Usd.TimeCode(0),), ())
+    assert (synchronized.attempted_time_codes, reloaded.attempted_time_codes) == ((Usd.TimeCode(0),), ())
 
 
 def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -215,7 +215,7 @@ def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path:
             DiagnosticCategory.SOURCE_STATE,
             Severity.INFO,
         )
-        assert {Path(layer) for layer in diagnostic.layers} == set(scene.dirty_contributing.values())
+        assert {Path(layer) for layer in diagnostic.layer_identifiers} == set(scene.dirty_contributing.values())
 
 
 def test_an_unchanged_refresh_reports_equal_diagnostics(bindings: Bindings, tmp_path: Path) -> None:
@@ -235,7 +235,7 @@ def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
         before = handle.requested_settings()
         assert handle.reload() == Result()
         assert handle.requested_settings() == before
-        assert handle.synchronize(1) == Result(time_codes=(Usd.TimeCode(1),))  # nothing dirty left
+        assert handle.synchronize(1) == Result(attempted_time_codes=(Usd.TimeCode(1),))  # nothing dirty left
         stage = handle.live_stage()
         assert stage is not None
         assert read_values(stage) == scene.disk_values
@@ -252,7 +252,7 @@ def test_attaching_through_a_handle(bindings: Bindings, tmp_path: Path) -> None:
     caller = open_stage_without_cache(root)
     handle = bindings.create_binding(_scene())
     assert handle.attach(caller) == Result()
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     assert handle.live_stage() == caller
 
 
@@ -263,7 +263,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
         first, second = (bindings.create_binding(_scene()) for _ in range(2))
         for handle in (first, second):
             assert handle.attach(caller) == Result()
-            assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+            assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
         second_evaluation = _evaluation(bindings, second)
         before = records.stored(_scene(), configs.config_key(first.binding_id))
         assert first.release() is None
@@ -274,7 +274,7 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
         assert second.live_stage() == caller
         assert _evaluation(bindings, second) == second_evaluation
         assert first.attach(caller) == Result()
-        assert first.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert first.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -326,7 +326,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     undo.push("base")
     handle = bindings.create_binding(_scene())
     handle.attach(caller)
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     source = bindings.stages.get(handle.binding_id)
     assert source is not None
     undo.push("create")
@@ -335,7 +335,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     assert source.live_stage == caller
     undo.redo()
     assert handle.live_stage() == caller
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     undo.undo()
     assert handle.release() is None  # the record no longer exists
     assert source.live_stage is None
@@ -350,12 +350,12 @@ def test_a_removed_scenes_binding_keeps_only_its_attachment(bindings: Bindings, 
     removed = binding_on_file(bindings, other, _root(tmp_path))
     kept = binding_on_file(bindings, scene, _root(tmp_path))
     for handle in (removed, kept):
-        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     source = bindings.stages.get(removed.binding_id)
     assert source is not None
     caller = source.live_stage
     bpy.data.scenes.remove(other)
-    assert kept.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert kept.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     assert source.evaluation_stage is None
     assert source.live_stage == caller
     assert bindings.stages.get(kept.binding_id) is not None
@@ -369,7 +369,7 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     bindings: Bindings, tmp_path: Path, unusable: str
 ) -> None:
     handle = binding_on_file(bindings, _scene(), _root(tmp_path))
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     caller, evaluation = stages.live_stage, stages.evaluation_stage

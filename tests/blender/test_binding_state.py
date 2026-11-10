@@ -36,7 +36,10 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import BindingHandle, Bindings
 
 DIRTY = Diagnostic(
-    DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying layers with unsaved edits", layers=("/a.usda", "/b.usda")
+    DiagnosticCode.UNSAVED_LAYERS,
+    "binding",
+    "Displaying layers with unsaved edits",
+    layer_identifiers=("/a.usda", "/b.usda"),
 )
 UNAVAILABLE = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
 REVISION = SourceRevision("a revision")
@@ -79,13 +82,15 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path, tim
     binding_state.write_generation(bpy.data.collections["Shot"], _generation(handle, time))
     binding_state.write_last_attempt(_shot(), _attempt(time))
     save_and_reopen(tmp_path / "state.blend")
-    assert binding_state.read_generation(bpy.data.collections["Shot"]) == LoadedRecord(_generation(handle, time), 1)
-    assert binding_state.read_last_attempt(_shot()) == LoadedRecord(_attempt(time), 1)
+    assert binding_state.read_generation(bpy.data.collections["Shot"]) == LoadedRecord(
+        _generation(handle, time), binding_state.GENERATION.version
+    )
+    assert binding_state.read_last_attempt(_shot()) == LoadedRecord(_attempt(time), binding_state.ATTEMPT.version)
     assert destination_settings() == STORED_SETTINGS  # what the refusal cases change
 
 
 def destination_settings() -> dict[str, object]:
-    return _shot()[NAMESPACE][binding_state.GENERATION_KEY]["settings"].to_dict()
+    return _shot()[NAMESPACE][binding_state.GENERATION_KEY]["applied_settings"].to_dict()
 
 
 def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindings, tmp_path: Path) -> None:
@@ -96,7 +101,7 @@ def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindin
     del stored["cached_time_codes"]
     destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
     expected = GenerationMetadata(handle.binding_id, SETTINGS, 0.01, 12.5, REVISION, (DIRTY,))
-    assert binding_state.read_generation(destination) == LoadedRecord(expected, 1)
+    assert binding_state.read_generation(destination) == LoadedRecord(expected, binding_state.GENERATION.version)
 
 
 def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
@@ -139,16 +144,18 @@ def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindin
     assert window is not None
     window.scene = _scene()
     bpy.ops.scene.new(type="FULL_COPY")
-    assert binding_state.read_generation(bpy.data.collections["Shot.001"]) == LoadedRecord(_generation(handle), 1)
+    assert binding_state.read_generation(bpy.data.collections["Shot.001"]) == LoadedRecord(
+        _generation(handle), binding_state.GENERATION.version
+    )
 
 
 @pytest.mark.parametrize(
     ("change", "refusal"),
     [
-        ({VERSION_KEY: 2}, RefusalReason.NEWER),
-        ({"settings": STORED_SETTINGS | {"payload_policy": "load_some"}}, RefusalReason.INVALID),
-        ({"settings": STORED_SETTINGS | {"render_purposes": ["preview"]}}, RefusalReason.INVALID),
-        ({"settings": {"payload_policy": "load_none"}}, RefusalReason.INVALID),  # without the other settings
+        ({VERSION_KEY: binding_state.GENERATION.version + 1}, RefusalReason.NEWER),
+        ({"applied_settings": STORED_SETTINGS | {"payload_policy": "load_some"}}, RefusalReason.INVALID),
+        ({"applied_settings": STORED_SETTINGS | {"render_purposes": ["preview"]}}, RefusalReason.INVALID),
+        ({"applied_settings": {"payload_policy": "load_none"}}, RefusalReason.INVALID),  # without the other settings
         ({"unit_scale": 0.0}, RefusalReason.INVALID),
         ({"unit_scale": "one"}, RefusalReason.INVALID),
         ({"time_code": "twelve"}, RefusalReason.INVALID),

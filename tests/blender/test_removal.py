@@ -80,7 +80,7 @@ def test_users_are_removed_first_a_level_per_call(monkeypatch: pytest.MonkeyPatc
     second, second_mesh = _placeholder("Second")
     calls = _counted(monkeypatch, lambda _: False)
     outcome = removal.remove_unused({"a": first_mesh, "b": first, "c": second_mesh, "d": second})
-    assert outcome == removal.RemovalOutcome(removed={"a", "b", "c", "d"})
+    assert outcome == removal.RemovalOutcome(removed_keys={"a", "b", "c", "d"})
     assert calls == [2, 2]  # the objects, then the meshes they used
 
 
@@ -90,7 +90,7 @@ def test_what_something_else_uses_is_released_intact(monkeypatch: pytest.MonkeyP
     bpy.data.scenes["Scene"].collection.objects.link(obj)  # an unmanaged user
     calls = _counted(monkeypatch, lambda _: False)
     outcome = removal.remove_unused({"a": mesh, "b": obj})
-    assert outcome == removal.RemovalOutcome(released={"a", "b"})
+    assert outcome == removal.RemovalOutcome(released_keys={"a", "b"})
     assert calls == []
     assert obj.data == mesh
 
@@ -100,15 +100,18 @@ def test_a_holder_doesnt_keep_one_from_removal() -> None:
     staging = bpy.data.collections.new("Staging")
     staging.objects.link(obj)
     outcome = removal.remove_unused({"object": obj, "mesh": mesh}, holders=[staging])
-    assert outcome == removal.RemovalOutcome(removed={"object", "mesh"})
+    assert outcome == removal.RemovalOutcome(removed_keys={"object", "mesh"})
 
 
 def test_a_failure_leaves_it_and_what_it_uses_pending(monkeypatch: pytest.MonkeyPatch) -> None:
     obj, mesh = _placeholder("Failing")
     _counted(monkeypatch, lambda datablocks: obj in datablocks)
     outcome = removal.remove_unused({"object": obj, "mesh": mesh})
-    assert outcome.removed == outcome.released == set()
-    assert outcome.pending == {"object": "injected failure", "mesh": "a resource using it couldn't be removed"}
+    assert outcome.removed_keys == outcome.released_keys == set()
+    assert outcome.pending_reasons_by_key == {
+        "object": "injected failure",
+        "mesh": "a resource using it couldn't be removed",
+    }
     assert records.alive(obj) and records.alive(mesh)
 
 
@@ -116,5 +119,5 @@ def test_one_already_gone_counts_as_removed() -> None:
     obj, mesh = _placeholder("Gone")
     bpy.data.objects.remove(obj)
     assert removal.remove_unused({"object": obj, "none": None, "mesh": mesh}) == removal.RemovalOutcome(
-        removed={"object", "none", "mesh"}
+        removed_keys={"object", "none", "mesh"}
     )

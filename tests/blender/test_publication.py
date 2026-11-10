@@ -103,7 +103,7 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
     # new, and leaves nothing pending or staged; retirement removes what the earlier one published.
     with transaction.publication_failure(tmp_path) as scene:
         handle = _binding(bindings, scene, PayloadPolicy.LOAD_ALL)
-        assert handle.synchronize(10) == Result(time_codes=(Usd.TimeCode(10),))
+        assert handle.synchronize(10) == Result(attempted_time_codes=(Usd.TimeCode(10),))
         first = _published(handle)
         manifest = manifests.read_manifest(_destination())
         assert isinstance(manifest, LoadedRecord)
@@ -196,7 +196,7 @@ def test_a_failed_attempt_keeps_the_generation_and_records_itself(
         monkeypatch.undo()
         save_and_reopen(tmp_path / "failed.blend")
         assert binding_state.read_generation(_destination()) == generation
-        assert generation.record.settings.payload_policy is published_policy
+        assert generation.record.applied_settings.payload_policy is published_policy
         assert generation.record.time_code == published_time
         assert _last_attempt(handle) == LoadedRecord(attempt, 1)
 

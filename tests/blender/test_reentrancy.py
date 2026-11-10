@@ -100,7 +100,10 @@ def test_calls_during_a_synchronization_raise(
         assert result.state is ResultState.SUCCESS
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
         last = binding_state.read_last_attempt(destination(handle))
-        assert isinstance(last, records.LoadedRecord) and last.record.settings.payload_policy is PayloadPolicy.LOAD_ALL
+        assert (
+            isinstance(last, records.LoadedRecord)
+            and last.record.attempted_settings.payload_policy is PayloadPolicy.LOAD_ALL
+        )
         monkeypatch.setattr(_core, "SceneIndexChain", chain)
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
 
@@ -148,7 +151,7 @@ def test_calls_during_a_cleanup_retry_raise(
         monkeypatch.setattr(removal, "_batch_remove", reentering)
         result = handle.retry_cleanup()
         assert made == [CALLS]  # once
-        assert (result.state, result.cleanup_status) == (ResultState.SUCCESS, ())
+        assert (result.state, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, ())
         assert other.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
 

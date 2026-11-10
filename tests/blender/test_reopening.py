@@ -59,7 +59,13 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     manifest = ownership.manifest(handle.binding_id)
     assert isinstance(manifest, LoadedRecord)
     entries = {
-        entry_key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses, entry.place)
+        entry_key: (
+            entry.datablock and entry.datablock.name,
+            entry.source_entity_paths,
+            entry.role,
+            entry.dependency_entry_keys,
+            entry.object_index_in_copy,
+        )
         for entry_key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(found)

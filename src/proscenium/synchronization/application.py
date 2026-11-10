@@ -82,7 +82,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
             made.append((mesh_index, keys[mesh_index], mesh))
         obj = bpy.data.objects.new(object_name, mesh)
         work.track(object_key, identities[object_index].role, obj)
-        work.staging.objects.link(obj)
+        work.staging_collection.objects.link(obj)
         made.append((object_index, object_key, obj))
         obj.display_type = "BOUNDS"
         hidden["hide_viewport"].append(not viewport[copy])
@@ -94,7 +94,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
             parent_index = used[manifests.RepresentationRole.SHEAR_PARENT]
             parent = bpy.data.objects.new(f"{prefix}{next(object_indices):07d} {name} shear", None)
             work.track(keys[parent_index], identities[parent_index].role, parent)
-            work.staging.objects.link(parent)
+            work.staging_collection.objects.link(parent)
             hidden["hide_viewport"].append(False)
             hidden["hide_render"].append(False)
             made.append((parent_index, keys[parent_index], parent))
@@ -105,7 +105,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
         for index, key, datablock in made:
             resource = resources[index]
             uses = [keys[used] for used in resource.dependency_resource_indices]
-            work.entries[key] = manifests.ManifestEntry(
+            work.manifest_entries[key] = manifests.ManifestEntry(
                 datablock,
                 list(resource.source_entity_paths),
                 identities[index].role,
@@ -113,7 +113,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
                 resource.object_index_in_copy,
             )
     for flag, values in hidden.items():
-        work.staging.objects.foreach_set(flag, values)
+        work.staging_collection.objects.foreach_set(flag, values)
 
 
 def key_time_codes(
@@ -121,11 +121,11 @@ def key_time_codes(
 ) -> dict[str, manifests.ManifestEntryChange]:
     """Key each published copy's transform at each of plans' time codes; the manifest changes it makes.
 
-    Each change to a published object is undoable through work.undo. A copy's object first keyed gets an action, made
-    and held in work, and is keyed at own, the generation's time code, as it shows it, too. Keys are constant, so a
-    frame shows the latest key at or before it. The changes are each new action's entry, with its object's identity,
-    and its object's, using it. A copy the published generation lacks, as one appearing only at a cached time code, is
-    M7's. Raises whatever Blender raises.
+    Each change to a published object is undoable through work.rollback_actions. A copy's object first keyed gets an
+    action, made and held in work, and is keyed at own, the generation's time code, as it shows it, too. Keys are
+    constant, so a frame shows the latest key at or before it. The changes are each new action's entry, with its
+    object's identity, and its object's, using it. A copy the published generation lacks, as one appearing only at a
+    cached time code, is M7's. Raises whatever Blender raises.
     """
     keys = {identity: key for key, e in published.entries.items() if (identity := e.identity) is not None}
     changes: dict[str, manifests.ManifestEntryChange] = {}
@@ -148,9 +148,13 @@ def key_time_codes(
                 action_key = keys[action_identity] = manifests.new_entry_key()
                 _new_action(obj, action_key, own, work)
                 entry = published.entries[object_key]
-                changes[action_key] = manifests.ManifestEntryChange(entry.covers, action_identity.role, [], entry.place)
-                uses = [*entry.uses, action_key]
-                changes[object_key] = manifests.ManifestEntryChange(entry.covers, entry.role, uses, entry.place)
+                changes[action_key] = manifests.ManifestEntryChange(
+                    entry.source_entity_paths, action_identity.role, [], entry.object_index_in_copy
+                )
+                uses = [*entry.dependency_entry_keys, action_key]
+                changes[object_key] = manifests.ManifestEntryChange(
+                    entry.source_entity_paths, entry.role, uses, entry.object_index_in_copy
+                )
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
             world = _matrix_from_buffer(worlds, copy)
@@ -165,7 +169,9 @@ def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: Prepar
     """Give obj an action, held in work under action_key, keyed at own with the transform obj shows."""
     action = bpy.data.actions.new(obj.name)
     work.track(action_key, manifests.RepresentationRole.ACTION, action)
-    work.undo.append(obj.animation_data_clear)  # a copy's object has no animation data before its first action
+    work.rollback_actions.append(
+        obj.animation_data_clear
+    )  # a copy's object has no animation data before its first action
     obj.animation_data_create().action = action
     _insert_keys(action, obj, own, obj.matrix_basis, work)
 
@@ -180,7 +186,9 @@ def _insert_keys(
     for data_path, values in parts.items():
         for index, value in enumerate(values):
             fcurve = action.fcurve_ensure_for_datablock(obj, data_path, index=index)
-            work.undo.append(functools.partial(_remove_key, fcurve, time_code))  # before, so a failed insert is undone
+            work.rollback_actions.append(
+                functools.partial(_remove_key, fcurve, time_code)
+            )  # before, so a failed insert is undone
             fcurve.keyframe_points.insert(time_code, value, options={"FAST"}).interpolation = "CONSTANT"
 
 

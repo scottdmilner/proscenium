@@ -84,7 +84,7 @@ def _shown_at(handle: BindingHandle, frame: float) -> tuple[float, ...]:
     [obj] = [
         e.datablock
         for e in manifest.record.entries.values()
-        if e.role is RepresentationRole.OBJECT and e.covers == (MOVER,)
+        if e.role is RepresentationRole.OBJECT and e.source_entity_paths == (MOVER,)
     ]
     assert isinstance(obj, bpy.types.Object)
     return tuple(obj.matrix_world.translation[:])
@@ -106,7 +106,7 @@ def test_a_failing_call_caches_none_of_its_time_codes(
             _failing_keying(patch, after)
             result = handle.cache(scene.failing)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PREPARATION_FAILED]
-        assert result.time_codes == tuple(Usd.TimeCode(t) for t in scene.failing)
+        assert result.attempted_time_codes == tuple(Usd.TimeCode(t) for t in scene.failing)
         assert _held(handle) == before
         assert pending_cleanup.nothing_pending(handle.binding_id)
         [failed] = scene.failing

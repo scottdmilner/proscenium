@@ -73,7 +73,9 @@ def _reporting_cleanup[**P](
     def reporting(bindings: Bindings, binding_id: identifiers.BindingId, *args: P.args, **kwargs: P.kwargs) -> Result:
         result = operation(bindings, binding_id, *args, **kwargs)
         status = pending_cleanup.cleanup_status(binding_id)
-        return Result(*result.diagnostics, time_codes=result.time_codes, cleanup_status=status)
+        return Result(
+            *result.diagnostics, attempted_time_codes=result.attempted_time_codes, pending_cleanup_diagnostics=status
+        )
 
     return reporting
 
@@ -246,7 +248,7 @@ class Bindings:
         Raises RefusedRecordError if the binding's configuration can't be read, and DisabledBindingError if it has
         copies and no canonical candidate.
         """
-        return self._require_binding(binding_id).usable_config().settings
+        return self._require_binding(binding_id).usable_config().requested_settings
 
     @_reporting_cleanup
     def set_settings(
@@ -273,8 +275,8 @@ class Bindings:
         if not found.usable:
             return _unusable_binding_result(found)
         config = found.usable_config()
-        settings = dataclasses.replace(config.settings, **{k: v for k, v in given.items() if v is not None})
-        binding_configs.set_config(binding_id, dataclasses.replace(config, settings=settings))
+        settings = dataclasses.replace(config.requested_settings, **{k: v for k, v in given.items() if v is not None})
+        binding_configs.set_config(binding_id, dataclasses.replace(config, requested_settings=settings))
         return Result()
 
     @_exclusive
@@ -287,7 +289,9 @@ class Bindings:
         given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
         found = self._require_binding(binding_id)
         if not found.usable:
-            return Result(*_unusable_binding_result(found).diagnostics, time_codes=() if given is None else (given,))
+            return Result(
+                *_unusable_binding_result(found).diagnostics, attempted_time_codes=() if given is None else (given,)
+            )
         config = found.usable_config()
         result = transaction.synchronize(binding_id, config, self.stages, given)
         # Every failure before publication is fatal, and none after it (transaction.synchronize), so it published.
@@ -328,7 +332,7 @@ class Bindings:
             return _unusable_binding_result(found)
         config = found.usable_config()
         try:
-            self._get_or_create_stages(binding_id).reload(config.settings.payload_policy, layers)
+            self._get_or_create_stages(binding_id).reload(config.requested_settings.payload_policy, layers)
         except stages.SourceUnavailableError as error:
             return _source_unavailable_result(binding_id, error)
         return Result()
@@ -422,12 +426,16 @@ def _source_unavailable_result(binding_id: identifiers.BindingId, error: stages.
 
 def _unusable_binding_result(found: binding_configs.FoundBinding) -> Result:
     """Build the refusal result for an unreadable or ambiguously copied binding."""
-    if found.unreadable is not None:
-        diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, found.binding_id, found.unreadable.message)
+    if found.configuration_refusal is not None:
+        diagnostic = Diagnostic(
+            DiagnosticCode.UNSUPPORTED_RECORD, found.binding_id, found.configuration_refusal.message
+        )
         return Result(diagnostic)
-    report = found.copies
+    report = found.disabled_candidate_report
     assert report is not None
-    named = ", ".join(f"{c.scene or 'no scene'}/{c.destination or 'no destination'}" for c in report.candidates)
+    named = ", ".join(
+        f"{c.scene_name or 'no scene'}/{c.destination_name or 'no destination'}" for c in report.candidates
+    )
     message = f"Binding {report.binding_id} has copies and no canonical candidate ({report.reason}): {named}"
     return Result(Diagnostic(DiagnosticCode.COPIED_BINDING, report.binding_id, message))
 

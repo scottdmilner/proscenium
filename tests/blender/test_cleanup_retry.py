@@ -49,7 +49,7 @@ def _names() -> set[tuple[str, str]]:
 def _by_name(ledger: dict[str, LedgerEntry]) -> dict[str, tuple[object, ...]]:
     """The ledger's entries with their pointers as names: references don't survive a reopen."""
     return {
-        k: (e.binding_id, e.entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
+        k: (e.binding_id, e.manifest_entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
         for k, e in ledger.items()
     }
 
@@ -81,7 +81,7 @@ def test_a_retry_after_reopening_resolves_it_all(bindings: Bindings, tmp_path: P
         assert names <= {name for _, name in _names()}  # no cleanup ran
         assert handle.live_stage() is None  # unattached: the retry needs no USD
         result = handle.retry_cleanup()
-        assert (result.state, result.diagnostics, result.cleanup_status) == (ResultState.SUCCESS, (), ())
+        assert (result.state, result.diagnostics, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, (), ())
         assert _ledger() == {}
         assert _names() == baseline
 
@@ -120,7 +120,7 @@ def test_a_retry_that_resolves_nothing_fails(
         after = _ledger()
         assert after.keys() == before.keys()
         assert {e.diagnostic for e in after.values()} == set(result.diagnostics[1:])
-        assert set(result.cleanup_status) == set(result.diagnostics[1:])
+        assert set(result.pending_cleanup_diagnostics) == set(result.diagnostics[1:])
         assert set(result.diagnostics[1:]).isdisjoint(failed.diagnostics)  # fresh, not the attempt's
 
 
@@ -137,7 +137,7 @@ def test_a_retry_that_resolves_some_completes_with_issues(
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         [diagnostic] = result.diagnostics
         [(ledger_key, entry)] = _ledger().items()
-        assert (entry.datablock, entry.diagnostic, diagnostic.resource) == (mesh, diagnostic, ledger_key)
+        assert (entry.datablock, entry.diagnostic, diagnostic.pending_resource_key) == (mesh, diagnostic, ledger_key)
 
 
 def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_path: Path) -> None:
@@ -148,7 +148,7 @@ def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_pa
         others = {k: e for k, e in _ledger().items() if e.binding_id == other.binding_id}
         assert handle.retry_cleanup().state is ResultState.SUCCESS
         assert _ledger() == others
-        assert len(other.retry_cleanup().cleanup_status) == 0
+        assert len(other.retry_cleanup().pending_cleanup_diagnostics) == 0
         assert _ledger() == {}
 
 

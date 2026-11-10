@@ -105,10 +105,10 @@ def test_the_payload_policy_is_stored_as_its_value(bindings: Bindings) -> None:
     handle = bindings.create_binding(_scene(), payload_policy=PayloadPolicy.LOAD_NONE)
     stored = records.stored(bpy.data.collections["USD Display"], configs.config_key(handle.binding_id))
     assert stored == {
-        records.VERSION_KEY: 1,
+        records.VERSION_KEY: configs.CONFIG.version,
         "scene": _scene(),
         "root_layer_identifier": None,
-        "settings": {
+        "requested_settings": {
             "payload_policy": "load_none",
             "coordinate_conversion": False,
             "viewport_purposes": ["default", "proxy"],
@@ -116,7 +116,7 @@ def test_the_payload_policy_is_stored_as_its_value(bindings: Bindings) -> None:
         },
     }
     config = _config(handle)
-    assert config.settings.payload_policy is PayloadPolicy.LOAD_NONE
+    assert config.requested_settings.payload_policy is PayloadPolicy.LOAD_NONE
 
 
 def test_a_scenes_bindings(bindings: Bindings, tmp_path: Path) -> None:
@@ -186,7 +186,7 @@ def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) 
         before = [_config(h) for h in (other, attached)]
         changed.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
         assert [_config(h) for h in (other, attached)] == before
-        assert _config(changed).settings.payload_policy is PayloadPolicy.LOAD_NONE
+        assert _config(changed).requested_settings.payload_policy is PayloadPolicy.LOAD_NONE
 
 
 def test_conversion_and_purpose_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) -> None:
@@ -202,7 +202,7 @@ def test_conversion_and_purpose_settings_change_only_their_binding(bindings: Bin
         )
         assert result.is_success
         assert _config(other) == before
-        settings = _config(changed).settings
+        settings = _config(changed).requested_settings
         expected = (True, ("default", "guide"), ("render",), PayloadPolicy.LOAD_ALL)
         assert (
             settings.coordinate_conversion,
@@ -212,7 +212,7 @@ def test_conversion_and_purpose_settings_change_only_their_binding(bindings: Bin
         ) == expected
         with pytest.raises(ValueError, match="preview"):
             changed.set_settings(viewport_purposes=["preview"])
-        assert _config(changed).settings == settings
+        assert _config(changed).requested_settings == settings
 
 
 # Handles across undo, redo, and save/reopen.
@@ -235,7 +235,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
     handle.attach(open_stage_without_cache(scene.root))
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
 def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
@@ -244,11 +244,13 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root)
         before = _config(handle)
-        assert handle.synchronize(Usd.TimeCode.Default()) == Result(time_codes=(Usd.TimeCode(Usd.TimeCode.Default()),))
+        assert handle.synchronize(Usd.TimeCode.Default()) == Result(
+            attempted_time_codes=(Usd.TimeCode(Usd.TimeCode.Default()),)
+        )
         assert _config(handle) == before  # API-02
         live = handle.live_stage()
         assert live is not None and live != scene.caller
-        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
+        assert handle.synchronize(3) == Result(attempted_time_codes=(Usd.TimeCode(3),))
         assert handle.live_stage() == live  # the same attachment after a second refresh
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE) == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-03
@@ -261,7 +263,7 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
         assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
-        assert handle.synchronize(3) == Result(time_codes=(Usd.TimeCode(3),))
+        assert handle.synchronize(3) == Result(attempted_time_codes=(Usd.TimeCode(3),))
         assert live.GetLoadSet()  # the caller's load set is protected
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None and stages.evaluation_stage is not None
@@ -290,7 +292,7 @@ def test_undoing_creation_makes_handles_raise(bindings: Bindings, tmp_path: Path
             with pytest.raises(BindingNotFoundError):
                 call()
     undo.redo()
-    assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+    assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
 # Reopening.
@@ -339,13 +341,13 @@ def test_an_attached_source_is_unavailable_after_reopening(
     handle = bindings.create_binding(_scene())
     with source_access.reattach(tmp_path) as scene:
         handle.attach(scene.caller)
-        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
         save_and_reopen(tmp_path / "reopen.blend")
         result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert handle.attach(scene.caller) == Result()
-        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
 # A configuration that can't be read.
@@ -371,7 +373,7 @@ def test_an_unsupported_configuration_is_kept_and_refuses(bindings: Bindings, tm
             assert isinstance(refused, records.RefusedRecord)
             assert refused.refusal is versions.bindings_refused[name]
             assert diagnostic.message == refused.message
-        assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
+        assert handle.synchronize().attempted_time_codes == ()  # refused before any time code is chosen
         with pytest.raises(RefusedRecordError):
             handle.requested_settings()
         assert bindings.in_scene(_scene()) == [handle]  # on the scene linking its collection
@@ -405,7 +407,7 @@ def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Binding
         assert refused.refusal is versions.manifests_refused["unknown-role"]
         assert "hologram" in refused.message
         diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, handle.binding_id, refused.message)
-        assert handle.synchronize(0) == Result(diagnostic, time_codes=(Usd.TimeCode(0),))
+        assert handle.synchronize(0) == Result(diagnostic, attempted_time_codes=(Usd.TimeCode(0),))
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None and stages.evaluation_stage is None  # never acquired
         assert records.stored(destination, MANIFEST_KEY) == stored
@@ -448,7 +450,7 @@ def test_an_open_file_does_not_supply_an_attachment(bindings: Bindings, tmp_path
         assert _config(handle) == before
         assert handle.attach(scene.caller) == Result()
         assert handle.live_stage() == scene.caller
-        assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
 def test_a_stage_over_the_same_root_layer_reattaches(bindings: Bindings, tmp_path: Path) -> None:
@@ -465,7 +467,7 @@ def test_a_different_root_layer_needs_confirmation(bindings: Bindings, tmp_path:
     with source_access.reattach(tmp_path) as scene:
         a.attach(scene.caller)
         b.attach(scene.caller)
-        assert a.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
+        assert a.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
         stages = bindings.stages.get(a.binding_id)
         assert stages is not None
         evaluation = stages.evaluation_stage

@@ -39,13 +39,13 @@ def retire(
     """
     outcome = removal.remove_unused({entry_key: e.datablock for entry_key, e in obsolete.items()})
     pending: dict[str, ledgers.LedgerEntry] = {}  # by ledger key
-    for entry_key, problem in sorted(outcome.pending.items()):
+    for entry_key, problem in sorted(outcome.pending_reasons_by_key.items()):
         datablock, role = obsolete[entry_key].datablock, obsolete[entry_key].role
         assert datablock is not None  # one gone counts as removed
         ledger_key = ledgers.new_ledger_key()
         message = f"Couldn't retire obsolete {role} {datablock.name!r}: {problem}"
         diagnostic = Diagnostic(
-            DiagnosticCode.RETIREMENT_FAILED, binding_id, message, resource=ledger_key, role=str(role)
+            DiagnosticCode.RETIREMENT_FAILED, binding_id, message, pending_resource_key=ledger_key, role=str(role)
         )
         pending[ledger_key] = ledgers.LedgerEntry(binding_id, entry_key, role, datablock, operation, diagnostic)
     pending_cleanup.set_ledger_entries(pending)

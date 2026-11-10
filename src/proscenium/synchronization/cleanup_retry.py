@@ -38,8 +38,8 @@ def retry_cleanup(binding_id: identifiers.BindingId) -> Result:
         return Result()
     [text] = configs.index_texts()  # the ledger's, one of each leftover's users
     outcome = removal.remove_unused({key: e.datablock for key, e in entries.items()}, holders=[text])
-    resolved = sorted(outcome.removed | outcome.released)
-    changed = {key: _pending(entries[key], key, problem) for key, problem in outcome.pending.items()}
+    resolved = sorted(outcome.removed_keys | outcome.released_keys)
+    changed = {key: _pending(entries[key], key, problem) for key, problem in outcome.pending_reasons_by_key.items()}
     pending_cleanup.set_ledger_entries(changed, resolved)  # a failure is a defect, and raises
     diagnostics = [e.diagnostic for e in changed.values()]
     if changed and not resolved:
@@ -52,5 +52,7 @@ def _pending(entry: ledgers.LedgerEntry, ledger_key: str, problem: str) -> ledge
     """Entry with a fresh diagnostic saying why it's still pending, under its original code."""
     assert entry.datablock is not None
     message = f"Couldn't remove pending {entry.role} {entry.datablock.name!r}: {problem}"
-    diagnostic = Diagnostic(entry.diagnostic.code, entry.binding_id, message, resource=ledger_key, role=str(entry.role))
+    diagnostic = Diagnostic(
+        entry.diagnostic.code, entry.binding_id, message, pending_resource_key=ledger_key, role=str(entry.role)
+    )
     return dataclasses.replace(entry, diagnostic=diagnostic)

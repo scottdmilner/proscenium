@@ -33,9 +33,9 @@ if TYPE_CHECKING:
 class RemovalOutcome[K: Hashable]:
     """What remove_unused did with each datablock, by the caller's key for it."""
 
-    removed: set[K] = field(default_factory=set)  # removed, or already gone
-    released: set[K] = field(default_factory=set)  # left intact: something else uses it
-    pending: dict[K, str] = field(default_factory=dict)  # left as it was, with why
+    removed_keys: set[K] = field(default_factory=set)  # removed, or already gone
+    released_keys: set[K] = field(default_factory=set)  # left intact: something else uses it
+    pending_reasons_by_key: dict[K, str] = field(default_factory=dict)  # left as it was, with why
 
 
 def remove_unused[K: Hashable](
@@ -50,7 +50,7 @@ def remove_unused[K: Hashable](
     present: dict[K, bpy.types.ID] = {}
     for key, datablock in datablocks.items():
         if datablock is None or not records.alive(datablock):
-            outcome.removed.add(key)
+            outcome.removed_keys.add(key)
         else:
             present[key] = datablock
     if not present:
@@ -63,17 +63,17 @@ def remove_unused[K: Hashable](
     while undecided:
         before = len(undecided)
         level = _classify_and_collect_removable(undecided, users, key_of, outcome)
-        undecided -= outcome.released | outcome.pending.keys() | set(level)
+        undecided -= outcome.released_keys | outcome.pending_reasons_by_key.keys() | set(level)
         if len(undecided) == before:  # nothing decided: what's left uses each other
             break
         failures = remove_datablocks_collecting_failures([present[key] for key in level])
         for index, key in enumerate(level):
             if (error := failures.get(index)) is not None:
-                outcome.pending[key] = str(error)
+                outcome.pending_reasons_by_key[key] = str(error)
             else:
-                outcome.removed.add(key)
+                outcome.removed_keys.add(key)
     for key in undecided:  # only datablocks using each other in a cycle are left
-        outcome.pending[key] = "it and the resources using it use each other"
+        outcome.pending_reasons_by_key[key] = "it and the resources using it use each other"
     return outcome
 
 
@@ -84,11 +84,11 @@ def _classify_and_collect_removable[K: Hashable](
     level: list[K] = []
     for key in sorted(undecided, key=str):
         using = {key_of.get(uid) for uid in users[key]}
-        if None in using or using & outcome.released:  # something besides the others uses it
-            outcome.released.add(key)
-        elif using & outcome.pending.keys():
-            outcome.pending[key] = "a resource using it couldn't be removed"
-        elif using <= outcome.removed:
+        if None in using or using & outcome.released_keys:  # something besides the others uses it
+            outcome.released_keys.add(key)
+        elif using & outcome.pending_reasons_by_key.keys():
+            outcome.pending_reasons_by_key[key] = "a resource using it couldn't be removed"
+        elif using <= outcome.removed_keys:
             level.append(key)
     return level
 

@@ -49,13 +49,15 @@ def synchronize(
         time_code = Usd.TimeCode(scene.frame_current + scene.frame_subframe)
     if isinstance(last := binding_state.read_last_attempt(destination), records.RefusedRecord):
         # Kept, so this attempt goes unrecorded.
-        return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), time_codes=(time_code,))
+        return Result(
+            Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), attempted_time_codes=(time_code,)
+        )
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
     binding_configs.restore_missing_binding_index_entry(binding_id, record)
-    result = Result(*_attempt(binding_id, config, destination, current, time_code), time_codes=(time_code,))
+    result = Result(*_attempt(binding_id, config, destination, current, time_code), attempted_time_codes=(time_code,))
     encoded_time_code = binding_state.encode_time_code(time_code)
-    attempt = binding_state.LastSynchronizationAttempt(config.settings, encoded_time_code, result.diagnostics)
+    attempt = binding_state.LastSynchronizationAttempt(config.requested_settings, encoded_time_code, result.diagnostics)
     binding_state.write_last_attempt(destination, attempt)
     return result
 
@@ -79,7 +81,7 @@ def _attempt(
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
     if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
         return (refused,)
-    settings, unit_scale = config.settings, scene.unit_settings.scale_length
+    settings, unit_scale = config.requested_settings, scene.unit_settings.scale_length
     stages_ = current.get_or_create_binding_stages(binding_id)
     try:
         evaluation_stage = stages_.acquire_evaluation_stage(settings.payload_policy)

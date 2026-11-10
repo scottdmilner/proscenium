@@ -38,13 +38,15 @@ class BindingConfig:
     """A binding's configuration: its target scene, last attached root identifier, and requested settings."""
 
     scene: bpy.types.Scene | None  # its target scene; None once the scene is removed, which removes the binding
-    settings: binding_settings.RequestedSettings
+    requested_settings: binding_settings.RequestedSettings
     root_layer_identifier: str | None = None  # of the stage last attached; informative only
 
     def __post_init__(self) -> None:
-        if isinstance(self.settings, Mapping):
-            object.__setattr__(self, "settings", binding_settings.RequestedSettings(**self.settings))
-        if not isinstance(self.settings, binding_settings.RequestedSettings):
+        if isinstance(self.requested_settings, Mapping):
+            object.__setattr__(
+                self, "requested_settings", binding_settings.RequestedSettings(**self.requested_settings)
+            )
+        if not isinstance(self.requested_settings, binding_settings.RequestedSettings):
             raise TypeError("the requested settings are not a group")
         if not isinstance(self.root_layer_identifier, str | None):
             raise TypeError("the root-layer identifier is not a string")

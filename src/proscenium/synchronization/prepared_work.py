@@ -3,8 +3,8 @@
 The application layer holds each resource it creates (PreparationResources.track) before anything else can fail, so
 a failure partway finds everything made so far to dispose of (TXN-08). Resources reused from the published generation
 are never held, so they're never disposal candidates (TXN-09). A cache call also changes published resources, adding
-keys, and holds how to undo each change before making it (PreparationResources.undo), so a failure partway reverts
-them all (CACHE-03).
+keys, and holds how to undo each change before making it (PreparationResources.rollback_actions), so a failure partway
+reverts them all (CACHE-03).
 
 dispose removes the held resources as retirement and a cleanup retry do (removal.remove_unused), users first, the
 staging collection aside. Only one whose removal fails, or whose user's did, enters the pending-cleanup ledger,
@@ -40,11 +40,15 @@ class PreparationResources:
 
     binding_id: identifiers.BindingId  # the binding preparing it, which owns it
     operation: ledgers.OriginatingOperation
-    staging: bpy.types.Collection  # holds the prepared objects; no scene links it
+    staging_collection: bpy.types.Collection  # holds the prepared objects; no scene links it
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
     roles: dict[str, manifests.RepresentationRole] = field(default_factory=dict)  # entry key -> its datablock's role
-    entries: dict[str, manifests.ManifestEntry] = field(default_factory=dict)  # entry key -> its entry, once complete
-    undo: list[Callable[[], object]] = field(default_factory=list)  # undoes each change to a published resource
+    manifest_entries: dict[str, manifests.ManifestEntry] = field(
+        default_factory=dict
+    )  # entry key -> its entry, once complete
+    rollback_actions: list[Callable[[], object]] = field(
+        default_factory=list
+    )  # undoes each change to a published resource
 
     def track(self, entry_key: str, role: manifests.RepresentationRole, datablock: bpy.types.ID) -> None:
         """Hold a resource just created, before anything else can fail."""
@@ -80,14 +84,14 @@ def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
 
     Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
     """
-    outcome = removal.remove_unused(work.datablocks, holders=[work.staging])
+    outcome = removal.remove_unused(work.datablocks, holders=[work.staging_collection])
     pending: dict[str, ledgers.LedgerEntry] = {}
-    for entry_key, problem in outcome.pending.items():
+    for entry_key, problem in outcome.pending_reasons_by_key.items():
         datablock, role = work.datablocks[entry_key], work.roles[entry_key]
         ledger_key = ledgers.new_ledger_key()
         message = f"Couldn't dispose of prepared {role} {datablock.name!r}: {problem}"
         diagnostic = Diagnostic(
-            DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, resource=ledger_key, role=str(role)
+            DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, pending_resource_key=ledger_key, role=str(role)
         )
         pending[ledger_key] = ledgers.LedgerEntry(
             work.binding_id, entry_key, role, datablock, work.operation, diagnostic
@@ -105,12 +109,12 @@ def revert_published_resource_changes(work: PreparationResources) -> None:
     Raises the first undo that failed, as a defect, having tried the rest, with the others' failures as notes.
     """
     failed: list[Exception] = []
-    for step in reversed(work.undo):
+    for step in reversed(work.rollback_actions):
         try:
             step()
         except Exception as error:  # noqa: BLE001 - the rest is still undone, and the first failure raised
             failed.append(error)
-    work.undo.clear()
+    work.rollback_actions.clear()
     if failed:
         for other in failed[1:]:
             failed[0].add_note(f"Another undo also failed: {other}")
@@ -119,8 +123,8 @@ def revert_published_resource_changes(work: PreparationResources) -> None:
 
 def remove_staging_and_clear_tracking(work: PreparationResources) -> None:
     """Remove the staging collection and clear resource tracking and rollback callbacks."""
-    bpy.data.batch_remove([work.staging])
+    bpy.data.batch_remove([work.staging_collection])
     work.datablocks.clear()
     work.roles.clear()
-    work.entries.clear()
-    work.undo.clear()
+    work.manifest_entries.clear()
+    work.rollback_actions.clear()

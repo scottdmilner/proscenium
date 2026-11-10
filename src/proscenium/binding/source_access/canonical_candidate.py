@@ -40,7 +40,9 @@ class CanonicalCandidateReason(StrEnum):
 class CanonicalDecision:
     """The rule's decision on an identity's candidates, and why."""
 
-    canonical: int | None  # the canonical candidate's position in the candidates, or None: all are disabled
+    canonical_candidate_index: (
+        int | None
+    )  # the canonical candidate's position in the candidates, or None: all are disabled
     reason: CanonicalCandidateReason
 
 

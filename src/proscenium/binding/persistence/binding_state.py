@@ -49,11 +49,13 @@ def decode_time_code(stored: float | None) -> Usd.TimeCode:
     return Usd.TimeCode.Default() if stored is None else Usd.TimeCode(stored)
 
 
-def _restore_record_field_types(record: Any) -> None:
+def _restore_record_field_types(record: Any, settings_field: str) -> None:
     """Turn a stored record's plain values back into the fields' types; ValueError or TypeError if they can't be."""
-    if isinstance(record.settings, Mapping):
-        object.__setattr__(record, "settings", binding_settings.RequestedSettings(**record.settings))
-    if not isinstance(record.settings, binding_settings.RequestedSettings):
+    settings = getattr(record, settings_field)
+    if isinstance(settings, Mapping):
+        settings = binding_settings.RequestedSettings(**settings)
+        object.__setattr__(record, settings_field, settings)
+    if not isinstance(settings, binding_settings.RequestedSettings):
         raise TypeError("the settings are not a group")
     if not isinstance(record.time_code, float | None):
         raise TypeError("a time code is a float, or None for the default time code")
@@ -66,7 +68,7 @@ class GenerationMetadata:
     """The settings, source state, time codes, and diagnostics of a binding's published generation."""
 
     binding_id: identifiers.BindingId
-    settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
+    applied_settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
     unit_scale: float  # its target scene's then, which planning applied
     time_code: float | None  # see encode_time_code
     source_revision: stages.SourceRevision  # BindingStages.source_revision when it was synchronized
@@ -75,7 +77,7 @@ class GenerationMetadata:
     cached_time_codes: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
-        _restore_record_field_types(self)
+        _restore_record_field_types(self, "applied_settings")
         if type(self.binding_id) is not str:
             raise TypeError("a generation names its binding")
         if type(self.unit_scale) is not float:
@@ -102,12 +104,12 @@ class GenerationMetadata:
 class LastSynchronizationAttempt:
     """The most recent synchronization attempt: what it asked for, and how it ended."""
 
-    settings: binding_settings.RequestedSettings  # the binding's requested settings when it started
+    attempted_settings: binding_settings.RequestedSettings  # the binding's requested settings when it started
     time_code: float | None  # see encode_time_code
     diagnostics: tuple[results.Diagnostic, ...]
 
     def __post_init__(self) -> None:
-        _restore_record_field_types(self)
+        _restore_record_field_types(self, "attempted_settings")
 
     @property
     def result_state(self) -> results.ResultState:

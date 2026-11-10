@@ -22,9 +22,13 @@ def key(name: str) -> str:
 
 def object_entry(datablock: bpy.types.ID | None, entity: str, uses: tuple[str, ...] = ()) -> ManifestEntry:
     """An entry for a drawn copy's only object, covering entity and using the entries named uses."""
-    return ManifestEntry(datablock, [entity], RepresentationRole.OBJECT, [key(name) for name in uses], place=0)
+    return ManifestEntry(
+        datablock, [entity], RepresentationRole.OBJECT, [key(name) for name in uses], object_index_in_copy=0
+    )
 
 
 def object_change(entity: str, uses: tuple[str, ...] = ()) -> ManifestEntryChange:
     """object_entry's change, for an update: the same entry without its datablock."""
-    return ManifestEntryChange([entity], RepresentationRole.OBJECT, [key(name) for name in uses], place=0)
+    return ManifestEntryChange(
+        [entity], RepresentationRole.OBJECT, [key(name) for name in uses], object_index_in_copy=0
+    )

@@ -54,10 +54,18 @@ def _entries(binding_id: BindingId) -> dict[str, LedgerEntry]:
     mesh = bpy.data.meshes.new("Leftover")
     obj = bpy.data.objects.new("Leftover", mesh)
     retired = Diagnostic(
-        DiagnosticCode.RETIREMENT_FAILED, binding_id, "Couldn't retire", resource=key("mesh"), role="bounds mesh"
+        DiagnosticCode.RETIREMENT_FAILED,
+        binding_id,
+        "Couldn't retire",
+        pending_resource_key=key("mesh"),
+        role="bounds mesh",
     )
     disposed = Diagnostic(
-        DiagnosticCode.DISPOSAL_FAILED, binding_id, "Couldn't dispose", resource=key("object"), role="object"
+        DiagnosticCode.DISPOSAL_FAILED,
+        binding_id,
+        "Couldn't dispose",
+        pending_resource_key=key("object"),
+        role="object",
     )
     synchronize = OriginatingOperation.SYNCHRONIZE
     return {
@@ -208,14 +216,18 @@ def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp
     assert stage is not None
     status = tuple(e.diagnostic for _, e in sorted(entries.items()))
     for result in (handle.synchronize(0), handle.attach(stage), handle.set_settings(), handle.reload()):
-        assert (result.state, result.diagnostics, result.cleanup_status) == (ResultState.SUCCESS, (), status)
+        assert (result.state, result.diagnostics, result.pending_cleanup_diagnostics) == (
+            ResultState.SUCCESS,
+            (),
+            status,
+        )
     # A refusal reports it too.
     refused = bindings.synchronize(other, 0)
     assert refused.state is ResultState.FATAL_FAILURE
-    assert refused.cleanup_status == (others[key("other")].diagnostic,)
+    assert refused.pending_cleanup_diagnostics == (others[key("other")].diagnostic,)
     # Resolved work leaves the status.
     runtime.pending_cleanup.set_ledger_entries({}, list(entries))
-    assert handle.synchronize(0).cleanup_status == ()
+    assert handle.synchronize(0).pending_cleanup_diagnostics == ()
 
 
 def _stored() -> object:

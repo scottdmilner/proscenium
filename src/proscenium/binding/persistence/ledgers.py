@@ -59,14 +59,14 @@ class LedgerEntry:
     """One pending resource."""
 
     binding_id: identifiers.BindingId  # the binding that owns it
-    entry_key: str  # its key in that binding's manifest: the entry it was prepared as, or published as
+    manifest_entry_key: str  # its key in that binding's manifest: the entry it was prepared as, or published as
     role: RepresentationRole  # a record stores the value
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it
     operation: OriginatingOperation
     diagnostic: results.Diagnostic  # why its removal failed, naming its ledger key
 
     def __post_init__(self) -> None:
-        if type(self.binding_id) is not str or type(self.entry_key) is not str:
+        if type(self.binding_id) is not str or type(self.manifest_entry_key) is not str:
             raise TypeError("an entry names its binding and its entry key")
         if not isinstance(self.datablock, bpy.types.ID | None):
             raise TypeError("an entry's datablock is not one")

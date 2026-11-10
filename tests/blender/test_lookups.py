@@ -108,10 +108,10 @@ def test_undo_reverts_a_configuration(bindings: Bindings, tmp_path: Path) -> Non
     handle = _managed(bindings, tmp_path)
     undo.push("base")
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    assert _config(handle).settings.payload_policy is PayloadPolicy.LOAD_NONE
+    assert _config(handle).requested_settings.payload_policy is PayloadPolicy.LOAD_NONE
     undo.push("settings")
     undo.undo()
-    assert _config(handle).settings.payload_policy is PayloadPolicy.LOAD_ALL
+    assert _config(handle).requested_settings.payload_policy is PayloadPolicy.LOAD_ALL
 
 
 def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], list[str]]:
@@ -176,10 +176,10 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     # An entry stored by hand: the update reads it, and keeps it, so a whole write would show as its loss.
     destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"][key("marker")] = {
         "datablock": None,
-        "covers": ["/World/Marker"],
+        "source_entity_paths": ["/World/Marker"],
         "role": "object",
-        "uses": [],
-        "place": 0,
+        "dependency_entry_keys": [],
+        "object_index_in_copy": 0,
     }
     # b keeps its datablock and covers another path; c and d are new, and d uses c.
     ownership.set_manifest_entries(
@@ -366,7 +366,7 @@ def test_a_scene_copy_made_after_a_lookup(bindings: Bindings, tmp_path: Path, ki
     oracle.assert_ownership_matches_manifests()
     if kind == "FULL_COPY":
         [copied] = bindings.copied()
-        assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
+        assert [(c.scene_name, c.is_canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
         (copied_object,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
         destination = copy.collection.children[0]
         assert [c.destination for c in ownership.of(copied_object).claims] == [destination]
@@ -460,14 +460,16 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
     readable = bindings.create_binding(_scene(), name="A")
     unreadable = bindings.create_binding(_scene(), name="B")
-    bpy.data.collections["B"][records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
+    bpy.data.collections["B"][records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = (
+        configs.CONFIG.version + 1
+    )
     found = runtime.binding_configs.find_bindings()
     assert found == [
         runtime.binding_configs.find_binding(readable.binding_id),
         runtime.binding_configs.find_binding(unreadable.binding_id),
     ]
     assert [f.usable for f in found] == [True, False]
-    assert isinstance(found[1].unreadable, RefusedRecord)
+    assert isinstance(found[1].configuration_refusal, RefusedRecord)
     assert found[1].config is None
     with pytest.raises(RefusedRecordError):
         found[1].usable_config()
@@ -525,9 +527,9 @@ def test_a_manifest_cant_be_changed_through_a_caller(bindings: Bindings, tmp_pat
     with pytest.raises((TypeError, AttributeError)):
         found.record.entries[key("c")] = entries[key("b")]  # ty: ignore[invalid-assignment] - the point: it's read-only
     with pytest.raises((TypeError, AttributeError)):
-        found.record.entries[key("a")].covers.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
+        found.record.entries[key("a")].source_entity_paths.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
     with pytest.raises((TypeError, AttributeError)):
-        found.record.entries[key("a")].uses.append(key("a"))  # ty: ignore[unresolved-attribute]
+        found.record.entries[key("a")].dependency_entry_keys.append(key("a"))  # ty: ignore[unresolved-attribute]
     assert ownership.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
 
 

@@ -9,10 +9,12 @@ import pytest
 from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Result, ResultState
 
-DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layers=("/a.usda",))
+DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layer_identifiers=("/a.usda",))
 UNATTACHED = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
 FAILED = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "binding", "Evaluating the source failed")
-LEFTOVER = Diagnostic(DiagnosticCode.DISPOSAL_FAILED, "binding", "Couldn't dispose", resource="0" * 32, role="object")
+LEFTOVER = Diagnostic(
+    DiagnosticCode.DISPOSAL_FAILED, "binding", "Couldn't dispose", pending_resource_key="0" * 32, role="object"
+)
 
 
 def test_with_no_diagnostics_or_only_source_state_it_succeeds() -> None:
@@ -64,7 +66,9 @@ def test_the_core_tells_its_problems_apart_by_their_wording() -> None:
 
 
 def test_problems_about_different_things_stay_apart() -> None:
-    other_layer = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layers=("/b.usda",))
+    other_layer = Diagnostic(
+        DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layer_identifiers=("/b.usda",)
+    )
     other_binding = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "other", "Evaluating the source failed")
     assert Result(DIRTY, other_layer, FAILED, other_binding).diagnostics == (
         DIRTY,
@@ -77,12 +81,12 @@ def test_problems_about_different_things_stay_apart() -> None:
 def test_the_cleanup_status_never_changes_the_state() -> None:
     # DIAG-15: leftovers an earlier attempt left are reported apart, aggregated; a result's own pending cleanup is its
     # issue.
-    result = Result(DIRTY, cleanup_status=(LEFTOVER, LEFTOVER))
+    result = Result(DIRTY, pending_cleanup_diagnostics=(LEFTOVER, LEFTOVER))
     assert result.state is ResultState.SUCCESS
-    assert (result.diagnostics, result.cleanup_status) == ((DIRTY,), (LEFTOVER,))
+    assert (result.diagnostics, result.pending_cleanup_diagnostics) == ((DIRTY,), (LEFTOVER,))
     assert Result(LEFTOVER).state is ResultState.COMPLETED_WITH_ISSUES
 
 
 def test_a_cleanup_status_holds_only_pending_cleanup() -> None:
     with pytest.raises(ValueError, match="only pending-cleanup"):
-        Result(cleanup_status=(DIRTY,))
+        Result(pending_cleanup_diagnostics=(DIRTY,))

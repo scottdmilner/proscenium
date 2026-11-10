@@ -32,8 +32,8 @@ class FoundBinding:
     destination: bpy.types.Collection | None  # the collection holding its canonical record; None if it is disabled
     scene: bpy.types.Scene | None  # its target scene, if its configuration can be read and it isn't disabled
     config: configs.BindingConfig | None  # its configuration, if it is usable
-    unreadable: records.RefusedRecord | None  # why its configuration can't be read, if it can't
-    copies: CopiedBinding | None  # its candidates, and why none is canonical, if it is disabled
+    configuration_refusal: records.RefusedRecord | None  # why its configuration can't be read, if it can't
+    disabled_candidate_report: CopiedBinding | None  # its candidates, and why none is canonical, if it is disabled
 
     @property
     def usable(self) -> bool:
@@ -42,10 +42,10 @@ class FoundBinding:
 
     def usable_config(self) -> configs.BindingConfig:
         """The configuration; raises RefusedRecordError or DisabledBindingError for a binding that isn't usable."""
-        if self.unreadable is not None:
-            raise records.RefusedRecordError(self.unreadable)
-        if self.copies is not None:
-            raise DisabledBindingError(self.copies)
+        if self.configuration_refusal is not None:
+            raise records.RefusedRecordError(self.configuration_refusal)
+        if self.disabled_candidate_report is not None:
+            raise DisabledBindingError(self.disabled_candidate_report)
         assert self.config is not None
         return self.config
 
@@ -53,11 +53,11 @@ class FoundBinding:
 class DisabledBindingError(LookupError):  # raised like KeyError
     """A binding with copies and no canonical candidate was asked for its configuration, or written to."""
 
-    copies: CopiedBinding
+    disabled_candidate_report: CopiedBinding
 
     def __init__(self, copies: CopiedBinding) -> None:
         super().__init__(f"binding {copies.binding_id} has copies and no canonical candidate ({copies.reason})")
-        self.copies = copies
+        self.disabled_candidate_report = copies
 
 
 def find_binding(binding_id: identifiers.BindingId) -> FoundBinding | None:

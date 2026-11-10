@@ -50,7 +50,7 @@ def test_each_untranslated_prim_has_one_diagnostic_naming_its_fallback(
     for path, expected in unsupported.placeholders.items():
         diagnostic = untranslated[path]
         assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED, Severity.WARNING)
-        assert diagnostic.fallback == ("empty marker" if expected.bounds is None else "bounding box"), path
+        assert diagnostic.fallback_description == ("empty marker" if expected.bounds is None else "bounding box"), path
         assert expected.type_name in diagnostic.message, path
 
 

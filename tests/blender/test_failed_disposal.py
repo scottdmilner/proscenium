@@ -71,10 +71,10 @@ def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.t
     for ledger_key, entry in ledger.items():
         assert (entry.binding_id, entry.operation) == (handle.binding_id, OriginatingOperation.SYNCHRONIZE)
         assert entry.diagnostic in result.diagnostics
-        assert (entry.diagnostic.resource, entry.diagnostic.role) == (ledger_key, entry.role)
+        assert (entry.diagnostic.pending_resource_key, entry.diagnostic.role) == (ledger_key, entry.role)
         assert entry.datablock is not None and ownership.of(entry.datablock).claims == ()
     assert all(not d.users_collection for d in leftovers if isinstance(d, bpy.types.Object))  # in no scene
-    assert set(result.cleanup_status) >= {e.diagnostic for e in ledger.values()}
+    assert set(result.pending_cleanup_diagnostics) >= {e.diagnostic for e in ledger.values()}
 
 
 def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: Bindings, tmp_path: Path) -> None:
@@ -89,7 +89,7 @@ def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: 
         assert datablocks() - before == {(type(d).__name__, d.session_uid) for d in leftovers}
         assert {e.datablock for e in _ledger().values()} == leftovers
         assert _published(handle) == nothing
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(_ledger().items()))
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(_ledger().items()))
 
 
 def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bindings, tmp_path: Path) -> None:
@@ -125,8 +125,8 @@ def test_repeated_failures_add_only_tracked_leftovers_each_reported_once(binding
         assert {k: after[k] for k in before} == before
         assert len(after) == len(before) + len(leftovers)
         assert set(again.diagnostics[1:]).isdisjoint(earlier.diagnostics)
-        assert len(again.cleanup_status) == len(after)
-        assert set(again.cleanup_status) == {e.diagnostic for e in after.values()}
+        assert len(again.pending_cleanup_diagnostics) == len(after)
+        assert set(again.pending_cleanup_diagnostics) == {e.diagnostic for e in after.values()}
 
 
 def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_path: Path) -> None:
@@ -138,7 +138,7 @@ def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_
         before = _ledger()
         result = handle.synchronize(0)
         assert (result.state, result.diagnostics) == (ResultState.SUCCESS, ())
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(before.items()))
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(before.items()))
         assert _ledger() == before
 
 

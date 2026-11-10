@@ -23,7 +23,7 @@ def test_a_diagnostic_rejects_values_it_cannot_hold() -> None:
     with pytest.raises(ValueError, match="not a valid DiagnosticCode"):
         Diagnostic("nonsense", "binding", "m")  # ty: ignore[invalid-argument-type]
     with pytest.raises(TypeError, match="fields are strings"):
-        Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "m", layers=(1,))  # ty: ignore[invalid-argument-type]
+        Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "m", layer_identifiers=(1,))  # ty: ignore[invalid-argument-type]
     with pytest.raises(ValueError, match="names its binding"):
         Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "", "m")
 

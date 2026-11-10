@@ -181,7 +181,11 @@ def child(config: dict[str, Any]) -> None:
         }
 
     def summary(outcome: removal.RemovalOutcome) -> dict[str, int]:
-        return {"removed": len(outcome.removed), "released": len(outcome.released), "pending": len(outcome.pending)}
+        return {
+            "removed": len(outcome.removed_keys),
+            "released": len(outcome.released_keys),
+            "pending": len(outcome.pending_reasons_by_key),
+        }
 
     for name, count in (("one object", 1), (f"{UNIT} objects", UNIT)):
         unit = unlinked(count)

@@ -10,8 +10,8 @@ they have older versions of their own:
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
 derived from the migrations above. It also yields binding configurations
-(proscenium.binding.persistence.configs) a newer extension or damage could leave; binding
-configuration has no older version. Also an ownership manifest naming an unknown representation role
+(proscenium.binding.persistence.configs) a newer extension or damage could leave. Also an ownership manifest
+naming an unknown representation role
 (lifecycle.md#representation-roles-and-resource-identities), and pending-cleanup ledgers a newer extension or
 damage could leave; the ledger's version 1 is M5's (DECISIONS.md "Pending-cleanup tracking mechanism"), and
 these refuse whatever its fields are, by their version or their shape.
@@ -85,7 +85,7 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
     binding = {
         "scene": None,
         "root_layer_identifier": "/shot.usda",
-        "settings": {
+        "requested_settings": {
             "payload_policy": "load_all",
             "coordinate_conversion": False,
             "viewport_purposes": ["default", "proxy"],
@@ -124,18 +124,22 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "unknown-policy": {
                 VERSION_KEY: 1,
                 **binding,
-                "settings": {**binding["settings"], "payload_policy": "load_some"},
+                "requested_settings": {**binding["requested_settings"], "payload_policy": "load_some"},
             },
-            # Version 1 as M3 wrote it, before it gained the conversion and purpose settings in place.
-            "without-conversion-and-purposes": {VERSION_KEY: 1, **binding, "settings": {"payload_policy": "load_all"}},
+            # A configuration missing the required conversion and purpose settings.
+            "without-conversion-and-purposes": {
+                VERSION_KEY: 1,
+                **binding,
+                "requested_settings": {"payload_policy": "load_all"},
+            },
             "unknown-purpose": {
                 VERSION_KEY: 1,
                 **binding,
-                "settings": {**binding["settings"], "viewport_purposes": ["default", "preview"]},
+                "requested_settings": {**binding["requested_settings"], "viewport_purposes": ["default", "preview"]},
             },
             "no-settings": {
                 VERSION_KEY: 1,
-                **{k: v for k, v in binding.items() if k != "settings"},
+                **{k: v for k, v in binding.items() if k != "requested_settings"},
             },
             "unknown-field": {
                 VERSION_KEY: 1,
@@ -158,9 +162,9 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
                 "entries": {
                     "6a1f0c2e9b7d4835a0e4c1f27b9d3e58": {
                         "datablock": None,
-                        "covers": ["/World"],
+                        "source_entity_paths": ["/World"],
                         "role": "hologram",
-                        "uses": [],
+                        "dependency_entry_keys": [],
                     }
                 },
             },

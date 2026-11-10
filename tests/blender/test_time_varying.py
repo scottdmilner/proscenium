@@ -144,7 +144,7 @@ def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:
             assert isinstance(entry.datablock, bpy.types.Object)
-            found[entry.covers[0]] = entry.datablock
+            found[entry.source_entity_paths[0]] = entry.datablock
     return found
 
 

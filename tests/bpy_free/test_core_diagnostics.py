@@ -140,7 +140,7 @@ def test_a_problem_on_many_prims_lists_its_first_and_counts_the_rest(tmp_path: P
     boxed = [d for d in untranslated if "BasisCurves" in d.message]
     assert [d.source_path for d in boxed] == [*curves[:LISTED], ""]
     assert boxed[-1].message.endswith(f"(and {len(curves) - LISTED} more with the same problem, not listed)")
-    assert boxed[-1].fallback == "bounding box"
+    assert boxed[-1].fallback_description == "bounding box"
     others = {p for p, box in unsupported.placeholders.items() if box.type_name != "BasisCurves"}
     assert {d.source_path for d in untranslated if d not in boxed} == others
 

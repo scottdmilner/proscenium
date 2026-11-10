@@ -98,11 +98,11 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         outcome.reason,
         outcome.candidates,
     )
-    scenes = {c.scene for c in report.candidates if c.scene is not None}
+    scenes = {c.scene_name for c in report.candidates if c.scene_name is not None}
     if outcome.canonical:
         # COPY-09, COPY-15: the original is canonical, its scene alone lists it, and lookups reach it.
-        assert [c.canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
-        assert (report.candidates[0].scene, report.candidates[0].destination) == ("Scene", "Shot")
+        assert [c.is_canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
+        assert (report.candidates[0].scene_name, report.candidates[0].destination_name) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
         found = runtime.binding_configs.find_binding(handle.binding_id)
         assert found is not None and found.scene == _scene()
@@ -110,14 +110,14 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
             assert bindings.in_scene(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
     else:
         # COPY-02, COPY-11, COPY-16: every candidate disabled; listed on each scene with one; refused.
-        assert not any(c.canonical for c in report.candidates)
+        assert not any(c.is_canonical for c in report.candidates)
         for name in scenes:
             assert bindings.in_scene(bpy.data.scenes[name]) == [handle]
         for refused in (result, handle.reload(), handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)):
             assert refused.state is ResultState.FATAL_FAILURE
             assert [d.code for d in refused.diagnostics] == [DiagnosticCode.COPIED_BINDING]
-            assert all(c.destination in refused.diagnostics[0].message for c in report.candidates)
-        assert handle.synchronize().time_codes == ()  # refused before any time code is chosen
+            assert all(c.destination_name in refused.diagnostics[0].message for c in report.candidates)
+        assert handle.synchronize().attempted_time_codes == ()  # refused before any time code is chosen
         assert _evaluation(bindings, handle) is evaluation  # the refusals acquired nothing
         assert handle.live_stage() is None
         with pytest.raises(DisabledBindingError):
@@ -208,7 +208,7 @@ def test_a_copy_is_found_by_the_next_lookup(bindings: Bindings, tmp_path: Path) 
         routes.run_binding_copy_route("collection-copy", tmp_path)
         [report] = bindings.copied()
         assert handle.synchronize(0).state is ResultState.SUCCESS
-        assert [(c.scene, c.destination, c.canonical) for c in report.candidates] == [
+        assert [(c.scene_name, c.destination_name, c.is_canonical) for c in report.candidates] == [
             ("Scene", "Shot", True),
             ("Scene", "Shot.001", False),
         ]
