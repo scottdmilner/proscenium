@@ -26,8 +26,8 @@ class StageRegistry:
     def __init__(self) -> None:
         self._stages = {}
 
-    def attached(self, binding_id: BindingId) -> BindingStages:
-        """The binding's stages on an attached source, made unattached if it has none.
+    def get_or_create_binding_stages(self, binding_id: BindingId) -> BindingStages:
+        """Return the binding's stages, creating unattached state on first use.
 
         Existing ones keep their attachment.
         """

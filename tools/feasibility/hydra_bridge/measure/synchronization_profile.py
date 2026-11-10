@@ -42,7 +42,7 @@ STEPS = [
     ("proscenium.synchronization.caching", "cache"),
     ("proscenium.binding.persistence.manifests", "read_manifest"),
     ("proscenium.binding.persistence.binding_state", "read_generation"),
-    ("proscenium.binding.source_access.stages", "BindingStages.acquire"),
+    ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),
     ("proscenium.synchronization.evaluation", "source_state"),
     ("proscenium.synchronization.evaluation", "plans"),
     ("proscenium.synchronization.application", "prepare"),

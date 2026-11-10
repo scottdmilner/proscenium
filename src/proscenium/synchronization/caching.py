@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 def cache(
     binding_id: identifiers.BindingId,
     config: configs.BindingConfig,
-    current: stage_tracking.CurrentStages,
+    current: stage_tracking.BindingStageTracker,
     time_codes: Collection[Usd.TimeCode],
 ) -> Result:
     """Cache the published generation's time-varying values at each of time_codes it hasn't cached, all or none.
@@ -67,9 +67,9 @@ def cache(
     if (refused := prepared_work.untrackable(binding_id)) is not None:
         return Result(refused, time_codes=attempted)
 
-    binding_stages = current.attached(binding_id)
+    binding_stages = current.get_or_create_binding_stages(binding_id)
     try:
-        evaluation_stage = binding_stages.acquire(published.settings.payload_policy)
+        evaluation_stage = binding_stages.acquire_evaluation_stage(published.settings.payload_policy)
     except stages.SourceUnavailableError as error:
         return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)), time_codes=attempted)
     # Checked even when every time code is cached, so a call never reports success over a source that changed. The

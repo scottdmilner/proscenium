@@ -67,7 +67,7 @@ def plans(
     settings' conversion and purposes, and unit_scale, the target scene's.
     """
     try:
-        with binding_stages.changed_layers() as changed:
+        with binding_stages.monitor_evaluation_layer_changes() as changed:
             chain = _core.SceneIndexChain(evaluation_stage)
             try:
                 snapshots = [chain.capture(time_code) for time_code in time_codes]

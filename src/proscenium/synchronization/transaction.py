@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 def synchronize(
     binding_id: identifiers.BindingId,
     config: configs.BindingConfig,
-    current: stage_tracking.CurrentStages,
+    current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode | None,
 ) -> Result:
     """Synchronize a usable binding with config at time_code; the result names the time code.
@@ -64,7 +64,7 @@ def _attempt(
     binding_id: identifiers.BindingId,
     config: configs.BindingConfig,
     destination: bpy.types.Collection,
-    current: stage_tracking.CurrentStages,
+    current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode,
 ) -> tuple[Diagnostic, ...]:
     """The attempt's diagnostics, its steps run as far as they succeed."""
@@ -80,9 +80,9 @@ def _attempt(
     if (refused := prepared_work.untrackable(binding_id)) is not None:
         return (refused,)
     settings, unit_scale = config.settings, scene.unit_settings.scale_length
-    stages_ = current.attached(binding_id)
+    stages_ = current.get_or_create_binding_stages(binding_id)
     try:
-        evaluation_stage = stages_.acquire(settings.payload_policy)
+        evaluation_stage = stages_.acquire_evaluation_stage(settings.payload_policy)
     except stages.SourceUnavailableError as error:
         return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
     revision = stages_.source_revision

@@ -29,14 +29,14 @@ def test_the_binding_holds_its_attached_stage_until_released(tmp_path: Path) -> 
     # Dropping the caller's references releases nothing: the stage and its unsaved edits stay loaded.
     # release(binding_id) lets the stage expire and its layers go, and leaves the binding unattached.
     registry = StageRegistry()
-    stages = registry.attached(BindingId("a"))
+    stages = registry.get_or_create_binding_stages(BindingId("a"))
     with source_access.reattach(tmp_path) as scene:
         caller = open_fresh(scene.root)  # this test's own stage, so it holds the only caller reference
         caller.SetEditTarget(caller.GetSessionLayer())
         caller.DefinePrim("/Edited")  # an unsaved edit in a layer only this stage composes
         session = caller.GetSessionLayer().identifier
         stages.attach(caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         del caller
         gc.collect()
         assert stages.live_stage is not None
@@ -51,7 +51,7 @@ def test_the_binding_holds_its_attached_stage_until_released(tmp_path: Path) -> 
         assert not Sdf.Layer.Find(session)
         assert stages.live_stage is None
         with pytest.raises(SourceUnavailableError):
-            stages.acquire(PayloadPolicy.LOAD_ALL)
+            stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
 
 
 @pytest.mark.parametrize("changed_layer", ["root", "session"])
@@ -59,9 +59,9 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path,
     # The binding holds its attachment until released or replaced (SRC-02): replacing it lets go of the
     # evaluation stage over the old stage's layers at once, and reattaching the same stage keeps it.
     with source_access.reattach(tmp_path) as scene:
-        stages = StageRegistry().attached(BindingId("a"))
+        stages = StageRegistry().get_or_create_binding_stages(BindingId("a"))
         stages.attach(scene.caller)
-        evaluation = stages.acquire(PayloadPolicy.LOAD_ALL)
+        evaluation = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         stages.attach(scene.caller)
         assert stages.evaluation_stage == evaluation
         if changed_layer == "root":
@@ -72,7 +72,7 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path,
         stages.attach(replacement)
         assert stages.evaluation_stage is None
         assert stages.live_stage == replacement
-        refreshed = stages.acquire(PayloadPolicy.LOAD_NONE)
+        refreshed = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE)
         assert refreshed != evaluation
         assert refreshed.GetRootLayer() == replacement.GetRootLayer()
         assert refreshed.GetSessionLayer() == replacement.GetSessionLayer()
@@ -82,15 +82,15 @@ def test_attaching_another_stage_lets_go_of_the_evaluation_stage(tmp_path: Path,
 def test_attaching_another_stage_over_the_same_layers_reuses_evaluation(tmp_path: Path) -> None:
     # SRC-10: evaluation belongs to the root and session layers, independently of the source stage's identity.
     with source_access.reattach(tmp_path) as scene:
-        stages = StageRegistry().attached(BindingId("a"))
+        stages = StageRegistry().get_or_create_binding_stages(BindingId("a"))
         stages.attach(scene.caller)
-        evaluation = stages.acquire(PayloadPolicy.LOAD_NONE)
+        evaluation = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE)
         with Usd.StageCacheContext(Usd.BlockStageCaches):
             replacement = Usd.Stage.Open(scene.caller.GetRootLayer(), scene.caller.GetSessionLayer())
         assert replacement != scene.caller
         stages.attach(replacement)
         assert stages.live_stage == replacement
         assert stages.evaluation_stage == evaluation
-        assert stages.acquire(PayloadPolicy.LOAD_NONE) == evaluation
+        assert stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE) == evaluation
         assert replacement.GetLoadSet()
         assert not evaluation.GetLoadSet()

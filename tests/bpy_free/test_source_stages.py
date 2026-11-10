@@ -40,16 +40,16 @@ def test_evaluation_stage_is_kept_and_reused(tmp_path: Path) -> None:
     caller = _caller(tmp_path)
     source = binding(caller)
     assert source.evaluation_stage is None
-    stage = source.acquire(PayloadPolicy.LOAD_ALL)
+    stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage == stage
-    assert source.acquire(PayloadPolicy.LOAD_ALL) == stage
+    assert source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL) == stage
 
 
 def test_live_stage_is_the_source_stage(tmp_path: Path) -> None:
     caller = _caller(tmp_path)
     source = binding(caller)
     assert source.live_stage == caller  # ICON-07: available before evaluation
-    stage = source.acquire(PayloadPolicy.LOAD_ALL)
+    stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     assert source.live_stage == caller
     assert stage != caller
 
@@ -58,17 +58,17 @@ def test_session_layer_opinions_are_displayed(tmp_path: Path) -> None:
     # SRC-05: opinions in the source stage's session layer compose over the source.
     caller = _caller(tmp_path)
     source = binding(caller)
-    source.acquire(PayloadPolicy.LOAD_ALL)
+    source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     live = source.live_stage
     assert live is not None
     _set_root_value_in_session(live, 4.0)
-    assert read_values(source.acquire(PayloadPolicy.LOAD_ALL)) == DISK | {"root": 4.0}
+    assert read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)) == DISK | {"root": 4.0}
 
 
 def test_unavailable_source() -> None:
     source = BindingStages()
     with pytest.raises(SourceUnavailableError):
-        source.acquire(PayloadPolicy.LOAD_ALL)
+        source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     assert source.evaluation_stage is None
     assert source.live_stage is None
 
@@ -76,10 +76,10 @@ def test_unavailable_source() -> None:
 def test_a_changed_payload_policy_applies_to_the_reused_stage(tmp_path: Path) -> None:
     caller = _caller(tmp_path)
     source = binding(caller)
-    stage = source.acquire(PayloadPolicy.LOAD_ALL)
-    assert source.acquire(PayloadPolicy.LOAD_NONE) == stage  # the same stage, its payloads unloaded
+    stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
+    assert source.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE) == stage  # the same stage, its payloads unloaded
     assert read_values(stage) == DISK | UNLOADED
-    assert source.acquire(PayloadPolicy.LOAD_ALL) == stage
+    assert source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL) == stage
     assert read_values(stage) == DISK
     assert read_values(caller) == DISK  # an attached caller's load set is its own
 
@@ -88,7 +88,7 @@ def test_a_reload_leaves_the_payload_policy(tmp_path: Path) -> None:
     # The policy given only opens a stage when there is none; a reload doesn't synchronize.
     caller = _caller(tmp_path)
     source = binding(caller)
-    stage = source.acquire(PayloadPolicy.LOAD_ALL)
+    stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     source.reload(PayloadPolicy.LOAD_NONE)
     assert read_values(stage) == DISK
 
@@ -98,13 +98,13 @@ def test_switching_payload_policy_and_back_keeps_the_display(tmp_path: Path) -> 
     # session-layer opinions included, and changes no layer.
     caller = _caller(tmp_path)
     source = binding(caller)
-    stage = source.acquire(PayloadPolicy.LOAD_NONE)
+    stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE)
     live = source.live_stage
     assert live is not None
     _set_root_value_in_session(live, 4.0)
-    before = read_values(source.acquire(PayloadPolicy.LOAD_NONE))
+    before = read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE))
     for policy in (PayloadPolicy.LOAD_ALL, PayloadPolicy.LOAD_NONE):
-        source.acquire(policy)
+        source.acquire_evaluation_stage(policy)
     assert read_values(stage) == before
     assert not [layer.identifier for layer in stage.GetUsedLayers() if layer.dirty and not layer.anonymous]
 
@@ -118,7 +118,7 @@ def test_ambient_cache(tmp_path: Path) -> None:
         ambient_settings = caller_settings(scene.ambient)
         caller = open_fresh(scene.root)
         source = binding(caller)
-        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stage != caller and stage != scene.ambient
         assert source.live_stage == caller
         assert not UsdUtils.StageCache.Get().Contains(stage)
@@ -133,7 +133,7 @@ def test_cached_source_composes_its_own_opinions_and_reuses_evaluation(tmp_path:
         source = binding(scene.ambient)
         settings = caller_settings(scene.ambient)
         layers = layer_contents(scene.ambient)
-        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
+        evaluation = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert evaluation != scene.ambient
         assert not UsdUtils.StageCache.Get().Contains(evaluation)
         assert evaluation.GetRootLayer() == scene.ambient.GetRootLayer()
@@ -141,7 +141,7 @@ def test_cached_source_composes_its_own_opinions_and_reuses_evaluation(tmp_path:
         assert evaluation.GetPathResolverContext() == scene.ambient.GetPathResolverContext()
         assert read_values(evaluation) == scene.ambient_values | {"payA": 1.0, "payB": 1.0}
         source.attach(scene.ambient)
-        assert source.acquire(PayloadPolicy.LOAD_NONE) == evaluation
+        assert source.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE) == evaluation
         assert read_values(evaluation) == scene.ambient_values
         assert caller_settings(scene.ambient) == settings
         assert layer_contents(scene.ambient) == layers
@@ -166,7 +166,7 @@ def test_caller_settings(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
         caller = scene.caller
         for payload_policy in POLICIES:
-            evaluation = binding(caller).acquire(payload_policy)
+            evaluation = binding(caller).acquire_evaluation_stage(payload_policy)
             # SRC-06: a separate stage composing the caller's own layers, in no cache, with its resolver context.
             assert evaluation != caller
             assert evaluation.GetRootLayer() == caller.GetRootLayer()
@@ -188,12 +188,12 @@ def test_caller_settings_are_matched_at_each_acquisition(tmp_path: Path) -> None
     with source_access.private_stage(tmp_path) as scene:
         caller = scene.caller
         source = binding(caller)
-        evaluation = source.acquire(PayloadPolicy.LOAD_ALL)
+        evaluation = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         caller.SetPopulationMask(Usd.StagePopulationMask.All())
         caller.UnmuteLayer(caller.GetMutedLayers()[0])
         caller.SetInterpolationType(Usd.InterpolationTypeLinear)
         settings = caller_settings(caller)
-        assert source.acquire(PayloadPolicy.LOAD_ALL) == evaluation  # reused
+        assert source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL) == evaluation  # reused
         assert _stage_settings(evaluation) == _stage_settings(caller)
         assert read_values(evaluation) == _expected(scene, PayloadPolicy.LOAD_ALL) | {"extra": 1.0, "outside": 1.0}
         assert evaluation.GetPrimAtPath("/World").GetAttribute("animValue").Get(5) == 5.0
@@ -207,8 +207,11 @@ def test_payload_policies(tmp_path: Path) -> None:
         load_set = caller.GetLoadSet()
         loading = binding(caller)
         unloading = binding(caller)
-        loaded, unloaded = loading.acquire(PayloadPolicy.LOAD_ALL), unloading.acquire(PayloadPolicy.LOAD_NONE)
-        loading.acquire(PayloadPolicy.LOAD_ALL)
+        loaded, unloaded = (
+            loading.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL),
+            unloading.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE),
+        )
+        loading.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert loaded != unloaded
         assert read_values(loaded) == _expected(scene, PayloadPolicy.LOAD_ALL)
         assert read_values(unloaded) == _expected(scene, PayloadPolicy.LOAD_NONE)
@@ -218,10 +221,10 @@ def test_payload_policies(tmp_path: Path) -> None:
 def test_a_caller_with_other_layers_gets_a_new_evaluation_stage(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
         source = binding(scene.caller)
-        first = source.acquire(PayloadPolicy.LOAD_ALL)
+        first = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         other = open_fresh(scene.root)  # the same root layer, but its own session layer
         source.attach(other)
-        second = source.acquire(PayloadPolicy.LOAD_ALL)
+        second = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert second != first
         assert second.GetSessionLayer() == other.GetSessionLayer()
 
@@ -233,7 +236,7 @@ def test_evaluation_stage_is_not_the_cached_caller(tmp_path: Path) -> None:
         cache_id = cache.Insert(scene.caller)
         try:
             with Usd.StageCacheContext(cache):
-                evaluation = binding(scene.caller).acquire(PayloadPolicy.LOAD_ALL)
+                evaluation = binding(scene.caller).acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
             assert evaluation != scene.caller
             assert not cache.Contains(evaluation)
         finally:

@@ -16,18 +16,18 @@ if TYPE_CHECKING:
     from ..source_access import identifiers, stages
 
 
-class CurrentStages:
-    """Every binding's stages, compared with the bindings before each use."""
+class BindingStageTracker:
+    """Track binding stages and drop vanished bindings' evaluation stages before each lookup."""
 
     _registry: registry.StageRegistry
 
     def __init__(self) -> None:
         self._registry = registry.StageRegistry()
 
-    def attached(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
-        """The binding's stages on an attached source (StageRegistry.attached)."""
+    def get_or_create_binding_stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
+        """Return the binding's stages, creating unattached state after pruning vanished bindings."""
         self.prune()
-        return self._registry.attached(binding_id)
+        return self._registry.get_or_create_binding_stages(binding_id)
 
     def get(self, binding_id: identifiers.BindingId) -> stages.BindingStages | None:
         """The binding's stages, or None before their first use."""

@@ -67,11 +67,11 @@ def test_layers_are_displayed_as_loaded(tmp_path: Path) -> None:
     # file was rewritten, and acquiring again reloads nothing.
     with source_access.dirty_layer(tmp_path) as scene:
         source = binding(scene.caller)
-        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert read_values(stage) == scene.in_process_values
         assert scene.disk_values["sub"] != scene.in_process_values["sub"]
         notices, listeners = _notices(stage, scene.caller)
-        source.acquire(PayloadPolicy.LOAD_ALL)
+        source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         for listener in listeners:
             listener.Revoke()
         assert notices == []
@@ -86,7 +86,7 @@ def test_dirty_layers_are_the_dirty_contributing_ones(tmp_path: Path) -> None:
             (PayloadPolicy.LOAD_ALL, set(scene.dirty_contributing.values())),
             (PayloadPolicy.LOAD_NONE, {scene.dirty_contributing["ref"], scene.dirty_contributing["var_a"]}),
         ]:
-            stage = binding(scene.caller).acquire(payload_policy)
+            stage = binding(scene.caller).acquire_evaluation_stage(payload_policy)
             assert {Path(identifier) for identifier in dirty_layers(stage)} == expected
 
 
@@ -98,13 +98,13 @@ def test_reload(tmp_path: Path) -> None:
     # contributing layers' edits discarded, var_b's kept, and the caller's stage sees it too.
     with source_access.dirty_layer(tmp_path / "scene") as scene:
         source = binding(scene.caller)
-        source.acquire(PayloadPolicy.LOAD_ALL)
+        source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         live = source.live_stage
         assert live is not None
         _set_root_value_in_session(live, 4.0)
         settings = caller_settings(scene.caller)
         source.reload(PayloadPolicy.LOAD_ALL)
-        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert read_values(stage) == scene.disk_values | {"root": 4.0}  # LAYER-03
         for name, path in scene.dirty_contributing.items():
             assert not Sdf.Layer.Find(str(path)).dirty
@@ -133,7 +133,7 @@ def test_reload_named_layers(tmp_path: Path) -> None:
     # LAYER-05: only the named contributing layers; naming any other layer raises and reloads nothing.
     with source_access.dirty_layer(tmp_path) as scene:
         source = binding(scene.caller)
-        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         sub = Sdf.Layer.Find(str(scene.changed_on_disk["sub"])).identifier
         others = [
             Sdf.Layer.Find(str(scene.dirty_not_contributing["var_b"])).identifier,
@@ -155,7 +155,7 @@ def test_unchanged_layers_are_not_reloaded(tmp_path: Path) -> None:
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
     caller = open_fresh(root)  # the attached source stage
     source = binding(caller)
-    notices, listeners = _notices(source.acquire(PayloadPolicy.LOAD_ALL), caller)
+    notices, listeners = _notices(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), caller)
     source.reload(PayloadPolicy.LOAD_ALL)
     for listener in listeners:
         listener.Revoke()
@@ -170,14 +170,14 @@ def test_layer_brought_in_by_a_reload_is_reloaded(tmp_path: Path) -> None:
     rewrite_on_disk(scene, "var_b", 2.0)
     caller = open_fresh(scene / "root.usda")
     source = binding(caller)
-    source.acquire(PayloadPolicy.LOAD_ALL)
+    source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     root = Sdf.Layer.OpenAsAnonymous(str(scene / "root.usda"))
     root.GetPrimAtPath("/World/Var").variantSelections["option"] = "b"
     mtime_ns = (scene / "root.usda").stat().st_mtime_ns + 2_000_000_000
     root.Export(str(scene / "root.usda"))
     os.utime(scene / "root.usda", ns=(mtime_ns, mtime_ns))
     source.reload(PayloadPolicy.LOAD_ALL)
-    assert read_values(source.acquire(PayloadPolicy.LOAD_ALL))["varB"] == 2.0
+    assert read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))["varB"] == 2.0
     assert held.GetAttributeAtPath("/Asset.varBValue").default == 2.0
 
 
@@ -190,11 +190,13 @@ def test_rewrite_within_the_same_second(tmp_path: Path) -> None:
     os.utime(sub, ns=(second + 100_000_000, second + 100_000_000))
     caller = open_fresh(scene / "root.usda")
     source = binding(caller)
-    source.acquire(PayloadPolicy.LOAD_ALL)
+    source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     rewrite_on_disk(scene, "sub", 3.0)
     os.utime(sub, ns=(second + 600_000_000, second + 600_000_000))
     source.reload(PayloadPolicy.LOAD_ALL)
-    assert read_values(source.acquire(PayloadPolicy.LOAD_ALL))["sub"] == (1.0 if sys.platform == "win32" else 3.0)
+    assert read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))["sub"] == (
+        1.0 if sys.platform == "win32" else 3.0
+    )
 
 
 def test_shared_reload(tmp_path: Path) -> None:
@@ -202,12 +204,14 @@ def test_shared_reload(tmp_path: Path) -> None:
     # sees too, with its own settings unchanged.
     with source_access.cached_stage(tmp_path / "scene") as scene:
         source = binding(open_fresh(scene.root))
-        source.acquire(PayloadPolicy.LOAD_ALL)
+        source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.ambient)
         rewrite_on_disk(scene.root.parent, "sub", 2.0)
-        assert read_values(source.acquire(PayloadPolicy.LOAD_ALL))["sub"] == 1.0  # LAYER-01: not reloaded by acquiring
+        assert (
+            read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))["sub"] == 1.0
+        )  # LAYER-01: not reloaded by acquiring
         source.reload(PayloadPolicy.LOAD_ALL)
-        stage = source.acquire(PayloadPolicy.LOAD_ALL)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert read_values(stage) == scene.disk_values | {"sub": 2.0}
         assert read_values(scene.ambient) == scene.ambient_values | {"sub": 2.0}
         assert caller_settings(scene.ambient) == settings

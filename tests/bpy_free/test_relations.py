@@ -158,10 +158,10 @@ def test_relation_4_payload_round_trip(transforms: evaluation.TransformsScene) -
     binding_stages = stages.BindingStages()
     binding_stages.attach(transforms.stage)
     try:
-        first = contents(plan_at(binding_stages.acquire(PayloadPolicy.LOAD_ALL), 0.0))
-        unloaded = plan_at(binding_stages.acquire(PayloadPolicy.LOAD_NONE), 0.0)
+        first = contents(plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), 0.0))
+        unloaded = plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE), 0.0)
         assert copies(unloaded).keys() == transforms.drawn(PayloadPolicy.LOAD_NONE)
-        assert contents(plan_at(binding_stages.acquire(PayloadPolicy.LOAD_ALL), 0.0)) == first
+        assert contents(plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), 0.0)) == first
     finally:
         binding_stages.release()
 

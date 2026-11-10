@@ -113,8 +113,8 @@ class BindingStages:
         return self._revisions.current
 
     @contextmanager
-    def changed_layers(self) -> Generator[set[str]]:
-        """While open, the identifiers of the evaluation stage's layers that change, filled in as they do.
+    def monitor_evaluation_layer_changes(self) -> Generator[set[str]]:
+        """Monitor evaluation layers within this context, yielding the set of identifiers that change.
 
         For a diagnostic naming the layers that changed during an evaluation (source-access.md#source-consistency).
         The layers are those the stage composes on entry, its anonymous session layer included. Raises
@@ -159,12 +159,12 @@ class BindingStages:
         self._source_stage = None
         self.drop_evaluation_stage()
 
-    def acquire(self, payload_policy: PayloadPolicy) -> Usd.Stage:
-        """The evaluation stage, matched to the source stage, its payloads loaded or unloaded to payload_policy.
+    def acquire_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+        """Acquire the evaluation stage, matching source settings and applying payload_policy.
 
         Raises SourceUnavailableError.
         """
-        stage = self._current_evaluation_stage(payload_policy)
+        stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if self._payload_policy != payload_policy:
             # A reused stage: never reopened, so the session layer's opinions stay.
             if payload_policy is PayloadPolicy.LOAD_ALL:
@@ -184,7 +184,7 @@ class BindingStages:
         without notices; on Windows that misses a rewrite within the same second, as in USD itself.
         Raises SourceUnavailableError.
         """
-        stage = self._current_evaluation_stage(payload_policy)
+        stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if layers is not None:
             by_identifier = {layer.identifier: layer for layer in contributing_layers(stage)}
             unknown = sorted(set(layers) - by_identifier.keys())
@@ -198,8 +198,8 @@ class BindingStages:
             Sdf.Layer.ReloadLayers(pending)
             reloaded |= pending
 
-    def _current_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
-        """The reused evaluation stage matched to the source, opening one under payload_policy if needed."""
+    def _ensure_evaluation_stage_matches_source(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+        """Open or reuse the evaluation stage and match the source's mask, muting, and interpolation."""
         attached = self._source_stage
         if attached is None:
             raise SourceUnavailableError("No stage is attached")

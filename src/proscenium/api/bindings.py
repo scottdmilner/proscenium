@@ -182,12 +182,12 @@ class BindingHandle:
 class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
-    stages: stage_tracking.CurrentStages  # never saved; cleared when a file is loaded (proscenium.addon)
+    stages: stage_tracking.BindingStageTracker  # never saved; cleared when a file is loaded (proscenium.addon)
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
     published: dict[identifiers.BindingId, binding_state.Generation]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
-        self.stages = stage_tracking.CurrentStages()
+        self.stages = stage_tracking.BindingStageTracker()
         self.running = False
         self.published = {}
 
@@ -230,7 +230,7 @@ class Bindings:
             )
             return Result(diagnostic)
         binding_configs.set_config(binding_id, dataclasses.replace(config, root_layer_identifier=identifier))
-        self.stages.attached(binding_id).attach(stage)
+        self.stages.get_or_create_binding_stages(binding_id).attach(stage)
         return Result()
 
     @_not_while_exclusive
@@ -326,7 +326,7 @@ class Bindings:
             return _refused(found)
         config = found.usable_config()
         try:
-            self._stages(binding_id).reload(config.settings.payload_policy, layers)
+            self._get_or_create_stages(binding_id).reload(config.settings.payload_policy, layers)
         except stages.SourceUnavailableError as error:
             return _unavailable(binding_id, error)
         return Result()
@@ -373,11 +373,11 @@ class Bindings:
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
     def drop_all_stages(self) -> None:
-        """Drop every binding's stages, leaving each with no source stage or attachment (CurrentStages.clear)."""
+        """Drop every binding's stages, leaving each with no source stage or attachment (BindingStageTracker.clear)."""
         self.stages.clear()
 
     def prune_stages(self) -> None:
-        """Drop evaluation stages of bindings that no longer exist (CurrentStages.prune)."""
+        """Drop evaluation stages of bindings that no longer exist (BindingStageTracker.prune)."""
         self.stages.prune()
 
     def _found(self, binding_id: identifiers.BindingId) -> binding_configs.FoundBinding:
@@ -386,9 +386,9 @@ class Bindings:
             raise BindingNotFoundError(binding_id)
         return found
 
-    def _stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
+    def _get_or_create_stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
         """The binding's stages, created unattached on first use."""
-        return self.stages.attached(binding_id)
+        return self.stages.get_or_create_binding_stages(binding_id)
 
 
 def _pushes_undo() -> bool:

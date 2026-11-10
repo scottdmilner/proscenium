@@ -118,7 +118,7 @@ def child(config: dict[str, Any]) -> None:
     mark("open")
     binding_stages = stages.BindingStages()
     binding_stages.attach(stage)
-    evaluation_stage = binding_stages.acquire(stages.PayloadPolicy.LOAD_ALL)
+    evaluation_stage = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
     mark("acquire")
     settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), False)
     converting = _core.PlanSettings(("default", "proxy"), ("default", "render"), True)
