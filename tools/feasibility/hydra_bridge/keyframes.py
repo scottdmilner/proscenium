@@ -16,7 +16,7 @@ from bpy_extras import anim_utils
 TRANSFORM_PATHS = ("location", "rotation_euler", "scale")
 
 
-class Keys:
+class AnimationKeyWriter:
     """The keys of a cached display's objects, and the timeline of the samples each shows."""
 
     blend: bool  # whether a time between samples mixes them

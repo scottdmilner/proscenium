@@ -87,7 +87,7 @@ def main() -> int:  # noqa: PLR0915 - one run, start to end
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     view_layer.update()
     memory["built heap MB"] = megabytes(heap_in_use())
-    handler = display.follow(scene)
+    handler = display.install_frame_change_handler(scene)
     bpy.ops.ed.undo_push(message="built")
     steps: list[dict[str, Any]] = []
     for frame in range(FIRST + 1, LAST + 1):

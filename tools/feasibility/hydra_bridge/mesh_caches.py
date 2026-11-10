@@ -27,13 +27,13 @@ from attribute_samples import (
     FRAME_SEPARATOR,
     SAMPLE,
     Signature,
+    attribute_for_sample_storage,
     frames_group,
     input_path,
     remove_samples,
     sample_mesh,
-    stored,
 )
-from keyframes import Keys, frames_modifier
+from keyframes import AnimationKeyWriter, frames_modifier
 from topology import MeshSamples, samples_group
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ class MeshCache:
 
 
 @dataclass
-class Synchronized:
+class MeshHolderSynchronizationState:
     """One time code's holders: what each shows there, in the plan synchronized, and before it."""
 
     plan: Plan
@@ -80,7 +80,7 @@ class Synchronized:
 class MeshCaches:
     """Every mesh a cached display's holders show, and the caches of those that vary."""
 
-    keys: Keys
+    keys: AnimationKeyWriter
     times: dict[float, int]  # the time codes cached, and the sample of each
     holder: Callable[[HolderKey], bpy.types.Object]
     meshes: dict[int, bpy.types.Mesh]  # by session_uid
@@ -93,19 +93,19 @@ class MeshCaches:
         self.holder = holder
         self.groups = {}
         self.whole_group = None
-        self.reset(Keys(blend=False), {})
+        self.reset(AnimationKeyWriter(blend=False), {})
 
-    def reset(self, keys: Keys, times: dict[float, int]) -> None:
+    def reset(self, keys: AnimationKeyWriter, times: dict[float, int]) -> None:
         """Forget every mesh, for a display built again; the node groups are kept."""
         self.keys, self.times = keys, times
         self.meshes, self.users, self.caches = {}, {}, {}
 
-    def use(self, data: Any, key: HolderKey) -> None:
+    def register_mesh_holder(self, data: Any, key: HolderKey) -> None:
         if isinstance(data, bpy.types.Mesh):
             self.meshes[data.session_uid] = data
             self.users.setdefault(data.session_uid, set()).add(key)
 
-    def varies(self, data: Any) -> bool:
+    def has_cached_variation(self, data: Any) -> bool:
         """Whether a holder's data caches frames."""
         cache = self.caches.get(data.session_uid) if data is not None else None
         return cache is not None and (bool(cache.varying) or cache.whole is not None)
@@ -127,13 +127,15 @@ class MeshCaches:
                 self.holder(key).data = copy  # shown its store when it is next written, as every part is
         return len(parts) - 1
 
-    def cache(self, at: tuple[float, int], now: Synchronized) -> tuple[int, int]:
+    def cache(self, at: tuple[float, int], now: MeshHolderSynchronizationState) -> tuple[int, int]:
         """Write the sample of `at` (a time code and its sample) of each mesh whose content varies.
 
         Returns the meshes split, and those written.
         """
         present = now.present
-        touched = {_uid(self.holder(key)) for key in present if not same(now, key)} & self.meshes.keys()
+        touched = {
+            _uid(self.holder(key)) for key in present if not holder_content_unchanged(now, key)
+        } & self.meshes.keys()
         touched |= {uid for uid, cache in self.caches.items() if cache.varying or cache.whole is not None}
         split = written = 0
         for uid in touched:
@@ -143,13 +145,13 @@ class MeshCaches:
             parts: dict[ContentKey, list[HolderKey]] = {}
             for key in users:
                 parts.setdefault(content_key(now, key), []).append(key)
-            ordered = ordered_parts(now, parts)
+            ordered = holder_groups_with_retained_mesh_first(now, parts)
             split += self.split(uid, [set(keys) for _, keys in ordered])
             for content, keys in ordered:
                 part_uid = _uid(self.holder(keys[0]))
                 cache = self.caches.get(part_uid)
                 mesh_record = None
-                if all(same(now, k) for k in keys):
+                if all(holder_content_unchanged(now, k) for k in keys):
                     if cache is None:
                         continue  # what the mesh holds
                     values = cache.latest
@@ -287,7 +289,7 @@ class MeshCaches:
                     modifier.node_group = group
         for name in cache.varying:
             layer = content[name]
-            held = stored(layer)
+            held = attribute_for_sample_storage(layer)
             attribute = held_mesh.attributes.new(f"{name}{FRAME_SEPARATOR}{sample}", held.data_type, layer.domain)
             attribute.data.foreach_set(held.prop, held.values)
         if cache.varying:
@@ -311,17 +313,17 @@ class MeshCaches:
         return data
 
 
-def content_key(now: Synchronized, key: HolderKey) -> ContentKey:
+def content_key(now: MeshHolderSynchronizationState, key: HolderKey) -> ContentKey:
     index = now.mesh_index[key]
     return ("mesh", index) if index is not None else ("bounds", bounds_key(record(now, key)))
 
 
-def record(now: Synchronized, key: HolderKey) -> ObjectRecord:
+def record(now: MeshHolderSynchronizationState, key: HolderKey) -> ObjectRecord:
     """A present holder's record there."""
     return now.fresh.get(key) or now.latest[key]
 
 
-def same(now: Synchronized, key: HolderKey) -> bool:
+def holder_content_unchanged(now: MeshHolderSynchronizationState, key: HolderKey) -> bool:
     """Whether a present holder's content is what it was at the current plan."""
     if key not in now.fresh:
         return True
@@ -333,14 +335,16 @@ def same(now: Synchronized, key: HolderKey) -> bool:
     return now.diff["meshes"][index] == now.previous[key]
 
 
-def ordered_parts(
-    now: Synchronized, parts: dict[ContentKey, list[HolderKey]]
+def holder_groups_with_retained_mesh_first(
+    now: MeshHolderSynchronizationState, parts: dict[ContentKey, list[HolderKey]]
 ) -> list[tuple[ContentKey, list[HolderKey]]]:
     """A mesh's holders by content, the part that keeps the mesh first.
 
     That is the part whose content is unchanged, so a mesh with no cache stays one, else the largest.
     """
-    return sorted(parts.items(), key=lambda item: (not all(same(now, k) for k in item[1]), -len(item[1])))
+    return sorted(
+        parts.items(), key=lambda item: (not all(holder_content_unchanged(now, k) for k in item[1]), -len(item[1]))
+    )
 
 
 def new_cache(mesh: bpy.types.Mesh, content: dict[str, MeshAttributeData]) -> MeshCache:

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 type TrackKey = tuple[str, tuple[str, ...], int]  # source, instance context, place among the copy's objects
 
 
-class Aspect(StrEnum):
+class DisplayAspect(StrEnum):
     """An aspect of an object that can vary along a track, by the record fields compared.
 
     The values are the core's names for them (plan.h's AspectName).
@@ -43,7 +43,7 @@ class Aspect(StrEnum):
 
 
 @dataclass
-class Frames:
+class CapturedFrameSequence:
     """A range's first plan, its tracks, and what changes along them."""
 
     times: list[float]
@@ -51,7 +51,7 @@ class Frames:
     tracks: dict[TrackKey, list[int | None]]  # per track, per frame: its object's plan index, None when absent
     # Per track, by frame: its record wherever it changed (always at its first frame), held until the next.
     samples: dict[TrackKey, dict[int, ObjectRecord]]
-    varying: dict[TrackKey, set[Aspect]]  # per track, the aspects that vary anywhere in the range; empty if none
+    varying: dict[TrackKey, set[DisplayAspect]]  # per track, the aspects that vary anywhere in the range; empty if none
     # Per frame, per mesh and per material: an identifier of its content, equal across frames for equal content.
     mesh_content: list[list[int]]
     material_content: list[list[int]]
@@ -66,11 +66,11 @@ class Frames:
         return self.samples[key][max(f for f in self.samples[key] if f <= frame)]
 
 
-def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings: Any) -> Frames:
+def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings: Any) -> CapturedFrameSequence:
     """Capture and plan each of `times` on `bridge`, incrementally after the first; `settings` go to build_plan."""
     plan = native.build_plan(bridge.capture(times[0]), **settings)
     ids = _Identifiers()
-    frames = Frames([], plan, {}, {}, {}, [], [])
+    frames = CapturedFrameSequence([], plan, {}, {}, {}, [], [])
     current: dict[TrackKey, int] = {}  # by track, its object at the latest frame
     previous: Plan | None = None
     for frame, time in enumerate(times):
@@ -101,13 +101,14 @@ def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings:
                 frames.varying[key] |= _differences(frames, last, samples[last], frame, record)
             else:
                 frames.tracks[key] = [None] * frame
-                frames.varying[key] = {Aspect.VISIBILITY} if frame else set()  # a copy's object that appears mid-range
+                # A copy's object that appears mid-range.
+                frames.varying[key] = {DisplayAspect.VISIBILITY} if frame else set()
             samples[frame] = record
             current[key] = index
         for key, track in frames.tracks.items():
             track.append(current.get(key))
             if key not in current:
-                frames.varying[key].add(Aspect.VISIBILITY)  # the copy has no such object at this frame
+                frames.varying[key].add(DisplayAspect.VISIBILITY)  # the copy has no such object at this frame
         previous = plan
     return frames
 
@@ -157,7 +158,9 @@ def place(index: int, records: dict[int, ObjectRecord], kept: dict[int, TrackKey
     return 1 if before == copy_of(records[index]) else 0
 
 
-def _differences(frames: Frames, then: int, old: ObjectRecord, frame: int, new: ObjectRecord) -> set[Aspect]:
+def _differences(
+    frames: CapturedFrameSequence, then: int, old: ObjectRecord, frame: int, new: ObjectRecord
+) -> set[DisplayAspect]:
     """What differs between a track's record at frame `then` and at `frame`, meshes and materials by content."""
 
     def mesh(at: int, record: ObjectRecord) -> int | None:
@@ -166,17 +169,17 @@ def _differences(frames: Frames, then: int, old: ObjectRecord, frame: int, new: 
     def slots(at: int, record: ObjectRecord) -> list[int | None]:
         return [None if m is None else frames.material_content[at][m] for m in record["material_slots"]]
 
-    found: set[Aspect] = set()
+    found: set[DisplayAspect] = set()
     if old["matrix"] != new["matrix"]:
-        found.add(Aspect.TRANSFORM)
+        found.add(DisplayAspect.TRANSFORM)
     if (old["viewport"], old["render"]) != (new["viewport"], new["render"]):
-        found.add(Aspect.VISIBILITY)
+        found.add(DisplayAspect.VISIBILITY)
     if mesh(then, old) != mesh(frame, new):
-        found.add(Aspect.MESH)
+        found.add(DisplayAspect.MESH)
     if slots(then, old) != slots(frame, new):
-        found.add(Aspect.MATERIALS)
+        found.add(DisplayAspect.MATERIALS)
     if old["properties"] != new["properties"]:
-        found.add(Aspect.PROPERTIES)
+        found.add(DisplayAspect.PROPERTIES)
     if old["bounds"] != new["bounds"]:
-        found.add(Aspect.BOUNDS)
+        found.add(DisplayAspect.BOUNDS)
     return found

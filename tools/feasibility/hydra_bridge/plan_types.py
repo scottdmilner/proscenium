@@ -77,7 +77,7 @@ class ObjectRecord(TypedDict):
     primvars: dict[str, Any]  # constant primvars as USD authored them (Gf and Vt values)
     # The same primvars as ID properties, all but strings: bool, int, float, or lists (nested by vector or matrix row)
     properties: dict[str, PropertyValue]
-    # M4 Phase E (E3): the aspects (frames.Aspect's values) the snapshot's dirtied locators reach; after a time
+    # M4 Phase E (E3): the aspects (frames.DisplayAspect's values) the snapshot's dirtied locators reach; after a time
     # change, or from a capture with time_dependencies, those that depend on time
     dirtied_aspects: list[str]
 

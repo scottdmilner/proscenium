@@ -66,9 +66,9 @@ from apply import (
 )
 from attribute_samples import BASE
 from cached_batches import Batches
-from frames import Aspect, TrackKey, copy_of, place
-from keyframes import Keys
-from mesh_caches import MeshCaches, Synchronized, UncachedError
+from frames import DisplayAspect, TrackKey, copy_of, place
+from keyframes import AnimationKeyWriter
+from mesh_caches import MeshCaches, MeshHolderSynchronizationState, UncachedError
 from pxr import Tf, Usd
 from sequence_caches import SequenceCaches
 
@@ -111,13 +111,13 @@ class CachedDisplay:
     latest: dict[TrackKey, ObjectRecord]  # each track's record at the latest time it was present
     current: dict[TrackKey, int]  # the present tracks' objects in the current plan
     mesh_index: dict[TrackKey, int | None]  # the present tracks' meshes in the current plan
-    keyed: dict[TrackKey, set[Aspect]]  # per track with an object, the aspects it is keyed in
-    varied: dict[TrackKey, set[Aspect]]  # per track, the aspects found varying, but in its mesh's cache
+    keyed: dict[TrackKey, set[DisplayAspect]]  # per track with an object, the aspects it is keyed in
+    varied: dict[TrackKey, set[DisplayAspect]]  # per track, the aspects found varying, but in its mesh's cache
     batches: Batches | None  # with a minimum, the batches (E5)
-    predicted: dict[tuple[str, tuple[str, ...]], set[Aspect]]  # per copy, the aspects predicted to vary
+    predicted: dict[tuple[str, tuple[str, ...]], set[DisplayAspect]]  # per copy, the aspects predicted to vary
     materials: list[bpy.types.Material | None]  # by current plan material; None for content not yet shown
     meshes: MeshCaches  # every mesh the tracks' objects show, and the caches of those that vary
-    keys: Keys
+    keys: AnimationKeyWriter
     _listener: Any
 
     def __init__(  # noqa: PLR0913 - the source, the destination, and how it is displayed
@@ -176,7 +176,7 @@ class CachedDisplay:
         self.synchronized.append(result)
         return result
 
-    def follow(self, scene: bpy.types.Scene, subframes: bool = False) -> Callable[..., None]:
+    def install_frame_change_handler(self, scene: bpy.types.Scene, subframes: bool = False) -> Callable[..., None]:
         """Synchronize at `scene`'s frame at each frame change, before Blender evaluates it; returns the handler.
 
         With `subframes`, at its subframe too; without, a subframe shows its frame. Remove the handler from
@@ -190,19 +190,21 @@ class CachedDisplay:
         bpy.app.handlers.frame_change_pre.append(on_frame)
         return on_frame
 
-    def confirmed(self) -> dict[tuple[str, tuple[str, ...]], set[Aspect]]:
+    def observed_varying_aspects(self) -> dict[tuple[str, tuple[str, ...]], set[DisplayAspect]]:
         """Per copy, the aspects the time codes synchronized so far found varying."""
-        found: dict[tuple[str, tuple[str, ...]], set[Aspect]] = {}
+        found: dict[tuple[str, tuple[str, ...]], set[DisplayAspect]] = {}
         batched = self.batches.points.keys() if self.batches is not None else set()
         for key in self.objects.keys() | batched:
             aspects = found.setdefault(key[:2], set())
             aspects |= self.varied.get(key, set())
             obj = self.objects.get(key)
-            if obj is not None and self.meshes.varies(obj.data):
-                aspects.add(Aspect.BOUNDS if self.latest[key]["placeholder_type"] is not None else Aspect.MESH)
+            if obj is not None and self.meshes.has_cached_variation(obj.data):
+                aspects.add(
+                    DisplayAspect.BOUNDS if self.latest[key]["placeholder_type"] is not None else DisplayAspect.MESH
+                )
             if self.batches is not None and key in self.batches.held:
-                if self.meshes.varies(self.batches.points[key][0].prototype.data):
-                    aspects.add(Aspect.MESH)
+                if self.meshes.has_cached_variation(self.batches.points[key][0].prototype.data):
+                    aspects.add(DisplayAspect.MESH)
         return found
 
     def release(self) -> None:
@@ -227,7 +229,7 @@ class CachedDisplay:
             key = (*copy_of(record), place(index, records, {}))
             self.latest[key], self.current[key], self.mesh_index[key] = record, index, record["mesh"]
         self.cached = {time: BASE}
-        self.keys = Keys(self.blend)
+        self.keys = AnimationKeyWriter(self.blend)
         self.meshes.reset(self.keys, self.cached)
         self.keyed, self.varied = {}, {}
         if self.batches is None:
@@ -244,12 +246,12 @@ class CachedDisplay:
                 if key not in self.batches.held:
                     self.objects[key] = new_object(index, self.latest[key], meshes, materials, self.collection)
             for batch in self.batches.batches:
-                self.meshes.use(batch.prototype.data, batch.key)
+                self.meshes.register_mesh_holder(batch.prototype.data, batch.key)
         for key, obj in self.objects.items():
-            self.meshes.use(obj.data, key)
+            self.meshes.register_mesh_holder(obj.data, key)
         self.predicted = {}
         for key, record in self.latest.items():
-            self.predicted.setdefault(key[:2], set()).update(map(Aspect, record["dirtied_aspects"]))
+            self.predicted.setdefault(key[:2], set()).update(map(DisplayAspect, record["dirtied_aspects"]))
         self._split_predicted()
         self.edited = False
 
@@ -259,7 +261,7 @@ class CachedDisplay:
             parts: dict[str | None, set[HolderKey]] = {}
             for key in users:
                 track = self._track(key)
-                varies = {Aspect.MESH, Aspect.BOUNDS} & self.predicted[track[:2]]
+                varies = {DisplayAspect.MESH, DisplayAspect.BOUNDS} & self.predicted[track[:2]]
                 parts.setdefault(_shown(track) if varies else None, set()).add(key)
             self.meshes.split(uid, sorted(parts.values(), key=len, reverse=True))
 
@@ -296,7 +298,7 @@ class CachedDisplay:
                 self._add_track(key, fresh[key], plan, mesh_index, arrived=False)
         for key in new:
             self._add_track(key, fresh[key], plan, mesh_index)
-        now = Synchronized(
+        now = MeshHolderSynchronizationState(
             plan,
             diff,
             {key: index for key, index in present.items() if key in self.objects},
@@ -362,12 +364,12 @@ class CachedDisplay:
         }
         obj = new_object(-1, data, [mesh], slots, self.collection)  # ty: ignore[invalid-argument-type]
         self.objects[key], self.latest[key] = obj, record
-        self.meshes.use(obj.data, key)
+        self.meshes.register_mesh_holder(obj.data, key)
         for cached in self.cached:
             self._key_visibility(key, cached, None)
-        self.keyed[key] = {Aspect.VISIBILITY}
+        self.keyed[key] = {DisplayAspect.VISIBILITY}
         if arrived:
-            self.varied.setdefault(key, set()).add(Aspect.VISIBILITY)
+            self.varied.setdefault(key, set()).add(DisplayAspect.VISIBILITY)
 
     def _material(self, index: int, plan: Plan) -> bpy.types.Material:
         material = self.materials[index]
@@ -388,36 +390,36 @@ class CachedDisplay:
             aspects |= found
             self.varied.setdefault(key, set()).update(found)
             for aspect in aspects:
-                if record is not None or aspect == Aspect.VISIBILITY:
+                if record is not None or aspect == DisplayAspect.VISIBILITY:
                     self._key(aspect, key, time, record)
             keyed += bool(aspects)
         return keyed
 
-    def _differences(self, key: TrackKey, record: ObjectRecord | None) -> set[Aspect]:
+    def _differences(self, key: TrackKey, record: ObjectRecord | None) -> set[DisplayAspect]:
         """The aspects `record` changes from the track's latest one; an absent track's visibility."""
         old = self.latest[key]
         if record is None:
-            return {Aspect.VISIBILITY} if old["viewport"] or old["render"] else set()
-        found: set[Aspect] = set()
+            return {DisplayAspect.VISIBILITY} if old["viewport"] or old["render"] else set()
+        found: set[DisplayAspect] = set()
         if record["matrix"] != old["matrix"]:
-            found.add(Aspect.TRANSFORM)
+            found.add(DisplayAspect.TRANSFORM)
         if (record["viewport"], record["render"]) != (old["viewport"], old["render"]):
-            found.add(Aspect.VISIBILITY)
+            found.add(DisplayAspect.VISIBILITY)
         if record["properties"] != old["properties"]:
-            found.add(Aspect.PROPERTIES)
+            found.add(DisplayAspect.PROPERTIES)
         if record["viewport"] or record["render"]:
             slots = self.objects[key].material_slots
             materials = [None if m is None else self.materials[m] for m in record["material_slots"]]
             if any(slot.material != m for slot, m in zip(slots, materials, strict=True)):
-                raise UncachedError(f"{key[0]}: its {Aspect.MATERIALS} vary")
+                raise UncachedError(f"{key[0]}: its {DisplayAspect.MATERIALS} vary")
         return found
 
-    def _key(self, aspect: Aspect, key: TrackKey, time: float, record: ObjectRecord | None) -> None:
-        if aspect == Aspect.VISIBILITY:
+    def _key(self, aspect: DisplayAspect, key: TrackKey, time: float, record: ObjectRecord | None) -> None:
+        if aspect == DisplayAspect.VISIBILITY:
             self._key_visibility(key, time, record)
-        elif aspect == Aspect.TRANSFORM and record is not None:
+        elif aspect == DisplayAspect.TRANSFORM and record is not None:
             self._key_transform(key, time, record)
-        elif aspect == Aspect.PROPERTIES and record is not None:
+        elif aspect == DisplayAspect.PROPERTIES and record is not None:
             self._key_properties(key, time, record)
 
     def _key_visibility(self, key: TrackKey, time: float, record: ObjectRecord | None) -> None:

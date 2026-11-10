@@ -39,20 +39,20 @@ from apply import (
 from attribute_samples import FRAME_SEPARATOR
 from mesh_caches import (
     MeshCaches,
-    Synchronized,
+    MeshHolderSynchronizationState,
     UncachedError,
     bounds_layer,
     content_key,
-    ordered_parts,
+    holder_content_unchanged,
+    holder_groups_with_retained_mesh_first,
     record,
-    same,
 )
 from pxr import Sdf, Vt
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from keyframes import Keys
+    from keyframes import AnimationKeyWriter
     from mesh_caches import ContentKey, HolderKey
     from plan_types import ObjectRecord, Plan
 
@@ -109,7 +109,7 @@ class SequenceCaches(MeshCaches):
         super().__init__(holder)
 
     @override
-    def reset(self, keys: Keys, times: dict[float, int]) -> None:
+    def reset(self, keys: AnimationKeyWriter, times: dict[float, int]) -> None:
         super().reset(keys, times)
         self.layer.Clear()
         self.prims, self.contents, self.kinds, self._count = {}, {}, {}, 0
@@ -121,7 +121,7 @@ class SequenceCaches(MeshCaches):
             self._key_frame(time)
 
     @override
-    def varies(self, data: Any) -> bool:
+    def has_cached_variation(self, data: Any) -> bool:
         return data is not None and data.session_uid in self.prims
 
     @override
@@ -145,12 +145,14 @@ class SequenceCaches(MeshCaches):
         return len(parts) - 1
 
     @override
-    def cache(self, at: tuple[float, int], now: Synchronized) -> tuple[int, int]:
+    def cache(self, at: tuple[float, int], now: MeshHolderSynchronizationState) -> tuple[int, int]:
         """Write the sample of `at`'s time code of each mesh whose content varies; the meshes split, and written."""
         time = at[0]
         self._key_frame(time)
         present = now.present
-        touched = {_uid(self.holder(key)) for key in present if not same(now, key)} & self.meshes.keys()
+        touched = {
+            _uid(self.holder(key)) for key in present if not holder_content_unchanged(now, key)
+        } & self.meshes.keys()
         touched |= self.prims.keys()
         split = written = 0
         for uid in touched:
@@ -160,11 +162,11 @@ class SequenceCaches(MeshCaches):
             parts: dict[ContentKey, list[HolderKey]] = {}
             for key in users:
                 parts.setdefault(content_key(now, key), []).append(key)
-            ordered = ordered_parts(now, parts)
+            ordered = holder_groups_with_retained_mesh_first(now, parts)
             split += self.split(uid, [set(keys) for _, keys in ordered])
             for content, keys in ordered:
                 part_uid = _uid(self.holder(keys[0]))
-                if all(same(now, k) for k in keys):
+                if all(holder_content_unchanged(now, k) for k in keys):
                     if part_uid not in self.prims:
                         continue  # what the mesh holds
                     found = self.contents[part_uid]

@@ -31,7 +31,7 @@ import bpy
 import numpy
 from apply import ForeachProperty, MeshAttributeData, object_color
 from batch import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
-from frames import Aspect, TrackKey
+from frames import DisplayAspect, TrackKey
 from mesh_caches import MeshCache, new_cache
 
 if TYPE_CHECKING:
@@ -76,15 +76,15 @@ class CachedBatch:
         return (tuple(s.material for s in self.prototype.material_slots), tuple(self.prototype.color), self.kinds)
 
 
-def kinds(record: ObjectRecord) -> Kinds | None:
+def batchable_primvar_types(record: ObjectRecord) -> Kinds | None:
     """A copy's primvar kinds, or None if a point attribute can't hold one of them."""
     found = tuple(sorted((name, attribute_type(value)) for name, value in record["properties"].items()))
     return None if any(kind is None for _, kind in found) else found  # ty: ignore[invalid-return-type]
 
 
-def content(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | None:
+def batch_compatibility_key(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | None:
     """A copy's content as its batch would hold it, or None for one no batch can hold."""
-    held = kinds(record)
+    held = batchable_primvar_types(record)
     if record["mesh"] is None or held is None:
         return None
     slots = tuple(None if m is None else materials(m) for m in record["material_slots"])
@@ -92,16 +92,16 @@ def content(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | 
     return (record["mesh"], slots, color, held)
 
 
-def groups(
+def initial_batch_track_groups(
     records: Mapping[TrackKey, ObjectRecord], shown: Callable[[TrackKey], str], minimum: int
 ) -> list[list[TrackKey]]:
     """The tracks that batch at the build, in groups of at least `minimum`, from whether each is predicted to deform."""
     found: dict[tuple[Any, ...], list[TrackKey]] = {}
     for key, record in records.items():
-        held = content(record, lambda m: m)
+        held = batch_compatibility_key(record, lambda m: m)
         if held is None:
             continue
-        deforms = Aspect.MESH.value in record["dirtied_aspects"]
+        deforms = DisplayAspect.MESH.value in record["dirtied_aspects"]
         found.setdefault((*held, shown(key) if deforms else None), []).append(key)
     return [members for members in found.values() if len(members) >= minimum]
 
@@ -154,7 +154,7 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     assert mesh is not None  # noqa: S101 - the groups leave out placeholders
     prototype = bpy.data.objects.new(f"Prototype {number:06d}", meshes[mesh])
     set_prototype(prototype, first, meshes, materials)
-    held = kinds(first)
+    held = batchable_primvar_types(first)
     assert held is not None  # noqa: S101 - the groups leave out what no point can hold
     points = bpy.data.meshes.new(f"Carrier {number:06d}")
     points.vertices.add(len(tracks))
@@ -251,7 +251,7 @@ class Regrouped:
 
     leaving: list[TrackKey]  # tracks a batch no longer holds, which become objects
     joined: list[TrackKey]  # tracks first present now, which a batch holds
-    varied: dict[TrackKey, set[Aspect]]  # per track a batch holds or held, the aspects found varying
+    varied: dict[TrackKey, set[DisplayAspect]]  # per track a batch holds or held, the aspects found varying
     holders: dict[HolderKey, tuple[int, ObjectRecord | None, int | None, int | None]]  # per prototype with a track
     # present: a track's plan index, its record if read, the mesh in the plan, and the mesh in the current one
 
@@ -282,7 +282,7 @@ class Batches:
         collection: bpy.types.Collection,
     ) -> None:
         """Batch the build's tracks in groups of at least the minimum; the rest are the display's objects."""
-        for members in groups(records, shown, self.minimum):
+        for members in initial_batch_track_groups(records, shown, self.minimum):
             if self.group is None:
                 self.group = batch_group()
             batch = new_batch(len(self.batches), members, records, meshes, materials, collection, self.group)
@@ -314,12 +314,12 @@ class Batches:
                 if key not in fresh:  # unchanged since it was read and kept, but its mesh, as plans renumber
                     parts.setdefault(mesh_index[key], []).append(key)
                     continue
-                held = content(fresh[key], materials)
+                held = batch_compatibility_key(fresh[key], materials)
                 if held is not None and held[1:] == share:
                     parts.setdefault(held[0], []).append(key)
                 else:
-                    reasons = {Aspect.MATERIALS if held and held[1] != share[0] else Aspect.PROPERTIES}
-                    reasons |= {Aspect.MESH} if fresh[key]["mesh"] != mapped else set()
+                    reasons = {DisplayAspect.MATERIALS if held and held[1] != share[0] else DisplayAspect.PROPERTIES}
+                    reasons |= {DisplayAspect.MESH} if fresh[key]["mesh"] != mapped else set()
                     self._leave(key, result, reasons | _differences(fresh[key], latest[key]))
             # The tracks of the prototype's current mesh keep it, or else the most, then the least track: plans
             # from separate processes can order their records differently.
@@ -330,7 +330,7 @@ class Batches:
             for others in parts.values():
                 for key in others:
                     found = _differences(fresh[key], latest[key]) if key in fresh else set()
-                    self._leave(key, result, {Aspect.MESH, *found})
+                    self._leave(key, result, {DisplayAspect.MESH, *found})
             before[batch.number] = batch.mesh
             batch.mesh = mesh_index[kept[0]] if kept else mapped
             for key in members:
@@ -338,10 +338,10 @@ class Batches:
                     result.varied.setdefault(key, set()).update(_differences(fresh[key], latest[key]))
             for key in batch.tracks:
                 if key in self.held and key not in present and (latest[key]["viewport"] or latest[key]["render"]):
-                    result.varied[key] = {Aspect.VISIBILITY}
+                    result.varied[key] = {DisplayAspect.VISIBILITY}
         joining: dict[int, list[TrackKey]] = {}  # by batch, the new tracks joining it
         for key in new_tracks:
-            held = content(fresh[key], materials)
+            held = batch_compatibility_key(fresh[key], materials)
             alike = [b for b in self.batches if b.mesh is not None and held == (b.mesh, *b.content())]
             if alike:
                 joining.setdefault(min(alike, key=lambda b: min(b.tracks)).number, []).append(key)
@@ -350,7 +350,7 @@ class Batches:
             add_points(batch, keys, [fresh[key] for key in keys])
             for point, key in enumerate(keys, start=len(batch.tracks) - len(keys)):
                 self.points[key] = (batch, point)
-                result.varied[key] = {Aspect.VISIBILITY}
+                result.varied[key] = {DisplayAspect.VISIBILITY}
             self.held.update(keys)
             result.joined += keys
         for batch in self.batches:  # each prototype with a track present, as a holder of its mesh
@@ -367,7 +367,7 @@ class Batches:
         """The prototype a holder key names."""
         return self.batches[key[1]].prototype  # ty: ignore[invalid-argument-type]
 
-    def _leave(self, key: TrackKey, result: Regrouped, aspects: set[Aspect]) -> None:
+    def _leave(self, key: TrackKey, result: Regrouped, aspects: set[DisplayAspect]) -> None:
         self.held.discard(key)
         result.leaving.append(key)
         result.varied[key] = aspects
@@ -397,13 +397,13 @@ class Batches:
         return written
 
 
-def _differences(record: ObjectRecord, old: ObjectRecord) -> set[Aspect]:
+def _differences(record: ObjectRecord, old: ObjectRecord) -> set[DisplayAspect]:
     """The aspects a batch's track changes in from its latest record, but its mesh, which its prototype's cache says."""
-    found: set[Aspect] = set()
+    found: set[DisplayAspect] = set()
     if record["matrix"] != old["matrix"]:
-        found.add(Aspect.TRANSFORM)
+        found.add(DisplayAspect.TRANSFORM)
     if (record["viewport"], record["render"]) != (old["viewport"], old["render"]):
-        found.add(Aspect.VISIBILITY)
+        found.add(DisplayAspect.VISIBILITY)
     if record["properties"] != old["properties"]:
-        found.add(Aspect.PROPERTIES)
+        found.add(DisplayAspect.PROPERTIES)
     return found

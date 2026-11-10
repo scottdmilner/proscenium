@@ -53,14 +53,14 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     display = cached.CachedDisplay(
         native, stage, collection, start, predict=predict, minimum=minimum, sequence=_sequence(dest, sequence)
     )
-    handler = display.follow(scene, subframes)
+    handler = display.install_frame_change_handler(scene, subframes)
     result: dict[str, Any] = {"visits": []}
     try:
         for time in visits:
             result["visits"].append(_visit(native, stage, display, scene, time, subframes))
         result["split"] = sum(s.split for s in display.synchronized)
         result["predicted"] = _copies(display.predicted)
-        result["confirmed"] = _copies(display.confirmed())
+        result["confirmed"] = _copies(display.observed_varying_aspects())
         result["cached"] = sorted(display.cached)
         result["whole"] = _whole(display)
         result["batched"] = _batched(display)
@@ -164,7 +164,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
     display = cached.CachedDisplay(
         native, stage, collection, synchronized[0], blend=True, minimum=minimum, sequence=_sequence(dest, sequence)
     )
-    handler = display.follow(scene)
+    handler = display.install_frame_change_handler(scene)
     plans: dict[float, dict[Any, tuple[Any, Any]]] = {}
 
     def fresh(time: float) -> dict[Any, tuple[Any, Any]]:  # by track: its record and its mesh's layers

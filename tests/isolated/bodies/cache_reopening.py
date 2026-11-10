@@ -35,7 +35,7 @@ def save(module_dir: str, dest: str, blend: str, times: list[float], sequence: b
     scene.frame_set(int(times[0]))
     path = caching._sequence(dest, sequence)
     display = cached.CachedDisplay(native, stage, collection, times[0], sequence=path)
-    handler = display.follow(scene)
+    handler = display.install_frame_change_handler(scene)
     try:
         for time in times[1:]:
             scene.frame_set(int(time))
