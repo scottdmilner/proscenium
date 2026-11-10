@@ -1,0 +1,147 @@
+# M7 — Blender application and source inspection UI: plan
+
+How M7 will build the product's application layer, incremental refresh, the display of cached time codes, persisted correspondence, the inspection layer and the headless interaction functions, and a temporary selection tool and panels over them, and the order of work. Requirements are in the [M7 milestone](../milestones/M07-application.md); where this plan and a requirement file disagree, the requirement file wins. Mechanisms named here are suggestions unless marked settled. Each phase gains a short decision log once work starts, in the style of the [M6 plan](M06-evaluation.md).
+
+M7 delivers the matrix rows whose `delivery` is M7, once Phase A has moved ROLE-04 and ROLE-06 to M8: ARCH-01, ARCH-05, PH2-02, PH2-03, SNAP-13, APP-05, APP-06, APP-08, TXN-12, CACHE-01, CACHE-08 to CACHE-10, OWN-07, OWN-08, STAB-01 to STAB-04, INSP-01 to INSP-03, INSP-09, INSP-10, ICON-01 to ICON-06, ICON-08 to ICON-18, ICON-20 to ICON-23, ICON-25 to ICON-31, ICON-35, ICON-36, ICON-39 to ICON-41, DISC-01, DISC-02, DISC-04, DISC-06 to DISC-08, AFF-01, AFF-03, XFORM-09 to XFORM-11, XFORM-13, XFORM-14, CONV-02, CONV-07, MODEL-01, TINC-01, ASTD-01 to ASTD-04, ABND-02 to ABND-04, and ABND-07 to ABND-09. It owns the inspection layer's half of the DECISIONS.md row "Inspection layer", the fix for retirement after an undo push (M6 F5), the change matrix, and the headless functions' names and signatures ([Headless Functions](../spec/interaction-contract.md#headless-functions)).
+
+## Starting point
+
+- **The stub application layer draws M6's whole plan** (`synchronization/application.py`). `prepare(plan, published, work)` makes each drawn copy an object with `display_type` `BOUNDS`, a bounds mesh of its extent's eight corners or, without bounds, an empty marker, and a sheared copy's unselectable shear parent. It names every object `~<generation>.<ordinal> <prim name>`, tracks each datablock as soon as it's made (TXN-08), and sets hide flags together. `key_time_codes(plans, published, own, work)` keys only transforms, of published objects, with each key's undo on `work.rollback_actions` (CACHE-03). Copies that appear at a cached time code, time-varying shear, cached bounds, and keyed visibility are M7's.
+- **Every synchronization is a full rebuild.** `transaction.synchronize` evaluates, prepares every partition, publishes (linking the staged objects, unlinking the old, writing the manifest whole), and retires what the new manifest doesn't name. Nothing compares plans. `ownership.set_manifest_entries` and `manifests.existing_or_new_entry_keys` exist and are tested, but only `cache` writes by entry.
+- **The chain is built per call.** `evaluation.evaluate_display_plans` builds a `_core.SceneIndexChain`, captures, and releases it. The chain applies pending updates on each capture, so it can be retained, but nothing records notices. Time-varying locators live only inside `SourceInfoSceneIndex`, and the plan exposes none.
+- **The plan's roles are `object`, `shear parent`, and `bounds mesh`** (`core/plan.h`). Its per-copy content crosses as read-only buffers. `Plan.batch_groups(minimum)` exists, and nothing applies it.
+- **No correspondence is persisted.** `GenerationMetadata` holds settings, unit scale, time code, source revision, diagnostics, and cached time codes. A manifest entry holds a copy resource's source entity, role, and place. `binding/persistence/source_selection.py` holds the persistent selection, with resolution and mirroring left to M7. None of these schemas has shipped, so M7 may change them in place at version 1.
+- **There is no interaction or UI code in `src/`.** `addon.py` registers only records and handlers. `tests/support/interaction_checks.py` holds M4's checks of the seven headless functions behind an `InteractionTestDisplay` adapter, written to be reused by M7. `F-UNMANAGED-USER`, `F-SAME-VALUES`, and `F-NO-OP-REFRESH` are registered without generators.
+- **The bridge holds what M7 ports** (`tools/feasibility/hydra_bridge/`; it is evidence, not product code). Following its design is the default, and each divergence is justified in the phase log:
+  - application: `object_display.py`, `object_display_updates.py` (prepare beside, publish in one call that undoes itself, retire), `keyframes.py`, `attribute_samples.py`;
+  - incremental capture and discovery: `src/scene_index_graph` (`RecordingObserver`), `src/capture` (incremental and forced time dependencies, with the requeue), the source-info filter's stage listener;
+  - comparison: `src/plan_diff`;
+  - interaction: `src/correspondence`, `src/interaction` (`SourceSelectionResolver`), `src/inspection`, `object_display_selection.py`, `select_tool.py`.
+
+## Settled with the user (2026-11-10)
+
+1. **Objects only; batches are M8's.** M7 draws every drawn copy as objects. Batch partitions (carriers per selection state, points meshes, prototypes), their content-keyed identities (ROLE-04, ROLE-06), and repartitioning between a batch and objects move to M8, which also owns correspondence through batching. M6's provisional content key lets only a prototype mesh's copies share, so batches would form only under native instancing before M8 anyway.
+2. **What a refresh compares against.** A runtime index holds the plan of each generation this session published for a binding, keyed by its generation record's value without its cached time codes, and bounded in size. A refresh compares the new plan with the plan of the generation the destination shows, read from the restored record after an undo or redo. Planning is deterministic over its inputs (PLAN-08), and the record holds them, so equal records mean equal plans. Without a held plan, as after reopening or an undo past what the index holds, the refresh is a full rebuild.
+   - Blender's undo restores the records with the display they describe, since both are Blender data, and touches no USD state. So the kept chain, its notices, and incremental capture stay valid across it, and only the comparison base needs choosing.
+   - Cached time codes need nothing more: undo restores a generation's keys with its record (UNDO-09, M5).
+3. **The UI is temporary and apart from the product code.** M7 builds the Source Select tool and minimal panels (a binding panel and a minimal source inspector). They live in their own unit and reach the product only through `api/`, so M12 can replace them without touching the rest. Everything they need, the interaction functions and destination selectability included, is `api/`'s.
+4. **The order of work:** contracts, then the application layer, then incremental refresh, then cached time codes, then correspondence and interaction, then the UI.
+
+## Phases
+
+Each phase ends with a review by the user before the next starts. Each phase lists its commits in order. Every commit is one feature and passes `pre-commit` and the test suite on its own:
+
+- A spec change lands with its matrix rows, its `invariants.md` bullet, and its DECISIONS.md row.
+- A new fixture lands with:
+  - its registry entry;
+  - its Named Contract Fixtures row;
+  - its mention in the milestone's Tests section;
+  - a row that uses it.
+- Code lands with its tests.
+- A decision lands with its line in the phase's decision log.
+
+If a commit grows past one feature, it splits, and this list is updated in the same commit.
+
+### Phase A — Contracts in the spec and matrix
+
+1. **The M7 plan:** this file.
+2. **Batches moved to M8** (settled 1). ROLE-04 and ROLE-06 change delivery to M8. The M7 milestone loses its batch-groups bullet, the batch half of the cached-variation bullet ("A batch has an object per selection state its instances hold"), and batches from the repartitioning test. The M8 milestone gains them, beside its correspondence through batching, with M4's D3, D4, D8, D14, and E5 as its sources. DECISIONS.md "Display representation" and "Representation roles and resource identities" name M8 where they name M7 for batches.
+3. **The comparison base** (settled 2), as a DECISIONS.md row, "Incremental refresh comparison", with:
+   - the index's bound: suggested, Blender's undo-steps preference, or a few generations dropped least recently used first. M6's plan is about 6 MB on ALab, but M8 and M9 add mesh and material content (the bridge's plan was 904 MB), so Phase G measures it again;
+   - a check that the generation record tells apart every pair of generations whose plans can differ;
+   - [Affected Content](../spec/incremental.md#affected-content) gaining an exception to AFF-03, with its row: a refresh after reopening, or after an undo past the held plans, may rebuild every partition. ROLE-06 already accepts such a rebuild after reopening for content-keyed resources.
+4. **The change matrix:** each [Change Discovery](../spec/incremental.md#change-discovery) case M7's content covers, with:
+   - its discovery source (notices, the stage listener, a settings or unit-scale comparison, the source revision, a reload or attachment);
+   - its source-affected entities, dependency-affected resources, and replacement-affected resources;
+   - its action: a local update of a kept object, a partition rebuild, or a full rebuild.
+
+   M8 to M11 extend it for their content, so it needs a home they can edit and tests can cite. Suggested: a spec file beside `incremental.md`, with a matrix row per case. The cases M7 covers: prim existence, activation, type, hierarchy, and variants; transforms, including shear appearing or vanishing (a copy gaining or losing its shear parent); visibility and purpose; payload state; instanced and non-instanced representation (a copy's instance context, and so its identity, changes); bounds appearing or vanishing (a placeholder becoming a marker and back); time code changes, with and without changed values; binding settings; target-scene unit scale; representation version; a reload; and a new attachment. The cases outside M7's content (geometry, topology, primvars, materials, external assets, managed-display damage) are listed with the milestone that owns each.
+5. **The persisted correspondence** (ICON-35, REOPEN-07, ASTD-04). What a published generation records so that the core can load correspondence without synchronizing, and so that the universe answers for the time code the display shows (XFORM-14). Suggested: correspondence derives from the manifest's copy entries (each object's source entity and place), plus each copy's viewport visibility at each time code in the generation, recorded with the generation; the universe is never stored (ICON-16). The record's fields change `GENERATION` in place at version 1.
+6. **The headless functions' names and signatures** ([Headless Functions](../spec/interaction-contract.md#headless-functions)), and the `api/` surface for the temporary UI and future tools (ICON-31): the interaction functions, getting and setting the source selection, notification when it changes, the time code the display shows, the published generation's settings, and destination selectability. A pick held across a republish names its element by resource identity, never by plan index ([M4 plan](M04-prototypes.md), B3).
+7. **Fixtures,** as `.usda` scenes with a comment stating their purpose, under generators that copy them. Each case cites its rows. Suggested:
+   - **`F-NO-OP-REFRESH`:** a scene with a sheared copy, a placeholder, a marker, an invisible copy, and a render-only copy, synchronized repeatedly unchanged, with disposal failing and then succeeding. Rows: AFF-03, STAB-01 to STAB-04.
+   - **`F-SAME-VALUES`:** a transform and a visibility sampled at times with equal values, synchronized at one and then the other. Rows: DISC-04, AFF-03.
+   - **`F-UNMANAGED-USER`:** an unmanaged object using a managed bounds mesh, a managed object parented to an unmanaged one, and an unmanaged object linked into the destination; refreshed with a change to the used mesh, and the binding removed. Rows: OWN-07, OWN-08, STAB-04.
+   - **An edit-sequence fixture** (a new ID, such as `F-EDIT-SEQUENCE`) for the change matrix: one step per case, repeated edits of one prim, an edit inherited by descendants, a prim moved under another parent, a variant switch, a payload unloaded and reloaded, `instanceable` toggled, and a shear introduced and removed. Rows: DISC-01, DISC-02, AFF-01, TINC-01, TXN-12, PH2-02, PH2-03, and the change-matrix rows.
+8. **Oracles** for every row M7 delivers, and M7 joins `started`.
+
+### Phase B — The application layer
+
+1. **The real `prepare`,** replacing the stub's, partition by partition: a drawn copy's object, its bounds mesh, its shear parent, and later its action, made and tracked together (TXN-08), so Phase C can prepare only the partitions that change. It reads the copy table's buffers, never the tuples per copy, and keeps no borrowed buffer past its synchronization (SNAP-13). Names and hide flags follow the stub ("Managed object names"; hide flags set together). The layer imports no `pxr`, which a bpy-free import check enforces (APP-08). Suggested: split `synchronization/application.py` by responsibility (preparing copies, keying time codes) as it grows.
+2. **Application-time failures** (APP-05, APP-06): codes for resource-consumption, runtime, and state-change failures, such as a destination removed during preparation. Each aborts the transaction, since the plan authorizes no fallback yet; the plan's fallback authorization lands when a milestone first needs one.
+3. **Coordinate conversion on the application side** (CONV-02, CONV-07): the target scene's unit scale enters the planning context without changing scene settings; a destination linked into a scene of a different unit scale gets a diagnostic before Blender data is mutated.
+4. **Retirement after an undo push** (M6 F5). The suggested candidates, measured on ALab and `updates-10000` before choosing:
+   - updating each scene's view layers before reading users, as M6's ad hoc check did, at a depsgraph update's cost (0.3 to 0.6 s on ALab, 1.9 to 3.8 s at 30,001 objects);
+   - not counting a Scene as a user of an object that none of its collections links.
+
+   Test: synchronizing again after an undo step is pushed removes the obsolete display; background tests patch the push on.
+5. **M6's stub tests moved to the real layer** (`blender/test_application.py`, `test_time_varying.py`, `test_planning_inputs.py`), and the M5 failure-injection suite rerun unchanged.
+6. **End-to-end checks on M6's plans** (ASTD-01 to ASTD-03): a bounds check under the [Bounds Comparison Contract](../testing/acceptance.md#bounds-comparison-contract) as a test helper, its expected bounds from USD (ABND-02 to ABND-04, ABND-07 to ABND-09), and unique mesh-data counts recorded.
+7. **Resource stability on full rebuilds** (STAB-01 to STAB-04) on `F-NO-OP-REFRESH`, and `F-UNMANAGED-USER`'s removal case. The zero-write half of AFF-03 waits for Phase C.
+
+### Phase C — Incremental refresh
+
+1. **A chain kept per binding,** in the bindings' runtime state, released when the binding detaches, changes payload policy, reloads, gets a new attachment, or is disposed of, so a released stage expires (SRC-02). A release drops the stage scene index without `SetStage(nullptr)` (M6 F1). `synchronize` and `cache` share it.
+2. **The notice observer and incremental capture,** from the bridge's `RecordingObserver` and `capture`: re-copy only the prims named since the previous capture (added and dirtied exactly, removed and renamed by subtree), sharing the others' retained containers. The source-info filter gains the bridge's stage listener, for what Hydra misses. Whether the chain ends in `HdsiPrimTypeNoticeBatchingSceneIndex`, as the bridge's did, is decided here by measurement.
+3. **When capture is full** (DISC-07, DISC-08): a new or rebuilt chain, changed settings or unit scale, another representation version, and any state the observer can't vouch for, such as a restoring undo. The oracle for an incremental capture is a full re-read, never `HdsiComputeSceneIndexDiffDelta`, which compares handles.
+4. **The plan diff in the core,** ported from the bridge's `plan_diff` for M7's content: objects by identity (source entity, place, and destinations), bounds meshes by content and byte comparison, and the changed, repointable, moved, and removed objects, crossing as buffers. It runs over the whole plan; narrowing planning and the diff by notices is M13's ([M4 plan](M04-prototypes.md), C1).
+5. **The held plans,** a runtime index of each published generation's plan, bounded as Phase A settles, looked up by the record the destination holds, so a refresh after an undo or redo compares against the generation it restored. A miss is a full rebuild. Tests: a no-op refresh after an undo and after a redo writes nothing; one after reopening, and one after an undo past the bound, equals a clean rebuild.
+6. **Partition replacement in the transaction:** prepare only what the diff names; publication links the new partitions, repoints a kept object onto a rebuilt bounds mesh, and unlinks the replaced, undoing itself on failure, where a moved object is restored from its stored location, rotation, and scale ([M4 plan](M04-prototypes.md), E2); then the manifest by entry, with the manifest the transaction read, and an empty update writes nothing. A managed resource that unmanaged content uses is replaced, never mutated (OWN-08). A first synchronization, or an explicit full rebuild, builds every partition.
+7. **Tests,** one per change-matrix case on the edit-sequence fixture, each checking that:
+   - the display then holds what a clean full rebuild holds (TINC-01);
+   - the affected-resource sets are the matrix's;
+   - unaffected content keeps its identities (`session_uid`) and isn't written, observed through the application's write functions and the depsgraph's updated IDs;
+   - Blender selection of kept objects survives (PH2-02's Blender half; the source selection's is Phase E's).
+
+   Also: repeated edits, inherited changes, old and new dependencies, missed and coalesced notices (an observer whose records are dropped, and an edit applied between two captures and undone), `F-NO-OP-REFRESH` with zero writes, `F-SAME-VALUES`, and the M5 failure injection on the incremental path (TXN-12).
+
+### Phase D — Cached time codes for every variation
+
+1. **What depends on time** (with the user, 2026-11-08; M6 C9): a capture that forces its time dependencies records the locators they dirty and requeues the forced notices for the next capture (the bridge's `capture.cpp`). Planning maps them to each copy's varying aspects through its prim, instance roots, or point instancer, and for purpose visibility through its ancestors. The plan exposes them as a buffer, so `cache` keys only what varies. A misprediction is found by the frames a call adds and never fails the call (CACHE-10).
+2. **Keying every variation M7's content has:** transforms; visibility (hide flags keyed); a shear that changes over time, or appears, keyed through its shear parent; bounds that change, through a sample attribute and a frames modifier first in the stack ([M4 plan](M04-prototypes.md), E5; the bridge's `keyframes.py` and `attribute_samples.py`); a placeholder's bounds box and marker both made, each with keyed visibility; and copies that appear or vanish at a cached time code, whose correspondence and ownership entries the call adds. Each change to a published resource has its undo on `rollback_actions` before it's made (CACHE-03). Materials by a keyed index and blocked primvars are M9's.
+3. **Refreshing a generation with cached time codes:** synchronizing again gives a generation holding only its own time code, so a partition the diff keeps loses its cached keys and samples, with their undo in the transaction's rollback, and the diff counts a kept copy with cached keys as changed.
+4. **Tests** (CACHE-01, CACHE-08 to CACHE-10, XFORM-09 to XFORM-11, XFORM-13): synchronized at one sampled time code and cached at the others in more than one order and grouping, each frame displays what a clean synchronization at its time code does, and a frame between them the latest before it; the display caches nothing on its own; the target scene's frame rate and range are unchanged. `blender/test_time_varying.py` checks Blinking's hide flags in Blender at each cached time code.
+
+### Phase E — Correspondence and interaction
+
+1. **Correspondence in the core,** ported from the bridge's `correspondence`: each copy's floor, the browsing universe at the time code the display shows, and viewport elements by floor, sorted so a subtree is one range (ICON-10 to ICON-16, ICON-25). It is recorded with the published generation as Phase A settles, and loaded from Blender data once the binding has a live stage, without synchronizing (ICON-35).
+2. **The inspection layer,** a C++ library of its own from the bridge's `inspection`: kind promotion on the live stage, read-only (ICON-06), including only USD (ICON-04, checked by a test over its sources and its build's link inputs). Any Tf-factory type it registers goes through an exported USD helper. The core calls it and exposes it, and paths never pass through Python between the two (ICON-05).
+3. **The core's interaction functions** from the bridge's `interaction`: `resolve_pick`, `select_targets`, `displayed`, `highlight_targets`, and `selection_from_blender`, through the plan's correspondence, never `HdxPrimOriginInfo`. Without a live stage, each reports that the source is unavailable, and stored selections are kept (ICON-08, ICON-09, INSP-10).
+4. **The Python display component** below `api/`, from the bridge's `object_display_selection.py`: `apply_selection` and `read_blender_selection`, mirroring into the active view layer and into a view layer again when it becomes active (ICON-27 to ICON-29, ICON-39), and the persistent selection's resolution, with unresolved entries kept and reported (ICON-26). The owner of the destination's display decides when managed content is selectable (the destination collection's `hide_select`) and which overlays the 3D views hide (ICON-41).
+5. **`api/`'s interaction surface** as Phase A names it, which the UI and future tools use (ICON-31). MODEL-01: kind and `assetInfo` read from the binding's live stage on `F-KIND-HIERARCHY`.
+6. **Tests:**
+   - `support/interaction_checks.py` against an adapter over the real display, on `F-KIND-HIERARCHY`, `F-NESTED-SELECTION`, and `F-UNIVERSE-MEMBERSHIP`, at each sampled time code where visibility varies;
+   - a source selection surviving an incremental refresh where its identities remain valid (PH2-02);
+   - a box's elements by their world bounds' centers (ICON-40);
+   - `F-OFFLINE`: correspondence records unchanged through reopening with the source unavailable (REOPEN-07), and the interaction functions reporting it unavailable;
+   - save and reopen preserving display and correspondence without accessing the source (ASTD-04).
+
+### Phase F — The Source Select tool and minimal panels
+
+1. **A unit for the temporary UI** (settled 3), between `api/` and `addon.py` in the tiers (suggested name `interface/`), importing only `api/` and `bpy`. Its row joins the import-rules table, AGENTS.md's Layout, and `bpy_free/test_import_tiers.py`'s checks. Operators that call the API declare no `UNDO`, so the API's step is their only one ("Undo step for a published synchronization").
+2. **Source Select,** from the bridge's `select_tool.py`: a click picks what a ray cast hits, shift toggles, ctrl removes, a click on nothing clears; a box selects elements by their world bounds' centers; the sidebar sets the level and shows the targets. Message-bus subscriptions to `WorkSpace.tools` and `Window.workspace` tell the API's display owner when the active tool changes. Decided here: whether a file saved with Source Select active restores or ignores the saved selectability on load. Blender's own outlines stay the default.
+3. **A binding panel** listing the target scene's bindings once per draw, each with its state and a synchronize button, measured against M4's interaction budgets.
+4. **A minimal source inspector:** the live stage's tree, expanded on demand, marking displayed prims (`displayed`) and the source selection.
+5. **Tests:** the tool's session headless, from M4's `test_select_tool_session`, picking with what a ray cast returns; the panels' draw functions against a scene's bindings. The window's own parts (the toolbar, the drawn box, the keymap) are tried by hand by the user ("Interaction feasibility evidence").
+
+### Phase G — Runtime costs
+
+In the Blender binary with repeated runs, on `updates-1000`, `updates-10000`, and ALab, and recorded in the runtime record:
+
+1. **Synchronization:** a first synchronization; synchronizing again unchanged; after moving one object; after hiding one; after reloading; and each step's undo-step size, against M5's 1.2 GB full rebuild and 4.5 MB move ("Undo memory cost").
+2. **The parts of an update:** the kept chain's saving (0.31 s on ALab per M6 F1, inferred), incremental capture, planning and the diff inside updates against alone (the bridge's 0.33 to 0.43 s and 76 to 123 ms, against 0.25 s and 38 ms, not investigated), manifest updates by entry, and retirement.
+3. **Cache calls** against M6 F4's stub (6.0 s on `updates-10000`), and a cached frame's first visit and revisit.
+4. **Interaction:** each headless function, a pick's mirroring, and switching selectability, against M4's 50 ms budget; the binding panel's listing.
+5. **Memory,** the held plans' included, with the depsgraph's evaluated copies in mind, which hold their memory until its next evaluation ([M1b plan](M01b-evaluation-gate.md#phase-e-log)).
+
+### Phase H — Close
+
+1. **Notes for M8 to M13** in their milestone files: M8 gets batches (settled 1) and the change-matrix rows for mesh content; M9 gets the keyed material index and blocked primvars; M10 gets instance-root selection; M11 gets damage repair and the retirement cost; M12 replaces the temporary UI; M13 gets narrowing the diff by notices and churn budgets.
+2. **Close the decision log,** render the matrix, and confirm the exit condition: the application layer displays and inspects plans, refreshes incrementally with results equal to clean rebuilds for its change-matrix cases, passes the M5 failure-injection suite and `F-UNMANAGED-USER`, and meets the boundary rule in Blender Application.
+
+## Working agreements
+
+- Work happens in the git worktree `.claude/worktrees/m07-application`, on branch `m07-application`. The user stages, commits, and pushes.
+- Planning docs state requirements; mechanisms are suggestions for the milestone that settles them.
+- Evidence claims only what a check tested; single runs and inferences are labeled.
+- Ports from the bridge start from its design, and each divergence is justified in the phase log.
