@@ -337,7 +337,7 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     updater.publish(prepared, session.display, session.collection)
     done("update:publish")
     stage("update:retire")
-    retired = len(prepared.retired)
+    retired = len(prepared.retired_resources)
     kept = updater.retire(prepared)
     done("update:retire")
     stage("update:evaluate")
@@ -347,17 +347,17 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
         "edited": edited,
         "copied prims": snapshot.copied,
         "diff": {
-            "changed": len(diff["changed"]),
-            "repointable": len(diff["repointable"]),
-            "added": diff["objects"].count(-1),
-            "removed": len(diff["removed"]),
-            "new meshes": diff["meshes"].count(-1),
-            "new materials": diff["materials"].count(-1),
+            "changed": len(diff["changed_object_indices"]),
+            "repointable": len(diff["repointable_object_indices"]),
+            "added": diff["previous_object_indices"].count(-1),
+            "removed": len(diff["removed_previous_object_indices"]),
+            "new meshes": diff["previous_mesh_indices"].count(-1),
+            "new materials": diff["previous_material_indices"].count(-1),
         },
         "written": {
-            "created": len(prepared.created),
-            "repointed": len(prepared.repointed),
-            "renumbered": len(prepared.renumbered),
+            "created": len(prepared.created_objects_by_index),
+            "repointed": len(prepared.retained_object_updates_by_index),
+            "renumbered": len(prepared.renumbered_object_indices),
             "retired": retired,
             "kept for other users": len(kept),
         }
@@ -369,11 +369,13 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
 def _batches_written(prepared: Any) -> dict[str, int]:
     """What a batched update wrote to its batches."""
     return {
-        "batches added": len(prepared.added),
-        "batches dropped": len(prepared.dropped),
-        "points rebuilt": sum(rebatch.points is not None for rebatch in prepared.kept),
-        "prototypes repointed": sum(rebatch.reprototyped for rebatch in prepared.kept),
-        "points renumbered": sum(rebatch.renumbered for rebatch in prepared.kept),
+        "batches added": len(prepared.added_batches),
+        "batches dropped": len(prepared.dropped_batches),
+        "points rebuilt": sum(
+            rebatch.replacement_points_mesh is not None for rebatch in prepared.retained_batch_updates
+        ),
+        "prototypes repointed": sum(rebatch.needs_prototype_update for rebatch in prepared.retained_batch_updates),
+        "points renumbered": sum(rebatch.needs_element_renumbering for rebatch in prepared.retained_batch_updates),
     }
 
 

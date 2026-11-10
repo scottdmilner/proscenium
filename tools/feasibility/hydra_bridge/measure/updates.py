@@ -52,15 +52,15 @@ def replacement(update: Any, plan: Any, diff: Any, display: Any, collection: Any
     steps: dict[str, float] = {}
     prepared = timed(steps, "prepare", lambda: update.prepare(plan, diff, display, users))
     published = timed(steps, "publish", lambda: update.publish(prepared, display, collection))
-    retired = len(prepared.retired)
+    retired = len(prepared.retired_resources)
     kept = timed(steps, "retire", lambda: update.retire(prepared))
     timed(steps, "evaluate", evaluate)
     steps["total"] = sum(steps.values())
     changed = {
-        "objects replaced": len(prepared.created),
-        "objects repointed": len(prepared.repointed),
-        "meshes replaced": diff["meshes"].count(-1),
-        "materials replaced": diff["materials"].count(-1),
+        "objects replaced": len(prepared.created_objects_by_index),
+        "objects repointed": len(prepared.retained_object_updates_by_index),
+        "meshes replaced": diff["previous_mesh_indices"].count(-1),
+        "materials replaced": diff["previous_material_indices"].count(-1),
         "retired": retired,
         "kept for other users": len(kept),
     }
@@ -140,7 +140,7 @@ def main() -> int:
     replaced_units: dict[str, Any] = {}
     for name, unit in units.items():
         policies = [update.DependentObjectUpdatePolicy.REPOINT]
-        if unit.meshes or unit.materials:
+        if unit.mesh_indices or unit.material_indices:
             policies.append(update.DependentObjectUpdatePolicy.REPLACE)
         for users in policies:
             runs = []

@@ -302,7 +302,7 @@ class Batches:
         materials: Callable[[int], Any],
     ) -> Regrouped:
         """Keep each batch's tracks of its content, find those leaving, and place `new_tracks` in batches."""
-        old_meshes = {old: new for new, old in enumerate(diff["meshes"]) if old != -1}
+        old_meshes = {old: new for new, old in enumerate(diff["previous_mesh_indices"]) if old != -1}
         result = Regrouped([], [], {}, {})
         before: dict[int, int | None] = {}  # by batch, its prototype's mesh in the current plan
         for batch in self.batches:

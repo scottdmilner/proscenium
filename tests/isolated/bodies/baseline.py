@@ -288,7 +288,7 @@ def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: 
     chosen = update.sample_units(plan.objects)[unit]
     outside = None
     if unmanaged:
-        (mesh,) = (display.meshes[index] for index in chosen.meshes)
+        (mesh,) = (display.meshes[index] for index in chosen.mesh_indices)
         outside = bpy.data.objects.new("Unmanaged", mesh)
         blender_scene.collection.objects.link(outside)
     before = _held(display, plan.objects)
@@ -301,7 +301,11 @@ def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: 
     kept = update.retire(prepared)
     result = {
         "plan": [{"mesh": r["mesh"], "material_slots": list(r["material_slots"])} for r in plan.objects],
-        "unit": {kind: sorted(getattr(chosen, kind)) for kind in ("objects", "meshes", "materials")},
+        "unit": {
+            "objects": sorted(chosen.object_indices),
+            "meshes": sorted(chosen.mesh_indices),
+            "materials": sorted(chosen.material_indices),
+        },
         "before": before,
         "after": _held(published, plan.objects),
         "linked": {"published": linked, "retired": _linked(collection)},

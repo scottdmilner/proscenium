@@ -120,14 +120,14 @@ class Plan(Protocol):
 class PlanDiff(TypedDict):
     """What a plan changes from the published one, as diff_plans returns it (M4)."""
 
-    meshes: list[int]  # per new mesh: an old mesh with equal content, or -1
-    materials: list[int]  # per new material: an equal old material, or -1
-    objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
-    changed: list[int]  # new objects whose old counterpart differs, in plan order
-    repointable: list[int]  # changed objects that differ only in their mesh or materials, in plan order
+    previous_mesh_indices: list[int]  # per new mesh: an old mesh with equal content, or -1
+    previous_material_indices: list[int]  # per new material: an equal old material, or -1
+    previous_object_indices: list[int]  # per new object: the old object with its identity, or -1 for an added one
+    changed_object_indices: list[int]  # new objects whose old counterpart differs, in plan order
+    repointable_object_indices: list[int]  # changed objects that differ only in their mesh or materials, in plan order
     # Changed objects whose matrix differs, and otherwise at most their mesh or materials, in plan order (Phase E)
-    moved: list[int]
-    removed: list[int]  # old objects with no new counterpart, in plan order
+    moved_object_indices: list[int]
+    removed_previous_object_indices: list[int]  # old objects with no new counterpart, in plan order
 
 
 class ResolvedEntity(TypedDict):

@@ -122,8 +122,10 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 plan.universe  # sorted USD paths; each object dict also has its "floor"
-_hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
-#   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
+_hydra_bridge.diff_plans(published, plan)  # M4: previous_mesh_indices, previous_material_indices,
+#   previous_object_indices: old index or -1 per new entry; changed_object_indices,
+#   repointable_object_indices (changed only in mesh or materials), moved_object_indices: new indices;
+#   removed_previous_object_indices: old indices
 _hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
 interaction = _hydra_bridge.SourceSelectionResolver(
     stage, plan

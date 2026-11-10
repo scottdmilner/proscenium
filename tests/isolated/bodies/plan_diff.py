@@ -488,19 +488,19 @@ def _objects_of(display: Any) -> list[Any]:
 def _written(prepared: Any, batched: bool) -> dict[str, Any]:
     """What an update wrote to Blender, by kind; a staging collection is a Blender write too."""
     written = {
-        "created": len(prepared.created),
-        "repointed": len(prepared.repointed),
-        "renumbered": len(prepared.renumbered),
-        "retired": len(prepared.retired),
-        "staged": prepared.staging is not None,
+        "created": len(prepared.created_objects_by_index),
+        "repointed": len(prepared.retained_object_updates_by_index),
+        "renumbered": len(prepared.renumbered_object_indices),
+        "retired": len(prepared.retired_resources),
+        "staged": prepared.staging_collection is not None,
     }
     if batched:
         written |= {
-            "added": len(prepared.added),
-            "dropped": len(prepared.dropped),
-            "points": sum(rebatch.points is not None for rebatch in prepared.kept),
-            "reprototyped": sum(rebatch.reprototyped for rebatch in prepared.kept),
-            "renumbered batches": sum(rebatch.renumbered for rebatch in prepared.kept),
+            "added": len(prepared.added_batches),
+            "dropped": len(prepared.dropped_batches),
+            "points": sum(rebatch.replacement_points_mesh is not None for rebatch in prepared.retained_batch_updates),
+            "reprototyped": sum(rebatch.needs_prototype_update for rebatch in prepared.retained_batch_updates),
+            "renumbered batches": sum(rebatch.needs_element_renumbering for rebatch in prepared.retained_batch_updates),
         }
     return written
 

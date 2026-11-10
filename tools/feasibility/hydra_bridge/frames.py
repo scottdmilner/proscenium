@@ -80,13 +80,15 @@ def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings:
         else:
             plan = native.build_plan(bridge.capture(time, incremental=True), previous=previous, **settings)
             diff = native.diff_plans(previous, plan)
-            meshes = ids.matched(diff["meshes"], frames.mesh_content[-1])
-            materials = ids.matched(diff["materials"], frames.material_content[-1])
-            _keep_new(frames.meshes, diff["meshes"], meshes, plan.meshes_at)
-            _keep_new(frames.materials, diff["materials"], materials, _materials_at(plan))
+            meshes = ids.matched(diff["previous_mesh_indices"], frames.mesh_content[-1])
+            materials = ids.matched(diff["previous_material_indices"], frames.material_content[-1])
+            _keep_new(frames.meshes, diff["previous_mesh_indices"], meshes, plan.meshes_at)
+            _keep_new(frames.materials, diff["previous_material_indices"], materials, _materials_at(plan))
             at = {index: key for key, index in current.items()}
-            changed = set(diff["changed"])
-            kept = {i: at[old] for i, old in enumerate(diff["objects"]) if old != -1 and i not in changed}
+            changed = set(diff["changed_object_indices"])
+            kept = {
+                i: at[old] for i, old in enumerate(diff["previous_object_indices"]) if old != -1 and i not in changed
+            }
         frames.times.append(time)
         frames.mesh_content.append(meshes)
         frames.material_content.append(materials)

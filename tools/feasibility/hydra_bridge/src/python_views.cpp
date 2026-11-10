@@ -571,13 +571,13 @@ bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
         return result;
     };
     bp::dict result;
-    result["meshes"] = list(diff.meshes);
-    result["materials"] = list(diff.materials);
-    result["objects"] = list(diff.objects);
-    result["changed"] = list(diff.changed);
-    result["repointable"] = list(diff.repointable);
-    result["moved"] = list(diff.moved);
-    result["removed"] = list(diff.removed);
+    result["previous_mesh_indices"] = list(diff.previousMeshIndices);
+    result["previous_material_indices"] = list(diff.previousMaterialIndices);
+    result["previous_object_indices"] = list(diff.previousObjectIndices);
+    result["changed_object_indices"] = list(diff.changedObjectIndices);
+    result["repointable_object_indices"] = list(diff.repointableObjectIndices);
+    result["moved_object_indices"] = list(diff.movedObjectIndices);
+    result["removed_previous_object_indices"] = list(diff.removedPreviousObjectIndices);
     return result;
 }
 

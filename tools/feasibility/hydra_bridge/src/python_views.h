@@ -77,9 +77,9 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
                   const bp::object &renderMaterialPurpose, bool pointInstancers, const bp::object &previous);
 
-// M4: what `next` changes from `published` (plan_diff.h), computed without the GIL, as {"meshes", "materials",
-// "objects": [old index or -1 per new entry], "changed" and "repointable": [new object indices], "removed": [old
-// object indices]}.
+// M4: what `next` changes from `published` (plan_diff.h), computed without the GIL. The previous_*_indices
+// mappings hold an old index or -1 per new entry; changed_object_indices, repointable_object_indices, and
+// moved_object_indices name new objects; removed_previous_object_indices names old objects.
 bp::dict DiffPlanViews(const PlanView &published, const PlanView &next);
 
 // M4 (C4): derives the plan's correspondence again without the GIL, for timing; returns the universe's size.

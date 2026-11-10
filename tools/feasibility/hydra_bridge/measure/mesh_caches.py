@@ -347,9 +347,9 @@ def main() -> int:  # noqa: PLR0915 - one run, start to end
         plan = native.build_plan(bridge.capture(float(frame), incremental=True), previous=previous)
         diff = native.diff_plans(previous, plan)
         new_by_base: dict[int, int] = {}  # by base mesh: its new mesh in this frame's plan
-        for record in plan.objects_at(diff["changed"]):
+        for record in plan.objects_at(diff["changed_object_indices"]):
             mesh = record["mesh"]
-            if mesh is not None and diff["meshes"][mesh] == -1:
+            if mesh is not None and diff["previous_mesh_indices"][mesh] == -1:
                 new_by_base[base_of[(record["source"], tuple(record["instance_context"]))]] = mesh
         order = sorted(set(new_by_base.values()))
         meshes = dict(zip(order, plan.meshes_at(order), strict=True))

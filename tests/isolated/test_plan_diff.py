@@ -31,19 +31,19 @@ def _steps(scene: Path, edits: list[str], wheel: Runtime, hydra_bridge: Path, tm
 def _changes(step: dict[str, Any]) -> dict[str, Any]:
     """What the diff reports, by source, after checking that it matches objects only to their own source."""
     diff, old, new = step["diff"], step["old"], step["new"]
-    assert len(diff["objects"]) == len(new)
-    for index, match in enumerate(diff["objects"]):
+    assert len(diff["previous_object_indices"]) == len(new)
+    for index, match in enumerate(diff["previous_object_indices"]):
         if match != -1:
             assert old[match]["source"] == new[index]["source"], index
-    matched = {m for m in diff["objects"] if m != -1}
-    assert sorted(set(range(len(old))) - matched) == diff["removed"]
+    matched = {m for m in diff["previous_object_indices"] if m != -1}
+    assert sorted(set(range(len(old))) - matched) == diff["removed_previous_object_indices"]
     return {
-        "added": {new[i]["source"] for i, m in enumerate(diff["objects"]) if m == -1},
-        "removed": {old[i]["source"] for i in diff["removed"]},
-        "changed": {new[i]["source"] for i in diff["changed"]},
-        "moved": {new[i]["source"] for i in diff["moved"]},
-        "new meshes": sum(1 for m in diff["meshes"] if m == -1),
-        "new materials": [step["materials"][i] for i, m in enumerate(diff["materials"]) if m == -1],
+        "added": {new[i]["source"] for i, m in enumerate(diff["previous_object_indices"]) if m == -1},
+        "removed": {old[i]["source"] for i in diff["removed_previous_object_indices"]},
+        "changed": {new[i]["source"] for i in diff["changed_object_indices"]},
+        "moved": {new[i]["source"] for i in diff["moved_object_indices"]},
+        "new meshes": sum(1 for m in diff["previous_mesh_indices"] if m == -1),
+        "new materials": [step["materials"][i] for i, m in enumerate(diff["previous_material_indices"]) if m == -1],
     }
 
 

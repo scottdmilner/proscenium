@@ -101,12 +101,13 @@ class Session:
         self.updates += 1
         self.error = None
         diff = step.diff
-        added = sum(1 for old in diff["objects"] if old == -1)
-        rebuilt_meshes = sum(1 for old in diff["meshes"] if old == -1)
+        added = sum(1 for old in diff["previous_object_indices"] if old == -1)
+        rebuilt_meshes = sum(1 for old in diff["previous_mesh_indices"] if old == -1)
         plan = step.plan
         self.status = [
             f"Update {self.updates}: {reason}",
-            f"+{added} added   ~{len(diff['changed'])} changed   -{len(diff['removed'])} removed   "
+            f"+{added} added   ~{len(diff['changed_object_indices'])} changed   "
+            f"-{len(diff['removed_previous_object_indices'])} removed   "
             f"{rebuilt_meshes} meshes rebuilt",
             f"{plan.object_count} objects, {plan.mesh_count} meshes, {plan.material_count} materials at time {time:g}",
             f"{total * 1000:.0f} ms: "

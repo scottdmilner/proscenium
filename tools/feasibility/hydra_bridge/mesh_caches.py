@@ -332,7 +332,7 @@ def holder_content_unchanged(now: MeshHolderSynchronizationState, key: HolderKey
     index = now.mesh_index[key]
     if index is None:
         return bounds_key(now.fresh[key]) == bounds_key(now.latest[key])
-    return now.diff["meshes"][index] == now.previous[key]
+    return now.diff["previous_mesh_indices"][index] == now.previous[key]
 
 
 def holder_groups_with_retained_mesh_first(

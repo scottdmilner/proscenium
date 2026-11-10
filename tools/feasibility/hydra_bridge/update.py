@@ -45,18 +45,18 @@ class DependentObjectUpdatePolicy(StrEnum):
 class DisplayRebuildSet:
     """The object, mesh, and material indices selected for rebuilding from an unchanged plan (unit_diff)."""
 
-    objects: frozenset[int] = frozenset()
-    meshes: frozenset[int] = frozenset()
-    materials: frozenset[int] = frozenset()
+    object_indices: frozenset[int] = frozenset()
+    mesh_indices: frozenset[int] = frozenset()
+    material_indices: frozenset[int] = frozenset()
 
 
 @dataclass
 class ObjectResourceUpdate:
     """A kept object's data and slots, and its world matrix when it moved, as publication sets them."""
 
-    data: Any  # the object's new mesh; Object.data is typed as every kind of object data
-    materials: list[bpy.types.Material | None]
-    matrix: Matrix | None = None  # Blender's world matrix, for a moved object
+    mesh: Any  # the object's new mesh; Object.data is typed as every kind of object data
+    material_slots: list[bpy.types.Material | None]
+    world_matrix: Matrix | None = None  # Blender's world matrix, for a moved object
 
 
 @dataclass
@@ -64,14 +64,14 @@ class PreparedDisplayUpdate:
     """An update built beside the published display, which it doesn't touch until publication."""
 
     # Where the new objects wait; None when there are none, since creating a collection is a Blender write.
-    staging: bpy.types.Collection | None
-    display: Display  # the display once published, in the new plan's order
-    created: dict[int, bpy.types.Object]  # by new plan index: the new objects
-    leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
+    staging_collection: bpy.types.Collection | None
+    next_display: Display  # the display once published, in the new plan's order
+    created_objects_by_index: dict[int, bpy.types.Object]  # by new plan index: the new objects
+    departing_objects: list[bpy.types.Object]  # the published objects the new display doesn't keep
     # By new plan index: kept objects that move onto rebuilt data or a new matrix.
-    repointed: dict[int, ObjectResourceUpdate]
-    renumbered: list[int]  # new plan indices of kept objects whose index changed
-    retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
+    retained_object_updates_by_index: dict[int, ObjectResourceUpdate]
+    renumbered_object_indices: list[int]  # new plan indices of kept objects whose index changed
+    retired_resources: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
 
 # A kept object's state before publication: its data, each slot's material, its element, and its transform if
@@ -119,16 +119,18 @@ def unit_diff(plan: Plan, unit: DisplayRebuildSet) -> PlanDiff:
     users = {
         index
         for index, record in enumerate(records)
-        if record["mesh"] in unit.meshes or any(m in unit.materials for m in record["material_slots"])
+        if record["mesh"] in unit.mesh_indices or any(m in unit.material_indices for m in record["material_slots"])
     }
     return {
-        "meshes": [-1 if index in unit.meshes else index for index in range(len(plan.meshes))],
-        "materials": [-1 if index in unit.materials else index for index in range(len(plan.materials))],
-        "objects": list(range(len(records))),
-        "changed": sorted(unit.objects | users),
-        "repointable": sorted(users - unit.objects),
-        "moved": [],
-        "removed": [],
+        "previous_mesh_indices": [-1 if index in unit.mesh_indices else index for index in range(len(plan.meshes))],
+        "previous_material_indices": [
+            -1 if index in unit.material_indices else index for index in range(len(plan.materials))
+        ],
+        "previous_object_indices": list(range(len(records))),
+        "changed_object_indices": sorted(unit.object_indices | users),
+        "repointable_object_indices": sorted(users - unit.object_indices),
+        "moved_object_indices": [],
+        "removed_previous_object_indices": [],
     }
 
 
@@ -154,11 +156,13 @@ def sample_units(records: Sequence[ObjectRecord]) -> dict[str, DisplayRebuildSet
     units = {}
     shared = [objects for objects in users.values() if len(objects) > 1]
     if shared:
-        units["object"] = DisplayRebuildSet(objects=frozenset({shared[0][0]}))
+        units["object"] = DisplayRebuildSet(object_indices=frozenset({shared[0][0]}))
     if users:
-        units["mesh"] = DisplayRebuildSet(meshes=frozenset({max(users, key=lambda m: (len(users[m]), -m))}))
+        units["mesh"] = DisplayRebuildSet(mesh_indices=frozenset({max(users, key=lambda m: (len(users[m]), -m))}))
     if slotted:
-        units["material"] = DisplayRebuildSet(materials=frozenset({max(slotted, key=lambda m: (slotted[m], -m))}))
+        units["material"] = DisplayRebuildSet(
+            material_indices=frozenset({max(slotted, key=lambda m: (slotted[m], -m))})
+        )
     if floors:
         objects = set(max(floors.values(), key=len))
         others = [record for index, record in enumerate(records) if index not in objects]
@@ -183,20 +187,22 @@ def prepare(
     """
     meshes, materials = new_data(plan, diff, display.meshes, display.materials)
     moving = (
-        kept_moves(plan, diff, diff["moved"], display.objects.__getitem__, (meshes, materials), users) if moves else {}
+        kept_moves(plan, diff, diff["moved_object_indices"], display.objects.__getitem__, (meshes, materials), users)
+        if moves
+        else {}
     )
-    kept = set(diff["repointable"]) if users is DependentObjectUpdatePolicy.REPOINT else set()
-    rebuilt = set(diff["changed"]) - kept - set(moving)
-    added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
+    kept = set(diff["repointable_object_indices"]) if users is DependentObjectUpdatePolicy.REPOINT else set()
+    rebuilt = set(diff["changed_object_indices"]) - kept - set(moving)
+    added = [index for index, old in enumerate(diff["previous_object_indices"]) if old == -1 or index in rebuilt]
     # Only the records the update builds from: reading the plan's whole list converts every record.
     needed = sorted({*added, *kept})
     records = dict(zip(needed, plan.objects_at(needed), strict=True))
     staging = bpy.data.collections.new("Prepared") if added else None
     objects: list[bpy.types.Object] = []
     created: dict[int, bpy.types.Object] = {}
-    leaving = [display.objects[old] for old in diff["removed"]]
+    leaving = [display.objects[old] for old in diff["removed_previous_object_indices"]]
     renumbered = []
-    for index, old in enumerate(diff["objects"]):
+    for index, old in enumerate(diff["previous_object_indices"]):
         if old == -1 or index in rebuilt:
             assert staging is not None  # an added or rebuilt object, so there is a staging collection
             created[index] = new_object(index, records[index], meshes, materials, staging)
@@ -234,7 +240,7 @@ def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the publi
     meshes, materials = data
     kept = {}
     for index, record in zip(moved, plan.objects_at(moved), strict=True):
-        obj = published(diff["objects"][index])
+        obj = published(diff["previous_object_indices"][index])
         matrix = usd_matrix_to_blender(record["matrix"])
         if obj.parent is not None or sheared(matrix):
             continue
@@ -245,7 +251,7 @@ def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the publi
             [None if m is None else materials[m] for m in record["material_slots"]],
             matrix,
         )
-        same = (moving.data is None or moving.data == obj.data) and moving.materials == [
+        same = (moving.mesh is None or moving.mesh == obj.data) and moving.material_slots == [
             slot.material for slot in obj.material_slots
         ]
         if same or users is DependentObjectUpdatePolicy.REPOINT:
@@ -260,63 +266,70 @@ def new_data(
 
     Only the new ones' records are read, since reading a plan's whole list converts every record.
     """
-    if (len(diff["objects"]), len(diff["meshes"]), len(diff["materials"])) != (
+    if (
+        len(diff["previous_object_indices"]),
+        len(diff["previous_mesh_indices"]),
+        len(diff["previous_material_indices"]),
+    ) != (
         plan.object_count,
         plan.mesh_count,
         plan.material_count,
     ):
         raise ValueError("The diff isn't the plan's")
-    built = [index for index, old in enumerate(diff["meshes"]) if old == -1]
+    built = [index for index, old in enumerate(diff["previous_mesh_indices"]) if old == -1]
     mesh_records = dict(zip(built, plan.meshes_at(built), strict=True))
-    material_records = plan.materials if -1 in diff["materials"] else []
+    material_records = plan.materials if -1 in diff["previous_material_indices"] else []
     return (
-        [meshes[old] if old != -1 else new_mesh(mesh_records[index]) for index, old in enumerate(diff["meshes"])],
+        [
+            meshes[old] if old != -1 else new_mesh(mesh_records[index])
+            for index, old in enumerate(diff["previous_mesh_indices"])
+        ],
         [
             materials[old] if old != -1 else new_material(material_records[index])
-            for index, old in enumerate(diff["materials"])
+            for index, old in enumerate(diff["previous_material_indices"])
         ],
     )
 
 
 def publish(prepared: PreparedDisplayUpdate, display: Display, collection: bpy.types.Collection) -> Display:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
-    new = prepared.display
+    new = prepared.next_display
     saved: list[Saved] = []
     try:
-        for index in sorted(set(prepared.repointed) | set(prepared.renumbered)):
+        for index in sorted(set(prepared.retained_object_updates_by_index) | set(prepared.renumbered_object_indices)):
             obj = new.objects[index]
             slots = [slot.material for slot in obj.material_slots]
-            repoint = prepared.repointed.get(index)
-            moving = repoint is not None and repoint.matrix is not None
+            repoint = prepared.retained_object_updates_by_index.get(index)
+            moving = repoint is not None and repoint.world_matrix is not None
             saved.append((obj, obj.data, slots, obj[ELEMENT], Transform.of(obj) if moving else None))
             if repoint is not None:
-                if repoint.data is not None:
+                if repoint.mesh is not None:
                     # The same slot count, and the slots link to the object, so each keeps its place.
-                    obj.data = repoint.data
-                for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
+                    obj.data = repoint.mesh
+                for slot, material in zip(obj.material_slots, repoint.material_slots, strict=True):
                     slot.material = material
-                if repoint.matrix is not None:
-                    obj.matrix_world = repoint.matrix
+                if repoint.world_matrix is not None:
+                    obj.matrix_world = repoint.world_matrix
             obj[ELEMENT] = index
-        for obj in prepared.created.values():
+        for obj in prepared.created_objects_by_index.values():
             for created in with_parent(obj):
                 collection.objects.link(created)
-                staging = prepared.staging
+                staging = prepared.staging_collection
                 assert staging is not None
                 staging.objects.unlink(created)
-        for obj in prepared.leaving:
+        for obj in prepared.departing_objects:
             for old in with_parent(obj):
                 collection.objects.unlink(old)
     except BaseException:
         _restore(prepared, collection, saved)
         raise
-    prepared.retired = _retired(prepared, display)
+    prepared.retired_resources = _retired(prepared, display)
     return new
 
 
 def retire(prepared: PreparedDisplayUpdate) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
-    return retire_ids(prepared.retired, prepared.staging)
+    return retire_ids(prepared.retired_resources, prepared.staging_collection)
 
 
 def retire_ids(retired: list[bpy.types.ID], staging_collection: bpy.types.Collection | None) -> list[bpy.types.ID]:
@@ -349,14 +362,14 @@ def _restore(prepared: PreparedDisplayUpdate, collection: bpy.types.Collection, 
         obj[ELEMENT] = element
         if transform is not None:
             transform.restore(obj)
-    for obj in prepared.created.values():
+    for obj in prepared.created_objects_by_index.values():
         for created in with_parent(obj):
             if created.name in collection.objects:
                 collection.objects.unlink(created)
-            staging = prepared.staging
+            staging = prepared.staging_collection
             if staging is not None and created.name not in staging.objects:
                 staging.objects.link(created)
-    for obj in prepared.leaving:
+    for obj in prepared.departing_objects:
         for old in with_parent(obj):
             if old.name not in collection.objects:
                 collection.objects.link(old)
@@ -366,11 +379,11 @@ def _retired(prepared: PreparedDisplayUpdate, display: Display) -> list[bpy.type
     """The old objects, with their shear parents and placeholder meshes, and the old meshes and materials."""
     retired: list[bpy.types.ID] = []
     planned = {mesh.as_pointer() for mesh in display.meshes}
-    for old in prepared.leaving:
+    for old in prepared.departing_objects:
         retired.extend(with_parent(old))
         if old.data is not None and old.data.as_pointer() not in planned:  # a placeholder's own bounds
             retired.append(old.data)
-    new = prepared.display
+    new = prepared.next_display
     meshes = {mesh.as_pointer() for mesh in new.meshes}
     materials = {material.as_pointer() for material in new.materials}
     retired.extend(mesh for mesh in display.meshes if mesh.as_pointer() not in meshes)

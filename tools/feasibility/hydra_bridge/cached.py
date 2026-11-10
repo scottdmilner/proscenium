@@ -275,16 +275,20 @@ class CachedDisplay:
         """Add `plan`, at `time`, to the caches, from its diff against the current plan."""
         sample = max(self.cached.values()) + 1
         at = {index: key for key, index in self.current.items()}
-        changed = set(diff["changed"])
-        kept = {index: at[old] for index, old in enumerate(diff["objects"]) if old != -1 and index not in changed}
+        changed = set(diff["changed_object_indices"])
+        kept = {
+            index: at[old]
+            for index, old in enumerate(diff["previous_object_indices"])
+            if old != -1 and index not in changed
+        }
         read = [index for index in range(plan.object_count) if index not in kept]
         records = dict(zip(read, plan.objects_at(read), strict=True))
         fresh = {(*copy_of(record), place(index, records, kept)): record for index, record in records.items()}
         present = {key: index for index, key in kept.items()} | {
             key: index for key, index in zip(fresh, records, strict=True)
         }
-        self.materials = [self.materials[old] if old != -1 else None for old in diff["materials"]]
-        old_meshes = {old: new for new, old in enumerate(diff["meshes"]) if old != -1}
+        self.materials = [self.materials[old] if old != -1 else None for old in diff["previous_material_indices"]]
+        old_meshes = {old: new for new, old in enumerate(diff["previous_mesh_indices"]) if old != -1}
         mesh_index = {key: fresh[key]["mesh"] if key in fresh else self._kept_mesh(key, old_meshes) for key in present}
         batched = self.batches.points.keys() if self.batches is not None else set()
         new = sorted(fresh.keys() - self.objects.keys() - batched)

@@ -64,12 +64,12 @@ class RetainedBatchUpdate:
     """A published batch the update keeps, and what publication changes on it."""
 
     batch: Batch  # once published
-    record: ObjectRecord | None  # when reprototyped, a member's, whose mesh and materials the prototype shows
-    reprototyped: bool  # whether the prototype moves onto another mesh or materials
-    points: bpy.types.Mesh | None  # new points the carriers move onto, or None to keep theirs
-    previous: bpy.types.Mesh  # the points the carriers are on before publication
-    renumbered: bool  # whether the kept points' elements change in place
-    carriers: CarrierChanges | None  # with new points, how the carriers change to one per state they hold
+    prototype_record: ObjectRecord | None  # when reprototyped, a member's, whose mesh and materials the prototype shows
+    needs_prototype_update: bool  # whether the prototype moves onto another mesh or materials
+    replacement_points_mesh: bpy.types.Mesh | None  # new points the carriers move onto, or None to keep theirs
+    previous_points_mesh: bpy.types.Mesh  # the points the carriers are on before publication
+    needs_element_renumbering: bool  # whether the kept points' elements change in place
+    carrier_changes: CarrierChanges | None  # with new points, how the carriers change to one per state they hold
 
 
 @dataclass
@@ -77,17 +77,17 @@ class PreparedBatchedDisplayUpdate:
     """An update built beside the published batched display, which it doesn't touch until publication."""
 
     # Where the new objects and carriers wait; None when there are none, since creating a collection is a write.
-    staging: bpy.types.Collection | None
-    display: BatchedDisplay  # the display once published
-    created: dict[int, bpy.types.Object]  # by new plan index: the new objects
-    added: list[Batch]  # the new batches
-    kept: list[RetainedBatchUpdate]
-    dropped: list[Batch]  # the published batches no group matched
-    leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
+    staging_collection: bpy.types.Collection | None
+    next_display: BatchedDisplay  # the display once published
+    created_objects_by_index: dict[int, bpy.types.Object]  # by new plan index: the new objects
+    added_batches: list[Batch]  # the new batches
+    retained_batch_updates: list[RetainedBatchUpdate]
+    dropped_batches: list[Batch]  # the published batches no group matched
+    departing_objects: list[bpy.types.Object]  # the published objects the new display doesn't keep
     # By new plan index: kept objects that move onto rebuilt data or a new matrix.
-    repointed: dict[int, ObjectResourceUpdate]
-    renumbered: list[int]  # new plan indices of kept objects whose index changed
-    retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
+    retained_object_updates_by_index: dict[int, ObjectResourceUpdate]
+    renumbered_object_indices: list[int]  # new plan indices of kept objects whose index changed
+    retired_resources: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
 
 def prepare(
@@ -98,16 +98,20 @@ def prepare(
     With `moves`, a moved object that stays an object is kept and moved as update.prepare keeps one (M4 Phase E).
     """
     meshes, materials = new_data(plan, diff, display.meshes, display.materials)
-    previous = diff["objects"]
+    previous = diff["previous_object_indices"]
     olds_of = numpy.array(previous, dtype=numpy.int64)  # per new plan index: its old index, or -1
-    repointable = set(diff["repointable"])
+    repointable = set(diff["repointable_object_indices"])
     # Members whose points change; a change to only the mesh or materials is the prototype's.
-    moved = set(diff["changed"]) - repointable
-    rebuilt = set(diff["changed"]) - (repointable if users is DependentObjectUpdatePolicy.REPOINT else set())
+    moved = set(diff["changed_object_indices"]) - repointable
+    rebuilt = set(diff["changed_object_indices"]) - (
+        repointable if users is DependentObjectUpdatePolicy.REPOINT else set()
+    )
     shared, single = groups(plan, display.minimum)
     if moves:
         alone = set(single)
-        candidates = [index for index in diff["moved"] if index in alone and previous[index] in display.objects]
+        candidates = [
+            index for index in diff["moved_object_indices"] if index in alone and previous[index] in display.objects
+        ]
         moving = kept_moves(plan, diff, candidates, display.objects.__getitem__, (meshes, materials), users)
         rebuilt -= set(moving)
     else:
@@ -203,64 +207,74 @@ def publish(
     prepared: PreparedBatchedDisplayUpdate, display: BatchedDisplay, collection: bpy.types.Collection
 ) -> BatchedDisplay:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
-    new = prepared.display
+    new = prepared.next_display
     undo: list[Callable[[], None]] = []  # each change's reversal, in the order made
     try:
-        for index, repoint in prepared.repointed.items():
+        for index, repoint in prepared.retained_object_updates_by_index.items():
             obj = new.objects[index]
             undo.append(_saved(obj))
-            if repoint.data is not None:
+            if repoint.mesh is not None:
                 # The same slot count, and the slots link to the object, so each keeps its place.
-                obj.data = repoint.data
-            for slot, material in zip(obj.material_slots, repoint.materials, strict=True):
+                obj.data = repoint.mesh
+            for slot, material in zip(obj.material_slots, repoint.material_slots, strict=True):
                 slot.material = material
-            if repoint.matrix is not None:
+            if repoint.world_matrix is not None:
                 undo.append(partial(Transform.of(obj).restore, obj))
-                obj.matrix_world = repoint.matrix
-        for index in prepared.renumbered:
+                obj.matrix_world = repoint.world_matrix
+        for index in prepared.renumbered_object_indices:
             obj = new.objects[index]
             undo.append(partial(obj.__setitem__, ELEMENT, obj[ELEMENT]))
             obj[ELEMENT] = index
-        for rebatch in prepared.kept:
+        for rebatch in prepared.retained_batch_updates:
             batch = rebatch.batch
-            if rebatch.reprototyped:
-                assert rebatch.record is not None  # prepare reads a member's record for a moved prototype
+            if rebatch.needs_prototype_update:
+                assert rebatch.prototype_record is not None  # prepare reads a member's record for a moved prototype
                 undo.append(_saved(batch.prototype))
-                set_prototype(batch.prototype, rebatch.record, new.meshes, new.materials)
-            if rebatch.carriers is not None:
-                for carrier, before, after in rebatch.carriers.restated:
+                set_prototype(batch.prototype, rebatch.prototype_record, new.meshes, new.materials)
+            if rebatch.carrier_changes is not None:
+                for carrier, before, after in rebatch.carrier_changes.restated:
                     undo.append(partial(set_carrier_state, carrier, before, new.nodes))
                     set_carrier_state(carrier, after, new.nodes)
-            if rebatch.points is not None:
+            if rebatch.replacement_points_mesh is not None:
                 for carrier in batch.carriers.values():
                     undo.append(partial(setattr, carrier, "data", carrier.data))
-                    carrier.data = rebatch.points
-            elif rebatch.renumbered:
-                elements = _data(rebatch.previous.attributes[ELEMENT])
+                    carrier.data = rebatch.replacement_points_mesh
+            elif rebatch.needs_element_renumbering:
+                elements = _data(rebatch.previous_points_mesh.attributes[ELEMENT])
                 held = numpy.empty(len(batch.elements), dtype=numpy.int32)
                 elements.foreach_get("value", held)
                 undo.append(partial(elements.foreach_set, "value", held))
                 elements.foreach_set("value", numpy.array(batch.elements, dtype=numpy.int32))
-        staging = prepared.staging
-        arriving = [o for obj in prepared.created.values() for o in with_parent(obj)]
-        arriving += [carrier for batch in prepared.added for carrier in batch.carriers.values()]
-        arriving += [carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.created]
+        staging = prepared.staging_collection
+        arriving = [o for obj in prepared.created_objects_by_index.values() for o in with_parent(obj)]
+        arriving += [carrier for batch in prepared.added_batches for carrier in batch.carriers.values()]
+        arriving += [
+            carrier
+            for r in prepared.retained_batch_updates
+            if r.carrier_changes is not None
+            for carrier in r.carrier_changes.created
+        ]
         for obj in arriving:
             assert staging is not None
             collection.objects.link(obj)
             undo.append(partial(collection.objects.unlink, obj))
             staging.objects.unlink(obj)
             undo.append(partial(staging.objects.link, obj))
-        departing = [o for obj in prepared.leaving for o in with_parent(obj)]
-        departing += [carrier for batch in prepared.dropped for carrier in batch.carriers.values()]
-        departing += [carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.removed]
+        departing = [o for obj in prepared.departing_objects for o in with_parent(obj)]
+        departing += [carrier for batch in prepared.dropped_batches for carrier in batch.carriers.values()]
+        departing += [
+            carrier
+            for r in prepared.retained_batch_updates
+            if r.carrier_changes is not None
+            for carrier in r.carrier_changes.removed
+        ]
         for obj in departing:
             collection.objects.unlink(obj)
             undo.append(partial(collection.objects.link, obj))
         # A kept batch's carriers that changed state, or are new, are selected as their state is.
         view_layer: Any = bpy.context.view_layer  # the one the display's selection is mirrored into
-        for rebatch in prepared.kept:
-            if rebatch.carriers is None:
+        for rebatch in prepared.retained_batch_updates:
+            if rebatch.carrier_changes is None:
                 continue
             for state, carrier in rebatch.batch.carriers.items():
                 was = carrier.select_get(view_layer=view_layer)
@@ -271,13 +285,13 @@ def publish(
         for reverse in reversed(undo):
             reverse()
         raise
-    prepared.retired = _retired(prepared, display)
+    prepared.retired_resources = _retired(prepared, display)
     return new
 
 
 def retire(prepared: PreparedBatchedDisplayUpdate) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
-    return retire_ids(prepared.retired, prepared.staging)
+    return retire_ids(prepared.retired_resources, prepared.staging_collection)
 
 
 def _matches(
@@ -327,15 +341,24 @@ def _retired(prepared: PreparedBatchedDisplayUpdate, display: BatchedDisplay) ->
     """The old objects and batches, with their shear parents, placeholder meshes, and points, and the old data."""
     retired: list[bpy.types.ID] = []
     planned = {mesh.as_pointer() for mesh in display.meshes}
-    for old in prepared.leaving:
+    for old in prepared.departing_objects:
         retired.extend(with_parent(old))
         if old.data is not None and old.data.as_pointer() not in planned:  # a placeholder's own bounds
             retired.append(old.data)
-    for batch in prepared.dropped:
+    for batch in prepared.dropped_batches:
         retired.extend([*batch.carriers.values(), batch.prototype, batch.points])
-    retired.extend(rebatch.previous for rebatch in prepared.kept if rebatch.points is not None)
-    retired.extend(carrier for r in prepared.kept if r.carriers is not None for carrier in r.carriers.removed)
-    new = prepared.display
+    retired.extend(
+        rebatch.previous_points_mesh
+        for rebatch in prepared.retained_batch_updates
+        if rebatch.replacement_points_mesh is not None
+    )
+    retired.extend(
+        carrier
+        for r in prepared.retained_batch_updates
+        if r.carrier_changes is not None
+        for carrier in r.carrier_changes.removed
+    )
+    new = prepared.next_display
     meshes = {mesh.as_pointer() for mesh in new.meshes}
     materials = {material.as_pointer() for material in new.materials}
     retired.extend(mesh for mesh in display.meshes if mesh.as_pointer() not in meshes)

@@ -96,6 +96,13 @@ The native capture records use `sceneIndex`, `timeCode`, `hydraPath`, `hydraPrim
 `instanceContext` and `instanceWorldMatrix`; cache invalidation uses revision counters. The prototype's captured
 snapshots and plans expose their time code as `time_code`.
 
+The prototype plan diff maps each new resource to its old counterpart through `previous_mesh_indices`,
+`previous_material_indices`, and `previous_object_indices` (`-1` means no counterpart). Changed, repointable,
+and moved object indices address the new plan; `removed_previous_object_indices` addresses the old plan.
+Prepared updates name their `staging_collection`, `next_display`, `created_objects_by_index`,
+`retained_object_updates_by_index`, and `retired_resources`; retained batches distinguish replacement points
+meshes from previous points meshes and state whether their prototype or element indices need updating.
+
 ### `blender/`
 
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/state.py`, does the following:

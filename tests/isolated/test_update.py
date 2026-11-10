@@ -149,7 +149,7 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
         # Moving every copy moves sheared ones, which keep their shear parents, so moves keep only the others.
         (step,) = (step for step in steps if step["edit"] == "move-world")
         kept = _kept_moves(step, users)
-        assert set(step["diff"]["moved"]) > kept
+        assert set(step["diff"]["moved_object_indices"]) > kept
 
 
 # M1b's animation case varies every kind of value its plan holds over [1, 3]; the repeated 3 changes nothing.
@@ -176,7 +176,11 @@ def test_update_follows_frames(  # noqa: PLR0913 - pytest's parameters and fixtu
     repeat = FRAMES.index(3, FRAMES.index(3) + 1) - 1  # the step to frame 3 again
     for index, step in enumerate(steps):
         diff = step["diff"]
-        changes = diff["changed"] or diff["removed"] or -1 in diff["objects"]
+        changes = (
+            diff["changed_object_indices"]
+            or diff["removed_previous_object_indices"]
+            or -1 in diff["previous_object_indices"]
+        )
         assert bool(changes) == (index != repeat), step["edit"]
     _check_steps(steps, users, representation, "all", {repeat}, moves)
     if moves:
@@ -208,11 +212,13 @@ def _check_steps(  # noqa: PLR0913 - the steps and how they were run
         assert step["restored"] == [], edit  # no failure injected
         # From publication on, the collection links exactly the published display.
         assert step["linked"]["published"] == step["linked"]["expected"], edit
-        for kind in ("meshes", "materials"):
-            for index, old in enumerate(diff[kind]):
+        for kind, previous_indices in (("meshes", "previous_mesh_indices"), ("materials", "previous_material_indices")):
+            for index, old in enumerate(diff[previous_indices]):
                 kept = old != -1 and after[kind][index] == before[kind][old]
                 assert kept == (old != -1), (edit, kind, index)
-        rebuilt = set(diff["changed"]) - (set(diff["repointable"]) if users == "repoint" else set())
+        rebuilt = set(diff["changed_object_indices"]) - (
+            set(diff["repointable_object_indices"]) if users == "repoint" else set()
+        )
         if moves:
             rebuilt -= _kept_moves(step, users)
         if representation == "objects":
@@ -223,7 +229,7 @@ def _check_steps(  # noqa: PLR0913 - the steps and how they were run
             kept = _kept_objects(diff, before, after, rebuilt, edit) | _kept_instances(diff, before, after, edit)
         # Of the elements selected before the edit, only those the update kept still are, in the viewport.
         was = {old for old in range(len(before["objects"])) if selection == "all" or old % 2}
-        expected = sorted(i for i in kept if diff["objects"][i] in was and step["held"][i]["viewport"])
+        expected = sorted(i for i in kept if diff["previous_object_indices"][i] in was and step["held"][i]["viewport"])
         assert step["selected"] == expected, edit
         if position in unchanged:
             nothing = {"created": 0, "repointed": 0, "renumbered": 0, "retired": 0, "staged": False}
@@ -264,14 +270,14 @@ def _kept_moves(step: dict[str, Any], users: str) -> set[int]:
     it had. The fixtures change no moved object's materials.
     """
     diff, kept = step["diff"], set()
-    for index in diff["moved"]:
-        was, now = step["before_values"][diff["objects"][index]], step["held"][index]
+    for index in diff["moved_object_indices"]:
+        was, now = step["before_values"][diff["previous_object_indices"][index]], step["held"][index]
         if was is None or step["after"]["objects"][index] is None:
             continue  # an instance of a batch, before or after
         if was["parent_world"] is not None or now["parent_world"] is not None:
             continue
         mesh = now["mesh_index"]
-        same = was["mesh_index"] is None if mesh is None else diff["meshes"][mesh] == was["mesh_index"]
+        same = was["mesh_index"] is None if mesh is None else diff["previous_mesh_indices"][mesh] == was["mesh_index"]
         if same or users == "repoint":
             kept.add(index)
     return kept
@@ -296,7 +302,7 @@ def _kept_objects(
     """
     previous = {p for p in before["objects"] if p is not None}
     kept = set()
-    for index, old in enumerate(diff["objects"]):
+    for index, old in enumerate(diff["previous_object_indices"]):
         new = after["objects"][index]
         if new is None:
             continue
@@ -317,7 +323,7 @@ def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[st
     unless a member changed other than in its mesh or materials, or its members did. Its members kept from the old
     batch are the kept instances.
     """
-    moved = set(diff["changed"]) - set(diff["repointable"])
+    moved = set(diff["changed_object_indices"]) - set(diff["repointable_object_indices"])
     old_batches = {batch["prototype"]: batch for batch in before["batches"]}
     previous = {
         p for batch in before["batches"] for p in [*batch["carriers"].values(), batch["prototype"], batch["points"]]
@@ -341,7 +347,7 @@ def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[st
         fresh = [pointer for pointer in carriers.values() if pointer not in before_carriers.values()]
         assert previous.isdisjoint(fresh), (edit, batch)
         assert len(fresh) == max(0, len(carriers) - len(before_carriers)), (edit, batch)
-        olds = [diff["objects"][index] for index in batch["elements"]]
+        olds = [diff["previous_object_indices"][index] for index in batch["elements"]]
         unchanged = olds == old["elements"] and moved.isdisjoint(batch["elements"])
         assert (batch["points"] == old["points"]) == unchanged, (edit, batch)
         kept |= {i for i, o in zip(batch["elements"], olds, strict=True) if o in old["elements"] and i not in moved}
@@ -349,7 +355,7 @@ def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[st
     # no other group keeps: none of those left over holds more, nor any for a group with a new batch.
     claimed = {batch["prototype"] for batch in after["batches"]} & old_batches.keys()
     for batch in after["batches"]:
-        olds = {diff["objects"][index] for index in batch["elements"]}
+        olds = {diff["previous_object_indices"][index] for index in batch["elements"]}
         old = old_batches.get(batch["prototype"])
         most = 0 if old is None else len(olds.intersection(old["elements"]))
         for other in before["batches"]:
@@ -357,7 +363,7 @@ def _kept_instances(diff: dict[str, Any], before: dict[str, Any], after: dict[st
                 assert len(olds.intersection(other["elements"])) <= most, (edit, batch, other)
     # A batch whose members are all unchanged, and were exactly one old batch's, is kept whole.
     for batch in after["batches"]:
-        olds = [diff["objects"][index] for index in batch["elements"]]
+        olds = [diff["previous_object_indices"][index] for index in batch["elements"]]
         whole = [old for old in before["batches"] if old["elements"] == olds]
         if whole and moved.isdisjoint(batch["elements"]):
             assert batch["points"] == whole[0]["points"], (edit, batch)
