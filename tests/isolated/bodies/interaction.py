@@ -92,10 +92,12 @@ class BaselineDisplay:
 
     def resolve_pick(self, pick: Any) -> ResolvedPick:
         resolved = self._interaction.resolve_pick(pick)
-        return ResolvedPick(SourceEntity(resolved["source"], tuple(resolved["instance_context"])), resolved["floor"])
+        return ResolvedPick(
+            SourceEntity(resolved["source_path"], tuple(resolved["instance_context"])), resolved["floor_path"]
+        )
 
     def select_targets(self, entities: Sequence[SourceEntity], level: str | None) -> list[str]:
-        return self._interaction.select_targets([(e.source, e.instance_context) for e in entities], level)
+        return self._interaction.select_targets([(e.source_path, e.instance_context) for e in entities], level)
 
     def displayed(self, paths: Sequence[str]) -> list[bool]:
         return self._interaction.displayed(paths)
@@ -107,7 +109,7 @@ class BaselineDisplay:
         found = self._interaction.selection_from_blender(
             blender_selection.selected_element_indices, blender_selection.active_element_index, level
         )
-        return SourceSelection(found["targets"], found["active"])
+        return SourceSelection(found["target_paths"], found["active_target_path"])
 
     def apply_selection(self, display_targets: Any, active: Any) -> None:
         self._selection.apply_selection(self.view_layer, self.collection, set(display_targets), set(active))
@@ -257,10 +259,10 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
                 for element, pick in zip(display.elements(obj), display.picks(obj), strict=True):
                     resolved = display.resolve_pick(pick)
                     entity = resolved.entity
-                    resolved_as = [entity.source, list(entity.instance_context)]
+                    resolved_as = [entity.source_path, list(entity.instance_context)]
                     picks.append(
                         {"element": element, "drawn": list(display.drawn(element))}
-                        | {"resolved": resolved_as, "floor": resolved.floor}
+                        | {"resolved": resolved_as, "floor": resolved.floor_path}
                     )
             shown = sorted(pick["element"] for pick in picks)
             targets, active = shown[::2], shown[:1]
@@ -382,7 +384,10 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             session.model_kind = "component"
             expected = display.selection_from_blender(display.read_blender_selection(), "component")
             session.follow_blender()
-            if (session.selected_source_paths, session.active_source_path) != (list(expected.targets), expected.active):
+            if (session.selected_source_paths, session.active_source_path) != (
+                list(expected.target_paths),
+                expected.active_target_path,
+            ):
                 found.append(
                     f"followed: {session.selected_source_paths}, active {session.active_source_path}, not {expected}"
                 )

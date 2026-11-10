@@ -124,7 +124,7 @@ plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a
 plan.universe  # sorted USD paths; each object dict also has its "floor"
 _hydra_bridge.diff_plans(published, plan)  # M4: previous_mesh_indices, previous_material_indices,
 #   previous_object_indices: old index or -1 per new entry; changed_object_indices,
-#   repointable_object_indices (changed only in mesh or materials), moved_object_indices: new indices;
+#   repointable_object_indices (changed only in mesh or materials), transform_changed_object_indices: new indices;
 #   removed_previous_object_indices: old indices
 _hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
 interaction = _hydra_bridge.SourceSelectionResolver(

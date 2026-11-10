@@ -151,7 +151,7 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
         # Moving every copy moves sheared ones, which keep their shear parents, so moves keep only the others.
         (step,) = (step for step in steps if step["edit"] == "move-world")
         kept = _kept_moves(step, users)
-        assert set(step["diff"]["moved_object_indices"]) > kept
+        assert set(step["diff"]["transform_changed_object_indices"]) > kept
 
 
 # M1b's animation case varies every kind of value its plan holds over [1, 3]; the repeated 3 changes nothing.
@@ -276,7 +276,7 @@ def _kept_moves(step: dict[str, Any], users: str) -> set[int]:
     it had. The fixtures change no moved object's materials.
     """
     diff, kept = step["diff"], set()
-    for index in diff["moved_object_indices"]:
+    for index in diff["transform_changed_object_indices"]:
         was, now = step["before_values"][diff["previous_object_indices"][index]], step["held"][index]
         if was is None or step["after"]["objects"][index] is None:
             continue  # an instance of a batch, before or after

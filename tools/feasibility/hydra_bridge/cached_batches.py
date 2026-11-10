@@ -1,9 +1,10 @@
 """The batches of a cached display (M4 Phase E, E5): copies alike but for their placement, as instances of one mesh.
 
-At the build, copies of the same mesh, material slots, object color, and primvar kinds (batch.attribute_type)
-become a batch of at least the display's minimum: a prototype object that no scene links, on their mesh, and a
-carrier object on a mesh of one point per copy. Unlike Phase D's batches (batched_display.py), a cached batch has one
-carrier, and each instance's destinations are its own, so copies differing only in them share a batch:
+At the build, copies of the same mesh, material slots, object color, and primvar attribute types
+(batched_display.attribute_type) become a batch of at least the display's minimum: a prototype object that no
+scene links, on their mesh, and a carrier object on a mesh of one point per copy. Unlike Phase D's batches
+(batched_display.py), a cached batch has one carrier, and each instance's destinations are its own, so copies
+differing only in them share a batch:
 - **Points:** each point's attributes are its copy's world transform, whether it shows in the viewport and in the
   render, and its constant primvars by name. The carrier's frames modifier caches them like any mesh's attributes
   (mesh_caches.py), ahead of the modifier that instances the prototype on each point shown in the destination
@@ -14,8 +15,8 @@ carrier, and each instance's destinations are its own, so copies differing only 
   is predicted to vary in its materials: USD's bindings aren't time-sampled, and a subset's faces are its mesh's.
 
 At each synchronization, a batch keeps its tracks whose content is still its own: their mesh, its material
-slots' materials, object color, and primvar kinds. If its tracks' meshes come to differ, those whose mesh is the
-prototype's current one keep it, or else the most (the least track's on a tie). Any other track of it becomes an
+slots' materials, object color, and primvar attribute types. When track meshes differ, those whose mesh matches
+the prototype's current one keep it, or else the most (the least track's on a tie). Any other track of it becomes an
 object from then on, hidden at the times before, and shows nothing in the batch; a point shown nowhere keeps its
 values but its destinations. A track first present then joins a batch of its content, on a point added to its
 carrier's points, which every earlier sample shows in no destination and whose own values are its record's, so
@@ -43,9 +44,9 @@ if TYPE_CHECKING:
 VIEWPORT, RENDER = "proscenium_viewport", "proscenium_render"  # point attributes: the destinations it shows in
 PROTOTYPE_INPUT = "Prototype"
 MODIFIER = "proscenium batch"
-type Kinds = tuple[tuple[str, str], ...]  # a copy's constant primvars: name, attribute data type
-# What a batch's copies share: their mesh in a plan, material slots' materials, object color, and primvar kinds.
-type Content = tuple[int, tuple[Any, ...], tuple[float, ...], Kinds]
+type PrimvarAttributeTypes = tuple[tuple[str, str], ...]  # a copy's constant primvars: name, attribute data type
+# Shared mesh, material slots, object color, and primvar attribute types determine batch compatibility.
+type Content = tuple[int, tuple[Any, ...], tuple[float, ...], PrimvarAttributeTypes]
 
 
 @dataclass
@@ -59,7 +60,7 @@ class CachedBatch:
     latest_point_attributes: dict[
         str, MeshAttributeData
     ]  # its points' values at the latest synchronization, by attribute
-    primvar_types: Kinds
+    primvar_attribute_types: PrimvarAttributeTypes
     prototype_record: ObjectRecord  # a track's at the latest time one was present, as the prototype's
     mesh_index: int | None  # the prototype's content in the current plan; None when it has none there
     points_cache: MeshCache | None = None  # its points' cache, once synchronized
@@ -73,19 +74,19 @@ class CachedBatch:
     def points(self) -> bpy.types.Mesh:
         return self.carrier.data  # ty: ignore[invalid-return-type] - a carrier's data is its points
 
-    def content(self) -> tuple[tuple[Any, ...], tuple[float, ...], Kinds]:
-        """What its tracks share but their mesh: its materials, object color, and primvar kinds."""
+    def content(self) -> tuple[tuple[Any, ...], tuple[float, ...], PrimvarAttributeTypes]:
+        """What its tracks share but their mesh: its materials, object color, and primvar attribute types."""
         return (
             tuple(s.material for s in self.prototype.material_slots),
             tuple(self.prototype.color),
-            self.primvar_types,
+            self.primvar_attribute_types,
         )
 
 
-def batchable_primvar_types(record: ObjectRecord) -> Kinds | None:
-    """A copy's primvar kinds, or None if a point attribute can't hold one of them."""
+def batchable_primvar_types(record: ObjectRecord) -> PrimvarAttributeTypes | None:
+    """A copy's primvar attribute types, or None if a point attribute can't hold one of them."""
     found = tuple(sorted((name, attribute_type(value)) for name, value in record["properties"].items()))
-    return None if any(kind is None for _, kind in found) else found  # ty: ignore[invalid-return-type]
+    return None if any(attribute_type_name is None for _, attribute_type_name in found) else found  # ty: ignore[invalid-return-type]
 
 
 def batch_compatibility_key(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | None:
@@ -167,7 +168,7 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     found = point_layers(held, [records[key] for key in tracks], first)
     for layer in found.values():
         attribute: Any = points.attributes.new(layer.name, layer.data_type, "POINT")
-        attribute.data.foreach_set(layer.prop, layer.values)
+        attribute.data.foreach_set(layer.foreach_property, layer.values)
     carrier = bpy.data.objects.new(f"Carrier {number:06d}", points)
     collection.objects.link(carrier)  # shown in both destinations: each point says which it shows in
     modifier: Any = carrier.modifiers.new(MODIFIER, "NODES")
@@ -178,8 +179,10 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     return CachedBatch(number, prototype, carrier, list(tracks), found, held, first, mesh)
 
 
-def point_layers(held: Kinds, records: list[ObjectRecord | None], blank: ObjectRecord) -> dict[str, MeshAttributeData]:
-    """The point attributes of copies with primvar kinds `held`, one point per record.
+def point_layers(
+    held: PrimvarAttributeTypes, records: list[ObjectRecord | None], blank: ObjectRecord
+) -> dict[str, MeshAttributeData]:
+    """The point attributes of copies with primvar attribute types `held`, one point per record.
 
     A None record shows nowhere, with `blank`'s other values.
     """
@@ -193,7 +196,7 @@ def point_layers(held: Kinds, records: list[ObjectRecord | None], blank: ObjectR
         column(TRANSFORM, "FLOAT4X4", lambda r: r["matrix"]),
         column(VIEWPORT, "BOOLEAN", lambda r: r["viewport"]),
         column(RENDER, "BOOLEAN", lambda r: r["render"]),
-        *(column(name, kind, lambda r, n=name: r["properties"][n]) for name, kind in held),
+        *(column(name, data_type, lambda r, n=name: r["properties"][n]) for name, data_type in held),
     ]
     layers = {layer.name: layer for layer in found}
     for index, record in enumerate(records):
@@ -211,19 +214,19 @@ def add_points(batch: CachedBatch, keys: list[TrackKey], records: list[ObjectRec
     points: Any = batch.points
     points.vertices.add(len(keys))
     batch.tracks += keys
-    joined = point_layers(batch.primvar_types, list(records), records[0])
+    joined = point_layers(batch.primvar_attribute_types, list(records), records[0])
     for name in (VIEWPORT, RENDER):
         joined[name].values[:] = False
     for name, layer in joined.items():
         attribute = points.attributes[name]
         values = numpy.empty(len(batch.tracks) * (len(layer.values) // len(keys)), layer.values.dtype)
-        attribute.data.foreach_get(layer.prop, values)
+        attribute.data.foreach_get(layer.foreach_property, values)
         values[len(values) - len(layer.values) :] = layer.values
-        attribute.data.foreach_set(layer.prop, values)
+        attribute.data.foreach_set(layer.foreach_property, values)
     for kept in (batch.latest_point_attributes, batch.points_cache.base_attributes if batch.points_cache else {}):
         for name, layer in kept.items():
             grown = numpy.concatenate([layer.values, joined[name].values])
-            kept[name] = MeshAttributeData(layer.name, layer.data_type, layer.domain, layer.prop, grown)
+            kept[name] = MeshAttributeData(layer.name, layer.data_type, layer.domain, layer.foreach_property, grown)
 
 
 def write_points(
@@ -236,7 +239,7 @@ def write_points(
 
     A point shown nowhere keeps its latest values but its destinations. Returns whether any attribute varies.
     """
-    found = point_layers(batch.primvar_types, records, batch.prototype_record)
+    found = point_layers(batch.primvar_attribute_types, records, batch.prototype_record)
     for index, record in enumerate(records):
         if record is None:
             for name, layer in found.items():
@@ -269,14 +272,14 @@ class Regrouped:
 class Batches:
     """A cached display's batches, and the tracks they hold."""
 
-    minimum: int  # the smallest group that becomes a batch at the build
+    minimum_batch_size: int  # the smallest group that becomes a batch at the build
     group: bpy.types.NodeTree | None  # the carriers' node group, once a batch is built
     batches: list[CachedBatch]
     points: dict[TrackKey, tuple[CachedBatch, int]]  # every track a batch has held, and its point
     held: set[TrackKey]  # the tracks the batches hold now
 
     def __init__(self, minimum: int) -> None:
-        self.minimum = minimum
+        self.minimum_batch_size = minimum
         self.group = None
         self.reset()
 
@@ -292,7 +295,7 @@ class Batches:
         collection: bpy.types.Collection,
     ) -> None:
         """Batch the build's tracks in groups of at least the minimum; the rest are the display's objects."""
-        for members in initial_batch_track_groups(records, shown, self.minimum):
+        for members in initial_batch_track_groups(records, shown, self.minimum_batch_size):
             if self.group is None:
                 self.group = batch_group()
             batch = new_batch(len(self.batches), members, records, meshes, materials, collection, self.group)

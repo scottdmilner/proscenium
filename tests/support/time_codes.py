@@ -29,7 +29,7 @@ class TimeVariation:
 
     start: float  # the stage's startTimeCode
     end: float  # its endTimeCode
-    samples: tuple[float, ...]  # every authored sample time
+    authored_sample_time_codes: tuple[float, ...]  # every authored sample time
     transitions: tuple[float, ...]  # time codes where topology or visibility changes
 
 
@@ -43,15 +43,15 @@ class SampledTimeCodes:
     authored: tuple[float, ...]  # the selected authored sample times
     transitions: tuple[float, ...]  # each transition, and the time codes just before and after it
     midpoints: tuple[float, ...]  # between consecutive start, end, authored samples, and transitions
-    before: float
-    after: float
-    seeded: tuple[float, ...]
+    before_range: float
+    after_range: float
+    seeded_time_codes: tuple[float, ...]
 
     @property
     def time_codes(self) -> tuple[float | None, ...]:
         """Every sampled time code once, the default time code first, then in increasing order."""
-        floats = {self.start, self.end, self.interior, self.before, self.after}
-        floats.update(self.authored, self.transitions, self.midpoints, self.seeded)
+        floats = {self.start, self.end, self.interior, self.before_range, self.after_range}
+        floats.update(self.authored, self.transitions, self.midpoints, self.seeded_time_codes)
         return (None, *sorted(floats))
 
 
@@ -60,7 +60,7 @@ def sampled(fixture_id: str, variation: TimeVariation, *, production_scale: bool
     start, end = variation.start, variation.end
     if not end - start >= 2:  # so the interior time code is strictly inside
         raise ValueError(f"{fixture_id}: its time range [{start}, {end}] holds no interior non-integer time code")
-    authored = () if production_scale else _spread(variation.samples)
+    authored = () if production_scale else _spread(variation.authored_sample_time_codes)
     transitions = tuple(sorted({t + d for t in variation.transitions for d in (-AROUND, 0.0, AROUND)}))
     relevant = sorted({start, end, *authored, *variation.transitions})
     rng = random.Random(fixture_id)  # a str seed hashes the same in every process, unlike hash()
@@ -72,9 +72,9 @@ def sampled(fixture_id: str, variation: TimeVariation, *, production_scale: bool
         authored=authored,
         transitions=transitions,
         midpoints=tuple((a + b) / 2 for a, b in zip(relevant, relevant[1:], strict=False)),
-        before=start - OUTSIDE,
-        after=end + OUTSIDE,
-        seeded=seeded,
+        before_range=start - OUTSIDE,
+        after_range=end + OUTSIDE,
+        seeded_time_codes=seeded,
     )
 
 

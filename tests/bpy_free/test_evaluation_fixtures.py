@@ -105,7 +105,7 @@ def test_transforms_animated(time_code: float | None, transforms: evaluation.Tra
 
 def test_transforms_equal_time_codes_and_samples(transforms: evaluation.TransformsScene) -> None:
     attr = transforms.stage.GetPrimAtPath("/World/Animated").GetAttribute("xformOp:translate")
-    assert tuple(attr.GetTimeSamples()) == transforms.variation.samples
+    assert tuple(attr.GetTimeSamples()) == transforms.variation.authored_sample_time_codes
     assert (transforms.stage.GetStartTimeCode(), transforms.stage.GetEndTimeCode()) == (
         transforms.variation.start,
         transforms.variation.end,
@@ -206,7 +206,7 @@ def test_visibility_participation_by_default(visibility: evaluation.VisibilitySc
 
 def test_visibility_samples(visibility: evaluation.VisibilityScene) -> None:
     attr = UsdGeom.Imageable(visibility.stage.GetPrimAtPath(visibility.blinking)).GetVisibilityAttr()
-    assert tuple(attr.GetTimeSamples()) == visibility.variation.samples
+    assert tuple(attr.GetTimeSamples()) == visibility.variation.authored_sample_time_codes
     for first, second in visibility.equal_time_codes:
         assert attr.Get(Usd.TimeCode(first)) == attr.Get(Usd.TimeCode(second))
 

@@ -128,7 +128,7 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
     results[f"{name}: resolve_pick"], entities = _timed(
         repeats, lambda: [interaction.resolve_pick(element) for element in picks]
     )
-    pairs = [(e["source"], e["instance_context"]) for e in entities]
+    pairs = [(e["source_path"], e["instance_context"]) for e in entities]
     results[f"{name}: select_targets, prim level"], _ = _timed(repeats, lambda: interaction.select_targets(pairs))
     targets: dict[str, Any] = {}
     for level in LEVELS:
@@ -164,11 +164,15 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
         repeats, lambda: selection.read_blender_selection(view_layer, target)
     )
     results[f"{name}: selection_from_blender, prim level"], _ = _timed(
-        repeats, lambda: interaction.selection_from_blender(blender.selected, blender.active)
+        repeats,
+        lambda: interaction.selection_from_blender(blender.selected_element_indices, blender.active_element_index),
     )
     for level in LEVELS:
         results[f"{name}: selection_from_blender, {level}"], _ = _timed(
-            repeats, lambda level=level: interaction.selection_from_blender(blender.selected, blender.active, level)
+            repeats,
+            lambda level=level: interaction.selection_from_blender(
+                blender.selected_element_indices, blender.active_element_index, level
+            ),
         )
     clear()
     return results

@@ -401,12 +401,14 @@ bp::tuple PlanView::BatchGroups(std::size_t minimum) const {
     };
     bp::list groups;
     for (const BatchGroup &group : grouped.groups) {
-        bp::list slots, kinds;
+        bp::list slots, primvarAttributeTypes;
         for (const int slot : group.materialSlots) slots.append(slot < 0 ? bp::object() : bp::object(slot));
-        for (const auto &[name, type] : group.kinds) kinds.append(bp::make_tuple(name, type));
+        for (const auto &[name, type] : group.primvarAttributeTypes)
+            primvarAttributeTypes.append(bp::make_tuple(name, type));
         const auto &[r, g, b, a] = group.color;
-        const bp::tuple key = bp::make_tuple(group.mesh, bp::tuple(slots), group.inViewport, group.inRender,
-                                             bp::make_tuple(r, g, b, a), bp::tuple(kinds), group.coincidentCopyIndex);
+        const bp::tuple key =
+            bp::make_tuple(group.mesh, bp::tuple(slots), group.inViewport, group.inRender, bp::make_tuple(r, g, b, a),
+                           bp::tuple(primvarAttributeTypes), group.coincidentCopyIndex);
         groups.append(bp::make_tuple(key, list(group.objectIndices)));
     }
     return bp::make_tuple(groups, list(grouped.unbatchedObjectIndices));
@@ -483,9 +485,9 @@ bp::object SourceSelectionResolverView::ResolvePick(std::size_t element) const {
     const std::optional<Entity> entity = CallWithoutGil([&] { return interaction.ResolvePick(element); });
     if (!entity) return {};
     bp::dict record;
-    record["source"] = entity->source.GetString();
+    record["source_path"] = entity->sourcePath.GetString();
     record["instance_context"] = bp::tuple(PathList(entity->instanceContext));
-    record["floor"] = Floor(*entity).GetString();
+    record["floor_path"] = Floor(*entity).GetString();
     return std::move(record);
 }
 
@@ -527,8 +529,8 @@ bp::dict SourceSelectionResolverView::SelectionFromBlender(const bp::object &sel
     const SourceSelection selection =
         CallWithoutGil([&] { return interaction.SelectionFromBlender(elements, activeElement, kind); });
     bp::dict result;
-    result["targets"] = PathList(selection.targets);
-    result["active"] = PathOrNone(selection.active);
+    result["target_paths"] = PathList(selection.targetPaths);
+    result["active_target_path"] = PathOrNone(selection.activeTargetPath);
     return result;
 }
 
@@ -576,7 +578,7 @@ bp::dict DiffPlanViews(const PlanView &published, const PlanView &next) {
     result["previous_object_indices"] = list(diff.previousObjectIndices);
     result["changed_object_indices"] = list(diff.changedObjectIndices);
     result["repointable_object_indices"] = list(diff.repointableObjectIndices);
-    result["moved_object_indices"] = list(diff.movedObjectIndices);
+    result["transform_changed_object_indices"] = list(diff.transformChangedObjectIndices);
     result["removed_previous_object_indices"] = list(diff.removedPreviousObjectIndices);
     return result;
 }

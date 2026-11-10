@@ -128,7 +128,7 @@ def attribute_for_sample_storage(layer: MeshAttributeData) -> MeshAttributeData:
         return layer
     padded = numpy.zeros((len(layer.values) // 2, 3), numpy.float32)
     padded[:, :2] = layer.values.reshape(-1, 2)
-    return MeshAttributeData(layer.name, "FLOAT_VECTOR", layer.domain, layer.prop, padded.ravel())
+    return MeshAttributeData(layer.name, "FLOAT_VECTOR", layer.domain, layer.foreach_property, padded.ravel())
 
 
 def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, MeshAttributeData]) -> bpy.types.Mesh:
@@ -140,10 +140,10 @@ def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, MeshAttrib
             continue  # it varied only later, so the sample holds the mesh's own
         held = attribute_for_sample_storage(layer)
         values = numpy.empty_like(held.values)
-        attribute.data.foreach_get(held.prop, values)
+        attribute.data.foreach_get(held.foreach_property, values)
         if held is not layer:  # a 2D vector stored as 3D
             values = values.reshape(-1, 3)[:, :2].ravel()
-        copy.attributes[name].data.foreach_set(layer.prop, values)
+        copy.attributes[name].data.foreach_set(layer.foreach_property, values)
     remove_samples(copy)
     return copy
 

@@ -347,7 +347,7 @@ class SavedDisplay:
     """
 
     parent_location: tuple[float, float, float]
-    location: tuple[float, float, float]  # the mesh object's, relative to its parent
+    mesh_local_location: tuple[float, float, float]  # the mesh object's, relative to its parent
     vertices: tuple[tuple[float, float, float], ...]
     faces: tuple[tuple[int, ...], ...]
     material_color: tuple[float, float, float, float]
@@ -356,7 +356,7 @@ class SavedDisplay:
 
 DISPLAY = SavedDisplay(
     parent_location=(1.0, 2.0, 3.0),
-    location=(0.5, 0.0, -1.0),
+    mesh_local_location=(0.5, 0.0, -1.0),
     vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
     faces=((0, 1, 2, 3),),
     material_color=(0.8, 0.2, 0.1, 1.0),

@@ -1,7 +1,7 @@
 """Update a batched display from a new plan and its diff (M4 Phase D).
 
 The new plan's groups (batched_display.groups) are matched to the published batches: each to the unclaimed batch of the
-same destinations, object color, and primvar kinds that holds the most of its members' old counterparts.
+same destinations, object color, and primvar attribute types that holds the most of its members' old counterparts.
 Preparation builds, beside the display in a collection no scene links (TXN-05):
 - each new mesh and material, as object_display_updates.py does;
 - a batch for each group no published batch matches;
@@ -106,11 +106,13 @@ def prepare(
     rebuilt = set(diff["changed_object_indices"]) - (
         repointable if users is DependentObjectUpdatePolicy.REPOINT else set()
     )
-    shared, single = groups(plan, display.minimum)
+    shared, single = groups(plan, display.minimum_batch_size)
     if moves:
         alone = set(single)
         candidates = [
-            index for index in diff["moved_object_indices"] if index in alone and previous[index] in display.objects
+            index
+            for index in diff["transform_changed_object_indices"]
+            if index in alone and previous[index] in display.objects
         ]
         moving = kept_moves(plan, diff, candidates, display.objects.__getitem__, (meshes, materials), users)
         rebuilt -= set(moving)
@@ -142,7 +144,7 @@ def prepare(
     order = sorted(needed)
     records = dict(zip(order, plan.objects_at(order), strict=True))
 
-    serial = display.serial
+    serial = display.next_batch_number
     batches, added, kept = [], [], []
     for (key, members), old, decision in zip(shared.items(), matched, decided, strict=True):
         if old is None or decision is None:
@@ -199,7 +201,7 @@ def prepare(
         objects[index] = created[index] = new_object(index, records[index], meshes, materials, staging)
     kept_pointers = {obj.as_pointer() for obj in objects.values()}
     leaving = [obj for obj in display.objects.values() if obj.as_pointer() not in kept_pointers]
-    new = BatchedDisplay(objects, batches, meshes, materials, display.nodes, serial, display.minimum)
+    new = BatchedDisplay(objects, batches, meshes, materials, display.nodes, serial, display.minimum_batch_size)
     return PreparedBatchedDisplayUpdate(staging, new, created, added, kept, dropped, leaving, repointed, renumbered)
 
 
@@ -306,7 +308,7 @@ def _matches(
     matched = []
     for key, members in shared.items():
         # Everything in a key but the mesh, the slots, and the repeat: what a batch's carriers and prototype show
-        # besides its mesh and materials, and the kinds of its points' primvars.
+        # besides its mesh and materials, and the attribute types of its points' primvars.
         looks = key[2:-1]
         olds = olds_of[members]
         held = holding[olds[(olds >= 0) & (olds < len(holding))]]

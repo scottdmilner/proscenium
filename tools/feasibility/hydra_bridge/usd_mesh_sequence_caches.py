@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
 MODIFIER = "proscenium sequence"
 INTERPOLATIONS = {"POINT": "vertex", "FACE": "uniform", "CORNER": "faceVarying"}
-type PrimvarKind = tuple[Sdf.ValueTypeName, str]  # its type, and its interpolation
+type PrimvarTypeAndInterpolation = tuple[Sdf.ValueTypeName, str]  # its type, and its interpolation
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,9 @@ class SequenceCaches(MeshCaches):
     cache_file: bpy.types.CacheFile
     prims: dict[int, Sdf.Path]  # by mesh session_uid, the prim of each mesh that varies
     contents: dict[int, MeshContent]  # by mesh session_uid, the content of its latest sample
-    kinds: dict[int, dict[str, PrimvarKind]]  # by mesh session_uid, its prim's primvars
+    primvar_types_and_interpolations_by_mesh: dict[
+        int, dict[str, PrimvarTypeAndInterpolation]
+    ]  # by mesh session_uid, its prim's primvars
     _count: int  # the prims made
 
     def __init__(self, holder: Callable[[HolderKey], bpy.types.Object], path: str) -> None:
@@ -116,7 +118,7 @@ class SequenceCaches(MeshCaches):
     def reset(self, keys: AnimationKeyWriter, times: dict[float, int]) -> None:
         super().reset(keys, times)
         self.layer.Clear()
-        self.prims, self.contents, self.kinds, self._count = {}, {}, {}, 0
+        self.prims, self.contents, self.primvar_types_and_interpolations_by_mesh, self._count = {}, {}, {}, 0
         animation = self.cache_file.animation_data
         if animation is not None and animation.action is not None:
             bpy.data.actions.remove(animation.action)
@@ -144,7 +146,9 @@ class SequenceCaches(MeshCaches):
                 Sdf.CopySpec(self.layer, self.prims[uid], self.layer, prim)
                 self.prims[copy.session_uid] = prim
                 self.contents[copy.session_uid] = self.contents[uid]
-                self.kinds[copy.session_uid] = dict(self.kinds[uid])
+                self.primvar_types_and_interpolations_by_mesh[copy.session_uid] = dict(
+                    self.primvar_types_and_interpolations_by_mesh[uid]
+                )
                 self._read(copy.session_uid)
         return len(parts) - 1
 
@@ -195,8 +199,8 @@ class SequenceCaches(MeshCaches):
 
     def _sample(self, uid: int, content: ContentKey, holder: ObjectRecord, plan: Plan) -> MeshContent:
         """A content's attributes and topology; a placeholder's are its bounds, on its bounds mesh's topology."""
-        kind, index = content
-        if kind == "mesh":
+        content_type, index = content
+        if content_type == "mesh":
             data = plan.meshes_at([index])[0]
             if data["slot_count"] != len(self.meshes[uid].materials):
                 raise UncachedError(f"{self.meshes[uid].name}: its material slots vary")
@@ -222,7 +226,7 @@ class SequenceCaches(MeshCaches):
             prim.specifier, prim.typeName = Sdf.SpecifierDef, "Mesh"
             scheme = Sdf.AttributeSpec(prim, "subdivisionScheme", Sdf.ValueTypeNames.Token, Sdf.VariabilityUniform)
             scheme.default = "none"
-        self.kinds[uid] = {}
+        self.primvar_types_and_interpolations_by_mesh[uid] = {}
         for time in self.times:
             self._write(uid, own, time)
         self._read(uid)
@@ -253,31 +257,31 @@ class SequenceCaches(MeshCaches):
             self._set(path, "faceVertexCounts", Sdf.ValueTypeNames.IntArray, Vt.IntArray.FromNumpy(counts), time)
             indices = Vt.IntArray.FromNumpy(content.corner_verts)
             self._set(path, "faceVertexIndices", Sdf.ValueTypeNames.IntArray, indices, time)
-            kinds = self.kinds[uid]
+            primvar_types_and_interpolations = self.primvar_types_and_interpolations_by_mesh[uid]
             for name, layer in content.attributes_by_name.items():
                 if name == POSITION:
                     continue
-                kind, value = _primvar(layer)
-                if kinds.setdefault(name, kind) != kind:
+                type_and_interpolation, value = _primvar(layer)
+                if primvar_types_and_interpolations.setdefault(name, type_and_interpolation) != type_and_interpolation:
                     raise UncachedError(f"{self.meshes[uid].name}: its {name}'s type or domain varies")
-                spec = self._set(path, f"primvars:{name}", kind[0], value, time)
+                spec = self._set(path, f"primvars:{name}", type_and_interpolation[0], value, time)
                 if spec is not None:  # absent at the times written before
-                    spec.SetInfo("interpolation", kind[1])
+                    spec.SetInfo("interpolation", type_and_interpolation[1])
                     for before in self.layer.ListTimeSamplesForPath(path.AppendProperty("points")):
                         if before != time:
                             self.layer.SetTimeSample(spec.path, before, Sdf.ValueBlock())
-            for name in kinds.keys() - content.attributes_by_name.keys():  # absent here
+            for name in primvar_types_and_interpolations.keys() - content.attributes_by_name.keys():  # absent here
                 self.layer.SetTimeSample(path.AppendProperty(f"primvars:{name}"), time, Sdf.ValueBlock())
         self.contents[uid] = content
         self._read(uid)  # a holder first present now may share the mesh, with no modifier yet
         return True
 
-    def _set(self, prim: Sdf.Path, name: str, kind: Sdf.ValueTypeName, value: Any, time: float) -> Any:
+    def _set(self, prim: Sdf.Path, name: str, value_type: Sdf.ValueTypeName, value: Any, time: float) -> Any:
         """Set an attribute's sample at `time`; the attribute's spec if this made it, else None."""
         path = prim.AppendProperty(name)
         spec = None
         if self.layer.GetAttributeAtPath(path) is None:
-            spec = Sdf.AttributeSpec(self.layer.GetPrimAtPath(prim), name, kind)
+            spec = Sdf.AttributeSpec(self.layer.GetPrimAtPath(prim), name, value_type)
         self.layer.SetTimeSample(path, time, value)
         return spec
 
@@ -319,8 +323,8 @@ def _holding(content: MeshContent, latest: MeshContent) -> MeshContent:
     return replace(content, attributes_by_name={**latest.attributes_by_name, **content.attributes_by_name})
 
 
-def _primvar(layer: MeshAttributeData) -> tuple[PrimvarKind, Any]:
-    """An attribute as a primvar Blender's reader gives back as apply holds it: its kind, and its value."""
+def _primvar(layer: MeshAttributeData) -> tuple[PrimvarTypeAndInterpolation, Any]:
+    """The USD value type, interpolation, and value that preserve the attribute through Blender's reader."""
     interpolation = INTERPOLATIONS[layer.domain]
     values = layer.values
     if layer.data_type == "INT":
@@ -330,8 +334,8 @@ def _primvar(layer: MeshAttributeData) -> tuple[PrimvarKind, Any]:
     if layer.data_type == "FLOAT2":
         if layer.domain == "POINT":
             raise UncachedError(f"{layer.name}: the reader reads a FLOAT2 on points as a UV map, on corners")
-        kind = Sdf.ValueTypeNames.TexCoord2fArray if layer.domain == "CORNER" else Sdf.ValueTypeNames.Float2Array
-        return (kind, interpolation), Vt.Vec2fArray.FromNumpy(values.reshape(-1, 2))
+        value_type = Sdf.ValueTypeNames.TexCoord2fArray if layer.domain == "CORNER" else Sdf.ValueTypeNames.Float2Array
+        return (value_type, interpolation), Vt.Vec2fArray.FromNumpy(values.reshape(-1, 2))
     if layer.data_type == "FLOAT_VECTOR":
         return (Sdf.ValueTypeNames.Float3Array, interpolation), Vt.Vec3fArray.FromNumpy(values.reshape(-1, 3))
     colors = values.reshape(-1, 4)

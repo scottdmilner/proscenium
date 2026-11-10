@@ -123,7 +123,7 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
     mesh.polygons.add(len(face_offsets))
     # A mesh with no points has no position layer, and one with no faces no corner layer.
     if len(position.values):
-        _data(mesh.attributes[POSITION]).foreach_set(position.prop, position.values)
+        _data(mesh.attributes[POSITION]).foreach_set(position.foreach_property, position.values)
     if len(corner_verts):
         _data(mesh.attributes[".corner_vert"]).foreach_set(ForeachProperty.VALUE, corner_verts)
     # Unlike the attribute transfers, Blender copies this buffer into a temporary, 4 bytes per face.
@@ -133,7 +133,9 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
     for _ in range(data["slot_count"]):
         mesh.materials.append(None)
     for layer in others:
-        _data(_new_attribute(mesh, layer.name, layer.data_type, layer.domain)).foreach_set(layer.prop, layer.values)
+        _data(_new_attribute(mesh, layer.name, layer.data_type, layer.domain)).foreach_set(
+            layer.foreach_property, layer.values
+        )
     # Solid shading's Attribute color shows the active color.
     mesh.color_attributes.active_color_name = DISPLAY_COLOR
     return mesh
@@ -146,7 +148,7 @@ class MeshAttributeData:
     name: str
     data_type: PlanDataType
     domain: AttributeDomainItems
-    prop: ForeachProperty  # what foreach_set writes
+    foreach_property: ForeachProperty  # what foreach_set writes
     values: numpy.ndarray
 
 

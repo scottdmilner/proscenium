@@ -1,12 +1,12 @@
 """Apply a Hydra bridge plan as Geometry Nodes instances (M4, Phase D): the batched alternative to object_display.py.
 
-Plan objects that look the same except for their transform and constant primvars become instances on one
-carrier object: those with the same mesh, material slots, destinations, and object color, and constant primvars
-of the same names and kinds, and no two with the same transform. Only a group of at least a minimum size becomes
-a batch, since a batch is at least two Blender objects. A smaller group, a placeholder, and a copy with a primvar no
-attribute can hold stay objects, as object_display.py builds them. The bridge's module forms the groups
-(`plan.batch_groups`,
-batch_groups.h), so an update needn't convert and regroup every plan record in Python.
+Plan objects that look the same except for their transform and constant primvars become instances on one carrier
+object: those with the same mesh, material slots, destinations, and object color, and constant primvars of the
+same names and attribute types, and no two with the same transform. Only a group of at least a minimum size
+becomes a batch, since a batch is at least two Blender objects. A smaller group, a placeholder, and a copy with
+a primvar no attribute can hold stay objects, as object_display.py builds them. The bridge's module forms the
+groups (`plan.batch_groups`, batch_groups.h), so an update needn't convert and regroup every plan record in
+Python.
 
 - **Carriers:** objects on one mesh of one point per instance, one per selection state its points hold, so an
   unselected batch has one. The mesh's point attributes are each instance's world transform (a 4x4 matrix, so
@@ -90,8 +90,8 @@ class BatchedDisplay:
     meshes: list[bpy.types.Mesh]
     materials: list[bpy.types.Material]
     nodes: NodeGroup
-    serial: int  # the number the next batch or points mesh takes, so its names sort last (C3)
-    minimum: int  # the smallest group that becomes a batch
+    next_batch_number: int  # the number the next batch or points mesh takes, so its names sort last (C3)
+    minimum_batch_size: int  # the smallest group that becomes a batch
 
 
 def attribute_type(value: PropertyValue) -> str | None:

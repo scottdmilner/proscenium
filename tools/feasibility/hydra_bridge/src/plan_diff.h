@@ -24,7 +24,7 @@ struct PlanDiff {
     std::vector<int> repointableObjectIndices;
     // The changed objects whose world matrix differs, and otherwise at most their mesh or materials: what an update
     // may keep and move, repointing it too if its data changed (M4 Phase E). In plan order.
-    std::vector<int> movedObjectIndices;
+    std::vector<int> transformChangedObjectIndices;
     std::vector<int> removedPreviousObjectIndices;  // old objects with no new counterpart, in plan order
 };
 

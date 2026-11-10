@@ -16,13 +16,15 @@ if TYPE_CHECKING:
 # SHA-256 of the default fixture. Update it deliberately when the generator or its
 # assets change; an unexpected change means the fixture is no longer what tests assume.
 # CI checks the same value on every platform.
-DEFAULT_CHECKSUM = "576e6f2049bdf0c67d5c63819aee8d711a9b97f2a68a13e71ca3bec5ebe1aae2"
+DEFAULT_CHECKSUM = "aef54f97a0860989c2100593a57eddf94e949f7e5509d77fc73e6eff2141f2bc"
 
 POLICIES = {"load-all": Usd.Stage.LoadAll, "load-none": Usd.Stage.LoadNone}
 PARAMS = [
     ProductionSceneParameters(),
-    ProductionSceneParameters(fanout=(3, 1, 2, 2), levels=1, crates_per_bay=1),
-    ProductionSceneParameters(fanout=(), levels=0, crates_per_bay=1),  # smallest: one crate directly under /World
+    ProductionSceneParameters(fanout=(3, 1, 2, 2), levels_per_bay=1, crates_per_bay=1),
+    ProductionSceneParameters(
+        fanout=(), levels_per_bay=0, crates_per_bay=1
+    ),  # smallest: one crate directly under /World
 ]
 
 
@@ -35,7 +37,7 @@ def test_inventory_matches_parameters(params: ProductionSceneParameters, policy:
 
 
 @pytest.mark.parametrize(
-    "kwargs", [{"crates_per_bay": 0}, {"fanout": (2, 0)}, {"levels": -1}, {"fanout": (1,) * 6}], ids=str
+    "kwargs", [{"crates_per_bay": 0}, {"fanout": (2, 0)}, {"levels_per_bay": -1}, {"fanout": (1,) * 6}], ids=str
 )
 def test_params_outside_the_inventory_formula_are_rejected(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError):

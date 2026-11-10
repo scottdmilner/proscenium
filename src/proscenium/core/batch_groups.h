@@ -2,10 +2,10 @@
 // in the core, as the bridge's batch_groups groups plan objects, so application needn't regroup every copy in Python.
 //
 // Copies share a group when they have the same geometry description and destinations. Provisional: material slots
-// (M9) and object color and constant primvars' kinds (M10) join the key as the plan gains them, string primvars aside,
-// which batches leave out. A placeholder or marker is in no group. Copies whose world transforms are equal in float32,
-// as Blender stores them, go to separate groups, each a repeat: a pick names an instance by its prototype and world
-// matrix.
+// (M9) and object color and constant primvars' attribute types (M10) join the key as the plan gains them, string
+// primvars aside, which batches leave out. A placeholder or marker is in no group. Copies whose world transforms are
+// equal in float32, as Blender stores them, go to separate groups, each a repeat: a pick names an instance by its
+// prototype and world matrix.
 #pragma once
 
 #include <pxr/base/vt/array.h>

@@ -41,7 +41,7 @@ def _changes(step: dict[str, Any]) -> dict[str, Any]:
         "added": {new[i]["source"] for i, m in enumerate(diff["previous_object_indices"]) if m == -1},
         "removed": {old[i]["source"] for i in diff["removed_previous_object_indices"]},
         "changed": {new[i]["source"] for i in diff["changed_object_indices"]},
-        "moved": {new[i]["source"] for i in diff["moved_object_indices"]},
+        "moved": {new[i]["source"] for i in diff["transform_changed_object_indices"]},
         "new meshes": sum(1 for m in diff["previous_mesh_indices"] if m == -1),
         "new materials": [step["materials"][i] for i, m in enumerate(diff["previous_material_indices"]) if m == -1],
     }
@@ -59,7 +59,7 @@ def test_diff_follows_edits(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) 
     (bodies,) = (uses for uses in cases.shared_geometry_groups if any(path.endswith("/Body") for path in uses))
     assert _changes(steps["shared-geometry"]) == {**NOTHING, "changed": set(bodies), "new meshes": 1}
 
-    red = {mesh for mesh, bound in cases.materials.items() if RED in bound}
+    red = {mesh for mesh, bound in cases.destination_materials_by_source.items() if RED in bound}
     red |= {mesh for mesh, faces in cases.face_materials.items() if RED in faces}
     material = _changes(steps["material"])
     assert material["new materials"], "the edited material must be rebuilt"

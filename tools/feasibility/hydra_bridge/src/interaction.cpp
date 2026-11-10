@@ -22,7 +22,7 @@ SdfPath Target(const UsdStage &stage, const SdfPath &floor, const std::optional<
 }  // namespace
 
 SdfPath Floor(const Entity &entity) {
-    return entity.instanceContext.empty() ? entity.source : entity.instanceContext.front();
+    return entity.instanceContext.empty() ? entity.sourcePath : entity.instanceContext.front();
 }
 
 SourceSelectionResolver::SourceSelectionResolver(UsdStagePtr stage, PlanPtr plan)
@@ -95,8 +95,8 @@ SourceSelection SourceSelectionResolver::SelectionFromBlender(const std::vector<
         const std::optional<Entity> entity = ResolvePick(element);
         if (!entity) continue;
         SdfPath target = Target(stage, Floor(*entity), level);
-        if (active == element) selection.active = target;
-        if (seen.insert(target).second) selection.targets.push_back(std::move(target));
+        if (active == element) selection.activeTargetPath = target;
+        if (seen.insert(target).second) selection.targetPaths.push_back(std::move(target));
     }
     return selection;
 }

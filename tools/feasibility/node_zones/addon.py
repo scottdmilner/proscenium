@@ -476,9 +476,9 @@ def _lighter(color: Color, amount: float) -> Color:
 class _DrawnZone:
     """One zone's core and batches, and the bounds they were made from."""
 
-    key: tuple[Any, ...]  # its core nodes' bounds, and its nested zones' keys
-    core: list[zone_hull.Point]
-    batches: tuple[Any, Any] | None  # fill and outline; None when it has too few points to draw
+    geometry_cache_key: tuple[Any, ...]  # its core nodes' bounds, and its nested zones' keys
+    hull_points: list[zone_hull.Point]
+    gpu_batches: tuple[Any, Any] | None  # fill and outline; None when it has too few points to draw
 
 
 @dataclass(slots=True)
@@ -510,16 +510,16 @@ def _build_zone_draw_data(tree: Any, rects: dict[int, zone_hull.Rect]) -> _ZoneD
     for zone in sorted(result.zones, key=lambda z: -z.depth):  # nested zones first
         core_rects = tuple(rects.get(uid) for uid in drawn.core_nodes[zone.begin_uid])
         children = [zones[child.begin_uid] for child in zone.children]
-        key = (core_rects, tuple(child.key for child in children))
+        key = (core_rects, tuple(child.geometry_cache_key for child in children))
         previous = drawn.zones.get(zone.begin_uid)
-        if previous is not None and previous.key == key:
+        if previous is not None and previous.geometry_cache_key == key:
             zones[zone.begin_uid] = previous
             continue
         core = zone_hull.zone_core(
             zone,
             result,
             _sized(rects, drawn.core_nodes[zone.begin_uid]),
-            [c.core for c in children if c.core],
+            [c.hull_points for c in children if c.hull_points],
             PAD * scale,
             NEST_PAD * scale,
             RADIUS * scale,
@@ -572,7 +572,7 @@ def _draw_zones() -> None:
     fill, line = _shader("UNIFORM_COLOR"), _shader("POLYLINE_UNIFORM_COLOR")
     gpu.state.blend_set("ALPHA")
     for zone in drawn.layout.zones:  # outer zones first, so nested ones draw over them
-        batches = drawn.zones[zone.begin_uid].batches
+        batches = drawn.zones[zone.begin_uid].gpu_batches
         if batches is None:
             continue
         fill_batch, outline_batch = batches

@@ -217,7 +217,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
                 for layer in layers:
                     values = numpy.empty_like(layer.values)
                     try:
-                        geometry.mesh.attributes[layer.name].data.foreach_get(layer.prop, values)
+                        geometry.mesh.attributes[layer.name].data.foreach_get(layer.foreach_property, values)
                     except (RuntimeError, TypeError):  # of another size
                         found.append(f"{key}: no {layer.name} of its size")
                         continue
@@ -497,7 +497,7 @@ def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan:
         attribute = mesh.attributes.get(layer.name)
         values = numpy.empty_like(layer.values)
         try:
-            attribute.data.foreach_get(layer.prop, values)
+            attribute.data.foreach_get(layer.foreach_property, values)
         except (AttributeError, RuntimeError, TypeError):  # missing, or of another size
             found.append(f"{key}: no {layer.name} of its size")
             continue

@@ -121,7 +121,7 @@ def test_display_color_and_opacity(cases: AppearanceScene) -> None:
 
 
 def test_bound_material_per_destination(cases: AppearanceScene) -> None:
-    for path, (viewport, render) in cases.materials.items():
+    for path, (viewport, render) in cases.destination_materials_by_source.items():
         prim = cases.stage.GetPrimAtPath(path)
         assert prim, path
         assert (_bound(prim, UsdShade.Tokens.preview), _bound(prim, UsdShade.Tokens.full)) == (viewport, render), path
@@ -129,7 +129,7 @@ def test_bound_material_per_destination(cases: AppearanceScene) -> None:
 
 def test_every_mesh_has_a_material_fact(cases: AppearanceScene) -> None:
     drawn = {str(p.GetPath()) for p in _meshes(cases.stage, "/World")}
-    assert set(cases.materials) | set(cases.face_materials) == drawn
+    assert set(cases.destination_materials_by_source) | set(cases.face_materials) == drawn
 
 
 def test_face_materials(cases: AppearanceScene) -> None:
@@ -283,5 +283,5 @@ def test_point_instancer_materials_and_unused_prototype(scattered: PointInstance
             assert _bound(stage.GetPrimAtPath(mesh), purpose) == material, (mesh, purpose)
     instancer = UsdGeom.PointInstancer(stage.GetPrimAtPath(scattered.instancer))
     targets = [str(t) for t in instancer.GetPrototypesRel().GetTargets()]
-    assert stage.GetPrimAtPath(scattered.unused).IsA(MESH)
-    assert not any(scattered.unused.startswith(t) for t in targets)
+    assert stage.GetPrimAtPath(scattered.unused_prototype_path).IsA(MESH)
+    assert not any(scattered.unused_prototype_path.startswith(t) for t in targets)

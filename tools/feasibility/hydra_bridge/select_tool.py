@@ -83,7 +83,7 @@ class Session:
         for element in elements:
             resolved = self.interaction.resolve_pick(element)
             if resolved is not None:
-                entities.append((resolved["source"], tuple(resolved["instance_context"])))
+                entities.append((resolved["source_path"], tuple(resolved["instance_context"])))
         picked = list(dict.fromkeys(self.interaction.select_targets(entities, self.model_kind))) if entities else []
         if mode == "SET":
             self.selected_source_paths = picked
@@ -134,8 +134,14 @@ class Session:
         found = self.interaction.selection_from_blender(
             blender.selected_element_indices, blender.active_element_index, self.model_kind
         )
-        if (list(found["targets"]), found["active"]) != (self.selected_source_paths, self.active_source_path):
-            self.selected_source_paths, self.active_source_path = list(found["targets"]), found["active"]
+        if (list(found["target_paths"]), found["active_target_path"]) != (
+            self.selected_source_paths,
+            self.active_source_path,
+        ):
+            self.selected_source_paths, self.active_source_path = (
+                list(found["target_paths"]),
+                found["active_target_path"],
+            )
             self.apply()
 
     def centers(self) -> dict[int, numpy.ndarray]:

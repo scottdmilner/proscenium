@@ -72,7 +72,7 @@ BatchGroups GroupForBatches(const Plan &plan, std::size_t minimum) {
         for (const auto &[name, property] : object.properties) {
             if (!batchable) break;
             if (std::optional<std::string> type = AttributeType(property))
-                group.kinds.emplace_back(name, std::move(*type));
+                group.primvarAttributeTypes.emplace_back(name, std::move(*type));
             else
                 batchable = false;
         }
@@ -80,7 +80,7 @@ BatchGroups GroupForBatches(const Plan &plan, std::size_t minimum) {
             single.push_back(static_cast<int>(i));
             continue;
         }
-        std::sort(group.kinds.begin(), group.kinds.end());
+        std::sort(group.primvarAttributeTypes.begin(), group.primvarAttributeTypes.end());
         group.mesh = object.mesh;
         group.materialSlots = object.materialSlots;
         group.inViewport = object.inViewport;
@@ -93,7 +93,7 @@ BatchGroups GroupForBatches(const Plan &plan, std::size_t minimum) {
         Append(key, group.inViewport);
         Append(key, group.inRender);
         for (const double channel : group.color) Append(key, channel);
-        for (const auto &[name, type] : group.kinds) {
+        for (const auto &[name, type] : group.primvarAttributeTypes) {
             Append(key, name);
             Append(key, type);
         }

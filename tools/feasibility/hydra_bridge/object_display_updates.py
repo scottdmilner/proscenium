@@ -129,7 +129,7 @@ def unit_diff(plan: Plan, unit: DisplayRebuildSet) -> PlanDiff:
         "previous_object_indices": list(range(len(records))),
         "changed_object_indices": sorted(unit.object_indices | users),
         "repointable_object_indices": sorted(users - unit.object_indices),
-        "moved_object_indices": [],
+        "transform_changed_object_indices": [],
         "removed_previous_object_indices": [],
     }
 
@@ -187,7 +187,14 @@ def prepare(
     """
     meshes, materials = new_data(plan, diff, display.meshes, display.materials)
     moving = (
-        kept_moves(plan, diff, diff["moved_object_indices"], display.objects.__getitem__, (meshes, materials), users)
+        kept_moves(
+            plan,
+            diff,
+            diff["transform_changed_object_indices"],
+            display.objects.__getitem__,
+            (meshes, materials),
+            users,
+        )
         if moves
         else {}
     )

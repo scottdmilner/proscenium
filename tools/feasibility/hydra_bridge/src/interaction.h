@@ -20,7 +20,7 @@ namespace hydra_bridge {
 
 // A binding's source entity: a USD path, and the native instance roots above it, outermost first.
 struct Entity {
-    pxr::SdfPath source;
+    pxr::SdfPath sourcePath;
     pxr::SdfPathVector instanceContext;
 };
 
@@ -35,8 +35,8 @@ public:
 };
 
 struct SourceSelection {
-    pxr::SdfPathVector targets;  // in the order of the selected elements, without repeats
-    pxr::SdfPath active;         // the active element's target; empty when no element is active
+    pxr::SdfPathVector targetPaths;  // in the order of the selected elements, without repeats
+    pxr::SdfPath activeTargetPath;   // the active element's target; empty when no element is active
 };
 
 // Every function raises SourceUnavailableError once the live stage has expired. A kind level is a registered

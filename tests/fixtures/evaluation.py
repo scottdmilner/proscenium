@@ -187,7 +187,9 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
             for kit, y in (("KitA", 5), ("KitB", 10))
         },
         projective_diagnostic_sources=("/World/Kits/KitA/Projective/Geom", "/World/Projective/Geom"),
-        variation=TimeVariation(start=0.0, end=30.0, samples=(0.0, 10.0, 20.0, 30.0), transitions=()),
+        variation=TimeVariation(
+            start=0.0, end=30.0, authored_sample_time_codes=(0.0, 10.0, 20.0, 30.0), transitions=()
+        ),
         # Before the first sample and at it, after the last and at it, and two between the equal samples.
         equal_time_codes=((-5.0, 0.0), (35.0, 30.0), (12.5, 17.25)),
     )
@@ -291,7 +293,9 @@ def visibility_purpose(dest: Path) -> Generator[VisibilityScene]:
         },
         always_invisible=frozenset({"/World/Hidden/Child"}),
         blinking=BLINKING,
-        variation=TimeVariation(start=0.0, end=20.0, samples=(0.0, 10.0, 20.0), transitions=(10.0, 20.0)),
+        variation=TimeVariation(
+            start=0.0, end=20.0, authored_sample_time_codes=(0.0, 10.0, 20.0), transitions=(10.0, 20.0)
+        ),
         equal_time_codes=((0.0, 5.0), (10.0, 15.0), (20.0, 25.0)),  # tokens hold between samples
     )
 

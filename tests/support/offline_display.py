@@ -34,7 +34,7 @@ def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, di
     mesh.materials.append(material)
     obj = bpy.data.objects.new("Ref", mesh)
     obj.parent = parent
-    obj.location = display.location
+    obj.location = display.mesh_local_location
     for each in (parent, obj):
         destination.objects.link(each)
     datablocks = {"world": parent, "ref": obj, "ref-mesh": mesh, "ref-material": material}
@@ -55,7 +55,7 @@ def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, di
 def expected_content(display: SavedDisplay) -> dict[str, dict[str, object]]:
     """collection_content (support.blend) of a destination holding display, from how the fixture is built."""
     world = [round(v, 6) for v in display.parent_location]
-    ref = [round(p + o, 6) for p, o in zip(display.parent_location, display.location, strict=True)]
+    ref = [round(p + o, 6) for p, o in zip(display.parent_location, display.mesh_local_location, strict=True)]
 
     def matrix(translation: list[float]) -> list[list[float]]:
         return [[1.0 if i == j else 0.0 for j in range(3)] + [translation[i]] for i in range(3)] + [[0.0] * 3 + [1.0]]

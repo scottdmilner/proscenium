@@ -14,6 +14,7 @@ Zones in a custom node tree, like Geometry Nodes' simulation and for-each elemen
 
 Nodes store their paired end's identifier in `partner_uid`. Zone records use `begin_uid`, `end_uid`, and
 `body_node_uids`; layouts expose `innermost_zone_by_node_uid` and `invalid_link_indices`.
+Drawn zones keep a `geometry_cache_key`, `hull_points`, and their `gpu_batches`.
 
 ```sh
 /Applications/Blender.app/Contents/MacOS/Blender --python tools/feasibility/node_zones/addon.py

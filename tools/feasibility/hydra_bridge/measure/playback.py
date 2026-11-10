@@ -206,7 +206,7 @@ def _lossy() -> None:
 
     exact = usd_mesh_sequence_caches._primvar  # noqa: SLF001
 
-    def lossy(layer: MeshAttributeData) -> tuple[usd_mesh_sequence_caches.PrimvarKind, Any]:
+    def lossy(layer: MeshAttributeData) -> tuple[usd_mesh_sequence_caches.PrimvarTypeAndInterpolation, Any]:
         if layer.data_type == "FLOAT2" and layer.domain == "POINT":
             return (Sdf.ValueTypeNames.Float2Array, "vertex"), Vt.Vec2fArray.FromNumpy(layer.values.reshape(-1, 2))
         if layer.name == usd_mesh_sequence_caches.DISPLAY_COLOR:

@@ -114,7 +114,7 @@ PlanDiff DiffPlans(const Plan &published, const Plan &next) {
         if (rest)
             diff.repointableObjectIndices.push_back(static_cast<int>(i));
         else if (others)
-            diff.movedObjectIndices.push_back(static_cast<int>(i));
+            diff.transformChangedObjectIndices.push_back(static_cast<int>(i));
     }
     for (std::size_t i = 0; i < matched.size(); ++i)
         if (!matched[i]) diff.removedPreviousObjectIndices.push_back(static_cast<int>(i));

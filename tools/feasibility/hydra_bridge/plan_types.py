@@ -126,21 +126,21 @@ class PlanDiff(TypedDict):
     changed_object_indices: list[int]  # new objects whose old counterpart differs, in plan order
     repointable_object_indices: list[int]  # changed objects that differ only in their mesh or materials, in plan order
     # Changed objects whose matrix differs, and otherwise at most their mesh or materials, in plan order (Phase E)
-    moved_object_indices: list[int]
+    transform_changed_object_indices: list[int]
     removed_previous_object_indices: list[int]  # old objects with no new counterpart, in plan order
 
 
 class ResolvedEntity(TypedDict):
     """An element's source entity, as SourceSelectionResolver.resolve_pick returns it."""
 
-    source: str
+    source_path: str
     instance_context: tuple[str, ...]  # native instance roots, outermost first
-    floor: str
+    floor_path: str
 
 
 class SourceSelection(TypedDict):
-    targets: list[str]  # USD paths, in the order of the selected elements, without repeats
-    active: str | None  # the active element's target
+    target_paths: list[str]  # USD paths, in the order of the selected elements, without repeats
+    active_target_path: str | None  # the active element's target
 
 
 class SourceSelectionResolver(Protocol):

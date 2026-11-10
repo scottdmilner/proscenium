@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 class SourceEntity:
     """A source entity: a USD path, with the native-instance roots enclosing it, outermost first."""
 
-    source: str
+    source_path: str
     instance_context: tuple[str, ...] = ()
 
 
@@ -40,15 +40,15 @@ class ResolvedPick:
     """What resolve_pick returns: the hit entity and its floor."""
 
     entity: SourceEntity
-    floor: str
+    floor_path: str
 
 
 @dataclass(frozen=True)
 class SourceSelection:
     """What selection_from_blender returns."""
 
-    targets: list[str]
-    active: str | None
+    target_paths: list[str]
+    active_target_path: str | None
 
 
 class NotApplicableError(Exception):
@@ -106,10 +106,10 @@ def check_picks(display: InteractionTestDisplay, scene: InteractionScene) -> Non
         for obj in display.managed_objects():
             for pick in display.picks(obj):
                 resolved = display.resolve_pick(pick)
-                source = resolved.entity.source
+                source = resolved.entity.source_path
                 assert source in display.coverage(obj), (obj.name, source)
                 assert resolved.entity == entity(display.stage, source), resolved
-                assert resolved.floor == expected.floors[source], resolved
+                assert resolved.floor_path == expected.floors[source], resolved
                 found.add(source)
         assert found == expected.elements, expected.time
 
@@ -138,7 +138,7 @@ def check_picks_ignore_names_and_parenting(display: InteractionTestDisplay, scen
     assert [[display.resolve_pick(pick) for pick in display.picks(obj)] for obj in objects] == before
     resolved = [r for picks in before for r in picks]
     if resolved:
-        chosen = display.highlight_targets([resolved[0].floor])
+        chosen = display.highlight_targets([resolved[0].floor_path])
         display.apply_selection(chosen, chosen[:1])
         after = [display.resolve_pick(pick) for obj in display.managed_objects() for pick in display.picks(obj)]
         assert sorted(map(repr, after)) == sorted(map(repr, resolved))
@@ -250,15 +250,15 @@ def check_apply_selection(display: InteractionTestDisplay, scene: InteractionSce
                 # with a nested model of its level include that model's.
                 read = display.selection_from_blender(display.read_blender_selection(), level)
                 own = {e: oracle.kind_target(stage, f, level) for e, f in expected.floors.items()}
-                assert sorted(read.targets) == sorted({own[e] for e in expanded}), (level, selected, read)
+                assert sorted(read.target_paths) == sorted({own[e] for e in expanded}), (level, selected, read)
                 if active is not None:
                     showing = [o for o in display.managed_objects() if display.coverage(o) & expected.beneath(active)]
                     assert view_layer.objects.active == (showing[0] if len(showing) == 1 else None), active
                     assert all(o.select_get(view_layer=view_layer) for o in showing), active
                     if len(showing) == 1:  # the target of an element the active object shows
-                        assert read.active in {own[e] for e in display.coverage(showing[0])}, (active, read)
+                        assert read.active_target_path in {own[e] for e in display.coverage(showing[0])}, (active, read)
                     else:
-                        assert read.active is None, (active, read)
+                        assert read.active_target_path is None, (active, read)
                 assert [o.select_get(view_layer=view_layer) for o in unmanaged] == [True, False], selected
 
 
@@ -277,11 +277,11 @@ def check_selection_from_blender(display: InteractionTestDisplay, scene: Interac
                 selection = display.selection_from_blender(display.read_blender_selection(), level)
                 targets = {e: oracle.kind_target(stage, f, level) for e, f in expected.floors.items()}
                 wanted = {targets[e] for obj in chosen for e in display.coverage(obj)}
-                assert len(selection.targets) == len(wanted), (level, selection)
-                assert set(selection.targets) == wanted, (level, selection)
+                assert len(selection.target_paths) == len(wanted), (level, selection)
+                assert set(selection.target_paths) == wanted, (level, selection)
                 active = display.coverage(chosen[0])
                 if len(active) == 1:
-                    assert selection.active == targets[next(iter(active))], (level, selection)
+                    assert selection.active_target_path == targets[next(iter(active))], (level, selection)
 
 
 def _scene_collection() -> bpy.types.Collection:

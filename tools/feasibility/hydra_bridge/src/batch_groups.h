@@ -3,7 +3,7 @@
 //
 // Objects share a group when they have the same mesh, material slots, and destinations, the same object color
 // (their constant displayColor and displayOpacity of one value each, or opaque white), and constant primvars of
-// the same names and attribute kinds, strings aside, which batches leave out. A placeholder, and an object with a
+// the same names and attribute types, strings aside, which batches leave out. A placeholder, and an object with a
 // primvar no point attribute holds, are in no group. Objects whose transforms are equal in float32, as Blender
 // stores them, go to separate groups, each a repeat: a pick names an instance by its prototype and world matrix.
 #pragma once
@@ -26,7 +26,7 @@ struct BatchGroup {
     bool inRender = false;
     std::array<double, 4> color{1.0, 1.0, 1.0, 1.0};
     // (primvar, Blender attribute data type), by name: BOOLEAN, INT, FLOAT, FLOAT2, or FLOAT_VECTOR.
-    std::vector<std::pair<std::string, std::string>> kinds;
+    std::vector<std::pair<std::string, std::string>> primvarAttributeTypes;
     int coincidentCopyIndex = 0;     // among groups with the same key, by coincident transform
     std::vector<int> objectIndices;  // plan object indices, ascending
 };

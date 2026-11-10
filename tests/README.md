@@ -97,8 +97,9 @@ The native capture records use `sceneIndex`, `timeCode`, `hydraPath`, `hydraPrim
 snapshots and plans expose their time code as `time_code`.
 
 The prototype plan diff maps each new resource to its old counterpart through `previous_mesh_indices`,
-`previous_material_indices`, and `previous_object_indices` (`-1` means no counterpart). Changed, repointable,
-and moved object indices address the new plan; `removed_previous_object_indices` addresses the old plan.
+`previous_material_indices`, and `previous_object_indices` (`-1` means no counterpart).
+`changed_object_indices`, `repointable_object_indices`, and `transform_changed_object_indices` address the new
+plan; `removed_previous_object_indices` addresses the old plan.
 Prepared updates name their `staging_collection`, `next_display`, `created_objects_by_index`,
 `retained_object_updates_by_index`, and `retired_resources`; retained batches distinguish replacement points
 meshes from previous points meshes and state whether their prototype or element indices need updating.
@@ -126,6 +127,8 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 
 The bridge's `SourceSelectionResolver` resolves picks and selections using a plan's correspondence and the live stage.
 Its Python protocol is in `plan_types.py`; the reusable interaction checks exercise both display representations.
+Picked entities name `source_path` and `floor_path`; source selections name `target_paths` and
+`active_target_path`, in both the native bridge and the test adapters.
 
 Frame capture returns a `frame_capture.CapturedFrameSequence`, whose `frame_capture.DisplayAspect` values name what varies.
 Cached playback uses `keyframes.AnimationKeyWriter` and `mesh_caches.MeshHolderSynchronizationState`;
@@ -183,6 +186,8 @@ Bespoke fixtures are the main correctness evidence ([acceptance.md](../docs/test
 Fixture records use `root_layer_path` (or `root_layer_paths`) for files and `world_matrices_by_source` for expected
 transforms. Placeholder expectations distinguish `world_matrix`, `local_bounds`, and destination visibility;
 copy outcomes distinguish `candidate_count` from `is_canonical`.
+Fixture time variation names `authored_sample_time_codes`; sampled ranges distinguish `before_range`,
+`after_range`, and `seeded_time_codes`. Production parameters name their depth `levels_per_bay`.
 
 - **`registry.py`** lists every named contract fixture from [strategy.md](../docs/testing/strategy.md#named-contract-fixtures). Each entry has its stable ID, the milestones whose Tests section names it, and, once written, its generator. A fixture without a generator is a stub; its owning milestone adds the generator. Each entry also lists its **cases**: one run of an operation (synchronize, cleanup, detach, or remove binding) with a declared outcome (success, completed with issues, or failure), the matrix rows its assertions check, and its qualification phase, the highest phase among those rows. Tests select a case by fixture and name. `bpy_free/test_fixture_registry.py` fails if the registry drifts from strategy.md or the milestone files, and `bpy_free/test_fixture_cases.py` if a case cites a row that doesn't list its fixture, has the wrong phase, or leaves a started milestone's row unchecked.
 - **Generators** are context managers that take a fresh directory:

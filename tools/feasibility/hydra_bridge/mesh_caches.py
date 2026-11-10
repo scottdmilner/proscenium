@@ -301,7 +301,7 @@ class MeshCaches:
             layer = content[name]
             held = attribute_for_sample_storage(layer)
             attribute = held_mesh.attributes.new(f"{name}{FRAME_SEPARATOR}{sample}", held.data_type, layer.domain)
-            attribute.data.foreach_set(held.prop, held.values)
+            attribute.data.foreach_set(held.foreach_property, held.values)
         if cache.varying_attributes:
             for obj in objects:
                 self.keys.key_sample(obj, time, sample)
@@ -365,8 +365,8 @@ def new_cache(mesh: bpy.types.Mesh, content: dict[str, MeshAttributeData]) -> Me
     base = {}
     for name, layer in content.items():
         values = numpy.empty_like(layer.values)
-        held.attributes[name].data.foreach_get(layer.prop, values)
-        base[name] = MeshAttributeData(name, layer.data_type, layer.domain, layer.prop, values)
+        held.attributes[name].data.foreach_get(layer.foreach_property, values)
+        base[name] = MeshAttributeData(name, layer.data_type, layer.domain, layer.foreach_property, values)
     return MeshCache(base, base)
 
 

@@ -48,7 +48,7 @@ class AppearanceScene:
     display_color: dict[str, tuple[str, tuple[Color, ...]]]
     display_opacity: dict[str, tuple[str, tuple[float, ...]] | None]
     # Mesh without subsets -> its material in the viewport (preview purpose) and final render (full); None: none.
-    materials: dict[str, tuple[str | None, str | None]]
+    destination_materials_by_source: dict[str, tuple[str | None, str | None]]
     face_materials: dict[str, tuple[str | None, ...]]  # mesh with subsets -> each face's viewport material
     # (mesh, primvar a reader of its material reads) -> the value shown: the copy's own, or the reader's fallback.
     reader_values: dict[tuple[str, str], Color | float]
@@ -135,7 +135,7 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             f"{colors}/FaceVarying": ("faceVarying", (1.0, 1.0, 1.0, 0.5, 0.5, 0.5)),
         }
         | inherited_opacity,
-        materials={mesh: (None, None) for mesh in unbound}
+        destination_materials_by_source={mesh: (None, None) for mesh in unbound}
         | {f"{k}/Body": (red, red) for k in kits}  # Body's own green displayColor doesn't show
         | {f"{k}/Lid": (blue, blue) for k in kits}
         | {f"{uvs}/Typed": (f"{LOOKS}/Textured", f"{LOOKS}/Textured")}
@@ -196,7 +196,7 @@ class PointInstancerScene:
     invisible: frozenset[int]  # points USD doesn't draw
     primvars: dict[int, dict[str, float | int]]  # point -> the per-point and constant primvars of its copies
     materials: dict[str, str]  # drawn mesh -> its bound material, for every purpose
-    unused: str  # a mesh under the instancer's prototypes that no point draws
+    unused_prototype_path: str  # a mesh under the instancer's prototypes that no point draws
 
 
 @contextmanager
@@ -237,7 +237,7 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
         invisible=frozenset({4}),
         primvars={point: {"heat": point + 0.5, "groupId": 7} for point in drawn},
         materials={f"{protos}/Leaf/Blade": green, f"{protos}/Rock": red, f"{protos}/Pebble/Geom": red},
-        unused=f"{protos}/Unused",
+        unused_prototype_path=f"{protos}/Unused",
     )
 
 
