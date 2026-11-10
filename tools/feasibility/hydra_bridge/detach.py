@@ -16,7 +16,7 @@ Everything else is ordinary Blender data and stays:
 - collection links and the selection.
 So detaching changes no appearance, and there is nothing to report under DET-04.
 
-A batched display (batch.py, M4 Phase D) ties its instances to the binding only through the
+A batched display (batched_display.py, M4 Phase D) ties its instances to the binding only through the
 `proscenium_element` attribute on each batch's points mesh, which names each instance's element, and which
 detach removes. Everything else in a batch is ordinary Blender data that works without the binding, so it
 stays: the carriers, their Geometry Nodes modifiers and node group, the prototypes they instance, and the
@@ -28,9 +28,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from apply import MATERIAL_PROPERTIES, OBJECT_PROPERTIES
-from batch import prototype_of
-from selection import ELEMENT
+from batched_display import prototype_of
+from object_display import MATERIAL_PROPERTIES, OBJECT_PROPERTIES
+from object_display_selection import ELEMENT
 
 if TYPE_CHECKING:
     import bpy

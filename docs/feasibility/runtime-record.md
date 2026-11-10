@@ -283,10 +283,10 @@ The same commands run on macOS arm64, Linux x64, and Windows x64:
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py   # build, extract, audit linkage
-uv run python tools/feasibility/hydra_bridge/run.py     # loading, prototype and correctness checks, wheel and binary
+uv run python tools/feasibility/hydra_bridge/run_runtime_probes.py     # loading, prototype and correctness checks, wheel and binary
 ```
 
-`run.py` finds the Blender binary through `BLENDER` or the platform default
+`run_runtime_probes.py` finds the Blender binary through `BLENDER` or the platform default
 (`--blender` overrides). The "Hydra bridge" GitHub workflow runs both on all three
 platforms, by hand or on a push to an `m01b-*` branch that changes the bridge, and
 uploads `build/hydra-bridge/`.
@@ -389,7 +389,7 @@ runs were outside the execution sandbox.
 
 ### Prototype slice (M1b Phase B)
 
-`prototype_probe.py` runs capture, the C++ plan, and `apply.py` on `prototype.usda`. That scene has one example of each planner path:
+`end_to_end_display_probe.py` runs capture, the C++ plan, and `object_display.py` on `display_smoke.usda`. That scene has one example of each planner path:
 - a mesh with a bound GeomSubset and an indexed UV primvar;
 - an exact implicit shape (cube) and an approximated one (sphere);
 - basis curves, which the prototype doesn't translate;
@@ -544,7 +544,7 @@ Blender's USD importer (`bpy.ops.wm.usd_import`) against the prototype, importin
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py
-uv run python tools/feasibility/hydra_bridge/measure/run.py   # stress scenes and ALab, about 6 minutes
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py   # stress scenes and ALab, about 6 minutes
 ```
 
 The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge/measure/summary.md` (not committed).
@@ -561,7 +561,7 @@ The full statistics, with ranges and per-stage tables, go to `build/hydra-bridge
 - **Baseline.** Memory is relative to the run's empty process: 130 MB for the importer, and 139 MB for the prototype, which has already imported the module and `pxr`.
 - **Importer configurations:**
   - **defaults**;
-  - **matched**: every purpose and invisible prims imported; no UsdPreviewSurface conversion, unit scaling, lights, cameras, curves, points, volumes or skeletons (`measure/child.py`);
+  - **matched**: every purpose and invisible prims imported; no UsdPreviewSurface conversion, unit scaling, lights, cameras, curves, points, volumes or skeletons (`measure/synchronization_worker.py`);
   - **expanded**: matched, with scene instancing off.
 - **ALab** is imported at time 1004 through a measurement entry point (`measure/alab_entry.py`). It is a root layer over `entry.usda` that deactivates the 111 prims the prototype doesn't translate: 51 lights, 33 NurbsCurves, 21 PointInstancers, 5 `ALAudio` prims and 1 camera. Three RectLights inside native-instance prototypes (6 copies) can't be deactivated from a stronger layer and remain.
 
@@ -675,7 +675,7 @@ The memory counters for Windows (working set, peak working set) and Linux (resid
 
 Phase C's two collection gaps broke the prototype's contract to resolve bindings as USD does, so Phase E adds a workaround in the core (with the user, 2026-10-14). It is labeled in the code as a workaround for [OpenUSD #3690](https://github.com/PixarAnimationStudios/OpenUSD/issues/3690) (open, "Missing material binding on propagated prototype"). The collection outside an instance shares #3690's cause; no separate upstream issue was found for it.
 
-- **What it does** (`src/copy_bindings.*`):
+- **What it does** (`src/instance_material_bindings.*`):
   - **Detection.** At capture, after the graph advances, the core finds the instances that a binding collection reaches: its membership includes the instance root or a path below it, or it uses a path expression, which is assumed to reach anywhere. Membership is evaluated in the namespace where the collection is authored, instance proxies included.
   - **Resolution.** For those instances only, UsdShade resolves every imageable prim and subset on its instance-proxy path, for allPurpose, preview and full (`ComputeBoundMaterials`, in parallel).
   - **Planning.** The planner takes those answers for those copies, mapping each USD material to the Hydra material that draws it. Every other copy keeps the per-prototype resolution, which matches UsdShade there.
@@ -733,7 +733,7 @@ The object baseline's synchronization and updates against M4's provisional budge
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes importer-matched --scenarios all
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab --modes importer-matched --scenarios all
 ```
 
 The full statistics go to `build/hydra-bridge/measure/summary.md` (not committed).
@@ -743,7 +743,7 @@ The full statistics go to `build/hydra-bridge/measure/summary.md` (not committed
 - **Update modes:** each is a fresh synchronization followed by one scenario from `measure/scenarios.py`:
   - the scenario's edit;
   - an incremental capture, planning, and the plan diff;
-  - the update by that diff (`update.py`), under the repoint policy: preparation, publication, and retirement;
+  - the update by that diff (`object_display_updates.py`), under the repoint policy: preparation, publication, and retirement;
   - a depsgraph evaluation.
 
   The update's time is those steps, without the edit.
@@ -817,7 +817,7 @@ The files save to 1.3, 8.0, and 74.5 MB uncompressed.
   - random: rising to 354 ms per batch.
 
   The same held for mesh objects and `Object.copy()`. Only objects slowed: 10,000 meshes in the file didn't. Plain numbered names (`O_9999`, `O_10000`) went from about 12 ms to about 500 ms per batch at 10,000 objects, where their sort order stops matching creation order. Blender's own `.NNNN` suffixes behave the same way. The baseline names each object for its prim, so `updates-10000`'s 10,000 each of `Mesh`, `Body`, and `Lid` cross that point; ALab's names are varied.
-  - **Measured variant** (ad hoc, a scratch copy of `apply.py` naming each object with its zero-padded plan index first, three runs per mode on the same scenes):
+  - **Measured variant** (ad hoc, a scratch copy of `object_display.py` naming each object with its zero-padded plan index first, three runs per mode on the same scenes):
     - construction fell from 6.680 s to 1.064 s (1.055–1.139 s) on `updates-10000`, putting synchronization at 3.294 s (3.107–3.419 s), 1.64× the importer's 2.009 s;
     - on ALab, construction took 1.428 s (1.337–1.489 s) against 1.612 s; synchronization's run-to-run spread between the two sets is as large as the difference;
     - preparing the payload load still took 11.474 s (9.378–13.311 s) on `updates-10000`, since the loaded objects' plan indices come before those already in the file.
@@ -834,7 +834,7 @@ The files save to 1.3, 8.0, and 74.5 MB uncompressed.
 
 #### Interaction at scale (M4 Phase C)
 
-The baseline's interaction functions after a synchronization, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes interaction`.
+The baseline's interaction functions after a synchronization, in the same environment (2026-10-28). Reproduce with `measure/run_benchmarks.py --scenes updates alab --modes interaction`.
 
 **Method** (`measure/interaction_timing.py`): each process synchronizes, then times each operation in process with a monotonic clock. Each operation is repeated 20 times, or 5 for whole-browser and whole-assembly ones, and takes its median. The tables give the median and range of those medians over three processes, after one unrecorded warmup per scene.
 - **The pick:** a viewport element inside the deepest instance context.
@@ -902,7 +902,7 @@ ALab's payloads hold all of its displayed content, so without them nothing is di
 
 #### Ownership lookup after undo (M4 Phase C)
 
-The first ownership lookup after an undo or redo, with the baseline's display as a binding's manifest, in the same environment (2026-10-28). Reproduce with `measure/run.py --scenes updates alab --modes ownership`.
+The first ownership lookup after an undo or redo, with the baseline's display as a binding's manifest, in the same environment (2026-10-28). Reproduce with `measure/run_benchmarks.py --scenes updates alab --modes ownership`.
 
 **Method** (`measure/ownership_timing.py`):
 - **The manifest:** the child applies the display into a binding's destination, made through M3's API, and writes its manifest with `ownership_index.set_manifest`. There is one entry per object, shear parent, placeholder mesh, mesh, and material. An object's entry covers its source and uses its mesh and materials; a mesh's or material's covers its users' sources.
@@ -934,16 +934,16 @@ The first ownership lookup after an undo or redo, with the baseline's display as
 
 ### Measurements (M4 Phase D)
 
-Phase D's batched display (`batch.py`, Geometry Nodes instances; [M4 plan](../plans/M04-prototypes.md), D1–D4) against the object baseline, both measured in the same session, in the environment of [Phase C](#measurements-m4-phase-c) (2026-10-28, AC power throughout). Reproduce with:
+Phase D's batched display (`batched_display.py`, Geometry Nodes instances; [M4 plan](../plans/M04-prototypes.md), D1–D4) against the object baseline, both measured in the same session, in the environment of [Phase C](#measurements-m4-phase-c) (2026-10-28, AC power throughout). Reproduce with:
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab \
     --modes prototype importer-matched interaction --scenarios all --representation batched
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab \
     --modes prototype importer-matched interaction --scenarios all --out build/hydra-bridge/measure-d5-objects
 # Batching only large groups, on ALab, with the baseline again (2026-10-29)
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab --modes prototype importer-matched \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes alab --modes prototype importer-matched \
     interaction --scenarios all --repeats 3 --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-min5
 # likewise with --batch-minimum 20 (measure-min20), and --representation objects (measure-min-objects)
 ```
@@ -951,7 +951,7 @@ uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab --mode
 The full statistics go to the `summary.md` in each of those directories under `build/hydra-bridge/` (not committed).
 
 **Method:** as in Phase C and [C4](#interaction-at-scale-m4-phase-c), with these differences:
-- **The batched display:** `--representation batched` applies the plan with `batch.py`, updates it with `batch_update.py`, and mirrors selections with `batch_selection.py`. The interaction timing also times `pick_element` on what a ray cast at the picked copy returns.
+- **The batched display:** `--representation batched` applies the plan with `batched_display.py`, updates it with `batched_display_updates.py`, and mirrors selections with `batched_display_selection.py`. The interaction timing also times `pick_element` on what a ray cast at the picked copy returns.
 - **A new scenario,** in both sets: a translation of the first instanced copy's outermost instance root, which moves one copy of each of its meshes (`instance-transform`). Phase C's transform scenario moves a mesh object outside instances, which on `updates-N` is the morph grid, an object in both representations.
 - **Two fixes before the final runs,** both found by these measurements. Every figure below is from after them.
   - `batch_update.prepare` rebuilt its set of kept objects once per object, quadratic in the objects a batched display keeps (3,633 on ALab).
@@ -960,7 +960,7 @@ The full statistics go to the `summary.md` in each of those directories under `b
 - **Batching only large groups:** `--batch-minimum N` batches only groups of at least N copies, and keeps smaller ones as objects; the first sets batch every group of two or more. ALab ran at minimums of 5, the smallest at which a batch has fewer objects than its copies, and 20, with the baseline again, in one session of 3 repeats each. A first run of those three sets, in that order, had every update stage of the first two slower, the native capture and diff included, which don't depend on the representation; an ad hoc rerun of two scenarios in the reverse order showed no such difference, so those sets were rerun in full and only the rerun is reported.
 - **Not measured:** the ownership mode (C5), which writes the baseline's manifest; the replace policy; undo.
 
-**Grouping** (each plan's batches as `batch.py` forms them):
+**Grouping** (each plan's batches as `batched_display.py` forms them):
 
 | Scene | Plan objects | Batches | Instances | Blender objects, batched | Blender objects, baseline |
 |---|---|---|---|---|---|
@@ -1056,12 +1056,12 @@ Two further sets ([M4 plan](../plans/M04-prototypes.md), D6 and D7), in one sess
 
 ```sh
 # ALab with its point instancers planned (D6), batched at minimums of 5 and 20, then the baseline
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes alab-instancers \
     --modes prototype importer-matched interaction --scenarios all --representation batched --batch-minimum 5 \
     --out build/hydra-bridge/measure-pi-min5
 # likewise with --batch-minimum 20 (measure-pi-min20), and --representation objects (measure-pi-objects)
 # Viewport frame time, in windows on the screen: batched with the importer, then the baseline
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab-instancers \
     --only updates-10000 alab-instancers --modes viewport importer-viewport --representation batched \
     --batch-minimum 5 --out build/hydra-bridge/measure-viewport-batched
 # likewise with --modes viewport --representation objects (measure-viewport-objects)
@@ -1106,7 +1106,7 @@ The importer is a reference only: its matched options import no preview material
 [M4 plan](../plans/M04-prototypes.md), D8: the bridge's module forms the batched display's groups (`plan.batch_groups`), and both representations' updates read only the plan records and meshes they build from (`plan.objects_at`, `plan.meshes_at`), where they read every record before. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
 
 ```sh
-uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab-instancers \
     --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all \
     --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d8-batched
 # likewise with --representation objects (measure-d8-objects)
@@ -1141,7 +1141,7 @@ The groups are those the Python grouping formed: on every scene measured here an
 [M4 plan](../plans/M04-prototypes.md), D9, a probe of incremental planning: with `build_plan(snapshot, previous=plan)`, a mesh prim whose captured container, and its subsets', are the ones the previous plan built it from reuses that build (its mesh, content hash, diagnostics, and slots' prims). An incremental capture shares the container of every prim no notice named, so Hydra's own invalidation decides what is rebuilt. Everything else is planned as before, from the whole snapshot. One session on 2026-10-29, on AC power throughout, 3 repeats of each mode:
 
 ```sh
-r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+r() { uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab-instancers \
     --only updates-10000 alab-instancers --modes prototype importer-matched --scenarios all "$@"; }
 r --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d9-batched
 r --representation batched --batch-minimum 5 --reuse-builds --out build/hydra-bridge/measure-d9-batched-reuse
@@ -1186,7 +1186,7 @@ The objects column is with reuse only; D8's objects set, from another session, t
 All are float colors. One session on 2026-10-29, on AC power in High Power mode throughout, 3 repeats of each mode, each pair running the previous commit's code (on its own build of the bridge) and then D10's:
 
 ```sh
-r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds "$@"; }
+r() { uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes alab-instancers --reuse-builds "$@"; }
 r --modes prototype --scenarios payload-load payload-unload --representation batched --batch-minimum 5 \
     --out build/hydra-bridge/measure-d10d-batched
 r --modes viewport --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d10d-viewport-batched
@@ -1226,7 +1226,7 @@ In an ad hoc count of the plan, 2,345 of ALab's 3,393 meshes hold their copies' 
 [M4 plan](../plans/M04-prototypes.md), D12: a uniform `displayColor` or `displayOpacity` is a corner attribute, each face's value on its corners, without the face attribute D10 kept beside it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, each pair running the previous commit's code (on its own build of the bridge) and then D12's:
 
 ```sh
-r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes alab-instancers --reuse-builds --repeats 3 "$@"; }
+r() { uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes alab-instancers --reuse-builds --repeats 3 "$@"; }
 r --modes prototype --representation batched --batch-minimum 5 --out build/hydra-bridge/measure-d12-batched
 r --modes prototype --representation objects --out build/hydra-bridge/measure-d12-objects
 ```
@@ -1244,7 +1244,7 @@ r --modes prototype --representation objects --out build/hydra-bridge/measure-d1
 
 #### No per-copy display color workarounds
 
-[M4 plan](../plans/M04-prototypes.md), D13: D10 showed a copy's constant display color, where its mesh held another or none, with a Geometry Nodes modifier. Two ways were compared ad hoc: D10's modifiers, and a plan setting, since removed, that gave such copies meshes of their own, one per color, each holding its copies' color on every point. Neither was adopted (with the user): a copy whose color its mesh's other copies don't share shows it as its object color, and Solid shading's Attribute color shows none for it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, `measure/run.py --reuse-builds --repeats 3 --modes prototype viewport`, objects and batched at a minimum of 5. The modifier sets ran first, then the split sets.
+[M4 plan](../plans/M04-prototypes.md), D13: D10 showed a copy's constant display color, where its mesh held another or none, with a Geometry Nodes modifier. Two ways were compared ad hoc: D10's modifiers, and a plan setting, since removed, that gave such copies meshes of their own, one per color, each holding its copies' color on every point. Neither was adopted (with the user): a copy whose color its mesh's other copies don't share shows it as its object color, and Solid shading's Attribute color shows none for it. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, `measure/run_benchmarks.py --reuse-builds --repeats 3 --modes prototype viewport`, objects and batched at a minimum of 5. The modifier sets ran first, then the split sets.
 
 The generated scenes (`measure/stress.py`, `colors`) have 1,000 native instances of one unbound 32×32 grid mesh (1,089 points), each root with a constant `displayColor`: `colors-1000` gives each copy its own, `colors-1000-palette-8` one of 8 in turn.
 
@@ -1275,7 +1275,7 @@ Solid's orbiting frames were at the display's refresh (8.33 ms) in every generat
 **The decision measured:** no modifiers and no split meshes, with each mesh's held color decided by the planner, against the previous commit (D12's, on its own build of the bridge) on ALab, and against the comparison's modifier sets on the generated scenes, in the same session:
 
 ```sh
-r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --modes prototype viewport "$@"; }
+r() { uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --reuse-builds --repeats 3 --modes prototype viewport "$@"; }
 r --scenes alab-instancers --representation objects --out build/hydra-bridge/measure-d13r-alab-objects
 r --scenes colors --representation objects --out build/hydra-bridge/measure-d13r-colors-objects
 # likewise batched (--batch-minimum 5)
@@ -1306,7 +1306,7 @@ The ALab frame times and peak memory are within the runs' ranges. On the generat
 [M4 plan](../plans/M04-prototypes.md), D14: a batch has a carrier for each selection state its points hold, so an unselected batch has one, against D3's three carriers per batch. One session on 2026-10-30, on AC power in High Power mode, 3 repeats, the previous commit's code (on its own build of the bridge) and then D14's, batched:
 
 ```sh
-r() { uv run python tools/feasibility/hydra_bridge/measure/run.py --reuse-builds --repeats 3 --representation batched \
+r() { uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --reuse-builds --repeats 3 --representation batched \
     --modes prototype interaction viewport --scenarios instance-transform "$@"; }
 r --scenes alab-instancers --batch-minimum 5 --out build/hydra-bridge/measure-d14-alab-after
 r --scenes updates --only updates-10000 --out build/hydra-bridge/measure-d14-updates-after
@@ -1462,7 +1462,7 @@ Disney's Moana Island scene (`island/usd/island.usda`, 16 GB) exhausted this mac
 
 ### Lookups without the bindings' cache (M5 Phase S)
 
-Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) is needed at scale: lookups without it, against it, with the baseline's display as a binding's manifest, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, 2026-11-06). The cache was removed after this measurement (DECISIONS.md "Binding records read when called"), so the rows with it can't be measured again; `measure/run.py --scenes updates alab --modes uncached --repeats 3 --out build/hydra-bridge/measure-uncached` now times the runtime's own lookups, which are the rows without it.
+Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) is needed at scale: lookups without it, against it, with the baseline's display as a binding's manifest, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, 2026-11-06). The cache was removed after this measurement (DECISIONS.md "Binding records read when called"), so the rows with it can't be measured again; `measure/run_benchmarks.py --scenes updates alab --modes uncached --repeats 3 --out build/hydra-bridge/measure-uncached` now times the runtime's own lookups, which are the rows without it.
 
 **Method** (`measure/uncached_timing.py`):
 - **The manifest:** written as C5 writes it ([Ownership lookup after undo](#ownership-lookup-after-undo-m4-phase-c)), one binding's, so every file has one binding.
@@ -1494,7 +1494,7 @@ Whether the bindings' in-memory state ([Undo and Runtime State](../spec/lifecycl
 
 ### The undo step of a synchronization (M5 Phase F)
 
-What the one undo step a published synchronization pushes ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) holds, for M5's full rebuild, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, 2026-11-06). Reproduce with `measure/undo_memory.py --scenes updates alab --exclude updates-10000 --repeats 3`.
+What the one undo step a published synchronization pushes ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) holds, for M5's full rebuild, with the baseline's display (`object_display.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, 32 GB, Blender 5.2.2 binary, 2026-11-06). Reproduce with `measure/undo_memory.py --scenes updates alab --exclude updates-10000 --repeats 3`.
 
 **Method** (`measure/undo_memory.py`), in a fresh background process per run, with global undo on:
 - **The steps:** the display is built and a step pushed, as after a first synchronization; then three times one object is moved and a step pushed; then four times the whole display is rebuilt from the same plan, the one it replaces removed in one `batch_remove`, the depsgraph evaluated, and a step pushed, as after synchronizing again. Then one undo and one redo, timed.
@@ -1526,7 +1526,7 @@ Two variants on ALab, one process each, without the control: with 2 undo steps, 
 
 ### The shared removal's cost (M5 Phase F)
 
-What `removal.remove_unused`, which disposal, retirement, and a cleanup retry share, costs at scale, with the baseline's display (`apply.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/removal_cost.py --scenes updates alab --repeats 3`.
+What `removal.remove_unused`, which disposal, retirement, and a cleanup retry share, costs at scale, with the baseline's display (`object_display.py`) standing in for M7's, in the environment of [Phase E](#measurements-m1b-phase-e) (Apple M1 Max, Blender 5.2.2 binary, global undo on, 2026-11-06). Reproduce with `measure/removal_cost.py --scenes updates alab --repeats 3`.
 
 **Method** (`measure/removal_cost.py`), in a fresh background process per run:
 - **The file:** the display built twice, as a synchronization again holds it before retirement, the published one and the prepared one. Each removal is from the published one, its objects unlinked from their collection first, as publication unlinks them.
@@ -1739,11 +1739,11 @@ The bridge shipped as users would get it from a GitHub release: Proscenium's ext
 
 ```sh
 uv run python tools/feasibility/hydra_bridge/build.py
-uv run python tools/feasibility/hydra_bridge/distribution.py package   # build/hydra-bridge/dist/proscenium-0.1.0-<platform>.zip
-uv run python tools/feasibility/hydra_bridge/distribution.py install
+uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package   # build/hydra-bridge/dist/proscenium-0.1.0-<platform>.zip
+uv run python tools/feasibility/hydra_bridge/extension_install_probe.py install
 ```
 
-- **The zip.** `distribution.py package` copies `src/proscenium`, adds the module and its `build.json` to `core/`, and sets the manifest's `platforms` to this platform alone. The extension CLI from the bpy wheel then validates the copy, builds it with `--split-platforms` (which names the zip for the platform), and validates the zip. This is a test zip: `tools/build_extension.py`, the product build, doesn't take the bridge. Its six files are the extension's four, the module and `build.json`; it bundles no USD.
+- **The zip.** `extension_install_probe.py package` copies `src/proscenium`, adds the module and its `build.json` to `core/`, and sets the manifest's `platforms` to this platform alone. The extension CLI from the bpy wheel then validates the copy, builds it with `--split-platforms` (which names the zip for the platform), and validates the zip. This is a test zip: `tools/build_extension.py`, the product build, doesn't take the bridge. Its six files are the extension's four, the module and `build.json`; it bundles no USD.
 - **Three sessions of the Blender binary**, sharing one empty user directory (`BLENDER_USER_RESOURCES`), without `--factory-startup` so preferences carry over:
   1. **Install.** A copy of the zip naming another platform is refused ("This platform (macos-arm64) isn't one of (windows-x64)"; the operator still reports `FINISHED`, so the check is that nothing was installed). The real zip installs into `user_default`, Install from Disk's repository, and is enabled; enabling doesn't load the compiled module. Preferences are saved. 7 checks.
   2. **A new session.** The extension is enabled from the saved preferences and loaded at startup. `bl_ext.user_default.proscenium.core._hydra_bridge` loads from the installed package, and the loading checks (42) and prototype checks (20) pass against it. Disabling turns the extension off and leaves the compiled module imported, as Python never unloads one; re-enabling imports the same module object, which still captures. 8 checks.
@@ -1829,7 +1829,7 @@ M3's `copies` probe ("Feasibility" workflow, [run 39330194131](https://github.co
 - **Loading:** the module's import of `usd_ms.dll` resolved to the copy the host had already loaded, though no DLL directory points at it. This confirms on this run what the research inferred from the loader's documented behaviour.
 
 - **Phase C** ([run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667), 2026-10-13): 43 loading, 20 prototype and 118 correctness checks pass in both hosts.
-  - The build had two `/W4` warnings in Phase C code: C4267 in `properties.cpp`, a `size_t` matrix index where Gf takes `int`, and C4458 in `prim_record.cpp`, a parameter named like a member. Both are fixed. Clang builds now add `-Wshadow-all -Wshorten-64-to-32`, which report both (checked against the run's sources) and two harmless lambda shadowings, now renamed. The next build, of commit `a6d8186` ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)), has no warnings on Windows, nor on macOS with the new flags.
+  - The build had two `/W4` warnings in Phase C code: C4267 in `id_property_conversion.cpp`, a `size_t` matrix index where Gf takes `int`, and C4458 in `prim_record.cpp`, a parameter named like a member. Both are fixed. Clang builds now add `-Wshadow-all -Wshorten-64-to-32`, which report both (checked against the run's sources) and two harmless lambda shadowings, now renamed. The next build, of commit `a6d8186` ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)), has no warnings on Windows, nor on macOS with the new flags.
   - No Sdr message appears in the run's Windows logs or JSON. The probes don't save every diagnostic, so this shows only that Phase A's Sdr error didn't fail anything.
 
 ## Linux x64

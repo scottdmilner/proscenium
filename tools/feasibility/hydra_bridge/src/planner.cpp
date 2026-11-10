@@ -553,7 +553,7 @@ private:
 
     // The Hydra material a slot binds in one drawn copy.
     SdfPath SlotMaterial(const PrimRecord &slot, const DrawnCopy &copy, const TfToken &purpose) {
-        // WORKAROUND for OpenUSD #3690 (copy_bindings.h): a copy a binding collection reaches takes
+        // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): a copy a binding collection reaches takes
         // UsdShade's own answer for its instance-proxy path.
         const CopyBindings *bindings = snapshot_.copyBindings.get();
         if (bindings && !copy.instanceContext.empty()) {

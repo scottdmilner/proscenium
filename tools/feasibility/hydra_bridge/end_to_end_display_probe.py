@@ -1,4 +1,4 @@
-"""Phase B smoke checks: capture -> C++ plan -> Blender on prototype.usda, in a fresh wheel or Blender process.
+"""Phase B smoke checks: capture -> C++ plan -> Blender on display_smoke.usda, in a fresh wheel or Blender process.
 
 Expected values come from USD (UsdGeom, UsdShade) or from how the scene is built, never from Hydra.
 Phase C's per-case scenes check correctness in depth; these check that each path of the slice works.
@@ -19,12 +19,12 @@ TIME = 1.0
 
 
 def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
-    # `native`: the module already imported, as from an installed extension (distribution.py).
+    # `native`: the module already imported, as from an installed extension (extension_install_probe.py).
     import bpy
     from pxr import Usd, UsdGeom, UsdShade
 
     sys.path.insert(0, str(HERE))
-    import apply
+    import object_display
     from cases import oracle
 
     checks: list[str] = []
@@ -39,8 +39,8 @@ def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
         native = importlib.import_module("_hydra_bridge")
 
     with tempfile.TemporaryDirectory(prefix="hydra-prototype-scene-") as tmp:
-        scene = Path(tmp) / "prototype.usda"
-        shutil.copy(HERE / "prototype.usda", scene)
+        scene = Path(tmp) / "display_smoke.usda"
+        shutil.copy(HERE / "display_smoke.usda", scene)
         stage = Usd.Stage.Open(str(scene))
         bridge = native.Bridge(stage)
         snapshot = bridge.capture(TIME)
@@ -114,7 +114,7 @@ def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
         blender_scene: Any = bpy.context.scene  # never None in a running Blender
         blender_scene.collection.children.link(collection)
         created: dict[str, Any] = dict(
-            zip((o["source"] for o in objects), apply.apply(plan, collection).objects, strict=True)
+            zip((o["source"] for o in objects), object_display.apply(plan, collection).objects, strict=True)
         )
         check("every planned object reaches Blender", all(o.name in collection.objects for o in created.values()))
         # The curves author no extent, so the placeholder takes USD's computed one and draws as bounds.

@@ -37,14 +37,14 @@ def run(module_dir: Path, only: list[str] | None = None) -> dict[str, Any]:
 
     sys.path.insert(0, str(HERE))
     sys.path.insert(0, str(module_dir))
-    import apply
+    import object_display
     from cases.harness import Case
 
     native = importlib.import_module("_hydra_bridge")
     results: dict[str, Any] = {}
     for name in only or CASES:
         with tempfile.TemporaryDirectory(prefix=f"hydra-case-{name}-") as tmp:
-            case = Case(name, native, apply, Path(tmp))
+            case = Case(name, native, object_display, Path(tmp))
             error = None
             try:
                 module = importlib.import_module(f"cases.{name}")

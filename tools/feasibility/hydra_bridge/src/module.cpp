@@ -2,7 +2,7 @@
 #include "bridge.h"
 #include "diagnostics.h"
 #include "fact_timings.h"
-#include "loaded_images.h"
+#include "loaded_usd_libraries.h"
 #include "python_views.h"
 
 #include <pxr/pxr.h>

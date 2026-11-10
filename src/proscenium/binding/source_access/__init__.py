@@ -3,6 +3,6 @@
 The compiled core receives a stage from here; it never opens one. It exports its modules.
 """
 
-from . import binding_settings, canonical_candidate, identifiers, registry, source_entities, stages
+from . import binding_settings, canonical_candidate, identifiers, source_entities, stage_registry, stages
 
-__all__ = ["binding_settings", "canonical_candidate", "identifiers", "registry", "source_entities", "stages"]
+__all__ = ["binding_settings", "canonical_candidate", "identifiers", "source_entities", "stage_registry", "stages"]

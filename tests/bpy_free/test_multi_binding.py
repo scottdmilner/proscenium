@@ -15,7 +15,7 @@ from fixtures.source_access import ROOT_FORMATS, caller_settings, read_values, r
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support.usd import open_stage_without_cache
 
-from .bindings import binding
+from .attached_binding_stages import binding
 
 if TYPE_CHECKING:
     from pathlib import Path

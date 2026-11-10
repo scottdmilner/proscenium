@@ -3,7 +3,7 @@
     uv run python tools/feasibility/hydra_bridge/measure/topology_caches.py [--out build/hydra-bridge/topology-caches]
 
 Runs in the bpy wheel, in one process, on the generated `topology` stress scene (stress.py): 355 grids, each
-changing its side every frame over 24 frames. A cached display (cached.py) is built at the first frame and
+changing its side every frame over 24 frames. A cached display (cached_display.py) is built at the first frame and
 follows the scene, with each later frame set in turn, so each synchronizes once. Each frame times the
 synchronization by stage, the frame's evaluation, and an undo push with global undo on, with the process
 footprint around the push. Then every frame is played back, a sample of objects is checked against fresh plans,
@@ -27,7 +27,7 @@ ROOT = HERE.parents[3]
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 
 import bpy  # noqa: E402
-import cached  # noqa: E402
+import cached_display  # noqa: E402
 import numpy  # noqa: E402
 import stress  # noqa: E402
 from memory import footprint, heap_in_use  # noqa: E402
@@ -82,7 +82,7 @@ def main() -> int:  # noqa: PLR0915 - one run, start to end
     process = os.getpid()
     memory = {"start heap MB": megabytes(heap_in_use())}
     clock = time.perf_counter()
-    display = cached.CachedDisplay(native, stage, collection, float(FIRST))
+    display = cached_display.CachedDisplay(native, stage, collection, float(FIRST))
     built = time.perf_counter() - clock
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     view_layer.update()

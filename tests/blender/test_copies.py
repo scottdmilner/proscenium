@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import bpy
 import pytest
 
-from fixtures import copies, transaction
+from fixtures import binding_copy_cases, transaction
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_state, configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest
@@ -21,7 +21,7 @@ from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.binding_configs import DisabledBindingError
 from proscenium.binding.source_access.stages import PayloadPolicy
-from support import copies as routes
+from support import binding_copy_operations as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from fixtures.copies import CanonicalCandidateOutcome
+    from fixtures.binding_copy_cases import CanonicalCandidateOutcome
     from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.runtime.copy_detection import CopiedBinding
 
@@ -86,7 +86,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
     evaluation = _evaluation(bindings, handle)
     result = handle.synchronize(0)  # looks for copies first (COPY-18)
     reported = bindings.copied()
-    if outcome.reason is copies.CanonicalCandidateReason.UNIQUE:
+    if outcome.reason is binding_copy_cases.CanonicalCandidateReason.UNIQUE:
         assert reported == []  # COPY-14: nothing to report for a unique identity
         assert result.state is ResultState.SUCCESS
         assert bindings.in_scene(_scene()) == [handle]
@@ -138,9 +138,9 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
     return reported
 
 
-@pytest.mark.parametrize("route", list(copies.ROUTES))
+@pytest.mark.parametrize("route", list(binding_copy_cases.ROUTES))
 def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         expected = scene.routes[route]
         handle = _published(bindings, scene.root_layer_path)
         found = runtime.binding_configs.find_binding(handle.binding_id)
@@ -171,7 +171,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
 
 def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16 on "full-copy-scene": each copy's content is managed by its own manifest.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root_layer_path)
         routes.run_binding_copy_route("full-copy-scene", tmp_path)
         handle.synchronize(0)
@@ -185,7 +185,7 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
 
 def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16 on "duplicated-object": Object > Duplicate copies the object, and no manifest names the copy.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root_layer_path)
         published = set(bpy.data.objects)
         routes.run_binding_copy_route("duplicated-object", tmp_path)
@@ -202,7 +202,7 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
 def test_a_copy_is_found_by_the_next_lookup(bindings: Bindings, tmp_path: Path) -> None:
     # COPY-18, F-OWNERSHIP-AMBIGUITY "found-by-the-next-lookup": a collection copied by script after a lookup is
     # reported by the next one, with no handler; for the canonical candidate, the next synchronization succeeds.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root_layer_path)
         assert bindings.copied() == []
         routes.run_binding_copy_route("collection-copy", tmp_path)
@@ -218,7 +218,7 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
     # COPY-19, F-OWNERSHIP-AMBIGUITY "restored-entry": with the index's Text removed, detection writes none;
     # the next write to the binding's records does, so a later full copy leaves the original canonical. A
     # synchronization and a settings change are each such a write.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root_layer_path)
         for write in (
             lambda: handle.synchronize(0),
@@ -230,12 +230,12 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
             assert write().state is ResultState.SUCCESS
             assert _index_entry() == bpy.data.collections["Shot"]
         routes.run_binding_copy_route("full-copy-scene", tmp_path)
-        _check(bindings, handle, copies.INDEXED)
+        _check(bindings, handle, binding_copy_cases.INDEXED)
 
 
 def test_a_write_replaces_a_cleared_entry(bindings: Bindings, tmp_path: Path) -> None:
     # COPY-19: an entry naming no collection is replaced by a write to the unique binding's records.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root_layer_path)
         routes.run_binding_copy_route("entry-cleared", tmp_path)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
@@ -244,7 +244,7 @@ def test_a_write_replaces_a_cleared_entry(bindings: Bindings, tmp_path: Path) ->
 
 def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) -> None:
     # COPY-16: attaching writes the configuration, which a binding with no canonical candidate refuses.
-    with copies.ownership_ambiguity(tmp_path) as scene:
+    with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         handle = bindings.create_binding(_scene(), name="Shot")
         routes.run_binding_copy_route("index-lost", tmp_path)
         assert bindings.copied()[0].disabled

@@ -6,7 +6,7 @@ plan has none. An empty marker's object holds no data. Each object is hidden in 
 in, and a sheared copy's sits under an unselectable empty, its shear parent. Objects and their bounds meshes are named
 so each lands at the end of Blender's sorted lists (_MANAGED_NAME). They're prepared in a staging collection no scene
 links, so nothing prepared is visible, and preparation only creates datablocks: it never changes one the published
-generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
+generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (preparation_resources).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.existing_or_new_entry_keys), and the entries preparation makes are the manifest a publication writes.
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from ..core import _core
-    from .prepared_work import PreparationResources
+    from .preparation_resources import PreparationResources
 
 # A managed object's name, which its bounds mesh shares: a tilde, which sorts after ASCII letters, digits, and most
 # punctuation, then its generation and its index in the plan's order, zero-padded, then its prim's name, so each lands

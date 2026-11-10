@@ -1,4 +1,4 @@
-#include "copy_bindings.h"
+#include "instance_material_bindings.h"
 
 #include <pxr/usd/usd/collectionAPI.h>
 #include <pxr/usd/usd/collectionMembershipQuery.h>

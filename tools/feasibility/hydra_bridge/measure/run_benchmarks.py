@@ -4,14 +4,16 @@ M1b compares it with Blender's USD importer; M4 adds its updates after each scen
 batched display (--representation batched, with --batch-minimum copies or more per batch), measured into its own
 directory.
 
-    uv run python tools/feasibility/hydra_bridge/measure/run.py [--scenes bespoke stress alab] [--repeats 5]
-    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes importer-matched \
+    uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py [--scenes bespoke stress alab] [--repeats 5]
+    uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab \
+        --modes importer-matched \
         --scenarios all   # M4 Phase C: every update scenario, with the importer for the budgets
-    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes prototype interaction \
+    uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab \
+        --modes prototype interaction \
         --scenarios all --representation batched   # M4 Phase D: the batched display
-    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab-instancers \
+    uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab-instancers \
         --modes viewport importer-viewport   # M4 Phase D: viewport frame time, in windows on the screen
-    uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes updates alab --modes uncached \
+    uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes updates alab --modes uncached \
         --out build/hydra-bridge/measure-uncached   # M5 Phase S: lookups without the bindings' cache
 
 Each run is sampled from outside with psutil (resident memory, CPU time, threads; on macOS also the physical
@@ -149,7 +151,7 @@ def run_once(blender: str, scene: dict[str, Any], mode: str, args: argparse.Name
         "--python-exit-code",
         "1",
         "--python",
-        str(HERE / "child.py"),
+        str(HERE / "synchronization_worker.py"),
         "--",
         str(work / "config.json"),
     ]

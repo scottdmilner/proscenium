@@ -59,7 +59,8 @@ bool SameData(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff &d
     return true;
 }
 
-// Everything else apply.py sets from an object entry but its matrix. A placeholder and a mesh object differ here.
+// Everything else object_display.py sets from an object entry but its matrix. A placeholder and a mesh object differ
+// here.
 bool SameRestButMatrix(const ObjectEntry &next, const ObjectEntry &old) {
     return std::tie(next.placeholderType, next.bounds, next.visible, next.purpose, next.constantPrimvars) ==
                std::tie(old.placeholderType, old.bounds, old.visible, old.purpose, old.constantPrimvars) &&

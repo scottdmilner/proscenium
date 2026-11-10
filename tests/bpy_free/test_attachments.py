@@ -14,7 +14,7 @@ from pxr import Sdf, Usd
 
 from fixtures import source_access
 from proscenium.binding.source_access.identifiers import BindingId
-from proscenium.binding.source_access.registry import StageRegistry
+from proscenium.binding.source_access.stage_registry import StageRegistry
 from proscenium.binding.source_access.stages import PayloadPolicy, SourceUnavailableError
 from support.usd import open_stage_without_cache
 

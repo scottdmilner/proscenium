@@ -1,4 +1,4 @@
-#include "errors.h"
+#include "python_error_translation.h"
 
 #include <pxr/base/tf/diagnostic.h>
 #include <pxr/base/tf/pyError.h>

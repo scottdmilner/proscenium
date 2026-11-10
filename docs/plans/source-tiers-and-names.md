@@ -36,7 +36,7 @@ src/proscenium/
     __init__.py
     runtime/
       __init__.py                what api and addon call, and the errors that reach their callers
-      state.py                   the state, tracking, rebuilding, and the checks of held references
+      blender_state.py                   the state, tracking, rebuilding, and the checks of held references
       binding_configs.py         lookups by binding identity, creation, configuration writes, index-entry restoration
       ownership_index.py         Claim, each destination's claims, manifest lookups and writes
       copy_detection.py          copied-binding detection from the records
@@ -51,7 +51,7 @@ src/proscenium/
     source_access/
       __init__.py                the stages, BindingId, RequestedSettings
       stages.py          BindingStages, PayloadPolicy, SourceUnavailableError
-      registry.py          StageRegistry
+      stage_registry.py    StageRegistry
       identifiers.py             BindingId
       canonical_candidate.py     the canonical-candidate rule
       binding_settings.py      RequestedSettings
@@ -118,9 +118,9 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 1. This plan.
 2. **Moves into the tiers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `api/`. AGENTS.md's Layout section describes the tiers.
 3. **The import-direction test.**
-4. **`runtime/indexes.py` split** into `state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
+4. **`runtime/indexes.py` split** into `blender_state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
 5. **Exceptions end in `Error`.**
-6. **Binding stages:** `binding_source.py` and `registry.py` renamed, and their classes, attributes, and `prune`'s parameter.
+6. **Binding stages:** `binding_source.py` and `stage_registry.py` renamed, and their classes, attributes, and `prune`'s parameter.
 7. **Copied bindings:** `runtime/candidates.py` renamed `copy_detection.py` and `core/copies.py` `canonical_candidate.py`, with their types and functions, and `state.Binding` renamed `Candidate`.
 8. **Records:** the refusal names, `Schema`'s fields, and the binding records' module and functions.
 9. **Runtime names:** the state's public functions (`find_copies`, `rebuilds`, `update_manifest`).

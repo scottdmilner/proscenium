@@ -51,7 +51,7 @@ public:
     const pxr::HdSceneIndexBaseRefPtr &Terminal() const { return terminal_; }
     std::vector<SceneIndexEvent> TakeEvents() { return observer_.Take(); }
     void RequeueEvents(std::vector<SceneIndexEvent> events) { observer_.Requeue(std::move(events)); }
-    // WORKAROUND for OpenUSD #3690 (copy_bindings.h). Call between advances, never alongside reads.
+    // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h). Call between advances, never alongside reads.
     std::shared_ptr<const CopyBindings> CopyBindingsNow() { return sourceInfo_->CurrentCopyBindings(); }
 
 private:

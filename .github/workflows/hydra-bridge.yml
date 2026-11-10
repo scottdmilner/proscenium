@@ -1,9 +1,9 @@
 # Compiled Hydra bridge (M1b). Copy the uploaded results into docs/feasibility/runtime-record.md.
 #
 # Each platform builds against the headers Blender v5.2.2 pins, audits the module's
-# linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run.py),
-# then the Phase E measurement harness on one small scene (measure/run.py). Each build job also packages
-# Proscenium's extension zip with the module (distribution.py); the distribution jobs install that zip into
+# linkage (build.py), and runs the same checks in the bpy wheel and the Blender binary (run_runtime_probes.py),
+# then the Phase E measurement harness on one small scene (measure/run_benchmarks.py). Each build job also packages
+# Proscenium's extension zip with the module (extension_install_probe.py); the distribution jobs install that zip into
 # Blender on a fresh runner given only the zip (M1b Phase F).
 name: Hydra bridge
 
@@ -35,7 +35,7 @@ jobs:
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
-        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+        run: uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package
       - name: Upload extension zip
         uses: actions/upload-artifact@v4
         with:
@@ -43,10 +43,10 @@ jobs:
           path: build/hydra-bridge/dist/*.zip
           if-no-files-found: error
       - name: Checks in the wheel and the binary
-        run: uv run python tools/feasibility/hydra_bridge/run.py
+        run: uv run python tools/feasibility/hydra_bridge/run_runtime_probes.py
       # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
       - name: Measurement harness, one small scene
-        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
+        run: uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,7 +76,7 @@ jobs:
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
-        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+        run: uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package
       - name: Upload extension zip
         uses: actions/upload-artifact@v4
         with:
@@ -109,10 +109,10 @@ jobs:
           name: hydra-bridge-linux-x64-build
           path: build/hydra-bridge/
       - name: Checks in the wheel and the binary
-        run: uv run python tools/feasibility/hydra_bridge/run.py
+        run: uv run python tools/feasibility/hydra_bridge/run_runtime_probes.py
       # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
       - name: Measurement harness, one small scene
-        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
+        run: uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,7 +139,7 @@ jobs:
       - name: Build and audit
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - name: Package the extension zip
-        run: uv run python tools/feasibility/hydra_bridge/distribution.py package
+        run: uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package
       - name: Upload extension zip
         uses: actions/upload-artifact@v4
         with:
@@ -147,10 +147,10 @@ jobs:
           path: build/hydra-bridge/dist/*.zip
           if-no-files-found: error
       - name: Checks in the wheel and the binary
-        run: uv run python tools/feasibility/hydra_bridge/run.py
+        run: uv run python tools/feasibility/hydra_bridge/run_runtime_probes.py
       # Keeps the Phase E harness working; shared runners make its numbers unreliable, so none are recorded.
       - name: Measurement harness, one small scene
-        run: uv run python tools/feasibility/hydra_bridge/measure/run.py --scenes smoke --repeats 1 --settle 0.2
+        run: uv run python tools/feasibility/hydra_bridge/measure/run_benchmarks.py --scenes smoke --repeats 1 --settle 0.2
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
@@ -186,7 +186,7 @@ jobs:
           name: proscenium-${{ matrix.platform }}
           path: build/hydra-bridge/dist/
       - name: Install, use and uninstall in the Blender binary
-        run: uv run python tools/feasibility/hydra_bridge/distribution.py install
+        run: uv run python tools/feasibility/hydra_bridge/extension_install_probe.py install
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4

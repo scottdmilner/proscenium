@@ -7,7 +7,8 @@ cached so far.
 - **Attributes:** a mesh whose topology holds caches each synchronization's values of each varying attribute as
   `<name>@<sample>` beside it (attribute_samples.py), which each holder's frames modifier shows for the sample its
   keyed `Sample` input names; -1, the mesh's own values, at the times cached before the mesh first varied.
-- **Whole meshes:** a mesh whose topology varies (E4) caches a whole mesh per sample instead (topology.py), from
+- **Whole meshes:** a mesh whose topology varies (E4) caches a whole mesh per sample instead
+(whole_mesh_samples.py), from
   the first time its topology differs from its own, its earlier samples rebuilt from its attributes. So does one
   whose content gains an attribute it lacks.
 - **Attributes that come and go:** a mesh holds the constant display color all its copies share (D13), so its
@@ -21,7 +22,6 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import BufferFormat, MeshAttributeData, flat, mesh_attributes, new_mesh
 from attribute_samples import (
     BASE,
     FRAME_SEPARATOR,
@@ -34,12 +34,13 @@ from attribute_samples import (
     sample_mesh,
 )
 from keyframes import AnimationKeyWriter, frames_modifier
-from topology import MeshSamples, samples_group
+from object_display import BufferFormat, MeshAttributeData, flat, mesh_attributes, new_mesh
+from whole_mesh_samples import MeshSamples, samples_group
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from frames import TrackKey
+    from frame_capture import TrackKey
     from plan_types import MeshRecord, ObjectRecord, Plan
 
 type HolderKey = TrackKey | tuple[str, int]  # a track, or ("prototype", batch number)

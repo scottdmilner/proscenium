@@ -1,6 +1,7 @@
 """M4's small updates in the object baseline (M04-prototypes plan, B6): replacing one unit of a published display.
 
-The bridge's update.py prepares a unit beside the display, publishes it, and retires what it replaced. Each case
+The bridge's object_display_updates.py prepares a unit beside the display, publishes it, and retires what it
+replaced. Each case
 replaces the unit from the same plan, so the display must hold what it held before, with new data exactly where
 the unit and its user policy say, and nothing left over.
 """
@@ -128,7 +129,8 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
 ) -> None:
     """C2 and D4: after each edit, the display updated by the plan diff holds what a fresh application does.
 
-    On both representations: the baseline (update.py) and the batched display (batch_update.py). Before each edit
+    On both representations: the baseline (object_display_updates.py) and the batched display
+    (batched_display_updates.py). Before each edit
     every element is selected, or on the appearance edits, those of odd plan index, so a batch holds two states.
     With moves (E2), updates keep moved objects and set their matrices.
     """

@@ -4,7 +4,7 @@
 
 M5's synchronization is a full rebuild: it constructs every display resource anew, publishes them, and retires the
 ones they replace, then pushes one undo step (lifecycle.md#undo-and-runtime-state). Each run builds the baseline's
-display (apply.py), as the product's first synchronization would, and pushes a step; then EDITS times moves one
+display (object_display.py), as the product's first synchronization would, and pushes a step; then EDITS times moves one
 object and pushes a step, the cost of a step that changes little; then REBUILDS times rebuilds the whole display from
 the same plan, as a synchronization again would, removes the one it replaces, evaluates, and pushes a step. The heap
 in use (memory.py) is read before and after each push, so a push's growth is what that step holds, and after each
@@ -32,12 +32,12 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-# The bridge first: this directory has measurements named as its modules (mesh_caches.py).
+# Import display implementation modules from the bridge directory first.
 sys.path[:0] = [str(HERE.parent), str(HERE), str(ROOT / "tools")]
 
 EDITS = 3
 REBUILDS = 4
-SCENES = ["updates", "alab"]  # run.py's groups
+SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 
 
 def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -> dict[str, Any]:
@@ -70,8 +70,8 @@ def child(config: dict[str, Any]) -> None:
 
     sys.path.insert(0, config["module_dir"])
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
     import memory
+    import object_display
     from pxr import Usd
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -98,7 +98,7 @@ def child(config: dict[str, Any]) -> None:
     def build(name: str) -> tuple[bpy.types.Collection, Any]:
         collection = bpy.data.collections.new(name)
         scene.collection.children.link(collection)
-        return collection, apply.apply(plan, collection)
+        return collection, object_display.apply(plan, collection)
 
     def push(message: str) -> dict[str, float]:
         if not undo:
@@ -259,14 +259,14 @@ def main() -> int:
 
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--undo-steps", type=int, help="Blender's undo steps preference (default: as found)")

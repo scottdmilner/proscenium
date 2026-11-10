@@ -29,7 +29,9 @@ from .harness import WHEEL, Runtime, RuntimeKind
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE_BUILD = ROOT / "tools/feasibility/hydra_bridge/build.py"
-BRIDGE_OUT = ROOT / "build/hydra-bridge"  # build.py's default, which run.py and the measurements also use
+BRIDGE_OUT = (
+    ROOT / "build/hydra-bridge"
+)  # build.py's default, which run_runtime_probes.py and the measurements also use
 
 
 @pytest.fixture

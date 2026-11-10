@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..source_access import registry
+from ..source_access import stage_registry
 from . import copy_detection
 
 if TYPE_CHECKING:
@@ -19,10 +19,10 @@ if TYPE_CHECKING:
 class BindingStageTracker:
     """Track binding stages and drop vanished bindings' evaluation stages before each lookup."""
 
-    _registry: registry.StageRegistry
+    _registry: stage_registry.StageRegistry
 
     def __init__(self) -> None:
-        self._registry = registry.StageRegistry()
+        self._registry = stage_registry.StageRegistry()
 
     def get_or_create_binding_stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
         """Return the binding's stages, creating unattached state after pruning vanished bindings."""
@@ -48,4 +48,4 @@ class BindingStageTracker:
 
     def clear(self) -> None:
         """Drop every binding's stages, leaving each binding with no source stage or attachment."""
-        self._registry = registry.StageRegistry()
+        self._registry = stage_registry.StageRegistry()

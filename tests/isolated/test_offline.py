@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fixtures.source_access import DISPLAY
-from support.display import expected_content
+from support.offline_display import expected_content
 
 from .harness import WHEEL, Runtime, run_isolated
 

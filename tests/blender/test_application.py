@@ -22,7 +22,7 @@ from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manif
 from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from proscenium.synchronization import application, prepared_work, removal
+from proscenium.synchronization import application, preparation_resources, removal
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
 
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import Bindings
     from proscenium.binding.persistence.ledgers import LedgerEntry
     from proscenium.binding.source_access.identifiers import BindingId
-    from proscenium.synchronization.prepared_work import PreparationResources
+    from proscenium.synchronization.preparation_resources import PreparationResources
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
 SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
@@ -50,7 +50,7 @@ def _binding(bindings: Bindings) -> BindingId:
 
 
 def _work(binding_id: BindingId) -> PreparationResources:
-    return prepared_work.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
+    return preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
 def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
@@ -279,7 +279,7 @@ def test_a_failure_after_a_resource_is_made_finds_it_held(
         made = _datablocks() - before - {work.staging_collection}
         assert made == set(work.datablocks.values())
         assert len(made) == 2 * call - (step == "_corners")  # a placeholder's mesh is made before its corners
-        assert prepared_work.dispose(work) == ()
+        assert preparation_resources.dispose(work) == ()
         assert _datablocks() == before
         assert _ledger() == {}
 
@@ -323,7 +323,7 @@ def test_dispose_removes_what_was_prepared_and_writes_no_ledger_entry(bindings: 
         binding_id = _binding(bindings)
         before = _datablocks()
         work = _prepared(binding_id, _plan(scene.caller, 0.0))
-        assert prepared_work.dispose(work) == ()
+        assert preparation_resources.dispose(work) == ()
         assert _datablocks() == before
         assert (work.datablocks, work.roles, work.manifest_entries) == ({}, {}, {})
         assert _ledger() == {}
@@ -345,7 +345,7 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
             application.prepare(plan, Manifest({}), work)
         assert len(work.datablocks) == scene.prepared_before_failure
         failing = _fail_disposal(monkeypatch, work, scene.failed_disposals)
-        diagnostics = prepared_work.dispose(work)
+        diagnostics = preparation_resources.dispose(work)
         assert _datablocks() - before == failing
         assert all(not d.users_collection for d in failing if isinstance(d, bpy.types.Object))
         ledger = _ledger()
@@ -364,7 +364,7 @@ def test_a_leftover_survives_save_and_reopen_through_its_pointer(
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
         [leftover] = _fail_disposal(monkeypatch, work, (RepresentationRole.BOUNDS_MESH,))
         name = leftover.name
-        [diagnostic] = prepared_work.dispose(work)
+        [diagnostic] = preparation_resources.dispose(work)
         save_and_reopen(tmp_path / "leftover.blend")
         [(ledger_key, entry)] = _ledger().items()
         assert entry.datablock == bpy.data.meshes[name]

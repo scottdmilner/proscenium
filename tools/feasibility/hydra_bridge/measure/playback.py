@@ -30,11 +30,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from apply import MeshAttributeData
+    from object_display import MeshAttributeData
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-# The bridge first: this directory has measurements named as its modules (mesh_caches.py).
+# Import display implementation modules from the bridge directory first.
 sys.path[:0] = [str(HERE.parent), str(HERE), str(ROOT / "tools")]
 
 APPROACHES = ["snapshots", "attributes", "sequence"]
@@ -104,9 +104,9 @@ def child(config: dict[str, Any]) -> None:
 
     sys.path[:0] = [config["module_dir"], str(ROOT)]
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import cached
+    import cached_display
     import memory
-    import snapshots
+    import per_frame_display
     from pxr import Usd
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -126,13 +126,13 @@ def child(config: dict[str, Any]) -> None:
     result: dict[str, Any] = {"heap MB": {"before": mb(memory.heap_in_use())}}
     start = time.perf_counter()
     if approach == "snapshots":
-        display: Any = snapshots.Snapshots(
+        display: Any = per_frame_display.Snapshots(
             native, stage, collection, float(first), "batched" if batched else "objects", moves=True, minimum=minimum
         )
         synchronize = display.step
     else:
         path = str(work / "cache.usdc") if approach == "sequence" else None
-        display = cached.CachedDisplay(
+        display = cached_display.CachedDisplay(
             native, stage, collection, float(first), minimum=minimum if batched else None, sequence=path
         )
         synchronize = display.synchronize
@@ -201,21 +201,21 @@ def child(config: dict[str, Any]) -> None:
 def _lossy() -> None:
     """Have the sequence caches write what Blender's reader gives back otherwise, for measurement only."""
     import numpy
-    import sequence_caches
+    import usd_mesh_sequence_caches
     from pxr import Sdf, Vt
 
-    exact = sequence_caches._primvar  # noqa: SLF001
+    exact = usd_mesh_sequence_caches._primvar  # noqa: SLF001
 
-    def lossy(layer: MeshAttributeData) -> tuple[sequence_caches.PrimvarKind, Any]:
+    def lossy(layer: MeshAttributeData) -> tuple[usd_mesh_sequence_caches.PrimvarKind, Any]:
         if layer.data_type == "FLOAT2" and layer.domain == "POINT":
             return (Sdf.ValueTypeNames.Float2Array, "vertex"), Vt.Vec2fArray.FromNumpy(layer.values.reshape(-1, 2))
-        if layer.name == sequence_caches.DISPLAY_COLOR:
+        if layer.name == usd_mesh_sequence_caches.DISPLAY_COLOR:
             rgb = numpy.ascontiguousarray(layer.values.reshape(-1, 4)[:, :3])
-            interpolation = sequence_caches.INTERPOLATIONS[layer.domain]
+            interpolation = usd_mesh_sequence_caches.INTERPOLATIONS[layer.domain]
             return (Sdf.ValueTypeNames.Color3fArray, interpolation), Vt.Vec3fArray.FromNumpy(rgb)
         return exact(layer)
 
-    sequence_caches._primvar = lossy  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
+    usd_mesh_sequence_caches._primvar = lossy  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
 
 
 def _stats(values: list[float]) -> dict[str, float] | None:

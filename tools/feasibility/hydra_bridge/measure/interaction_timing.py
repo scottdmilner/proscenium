@@ -10,7 +10,8 @@ reported as the median and range of its repeats; the parent's runs then give the
   instance context, and for a box selection over the top-level prim with the most viewport elements. The kind
   promotion's share is `selection_from_blender` at a kind level against the prim level.
 
-`selection` is the display component, the baseline's selection.py or the batched display's batch_selection.py, and
+`selection` is the display component, the baseline's object_display_selection.py or the batched display's
+batched_display_selection.py, and
 `target` what its functions take: the collection, or the batched display. On the batched display, a pick first
 resolves what a ray cast at the copy would return to its element (`pick_element`, timed too).
 """

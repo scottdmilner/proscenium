@@ -35,14 +35,14 @@ Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/batch_groups.cpp
   src/bridge.cpp
   src/capture.cpp
-  src/copy_bindings.cpp
+  src/instance_material_bindings.cpp
   src/correspondence.cpp
   src/diagnostics.cpp
   src/fact_timings.cpp
   src/inspection.cpp
   src/instancing.cpp
   src/interaction.cpp
-  src/loaded_images.cpp
+  src/loaded_usd_libraries.cpp
   src/mesh_builder.cpp
   src/mesh_sharing.cpp
   src/module.cpp
@@ -50,13 +50,13 @@ Python_add_library(_hydra_bridge MODULE WITH_SOABI
   src/planner.cpp
   src/prim_reader.cpp
   src/prim_record.cpp
-  src/properties.cpp
+  src/id_property_conversion.cpp
   src/python_views.cpp
   src/scene_index_graph.cpp
   src/snapshot.cpp
   src/source_facts.cpp
   src/source_info_scene_index.cpp
-  src/validate.cpp
+  src/mesh_validation.cpp
 )
 target_compile_features(_hydra_bridge PRIVATE cxx_std_17)
 set_target_properties(_hydra_bridge PROPERTIES CXX_EXTENSIONS OFF)

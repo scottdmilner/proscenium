@@ -1,6 +1,6 @@
 """The batched display's Python display component (M4, Phase D): Blender's selection state, to and from elements.
 
-batch.py's counterparts of selection.py's functions, and the pick resolution an instance needs:
+batched_display.py's counterparts of object_display_selection.py's functions, and the pick resolution an instance needs:
 - **Partial coverage:** none arises. A batch has a carrier for each selection state its points hold, which
   instances only the points in that state, so `apply_selection` moves a selection's instances onto the selected
   and active carriers and selects exactly those. Each object then shows elements wholly in or out of the
@@ -17,13 +17,13 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from batch import STATE, TRANSFORM, fit_carriers, set_carrier_state
-from selection import ELEMENT, BlenderSelection
+from batched_display import STATE, TRANSFORM, fit_carriers, set_carrier_state
+from object_display_selection import ELEMENT, BlenderSelection
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from batch import Batch, BatchedDisplay
+    from batched_display import Batch, BatchedDisplay
     from mathutils import Matrix
 
 # How far a hit's world matrix may be from its instance's, against the matrix's largest entry: float32's.
@@ -72,8 +72,7 @@ def apply_selection(
     """Mirror display targets into Blender, as selection.apply_selection does, moving points between carriers.
 
     Each batch's points move onto the carrier of their state: the active entry's, the rest of the selection's, or
-    neither's. A batch's carriers change to one per state its points then hold (batch.fit_carriers), in place in
-    `display`.
+    neither's. Its carriers become one per state through batched_display.fit_carriers, in place in `display`.
     """
     showing = []  # the active entry's display objects
     for element, obj in display.objects.items():

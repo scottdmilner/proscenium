@@ -19,7 +19,7 @@ from pxr import Sdf, Usd
 from fixtures import transaction
 from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
 
-from .bindings import binding
+from .attached_binding_stages import binding
 
 if TYPE_CHECKING:
     from collections.abc import Callable

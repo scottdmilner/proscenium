@@ -19,7 +19,7 @@ def publish_and_save(tmp_dir: str, path: str) -> dict[str, Any]:
     import proscenium
     from fixtures import source_access
     from proscenium.api.bindings import Bindings
-    from support.display import publish_by_hand
+    from support.offline_display import publish_by_hand
     from support.usd import binding_on_file
 
     proscenium.register()

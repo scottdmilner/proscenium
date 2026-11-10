@@ -14,7 +14,7 @@ import bpy
 import pytest
 from pxr import Sdf, Usd
 
-from fixtures import records as record_fixtures
+from fixtures import schema_version_cases as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from proscenium import addon

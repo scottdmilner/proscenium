@@ -5,7 +5,7 @@ Copied bindings on each copy route, and binding indexes lost, cleared, duplicate
 
 The routes are Blender operations, and the generator runs without bpy, so it gives a binding's source and,
 for each route, the outcome the canonical-candidate rule gives what that route leaves, derived from the
-rule and the route (D1 in docs/plans/M03-bindings.md), never from running it; tests/support/copies.py
+rule and the route (D1 in docs/plans/M03-bindings.md), never from running it; tests/support/binding_copy_operations.py
 runs the routes, on a binding "Shot" on the scene "Scene" whose destination holds what its synchronization of
 Scene.TRANSACTION published: a placeholder per drawn gprim (fixtures.transaction). Candidates are counted as the
 rule counts them: local collections holding a binding record whose target scene exists.

@@ -8,12 +8,12 @@ holds, so a cached time code plays back in Blender with no call to the bridge, a
 current plan. A time code is a frame, its fraction a subframe; Blender shows each time the latest cached time
 code at or before it, as keys hold until the next.
 
-- **Objects** follow tracks (frames.py). A track's transform, visibility, and properties (its constant primvars,
+- **Objects** follow tracks (frame_capture.py). A track's transform, visibility, and properties (its constant primvars,
   and its object color) are keyframes, one per synchronized time code, constant between them, from the first time
   it varies; it is keyed at every time cached before that with the value it held there. A track absent at a time
   (its copy has no such object there) is hidden there. A track first seen after the structure gets its object
   then, hidden at the times before.
-- **A sheared transform** is keyed through a parent empty (apply.shear_split), created when a keyed track is
+- **A sheared transform** is keyed through a parent empty (object_display.shear_split), created when a keyed track is
   first sheared and keyed as the identity at the frames cached before.
 - **Batches** hold their tracks as points, whose transforms, destinations, and primvars their carriers' points
   cache; a track whose content leaves its batch's becomes an object then, and one first seen later joins a batch
@@ -26,8 +26,8 @@ code at or before it, as keys hold until the next.
   modifier and the keys always show the same time; it is -1, the mesh's own values, at the times cached before
   the mesh first varied. A placeholder's bounds are cached the same way, on its bounds mesh.
 - **Mesh Sequence Cache modifiers, for comparison (E6):** with `sequence`, a USD file's path, the holders' meshes
-  that vary are cached in a USD layer instead, which their modifiers read (sequence_caches.py).
-- **A mesh whose topology varies** (E4) caches a whole mesh per sample instead (topology.py), from the first
+  that vary are cached in a USD layer instead, which their modifiers read (usd_mesh_sequence_caches.py).
+- **A mesh whose topology varies** (E4) caches a whole mesh per sample instead (whole_mesh_samples.py), from the first
   time its topology differs from its own, its earlier samples rebuilt from its attributes: a mesh per sample,
   whose geometry its objects' modifiers show by their keyed `Sample` input. Its samples don't blend.
 - **Blending (an option, off by default):** with `blend`, a time between two of a mesh's samples shows its float
@@ -53,7 +53,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import (
+from attribute_samples import BASE
+from cached_batches import Batches
+from frame_capture import DisplayAspect, TrackKey, copy_of, place
+from keyframes import AnimationKeyWriter
+from mesh_caches import MeshCaches, MeshHolderSynchronizationState, UncachedError
+from object_display import (
     apply,
     create_shear_parent,
     new_material,
@@ -64,13 +69,8 @@ from apply import (
     sheared,
     usd_matrix_to_blender,
 )
-from attribute_samples import BASE
-from cached_batches import Batches
-from frames import DisplayAspect, TrackKey, copy_of, place
-from keyframes import AnimationKeyWriter
-from mesh_caches import MeshCaches, MeshHolderSynchronizationState, UncachedError
 from pxr import Tf, Usd
-from sequence_caches import SequenceCaches
+from usd_mesh_sequence_caches import SequenceCaches
 
 if TYPE_CHECKING:
     from collections.abc import Callable

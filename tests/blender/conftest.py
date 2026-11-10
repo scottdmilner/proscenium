@@ -14,7 +14,7 @@ import pytest
 import proscenium
 from proscenium.api.bindings import Bindings
 
-from . import state as blender_state
+from . import blender_state as blender_state
 
 if TYPE_CHECKING:
     from collections import Counter

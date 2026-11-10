@@ -89,7 +89,7 @@ GfMatrix4d WithoutProjectiveComponent(GfMatrix4d world) {
   return world;
 }
 
-// The bridge's tolerance (apply.py's SHEAR_TOLERANCE): a float32 matrix's rounding never reaches it.
+// The bridge's tolerance (object_display.py's SHEAR_TOLERANCE): a float32 matrix's rounding never reaches it.
 constexpr double kShearTolerance = 1e-6;
 
 // Whether the affine `world` shears: whether any two of its axes, USD's rows, aren't orthogonal.
@@ -104,8 +104,8 @@ bool Sheared(const GfMatrix4d& world) {
 }
 
 // A sheared world transform as the shear parent's world transform and its object's basis, neither sheared, as the
-// bridge's apply.py splits it. GfMatrix4d::Factor gives world = r * s * r^T * u * t in USD's row vectors, r and u
-// rotations: the object takes r, and its parent the scale s, then the rotation r^T * u, then the translation t. A
+// bridge's object_display.py splits it. GfMatrix4d::Factor gives world = r * s * r^T * u * t in USD's row vectors, r
+// and u rotations: the object takes r, and its parent the scale s, then the rotation r^T * u, then the translation t. A
 // reflection in either rotation moves into a negative scale.
 std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
   GfMatrix4d r(1.0);

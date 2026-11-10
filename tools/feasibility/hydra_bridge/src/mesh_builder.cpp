@@ -2,7 +2,7 @@
 
 #include "fact_timings.h"
 
-#include "validate.h"
+#include "mesh_validation.h"
 
 #include <pxr/base/gf/half.h>
 #include <pxr/base/gf/vec2f.h>

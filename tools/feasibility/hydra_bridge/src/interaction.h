@@ -1,7 +1,7 @@
 // M4: the core's interaction functions for the baseline (interaction contract, "Headless Functions"), over one
 // published generation's plan and the live stage. Correspondence answers from the plan; kind levels go to the
 // inspection model (inspection.h) in C++, so paths never pass through Python between the two. A display
-// element is named by its plan object index, which apply.py records on its Blender object.
+// element is named by its plan object index, which object_display.py records on its Blender object.
 #pragma once
 
 #include "plan.h"

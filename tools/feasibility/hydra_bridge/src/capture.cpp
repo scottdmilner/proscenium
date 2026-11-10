@@ -111,7 +111,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
         // Depth-first, parents before children, with an explicit stack rather than recursion.
         for (const SdfPath &path : HdSceneIndexPrimView(graph.Terminal(), SdfPath::AbsoluteRootPath()))
             paths.push_back(path);
-        // WORKAROUND for OpenUSD #3690 (copy_bindings.h); before the read pass, which it must not overlap.
+        // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h); before the read pass, which it must not overlap.
         snapshot->copyBindings = graph.CopyBindingsNow();
         HarvestErrors(mark, SdfPath(), graphDiagnostics);
     }

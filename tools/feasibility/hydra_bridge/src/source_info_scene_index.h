@@ -28,7 +28,7 @@
 // graph advances (ApplyPendingUpdates), asking UsdImagingDataSourcePrim::Invalidate which locators changed.
 #pragma once
 
-#include "copy_bindings.h"
+#include "instance_material_bindings.h"
 #include "source_facts.h"
 
 #include <pxr/pxr.h>
@@ -74,8 +74,8 @@ public:
     // stage aren't built again from USD. Call before the stage scene index's SetStage(nullptr), never
     // alongside reads.
     void Detach();
-    // WORKAROUND for OpenUSD #3690 (copy_bindings.h): UsdShade's bindings for the copies binding collections
-    // reach, recomputed only after a binding or collection edit or a resync. Call between graph advances,
+    // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): UsdShade's bindings for the copies binding
+    // collections reach, recomputed only after a binding or collection edit or a resync. Call between graph advances,
     // never alongside reads.
     std::shared_ptr<const CopyBindings> CurrentCopyBindings();
 

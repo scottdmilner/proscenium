@@ -26,7 +26,7 @@ from proscenium.synchronization import application, publication
 from support.blend import save_and_reopen
 from support.destinations import destination
 
-from .published import datablocks, published_generation
+from .published_state import datablocks, published_generation
 
 if TYPE_CHECKING:
     from pathlib import Path

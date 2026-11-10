@@ -3,7 +3,7 @@
 A mesh whose topology holds caches each synchronization's values of each varying attribute as an attribute
 `<name>@<sample>` beside it, numbered in the order samples arrive. A Geometry Nodes group per set of varying
 attributes stores each over its attribute for the sample its modifier's keyed `Sample` input names, where it has
-one, and with blending mixes it with the next sample's (cached.py).
+one, and with blending mixes it with the next sample's (cached_display.py).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 
 import bpy
 import numpy
-from apply import MeshAttributeData
+from object_display import MeshAttributeData
 
 FRAME_SEPARATOR = "@"  # a sample's attribute is <name>@<sample>
 MODIFIER = "proscenium frames"

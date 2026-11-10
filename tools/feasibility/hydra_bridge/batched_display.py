@@ -1,10 +1,11 @@
-"""Apply a Hydra bridge plan as Geometry Nodes instances (M4, Phase D): the batched alternative to apply.py.
+"""Apply a Hydra bridge plan as Geometry Nodes instances (M4, Phase D): the batched alternative to object_display.py.
 
 Plan objects that look the same except for their transform and constant primvars become instances on one
 carrier object: those with the same mesh, material slots, destinations, and object color, and constant primvars
 of the same names and kinds, and no two with the same transform. Only a group of at least a minimum size becomes
 a batch, since a batch is at least two Blender objects. A smaller group, a placeholder, and a copy with a primvar no
-attribute can hold stay objects, as apply.py builds them. The bridge's module forms the groups (`plan.batch_groups`,
+attribute can hold stay objects, as object_display.py builds them. The bridge's module forms the groups
+(`plan.batch_groups`,
 batch_groups.h), so an update needn't convert and regroup every plan record in Python.
 
 - **Carriers:** objects on one mesh of one point per instance, one per selection state its points hold, so an
@@ -12,7 +13,7 @@ batch_groups.h), so an update needn't convert and regroup every plan record in P
   shear needs no parent), its element (`proscenium_element`, its plan index), its selection state, and its
   constant primvars by name, which reach the instance domain, where an Attribute node of type Instancer reads
   them. Each carrier's Geometry Nodes modifier instances the prototype on the points of its state, so a
-  selection can select exactly its instances (batch_selection.py). The carriers' hide flags are the group's
+  selection can select exactly its instances (batched_display_selection.py). The carriers' hide flags are the group's
   destinations.
 - **Prototype:** an object no scene links, on the group's mesh, with the group's object-linked materials and
   object color, which every instance shows.
@@ -25,8 +26,8 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import new_material, new_mesh, new_object, object_color
-from selection import ELEMENT
+from object_display import new_material, new_mesh, new_object, object_color
+from object_display_selection import ELEMENT
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -111,7 +112,7 @@ def groups(plan: Plan, minimum: int) -> tuple[dict[tuple[Any, ...], list[int]], 
 
     A key is (mesh, material slots, in the viewport, in the render, object color, (primvar, attribute type)
     pairs, repeat); copies whose transforms are equal are in separate groups, by repeat, since a pick names an
-    instance by its prototype and world matrix (batch_selection.py).
+    instance by its prototype and world matrix (batched_display_selection.py).
     """
     shared, single = plan.batch_groups(minimum)
     return dict(shared), single

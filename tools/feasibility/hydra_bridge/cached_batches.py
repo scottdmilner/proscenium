@@ -2,7 +2,7 @@
 
 At the build, copies of the same mesh, material slots, object color, and primvar kinds (batch.attribute_type)
 become a batch of at least the display's minimum: a prototype object that no scene links, on their mesh, and a
-carrier object on a mesh of one point per copy. Unlike Phase D's batches (batch.py), a cached batch has one
+carrier object on a mesh of one point per copy. Unlike Phase D's batches (batched_display.py), a cached batch has one
 carrier, and each instance's destinations are its own, so copies differing only in them share a batch:
 - **Points:** each point's attributes are its copy's world transform, whether it shows in the viewport and in the
   render, and its constant primvars by name. The carrier's frames modifier caches them like any mesh's attributes
@@ -29,10 +29,10 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import ForeachProperty, MeshAttributeData, object_color
-from batch import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
-from frames import DisplayAspect, TrackKey
+from batched_display import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
+from frame_capture import DisplayAspect, TrackKey
 from mesh_caches import MeshCache, new_cache
+from object_display import ForeachProperty, MeshAttributeData, object_color
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

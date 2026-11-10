@@ -2,7 +2,7 @@
 
 test_core_determinism.py compares plans built in separate processes (PLAN-08, ROLE-02):
 
-    python tests/bpy_free/plan_process.py <root layer> <time code>
+    python tests/bpy_free/plan_serialization.py <root layer> <time code>
 
 opens the root layer as a stage of its own, loading everything, captures it at the time code through a chain of its
 own, plans it under the default settings and context (plan_checks), and prints contents(plan) as JSON. JSON keeps

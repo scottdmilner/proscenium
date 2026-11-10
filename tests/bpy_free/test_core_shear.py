@@ -2,7 +2,8 @@
 
 A Blender object holds only location, rotation, and scale, so a sheared copy's world transform splits into its object's
 basis and a shear parent's world transform, each holding only those, whose product is the world transform (XFORM-03),
-as the bridge's apply.py splits it. A projective matrix places its mesh by its affine part (XFORM-05; C6 adds the
+as the bridge's object_display.py splits it. A projective matrix places its mesh by its affine part (XFORM-05; C6
+adds the
 diagnostic). Expected values come from the fixtures' construction.
 """
 

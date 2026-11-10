@@ -21,7 +21,7 @@ from fixtures.source_access import caller_settings, read_values, rewrite_on_disk
 from proscenium.binding.source_access.stages import PayloadPolicy, dirty_layers
 from support.usd import open_stage_without_cache
 
-from .bindings import binding
+from .attached_binding_stages import binding
 
 # Layer file -> path of the one attribute value it authors (fixtures/source_access.py).
 AUTHORED = {

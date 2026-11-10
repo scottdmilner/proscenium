@@ -1,4 +1,4 @@
-#include "properties.h"
+#include "id_property_conversion.h"
 
 #include <pxr/base/gf/half.h>
 #include <pxr/base/gf/matrix2d.h>

@@ -1,6 +1,6 @@
 """One measured synchronization in the Blender binary: Blender's USD importer, or the Hydra prototype.
 
-    blender --background --factory-startup --python child.py -- <config.json>
+    blender --background --factory-startup --python synchronization_worker.py -- <config.json>
 
 The config names the mode, scene, time code, module directory, and output paths. An update mode (M4 Phase C)
 runs one of scenarios.py's scenarios after the prototype's synchronization: its edit, then the capture,
@@ -45,7 +45,7 @@ import viewport_timing  # noqa: E402
 # turns scene instancing off: with it on, the importer drops materials bound at or above an instance root
 # (measured on the instancing stress scene), which the prototype honors; with it off, every instance gets
 # its own object and mesh.
-# The modes that run in a windowed Blender (run.py starts them without --background).
+# The modes that run in a windowed Blender (run_benchmarks.py starts them without --background).
 VIEWPORT_MODES = ("viewport", "importer-viewport")
 MATCHED = {
     "import_cameras": False,
@@ -166,11 +166,11 @@ def run_importer(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
 def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     sys.path.insert(0, config["module_dir"])
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
-    import batch
+    import batched_display
+    import object_display
     from pxr import Usd
 
-    # The baseline's one object per copy (apply.py), or Phase D's batched display (batch.py).
+    # The baseline's one object per copy (object_display.py), or Phase D's batched display (batched_display.py).
     batched = config.get("representation", "objects") == "batched"
     if batched and config["mode"] in ("ownership", "uncached"):
         raise SystemExit("ownership and uncached modes measure the baseline's manifest only")
@@ -229,9 +229,9 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         collection = bpy.data.collections.new("Prototype")
         scene.collection.children.link(collection)
     display: Any = (
-        batch.apply_batched(view, collection, config.get("batch_minimum", batch.MINIMUM))
+        batched_display.apply_batched(view, collection, config.get("batch_minimum", batched_display.MINIMUM))
         if batched
-        else apply.apply(view, collection)
+        else object_display.apply(view, collection)
     )
     done("construction")
     stage("evaluate")
@@ -268,13 +268,13 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
     elif config["mode"] == "viewport":
         facts["viewport"] = viewport_timing.measure()
     elif config["mode"] == "interaction":
-        import batch_selection
-        import selection
+        import batched_display_selection
+        import object_display_selection
 
         # The display component and what its functions take: the collection, or the batched display.
         facts["interaction"] = interaction_timing.measure(
             native,
-            batch_selection if batched else selection,
+            batched_display_selection if batched else object_display_selection,
             usd_stage,
             plan,
             display if batched else collection,
@@ -312,10 +312,10 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
 def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any, done: Any) -> dict[str, Any]:
     """The scenario's edit, then the incremental capture, planning, diff, and update by the diff."""
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import batch_update
-    import update
+    import batched_display_updates
+    import object_display_updates
 
-    updater: Any = batch_update if session.batched else update
+    updater: Any = batched_display_updates if session.batched else object_display_updates
     stage("update:edit")
     capture_time, edited = scenarios.edit(scenario, session.stage, session.plan, time)
     done("update:edit")
@@ -331,7 +331,7 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     diff = native.diff_plans(session.plan, plan)
     done("update:diff")
     stage("update:prepare")
-    prepared = updater.prepare(plan, diff, session.display, update.DependentObjectUpdatePolicy.REPOINT)
+    prepared = updater.prepare(plan, diff, session.display, object_display_updates.DependentObjectUpdatePolicy.REPOINT)
     done("update:prepare")
     stage("update:publish")
     updater.publish(prepared, session.display, session.collection)

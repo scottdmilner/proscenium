@@ -13,7 +13,7 @@ from fixtures.source_access import DISK, caller_settings, layer_contents, read_v
 from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
 from support.usd import open_stage_without_cache
 
-from .bindings import binding
+from .attached_binding_stages import binding
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -35,7 +35,7 @@ ROOT = HERE.parents[3]
 sys.path[:0] = [str(HERE), str(ROOT / "tools")]
 
 CACHED = 3
-SCENES = ["updates", "alab"]  # run.py's groups
+SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 # (module, function) pairs the transaction and cache call reach their steps through, in the order they run.
 STEPS = [
     ("proscenium.api.bindings", "Bindings._require_binding"),
@@ -52,7 +52,7 @@ STEPS = [
     ("proscenium.binding.persistence.manifests", "write_manifest"),
     ("proscenium.binding.runtime.ownership", "set_manifest_entries"),
     ("proscenium.binding.persistence.binding_state", "write_generation"),
-    ("proscenium.synchronization.prepared_work", "remove_staging_and_clear_tracking"),
+    ("proscenium.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
     ("proscenium.synchronization.retirement", "retire"),
     ("proscenium.synchronization.removal", "remove_unused"),
     ("bpy.data", "user_map"),
@@ -250,14 +250,14 @@ def markdown(summary: dict[str, Any], setup: dict[str, Any]) -> str:
 def main() -> int:
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--undo", nargs="+", choices=["on", "off"], default=["on"], help="global undo settings")

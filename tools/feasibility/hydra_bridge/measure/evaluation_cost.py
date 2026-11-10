@@ -35,7 +35,7 @@ ROOT = HERE.parents[3]
 sys.path[:0] = [str(HERE), str(ROOT / "tools")]
 
 ITERATIONS = 3  # chain, capture, plan, and read in one process: the first, then as a synchronization again
-SCENES = ["alab"]  # run.py's groups
+SCENES = ["alab"]  # run_benchmarks.py's groups
 BATCH_MINIMUM = 5  # DECISIONS.md "Display representation"
 STAGES = ["chain", "capture", "release chain", "plan", "plan, converting", "drop converted", "read tuples"]
 STAGES += [
@@ -329,14 +329,14 @@ def markdown(summary: dict[str, Any], setup: dict[str, Any]) -> str:
 def main() -> int:
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--files", nargs="*", default=[], help="scene files, each captured at its start time code")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)

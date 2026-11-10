@@ -305,8 +305,10 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
 ) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
-    `representation` is the baseline's "objects" (apply.py and update.py) or Phase D's "batched" (batch.py and
-    batch_update.py). Before each edit, the elements `select` names are selected: "all", or "odd", those of odd
+    `representation` is the baseline's "objects" (object_display.py and object_display_updates.py) or Phase D's
+    "batched" (batched_display.py and
+    batched_display_updates.py). Before each edit, the elements `select` names are selected: "all", or "odd", those
+    of odd
     plan index. With `moves`, updates keep moved objects and set their matrices. Each step reports the diff, what
     the display held before and after, what the updated display holds against a fresh application of the same
     plan, and Blender's data counts for each.
@@ -318,10 +320,10 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
     batched = representation == "batched"
-    apply = importlib.import_module("batch" if batched else "apply")
-    update = importlib.import_module("batch_update" if batched else "update")
-    selection = importlib.import_module("batch_selection" if batched else "selection")
-    policy = importlib.import_module("update").DependentObjectUpdatePolicy(users)
+    apply = importlib.import_module("batched_display" if batched else "object_display")
+    update = importlib.import_module("batched_display_updates" if batched else "object_display_updates")
+    selection = importlib.import_module("batched_display_selection" if batched else "object_display_selection")
+    policy = importlib.import_module("object_display_updates").DependentObjectUpdatePolicy(users)
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
 
@@ -390,9 +392,9 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    snapshots = importlib.import_module("snapshots")
+    snapshots = importlib.import_module("per_frame_display")
     batched = representation == "batched"
-    selection = importlib.import_module("batch_selection" if batched else "selection")
+    selection = importlib.import_module("batched_display_selection" if batched else "object_display_selection")
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
     for name in ("animation.usda", "frames.usda"):  # frames.usda sublayers M1b's animation case
@@ -403,7 +405,7 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
     blender_scene.collection.children.link(collection)
     view_layer = blender_scene.view_layers[0]
     blender_scene.frame_set(times[0])
-    policy = importlib.import_module("update").DependentObjectUpdatePolicy(users)
+    policy = importlib.import_module("object_display_updates").DependentObjectUpdatePolicy(users)
     followed = snapshots.Snapshots(native, stage, collection, float(times[0]), representation, policy, moves)
     handler = followed.follow(blender_scene)
     steps = []
@@ -432,7 +434,7 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
 
 def _report(plan: Any, display: Any, batched: bool) -> dict[str, Any]:
     """What an updated display holds against a fresh application of its plan, with Blender's data counts for each."""
-    apply = importlib.import_module("batch" if batched else "apply")
+    apply = importlib.import_module("batched_display" if batched else "object_display")
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
     records = plan.objects

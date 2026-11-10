@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import transaction
-from proscenium.synchronization import application, prepared_work, removal
+from proscenium.synchronization import application, preparation_resources, removal
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,14 +30,14 @@ def failing_preparation(
     held: list[tuple[RepresentationRole, bpy.types.ID]] = []
     failing: set[bpy.types.ID] = set()
     hold, world, remove = (
-        prepared_work.PreparationResources.track,
+        preparation_resources.PreparationResources.track,
         application._matrix_from_buffer,
         removal._batch_remove,
     )  # noqa: SLF001
     worlds: list[object] = []
 
     def recording(
-        work: prepared_work.PreparationResources, entry_key: str, role: RepresentationRole, d: bpy.types.ID
+        work: preparation_resources.PreparationResources, entry_key: str, role: RepresentationRole, d: bpy.types.ID
     ) -> None:
         held.append((role, d))
         hold(work, entry_key, role, d)
@@ -55,7 +55,7 @@ def failing_preparation(
         remove(datablocks)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(prepared_work.PreparationResources, "track", recording)
+        patch.setattr(preparation_resources.PreparationResources, "track", recording)
         patch.setattr(application, "_matrix_from_buffer", failing_world)
         patch.setattr(removal, "_batch_remove", failing_remove)
         result = handle.synchronize(time_code)

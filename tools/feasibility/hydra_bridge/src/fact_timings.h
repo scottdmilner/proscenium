@@ -37,7 +37,7 @@ enum class FactTiming : std::uint8_t {
     MeshTopologyReused,
     MeshSameBuffers,
     MeshAttributeReused,
-    CopyBindings,  // the OpenUSD #3690 workaround, when it recomputes (copy_bindings.h)
+    CopyBindings,  // the OpenUSD #3690 workaround, when it recomputes (instance_material_bindings.h)
     Count
 };
 

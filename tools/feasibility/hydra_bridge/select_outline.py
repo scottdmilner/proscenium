@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any
 import bpy
 import gpu
 import numpy
-from batch import TRANSFORM
+from batched_display import TRANSFORM
 from gpu_extras.batch import batch_for_shader
 from pxr import Usd, UsdGeom
 

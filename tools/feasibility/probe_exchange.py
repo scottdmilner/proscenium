@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from _common import Probe
-from _scenes import SCENES
+from runtime_probe_support import Probe
+from source_access_scenes import SCENES
 
 STUBS = Path(__file__).parent / "stubs"
 

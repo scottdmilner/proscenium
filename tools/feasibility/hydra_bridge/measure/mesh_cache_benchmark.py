@@ -1,6 +1,6 @@
 """M4 Phase E (E4): caching ALab's deforming meshes frame by frame, as per-frame attributes or as edited bakes.
 
-    uv run python tools/feasibility/hydra_bridge/measure/mesh_caches.py VARIANT [--last FRAME] \
+    uv run python tools/feasibility/hydra_bridge/measure/mesh_cache_benchmark.py VARIANT [--last FRAME] \
         [--out build/hydra-bridge/mesh-caches]
 
 Runs in the bpy wheel, in one process. Synchronizes ALab, with its point instancers, at 1004 as the object
@@ -38,9 +38,9 @@ ROOT = HERE.parents[3]
 sys.path[:0] = [str(HERE), str(HERE.parent)]
 
 import alab_entry  # noqa: E402
-import apply  # noqa: E402
 import bpy  # noqa: E402
 import numpy  # noqa: E402
+import object_display  # noqa: E402
 from memory import footprint, heap_in_use  # noqa: E402
 from pxr import Usd  # noqa: E402
 
@@ -56,7 +56,9 @@ def megabytes(value: int | None) -> float | None:
 
 
 def positions_of(record: dict[str, Any]) -> numpy.ndarray:
-    return numpy.frombuffer(apply.flat(record["positions"], apply.BufferFormat.FLOAT), numpy.float32).copy()
+    return numpy.frombuffer(
+        object_display.flat(record["positions"], object_display.BufferFormat.FLOAT), numpy.float32
+    ).copy()
 
 
 def evaluated_positions(obj: bpy.types.Object) -> numpy.ndarray:
@@ -320,7 +322,7 @@ def main() -> int:  # noqa: PLR0915 - one run, start to end
     plan = native.build_plan(bridge.capture(float(FIRST)))
     collection = bpy.data.collections.new("Prototype")
     scene.collection.children.link(collection)
-    display = apply.apply(plan, collection)
+    display = object_display.apply(plan, collection)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     view_layer.update()
     synchronized = time.perf_counter() - start

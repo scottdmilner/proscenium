@@ -99,7 +99,7 @@ std::vector<GfMatrix4d> PointTransforms(const PrimRecord &instancer, size_t poin
 template <class... Types>
 struct TypeList {};
 
-// Types a point's primvar value can take, as properties.cpp converts constant primvars.
+// Types a point's primvar value can take, as id_property_conversion.cpp converts constant primvars.
 using PointTypes =
     TypeList<bool, int, unsigned char, unsigned int, int64_t, uint64_t, GfHalf, float, double, std::string, TfToken,
              GfVec2i, GfVec3i, GfVec4i, GfVec2h, GfVec3h, GfVec4h, GfVec2f, GfVec3f, GfVec4f, GfVec2d, GfVec3d, GfVec4d,

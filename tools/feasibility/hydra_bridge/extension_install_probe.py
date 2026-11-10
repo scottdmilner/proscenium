@@ -1,7 +1,7 @@
 """M1b Phase F: the bridge shipped the way users get it, as a per-platform extension zip.
 
-    uv run python tools/feasibility/hydra_bridge/distribution.py package   # after build.py: the zip
-    uv run python tools/feasibility/hydra_bridge/distribution.py install   # installs it into Blender
+    uv run python tools/feasibility/hydra_bridge/extension_install_probe.py package   # after build.py: the zip
+    uv run python tools/feasibility/hydra_bridge/extension_install_probe.py install   # installs it into Blender
 
 `package` builds a test zip from a copy of src/proscenium with the bridge module (and its build.json) added to
 the core/ package and the manifest's `platforms` set to this platform, using the extension CLI shipped in the
@@ -207,8 +207,8 @@ def _session(check: Checks, installed: Path) -> None:
     from pxr import Usd
 
     sys.path.insert(0, str(HERE))
-    import probe
-    import prototype_probe
+    import end_to_end_display_probe
+    import native_bridge_probe
 
     prefs = bpy.context.preferences
     assert prefs is not None
@@ -217,10 +217,10 @@ def _session(check: Checks, installed: Path) -> None:
     native = importlib.import_module(NATIVE)
     module = Path(str(native.__file__)).resolve()
     check("the compiled module loads from the installed package", module.parent == installed / "core", module)
-    loading = probe.run(module.parent, native)
+    loading = native_bridge_probe.run(module.parent, native)
     check.facts["loading checks"] = len(loading["checks"])
     check.facts["loaded usd libraries"] = loading["loaded_usd_libraries"]
-    prototype = prototype_probe.run(module.parent, native)
+    prototype = end_to_end_display_probe.run(module.parent, native)
     check.facts["prototype checks"] = len(prototype["checks"])
     check("loading and prototype checks pass from the installed module", True)
 

@@ -18,7 +18,11 @@ from blender_paths import find_blender  # noqa: E402
 
 # Result-name prefix -> script: native loading (Phase A), the capture -> plan -> Blender prototype (Phase B),
 # and the per-case correctness checks (Phase C).
-PROBES = {"": "probe.py", "prototype-": "prototype_probe.py", "correctness-": "correctness_probe.py"}
+PROBES = {
+    "": "native_bridge_probe.py",
+    "prototype-": "end_to_end_display_probe.py",
+    "correctness-": "correctness_probe.py",
+}
 
 
 def main() -> int:

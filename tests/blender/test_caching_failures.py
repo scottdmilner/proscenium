@@ -3,7 +3,7 @@
 On F-CACHED-TIME-CODES (fixtures/transaction.py): synchronized at 0, with 5, 10, and 20 cached, a call for 15 fails at
 keying, its failure step, or while recording what it cached. Each failure is injected by patching a module function the
 call reaches, so src/ has no hooks, and each test compares the whole published generation, every action's keys, and
-the file's datablocks before and after (published.py).
+the file's datablocks before and after (published_state.py).
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.synchronization import application, removal
 
-from .published import datablocks, published_generation
+from .published_state import datablocks, published_generation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

@@ -12,7 +12,8 @@ so USD interpolates between them as it does: positions and float primvars of equ
 - **Topology** varies from sample to sample, as a USD mesh's does, so no mesh caches whole meshes.
 - **The layer is in memory.** Blender's reader shares the process's layers, so it reads it unsaved; `save` writes
   it to its file, which a saved .blend reads from.
-- **Not cached here:** what Blender's reader gives back otherwise than apply.py holds it. A display color with an
+- **Not cached here:** what Blender's reader gives back otherwise than object_display.py holds it. A display color
+with an
   opacity, as USD's displayColor is a color3f and the reader drops one of another type; a FLOAT2 on points, which it
   reads as a UV map, on corners; and a primvar whose type or domain varies, which USD holds once. These raise
   UncachedError, as material slots that vary do (mesh_caches.py).
@@ -26,16 +27,6 @@ from typing import TYPE_CHECKING, Any, override
 
 import bpy
 import numpy
-from apply import (
-    ATTRIBUTE_FORMATS,
-    DISPLAY_COLOR,
-    PLAN_DOMAINS,
-    POSITION,
-    BufferFormat,
-    MeshAttributeData,
-    flat,
-    mesh_attributes,
-)
 from attribute_samples import FRAME_SEPARATOR
 from mesh_caches import (
     MeshCaches,
@@ -46,6 +37,16 @@ from mesh_caches import (
     holder_content_unchanged,
     holder_groups_with_retained_mesh_first,
     record,
+)
+from object_display import (
+    ATTRIBUTE_FORMATS,
+    DISPLAY_COLOR,
+    PLAN_DOMAINS,
+    POSITION,
+    BufferFormat,
+    MeshAttributeData,
+    flat,
+    mesh_attributes,
 )
 from pxr import Sdf, Vt
 

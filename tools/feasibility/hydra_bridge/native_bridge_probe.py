@@ -16,7 +16,7 @@ from typing import Any
 
 
 def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
-    # `native`: the module already imported, as from an installed extension (distribution.py).
+    # `native`: the module already imported, as from an installed extension (extension_install_probe.py).
     import bpy
     from pxr import Gf, Sdf, Usd, UsdGeom, Vt
 
@@ -39,8 +39,8 @@ def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
         native = importlib.import_module("_hydra_bridge")
 
     with tempfile.TemporaryDirectory(prefix="hydra-bridge-scene-") as tmp:
-        scene = Path(tmp) / "scene.usda"
-        shutil.copy(Path(__file__).with_name("scene.usda"), scene)
+        scene = Path(tmp) / "stage_exchange.usda"
+        shutil.copy(Path(__file__).with_name("stage_exchange.usda"), scene)
         original_file = scene.read_bytes()
         stage = Usd.Stage.Open(str(scene))
         stage.DefinePrim("/Unsaved", "Xform")

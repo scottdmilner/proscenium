@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from _common import Probe
-from _scenes import build_layered, dirty_edit, layer_path, read_values
+from runtime_probe_support import Probe
+from source_access_scenes import build_layered, dirty_edit, layer_path, read_values
 
 
 def run() -> dict[str, Any]:

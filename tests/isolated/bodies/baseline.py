@@ -1,4 +1,4 @@
-"""Isolated body: M4's object baseline, M1b's Hydra bridge and its apply.py, on a fixture's scene.
+"""Isolated body: M4's object baseline, M1b's Hydra bridge and its object_display.py, on a fixture's scene.
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_baseline.py. Reports what Blender holds,
 read back from Blender's data, so the test compares it with USD.
@@ -39,13 +39,14 @@ def apply_scene(
 ) -> dict[str, Any]:
     """Capture, plan, and apply `scene` at default time; each plan object as Blender displays it, in plan order.
 
-    `representation` is the baseline's "objects" (apply.py) or Phase D's "batched" (batch.py), where an instance
+    `representation` is the baseline's "objects" (object_display.py) or Phase D's "batched" (batched_display.py),
+    where an instance
     reports its prototype's mesh and materials, its carrier's destinations, and its own transform and attributes.
     `minimum` is the batched display's smallest batch, and `point_instancers` the plan setting that translates
     point instancers' instances, or None for the plan's default.
     """
     native = _native(module_dir)
-    apply = importlib.import_module("apply")
+    apply = importlib.import_module("object_display")
 
     stage = Usd.Stage.Open(scene)
     bridge = native.Bridge(stage)
@@ -60,7 +61,7 @@ def apply_scene(
         objects = dict(enumerate(apply.apply(plan, collection).objects))
         batches = []
     else:
-        display = importlib.import_module("batch").apply_batched(plan, collection, minimum)
+        display = importlib.import_module("batched_display").apply_batched(plan, collection, minimum)
         objects, batches = display.objects, display.batches
     reported: dict[int, dict[str, Any]] = {}
     for element, obj in objects.items():
@@ -272,11 +273,12 @@ def correspondence(module_dir: str, scene: str, times: list[float], unload: list
 def replace_unit(module_dir: str, scene: str, unit: str, users: str, unmanaged: bool) -> dict[str, Any]:
     """Apply `scene`, then replace one unit of its display from the same plan (B6); what Blender holds around it.
 
-    `unit` names one of update.py's sample units. With `unmanaged`, an object outside the display uses its mesh.
+    `unit` names one of object_display_updates.py's sample units. With `unmanaged`, an object outside the display
+    uses its mesh.
     """
     native = _native(module_dir)
-    apply = importlib.import_module("apply")
-    update = importlib.import_module("update")
+    apply = importlib.import_module("object_display")
+    update = importlib.import_module("object_display_updates")
 
     stage = Usd.Stage.Open(scene)
     bridge = native.Bridge(stage)
@@ -417,7 +419,7 @@ def batched_held(display: Any, records: Any) -> dict[str, Any]:
 
 def _point_states(batch: Any) -> Any:
     """Each of a batch's points' selection states."""
-    return importlib.import_module("batch_selection").states(batch)
+    return importlib.import_module("batched_display_selection").states(batch)
 
 
 # A mesh object's data, read through Any: its Object.data is typed as every kind of object data.
@@ -461,16 +463,18 @@ def detach_scene(module_dir: str, scene: str, blend: str, representation: str = 
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
     if representation == "objects":
-        display = importlib.import_module("apply").apply(plan, collection)
+        display = importlib.import_module("object_display").apply(plan, collection)
         objects = display.objects
     else:
-        display = importlib.import_module("batch").apply_batched(plan, collection)
+        display = importlib.import_module("batched_display").apply_batched(plan, collection)
         objects = list(display.objects.values())
         if display.batches:
             # Selecting one instance gives its batch a second carrier, so deleting the unselected one leaves it one.
             first = display.batches[0]
             view_layer: Any = bpy.context.view_layer  # never None in a running Blender
-            importlib.import_module("batch_selection").apply_selection(view_layer, display, {first.elements[0]}, set())
+            importlib.import_module("batched_display_selection").apply_selection(
+                view_layer, display, {first.elements[0]}, set()
+            )
             bpy.data.objects.remove(first.carriers[0])
     shared: list[Any] = [obj for obj in objects if obj.type == "MESH" and obj.data.users > 1]
     deleted = shared[0].name

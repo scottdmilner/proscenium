@@ -7,9 +7,10 @@ and press Run Script. Running it again replaces the previous session.
 
 Another program, such as Houdini's Solaris writing the scene with a USD ROP, saves the file. The Update from USD
 button in the 3D view's sidebar (N, Proscenium tab) reloads each of the stage's layers whose file changed and
-synchronizes through the update path (snapshots.py): an incremental capture, a plan reusing the previous one's mesh
+synchronizes through the update path (per_frame_display.py): an incremental capture, a plan reusing the previous
+one's mesh
 builds, the plan diff, and an update by it that rebuilds only what changed. The sidebar and a viewport overlay show
-each update. With --select, the display is batched (batch.py) and Source Select (select_tool.py) becomes the
+each update. With --select, the display is batched (batched_display.py) and Source Select (select_tool.py) becomes the
 active tool, its interaction rebuilt over each update's plan, keeping the targets the new plan still has.
 With --follow, the display also synchronizes at each frame's time code. Without --select, a Y-up stage is shown Z-up
 through a rotated collection instance; Blender selects only objects in the view layer, so with --select it is shown
@@ -40,7 +41,7 @@ def _here() -> Path:
     candidates = [Path(globals().get("__file__", ""))]
     candidates += [Path(bpy.path.abspath(text.filepath)) for text in bpy.data.texts if text.filepath]
     for candidate in candidates:
-        if candidate.name == "live_demo.py" and (candidate.resolve().parent / "snapshots.py").exists():
+        if candidate.name == "live_demo.py" and (candidate.resolve().parent / "per_frame_display.py").exists():
             return candidate.resolve().parent
     raise RuntimeError("Can't find tools/feasibility/hydra_bridge: open live_demo.py from disk, not a copy")
 
@@ -49,11 +50,11 @@ HERE = _here()
 sys.path[:0] = [p for p in (str(HERE), str(HERE.parents[2] / "build/hydra-bridge")) if p not in sys.path]
 
 import _hydra_bridge as native  # noqa: E402  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-import batch  # noqa: E402
+import batched_display  # noqa: E402
 import blf  # noqa: E402
+import per_frame_display  # noqa: E402
 import select_outline  # noqa: E402
 import select_tool  # noqa: E402
-import snapshots  # noqa: E402
 from pxr import Sdf, Usd, UsdGeom  # noqa: E402
 
 SESSION_KEY = "proscenium_live_demo"  # where the running session is kept, in bpy.app.driver_namespace
@@ -65,7 +66,7 @@ class Session:
 
     root_layer_path: Path
     stage: Usd.Stage
-    display: snapshots.Snapshots
+    display: per_frame_display.Snapshots
     collection: bpy.types.Collection
     collection_instance: bpy.types.Object | None  # the rotated collection instance of a Y-up stage
     time_code: float
@@ -158,7 +159,7 @@ class Session:
         objects = list(self.collection.all_objects)
         # With batches, the carriers' points meshes and their node group too.
         data = {obj.data for obj in objects if obj.data is not None}
-        nodes = [display.nodes.tree] if isinstance(display, batch.BatchedDisplay) else []
+        nodes = [display.nodes.tree] if isinstance(display, batched_display.BatchedDisplay) else []
         bpy.data.batch_remove({*objects, *data, *display.meshes, *display.materials, *nodes})
         if self.collection_instance is not None:
             bpy.data.objects.remove(self.collection_instance)
@@ -288,7 +289,7 @@ def start(path: Path, time: float | None, follow: bool, select: bool) -> Session
         scene.collection.children.link(collection)
     begun = clock.perf_counter()
     representation = "batched" if select else "objects"
-    display = snapshots.Snapshots(native, stage, collection, time, representation=representation, moves=True)
+    display = per_frame_display.Snapshots(native, stage, collection, time, representation=representation, moves=True)
     session = Session(path, stage, display, collection, instancer, time, follow, select)
     session.layer_modification_times = _mtimes(stage)
     plan = display.plan

@@ -1,4 +1,4 @@
-"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached.py, E3 and E4).
+"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached_display.py, E3 and E4).
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_cached.py.
 """
@@ -44,7 +44,7 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    cached = importlib.import_module("cached")
+    cached = importlib.import_module("cached_display")
     stage = _stage(dest)
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
@@ -154,9 +154,9 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    cached = importlib.import_module("cached")
-    apply = importlib.import_module("apply")
-    frames = importlib.import_module("frames")
+    cached = importlib.import_module("cached_display")
+    apply = importlib.import_module("object_display")
+    frames = importlib.import_module("frame_capture")
     stage = _stage(dest)
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
@@ -324,8 +324,8 @@ def _mismatches(native: Any, stage: Usd.Stage, display: Any, time: float) -> lis
     Each track is shown by one of its holders, an object or a batch's point, which holds what its record does, and
     by no other.
     """
-    apply = importlib.import_module("apply")
-    frames = importlib.import_module("frames")
+    apply = importlib.import_module("object_display")
+    frames = importlib.import_module("frame_capture")
     bridge = native.Bridge(stage)
     plan = native.build_plan(bridge.capture(time))
     bridge.release()

@@ -1,5 +1,5 @@
-// M4 Phase D (D8): the plan objects that batch.py's batched display shows as instances of one batch, grouped in
-// the planner's module so an update needn't convert and regroup every plan record in Python.
+// M4 Phase D (D8): the plan objects that batched_display.py's batched display shows as instances of one batch, grouped
+// in the planner's module so an update needn't convert and regroup every plan record in Python.
 //
 // Objects share a group when they have the same mesh, material slots, and destinations, the same object color
 // (their constant displayColor and displayOpacity of one value each, or opaque white), and constant primvars of
@@ -19,7 +19,7 @@
 namespace hydra_bridge {
 
 struct BatchGroup {
-    // What the group's instances share, as batch.py keys a batch.
+    // What the group's instances share, as batched_display.py keys a batch.
     int mesh = -1;
     std::vector<int> materialSlots;  // -1 for no material
     bool inViewport = false;

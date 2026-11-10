@@ -42,7 +42,7 @@ struct PlanView {
     [[nodiscard]] bp::list Diagnostics() const;
     [[nodiscard]] bp::list Universe() const;
     // M4 Phase D (D8): the records at `indices` only, so an update converts what it uses; the counts; and
-    // GroupForBatches, as ((key, members), ...) with the key as batch.py's, and the objects in no batch.
+    // GroupForBatches, as ((key, members), ...) with the key as batched_display.py's, and the objects in no batch.
     [[nodiscard]] bp::list ObjectsAt(const bp::object &indices) const;
     [[nodiscard]] bp::list MeshesAt(const bp::object &indices) const;
     [[nodiscard]] std::size_t ObjectCount() const { return data->objects.size(); }

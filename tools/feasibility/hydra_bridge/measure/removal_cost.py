@@ -4,7 +4,7 @@
 
 Retirement, disposal, and a cleanup retry share removal.remove_unused, which reads users once with bpy.data.user_map
 and removes a level at a time, users first, each level in one bpy.data.batch_remove call, halved when that call
-raises until each datablock that fails is alone. Each run builds the baseline's display (apply.py) twice, as a
+raises until each datablock that fails is alone. Each run builds the baseline's display (object_display.py) twice, as a
 synchronization again holds it before retirement: the published one and the prepared one. Then, removing from the
 published one, with its objects unlinked from their collection first, as publication unlinks them:
 
@@ -41,12 +41,12 @@ if TYPE_CHECKING:
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-# The bridge first: this directory has measurements named as its modules (mesh_caches.py).
+# Import display implementation modules from the bridge directory first.
 sys.path[:0] = [str(HERE.parent), str(HERE), str(ROOT / "tools")]
 
 FIXED = 10
 UNIT = 100
-SCENES = ["updates", "alab"]  # run.py's groups
+SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 
 
 def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -> dict[str, Any]:
@@ -104,7 +104,7 @@ def child(config: dict[str, Any]) -> None:
 
     sys.path[:0] = [config["module_dir"], str(ROOT / "src")]
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
+    import object_display
     from pxr import Usd
 
     from proscenium.binding.persistence import records
@@ -124,7 +124,7 @@ def child(config: dict[str, Any]) -> None:
     displays = []
     for collection in (published, prepared):
         scene.collection.children.link(collection)
-        displays.append(apply.apply(plan, collection))
+        displays.append(object_display.apply(plan, collection))
     view_layer.update()
     display = displays[0]
     result: dict[str, Any] = {
@@ -294,14 +294,14 @@ def markdown(summary: dict[str, Any], setup: dict[str, Any]) -> str:
 def main() -> int:
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--undo-off", action="store_true", help="global undo off")

@@ -30,8 +30,8 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.blend import collection_content, save_and_reopen
 from support.destinations import destination
-from support.display import expected_content, publish_by_hand
 from support.manifests import key, object_entry
+from support.offline_display import expected_content, publish_by_hand
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:

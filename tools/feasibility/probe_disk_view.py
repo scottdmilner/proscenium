@@ -12,8 +12,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from _common import Probe
-from _scenes import VALUES, build_layered, dirty_edit, layer_path, read_values
+from runtime_probe_support import Probe
+from source_access_scenes import VALUES, build_layered, dirty_edit, layer_path, read_values
 
 LAYER_EXTENSIONS = (".usd", ".usda", ".usdc", ".usdz")
 DISK = {name: (-1.0 if name == "var_a" else 1.0) for name in VALUES}

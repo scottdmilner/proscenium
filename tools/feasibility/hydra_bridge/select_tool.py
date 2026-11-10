@@ -2,7 +2,7 @@
 
 The contract leaves open whether Blender selection reaches the source through Blender's own tools or a tool the
 extension provides ([Blender Selection](../../../docs/spec/interaction-contract.md#blender-selection)). This
-tool is the second, over Phase D's batched display (batch.py), so one instance in a batch can be picked:
+tool is the second, over Phase D's batched display (batched_display.py), so one instance in a batch can be picked:
 
 - **Click** picks what a ray cast under the cursor hits (batch_selection.pick_element), shift-click toggles its
   target, ctrl-click removes it, and a click on nothing clears the selection.
@@ -30,11 +30,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, override
 
-import batch_selection
+import batched_display_selection
 import bpy
 import gpu
 import numpy
-from batch import TRANSFORM
+from batched_display import TRANSFORM
 from bpy_extras import view3d_utils
 from gpu_extras.batch import batch_for_shader
 from pxr import Kind
@@ -42,7 +42,7 @@ from pxr import Kind
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from batch import BatchedDisplay
+    from batched_display import BatchedDisplay
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
 PRIM_LEVEL = "PRIM"
@@ -71,7 +71,7 @@ class Session:
 
     def pick(self, obj: bpy.types.Object | None, matrix: Any, mode: str) -> None:
         """Select the target of what a ray cast hit, its object and world matrix; None for nothing hit."""
-        element = None if obj is None else batch_selection.pick_element(self.display, obj, matrix)
+        element = None if obj is None else batched_display_selection.pick_element(self.display, obj, matrix)
         self.select([] if element is None else [element], mode)
 
     def box(self, elements: Iterable[int], mode: str) -> None:
@@ -114,7 +114,7 @@ class Session:
         )
         self._applying = True
         try:
-            batch_selection.apply_selection(self.view_layer, self.display, shown, active)
+            batched_display_selection.apply_selection(self.view_layer, self.display, shown, active)
         finally:
             self._applying = False
 
@@ -130,7 +130,7 @@ class Session:
         """Take Blender's selection of managed objects as the source selection, if it changed, and mirror it."""
         if self._applying:
             return
-        blender = batch_selection.read_blender_selection(self.view_layer, self.display)
+        blender = batched_display_selection.read_blender_selection(self.view_layer, self.display)
         found = self.interaction.selection_from_blender(
             blender.selected_element_indices, blender.active_element_index, self.model_kind
         )

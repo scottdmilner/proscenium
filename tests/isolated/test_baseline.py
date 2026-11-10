@@ -1,6 +1,7 @@
-"""M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and apply.py build in Blender.
+"""M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and object_display.py build in Blender.
 
-Phase D's batched alternative (D1, batch.py) is held to the same checks, read from Blender's evaluated instances.
+Phase D's batched alternative (D1, batched_display.py) is held to the same checks, read from Blender's evaluated
+instances.
 
 One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag,
 materials, and world transform, on the two feasibility fixtures; and each case's appearance values where the
@@ -59,7 +60,8 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[BaselineS
             yield BaselineScene(stress.root_layer_path, stress.stage, shown, stress)
 
 
-# The baseline's one object per copy (apply.py), and Phase D's batched alternative (batch.py), which must display
+# The baseline's one object per copy (object_display.py), and Phase D's batched alternative (batched_display.py),
+# which must display
 # the same: each test holds for both, except where a test names the difference.
 @pytest.fixture(params=["objects", "batched"])
 def representation(request: pytest.FixtureRequest) -> str:

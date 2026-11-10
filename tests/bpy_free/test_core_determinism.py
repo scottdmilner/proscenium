@@ -23,13 +23,13 @@ from proscenium.core import _core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS
-from .plan_process import contents
+from .plan_serialization import contents
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from contextlib import AbstractContextManager
 
-SCRIPT = Path(__file__).with_name("plan_process.py")
+SCRIPT = Path(__file__).with_name("plan_serialization.py")
 TIME_CODES = [0.0, 15.0]  # F-TRANSFORMS' first sample, and between its samples
 
 

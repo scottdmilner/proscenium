@@ -3,7 +3,7 @@
 A mesh's own attributes can't hold another topology, so each sample of such a mesh is a whole mesh, which its
 objects show through a Geometry Nodes modifier in place of their own: a mesh per sample (MeshSamples), each on a
 holder object in a collection of the mesh's samples, which no scene links. A copy's modifier shows the geometry
-of the holder its `Sample` input names, keyed like the attribute caches' (cached.py), so it shows at each time
+of the holder its `Sample` input names, keyed like the attribute caches' (cached_display.py), so it shows at each time
 the latest sample at or before it; no sample blends with the next.
 """
 
@@ -14,7 +14,7 @@ from typing import Any
 import bpy
 
 SAMPLE, SAMPLES = "Sample", "Samples"
-# The copies' group's inputs after the geometry; cached.py keys Sample through Socket_1, as for attributes.
+# The copies' group's inputs after the geometry; cached_display.py keys Sample through Socket_1, as for attributes.
 INPUTS = {SAMPLE: "Socket_1", SAMPLES: "Socket_2"}
 HOLDER_PREFIX = "proscenium holder "
 _holders: int | None = None  # the latest holder's number, so a collection's children sort in the order they came

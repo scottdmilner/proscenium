@@ -1,6 +1,6 @@
 """Isolated body: support/interaction_checks.py's checks on M4's display representations.
 
-The object baseline (apply.py) and Phase D's batched display (batch.py). Runs in a fresh process
+The object baseline (object_display.py) and Phase D's batched display (batched_display.py). Runs in a fresh process
 (isolated/harness.py); see tests/isolated/test_interaction.py. The body builds the interaction fixture itself, so
 its stage is the live stage the functions read.
 """
@@ -33,7 +33,7 @@ class BaselineDisplay:
     """The object baseline as an InteractionTestDisplay, one object per drawn copy and destination.
 
     A pick supplies the object, which names its display element (`proscenium_element`), and display targets are
-    elements. What an object shows is the source apply.py recorded on it when it is in the viewport, which B1
+    elements. What an object shows is the source object_display.py recorded on it when it is in the viewport, which B1
     checks against USD.
     """
 
@@ -45,8 +45,8 @@ class BaselineDisplay:
     def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         sys.path[:0] = [str(BRIDGE), module_dir]
         self._native = importlib.import_module("_hydra_bridge")
-        self._apply = importlib.import_module("apply")
-        self._selection = importlib.import_module("selection")
+        self._apply = importlib.import_module("object_display")
+        self._selection = importlib.import_module("object_display_selection")
         self.stage = stage
         self.point_instancers = point_instancers
         self._bridge = self._native.Bridge(stage)
@@ -124,13 +124,14 @@ class BatchedDisplay(BaselineDisplay):
 
     A pick supplies what a ray cast returns, the hit object and its world matrix: for an instance, its prototype
     and the instance's matrix as Blender evaluates it. What a carrier shows is the elements Blender evaluates it
-    to instance, so the mirroring checks see each carrier's coverage as drawn, not as batch_selection.py set it.
+    to instance, so the mirroring checks see each carrier's coverage as drawn, not as batched_display_selection.py
+    set it.
     """
 
     def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         super().__init__(module_dir, stage, point_instancers)
-        self._batch = importlib.import_module("batch")
-        self._batched = importlib.import_module("batch_selection")
+        self._batch = importlib.import_module("batched_display")
+        self._batched = importlib.import_module("batched_display_selection")
         self._display: Any = None
 
     @override

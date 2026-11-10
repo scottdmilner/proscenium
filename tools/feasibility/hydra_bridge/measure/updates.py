@@ -5,7 +5,8 @@
 Runs in the bpy wheel, in one process, timing each step with a monotonic clock. A full synchronization
 (capture, planning, construction, depsgraph evaluation) comes first. Then one real edit: a translation of one
 object outside instances, followed by an incremental capture, planning, the plan diff, and the update. Then each
-of update.py's sample units is replaced from the unchanged plan, under both user policies where they differ:
+of object_display_updates.py's sample units is replaced from the unchanged plan, under both user policies where they
+differ:
 prepare, publish, retire, and the depsgraph evaluation after it. Writes <out>/updates.json.
 """
 
@@ -32,7 +33,7 @@ from pxr import Gf, Usd, UsdGeom  # noqa: E402
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ALAB_TIME = 1004.0  # the first of ALab's time codes, as run.py measures
+ALAB_TIME = 1004.0  # the first of ALab's time codes, as run_benchmarks.py measures
 
 
 def timed[T](steps: dict[str, float], name: str, call: Callable[[], T]) -> T:
@@ -93,8 +94,8 @@ def main() -> int:
 
     sys.path.insert(0, str(args.module_dir))
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
-    import update
+    import object_display
+    import object_display_updates as update
 
     full: dict[str, float] = {}
     stage = timed(full, "stage open", lambda: Usd.Stage.Open(str(entry), Usd.Stage.LoadAll))
@@ -104,7 +105,7 @@ def main() -> int:
     collection = bpy.data.collections.new("Prototype")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    display = timed(full, "construction", lambda: apply.apply(plan, collection))
+    display = timed(full, "construction", lambda: object_display.apply(plan, collection))
     timed(full, "evaluate", evaluate)
     records = plan.objects  # each read converts every record
     full["synchronization"] = sum(full[s] for s in ("capture", "planning", "construction", "evaluate"))

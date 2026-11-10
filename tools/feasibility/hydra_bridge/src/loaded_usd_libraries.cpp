@@ -1,4 +1,4 @@
-#include "loaded_images.h"
+#include "loaded_usd_libraries.h"
 
 #include <pxr/usdImaging/usdImaging/sceneIndices.h>
 

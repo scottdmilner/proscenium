@@ -12,7 +12,7 @@ from proscenium.binding.persistence import records
 from support import undo
 from support.blend import save_and_reopen
 
-from .state import handler_lists
+from .blender_state import handler_lists
 
 if TYPE_CHECKING:
     from collections.abc import Callable

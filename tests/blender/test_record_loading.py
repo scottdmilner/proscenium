@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from fixtures import records as fixture
+from fixtures import schema_version_cases as fixture
 from proscenium.binding.persistence.records import VERSION_KEY, LoadedRecord, RefusalReason, RefusedRecord, Schema, load
 
 if TYPE_CHECKING:

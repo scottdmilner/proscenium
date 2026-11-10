@@ -21,7 +21,7 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 
 from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at
-from .plan_process import contents
+from .plan_serialization import contents
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

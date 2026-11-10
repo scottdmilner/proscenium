@@ -1,6 +1,7 @@
 // The compiled core's Python module, proscenium.core._core. It links only Blender's usd_ms.
 //
-// Each entry point translates errors as errors.h describes. Paths reach Python as strings, as the records store them.
+// Each entry point translates errors as python_error_translation.h describes. Paths reach Python as strings, as the
+// records store them.
 #include <pxr/base/tf/diagnostic.h>
 #include <pxr/base/tf/pyLock.h>
 #include <pxr/pxr.h>
@@ -13,8 +14,8 @@
 #include <vector>
 
 #include "batch_groups.h"
-#include "errors.h"
 #include "plan.h"
+#include "python_error_translation.h"
 #include "scene_index_chain.h"
 #include "snapshot.h"
 #include "stage_handle.h"

@@ -2,7 +2,8 @@
 
     blender --python tools/feasibility/hydra_bridge/select_tool_demo.py -- SCENE.usd [--minimum N] [--time T]
 
-Builds Phase D's batched display of the scene (batch.py, copies alike but for placement batched in groups of at
+Builds Phase D's batched display of the scene (batched_display.py, copies alike but for placement batched in groups
+of at
 least N, 3 by default) at time code T, its start by default, and makes Source Select the 3D view's active tool.
 Expects the bridge built by build.py in build/hydra-bridge/. Nothing is saved.
 """
@@ -18,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE), str(HERE.parents[2] / "build/hydra-bridge")]
 
 import _hydra_bridge as native  # noqa: E402  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-import batch  # noqa: E402
+import batched_display  # noqa: E402
 import bpy  # noqa: E402
 import select_tool  # noqa: E402
 from pxr import Usd  # noqa: E402
@@ -39,7 +40,7 @@ def main(argv: list[str]) -> None:
     scene: Any = bpy.context.scene
     collection = bpy.data.collections.new(Path(args.scene).stem)
     scene.collection.children.link(collection)
-    display = batch.apply_batched(plan, collection, args.minimum)
+    display = batched_display.apply_batched(plan, collection, args.minimum)
     interaction = native.SourceSelectionResolver(stage, plan)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     select_tool.register(

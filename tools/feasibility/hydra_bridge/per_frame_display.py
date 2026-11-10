@@ -1,9 +1,9 @@
 """Per-time-code snapshots (M4 Phase E, E2): a display that follows the frame by synchronizing at each one.
 
 A frame step is a synchronization at the frame's time code through the update path: an incremental capture, a
-plan reusing the previous plan's mesh builds (D9), the plan diff, and an update by it, with update.py, or
-batch_update.py for the batched display, under a user policy and with or without moves, which keep an object whose
-transform changed and set its matrix. The display holds no animation data: what it shows at a frame is what
+plan reusing the previous plan's mesh builds (D9), the plan diff, and an update through object_display_updates.py
+or batched_display_updates.py, under a user policy. With moves enabled, it keeps objects whose transforms changed
+and sets their matrices. The display holds no animation data: what it shows at a frame is what
 synchronizing at that time code gives. `follow` steps it from a frame-change handler, so playback is one step per
 frame. A frame's time code is its frame number, subframe included.
 """
@@ -14,11 +14,12 @@ import time as clock
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-import batch
-import batch_update
+import batched_display
+import batched_display_updates
 import bpy
-import update
-from apply import apply
+import object_display_updates
+from object_display import apply
+from object_display_updates import DependentObjectUpdatePolicy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -48,7 +49,7 @@ class Snapshots:
     display: Any  # apply.Display, or batch.BatchedDisplay
     collection: bpy.types.Collection
     batched: bool
-    users: update.DependentObjectUpdatePolicy
+    users: object_display_updates.DependentObjectUpdatePolicy
     moves: bool  # whether updates keep moved objects and set their matrices
     settings: dict[str, Any]  # build_plan's settings
     last: Step | None  # the latest step, None before the first
@@ -60,12 +61,12 @@ class Snapshots:
         collection: bpy.types.Collection,
         time: float,
         representation: str = "objects",
-        users: update.DependentObjectUpdatePolicy = update.DependentObjectUpdatePolicy.REPOINT,
+        users: DependentObjectUpdatePolicy = DependentObjectUpdatePolicy.REPOINT,
         moves: bool = False,
-        minimum: int = batch.MINIMUM,
+        minimum: int = batched_display.MINIMUM,
         **settings: Any,
     ) -> None:
-        """Batched, copies alike but for their placement batch in groups of at least `minimum`."""
+        """Batch copies that differ only in placement into groups of at least `minimum`."""
         self.native = native
         self.users = users
         self.moves = moves
@@ -75,7 +76,9 @@ class Snapshots:
         self.collection = collection
         self.batched = representation == "batched"
         self.display = (
-            batch.apply_batched(self.plan, collection, minimum) if self.batched else apply(self.plan, collection)
+            batched_display.apply_batched(self.plan, collection, minimum)
+            if self.batched
+            else apply(self.plan, collection)
         )
         self.last = None
 
@@ -89,7 +92,7 @@ class Snapshots:
             seconds[name] = clock.perf_counter() - start
             return result
 
-        updater: Any = batch_update if self.batched else update
+        updater: Any = batched_display_updates if self.batched else object_display_updates
         snapshot = timed("capture", lambda: self.bridge.capture(time, incremental=True))
         plan = timed("planning", lambda: self.native.build_plan(snapshot, previous=self.plan, **self.settings))
         diff = timed("diff", lambda: self.native.diff_plans(self.plan, plan))

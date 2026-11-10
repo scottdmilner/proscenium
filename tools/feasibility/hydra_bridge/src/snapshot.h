@@ -4,8 +4,8 @@
 // it. VtArrays share storage copy-on-write, so copying arrays is cheap. Paths here are Hydra paths.
 #pragma once
 
-#include "copy_bindings.h"
 #include "diagnostics.h"
+#include "instance_material_bindings.h"
 
 #include <pxr/pxr.h>
 #include <pxr/imaging/hd/retainedSceneIndex.h>
@@ -44,8 +44,8 @@ struct Snapshot {
     // Errors and warnings posted while copying each prim, kept so a shared prim keeps its diagnostics.
     std::unordered_map<pxr::SdfPath, Diagnostics, pxr::SdfPath::Hash> primDiagnostics;
     Diagnostics diagnostics;  // all of them, without duplicates; sources are Hydra paths
-    // WORKAROUND for OpenUSD #3690 (copy_bindings.h): UsdShade's bindings for the copies binding collections
-    // reach, by USD path. Shared between captures until a binding or collection edit or a resync.
+    // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): UsdShade's bindings for the copies binding
+    // collections reach, by USD path. Shared between captures until a binding or collection edit or a resync.
     std::shared_ptr<const CopyBindings> copyBindings;
 };
 

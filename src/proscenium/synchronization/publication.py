@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from .prepared_work import PreparationResources
+    from .preparation_resources import PreparationResources
 
 
 def publish(

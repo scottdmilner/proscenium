@@ -24,8 +24,8 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object, sheared, usd_matrix_to_blender
-from selection import ELEMENT
+from object_display import SHEAR_PARENT, Display, new_material, new_mesh, new_object, sheared, usd_matrix_to_blender
+from object_display_selection import ELEMENT
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

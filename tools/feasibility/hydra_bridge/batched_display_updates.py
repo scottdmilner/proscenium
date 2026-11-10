@@ -1,22 +1,22 @@
-"""Update a batched display to a new plan from its diff (M4, Phase D): update.py's counterpart for batch.py.
+"""Update a batched display from a new plan and its diff (M4 Phase D).
 
-The new plan's groups (batch.groups) are matched to the published batches: each to the unclaimed batch of the
+The new plan's groups (batched_display.groups) are matched to the published batches: each to the unclaimed batch of the
 same destinations, object color, and primvar kinds that holds the most of its members' old counterparts.
 Preparation builds, beside the display in a collection no scene links (TXN-05):
-- each new mesh and material, as update.py does;
+- each new mesh and material, as object_display_updates.py does;
 - a batch for each group no published batch matches;
 - new points for a matched batch whose members, or a member's transform or primvars, changed. The members kept
   from the batch keep their selection state;
-- each object the plan adds or changes, as update.py does, and each that was an instance before.
+- each object the plan adds or changes, as object_display_updates.py does, and each that was an instance before.
 
 Publication then makes the change in one call (TXN-06), and undoes all of it if any step fails:
 - it links the new objects and carriers in place of the old ones, and unlinks the removed ones;
 - it moves a matched batch's carriers onto its new points, or else renumbers its points' elements in place;
-- it moves a matched batch's prototype onto its group's mesh and materials, and the kept objects as update.py
-  does, moves included.
+- it updates each matched batch's prototype mesh and materials, and updates kept objects and their transforms
+  through object_display_updates.py.
 
 A matched batch keeps its prototype, and its carriers, which with new points change to one per state those hold
-(batch.fit_carriers), under either user policy, which applies to the objects the
+(batched_display.fit_carriers), under either user policy, which applies to the objects the
 display keeps as objects: an instance has no identity outside its batch. Retirement removes the old objects and
 batches, and the old data nothing uses once they are gone (OWN-08).
 """
@@ -29,8 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import new_object
-from batch import (
+from batched_display import (
     Batch,
     BatchedDisplay,
     CarrierChanges,
@@ -41,9 +40,10 @@ from batch import (
     set_carrier_state,
     set_prototype,
 )
-from batch_selection import states
-from selection import ELEMENT
-from update import (
+from batched_display_selection import states
+from object_display import new_object
+from object_display_selection import ELEMENT
+from object_display_updates import (
     DependentObjectUpdatePolicy,
     ObjectResourceUpdate,
     Transform,

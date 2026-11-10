@@ -5,8 +5,8 @@
 
 #include "correspondence.h"
 #include "diagnostics.h"
+#include "id_property_conversion.h"
 #include "prim_record.h"
-#include "properties.h"
 #include "snapshot.h"
 
 #include <pxr/pxr.h>
@@ -75,7 +75,7 @@ struct MaterialData {
     std::vector<std::pair<pxr::TfToken, pxr::VtValue>> surfaceParameters;
 };
 
-// M4 Phase E: an aspect of an object that can vary over time, as frames.py's Aspect names it.
+// M4 Phase E: an aspect of an object that can vary over time, as frame_capture.py's Aspect names it.
 enum class Aspect : std::uint8_t { Transform, Visibility, Mesh, Materials, Properties, Bounds };
 
 const char *AspectName(Aspect aspect);  // "transform", "visibility", "mesh", "materials", "properties", "bounds"

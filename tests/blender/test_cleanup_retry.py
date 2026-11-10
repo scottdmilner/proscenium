@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import bpy
 import pytest
 
-from fixtures import records as record_fixtures
+from fixtures import schema_version_cases as record_fixtures
 from fixtures import transaction
 from proscenium.binding.persistence import configs, ledgers, records
 from proscenium.binding.results import DiagnosticCode, ResultState

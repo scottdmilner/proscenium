@@ -47,7 +47,7 @@ def entries(display: Any, records: list[dict[str, Any]], materials: list[dict[st
     """The display's manifest entries, by entry key: a random one for each resource, as a publication gives."""
     from collections import defaultdict
 
-    from apply import SHEAR_PARENT
+    from object_display import SHEAR_PARENT
 
     from proscenium.binding.persistence.manifests import ManifestEntry, RepresentationRole, new_entry_key
 

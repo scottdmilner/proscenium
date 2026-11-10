@@ -42,7 +42,7 @@ def run(case: Case) -> None:
         loose == ["/World/Looks/Green"] and oracle.materials_match(loose, planned("", "/World/Loose"), exact=True),
         (loose, planned("", "/World/Loose")),
     )
-    # WORKAROUND for OpenUSD #3690 (src/copy_bindings.h): the core resolves copies that binding collections
+    # WORKAROUND for OpenUSD #3690 (src/instance_material_bindings.h): the core resolves copies that binding collections
     # reach with UsdShade, per instance proxy. Hydra's own bindings still miss them; the known gap below
     # stops reproducing once Blender's USD carries a fix, and the workaround can go.
     inside = oracle.face_materials(stage, "/World/Inside/Blade", TIME)

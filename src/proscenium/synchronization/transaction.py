@@ -20,7 +20,7 @@ from ..binding.persistence import binding_state, ledgers, manifests, records
 from ..binding.results import Diagnostic, DiagnosticCode, Result
 from ..binding.runtime import binding_configs
 from ..binding.source_access import stages
-from . import application, evaluation, prepared_work, publication, retirement
+from . import application, evaluation, preparation_resources, publication, retirement
 
 if TYPE_CHECKING:
     import bpy
@@ -79,7 +79,7 @@ def _attempt(
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
     if isinstance(generation, records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
-    if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
+    if (refused := preparation_resources.cleanup_tracking_diagnostic(binding_id)) is not None:
         return (refused,)
     settings, unit_scale = config.requested_settings, scene.unit_settings.scale_length
     stages_ = current.get_or_create_binding_stages(binding_id)
@@ -98,13 +98,13 @@ def _attempt(
     [plan] = planned
     own = (*own, *evaluation.plan_diagnostics(binding_id, plan))  # content's, so they join the generation's too
 
-    work = prepared_work.new_preparation_resources(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
+    work = preparation_resources.new_preparation_resources(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
     try:
         application.prepare(plan, published, work)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
-        return (*own, failed, *prepared_work.dispose(work))
+        return (*own, failed, *preparation_resources.dispose(work))
     described = binding_state.GenerationMetadata(
         binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, Result(*own).diagnostics
     )
@@ -114,6 +114,6 @@ def _attempt(
         obsolete = publication.publish(destination, work, described, before, previous)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
-        return (*own, failed, *prepared_work.dispose(work))
-    prepared_work.remove_staging_and_clear_tracking(work)
+        return (*own, failed, *preparation_resources.dispose(work))
+    preparation_resources.remove_staging_and_clear_tracking(work)
     return (*own, *retirement.retire(binding_id, obsolete, work.operation))

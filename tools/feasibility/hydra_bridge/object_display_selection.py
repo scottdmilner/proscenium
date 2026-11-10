@@ -1,6 +1,6 @@
 """The baseline's Python display component (M4): Blender's selection state, to and from display elements.
 
-The interaction contract's apply_selection and read_blender_selection. A managed object is one apply.py built,
+The interaction contract's apply_selection and read_blender_selection. A managed object is one object_display.py built,
 named by the element it realizes (its plan index, `proscenium_element`). Each covers exactly one display
 element, so no object is ever partly selected.
 """
