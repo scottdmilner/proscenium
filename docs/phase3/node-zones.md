@@ -49,7 +49,7 @@ The prototype's rules, which `bench.py` checks:
 
 These rules are the prototype's. **Not checked:** how closely they match Geometry Nodes', which also has to decide, for example, where a node fed by both a zone and the outside belongs.
 
-The stage editor's layer zones decide membership in its cook ([Node Tree](node-tree.md#what-a-zone-holds)): a zone holds its Editable Layer chain, since rule 1 through every link would pull another zone's node in through a value output such as Create Prim's Prim. Rule 2 applies there only to drawing the outline. For-each zones, later, need their own downstream rule, along the begin's per-element outputs, since what a for-each zone holds is what it runs per element.
+The stage editor's layer zones decide membership in its cook ([Node Tree](node-tree.md#what-a-zone-holds)): a layer zone holds its Editable Layer chain, since rule 1 through every link would pull another zone's node in through a value output such as Create Prim's Prim, and a Substitution Zone holds the layer zones its items' Files link into. Rule 2 applies there only to drawing the outline. For-each zones, later, need their own downstream rule, along the begin's per-element outputs, since what a for-each zone holds is what it runs per element.
 
 **Checked:** Blender resets every link's validity after the tree's Python `update` returns, so invalid links have to be marked from a timer registered in `update`.
 
