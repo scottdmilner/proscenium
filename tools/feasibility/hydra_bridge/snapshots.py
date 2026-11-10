@@ -30,11 +30,13 @@ if TYPE_CHECKING:
 class Step:
     """One frame step: its time code, the plan and diff it updated by, what the update wrote, and its stages."""
 
-    time: float
+    time_code: float
     plan: Plan
     diff: PlanDiff
-    prepared: Any  # update.PreparedDisplayUpdate, or batch_update.PreparedBatchedDisplayUpdate
-    seconds: dict[str, float] = field(default_factory=dict)  # by stage: capture, planning, diff, prepare, ...
+    prepared_update: Any  # update.PreparedDisplayUpdate, or batch_update.PreparedBatchedDisplayUpdate
+    stage_durations_seconds: dict[str, float] = field(
+        default_factory=dict
+    )  # by stage: capture, planning, diff, prepare, ...
 
 
 class Snapshots:

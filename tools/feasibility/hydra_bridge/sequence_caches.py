@@ -65,13 +65,13 @@ type PrimvarKind = tuple[Sdf.ValueTypeName, str]  # its type, and its interpolat
 class MeshContent:
     """A mesh's content as a sample writes it: its attributes, positions and face material slots included."""
 
-    layers: dict[str, MeshAttributeData]
+    attributes_by_name: dict[str, MeshAttributeData]
     corner_verts: numpy.ndarray
     face_offsets: numpy.ndarray
 
     def same_topology(self, other: MeshContent) -> bool:
         return (
-            self.layers[POSITION].values.size == other.layers[POSITION].values.size
+            self.attributes_by_name[POSITION].values.size == other.attributes_by_name[POSITION].values.size
             and numpy.array_equal(self.corner_verts, other.corner_verts)
             and numpy.array_equal(self.face_offsets, other.face_offsets)
         )
@@ -81,8 +81,11 @@ class MeshContent:
         return (
             isinstance(other, MeshContent)
             and self.same_topology(other)
-            and self.layers.keys() == other.layers.keys()
-            and all(numpy.array_equal(layer.values, other.layers[n].values) for n, layer in self.layers.items())
+            and self.attributes_by_name.keys() == other.attributes_by_name.keys()
+            and all(
+                numpy.array_equal(layer.values, other.attributes_by_name[n].values)
+                for n, layer in self.attributes_by_name.items()
+            )
         )
 
     __hash__ = None  # its arrays are mutable
@@ -149,7 +152,7 @@ class SequenceCaches(MeshCaches):
         """Write the sample of `at`'s time code of each mesh whose content varies; the meshes split, and written."""
         time = at[0]
         self._key_frame(time)
-        present = now.present
+        present = now.object_indices_by_holder
         touched = {
             _uid(self.holder(key)) for key in present if not holder_content_unchanged(now, key)
         } & self.meshes.keys()
@@ -243,14 +246,14 @@ class SequenceCaches(MeshCaches):
         """Write `content` as its mesh's prim's sample at `time`; whether one was written."""
         path = self.prims[uid]
         counts = numpy.diff(content.face_offsets, append=content.corner_verts.size).astype(numpy.int32)
-        positions = content.layers[POSITION].values.reshape(-1, 3)
+        positions = content.attributes_by_name[POSITION].values.reshape(-1, 3)
         with Sdf.ChangeBlock():
             self._set(path, "points", Sdf.ValueTypeNames.Point3fArray, Vt.Vec3fArray.FromNumpy(positions), time)
             self._set(path, "faceVertexCounts", Sdf.ValueTypeNames.IntArray, Vt.IntArray.FromNumpy(counts), time)
             indices = Vt.IntArray.FromNumpy(content.corner_verts)
             self._set(path, "faceVertexIndices", Sdf.ValueTypeNames.IntArray, indices, time)
             kinds = self.kinds[uid]
-            for name, layer in content.layers.items():
+            for name, layer in content.attributes_by_name.items():
                 if name == POSITION:
                     continue
                 kind, value = _primvar(layer)
@@ -262,7 +265,7 @@ class SequenceCaches(MeshCaches):
                     for before in self.layer.ListTimeSamplesForPath(path.AppendProperty("points")):
                         if before != time:
                             self.layer.SetTimeSample(spec.path, before, Sdf.ValueBlock())
-            for name in kinds.keys() - content.layers.keys():  # absent here
+            for name in kinds.keys() - content.attributes_by_name.keys():  # absent here
                 self.layer.SetTimeSample(path.AppendProperty(f"primvars:{name}"), time, Sdf.ValueBlock())
         self.contents[uid] = content
         self._read(uid)  # a holder first present now may share the mesh, with no modifier yet
@@ -310,9 +313,9 @@ def mesh_content(mesh: bpy.types.Mesh) -> MeshContent:
 
 def _holding(content: MeshContent, latest: MeshContent) -> MeshContent:
     """`content`, holding the latest values of an attribute it lacks if its topology is unchanged (D13)."""
-    if not content.same_topology(latest) or latest.layers.keys() <= content.layers.keys():
+    if not content.same_topology(latest) or latest.attributes_by_name.keys() <= content.attributes_by_name.keys():
         return content
-    return replace(content, layers={**latest.layers, **content.layers})
+    return replace(content, attributes_by_name={**latest.attributes_by_name, **content.attributes_by_name})
 
 
 def _primvar(layer: MeshAttributeData) -> tuple[PrimvarKind, Any]:

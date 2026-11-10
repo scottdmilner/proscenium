@@ -57,11 +57,11 @@ class MeshCache:
     Once its topology varies, its whole meshes, and no attributes.
     """
 
-    base: dict[str, MeshAttributeData]  # the values the mesh itself holds, by attribute
-    latest: dict[str, MeshAttributeData]  # its values at the latest synchronization that wrote it
-    varying: dict[str, MeshAttributeData] = field(default_factory=dict)  # by attribute, a layer of its kind
-    whole: MeshSamples | None = None  # its whole meshes, once its topology varies, which split parts share
-    shown: int = BASE  # of those, the sample at its latest synchronization
+    base_attributes: dict[str, MeshAttributeData]  # the values the mesh itself holds, by attribute
+    latest_attributes: dict[str, MeshAttributeData]  # its values at the latest synchronization that wrote it
+    varying_attributes: dict[str, MeshAttributeData] = field(default_factory=dict)  # by attribute, a layer of its kind
+    whole_mesh_samples: MeshSamples | None = None  # its whole meshes, once its topology varies, which split parts share
+    shown_sample_index: int = BASE  # of those, the sample at its latest synchronization
 
 
 @dataclass
@@ -70,11 +70,11 @@ class MeshHolderSynchronizationState:
 
     plan: Plan
     diff: Any
-    present: dict[HolderKey, int]  # the holders present, with an object of theirs in `plan`
-    fresh: dict[HolderKey, ObjectRecord]  # the records read from `plan`: those not kept unchanged
-    mesh_index: dict[HolderKey, int | None]  # the present holders' meshes in `plan`
-    previous: dict[HolderKey, int | None]  # the holders' meshes in the current plan
-    latest: dict[HolderKey, ObjectRecord]  # each holder's record at the latest time it was present
+    object_indices_by_holder: dict[HolderKey, int]  # the holders present, with an object of theirs in `plan`
+    changed_records_by_holder: dict[HolderKey, ObjectRecord]  # the records read from `plan`: those not kept unchanged
+    mesh_indices_by_holder: dict[HolderKey, int | None]  # the present holders' meshes in `plan`
+    previous_mesh_indices_by_holder: dict[HolderKey, int | None]  # the holders' meshes in the current plan
+    latest_records_by_holder: dict[HolderKey, ObjectRecord]  # each holder's record at the latest time it was present
 
 
 class MeshCaches:
@@ -108,7 +108,7 @@ class MeshCaches:
     def has_cached_variation(self, data: Any) -> bool:
         """Whether a holder's data caches frames."""
         cache = self.caches.get(data.session_uid) if data is not None else None
-        return cache is not None and (bool(cache.varying) or cache.whole is not None)
+        return cache is not None and (bool(cache.varying_attributes) or cache.whole_mesh_samples is not None)
 
     def split(self, uid: int, parts: list[set[HolderKey]]) -> int:
         """Keep the first part's holders on the mesh, and give each other part a copy of it; the copies made."""
@@ -121,7 +121,11 @@ class MeshCaches:
             cache = self.caches.get(uid)
             if cache is not None:
                 self.caches[copy.session_uid] = MeshCache(
-                    cache.base, cache.latest, dict(cache.varying), cache.whole, cache.shown
+                    cache.base_attributes,
+                    cache.latest_attributes,
+                    dict(cache.varying_attributes),
+                    cache.whole_mesh_samples,
+                    cache.shown_sample_index,
                 )
             for key in part:
                 self.holder(key).data = copy  # shown its store when it is next written, as every part is
@@ -132,11 +136,15 @@ class MeshCaches:
 
         Returns the meshes split, and those written.
         """
-        present = now.present
+        present = now.object_indices_by_holder
         touched = {
             _uid(self.holder(key)) for key in present if not holder_content_unchanged(now, key)
         } & self.meshes.keys()
-        touched |= {uid for uid, cache in self.caches.items() if cache.varying or cache.whole is not None}
+        touched |= {
+            uid
+            for uid, cache in self.caches.items()
+            if cache.varying_attributes or cache.whole_mesh_samples is not None
+        }
         split = written = 0
         for uid in touched:
             users = sorted(k for k in self.users[uid] if k in present)
@@ -154,22 +162,22 @@ class MeshCaches:
                 if all(holder_content_unchanged(now, k) for k in keys):
                     if cache is None:
                         continue  # what the mesh holds
-                    values = cache.latest
+                    values = cache.latest_attributes
                 else:
                     values, mesh_record = self._content(content, record(now, keys[0]), now.plan)
                 if mesh_record is not None and (
-                    (cache is not None and cache.whole is not None)
+                    (cache is not None and cache.whole_mesh_samples is not None)
                     or not self._same_topology(keys[0], values, mesh_record)
                 ):
                     cache = self._whole(part_uid, cache)
-                if cache is not None and cache.whole is not None:
+                if cache is not None and cache.whole_mesh_samples is not None:
                     self._write_whole(part_uid, cache, mesh_record, at[0])
                     written += 1
                     continue
                 if cache is None:
-                    if now.latest[keys[0]]["mesh"] is None and values["position"].values.size != 3 * len(
-                        self.meshes[part_uid].vertices
-                    ):
+                    if now.latest_records_by_holder[keys[0]]["mesh"] is None and values[
+                        "position"
+                    ].values.size != 3 * len(self.meshes[part_uid].vertices):
                         raise UncachedError(f"{keys[0][0]}: its placeholder's bounds appear or vanish")
                     cache = self.caches[part_uid] = new_cache(self.meshes[part_uid], values)
                 objects = [self.holder(key) for key in self.users[part_uid]]
@@ -216,7 +224,7 @@ class MeshCaches:
         Each time cached before shows what the mesh showed there: its own values, or a sample of its attributes,
         which the mesh then no longer holds.
         """
-        if cache is not None and cache.whole is not None:
+        if cache is not None and cache.whole_mesh_samples is not None:
             return cache
         mesh: Any = self.meshes[uid]
         store = MeshSamples(mesh.name)
@@ -225,7 +233,7 @@ class MeshCaches:
         for obj in objects:
             self.keys.unkey_inputs(obj)
             store.show(frames_modifier(obj), self._whole_group())
-        varying = cache.varying if cache is not None else {}
+        varying = cache.varying_attributes if cache is not None else {}
         added: dict[int, int] = {}  # by sample of its attributes, the store's
         for time in sorted(self.times):
             sample = timeline.get(time, BASE)
@@ -234,20 +242,20 @@ class MeshCaches:
             for obj in objects:
                 self.keys.insert(obj, input_path(SAMPLE), 0, time, added[sample])
         remove_samples(mesh)
-        whole = self.caches[uid] = MeshCache({}, {}, whole=store)
+        whole = self.caches[uid] = MeshCache({}, {}, whole_mesh_samples=store)
         return whole
 
     def _write_whole(self, uid: int, cache: MeshCache, record: MeshRecord | None, time: float) -> None:
         """Add the whole mesh `record` as the sample of `time`, or for None the one shown at the latest again."""
-        assert cache.whole is not None  # noqa: S101 - a whole cache
+        assert cache.whole_mesh_samples is not None  # noqa: S101 - a whole cache
         if record is not None and record["slot_count"] != len(self.meshes[uid].materials):
             raise UncachedError(f"{self.meshes[uid].name}: its material slots vary")
         if record is not None:
-            cache.shown = cache.whole.add(new_mesh(record))
+            cache.shown_sample_index = cache.whole_mesh_samples.add(new_mesh(record))
         for key in self.users[uid]:
             obj = self.holder(key)
-            cache.whole.show(frames_modifier(obj), self._whole_group())
-            self.keys.insert(obj, input_path(SAMPLE), 0, time, cache.shown)
+            cache.whole_mesh_samples.show(frames_modifier(obj), self._whole_group())
+            self.keys.insert(obj, input_path(SAMPLE), 0, time, cache.shown_sample_index)
 
     def write(
         self,
@@ -267,39 +275,42 @@ class MeshCaches:
         held_mesh: Any = mesh
         # An attribute content gains has the mesh's own values before: a mesh lacking it caches whole meshes.
         for name, layer in content.items():
-            if name not in cache.base:
-                cache.base |= new_cache(mesh, {name: layer}).base
-        content = {**cache.latest, **content}
+            if name not in cache.base_attributes:
+                cache.base_attributes |= new_cache(mesh, {name: layer}).base_attributes
+        content = {**cache.latest_attributes, **content}
         added = {
             name: layer
             for name, layer in content.items()
-            if name not in cache.varying and not numpy.array_equal(layer.values, cache.base[name].values)
+            if name not in cache.varying_attributes
+            and not numpy.array_equal(layer.values, cache.base_attributes[name].values)
         }
         if added:
-            first = not cache.varying
-            cache.varying |= added
+            first = not cache.varying_attributes
+            cache.varying_attributes |= added
             for obj in objects:
                 for cached in self.times if first else ():  # the mesh's own values, before it varied
                     self.keys.key_sample(obj, cached, BASE)
-        if cache.varying:
+        if cache.varying_attributes:
             group = self._group(cache)
             for obj in objects:  # a holder first present now may share the mesh, with no modifier yet
                 modifier = frames_modifier(obj)
                 if modifier.node_group != group:
                     modifier.node_group = group
-        for name in cache.varying:
+        for name in cache.varying_attributes:
             layer = content[name]
             held = attribute_for_sample_storage(layer)
             attribute = held_mesh.attributes.new(f"{name}{FRAME_SEPARATOR}{sample}", held.data_type, layer.domain)
             attribute.data.foreach_set(held.prop, held.values)
-        if cache.varying:
+        if cache.varying_attributes:
             for obj in objects:
                 self.keys.key_sample(obj, time, sample)
-        cache.latest = content
-        return bool(cache.varying)
+        cache.latest_attributes = content
+        return bool(cache.varying_attributes)
 
     def _group(self, cache: MeshCache) -> bpy.types.NodeTree:
-        signature: Signature = tuple((n, layer.data_type, layer.domain) for n, layer in sorted(cache.varying.items()))
+        signature: Signature = tuple(
+            (n, layer.data_type, layer.domain) for n, layer in sorted(cache.varying_attributes.items())
+        )
         if signature not in self.groups:
             self.groups[signature] = frames_group(signature, self.keys.blend)
         return self.groups[signature]
@@ -308,31 +319,31 @@ class MeshCaches:
         """Every mesh, and every whole mesh's sample, holder, and collection."""
         data: set[bpy.types.ID] = set(self.meshes.values())
         for cache in self.caches.values():
-            if cache.whole is not None:
-                data |= set(cache.whole.datablocks())
+            if cache.whole_mesh_samples is not None:
+                data |= set(cache.whole_mesh_samples.datablocks())
         return data
 
 
 def content_key(now: MeshHolderSynchronizationState, key: HolderKey) -> ContentKey:
-    index = now.mesh_index[key]
+    index = now.mesh_indices_by_holder[key]
     return ("mesh", index) if index is not None else ("bounds", bounds_key(record(now, key)))
 
 
 def record(now: MeshHolderSynchronizationState, key: HolderKey) -> ObjectRecord:
     """A present holder's record there."""
-    return now.fresh.get(key) or now.latest[key]
+    return now.changed_records_by_holder.get(key) or now.latest_records_by_holder[key]
 
 
 def holder_content_unchanged(now: MeshHolderSynchronizationState, key: HolderKey) -> bool:
     """Whether a present holder's content is what it was at the current plan."""
-    if key not in now.fresh:
+    if key not in now.changed_records_by_holder:
         return True
-    if key not in now.previous:
+    if key not in now.previous_mesh_indices_by_holder:
         return False
-    index = now.mesh_index[key]
+    index = now.mesh_indices_by_holder[key]
     if index is None:
-        return bounds_key(now.fresh[key]) == bounds_key(now.latest[key])
-    return now.diff["previous_mesh_indices"][index] == now.previous[key]
+        return bounds_key(now.changed_records_by_holder[key]) == bounds_key(now.latest_records_by_holder[key])
+    return now.diff["previous_mesh_indices"][index] == now.previous_mesh_indices_by_holder[key]
 
 
 def holder_groups_with_retained_mesh_first(

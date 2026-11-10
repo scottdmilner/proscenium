@@ -166,14 +166,14 @@ def prepare(
             serial += 1
             if set(carried) != old.carriers.keys():
                 changes = fit_carriers(old, set(carried), display.nodes)
-                if changes.created and staging is None:
+                if changes.created_carriers and staging is None:
                     staging = bpy.data.collections.new("Prepared")
-                for carrier in changes.created:
+                for carrier in changes.created_carriers:
                     assert staging is not None
                     staging.objects.link(carrier)
         record = records[members[0]] if reprototyped else None
         renumbered = points is None and not numpy.array_equal(olds, members)
-        batch = Batch(dict(old.carriers if changes is None else changes.carriers), old.prototype, members, key)
+        batch = Batch(dict(old.carriers if changes is None else changes.carriers_by_state), old.prototype, members, key)
         kept.append(RetainedBatchUpdate(batch, record, reprototyped, points, old.points, renumbered, changes))
         batches.append(batch)
     claimed = {old.prototype.as_pointer() for old in matched if old is not None}
@@ -232,7 +232,7 @@ def publish(
                 undo.append(_saved(batch.prototype))
                 set_prototype(batch.prototype, rebatch.prototype_record, new.meshes, new.materials)
             if rebatch.carrier_changes is not None:
-                for carrier, before, after in rebatch.carrier_changes.restated:
+                for carrier, before, after in rebatch.carrier_changes.carrier_state_changes:
                     undo.append(partial(set_carrier_state, carrier, before, new.nodes))
                     set_carrier_state(carrier, after, new.nodes)
             if rebatch.replacement_points_mesh is not None:
@@ -252,7 +252,7 @@ def publish(
             carrier
             for r in prepared.retained_batch_updates
             if r.carrier_changes is not None
-            for carrier in r.carrier_changes.created
+            for carrier in r.carrier_changes.created_carriers
         ]
         for obj in arriving:
             assert staging is not None
@@ -266,7 +266,7 @@ def publish(
             carrier
             for r in prepared.retained_batch_updates
             if r.carrier_changes is not None
-            for carrier in r.carrier_changes.removed
+            for carrier in r.carrier_changes.removed_carriers
         ]
         for obj in departing:
             collection.objects.unlink(obj)
@@ -356,7 +356,7 @@ def _retired(prepared: PreparedBatchedDisplayUpdate, display: BatchedDisplay) ->
         carrier
         for r in prepared.retained_batch_updates
         if r.carrier_changes is not None
-        for carrier in r.carrier_changes.removed
+        for carrier in r.carrier_changes.removed_carriers
     )
     new = prepared.next_display
     meshes = {mesh.as_pointer() for mesh in new.meshes}

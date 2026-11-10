@@ -417,10 +417,10 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
             before = held_by(display, plan.objects)
             blender_scene.frame_set(frame)
             step = followed.last
-            assert step is not None and step.time == frame, (frame, step)
+            assert step is not None and step.time_code == frame, (frame, step)
             linked = {"published": _linked(collection), "expected": _published(followed.display, batched)}
             report = _report(step.plan, followed.display, batched)
-            written = _written(step.prepared, batched)
+            written = _written(step.prepared_update, batched)
             steps.append({"edit": f"frame {frame}", "diff": step.diff, "before": _pointers(before), "linked": linked})
             steps[-1]["before_values"] = _values_of(before)
             steps[-1] |= report | {"written": written, "restored": [], "operations": None}

@@ -104,7 +104,9 @@ class BaselineDisplay:
         return self._interaction.highlight_targets(targets)
 
     def selection_from_blender(self, blender_selection: Any, level: str | None) -> SourceSelection:
-        found = self._interaction.selection_from_blender(blender_selection.selected, blender_selection.active, level)
+        found = self._interaction.selection_from_blender(
+            blender_selection.selected_element_indices, blender_selection.active_element_index, level
+        )
         return SourceSelection(found["targets"], found["active"])
 
     def apply_selection(self, display_targets: Any, active: Any) -> None:
@@ -269,7 +271,7 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
                 "picks": picks,
                 "targets": targets,
                 "selected": sorted(e for obj in selected for e in display.elements(obj)),
-                "read": {"selected": sorted(read.selected), "active": read.active},
+                "read": {"selected": sorted(read.selected_element_indices), "active": read.active_element_index},
             }
         finally:
             display.release()

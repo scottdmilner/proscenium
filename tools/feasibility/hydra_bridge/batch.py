@@ -213,10 +213,10 @@ def set_carrier_state(carrier: bpy.types.Object, state: int, nodes: NodeGroup) -
 class CarrierChanges:
     """How a batch's carriers become one per state in `wanted` (fit_carriers)."""
 
-    carriers: dict[int, bpy.types.Object]  # by state, once the changes are made
-    restated: list[tuple[bpy.types.Object, int, int]]  # kept carriers moved from one state to another
-    created: list[bpy.types.Object]  # new carriers, in no collection
-    removed: list[bpy.types.Object]  # carriers no state needs
+    carriers_by_state: dict[int, bpy.types.Object]  # by state, once the changes are made
+    carrier_state_changes: list[tuple[bpy.types.Object, int, int]]  # kept carriers moved from one state to another
+    created_carriers: list[bpy.types.Object]  # new carriers, in no collection
+    removed_carriers: list[bpy.types.Object]  # carriers no state needs
 
 
 def fit_carriers(batch: Batch, wanted: set[int], nodes: NodeGroup) -> CarrierChanges:

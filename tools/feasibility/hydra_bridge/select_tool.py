@@ -127,7 +127,9 @@ class Session:
         if self._applying:
             return
         blender = batch_selection.read_blender_selection(self.view_layer, self.display)
-        found = self.interaction.selection_from_blender(blender.selected, blender.active, self.level)
+        found = self.interaction.selection_from_blender(
+            blender.selected_element_indices, blender.active_element_index, self.level
+        )
         if (list(found["targets"]), found["active"]) != (self.targets, self.active):
             self.targets, self.active = list(found["targets"]), found["active"]
             self.apply()

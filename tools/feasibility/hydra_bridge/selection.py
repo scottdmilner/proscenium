@@ -22,8 +22,8 @@ ELEMENT = "proscenium_element"
 class BlenderSelection:
     """The selected and active managed objects, by element."""
 
-    selected: list[int]  # in element order
-    active: int | None  # the active object, when it is managed
+    selected_element_indices: list[int]  # in element order
+    active_element_index: int | None  # the active object, when it is managed
 
 
 def managed(collection: bpy.types.Collection) -> dict[int, bpy.types.Object]:

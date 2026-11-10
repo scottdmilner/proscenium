@@ -132,6 +132,12 @@ Cached playback uses `keyframes.AnimationKeyWriter` and `mesh_caches.MeshHolderS
 `CachedDisplay.observed_varying_aspects()` reports variation found during playback, and
 `CachedDisplay.install_frame_change_handler()` connects playback to Blender's frame changes.
 
+Cache records distinguish `base_attributes`, `latest_attributes`, and `varying_attributes` from
+`whole_mesh_samples` and their `shown_sample_index`. Holder state names its object and mesh indices by holder;
+captured sequences name their records by track and frame, and content identifiers by frame. Synchronization
+results report `time_code`, `stage_durations_seconds`, and explicit track and mesh counts. `BlenderSelection`
+holds `selected_element_indices` and `active_element_index`; carrier changes name carriers and their states.
+
 The bridge's application helpers describe mesh attributes with `apply.MeshAttributeData`, returned by
 `apply.mesh_attributes`. Updates prepare `update.PreparedDisplayUpdate` for the object representation or
 `batch_update.PreparedBatchedDisplayUpdate` for the batched representation. Both use

@@ -46,24 +46,28 @@ class DisplayAspect(StrEnum):
 class CapturedFrameSequence:
     """A range's first plan, its tracks, and what changes along them."""
 
-    times: list[float]
-    first: Plan
-    tracks: dict[TrackKey, list[int | None]]  # per track, per frame: its object's plan index, None when absent
+    time_codes: list[float]
+    first_plan: Plan
+    object_indices_by_track: dict[
+        TrackKey, list[int | None]
+    ]  # per track, per frame: its object's plan index, None when absent
     # Per track, by frame: its record wherever it changed (always at its first frame), held until the next.
-    samples: dict[TrackKey, dict[int, ObjectRecord]]
-    varying: dict[TrackKey, set[DisplayAspect]]  # per track, the aspects that vary anywhere in the range; empty if none
+    records_by_track_and_frame: dict[TrackKey, dict[int, ObjectRecord]]
+    varying_aspects_by_track: dict[
+        TrackKey, set[DisplayAspect]
+    ]  # per track, the aspects that vary anywhere in the range; empty if none
     # Per frame, per mesh and per material: an identifier of its content, equal across frames for equal content.
-    mesh_content: list[list[int]]
-    material_content: list[list[int]]
+    mesh_content_ids_by_frame: list[list[int]]
+    material_content_ids_by_frame: list[list[int]]
     # By content identifier, for content first seen after the first frame (the first plan holds the rest).
-    meshes: dict[int, MeshRecord] = field(default_factory=dict)
-    materials: dict[int, MaterialRecord] = field(default_factory=dict)
+    mesh_records_by_content_id: dict[int, MeshRecord] = field(default_factory=dict)
+    material_records_by_content_id: dict[int, MaterialRecord] = field(default_factory=dict)
 
     def record(self, key: TrackKey, frame: int) -> ObjectRecord | None:
         """The track's record at `frame`: the last change at or before it, or None when it is absent."""
-        if self.tracks[key][frame] is None:
+        if self.object_indices_by_track[key][frame] is None:
             return None
-        return self.samples[key][max(f for f in self.samples[key] if f <= frame)]
+        return self.records_by_track_and_frame[key][max(f for f in self.records_by_track_and_frame[key] if f <= frame)]
 
 
 def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings: Any) -> CapturedFrameSequence:
@@ -80,37 +84,41 @@ def capture_frames(native: Any, bridge: Any, times: Sequence[float], **settings:
         else:
             plan = native.build_plan(bridge.capture(time, incremental=True), previous=previous, **settings)
             diff = native.diff_plans(previous, plan)
-            meshes = ids.matched(diff["previous_mesh_indices"], frames.mesh_content[-1])
-            materials = ids.matched(diff["previous_material_indices"], frames.material_content[-1])
-            _keep_new(frames.meshes, diff["previous_mesh_indices"], meshes, plan.meshes_at)
-            _keep_new(frames.materials, diff["previous_material_indices"], materials, _materials_at(plan))
+            meshes = ids.matched(diff["previous_mesh_indices"], frames.mesh_content_ids_by_frame[-1])
+            materials = ids.matched(diff["previous_material_indices"], frames.material_content_ids_by_frame[-1])
+            _keep_new(frames.mesh_records_by_content_id, diff["previous_mesh_indices"], meshes, plan.meshes_at)
+            _keep_new(
+                frames.material_records_by_content_id, diff["previous_material_indices"], materials, _materials_at(plan)
+            )
             at = {index: key for key, index in current.items()}
             changed = set(diff["changed_object_indices"])
             kept = {
                 i: at[old] for i, old in enumerate(diff["previous_object_indices"]) if old != -1 and i not in changed
             }
-        frames.times.append(time)
-        frames.mesh_content.append(meshes)
-        frames.material_content.append(materials)
+        frames.time_codes.append(time)
+        frames.mesh_content_ids_by_frame.append(meshes)
+        frames.material_content_ids_by_frame.append(materials)
         read = [i for i in range(plan.object_count) if i not in kept]
         records = dict(zip(read, plan.objects_at(read), strict=True))
         current = {key: index for index, key in kept.items()}
         for index, record in records.items():
             key = (*copy_of(record), place(index, records, kept))
-            samples = frames.samples.setdefault(key, {})
+            samples = frames.records_by_track_and_frame.setdefault(key, {})
             if samples:
                 last = max(samples)
-                frames.varying[key] |= _differences(frames, last, samples[last], frame, record)
+                frames.varying_aspects_by_track[key] |= _differences(frames, last, samples[last], frame, record)
             else:
-                frames.tracks[key] = [None] * frame
+                frames.object_indices_by_track[key] = [None] * frame
                 # A copy's object that appears mid-range.
-                frames.varying[key] = {DisplayAspect.VISIBILITY} if frame else set()
+                frames.varying_aspects_by_track[key] = {DisplayAspect.VISIBILITY} if frame else set()
             samples[frame] = record
             current[key] = index
-        for key, track in frames.tracks.items():
+        for key, track in frames.object_indices_by_track.items():
             track.append(current.get(key))
             if key not in current:
-                frames.varying[key].add(DisplayAspect.VISIBILITY)  # the copy has no such object at this frame
+                frames.varying_aspects_by_track[key].add(
+                    DisplayAspect.VISIBILITY
+                )  # the copy has no such object at this frame
         previous = plan
     return frames
 
@@ -166,10 +174,10 @@ def _differences(
     """What differs between a track's record at frame `then` and at `frame`, meshes and materials by content."""
 
     def mesh(at: int, record: ObjectRecord) -> int | None:
-        return None if record["mesh"] is None else frames.mesh_content[at][record["mesh"]]
+        return None if record["mesh"] is None else frames.mesh_content_ids_by_frame[at][record["mesh"]]
 
     def slots(at: int, record: ObjectRecord) -> list[int | None]:
-        return [None if m is None else frames.material_content[at][m] for m in record["material_slots"]]
+        return [None if m is None else frames.material_content_ids_by_frame[at][m] for m in record["material_slots"]]
 
     found: set[DisplayAspect] = set()
     if old["matrix"] != new["matrix"]:

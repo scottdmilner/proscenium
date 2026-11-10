@@ -58,7 +58,7 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     try:
         for time in visits:
             result["visits"].append(_visit(native, stage, display, scene, time, subframes))
-        result["split"] = sum(s.split for s in display.synchronized)
+        result["split"] = sum(s.split_mesh_count for s in display.synchronized)
         result["predicted"] = _copies(display.predicted)
         result["confirmed"] = _copies(display.observed_varying_aspects())
         result["cached"] = sorted(display.cached)
@@ -105,7 +105,8 @@ def _whole(display: Any) -> list[str]:
         {
             key[0]
             for key, obj in holders
-            if obj.data is not None and getattr(display.meshes.caches.get(obj.data.session_uid), "whole", None)
+            if obj.data is not None
+            and getattr(display.meshes.caches.get(obj.data.session_uid), "whole_mesh_samples", None)
         }
     )
 
@@ -127,7 +128,7 @@ def _batched(display: Any) -> list[dict[str, Any]]:
             if key not in held:
                 track.append(display.objects[key].data == batch.prototype.data)
             tracks.append(track)
-        varying = sorted(batch.cache.varying) if batch.cache else []
+        varying = sorted(batch.points_cache.varying_attributes) if batch.points_cache else []
         found.append({"tracks": sorted(tracks), "varying": varying})
     return sorted(found, key=lambda b: b["tracks"])
 
@@ -233,7 +234,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
             visits.append({"time": time, "between": [a, b], "mismatches": found})
         return {
             "visits": visits,
-            "synchronized": [s.time for s in display.synchronized[count:]],
+            "synchronized": [s.time_code for s in display.synchronized[count:]],
             "whole": sorted(whole),
             "unresolved": _unresolved(display),
         }
@@ -311,8 +312,8 @@ def _visit(  # noqa: PLR0913 - the display and the time visited
     synchronized = display.synchronized[count:]
     return {
         "time": time,
-        "synchronized": [s.time for s in synchronized],
-        "rebuilt": [s.rebuilt for s in synchronized],
+        "synchronized": [s.time_code for s in synchronized],
+        "rebuilt": [s.display_rebuilt for s in synchronized],
         "mismatches": _mismatches(native, stage, display, time if subframes else float(int(time))),
     }
 

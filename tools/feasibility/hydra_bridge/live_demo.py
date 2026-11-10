@@ -111,7 +111,7 @@ class Session:
             f"{rebuilt_meshes} meshes rebuilt",
             f"{plan.object_count} objects, {plan.mesh_count} meshes, {plan.material_count} materials at time {time:g}",
             f"{total * 1000:.0f} ms: "
-            + ", ".join(f"{name} {seconds * 1000:.0f}" for name, seconds in step.seconds.items()),
+            + ", ".join(f"{name} {seconds * 1000:.0f}" for name, seconds in step.stage_durations_seconds.items()),
         ]
         print("[proscenium] " + " | ".join(self.status))
         _redraw()

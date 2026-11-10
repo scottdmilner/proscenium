@@ -96,8 +96,8 @@ def main() -> int:  # noqa: PLR0915 - one run, start to end
         scene.frame_set(frame)
         step: dict[str, Any] = {"frame": frame, "frame_set s": time.perf_counter() - clock}
         (synchronization,) = display.synchronized[count:]
-        step |= {f"{stage} s": seconds for stage, seconds in synchronization.seconds.items()}
-        step["written"] = synchronization.written
+        step |= {f"{stage} s": seconds for stage, seconds in synchronization.stage_durations_seconds.items()}
+        step["written"] = synchronization.written_mesh_count
         before = footprint(process)
         clock = time.perf_counter()
         bpy.ops.ed.undo_push(message=f"frame {frame}")

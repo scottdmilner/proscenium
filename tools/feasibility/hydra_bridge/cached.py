@@ -85,12 +85,12 @@ __all__ = ["CachedDisplay", "Synchronization", "UncachedError"]
 class Synchronization:
     """One synchronization: its time code, whether it rebuilt the display, and what it wrote."""
 
-    time: float
-    rebuilt: bool
-    seconds: dict[str, float]  # by stage
-    keyed: int = 0  # tracks keyed at this time code
-    written: int = 0  # meshes whose sample attributes were written
-    split: int = 0  # meshes split from another
+    time_code: float
+    display_rebuilt: bool
+    stage_durations_seconds: dict[str, float]  # by stage
+    keyed_track_count: int = 0  # tracks keyed at this time code
+    written_mesh_count: int = 0  # meshes whose sample attributes were written
+    split_mesh_count: int = 0  # meshes split from another
 
 
 class CachedDisplay:
@@ -295,10 +295,10 @@ class CachedDisplay:
         regrouped = None
         if self.batches is not None:
             regrouped = self.batches.regroup(present, fresh, mesh_index, self.latest, new, diff, self._material_or_new)
-            for key, aspects in regrouped.varied.items():
+            for key, aspects in regrouped.varying_aspects_by_track.items():
                 self.varied.setdefault(key, set()).update(aspects)
-            new = [key for key in new if key not in regrouped.joined]
-            for key in regrouped.leaving:  # shown by its batch until now
+            new = [key for key in new if key not in regrouped.joined_tracks]
+            for key in regrouped.departing_tracks:  # shown by its batch until now
                 self._add_track(key, fresh[key], plan, mesh_index, arrived=False)
         for key in new:
             self._add_track(key, fresh[key], plan, mesh_index)
@@ -312,17 +312,25 @@ class CachedDisplay:
             {**self.latest},
         )
         if regrouped is not None:
-            for holder, (index, record, mesh, before) in regrouped.holders.items():
-                now.present[holder], now.mesh_index[holder], now.previous[holder] = index, mesh, before
-                now.latest[holder] = self._holder_record(holder)
+            for holder, (index, record, mesh, before) in regrouped.prototype_holder_states.items():
+                (
+                    now.object_indices_by_holder[holder],
+                    now.mesh_indices_by_holder[holder],
+                    now.previous_mesh_indices_by_holder[holder],
+                ) = index, mesh, before
+                now.latest_records_by_holder[holder] = self._holder_record(holder)
                 if record is not None:
-                    now.fresh[holder] = record
-        result.split, result.written = self.meshes.cache((time, sample), now)
+                    now.changed_records_by_holder[holder] = record
+        result.split_mesh_count, result.written_mesh_count = self.meshes.cache((time, sample), now)
         if self.batches is not None and regrouped is not None:
             moved = {key for key in self.batches.points if (key in present) != (key in self.current)}
-            changed = fresh.keys() | moved | set(regrouped.joined) | set(regrouped.leaving)
-            result.written += self.batches.write(self.meshes, (time, sample), present, fresh, self.latest, changed)
-        result.keyed = self._key_tracks(time, present, {k: r for k, r in fresh.items() if k in self.objects})
+            changed = fresh.keys() | moved | set(regrouped.joined_tracks) | set(regrouped.departing_tracks)
+            result.written_mesh_count += self.batches.write(
+                self.meshes, (time, sample), present, fresh, self.latest, changed
+            )
+        result.keyed_track_count = self._key_tracks(
+            time, present, {k: r for k, r in fresh.items() if k in self.objects}
+        )
         self.latest |= fresh
         self.plan, self.current, self.mesh_index = plan, present, mesh_index
         self.cached[time] = sample
@@ -334,7 +342,7 @@ class CachedDisplay:
     def _holder_record(self, key: HolderKey) -> ObjectRecord:
         """A prototype's record: a track's at the latest time one of its batch was present."""
         assert self.batches is not None  # noqa: S101 - only batches have prototypes
-        return self.batches.batches[key[1]].record  # ty: ignore[invalid-argument-type]
+        return self.batches.batches[key[1]].prototype_record  # ty: ignore[invalid-argument-type]
 
     def _material_or_new(self, index: int) -> Any:
         """A plan material's Blender material, or for one not yet shown, a value no material equals."""
@@ -358,7 +366,7 @@ class CachedDisplay:
             # A mesh another track or a batch shows the same content on now, or a new one.
             shared = [self.objects[k].data for k, i in mesh_index.items() if i == record["mesh"] and k in self.objects]
             batches = self.batches.batches if self.batches is not None else []
-            shared += [b.prototype.data for b in batches if b.mesh == record["mesh"]]
+            shared += [b.prototype.data for b in batches if b.mesh_index == record["mesh"]]
             mesh = shared[0] if shared else new_mesh(plan.meshes_at([record["mesh"]])[0])
         slots: list[Any] = [None if m is None else self._material(m, plan) for m in record["material_slots"]]
         data: Any = {

@@ -129,16 +129,16 @@ def _fit(batch: Batch, wanted: set[int], display: BatchedDisplay) -> None:
     """Give a batch a carrier for each state in `wanted`, and only those, in the collections its carriers are in."""
     changes = fit_carriers(batch, wanted, display.nodes)
     collections = list(next(iter(batch.carriers.values())).users_collection)
-    for carrier in changes.created:
+    for carrier in changes.created_carriers:
         for collection in collections:
             collection.objects.link(carrier)
-    for carrier, _, state in changes.restated:
+    for carrier, _, state in changes.carrier_state_changes:
         set_carrier_state(carrier, state, display.nodes)
-    if changes.removed:
-        bpy.data.batch_remove(changes.removed)
+    if changes.removed_carriers:
+        bpy.data.batch_remove(changes.removed_carriers)
     # A Batch is frozen, but the display's batches hold its carriers by state, as they now are.
     batch.carriers.clear()
-    batch.carriers.update(changes.carriers)
+    batch.carriers.update(changes.carriers_by_state)
 
 
 def _data(attribute: bpy.types.Attribute) -> Any:

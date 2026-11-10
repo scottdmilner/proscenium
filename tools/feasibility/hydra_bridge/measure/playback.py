@@ -148,7 +148,7 @@ def child(config: dict[str, Any]) -> None:
             errors.append(f"{changed.frame_current}: {type(error).__name__}: {error}")
             raise
         if step is not None:
-            stages.append(dict(step.seconds))
+            stages.append(dict(step.stage_durations_seconds))
 
     bpy.app.handlers.frame_change_pre.append(on_frame)
     first_visits, revisits = [], []
