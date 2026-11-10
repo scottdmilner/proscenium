@@ -29,10 +29,16 @@ def failing_preparation(
     """Synchronize with preparation and some of its disposal failing as the fixture says; the result and leftovers."""
     held: list[tuple[RepresentationRole, bpy.types.ID]] = []
     failing: set[bpy.types.ID] = set()
-    hold, world, remove = prepared_work.PreparedWork.track, application._world, removal._batch_remove  # noqa: SLF001
+    hold, world, remove = (
+        prepared_work.PreparationResources.track,
+        application._matrix_from_buffer,
+        removal._batch_remove,
+    )  # noqa: SLF001
     worlds: list[object] = []
 
-    def recording(work: prepared_work.PreparedWork, entry_key: str, role: RepresentationRole, d: bpy.types.ID) -> None:
+    def recording(
+        work: prepared_work.PreparationResources, entry_key: str, role: RepresentationRole, d: bpy.types.ID
+    ) -> None:
         held.append((role, d))
         hold(work, entry_key, role, d)
 
@@ -49,8 +55,8 @@ def failing_preparation(
         remove(datablocks)
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(prepared_work.PreparedWork, "track", recording)
-        patch.setattr(application, "_world", failing_world)
+        patch.setattr(prepared_work.PreparationResources, "track", recording)
+        patch.setattr(application, "_matrix_from_buffer", failing_world)
         patch.setattr(removal, "_batch_remove", failing_remove)
         result = handle.synchronize(time_code)
     assert len(held) == scene.prepared_before_failure

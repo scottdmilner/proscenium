@@ -77,7 +77,7 @@ def _attempt(
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
     if isinstance(generation, records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
-    if (refused := prepared_work.untrackable(binding_id)) is not None:
+    if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
         return (refused,)
     settings, unit_scale = config.settings, scene.unit_settings.scale_length
     stages_ = current.get_or_create_binding_stages(binding_id)
@@ -86,15 +86,17 @@ def _attempt(
     except stages.SourceUnavailableError as error:
         return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
     revision = stages_.source_revision
-    own = evaluation.source_state(binding_id, evaluation_stage)
+    own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
     # Before preparation nothing in Blender has changed, so a failure only reports.
-    planned = evaluation.plans(binding_id, stages_, evaluation_stage, settings, unit_scale, (time_code,))
+    planned = evaluation.evaluate_display_plans(
+        binding_id, stages_, evaluation_stage, settings, unit_scale, (time_code,)
+    )
     if isinstance(planned, Diagnostic):
         return (*own, planned)
     [plan] = planned
     own = (*own, *evaluation.plan_diagnostics(binding_id, plan))  # content's, so they join the generation's too
 
-    work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
+    work = prepared_work.new_preparation_resources(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
     try:
         application.prepare(plan, published, work)
@@ -111,5 +113,5 @@ def _attempt(
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
         return (*own, failed, *prepared_work.dispose(work))
-    prepared_work.remove_staging(work)
+    prepared_work.remove_staging_and_clear_tracking(work)
     return (*own, *retirement.retire(binding_id, obsolete, work.operation))

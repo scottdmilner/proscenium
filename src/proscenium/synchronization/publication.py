@@ -21,12 +21,12 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from .prepared_work import PreparedWork
+    from .prepared_work import PreparationResources
 
 
 def publish(
     destination: bpy.types.Collection,
-    work: PreparedWork,
+    work: PreparationResources,
     generation: binding_state.Generation,
     before: manifests.Manifest | None,
     previous: binding_state.Generation | None,

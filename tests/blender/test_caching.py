@@ -173,7 +173,7 @@ def test_caching_pushes_no_undo_step_and_undo_restores_what_was_cached(bindings:
 def pushing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Push undo steps as Blender with global undo on, outside background mode, would (test_undo.py)."""
     undo.require_global_undo()
-    monkeypatch.setattr(api, "_pushes_undo", lambda: True)
+    monkeypatch.setattr(api, "_undo_steps_enabled", lambda: True)
 
 
 def _unchanged_by_cache(handle: BindingHandle, call: Any) -> Any:

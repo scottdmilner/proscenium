@@ -74,7 +74,7 @@ def remove_unused[K: Hashable](
         undecided -= outcome.released | outcome.pending.keys() | set(level)
         if len(undecided) == before:  # nothing decided: what's left uses each other
             break
-        failures = remove([present[key] for key in level])
+        failures = remove_datablocks_collecting_failures([present[key] for key in level])
         for index, key in enumerate(level):
             if (error := failures.get(index)) is not None:
                 outcome.pending[key] = str(error)
@@ -85,8 +85,8 @@ def remove_unused[K: Hashable](
     return outcome
 
 
-def remove(datablocks: Sequence[bpy.types.ID]) -> dict[int, Exception]:
-    """Remove datablocks, each alive; why each that couldn't be removed wasn't, by its index in datablocks."""
+def remove_datablocks_collecting_failures(datablocks: Sequence[bpy.types.ID]) -> dict[int, Exception]:
+    """Attempt removal of live datablocks and return failures by their input indices."""
     failures: dict[int, Exception] = {}
     if datablocks:
         _remove_halving(list(enumerate(datablocks)), failures)

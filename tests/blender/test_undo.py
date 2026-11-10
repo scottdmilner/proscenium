@@ -1,8 +1,8 @@
 """Undo steps of synchronizations and cleanup retries, and what undo restores (lifecycle.md#undo-and-runtime-state).
 
 On F-FAILED-SETTINGS and F-PREPARATION-CLEANUP-FAILURE (fixtures/transaction.py), M5 plan, D12. Steps are pushed only
-outside background mode, which the bpy wheel always is, so tests that count them patch the API's _pushes_undo; with
-global undo on, the wheel undoes them as Blender would (runtime-record.md#undo). Each test pushes a base step after
+outside background mode, which the bpy wheel always is, so tests that count them patch the API's _undo_steps_enabled;
+with global undo on, the wheel undoes them as Blender would (runtime-record.md#undo). Each test pushes a base step after
 making a marker object, so an undo that reaches past the operation's one step removes the marker.
 """
 
@@ -40,7 +40,7 @@ MARKER = "Undo base"
 def pushing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Push undo steps as Blender with global undo on, outside background mode, would."""
     undo.require_global_undo()
-    monkeypatch.setattr(api, "_pushes_undo", lambda: True)
+    monkeypatch.setattr(api, "_undo_steps_enabled", lambda: True)
 
 
 def _scene() -> bpy.types.Scene:

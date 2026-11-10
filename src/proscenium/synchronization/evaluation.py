@@ -45,7 +45,7 @@ def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tup
     )
 
 
-def source_state(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
+def source_state_diagnostics(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
     """The informational diagnostics on the source's state that a display of it reports: its dirty layers."""
     if not (dirty := stages.dirty_layers(evaluation_stage)):
         return ()
@@ -53,7 +53,7 @@ def source_state(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage)
     return (Diagnostic(DiagnosticCode.UNSAVED_LAYERS, binding_id, message, layers=tuple(sorted(dirty))),)
 
 
-def plans(
+def evaluate_display_plans(
     binding_id: identifiers.BindingId,
     binding_stages: stages.BindingStages,
     evaluation_stage: Usd.Stage,
@@ -61,7 +61,7 @@ def plans(
     unit_scale: float,
     time_codes: Sequence[Usd.TimeCode],
 ) -> list[_core.Plan] | Diagnostic:
-    """The display's plan at each of time_codes, in their order, or the fatal diagnostic saying why there are none.
+    """Evaluate snapshots and build display plans in time-code order, or return a fatal diagnostic.
 
     evaluation_stage is binding_stages' evaluation stage, acquired under settings' payload policy; the plans apply
     settings' conversion and purposes, and unit_scale, the target scene's.

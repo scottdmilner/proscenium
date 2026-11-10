@@ -217,9 +217,9 @@ class Bindings:
     @_reporting_cleanup
     def attach(self, binding_id: identifiers.BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach stage to one binding, requiring confirmation when its stored root identifier differs."""
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return _refused(found)
+            return _unusable_binding_result(found)
         config = found.usable_config()
         identifier = stage.GetRootLayer().identifier
         if config.root_layer_identifier not in (None, identifier) and not confirm:
@@ -244,7 +244,7 @@ class Bindings:
         Raises RefusedRecordError if the binding's configuration can't be read, and DisabledBindingError if it has
         copies and no canonical candidate.
         """
-        return self._found(binding_id).usable_config().settings
+        return self._require_binding(binding_id).usable_config().settings
 
     @_reporting_cleanup
     def set_settings(
@@ -267,9 +267,9 @@ class Bindings:
             "viewport_purposes": None if viewport_purposes is None else tuple(viewport_purposes),
             "render_purposes": None if render_purposes is None else tuple(render_purposes),
         }
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return _refused(found)
+            return _unusable_binding_result(found)
         config = found.usable_config()
         settings = dataclasses.replace(config.settings, **{k: v for k, v in given.items() if v is not None})
         binding_configs.set_config(binding_id, dataclasses.replace(config, settings=settings))
@@ -283,9 +283,9 @@ class Bindings:
         The result names the time code attempted; a refusal before the attempt names only one given.
         """
         given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return Result(*_refused(found).diagnostics, time_codes=() if given is None else (given,))
+            return Result(*_unusable_binding_result(found).diagnostics, time_codes=() if given is None else (given,))
         config = found.usable_config()
         result = transaction.synchronize(binding_id, config, self.stages, given)
         # Every failure before publication is fatal, and none after it (transaction.synchronize), so it published.
@@ -309,9 +309,9 @@ class Bindings:
         given = [Usd.TimeCode(t) for t in time_codes]  # ones caching can use, or a TypeError now
         if any(t.IsDefault() for t in given):
             raise ValueError("The default time code isn't one to cache")
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return _refused(found)
+            return _unusable_binding_result(found)
         return caching.cache(binding_id, found.usable_config(), self.stages, given)
 
     @_not_while_exclusive
@@ -321,14 +321,14 @@ class Bindings:
 
         Raises ValueError, and reloads nothing, if layers names one that isn't a contributing layer.
         """
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return _refused(found)
+            return _unusable_binding_result(found)
         config = found.usable_config()
         try:
             self._get_or_create_stages(binding_id).reload(config.settings.payload_policy, layers)
         except stages.SourceUnavailableError as error:
-            return _unavailable(binding_id, error)
+            return _source_unavailable_result(binding_id, error)
         return Result()
 
     @_exclusive
@@ -338,9 +338,9 @@ class Bindings:
 
         Only this retries it, neither reopening the file nor a synchronization. Its result reports what's pending.
         """
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         if not found.usable:
-            return _refused(found)
+            return _unusable_binding_result(found)
         if pending_cleanup.nothing_pending(binding_id):
             return Result()  # nothing to retry, so nothing committed and no undo step
         result = cleanup_retry.retry_cleanup(binding_id)
@@ -356,19 +356,21 @@ class Bindings:
         another generation makes it possibly out of date, as do a source change, a reload, an attachment, and
         reopening, until it synchronizes again. Raises as requested_settings does for a binding that isn't usable.
         """
-        found = self._found(binding_id)
+        found = self._require_binding(binding_id)
         found.usable_config()  # raises for a binding that isn't usable
         published = self.published.get(binding_id)
         current = self.stages.get(binding_id)
         if published is None or current is None or found.destination is None:
             return True
         shown = binding_state.read_generation(found.destination)
-        showing_it = isinstance(shown, records.Loaded) and _synchronized(shown.record) == _synchronized(published)
+        showing_it = isinstance(shown, records.Loaded) and _without_cached_time_codes(
+            shown.record
+        ) == _without_cached_time_codes(published)
         return not showing_it or published.source_revision != current.source_revision
 
     def live_stage(self, binding_id: identifiers.BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""
-        if not self._found(binding_id).usable:
+        if not self._require_binding(binding_id).usable:
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
@@ -380,8 +382,8 @@ class Bindings:
         """Drop evaluation stages of bindings that no longer exist (BindingStageTracker.prune)."""
         self.stages.prune()
 
-    def _found(self, binding_id: identifiers.BindingId) -> binding_configs.FoundBinding:
-        """The binding; raises BindingNotFoundError if it doesn't exist."""
+    def _require_binding(self, binding_id: identifiers.BindingId) -> binding_configs.FoundBinding:
+        """Find the binding or raise BindingNotFoundError if it doesn't exist."""
         if (found := binding_configs.find_binding(binding_id)) is None:
             raise BindingNotFoundError(binding_id)
         return found
@@ -391,7 +393,7 @@ class Bindings:
         return self.stages.get_or_create_binding_stages(binding_id)
 
 
-def _pushes_undo() -> bool:
+def _undo_steps_enabled() -> bool:
     """Whether an operation that commits pushes an undo step: with global undo on, outside background mode (UNDO-04)."""
     preferences = bpy.context.preferences
     return not bpy.app.background and preferences is not None and preferences.edit.use_global_undo
@@ -402,21 +404,22 @@ def _push_undo(message: str) -> None:
 
     An operator calling the API doesn't declare UNDO, so this is the only step (UNDO-02).
     """
-    if _pushes_undo():
+    if _undo_steps_enabled():
         bpy.ops.ed.undo_push(message=message)
 
 
-def _synchronized(generation: binding_state.Generation) -> binding_state.Generation:
-    """Generation as its synchronization published it, before any time codes were cached in it."""
+def _without_cached_time_codes(generation: binding_state.Generation) -> binding_state.Generation:
+    """Copy the generation metadata with its cached time codes cleared."""
     return dataclasses.replace(generation, cached_time_codes=())
 
 
-def _unavailable(binding_id: identifiers.BindingId, error: stages.SourceUnavailableError) -> Result:
+def _source_unavailable_result(binding_id: identifiers.BindingId, error: stages.SourceUnavailableError) -> Result:
+    """Build the failure result for a binding with no attached source stage."""
     return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)))
 
 
-def _refused(found: binding_configs.FoundBinding) -> Result:
-    """Why a binding that isn't usable refuses."""
+def _unusable_binding_result(found: binding_configs.FoundBinding) -> Result:
+    """Build the refusal result for an unreadable or ambiguously copied binding."""
     if found.unreadable is not None:
         diagnostic = Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, found.binding_id, found.unreadable.message)
         return Result(diagnostic)

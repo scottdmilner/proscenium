@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from ..core import _core
-    from .prepared_work import PreparedWork
+    from .prepared_work import PreparationResources
 
 # A managed object's name, which its bounds mesh shares: a tilde, which sorts after ASCII letters, digits, and most
 # punctuation, then its generation and its ordinal in the plan's order, zero-padded, then its prim's name, so each lands
@@ -43,7 +43,7 @@ _MANAGED_NAME = re.compile(r"~(\d{6})\.\d{7} ")
 REPRESENTATION_VERSION = 1  # the representation this layer applies, which the planning context names
 
 
-def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork) -> None:
+def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationResources) -> None:
     """Make plan's drawn copies in work's staging collection, holding each datablock as it's made (TXN-08).
 
     published is the binding's published manifest, whose entries' keys the prepared resources with their identities
@@ -60,7 +60,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
     parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
     # Objects, and their bounds meshes, are named in the plan's order after a new generation (DECISIONS.md "Managed
     # object names").
-    prefix, ordinals = f"~{_next_generation():06d}.", itertools.count()
+    prefix, ordinals = f"~{_next_object_generation_number():06d}.", itertools.count()
     # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
     # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
     # published display of as many, ad hoc).
@@ -87,7 +87,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
         hidden["hide_viewport"].append(not viewport[copy])
         hidden["hide_render"].append(not render[copy])
         if (shear := shears[copy]) < 0:
-            obj.matrix_world = _world(worlds, copy)
+            obj.matrix_world = _matrix_from_buffer(worlds, copy)
         else:
             # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
             parent_index = used[manifests.RepresentationRole.SHEAR_PARENT]
@@ -98,9 +98,9 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
             hidden["hide_render"].append(False)
             made.append((parent_index, keys[parent_index], parent))
             parent.hide_select = True  # so a pick lands on the object
-            parent.matrix_world = _world(parent_worlds, shear)
+            parent.matrix_world = _matrix_from_buffer(parent_worlds, shear)
             obj.parent = parent
-            obj.matrix_basis = _world(bases, shear)
+            obj.matrix_basis = _matrix_from_buffer(bases, shear)
         for index, key, datablock in made:
             resource = resources[index]
             uses = [keys[used] for used in resource.uses]
@@ -112,7 +112,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparedWork)
 
 
 def key_time_codes(
-    plans: Mapping[float, _core.Plan], published: manifests.Manifest, own: float, work: PreparedWork
+    plans: Mapping[float, _core.Plan], published: manifests.Manifest, own: float, work: PreparationResources
 ) -> dict[str, manifests.EntryChange]:
     """Key each published copy's transform at each of plans' time codes; the manifest changes it makes.
 
@@ -148,7 +148,7 @@ def key_time_codes(
                 changes[object_key] = manifests.EntryChange(entry.covers, entry.role, uses, entry.place)
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
-            world = _world(worlds, copy)
+            world = _matrix_from_buffer(worlds, copy)
             # Below a shear parent, the basis that shows world while the parent keeps its transform; a copy whose
             # shear changes over time is M7's.
             basis = world if obj.parent is None else obj.parent.matrix_world.inverted() @ world
@@ -156,7 +156,7 @@ def key_time_codes(
     return changes
 
 
-def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: PreparedWork) -> None:
+def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: PreparationResources) -> None:
     """Give obj an action, held in work under action_key, keyed at own with the transform obj shows."""
     action = bpy.data.actions.new(obj.name)
     work.track(action_key, manifests.RepresentationRole.ACTION, action)
@@ -166,7 +166,7 @@ def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: Prepar
 
 
 def _insert_keys(
-    action: bpy.types.Action, obj: bpy.types.Object, time_code: float, basis: Matrix, work: PreparedWork
+    action: bpy.types.Action, obj: bpy.types.Object, time_code: float, basis: Matrix, work: PreparationResources
 ) -> None:
     """Key obj's transform in its action at time_code to basis, constant until its next key, undoably in work."""
     location, rotation, scale = basis.decompose()
@@ -186,7 +186,7 @@ def _remove_key(fcurve: bpy.types.FCurve, time_code: float) -> None:
         points.remove(point)
 
 
-def _next_generation() -> int:
+def _next_object_generation_number() -> int:
     """One more than the generation in the last managed object name, or 0 for none.
 
     Blender keeps its objects sorted by name, so the last is usually managed and found at once; a user object sorting
@@ -218,7 +218,7 @@ def _corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
     return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
 
 
-def _world(matrices: memoryview, index: int) -> Matrix:
+def _matrix_from_buffer(matrices: memoryview, index: int) -> Matrix:
     """Matrix `index` of a plan's buffer of them, whose 16 floats each are Blender's column-major layout."""
     columns = matrices[16 * index : 16 * index + 16].tolist()
     return Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed()

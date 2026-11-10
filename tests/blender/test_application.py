@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import Bindings
     from proscenium.binding.persistence.ledgers import LedgerEntry
     from proscenium.binding.source_access.identifiers import BindingId
-    from proscenium.synchronization.prepared_work import PreparedWork
+    from proscenium.synchronization.prepared_work import PreparationResources
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
 SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
@@ -49,11 +49,11 @@ def _binding(bindings: Bindings) -> BindingId:
     return bindings.create_binding(bpy.data.scenes["Scene"]).binding_id
 
 
-def _work(binding_id: BindingId) -> PreparedWork:
-    return prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
+def _work(binding_id: BindingId) -> PreparationResources:
+    return prepared_work.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
-def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparedWork:
+def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
     application.prepare(plan, published or Manifest({}), work)
     return work
@@ -256,7 +256,7 @@ def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> N
 
 
 # Preparation's fallible steps after a resource is made, by the function each runs: its call-th call fails.
-_STEPS = [("_corners", call) for call in range(1, 5)] + [("_world", call) for call in range(1, 5)]
+_STEPS = [("_corners", call) for call in range(1, 5)] + [("_matrix_from_buffer", call) for call in range(1, 5)]
 
 
 @pytest.mark.parametrize(("step", "call"), _STEPS)
@@ -333,7 +333,7 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         plan = _plan(scene.caller, 0.0)
-        _fail_on_call(monkeypatch, "_world", 2)
+        _fail_on_call(monkeypatch, "_matrix_from_buffer", 2)
         before = _datablocks()
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):
@@ -366,7 +366,7 @@ def test_a_leftover_survives_save_and_reopen_through_its_pointer(
         assert (ledger_key, entry.diagnostic) == (diagnostic.resource, diagnostic)
 
 
-def _publish(work: PreparedWork) -> list[bpy.types.Object]:
+def _publish(work: PreparationResources) -> list[bpy.types.Object]:
     """Link work's objects into a destination, as a publication does; the objects."""
     destination = bpy.data.collections.new("Shot")
     bpy.data.scenes["Scene"].collection.children.link(destination)
@@ -377,7 +377,9 @@ def _publish(work: PreparedWork) -> list[bpy.types.Object]:
     return objects
 
 
-def _fail_disposal(monkeypatch: pytest.MonkeyPatch, work: PreparedWork, roles: tuple[str, ...]) -> set[bpy.types.ID]:
+def _fail_disposal(
+    monkeypatch: pytest.MonkeyPatch, work: PreparationResources, roles: tuple[str, ...]
+) -> set[bpy.types.ID]:
     """Make disposal fail for the first held datablock of each role; those datablocks."""
     failing = {next(d for key, d in work.datablocks.items() if work.roles[key] == role) for role in roles}
     remove = removal._batch_remove  # noqa: SLF001
@@ -405,12 +407,12 @@ def _fail_on_call(monkeypatch: pytest.MonkeyPatch, step: str, call: int) -> None
     monkeypatch.setattr(application, step, failing)
 
 
-def _key(work: PreparedWork, datablock: bpy.types.ID) -> str:
+def _key(work: PreparationResources, datablock: bpy.types.ID) -> str:
     [key] = [k for k, d in work.datablocks.items() if d == datablock]
     return key
 
 
-def _shown(work: PreparedWork) -> dict[str, bpy.types.Object]:
+def _shown(work: PreparationResources) -> dict[str, bpy.types.Object]:
     """The prepared copies' objects, by the source each shows."""
     return {
         work.entries[key].covers[0]: obj

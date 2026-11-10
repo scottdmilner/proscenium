@@ -1,9 +1,10 @@
 """Prepared work: what a preparation has made, held by the attempt (pipeline.md#synchronization-transaction).
 
-The application layer holds each resource it creates (PreparedWork.track) before anything else can fail, so a failure
-partway finds everything made so far to dispose of (TXN-08). Resources reused from the published generation are never
-held, so they're never disposal candidates (TXN-09). A cache call also changes published resources, adding keys, and
-holds how to undo each change before making it (PreparedWork.undo), so a failure partway reverts them all (CACHE-03).
+The application layer holds each resource it creates (PreparationResources.track) before anything else can fail, so
+a failure partway finds everything made so far to dispose of (TXN-08). Resources reused from the published generation
+are never held, so they're never disposal candidates (TXN-09). A cache call also changes published resources, adding
+keys, and holds how to undo each change before making it (PreparationResources.undo), so a failure partway reverts
+them all (CACHE-03).
 
 dispose removes the held resources as retirement and a cleanup retry do (removal.remove_unused), users first, the
 staging collection aside. Only one whose removal fails, or whose user's did, enters the pending-cleanup ledger,
@@ -34,8 +35,8 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class PreparedWork:
-    """What a preparation has made so far, so a failure partway leaves it all to dispose of."""
+class PreparationResources:
+    """Track staged resources and rollback callbacks for changes to published resources."""
 
     binding_id: identifiers.BindingId  # the binding preparing it, which owns it
     operation: ledgers.OriginatingOperation
@@ -51,8 +52,8 @@ class PreparedWork:
         self.roles[entry_key] = role
 
 
-def untrackable(binding_id: identifiers.BindingId) -> Diagnostic | None:
-    """Why no prepared work can be made, since the ledger couldn't record a failed disposal, or None if it can."""
+def cleanup_tracking_diagnostic(binding_id: identifiers.BindingId) -> Diagnostic | None:
+    """Report why the ledger cannot track failed disposal, or None when preparation can proceed."""
     try:
         pending_cleanup.check_trackable()
     except records.RefusedRecordError as error:
@@ -62,17 +63,19 @@ def untrackable(binding_id: identifiers.BindingId) -> Diagnostic | None:
     return None
 
 
-def new_prepared_work(binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation) -> PreparedWork:
-    """Empty prepared work for binding_id, with its staging collection.
+def new_preparation_resources(
+    binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation
+) -> PreparationResources:
+    """Create resource tracking for binding_id and its unlinked staging collection.
 
     Raises as pending_cleanup.check_trackable does, having made nothing: work whose failed disposal the ledger couldn't
     record is never prepared.
     """
     pending_cleanup.check_trackable()
-    return PreparedWork(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
+    return PreparationResources(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
 
 
-def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
+def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
     """Remove what work holds, its staging collection included; a cleanup diagnostic for each removal that failed.
 
     Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
@@ -92,11 +95,11 @@ def dispose(work: PreparedWork) -> tuple[Diagnostic, ...]:
     try:
         pending_cleanup.set_ledger_entries(pending)
     finally:
-        remove_staging(work)  # whatever the ledger records, the staging collection isn't a resource
+        remove_staging_and_clear_tracking(work)  # whatever the ledger records, the staging collection isn't a resource
     return tuple(e.diagnostic for e in pending.values())
 
 
-def revert(work: PreparedWork) -> None:
+def revert_published_resource_changes(work: PreparationResources) -> None:
     """Undo work's changes to published resources, in reverse, before disposing of it.
 
     Raises the first undo that failed, as a defect, having tried the rest, with the others' failures as notes.
@@ -114,8 +117,8 @@ def revert(work: PreparedWork) -> None:
         raise failed[0]
 
 
-def remove_staging(work: PreparedWork) -> None:
-    """Remove work's staging collection and let go of what it held: published, or disposed of."""
+def remove_staging_and_clear_tracking(work: PreparationResources) -> None:
+    """Remove the staging collection and clear resource tracking and rollback callbacks."""
     bpy.data.batch_remove([work.staging])
     work.datablocks.clear()
     work.roles.clear()

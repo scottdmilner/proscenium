@@ -6,7 +6,8 @@
 Each run makes a binding through the API (proscenium.api.bindings), attaches the scene's stage, and synchronizes at
 its time code, then synchronizes again at it, a full rebuild that retires the first generation, then caches CACHED
 later time codes. Global undo is on, or as --undo says (M6 Phase F, F5), and the API pushes its step as it would with a
-window (its _pushes_undo patched true, since background mode pushes none). --runtimes runs it in the bpy wheel too.
+window (its _undo_steps_enabled patched true, since background mode pushes none). --runtimes runs it in the bpy wheel
+too.
 Each step of the transaction is timed by wrapping the module function it calls (STEPS), so a time includes the steps
 it calls; a step called more than once is summed, with its calls counted. The stub application layer makes an object
 and a bounds mesh for each drawn copy, not M7's display, so this measures the work around it. Raw runs go to
@@ -37,21 +38,21 @@ CACHED = 3
 SCENES = ["updates", "alab"]  # run.py's groups
 # (module, function) pairs the transaction and cache call reach their steps through, in the order they run.
 STEPS = [
-    ("proscenium.api.bindings", "Bindings._found"),
+    ("proscenium.api.bindings", "Bindings._require_binding"),
     ("proscenium.synchronization.transaction", "synchronize"),
     ("proscenium.synchronization.caching", "cache"),
     ("proscenium.binding.persistence.manifests", "read_manifest"),
     ("proscenium.binding.persistence.binding_state", "read_generation"),
     ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),
-    ("proscenium.synchronization.evaluation", "source_state"),
-    ("proscenium.synchronization.evaluation", "plans"),
+    ("proscenium.synchronization.evaluation", "source_state_diagnostics"),
+    ("proscenium.synchronization.evaluation", "evaluate_display_plans"),
     ("proscenium.synchronization.application", "prepare"),
     ("proscenium.synchronization.application", "key_time_codes"),
     ("proscenium.synchronization.publication", "publish"),
     ("proscenium.binding.persistence.manifests", "write_manifest"),
     ("proscenium.binding.runtime.ownership", "set_manifest_entries"),
     ("proscenium.binding.persistence.binding_state", "write_generation"),
-    ("proscenium.synchronization.prepared_work", "remove_staging"),
+    ("proscenium.synchronization.prepared_work", "remove_staging_and_clear_tracking"),
     ("proscenium.synchronization.retirement", "retire"),
     ("proscenium.synchronization.removal", "remove_unused"),
     ("bpy.data", "user_map"),
@@ -100,7 +101,7 @@ def child(config: dict[str, Any]) -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = config.get("undo", True)
-    api._pushes_undo = lambda: True  # noqa: SLF001  # ty: ignore[invalid-assignment] - as with a window
+    api._undo_steps_enabled = lambda: True  # noqa: SLF001  # ty: ignore[invalid-assignment] - as with a window
     timings: dict[str, dict[str, float]] = {}
 
     def wrapped(label: str, call: Any) -> Any:

@@ -41,7 +41,7 @@ def _counted(monkeypatch: pytest.MonkeyPatch, fail: Callable[[Sequence[bpy.types
 def test_datablocks_are_removed_in_one_call(monkeypatch: pytest.MonkeyPatch) -> None:
     objects = _objects(5)
     calls = _counted(monkeypatch, lambda _: False)
-    assert removal.remove(objects) == {}
+    assert removal.remove_datablocks_collecting_failures(objects) == {}
     assert calls == [5]
     assert not any(records.alive(obj) for obj in objects)
 
@@ -53,7 +53,7 @@ def test_a_failure_is_found_by_halving(monkeypatch: pytest.MonkeyPatch) -> None:
     objects = _objects(4)
     failing = objects[2]
     calls = _counted(monkeypatch, lambda datablocks: failing in datablocks)
-    failures = removal.remove(objects)
+    failures = removal.remove_datablocks_collecting_failures(objects)
     assert list(failures) == [2]
     assert calls == [4, 1, 2, 1, 1]
     assert [records.alive(obj) for obj in objects] == [False, False, True, False]
@@ -64,7 +64,7 @@ def test_halving_takes_about_log_n_calls_a_failure(monkeypatch: pytest.MonkeyPat
     objects = _objects(64)
     failing = {objects[5].session_uid, objects[40].session_uid}
     calls = _counted(monkeypatch, lambda datablocks: bool(failing & {d.session_uid for d in datablocks}))
-    failures = removal.remove(objects)
+    failures = removal.remove_datablocks_collecting_failures(objects)
     assert sorted(failures) == [5, 40]
     assert len(calls) <= 2 * 2 * 6 + 1
     assert [i for i, obj in enumerate(objects) if records.alive(obj)] == [5, 40]

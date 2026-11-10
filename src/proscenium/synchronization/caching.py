@@ -64,7 +64,7 @@ def cache(
     have = {published.time_code, *published.cached_time_codes}
     new = sorted({t.GetValue() for t in time_codes} - have)
     attempted = [Usd.TimeCode(t) for t in new]
-    if (refused := prepared_work.untrackable(binding_id)) is not None:
+    if (refused := prepared_work.cleanup_tracking_diagnostic(binding_id)) is not None:
         return Result(refused, time_codes=attempted)
 
     binding_stages = current.get_or_create_binding_stages(binding_id)
@@ -84,15 +84,15 @@ def cache(
         return Result(Diagnostic(DiagnosticCode.NEEDS_SYNCHRONIZATION, binding_id, message), time_codes=attempted)
     if not new:
         return Result()
-    own = evaluation.source_state(binding_id, evaluation_stage)
-    planned = evaluation.plans(
+    own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
+    planned = evaluation.evaluate_display_plans(
         binding_id, binding_stages, evaluation_stage, published.settings, published.unit_scale, attempted
     )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, time_codes=attempted)
     own = (*own, *(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan)))
 
-    work = prepared_work.new_prepared_work(binding_id, ledgers.OriginatingOperation.CACHE)
+    work = prepared_work.new_preparation_resources(binding_id, ledgers.OriginatingOperation.CACHE)
     before = manifests.Manifest({}) if manifest is None else manifest.record
     try:
         changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
@@ -110,17 +110,17 @@ def cache(
         message = f"Recording the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
         return Result(*own, failed, *_discarded(work), time_codes=attempted)
-    prepared_work.remove_staging(work)
+    prepared_work.remove_staging_and_clear_tracking(work)
     return Result(*own, time_codes=attempted)
 
 
-def _discarded(work: prepared_work.PreparedWork) -> tuple[Diagnostic, ...]:
+def _discarded(work: prepared_work.PreparationResources) -> tuple[Diagnostic, ...]:
     """Undo work's changes to the published generation, and dispose of what it made; each disposal that failed.
 
     Raises, as defects, what reverting or writing the ledger raises, having disposed of the work either way.
     """
     try:
-        prepared_work.revert(work)
+        prepared_work.revert_published_resource_changes(work)
     finally:
         disposed = prepared_work.dispose(work)
     return disposed

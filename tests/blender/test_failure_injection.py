@@ -2,8 +2,8 @@
 
 On F-FAILED-SETTINGS, F-DIRTY-LAYER, and F-SOURCE-CHANGE. Each failure is injected by patching a module function the
 transaction calls, or the core's own error path, so src/ has no hooks, and each test compares the whole published
-generation before and after through published.py (TLAY-03). Preparation fails through PreparedWork.track, which the
-stub and M7's application layer share, so these tests rerun unchanged against M7's.
+generation before and after through published.py (TLAY-03). Preparation fails through PreparationResources.track,
+which the stub and M7's application layer share, so these tests rerun unchanged against M7's.
 """
 
 from __future__ import annotations
@@ -67,16 +67,18 @@ def _raising(*_args: object) -> None:
 
 def _failing_after(monkeypatch: pytest.MonkeyPatch, held: int) -> None:
     """Make preparation fail right after its held-th resource is made and held."""
-    track = prepared_work.PreparedWork.track
+    track = prepared_work.PreparationResources.track
     calls: list[None] = []
 
-    def failing(work: prepared_work.PreparedWork, entry_key: str, role: RepresentationRole, d: bpy.types.ID) -> None:
+    def failing(
+        work: prepared_work.PreparationResources, entry_key: str, role: RepresentationRole, d: bpy.types.ID
+    ) -> None:
         track(work, entry_key, role, d)
         calls.append(None)
         if len(calls) == held:
             raise RuntimeError("injected preparation failure")
 
-    monkeypatch.setattr(prepared_work.PreparedWork, "track", failing)
+    monkeypatch.setattr(prepared_work.PreparationResources, "track", failing)
 
 
 ATTEMPTED_RESOURCES = transaction.resource_count(PayloadPolicy.LOAD_NONE)  # F-FAILED-SETTINGS' attempt's
@@ -128,9 +130,11 @@ def test_a_core_error_fails_before_touching_the_display(
         handle = _attempting(bindings, scene)
         published, before = _published(handle), datablocks()
         prepared: list[None] = []
-        new_prepared_work = prepared_work.new_prepared_work
+        new_preparation_resources = prepared_work.new_preparation_resources
         monkeypatch.setattr(
-            prepared_work, "new_prepared_work", lambda *a: prepared.append(None) or new_prepared_work(*a)
+            prepared_work,
+            "new_preparation_resources",
+            lambda *a: prepared.append(None) or new_preparation_resources(*a),
         )
         inject(monkeypatch)
         result = handle.synchronize(scene.attempted[1])
@@ -148,13 +152,13 @@ def test_nothing_changes_before_preparation(
         handle = _attempting(bindings, scene)
         published, before = _published(handle), datablocks()
         at_preparation: list[tuple[object, ...]] = []
-        new_prepared_work = prepared_work.new_prepared_work
+        new_preparation_resources = prepared_work.new_preparation_resources
 
-        def noting(*args: Any) -> prepared_work.PreparedWork:
+        def noting(*args: Any) -> prepared_work.PreparationResources:
             at_preparation.append((_published(handle), datablocks()))
-            return new_prepared_work(*args)
+            return new_preparation_resources(*args)
 
-        monkeypatch.setattr(prepared_work, "new_prepared_work", noting)
+        monkeypatch.setattr(prepared_work, "new_preparation_resources", noting)
         _failing_after(monkeypatch, 1)
         assert handle.synchronize(scene.attempted[1]).state is ResultState.FATAL_FAILURE
         assert at_preparation == [(published, before)]

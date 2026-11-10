@@ -115,7 +115,7 @@ def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
     with pytest.raises(ValueError, match="2 binding indexes"):
         runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
     with pytest.raises(ValueError, match="2 binding indexes"):
-        prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
+        prepared_work.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
     assert runtime.pending_cleanup.cleanup_status(binding_id) == ()  # no ledger names what's pending
     assert all(ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.configs.index_texts())
 
@@ -139,7 +139,7 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
             ledgers.write_ledger_entries(_text(), Ledger(_entries(binding_id)), [key("mesh")], [])
         collections = len(bpy.data.collections)
         with pytest.raises(RefusedRecordError):
-            prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
+            prepared_work.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
         assert len(bpy.data.collections) == collections
         assert _stored() == stored
 

@@ -159,7 +159,7 @@ def child(config: dict[str, Any]) -> None:
         assert from_tuple == from_buffer
         worlds = views["copy_worlds"]
         matrices = []
-        for copy in range(plan.copy_count):  # as application._world
+        for copy in range(plan.copy_count):  # as application._matrix_from_buffer
             columns = worlds[16 * copy : 16 * copy + 16].tolist()
             matrices.append(Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed())
         mark("matrices from the buffer")

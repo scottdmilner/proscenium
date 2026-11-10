@@ -3,7 +3,7 @@
 At each of a time-varying fixture's sampled time codes (support/time_codes.py), the plan a synchronization builds and
 the one a cache call builds hold each drawn copy's world transform and participation as the fixture gives them there:
 F-TRANSFORMS' Animated's translate under both payload policies, and F-VISIBILITY-PURPOSE's Blinking's visibility.
-The plans are read as the transaction gets them, through a spy on synchronization.evaluation.plans; a
+The plans are read as the transaction gets them, through a spy on synchronization.evaluation.evaluate_display_plans; a
 synchronization's published objects show its plan, and a cache call's keys its transforms. Cached visibility is
 M7's, so a cache call's participation is checked on its plans alone.
 """
@@ -58,9 +58,9 @@ class Shown:
 
 @pytest.fixture
 def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
-    """Every plan the transaction and cache calls get from evaluation.plans, in order."""
+    """Every plan the transaction and cache calls get from evaluation.evaluate_display_plans, in order."""
     got: list[_core.Plan] = []
-    original = planning.plans
+    original = planning.evaluate_display_plans
 
     def spy(*args: object) -> object:
         planned = original(*args)  # ty: ignore[invalid-argument-type] - passed through as given
@@ -68,7 +68,7 @@ def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
         got.extend(planned)
         return planned
 
-    monkeypatch.setattr(planning, "plans", spy)
+    monkeypatch.setattr(planning, "evaluate_display_plans", spy)
     return got
 
 
