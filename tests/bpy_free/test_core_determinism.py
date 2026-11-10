@@ -75,13 +75,13 @@ def test_a_separate_process_plans_the_same(
     # PLAN-08 across processes, on F-TRANSFORMS and on F-NESTED-STRESS' nested instances, whose copies the capture
     # copies and the reader reads in parallel.
     with generator(tmp_path) as scene:
-        here = contents(_core.plan(_capture(open_stage_without_cache(scene.root), time), SETTINGS, CONTEXT))
-        assert _elsewhere(scene.root, time) == here
+        here = contents(_core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT))
+        assert _elsewhere(scene.root_layer_path, time) == here
 
 
 def test_a_plan_reads_nothing_but_its_inputs(transforms: evaluation.TransformsScene) -> None:
     # PLAN-09: the same plan from a snapshot whose stage and chain are gone.
-    stage = open_stage_without_cache(transforms.root)
+    stage = open_stage_without_cache(transforms.root_layer_path)
     chain = _core.SceneIndexChain(stage)
     snapshot = chain.capture(Usd.TimeCode(0.0))
     alive = contents(_core.plan(snapshot, SETTINGS, CONTEXT))
@@ -96,6 +96,8 @@ def test_identities_are_the_same_in_a_separate_process(tmp_path: Path) -> None:
     # process derives it.
     with transaction.retirement_failure(tmp_path) as scene:
         for time in scene.time_codes:
-            here = contents(_core.plan(_capture(open_stage_without_cache(scene.root), time), SETTINGS, CONTEXT))
+            here = contents(
+                _core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT)
+            )
             identities = [resource[:3] for resource in here["resources"]]
-            assert [r[:3] for r in _elsewhere(scene.root, time)["resources"]] == identities
+            assert [r[:3] for r in _elsewhere(scene.root_layer_path, time)["resources"]] == identities

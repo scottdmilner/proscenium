@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 class Expected:
     """What a fixture is built to display at each time code."""
 
-    root: Path
+    root_layer_path: Path
     sampled: time_codes.SampledTimeCodes
     world: Callable[[str, float | None], Gf.Matrix4d] | None  # drawn mesh, time code -> world transform, or unchecked
     shown: Callable[[str, float | None], tuple[bool, bool]]  # -> whether it displays in the viewport and render
@@ -75,7 +75,7 @@ def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
 def _transforms(tmp_path: Path, policy: PayloadPolicy) -> Generator[Expected]:
     with evaluation.transforms(tmp_path) as scene:
         yield Expected(
-            scene.root,
+            scene.root_layer_path,
             time_codes.sampled("F-TRANSFORMS", scene.variation),
             scene.world_at,
             lambda _path, _time_code: (True, True),  # every mesh is of the default purpose and visible
@@ -86,7 +86,7 @@ def _transforms(tmp_path: Path, policy: PayloadPolicy) -> Generator[Expected]:
 def _visibility(tmp_path: Path, _policy: PayloadPolicy) -> Generator[Expected]:
     with evaluation.visibility_purpose(tmp_path) as scene:
         yield Expected(
-            scene.root,
+            scene.root_layer_path,
             time_codes.sampled("F-VISIBILITY-PURPOSE", scene.variation),
             None,  # its transforms don't vary, and are F-TRANSFORMS' to check
             lambda path, t: (
@@ -178,7 +178,9 @@ def test_each_sampled_time_code_synchronized(
     # the fixture's world transforms and participation at its time code, and its published objects show them.
     build, policy = CASES[case]
     for expected in build(tmp_path, policy):
-        handle = binding_on_file(bindings, bpy.data.scenes["Scene"], expected.root, payload_policy=policy, name="Shot")
+        handle = binding_on_file(
+            bindings, bpy.data.scenes["Scene"], expected.root_layer_path, payload_policy=policy, name="Shot"
+        )
         for time_code in expected.sampled.time_codes:
             given = Usd.TimeCode.Default() if time_code is None else Usd.TimeCode(time_code)
             assert handle.synchronize(given).state is ResultState.SUCCESS, time_code
@@ -199,7 +201,9 @@ def test_each_sampled_time_code_cached(bindings: Bindings, tmp_path: Path, plans
     # the fixture's values at each, and each object shows its world transform there.
     build, policy = CASES[case]
     for expected in build(tmp_path, policy):
-        handle = binding_on_file(bindings, bpy.data.scenes["Scene"], expected.root, payload_policy=policy, name="Shot")
+        handle = binding_on_file(
+            bindings, bpy.data.scenes["Scene"], expected.root_layer_path, payload_policy=policy, name="Shot"
+        )
         synchronized = expected.sampled.start  # a generation at the default time code has nothing to cache
         assert handle.synchronize(synchronized).state is ResultState.SUCCESS
         plans.clear()

@@ -80,10 +80,10 @@ def normalize_markdown_text(text: str) -> str:
 class Block:
     """One bullet, paragraph, table row, or code block: the unit a row or exclusion must trace."""
 
-    doc: str  # path relative to docs/
-    sections: list[str]  # anchors of the enclosing headings, outermost first
+    document_path: str  # path relative to docs/
+    section_anchors: list[str]  # anchors of the enclosing headings, outermost first
     text: str  # plain text
-    line: int  # 1-based line where the block starts; with doc, its identity
+    line_number: int  # 1-based line where the block starts; with doc, its identity
 
 
 def blocks(doc: str) -> list[Block]:
@@ -319,12 +319,14 @@ def check(matrix: Matrix) -> list[str]:
             problems.append(f"{r.id}: no heading for #{anchor} in {doc}")
             continue
         # A quote matches a block in its section or any subsection; it must match exactly one.
-        hits = [b for b in all_blocks[doc] if anchor in b.sections and normalize_markdown_text(r.quote) in b.text]
+        hits = [
+            b for b in all_blocks[doc] if anchor in b.section_anchors and normalize_markdown_text(r.quote) in b.text
+        ]
         if not hits:
             problems.append(f"{r.id}: quote not found under {r.section}: {r.quote!r}")
         elif len(hits) > 1:
             problems.append(f"{r.id}: quote matches {len(hits)} blocks; quote more of the text: {r.quote!r}")
-        covered.update((b.doc, b.line) for b in hits)
+        covered.update((b.document_path, b.line_number) for b in hits)
     for ex in matrix.excluded:
         where = f"excluded {ex.get('section')}"
         if extra := set(ex) - {"section", "quotes", "reason", "restates"}:
@@ -338,17 +340,17 @@ def check(matrix: Matrix) -> list[str]:
             continue
         # Unlike row quotes, an exclusion quote may match several blocks (for example "|" for
         # every table row); a section without an anchor is the whole doc.
-        in_section = [b for b in all_blocks[doc] if not anchor or anchor in b.sections]
+        in_section = [b for b in all_blocks[doc] if not anchor or anchor in b.section_anchors]
         for quote in ex.get("quotes") or [""]:  # no quotes: the whole section
             hits = [b for b in in_section if normalize_markdown_text(quote) in b.text]
             if not hits:
                 problems.append(f"{where}: matches nothing: {quote!r}")
-            covered.update((b.doc, b.line) for b in hits)
+            covered.update((b.document_path, b.line_number) for b in hits)
     for bs in all_blocks.values():
         problems += [
-            f"{b.doc}:{b.line}: not traced by any row or exclusion: {b.text[:90]!r}"
+            f"{b.document_path}:{b.line_number}: not traced by any row or exclusion: {b.text[:90]!r}"
             for b in bs
-            if (b.doc, b.line) not in covered and not _lead_in(b)
+            if (b.document_path, b.line_number) not in covered and not _lead_in(b)
         ]
 
     # Invariants.
@@ -371,22 +373,22 @@ def check_invariants(rows: dict[str, Row]) -> list[str]:
     problems = []
     raw_lines = (DOCS / INVARIANTS).read_text(encoding="utf-8").splitlines()
     for b in blocks(INVARIANTS):
-        if b.sections == [] or b.text.startswith("Cross-cutting"):
+        if b.section_anchors == [] or b.text.startswith("Cross-cutting"):
             continue  # the file's introduction, not an invariant
         m = re.search(r"\(([A-Z][A-Z0-9-]*(?:, [A-Z][A-Z0-9-]*)*)\)$", b.text)
         if not m:
-            problems.append(f"{INVARIANTS}:{b.line}: invariant names no requirement IDs: {b.text[:70]!r}")
+            problems.append(f"{INVARIANTS}:{b.line_number}: invariant names no requirement IDs: {b.text[:70]!r}")
             continue
         # Links are gone from the block's plain text, so read them from the raw line.
-        raw = raw_lines[b.line - 1]
+        raw = raw_lines[b.line_number - 1]
         targets = (_resolve(INVARIANTS, target) for target in re.findall(r"\]\(([^)]+)\)", raw))
         linked = {t for t in targets if t}
         for rid in m.group(1).split(", "):
             if rid not in rows:
-                problems.append(f"{INVARIANTS}:{b.line}: unknown requirement {rid}")
+                problems.append(f"{INVARIANTS}:{b.line_number}: unknown requirement {rid}")
             elif rows[rid].section not in linked:
                 problems.append(
-                    f"{INVARIANTS}:{b.line}: {rid} is in {rows[rid].section}, which the bullet does not link"
+                    f"{INVARIANTS}:{b.line_number}: {rid} is in {rows[rid].section}, which the bullet does not link"
                 )
     return problems
 

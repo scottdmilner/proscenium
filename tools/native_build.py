@@ -48,8 +48,8 @@ MACOS_MIN = "11.2"
 class NativeModuleBuildResult:
     """The native module's output path and build and linkage-audit manifest."""
 
-    module: Path  # the module, moved into the output directory
-    manifest: dict[str, Any]  # platform, Blender release, dependency revision, command, and audit
+    module_path: Path  # the module, moved into the output directory
+    build_manifest: dict[str, Any]  # platform, Blender release, dependency revision, command, and audit
 
 
 def build_module(source: Path, out: Path, name: str, usd_library: Path | None = None) -> NativeModuleBuildResult:
@@ -74,7 +74,7 @@ def build_module(source: Path, out: Path, name: str, usd_library: Path | None = 
         "platform": key,
         "blender_tag": blender["tag"],
         "blender_commit": blender["commit"],
-        "dependency_repo": LIBS[key].repo,
+        "dependency_repo": LIBS[key].repository_name,
         "dependency_revision": _git(deps, "rev-parse", "HEAD"),
         "command": command,
         "module": str(module),

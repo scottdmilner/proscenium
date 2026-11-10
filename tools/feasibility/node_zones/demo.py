@@ -38,10 +38,10 @@ def build_demo(tree: Any) -> dict[str, Any]:
     n: dict[str, Any] = {}
     n["input"] = _node(tree, "POC_ZONES_stage_input", -700, 0, "Stage Input")
     n["each"] = addon.add_zone(tree, FOREACH, (-450, 0), (950, 0))
-    n["each_end"] = next(node for node in tree.nodes if node.uid == n["each"].partner)
+    n["each_end"] = next(node for node in tree.nodes if node.uid == n["each"].partner_uid)
     n["set"] = _node(tree, "POC_ZONES_set_attribute", -200, 40, "Set Attribute")
     n["variant"] = addon.add_zone(tree, VARIANT, (50, 40), (500, 40))
-    n["variant_end"] = next(node for node in tree.nodes if node.uid == n["variant"].partner)
+    n["variant_end"] = next(node for node in tree.nodes if node.uid == n["variant"].partner_uid)
     n["select"] = _node(tree, "POC_ZONES_select_variant", 270, 60, "Select Variant")
     n["value"] = _node(tree, "POC_ZONES_value", 270, -140, "Value (only used inside)")
     n["transform"] = _node(tree, "POC_ZONES_transform", 730, 40, "Transform")
@@ -78,7 +78,7 @@ def build_large(tree: Any, zones: int, per_zone: int) -> None:
     for z in range(zones):
         y = (z % 4) * 600.0
         begin = addon.add_zone(tree, FOREACH, (x, y), (x, y))
-        end = next(node for node in tree.nodes if node.uid == begin.partner)
+        end = next(node for node in tree.nodes if node.uid == begin.partner_uid)
         tree.links.new(previous.outputs[0], begin.inputs[0])
         last = begin
         for i in range(per_zone):
@@ -134,7 +134,7 @@ class Demo:
         tree.nodes.active = nodes[0]
 
     def zone_nodes(self, tree: Any) -> list[tuple[str, int, int]]:
-        return sorted((node.name, node.uid, node.partner) for node in tree.nodes if hasattr(node, "partner"))
+        return sorted((node.name, node.uid, node.partner_uid) for node in tree.nodes if hasattr(node, "partner_uid"))
 
 
 def _node_groups() -> Any:
@@ -151,7 +151,7 @@ def _pairs(tree: Any) -> dict[str, str]:
     """Each begin's name to its end's name."""
     by_uid = {node.uid: node for node in tree.nodes if hasattr(node, "uid")}
     return {
-        node.name: by_uid[node.partner].name if node.partner in by_uid else "-"
+        node.name: by_uid[node.partner_uid].name if node.partner_uid in by_uid else "-"
         for node in tree.nodes
         if getattr(node, "zone_role", None) is addon.zone_model.ZoneRole.BEGIN
     }
@@ -174,8 +174,8 @@ def steps() -> Iterator[float]:
     result = addon.zone_layout(tree)
     names = {node.uid: node.name for node in tree.nodes if hasattr(node, "uid")}
     for zone in result.zones:
-        body = sorted(names[uid] for uid in zone.body)
-        print(f"zone {names[zone.begin]} -> {names[zone.end]}, depth {zone.depth}: {body}")
+        body = sorted(names[uid] for uid in zone.body_node_uids)
+        print(f"zone {names[zone.begin_uid]} -> {names[zone.end_uid]}, depth {zone.depth}: {body}")
     print("problems:", result.problems)
     print("invalid links:", [(link.from_node.name, link.to_node.name) for link in tree.links if not link.is_valid])
     print(f"collapsed node dimensions {tuple(n['loose'].dimensions)}")
@@ -188,7 +188,7 @@ def steps() -> Iterator[float]:
     demo.shot("1b_recolored")
     _, _, colors = addon.node_rects(tree)
     for zone in addon.zone_layout(tree).zones:
-        print(f"zone {names[zone.begin]} color {tuple(round(c, 2) for c in addon.zone_color(zone, colors))}")
+        print(f"zone {names[zone.begin_uid]} color {tuple(round(c, 2) for c in addon.zone_color(zone, colors))}")
     n["each"].use_custom_color = n["each_end"].use_custom_color = True
 
     # The add-zone and pair operators, as the Add menu and the sidebar call them.
@@ -208,7 +208,7 @@ def steps() -> Iterator[float]:
                 outcome = bpy.ops.poc_zones.pair()  # ty: ignore[unresolved-attribute]
         except RuntimeError as error:  # an operator's ERROR report raises when called from Python
             outcome = str(error).strip()
-        print(f"pair the unpaired begin with {end.name}: {outcome}; its partner {n['stray'].partner}")
+        print(f"pair the unpaired begin with {end.name}: {outcome}; its partner {n['stray'].partner_uid}")
     for name in [node.name for node in added]:
         if name in tree.nodes:  # removing a begin or end removes its partner with it
             tree.nodes.remove(tree.nodes[name])
@@ -236,7 +236,10 @@ def steps() -> Iterator[float]:
     with demo.override():
         bpy.ops.node.duplicate()
     (lone,) = [node for node in tree.nodes if node not in before]
-    print(f"duplicated one begin: copy {lone.name} partner {lone.partner}, original partner {n['variant'].partner}")
+    print(
+        f"duplicated one begin: copy {lone.name} partner {lone.partner_uid}, "
+        f"original partner {n['variant'].partner_uid}"
+    )
 
     # Copy and paste the original inner zone.
     before = set(tree.nodes)

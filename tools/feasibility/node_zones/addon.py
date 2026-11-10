@@ -116,7 +116,7 @@ class ZoneNodeBase:
     default_color: ClassVar[Color | None] = None  # a begin or end node's color when it's added
 
     uid: bpy.props.IntProperty()  # ty: ignore[invalid-type-form]
-    partner: bpy.props.IntProperty()  # ty: ignore[invalid-type-form] - a begin's end's uid; 0 when unpaired
+    partner_uid: bpy.props.IntProperty()  # ty: ignore[invalid-type-form] - a begin's end's uid; 0 when unpaired
     copied_from: bpy.props.IntProperty()  # ty: ignore[invalid-type-form] - set by copy until the tree repairs pairs
 
     @classmethod
@@ -134,7 +134,7 @@ class ZoneNodeBase:
         # Blender calls this as it deletes the node; the tree's update, which follows, deletes its partner.
         if self.zone_role in _ZONE_ROLES:
             tree: Any = self.id_data  # ty: ignore[unresolved-attribute] - a Node's, through the mixin
-            _ZoneRuntimeState.deleted.setdefault(tree.session_uid, []).append((self.uid, self.partner))
+            _ZoneRuntimeState.deleted.setdefault(tree.session_uid, []).append((self.uid, self.partner_uid))
 
     def copy(self, node: Any) -> None:
         # Duplicating and pasting both copy; the copy keeps the original's partner until the tree repairs it.
@@ -146,7 +146,7 @@ class ZoneNodeBase:
         self.outputs.new("NodeSocketGeometry", "Prims")  # ty: ignore[unresolved-attribute]
 
     def draw_buttons_ext(self, context: Any, layout: Any) -> None:
-        layout.label(text=f"uid {self.uid}, partner {self.partner}")
+        layout.label(text=f"uid {self.uid}, partner {self.partner_uid}")
 
 
 def _plain_node_type(idname: str, label: str, role: zone_model.ZoneRole = zone_model.ZoneRole.PLAIN) -> type[Any]:
@@ -181,7 +181,7 @@ ZONE_NODES = {
 
 def _graph(tree: Any) -> tuple[list[zone_model.GraphNode], list[zone_model.GraphLink], list[Any]]:
     nodes = [
-        zone_model.GraphNode(node.uid, node.zone_role, node.zone_kind, node.partner)
+        zone_model.GraphNode(node.uid, node.zone_role, node.zone_kind, node.partner_uid)
         for node in tree.nodes
         if isinstance(node, ZoneNodeBase)
     ]
@@ -234,7 +234,7 @@ def remove_orphans(tree: Any) -> None:
     if not deleted:
         return
     zone_nodes = [node for node in tree.nodes if getattr(node, "zone_role", None) in _ZONE_ROLES]
-    orphans = zone_model.orphaned_partners(deleted, [(node.uid, node.partner) for node in zone_nodes])
+    orphans = zone_model.orphaned_partners(deleted, [(node.uid, node.partner_uid) for node in zone_nodes])
     for node in zone_nodes:
         if node.uid in orphans:
             tree.nodes.remove(node)  # its own free records it, and the update this causes finds nothing more
@@ -243,10 +243,10 @@ def remove_orphans(tree: Any) -> None:
 def repair_pairs(tree: Any) -> None:
     """Pair copied begins with their ends' copies, and unpair begins whose end is gone."""
     zone_nodes = [node for node in tree.nodes if getattr(node, "zone_role", None) in _ZONE_ROLES]
-    changed = zone_model.repaired_partners([(node.uid, node.partner, node.copied_from) for node in zone_nodes])
+    changed = zone_model.repaired_partners([(node.uid, node.partner_uid, node.copied_from) for node in zone_nodes])
     for node in zone_nodes:
         if node.uid in changed:
-            node.partner = changed[node.uid]
+            node.partner_uid = changed[node.uid]
         if node.copied_from:
             node.copied_from = 0
 
@@ -265,7 +265,7 @@ def _mark_later(tree_name: str) -> None:
 def mark_links(tree: Any) -> None:
     """Draw links that cross out of a zone as invalid (red)."""
     _, _, kept = _graph(tree)
-    invalid = zone_layout(tree).invalid_links
+    invalid = zone_layout(tree).invalid_link_indices
     for position, link in enumerate(kept):
         valid = position not in invalid
         if link.is_valid != valid:
@@ -309,7 +309,7 @@ def add_zone(tree: Any, kind: str, begin_at: tuple[float, float], end_at: tuple[
     begin = tree.nodes.new(ZONE_NODES[kind, zone_model.ZoneRole.BEGIN].bl_idname)
     end = tree.nodes.new(ZONE_NODES[kind, zone_model.ZoneRole.END].bl_idname)
     begin.location, end.location = begin_at, end_at
-    begin.partner = end.uid
+    begin.partner_uid = end.uid
     tree.links.new(begin.outputs[0], end.inputs[0])
     tree.nodes.active = begin
     return begin
@@ -345,8 +345,8 @@ class POC_ZONES_OT_delete(bpy.types.Operator):
 def select_partners(tree: Any) -> None:
     """Select the other half of each selected zone."""
     zone_nodes = [node for node in tree.nodes if getattr(node, "zone_role", None) in _ZONE_ROLES]
-    selected = [(node.uid, node.partner) for node in zone_nodes if node.select]
-    remaining = [(node.uid, node.partner) for node in zone_nodes if not node.select]
+    selected = [(node.uid, node.partner_uid) for node in zone_nodes if node.select]
+    remaining = [(node.uid, node.partner_uid) for node in zone_nodes if not node.select]
     partners = zone_model.orphaned_partners(selected, remaining)
     for node in zone_nodes:
         if node.uid in partners:
@@ -378,9 +378,9 @@ class POC_ZONES_OT_pair(bpy.types.Operator):
             self.report({"ERROR"}, "Select exactly one end node of the same kind")
             return {"CANCELLED"}
         for other in begin.id_data.nodes:  # an end has one begin
-            if getattr(other, "partner", 0) == ends[0].uid:
-                other.partner = 0
-        begin.partner = ends[0].uid
+            if getattr(other, "partner_uid", 0) == ends[0].uid:
+                other.partner_uid = 0
+        begin.partner_uid = ends[0].uid
         begin.id_data.update_tag()
         return {"FINISHED"}
 
@@ -404,14 +404,14 @@ class POC_ZONES_PT_zone(bpy.types.Panel):
         by_uid = {node.uid: node for node in tree.nodes if isinstance(node, ZoneNodeBase)}
         active: Any = context.active_node
         if isinstance(active, ZoneNodeBase):
-            zone = result.zone_of.get(active.uid)
+            zone = result.innermost_zone_by_node_uid.get(active.uid)
             layout.label(text=f"{active.name}: uid {active.uid}")
             if zone is None:
                 layout.label(text="Not in a zone")
             else:
-                begin, end = by_uid.get(zone.begin), by_uid.get(zone.end)
+                begin, end = by_uid.get(zone.begin_uid), by_uid.get(zone.end_uid)
                 layout.label(text=f"In {begin.name if begin else '?'} → {end.name if end else '?'}", icon="NODE")
-                layout.label(text=f"Depth {zone.depth}, {len(zone.body)} nodes inside")
+                layout.label(text=f"Depth {zone.depth}, {len(zone.body_node_uids)} nodes inside")
         layout.operator(POC_ZONES_OT_pair.bl_idname)
         for problem in result.problems:
             layout.label(text=problem, icon="ERROR")
@@ -464,7 +464,7 @@ def node_rects(tree: Any) -> tuple[dict[int, zone_hull.Rect], set[int], dict[int
 def zone_color(zone: zone_model.Zone, colors: dict[int, Color]) -> Color:
     """A zone's color: its begin node's custom color, else its end node's, else its kind's."""
     kinds = {kind.identifier: kind.node_color for kind in ZONE_KINDS}
-    return colors.get(zone.begin) or colors.get(zone.end) or kinds.get(zone.kind, (0.5, 0.5, 0.5))
+    return colors.get(zone.begin_uid) or colors.get(zone.end_uid) or kinds.get(zone.kind, (0.5, 0.5, 0.5))
 
 
 def _lighter(color: Color, amount: float) -> Color:
@@ -504,27 +504,27 @@ def _build_zone_draw_data(tree: Any, rects: dict[int, zone_hull.Rect]) -> _ZoneD
         if drawn.rects == rects:
             return drawn
     else:
-        core = {zone.begin: zone_hull.core_nodes(zone, result) for zone in result.zones}
+        core = {zone.begin_uid: zone_hull.core_nodes(zone, result) for zone in result.zones}
         drawn = _ZoneDrawData(result, scale, {}, core, {})
     zones: dict[int, _DrawnZone] = {}
     for zone in sorted(result.zones, key=lambda z: -z.depth):  # nested zones first
-        core_rects = tuple(rects.get(uid) for uid in drawn.core_nodes[zone.begin])
-        children = [zones[child.begin] for child in zone.children]
+        core_rects = tuple(rects.get(uid) for uid in drawn.core_nodes[zone.begin_uid])
+        children = [zones[child.begin_uid] for child in zone.children]
         key = (core_rects, tuple(child.key for child in children))
-        previous = drawn.zones.get(zone.begin)
+        previous = drawn.zones.get(zone.begin_uid)
         if previous is not None and previous.key == key:
-            zones[zone.begin] = previous
+            zones[zone.begin_uid] = previous
             continue
         core = zone_hull.zone_core(
             zone,
             result,
-            _sized(rects, drawn.core_nodes[zone.begin]),
+            _sized(rects, drawn.core_nodes[zone.begin_uid]),
             [c.core for c in children if c.core],
             PAD * scale,
             NEST_PAD * scale,
             RADIUS * scale,
         )
-        zones[zone.begin] = _DrawnZone(
+        zones[zone.begin_uid] = _DrawnZone(
             key, core, _zone_batches(zone_hull.grown(core, RADIUS * scale)) if core else None
         )
     drawn.rects, drawn.zones = rects, zones
@@ -572,14 +572,14 @@ def _draw_zones() -> None:
     fill, line = _shader("UNIFORM_COLOR"), _shader("POLYLINE_UNIFORM_COLOR")
     gpu.state.blend_set("ALPHA")
     for zone in drawn.layout.zones:  # outer zones first, so nested ones draw over them
-        batches = drawn.zones[zone.begin].batches
+        batches = drawn.zones[zone.begin_uid].batches
         if batches is None:
             continue
         fill_batch, outline_batch = batches
         color = zone_color(zone, colors)
         fill.uniform_float("color", (*color, FILL_ALPHA))
         fill_batch.draw(fill)
-        highlighted = zone.begin in selected or zone.end in selected
+        highlighted = zone.begin_uid in selected or zone.end_uid in selected
         line.uniform_float("viewportSize", (region.width, region.height))
         line.uniform_float("lineWidth", OUTLINE_WIDTH * scale * (2.0 if highlighted else 1.0))
         line.uniform_float("color", (*_lighter(color, OUTLINE_LIGHTEN), 0.9 if highlighted else 0.6))

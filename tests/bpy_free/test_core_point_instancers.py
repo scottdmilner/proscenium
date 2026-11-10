@@ -35,9 +35,9 @@ def test_each_point_draws_its_prototype(points: evaluation.PointInstancerScene) 
     # transform; the points invisibleIds hides in neither destination; nothing for a prototype prim at its own path.
     plan = plan_at(points.stage, 0.0)
     shown = copies(plan)
-    assert shown.keys() == points.world.keys()
+    assert shown.keys() == points.world_matrices_by_source.keys()
     for path, copy in shown.items():
-        assert_world(copy, points.world[path])
+        assert_world(copy, points.world_matrices_by_source[path])
         hidden = path in points.invisible
         assert (copy.visible_in_viewport, copy.visible_in_render) == (not hidden, not hidden), path
         assert copy.geometry_index >= 0, path  # a mesh's copy
@@ -56,7 +56,7 @@ def test_copies_are_named_by_point_instance_paths(points: evaluation.PointInstan
         assert source_entities.identifier(Sdf.Path(path)) == path
         assert context[0] == points.floors[path], path
     resources = plan.resources
-    assert {r.source_entity_path for r in resources} == points.world.keys()
+    assert {r.source_entity_path for r in resources} == points.world_matrices_by_source.keys()
     assert len({(r.role, r.source_entity_path, r.object_index_in_copy) for r in resources}) == len(
         resources
     )  # each copy its own identity

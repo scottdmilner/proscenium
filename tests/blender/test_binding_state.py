@@ -63,7 +63,7 @@ def _shot() -> bpy.types.Collection:
 
 def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     with source_access.binding_state(tmp_path) as scene:
-        return binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        return binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
 
 
 def _generation(handle: BindingHandle, time: float | None = 12.5) -> GenerationMetadata:

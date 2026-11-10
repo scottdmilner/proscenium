@@ -57,12 +57,15 @@ def test_a_projective_matrix_is_diagnosed_once_per_prim(tmp_path: Path) -> None:
     diagnostics = planning.plan_diagnostics(BINDING, plan)
     assert diagnostics == tuple(
         Diagnostic(DiagnosticCode.PROJECTIVE_TRANSFORM, BINDING, d.message, source)
-        for d, source in zip(diagnostics, transforms.projective_reported, strict=True)
+        for d, source in zip(diagnostics, transforms.projective_diagnostic_sources, strict=True)
     )
     assert all(d.category is DiagnosticCategory.APPROXIMATION for d in diagnostics)
     # The instanced mesh's message states how many copies its one diagnostic covers.
-    counts = {d.source_path: f"{len(transforms.projective_instanced)} drawn copies" in d.message for d in diagnostics}
-    assert counts == {min(transforms.projective_instanced): True, transforms.projective: False}
+    counts = {
+        d.source_path: f"{len(transforms.projective_instance_world_matrices)} drawn copies" in d.message
+        for d in diagnostics
+    }
+    assert counts == {min(transforms.projective_instance_world_matrices): True, transforms.projective_mesh_path: False}
 
 
 @pytest.mark.parametrize("generator", VALID)

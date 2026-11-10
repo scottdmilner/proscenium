@@ -31,7 +31,9 @@ def test_the_binding_holds_its_attached_stage_until_released(tmp_path: Path) -> 
     registry = StageRegistry()
     stages = registry.get_or_create_binding_stages(BindingId("a"))
     with source_access.reattach(tmp_path) as scene:
-        caller = open_stage_without_cache(scene.root)  # this test's own stage, so it holds the only caller reference
+        caller = open_stage_without_cache(
+            scene.root_layer_path
+        )  # this test's own stage, so it holds the only caller reference
         caller.SetEditTarget(caller.GetSessionLayer())
         caller.DefinePrim("/Edited")  # an unsaved edit in a layer only this stage composes
         session = caller.GetSessionLayer().identifier

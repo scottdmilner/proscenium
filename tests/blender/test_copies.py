@@ -96,12 +96,12 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
     assert (report.binding_id, report.reason, len(report.candidates)) == (
         handle.binding_id,
         outcome.reason,
-        outcome.candidates,
+        outcome.candidate_count,
     )
     scenes = {c.scene_name for c in report.candidates if c.scene_name is not None}
-    if outcome.canonical:
+    if outcome.is_canonical:
         # COPY-09, COPY-15: the original is canonical, its scene alone lists it, and lookups reach it.
-        assert [c.is_canonical for c in report.candidates] == [True] + [False] * (outcome.candidates - 1)
+        assert [c.is_canonical for c in report.candidates] == [True] + [False] * (outcome.candidate_count - 1)
         assert (report.candidates[0].scene_name, report.candidates[0].destination_name) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
         found = runtime.binding_configs.find_binding(handle.binding_id)
@@ -142,7 +142,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
 def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
     with copies.ownership_ambiguity(tmp_path) as scene:
         expected = scene.routes[route]
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         found = runtime.binding_configs.find_binding(handle.binding_id)
         assert found is not None
         routes.run_binding_copy_route(route, tmp_path)
@@ -152,7 +152,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content; a canonical
         # original's synchronization publishes again, which changes only its own.
         after = routes.records_by_name()
-        if expected.outcome.canonical:
+        if expected.outcome.is_canonical:
             restored = not expected.index_untouched
             before, after = _republished(before, index_restored=restored), _republished(after, index_restored=restored)
         assert after == before
@@ -160,7 +160,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         if expected.index_untouched:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
-        handle.attach(open_stage_without_cache(scene.root))
+        handle.attach(open_stage_without_cache(scene.root_layer_path))
         reopened = _check(bindings, handle, expected.reopened or expected.outcome)
         oracle.assert_ownership_matches_manifests()
         if expected.reopened is None:
@@ -172,7 +172,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
 def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16 on "full-copy-scene": each copy's content is managed by its own manifest.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         routes.run_binding_copy_route("full-copy-scene", tmp_path)
         handle.synchronize(0)
         for name in ("Shot", "Shot.001"):
@@ -186,7 +186,7 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
 def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) -> None:
     # OWN-16 on "duplicated-object": Object > Duplicate copies the object, and no manifest names the copy.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         published = set(bpy.data.objects)
         routes.run_binding_copy_route("duplicated-object", tmp_path)
         [copy] = set(bpy.data.objects) - published
@@ -203,7 +203,7 @@ def test_a_copy_is_found_by_the_next_lookup(bindings: Bindings, tmp_path: Path) 
     # COPY-18, F-OWNERSHIP-AMBIGUITY "found-by-the-next-lookup": a collection copied by script after a lookup is
     # reported by the next one, with no handler; for the canonical candidate, the next synchronization succeeds.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         assert bindings.copied() == []
         routes.run_binding_copy_route("collection-copy", tmp_path)
         [report] = bindings.copied()
@@ -219,7 +219,7 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
     # the next write to the binding's records does, so a later full copy leaves the original canonical. A
     # synchronization and a settings change are each such a write.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         for write in (
             lambda: handle.synchronize(0),
             lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
@@ -236,7 +236,7 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
 def test_a_write_replaces_a_cleared_entry(bindings: Bindings, tmp_path: Path) -> None:
     # COPY-19: an entry naming no collection is replaced by a write to the unique binding's records.
     with copies.ownership_ambiguity(tmp_path) as scene:
-        handle = _published(bindings, scene.root)
+        handle = _published(bindings, scene.root_layer_path)
         routes.run_binding_copy_route("entry-cleared", tmp_path)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
         assert _index_entry() == bpy.data.collections["Shot"]
@@ -248,7 +248,7 @@ def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) 
         handle = bindings.create_binding(_scene(), name="Shot")
         routes.run_binding_copy_route("index-lost", tmp_path)
         assert bindings.copied()[0].disabled
-        caller = open_stage_without_cache(scene.root)
+        caller = open_stage_without_cache(scene.root_layer_path)
         assert handle.attach(caller).state is ResultState.FATAL_FAILURE
         assert bindings.stages.get(handle.binding_id) is None
         assert handle.synchronize(0).state is ResultState.FATAL_FAILURE

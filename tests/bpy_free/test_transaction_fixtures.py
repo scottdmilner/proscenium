@@ -22,7 +22,7 @@ def _meshes(stage: Usd.Stage) -> set[str]:
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_drawn_meshes_and_bounds(policy: PayloadPolicy, tmp_path: Path) -> None:
     with transaction.failed_settings(tmp_path) as scene:
-        stage = open_stage_without_cache(scene.root, LOAD[policy])
+        stage = open_stage_without_cache(scene.root_layer_path, LOAD[policy])
         assert _meshes(stage) == DRAWN[policy]
         for path in DRAWN[policy]:
             mesh = UsdGeom.Mesh(stage.GetPrimAtPath(path))

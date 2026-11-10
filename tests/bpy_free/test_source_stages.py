@@ -116,7 +116,7 @@ def test_ambient_cache(tmp_path: Path) -> None:
     # F-CACHED-STAGE: the caller opens a source whose session opinions differ from the cached stage's.
     with source_access.cached_stage(tmp_path) as scene:
         ambient_settings = caller_settings(scene.ambient)
-        caller = open_stage_without_cache(scene.root)
+        caller = open_stage_without_cache(scene.root_layer_path)
         source = binding(caller)
         stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stage != caller and stage != scene.ambient
@@ -222,7 +222,7 @@ def test_a_caller_with_other_layers_gets_a_new_evaluation_stage(tmp_path: Path) 
     with source_access.private_stage(tmp_path) as scene:
         source = binding(scene.caller)
         first = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
-        other = open_stage_without_cache(scene.root)  # the same root layer, but its own session layer
+        other = open_stage_without_cache(scene.root_layer_path)  # the same root layer, but its own session layer
         source.attach(other)
         second = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert second != first

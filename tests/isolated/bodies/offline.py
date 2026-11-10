@@ -24,7 +24,7 @@ def publish_and_save(tmp_dir: str, path: str) -> dict[str, Any]:
 
     proscenium.register()
     with source_access.offline(Path(tmp_dir)) as scene:
-        handle = binding_on_file(Bindings(), bpy.data.scenes["Scene"], scene.root, name="Shot")
+        handle = binding_on_file(Bindings(), bpy.data.scenes["Scene"], scene.root_layer_path, name="Shot")
         destination = bpy.data.collections["Shot"]
         publish_by_hand(handle.binding_id, destination, scene.display)
         bpy.ops.wm.save_as_mainfile(filepath=path, check_existing=False)

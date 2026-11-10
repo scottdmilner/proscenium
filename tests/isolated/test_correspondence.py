@@ -37,7 +37,7 @@ FIXTURES: dict[str, tuple[Callable[[Path], Any], tuple[float, ...] | None]] = {
 def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[tuple[Usd.Stage, Path, tuple[float, ...]]]:
     build, times = FIXTURES[request.param]
     with build(tmp_path) as built:
-        yield built.stage, built.root, times or built.times
+        yield built.stage, built.root_layer_path, times or built.times
 
 
 @pytest.fixture

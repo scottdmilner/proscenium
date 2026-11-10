@@ -103,7 +103,7 @@ def test_relation_1_root_translation(fixture: str, request: pytest.FixtureReques
     pinned = _check_root_translation(scene.stage)
     assert pinned  # so the fixed copies are checked
     if fixture == "transforms":
-        assert scene.resets < pinned  # and Socket/Geom, below a nested instance root that resets it
+        assert scene.reset_transform_paths < pinned  # and Socket/Geom, below a nested instance root that resets it
 
 
 @pytest.mark.parametrize("seed", evaluation.GENERATED_SEEDS)
@@ -115,7 +115,11 @@ def test_relation_1_on_generated_hierarchies(seed: int, tmp_path: Path) -> None:
     """
     with evaluation.generated_hierarchy(tmp_path, seed) as scene:
         pinned = _check_root_translation(scene.stage)
-        assert pinned == {p for p in scene.world if any(p == r or p.startswith(f"{r}/") for r in scene.resets)}
+        assert pinned == {
+            p
+            for p in scene.world_matrices_by_source
+            if any(p == r or p.startswith(f"{r}/") for r in scene.reset_transform_paths)
+        }
 
 
 @pytest.mark.parametrize("scale_length", evaluation.UNIT_SCALES)
@@ -139,13 +143,16 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
         on = _core.plan(snapshot, CONVERTING, context)
         correction = evaluation.correction(scene.meters_per_unit, scene.up_axis, scale_length)
         plain, converted = copies(off), copies(on)
-        assert converted.keys() == plain.keys() == scene.world.keys()
+        assert converted.keys() == plain.keys() == scene.world_matrices_by_source.keys()
         for path, copy in converted.items():
-            assert_world(copy, scene.world[path] * correction)
+            assert_world(copy, scene.world_matrices_by_source[path] * correction)
             if copy.shear_transform_split is not None:  # the object below its shear parent
                 parent, basis = copy.shear_transform_split
-                assert_world(dataclasses.replace(copy, world_matrix=basis * parent), scene.world[path] * correction)
-            assert_world(plain[path], scene.world[path])
+                assert_world(
+                    dataclasses.replace(copy, world_matrix=basis * parent),
+                    scene.world_matrices_by_source[path] * correction,
+                )
+            assert_world(plain[path], scene.world_matrices_by_source[path])
             assert (copy.local_bounds, copy.visible_in_viewport, copy.visible_in_render) == (
                 plain[path].local_bounds,
                 plain[path].visible_in_viewport,

@@ -57,31 +57,31 @@ def transforms(tmp_path: Path) -> Iterator[evaluation.TransformsScene]:
 
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_transforms_drawn_meshes(policy: PayloadPolicy, transforms: evaluation.TransformsScene) -> None:
-    stage = open_stage_without_cache(transforms.root, LOAD[policy])
+    stage = open_stage_without_cache(transforms.root_layer_path, LOAD[policy])
     assert _drawn(stage) == transforms.drawn(policy)
 
 
 def test_transforms_world_transforms(transforms: evaluation.TransformsScene) -> None:
-    for path, expected in transforms.world.items():
+    for path, expected in transforms.world_matrices_by_source.items():
         time_code = 0.0 if path == evaluation.ANIMATED else None
         assert _close(_world(transforms.stage, path, time_code), expected), path
 
 
 def test_transforms_determinants_and_shear(transforms: evaluation.TransformsScene) -> None:
-    for path in transforms.world:
+    for path in transforms.world_matrices_by_source:
         matrix = _world(transforms.stage, path, 0.0)
-        assert (matrix.GetDeterminant() < 0) == (path in transforms.negative), path
-        assert _sheared(matrix) == (path in transforms.sheared), path
+        assert (matrix.GetDeterminant() < 0) == (path in transforms.negative_determinant_paths), path
+        assert _sheared(matrix) == (path in transforms.sheared_paths), path
 
 
 def test_transforms_resets(transforms: evaluation.TransformsScene) -> None:
-    for path in transforms.world:
+    for path in transforms.world_matrices_by_source:
         prim = transforms.stage.GetPrimAtPath(path)
-        assert UsdGeom.Xformable(prim).GetResetXformStack() == (path in transforms.resets), path
+        assert UsdGeom.Xformable(prim).GetResetXformStack() == (path in transforms.reset_transform_paths), path
 
 
 def test_transforms_instance_context(transforms: evaluation.TransformsScene) -> None:
-    for path in transforms.world:
+    for path in transforms.world_matrices_by_source:
         prim = transforms.stage.GetPrimAtPath(path)
         roots, ancestor = [], prim.GetParent()
         while ancestor and not ancestor.IsPseudoRoot():
@@ -92,7 +92,7 @@ def test_transforms_instance_context(transforms: evaluation.TransformsScene) -> 
 
 
 def test_transforms_bounds(transforms: evaluation.TransformsScene) -> None:
-    for path in transforms.world:
+    for path in transforms.world_matrices_by_source:
         extent = UsdGeom.Mesh(transforms.stage.GetPrimAtPath(path)).GetExtentAttr().Get()
         assert (Gf.Vec3d(extent[0]), Gf.Vec3d(extent[1])) == evaluation.UNIT_BOUNDS, path
 
@@ -117,22 +117,22 @@ def test_transforms_equal_time_codes_and_samples(transforms: evaluation.Transfor
 
 
 def test_transforms_projective(transforms: evaluation.TransformsScene) -> None:
-    matrix = _world(transforms.projective_stage, transforms.projective)
-    assert _close(matrix, transforms.projective_world)
+    matrix = _world(transforms.projective_stage, transforms.projective_mesh_path)
+    assert _close(matrix, transforms.projective_world_matrix)
     assert matrix.GetColumn(3) != Gf.Vec4d(0, 0, 0, 1)  # projective, so no object can hold it
     affine = Gf.Matrix4d(matrix)
     affine.SetColumn(3, Gf.Vec4d(0, 0, 0, 1))
-    assert _close(affine, transforms.projective_affine)
+    assert _close(affine, transforms.projective_affine_matrix)
     stage = transforms.projective_stage
-    assert _drawn(stage) == {transforms.projective, *transforms.projective_instanced}
-    for path, expected in transforms.projective_instanced.items():
+    assert _drawn(stage) == {transforms.projective_mesh_path, *transforms.projective_instance_world_matrices}
+    for path, expected in transforms.projective_instance_world_matrices.items():
         assert stage.GetPrimAtPath(path).IsInstanceProxy(), path
         world = _world(stage, path)
         assert world.GetColumn(3) != Gf.Vec4d(0, 0, 0, 1), path
         world.SetColumn(3, Gf.Vec4d(0, 0, 0, 1))
         assert _close(world, expected), path
-    assert transforms.projective_reported == tuple(
-        sorted((transforms.projective, min(transforms.projective_instanced)))
+    assert transforms.projective_diagnostic_sources == tuple(
+        sorted((transforms.projective_mesh_path, min(transforms.projective_instance_world_matrices)))
     )
 
 
@@ -149,8 +149,8 @@ def test_units_metadata_and_content(units: evaluation.UnitsScene) -> None:
     for key, stage in units.stages.items():
         assert UsdGeom.GetStageMetersPerUnit(stage) == units.meters_per_unit[key]
         assert UsdGeom.GetStageUpAxis(stage) == units.up_axis[key]
-        assert _drawn(stage) == set(units.world)
-        for path, expected in units.world.items():
+        assert _drawn(stage) == set(units.world_matrices_by_source)
+        for path, expected in units.world_matrices_by_source.items():
             assert _close(_world(stage, path), expected), (key, path)
             extent = UsdGeom.Mesh(stage.GetPrimAtPath(path)).GetExtentAttr().Get()
             assert (Gf.Vec3d(extent[0]), Gf.Vec3d(extent[1])) == units.bounds, (key, path)
@@ -230,24 +230,24 @@ def test_unsupported_placeholders(unsupported: evaluation.UnsupportedScene) -> N
     for path, placeholder in unsupported.placeholders.items():
         prim = unsupported.stage.GetPrimAtPath(path)
         assert prim.GetTypeName() == placeholder.type_name, path
-        assert _close(_world(unsupported.stage, path), placeholder.world), path
+        assert _close(_world(unsupported.stage, path), placeholder.world_matrix), path
         imageable = UsdGeom.Imageable(prim)
         visible = imageable.ComputeVisibility() != UsdGeom.Tokens.invisible
         purpose = imageable.ComputePurpose()
-        assert (visible and purpose in VIEWPORT_PURPOSES) == placeholder.viewport, path
-        assert (visible and purpose in RENDER_PURPOSES) == placeholder.render, path
+        assert (visible and purpose in VIEWPORT_PURPOSES) == placeholder.visible_in_viewport, path
+        assert (visible and purpose in RENDER_PURPOSES) == placeholder.visible_in_render, path
         authored = UsdGeom.Boundable(prim).GetExtentAttr().Get() if prim.IsA(BOUNDABLE) else None
-        if placeholder.bounds is None:  # a marker: no extent authored, and none computed for its type
+        if placeholder.local_bounds is None:  # a marker: no extent authored, and none computed for its type
             assert authored is None, path
             continue
         extent = UsdGeom.Boundable.ComputeExtentFromPlugins(UsdGeom.Boundable(prim), Usd.TimeCode.Default())
-        if placeholder.computed:
+        if placeholder.bounds_computed_from_geometry:
             assert authored is None, path
         else:
             extent = authored
         assert extent is not None, path
-        assert Gf.IsClose(Gf.Vec3d(extent[0]), placeholder.bounds[0], 1e-6), path
-        assert Gf.IsClose(Gf.Vec3d(extent[1]), placeholder.bounds[1], 1e-6), path
+        assert Gf.IsClose(Gf.Vec3d(extent[0]), placeholder.local_bounds[0], 1e-6), path
+        assert Gf.IsClose(Gf.Vec3d(extent[1]), placeholder.local_bounds[1], 1e-6), path
 
 
 def test_unsupported_authored_extent_differs_from_computed(unsupported: evaluation.UnsupportedScene) -> None:
@@ -346,9 +346,9 @@ def _ancestors(prim: Usd.Prim, stop: Usd.Prim | None = None) -> Iterator[Usd.Pri
 
 def test_point_instancer_copies(points: evaluation.PointInstancerScene) -> None:
     found = _point_copies(points.stage)
-    assert found.keys() == points.world.keys()
+    assert found.keys() == points.world_matrices_by_source.keys()
     for path, usd in found.items():
-        assert _close(usd["world"], points.world[path]), path  # ty: ignore[invalid-argument-type]
+        assert _close(usd["world"], points.world_matrices_by_source[path]), path  # ty: ignore[invalid-argument-type]
         assert usd["source"] == points.sources[path], path
         assert usd["context"] == points.instance_context[path], path
         assert usd["floor"] == points.floors[path], path
@@ -378,11 +378,11 @@ def test_generated_hierarchy(seed: int, tmp_path: Path) -> None:
             scene.meters_per_unit,
             scene.up_axis,
         )
-        assert _drawn(stage) == set(scene.world)
-        for path, expected in scene.world.items():
+        assert _drawn(stage) == set(scene.world_matrices_by_source)
+        for path, expected in scene.world_matrices_by_source.items():
             assert _close(_world(stage, path), expected), path
         resetting = {str(p.GetPath()) for p in stage.Traverse() if UsdGeom.Xformable(p).GetResetXformStack()}
-        assert resetting == scene.resets
+        assert resetting == scene.reset_transform_paths
 
 
 def test_generated_hierarchies_cover_resets_and_shears(tmp_path: Path) -> None:
@@ -390,8 +390,8 @@ def test_generated_hierarchies_cover_resets_and_shears(tmp_path: Path) -> None:
     resets = shears = 0
     for seed in evaluation.GENERATED_SEEDS:
         with evaluation.generated_hierarchy(tmp_path / str(seed), seed) as scene:
-            resets += len(scene.resets)
-            shears += sum(_sheared(w) for w in scene.world.values())
+            resets += len(scene.reset_transform_paths)
+            shears += sum(_sheared(w) for w in scene.world_matrices_by_source.values())
     assert resets and shears
 
 
@@ -400,5 +400,5 @@ def test_one_seed_writes_the_same_layer(tmp_path: Path) -> None:
     written = []
     for name, seed in (("one", 17), ("again", 17), ("other", 29)):
         with evaluation.generated_hierarchy(tmp_path / name, seed) as scene:
-            written.append(scene.root.read_bytes())
+            written.append(scene.root_layer_path.read_bytes())
     assert written[0] == written[1] != written[2]

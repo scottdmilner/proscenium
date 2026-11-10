@@ -325,13 +325,16 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             for (entity, level), target in scene.kind_targets.items():
                 if entity not in picks:
                     continue
-                session.level = level
+                session.model_kind = level
                 pick(entity, "SET")
-                if (session.targets, session.active) != ([target], target):
-                    found.append(f"{entity} at {level}: {session.targets}, active {session.active}, not {target}")
+                if (session.selected_source_paths, session.active_source_path) != ([target], target):
+                    found.append(
+                        f"{entity} at {level}: {session.selected_source_paths}, "
+                        f"active {session.active_source_path}, not {target}"
+                    )
                 if shown() != set(display.highlight_targets([target])):
                     found.append(f"{entity} at {level}: Blender shows {sorted(shown())}")
-            session.level = None
+            session.model_kind = None
             seat, back, top = "/World/Props/Chair/Geom/Seat", "/World/Props/Chair/Geom/Back", "/World/Table/Top"
             for source, mode, targets, active in (
                 (seat, "SET", [seat], seat),
@@ -344,9 +347,10 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
                 (None, "SET", [], None),
             ):
                 pick(source, mode)
-                if (session.targets, session.active) != (targets, active):
+                if (session.selected_source_paths, session.active_source_path) != (targets, active):
                     found.append(
-                        f"{mode} {source}: {session.targets}, active {session.active}, not {targets}, {active}"
+                        f"{mode} {source}: {session.selected_source_paths}, "
+                        f"active {session.active_source_path}, not {targets}, {active}"
                     )
             if shown():
                 found.append(f"cleared, Blender still shows {sorted(shown())}")
@@ -356,8 +360,8 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             if not display.collection.hide_select or shown():
                 found.append(f"unselectable: shows {sorted(shown())}")
             pick(back, "EXTEND")
-            if session.targets != [seat, back] or shown():
-                found.append(f"picked while unselectable: {session.targets}, shows {sorted(shown())}")
+            if session.selected_source_paths != [seat, back] or shown():
+                found.append(f"picked while unselectable: {session.selected_source_paths}, shows {sorted(shown())}")
             session.set_selectable(True)
             if display.collection.hide_select or shown() != set(display.highlight_targets([seat, back])):
                 found.append(f"selectable again: shows {sorted(shown())}")
@@ -374,11 +378,13 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             for obj in display.managed_objects():
                 obj.select_set(obj == kept, view_layer=display.view_layer)
             display.view_layer.objects.active = kept
-            session.level = "component"
+            session.model_kind = "component"
             expected = display.selection_from_blender(display.read_blender_selection(), "component")
             session.follow_blender()
-            if (session.targets, session.active) != (list(expected.targets), expected.active):
-                found.append(f"followed: {session.targets}, active {session.active}, not {expected}")
+            if (session.selected_source_paths, session.active_source_path) != (list(expected.targets), expected.active):
+                found.append(
+                    f"followed: {session.selected_source_paths}, active {session.active_source_path}, not {expected}"
+                )
             return found
         finally:
             display.release()

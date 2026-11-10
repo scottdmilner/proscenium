@@ -41,7 +41,7 @@ def _scene() -> bpy.types.Scene:
 def test_a_selection_from_two_bindings_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -> None:
     # ICON-24 on F-BINDING-STATE: the same entries, in order, and the same active entry.
     with source_access.binding_state(tmp_path) as scene:
-        first = binding_on_file(bindings, _scene(), scene.root)
+        first = binding_on_file(bindings, _scene(), scene.root_layer_path)
         second = bindings.create_binding(_scene())
     entries = (
         SelectionEntry(second.binding_id, "/World/Ref"),

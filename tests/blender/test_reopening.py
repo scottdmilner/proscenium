@@ -110,14 +110,14 @@ def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -
     # F-OFFLINE "moved-file": the binding's source was open before saving, and reopening drops it. A reload opens it
     # without publishing over the display published by hand.
     with source_access.offline(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         saved = _publish(handle, scene.display)
         assert handle.reload().state is ResultState.SUCCESS
         scene.move_away()
         save_and_reopen(tmp_path / "offline.blend")
         gc.collect()
-        assert not Sdf.Layer.Find(str(scene.root))
-        assert not scene.root.exists()
+        assert not Sdf.Layer.Find(str(scene.root_layer_path))
+        assert not scene.root_layer_path.exists()
         _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
 
 
@@ -176,7 +176,7 @@ def _check_gone(bindings: Bindings, handle: BindingHandle, *, release: bool = Tr
 def _managed(bindings: Bindings, tmp_path: Path, scene: bpy.types.Scene) -> BindingHandle:
     """A binding "Shot" on scene, displaying an object "Managed" that the scene "Scene" also links."""
     with source_access.binding_state(tmp_path) as source:
-        handle = binding_on_file(bindings, scene, source.root, name="Shot")
+        handle = binding_on_file(bindings, scene, source.root_layer_path, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     _scene().collection.objects.link(obj)
@@ -225,7 +225,7 @@ def test_undoing_the_removal_restores_the_binding(bindings: Bindings, tmp_path: 
     # DEST-06 on F-BINDING-STATE "removed-destination": undo brings the binding back with its records.
     undo.require_global_undo()
     with source_access.binding_state(tmp_path) as source:
-        handle = binding_on_file(bindings, _scene(), source.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), source.root_layer_path, name="Shot")
         assert handle.synchronize(0).state is ResultState.SUCCESS
         saved = {
             "config": replace(_config(handle), scene=None),

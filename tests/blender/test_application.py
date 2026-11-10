@@ -130,7 +130,8 @@ def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path:
     with evaluation.transforms(tmp_path) as scene:
         plan = _plan(scene.stage, 0.0)
         expected = {
-            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed() for p, w in scene.world.items()
+            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed()
+            for p, w in scene.world_matrices_by_source.items()
         }
         sources = [c.source_path for c in plan.correspondence]
         made = [bpy.data.objects.new(f"copy-{copy:04}", None) for copy in range(plan.copy_count)]
@@ -144,7 +145,7 @@ def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path:
         }
         for source, obj in zip(sources, made, strict=True):
             shown = prepared[source]
-            if source not in scene.sheared:
+            if source not in scene.sheared_paths:
                 assert _close(obj.matrix_world, expected[source]), source
                 assert (shown.parent, _close(shown.matrix_world, expected[source])) == (None, True), source
                 continue
@@ -180,8 +181,8 @@ def test_each_provisional_mesh_copy_draws_its_extent(bindings: Bindings, tmp_pat
     with evaluation.units_up_axis(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.stages["z-up-m"], 0.0))
         shown = _shown(work)
-        assert shown.keys() == scene.world.keys()
-        for path, world in scene.world.items():
+        assert shown.keys() == scene.world_matrices_by_source.keys()
+        for path, world in scene.world_matrices_by_source.items():
             assert _close(shown[path].matrix_world, _blender(world)), path
             assert _vertices(shown[path]) == pytest.approx(_box(scene.bounds)), path
 
@@ -193,11 +194,11 @@ def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_pa
         work = _prepared(_binding(bindings), _plan(scene.stage, 0.0))
         shown = _shown(work)
         for path, expected in scene.placeholders.items():
-            assert _close(shown[path].matrix_world, _blender(expected.world)), path
-            if expected.bounds is None:
+            assert _close(shown[path].matrix_world, _blender(expected.world_matrix)), path
+            if expected.local_bounds is None:
                 assert shown[path].data is None, path
             else:
-                assert _vertices(shown[path]) == pytest.approx(_box(expected.bounds), rel=1e-6), path
+                assert _vertices(shown[path]) == pytest.approx(_box(expected.local_bounds), rel=1e-6), path
 
 
 def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindings, tmp_path: Path) -> None:
@@ -309,7 +310,7 @@ def test_only_the_same_identity_takes_a_published_key(bindings: Bindings, tmp_pa
         binding_id = _binding(bindings)
         published = _prepared(binding_id, _plan(scene.caller, 0.0))
         unloaded = _plan(
-            open_stage_without_cache(scene.root, PayloadPolicy.LOAD_NONE.load_set), 0.0
+            open_stage_without_cache(scene.root_layer_path, PayloadPolicy.LOAD_NONE.load_set), 0.0
         )  # without /World/Payloaded
         drawn = transaction.DRAWN[PayloadPolicy.LOAD_NONE]
         kept = {key for key, entry in published.manifest_entries.items() if entry.source_entity_paths[0] in drawn}

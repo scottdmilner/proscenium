@@ -35,7 +35,7 @@ class RowDetails:
     name: str
     type_name: str
     has_children: bool
-    active: bool
+    is_active: bool
     specifier: Sdf.Specifier
     has_payload: bool
     has_references: bool
@@ -73,7 +73,7 @@ class StageTree:
         if result is not None:
             if self.search_result is None:
                 self._expanded_before_search = set(self.expanded)
-            self.expanded = {prim.GetParent() for prim in result.shown}
+            self.expanded = {prim.GetParent() for prim in result.visible_prims}
         else:
             self.expanded = self._expanded_before_search if self.search_result is not None else self.expanded
         self.search_result = result
@@ -84,7 +84,7 @@ class StageTree:
 
     def is_match(self, row: TreeRow) -> bool:
         """Whether a row shows because it matched the filter (rather than holding a match), or no filter is set."""
-        return self.search_result is None or row.prim in self.search_result.matches
+        return self.search_result is None or row.prim in self.search_result.matching_prims
 
     def expand_or_enter_row(self, row_index: int) -> int:
         """Right arrow: expand a collapsed row, or move into an expanded one. Returns the row now active."""
@@ -177,9 +177,9 @@ class StageTree:
         # anything reached by expanding below one (a prim the search didn't show), shows all its children.
         if result is None:
             return children
-        if not prim.IsPseudoRoot() and (prim in result.matches or prim not in result.shown):
+        if not prim.IsPseudoRoot() and (prim in result.matching_prims or prim not in result.visible_prims):
             return children
-        return [child for child in children if child in result.shown]
+        return [child for child in children if child in result.visible_prims]
 
 
 def has_children(prim: Usd.Prim) -> bool:
@@ -194,7 +194,7 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         name=prim.GetName(),
         type_name=str(prim.GetTypeName()),
         has_children=has_children(prim),
-        active=prim.IsActive(),
+        is_active=prim.IsActive(),
         specifier=prim.GetSpecifier(),
         has_payload=prim.HasPayload(),
         has_references=prim.HasAuthoredReferences(),

@@ -143,8 +143,12 @@ def test_a_destinations_purposes_change_only_its_participation(visibility: evalu
 def test_nested_instances_give_both_destinations_from_one_snapshot(stress: appearance.StressScene) -> None:
     # VIS-03 on F-NESTED-STRESS' case "purposes": no guide displays, and the fixture's participation per copy.
     shown = copies(plan_at(stress.stage, 0.0))
-    assert shown.keys() == stress.viewport | stress.render  # the guides, never explicitly visible, leave the plan
-    assert _participation(shown) == {path: (path in stress.viewport, path in stress.render) for path in shown}
+    assert (
+        shown.keys() == stress.viewport_paths | stress.render_paths
+    )  # the guides, never explicitly visible, leave the plan
+    assert _participation(shown) == {
+        path: (path in stress.viewport_paths, path in stress.render_paths) for path in shown
+    }
 
 
 def test_visibility_through_instance_roots(stress: appearance.StressScene) -> None:
@@ -160,7 +164,7 @@ def test_visibility_through_instance_roots(stress: appearance.StressScene) -> No
     shown = copies(plan_at(stage, 0.0))
     expected = {
         path: participation
-        for path in stress.world
+        for path in stress.world_matrices_by_source
         if (participation := _usd_participation(stage, path, Usd.TimeCode(0.0))) is not None
     }
     assert _participation(shown) == expected
@@ -212,8 +216,8 @@ def test_placeholders_take_visibility_and_purpose(tmp_path: Path) -> None:
         shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
         assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
-            expected.viewport,
-            expected.render,
+            expected.visible_in_viewport,
+            expected.visible_in_render,
         ), path
     for path, (_, purpose) in unsupported.supported_beneath.items():
         assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (

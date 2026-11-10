@@ -42,7 +42,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     """A binding on F-BINDING-STATE whose destination holds one managed object, entry "a"."""
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
@@ -121,7 +121,7 @@ def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], l
     """
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Other")
     ownership.set_manifest(other.binding_id, _entries(*(bpy.data.objects.new(name, None) for name in ("A", "B"))))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a", "b"]
     assert _ownership_view(ids, names)
@@ -241,7 +241,7 @@ def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monk
 
 def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
     assert ownership.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     ownership.set_manifest_entries(handle.binding_id, {key("a"): _change()}, created={key("a"): obj})
@@ -395,7 +395,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     # and stays unique.
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Other")
     key_of_other = configs.config_key(other.binding_id)
     shot = bpy.data.collections["Shot"]
     shot[records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][records.NAMESPACE][key_of_other]
@@ -414,7 +414,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
 def test_a_removed_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, other, scene.root)
+        handle = binding_on_file(bindings, other, scene.root_layer_path)
     assert _binding_ids() == [handle.binding_id]
     address = other.as_pointer()
     bpy.data.scenes.remove(other)
@@ -429,8 +429,8 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
     # A binding on another scene isn't listed on this one; removing its destination removes it (DEST-05).
     other_scene = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        elsewhere = binding_on_file(bindings, other_scene, scene.root, name="Elsewhere")
-        here = binding_on_file(bindings, _scene(), scene.root, name="Here")
+        elsewhere = binding_on_file(bindings, other_scene, scene.root_layer_path, name="Elsewhere")
+        here = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Here")
     assert bindings.in_scene(_scene()) == [here]
     assert bindings.in_scene(other_scene) == [elsewhere]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
@@ -443,7 +443,7 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
 
 def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
     handle.synchronize(0)
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None

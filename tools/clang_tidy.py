@@ -26,12 +26,12 @@ CORE = ROOT / "src" / "proscenium" / "core"
 class TidyProject:
     """A CMake project whose sources clang-tidy checks."""
 
-    sources: Path  # the CMake project, whose *.cpp files (or src/*.cpp) are checked
-    results: Path  # its build's results directory; the CMake directory is beside it
+    source_dir: Path  # the CMake project, whose *.cpp files (or src/*.cpp) are checked
+    build_dir: Path  # its build's results directory; the CMake directory is beside it
 
     def files(self) -> list[Path]:
         """The project's C++ sources, at its top level and in src/."""
-        return sorted([*self.sources.glob("*.cpp"), *self.sources.glob("src/*.cpp")])
+        return sorted([*self.source_dir.glob("*.cpp"), *self.source_dir.glob("src/*.cpp")])
 
 
 PROJECTS = (
@@ -45,15 +45,15 @@ def main() -> int:
     key = current_platform()
     status = 0
     for project in PROJECTS:
-        build = native_build.cmake_dir(project.results)
-        native_build.configure(project.sources, build)
+        build = native_build.cmake_dir(project.build_dir)
+        native_build.configure(project.source_dir, build)
         command = [
             native_build.tool("clang-tidy"),
             "-p",
             str(build),
             "--quiet",
             # The project's own headers; USD's and the standard library's are never reported.
-            f"--header-filter={project.sources.as_posix()}/",
+            f"--header-filter={project.source_dir.as_posix()}/",
         ]
         if key == Platform.MACOS_ARM64:
             # AppleClang's compile commands leave the SDK implicit; clang-tidy's own clang needs it named.

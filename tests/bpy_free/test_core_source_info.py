@@ -46,11 +46,11 @@ def test_placeholders_show_authored_or_computed_bounds(unsupported: evaluation.U
     for path, expected in unsupported.placeholders.items():
         assert path in shown, path
         assert shown[path].geometry_index == -1, path  # not a mesh
-        if expected.bounds is None:  # a marker
+        if expected.local_bounds is None:  # a marker
             assert shown[path].placeholder_bounds_index == -1, path
         else:
             assert shown[path].placeholder_bounds_index >= 0, path
-            assert_box(shown[path], expected.world, *expected.bounds)
+            assert_box(shown[path], expected.world_matrix, *expected.local_bounds)
 
 
 def test_stage_edits_reach_computed_extents_and_unimaged_prims(unsupported: evaluation.UnsupportedScene) -> None:

@@ -45,7 +45,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[BindingHandle, Manifest]:
     """A binding whose destination holds two managed objects sharing a managed mesh, and its manifest."""
     with source_access.binding_state(tmp_path / name) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name=name)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name=name)
     destination = bpy.data.collections[name]
     mesh = bpy.data.meshes.new(f"{name}Mesh")
     objects = [bpy.data.objects.new(f"{name}{i}", mesh) for i in range(2)]

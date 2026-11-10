@@ -146,8 +146,8 @@ def apply_search(wm: Any) -> None:
             return
         elapsed = (time.perf_counter() - start) * 1000
         tree.set_search(result)
-        first = f"first {SEARCH_CAP:,} " if result.truncated else ""
-        _SceneGraphUiState.search_status = f"{first}{len(result.matches):,} matches in {elapsed:.0f} ms"
+        first = f"first {SEARCH_CAP:,} " if result.is_truncated else ""
+        _SceneGraphUiState.search_status = f"{first}{len(result.matching_prims):,} matches in {elapsed:.0f} ms"
     _sync_rows(wm)
 
 
@@ -205,7 +205,7 @@ class POC_SG_UL_tree(bpy.types.UIList):  # noqa: N801 - Blender's class naming
         split = layout.split(factor=NAME_COLUMN if data.poc_sg_show_type else 0.85)
         row = split.row(align=True)
         # Inactive prims, overs, classes, and rows that only hold search matches draw greyed.
-        row.active = row_data.active and row_data.specifier == Sdf.SpecifierDef and tree.is_match(tree_row)
+        row.is_active = row_data.is_active and row_data.specifier == Sdf.SpecifierDef and tree.is_match(tree_row)
         # One small separator per level: a separator's spacer is square, so one deep one would make the row taller.
         for _ in range(tree_row.depth):
             row.separator(factor=INDENT)

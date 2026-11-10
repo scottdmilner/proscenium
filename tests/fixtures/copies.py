@@ -28,8 +28,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CanonicalCandidateOutcome:
-    candidates: int  # the identity's candidates after the route
-    canonical: bool  # whether the original stays canonical; False: every candidate is disabled
+    candidate_count: int  # the identity's candidates after the route
+    is_canonical: bool  # whether the original stays canonical; False: every candidate is disabled
     reason: CanonicalCandidateReason
 
 
@@ -41,8 +41,8 @@ class BindingCopyCase:
     index_untouched: bool = True  # the file keeps one index, whose entry names the original destination
 
 
-INDEXED = CanonicalCandidateOutcome(2, canonical=True, reason=CanonicalCandidateReason.INDEXED)
-UNIQUE = CanonicalCandidateOutcome(1, canonical=True, reason=CanonicalCandidateReason.UNIQUE)
+INDEXED = CanonicalCandidateOutcome(2, is_canonical=True, reason=CanonicalCandidateReason.INDEXED)
+UNIQUE = CanonicalCandidateOutcome(1, is_canonical=True, reason=CanonicalCandidateReason.UNIQUE)
 
 ROUTES: dict[str, BindingCopyCase] = {
     # Copy routes: two collections hold the binding's records, and the index names the original.
@@ -55,26 +55,26 @@ ROUTES: dict[str, BindingCopyCase] = {
     "linked-copy-scene": BindingCopyCase(UNIQUE),
     # The index lost, cleared, or disagreeing: nothing decides between two candidates, and one is unique.
     "index-lost": BindingCopyCase(
-        CanonicalCandidateOutcome(2, canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED),
+        CanonicalCandidateOutcome(2, is_canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED),
         index_untouched=False,
     ),
     "index-lost-collection-copy": BindingCopyCase(
-        CanonicalCandidateOutcome(2, canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED),
+        CanonicalCandidateOutcome(2, is_canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED),
         index_untouched=False,
     ),
     "index-lost-linked-copy": BindingCopyCase(UNIQUE, index_untouched=False),  # its synchronization restores the entry
     "entry-cleared": BindingCopyCase(UNIQUE, index_untouched=False),  # its synchronization replaces the entry
     "index-disagrees": BindingCopyCase(
-        CanonicalCandidateOutcome(2, canonical=False, reason=CanonicalCandidateReason.INDEX_DISAGREES),
+        CanonicalCandidateOutcome(2, is_canonical=False, reason=CanonicalCandidateReason.INDEX_DISAGREES),
         index_untouched=False,
     ),
     "unreadable-index": BindingCopyCase(
-        CanonicalCandidateOutcome(2, canonical=False, reason=CanonicalCandidateReason.UNREADABLE_INDEX),
+        CanonicalCandidateOutcome(2, is_canonical=False, reason=CanonicalCandidateReason.UNREADABLE_INDEX),
         index_untouched=False,
     ),
     # The appended index Text brings the destination it names, and its scene; the save drops the Text.
     "two-indexes": BindingCopyCase(
-        CanonicalCandidateOutcome(2, canonical=False, reason=CanonicalCandidateReason.SEVERAL_INDEXES),
+        CanonicalCandidateOutcome(2, is_canonical=False, reason=CanonicalCandidateReason.SEVERAL_INDEXES),
         reopened=INDEXED,
         index_untouched=False,
     ),
@@ -86,7 +86,7 @@ ROUTES: dict[str, BindingCopyCase] = {
 
 @dataclass
 class AmbiguityScene:
-    root: Path  # the binding's source
+    root_layer_path: Path  # the binding's source
     routes: dict[str, BindingCopyCase]
 
 
@@ -94,4 +94,4 @@ class AmbiguityScene:
 def ownership_ambiguity(dest: Path) -> Generator[AmbiguityScene]:
     """F-OWNERSHIP-AMBIGUITY: a source for the binding each route copies, in its own directory under dest."""
     root = copy_scene(Scene.TRANSACTION, dest / "source") / "root.usda"
-    yield AmbiguityScene(root=root, routes=dict(ROUTES))
+    yield AmbiguityScene(root_layer_path=root, routes=dict(ROUTES))

@@ -46,11 +46,11 @@ def _expected(scene: evaluation.PointInstancerScene, minimum: int) -> tuple[list
     stage = scene.stage
     grouped: dict[tuple[str, bool, int], list[str]] = {}
     repeats: Counter[tuple[str, bool, tuple[float, ...]]] = Counter()
-    for path in sorted(scene.world):
+    for path in sorted(scene.world_matrices_by_source):
         prim = stage.GetPrimAtPath(scene.sources[path])
         drawn = str(prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else prim.GetPath())
         visible = path not in scene.invisible
-        world = scene.world[path]
+        world = scene.world_matrices_by_source[path]
         stored = tuple(array("f", [float(world[r, c]) for r in range(4) for c in range(4)]))  # as Blender stores it
         repeat = repeats[drawn, visible, stored]
         repeats[drawn, visible, stored] += 1

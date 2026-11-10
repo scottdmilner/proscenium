@@ -51,9 +51,9 @@ def test_conversion_off_keeps_usd_world_transforms(
     units: evaluation.UnitsScene, stage: str, scale_length: float
 ) -> None:
     shown = copies(_plan(_snapshot(units.stages[stage]), SETTINGS, scale_length))
-    assert shown.keys() == units.world.keys()
+    assert shown.keys() == units.world_matrices_by_source.keys()
     for path, copy in shown.items():
-        assert_world(copy, units.world[path])
+        assert_world(copy, units.world_matrices_by_source[path])
 
 
 @pytest.mark.parametrize("scale_length", SCALE_LENGTHS)
@@ -73,7 +73,7 @@ def test_conversion_prefixes_the_correction(units: evaluation.UnitsScene, stage:
     correction = units.correction(stage, scale_length)
     converted = copies(on)
     for path, copy in converted.items():
-        assert_world(copy, units.world[path] * correction)
+        assert_world(copy, units.world_matrices_by_source[path] * correction)
         assert copy.local_bounds == (*units.bounds[0], *units.bounds[1]), path  # local bounds unchanged
     assert {
         p: (c.local_bounds, c.visible_in_viewport, c.visible_in_render, c.geometry_index) for p, c in converted.items()
@@ -112,6 +112,6 @@ def test_the_snapshot_keeps_the_stages_units_and_up_axis(units: evaluation.Units
     finally:
         chain.release()
     for path, copy in copies(_plan(before, CONVERTING, 1.0)).items():
-        assert_world(copy, units.world[path] * units.correction("y-up-cm", 1.0))
+        assert_world(copy, units.world_matrices_by_source[path] * units.correction("y-up-cm", 1.0))
     for path, copy in copies(_plan(after, CONVERTING, 1.0)).items():
-        assert_world(copy, units.world[path])  # meters and Z up: the identity
+        assert_world(copy, units.world_matrices_by_source[path])  # meters and Z up: the identity

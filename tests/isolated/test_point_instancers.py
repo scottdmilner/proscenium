@@ -37,7 +37,9 @@ def scattered(tmp_path: Path) -> Generator[PointInstancerScene]:
 
 
 def _applied(scene: PointInstancerScene, runtime: Runtime, bridge: Path, tmp: Path, **kwargs: Any) -> dict[str, Any]:
-    result = run_isolated(runtime, BODY, "apply_scene", tmp, module_dir=str(bridge), scene=str(scene.root), **kwargs)
+    result = run_isolated(
+        runtime, BODY, "apply_scene", tmp, module_dir=str(bridge), scene=str(scene.root_layer_path), **kwargs
+    )
     assert result["errors"] == []
     return result
 
@@ -55,11 +57,13 @@ def test_each_point_draws_its_prototype(
     objects = result["objects"]
     copies = {(o["source"], _point(o)): o for o in objects}
     assert len(copies) == len(objects)  # one per mesh and point
-    assert copies.keys() == scattered.world.keys()  # nothing of the instancer itself, or the unused prototype
+    assert (
+        copies.keys() == scattered.world_matrices_by_source.keys()
+    )  # nothing of the instancer itself, or the unused prototype
     for (mesh, point), obj in copies.items():
         # The instancer, then the point, then any native instance root inside the prototype.
         assert obj["instance_context"][:2] == [scattered.instancer, f"{scattered.instancer}{POINT}{point}"]
-        expected = scattered.world[(mesh, point)]
+        expected = scattered.world_matrices_by_source[(mesh, point)]
         for world in (obj["plan_world"], obj["world"]):
             assert all(abs(world[r][c] - expected[r][c]) < CLOSE for r in range(4) for c in range(4)), (mesh, point)
         shown = point not in scattered.invisible
@@ -97,7 +101,7 @@ def test_picks_and_selection_on_point_instanced_copies(
         wheel, INTERACTION_BODY, "point_instancer_interaction", tmp_path, **kwargs, representation=representation
     )
     picks = result["picks"]
-    shown = {copy for copy in scattered.world if copy[1] not in scattered.invisible}
+    shown = {copy for copy in scattered.world_matrices_by_source if copy[1] not in scattered.invisible}
     drawn = {(pick["drawn"][0], _point({"instance_context": pick["drawn"][1]})) for pick in picks}
     assert len(picks) == len(drawn) and drawn == shown  # every shown copy, once
     for pick in picks:

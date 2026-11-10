@@ -53,10 +53,10 @@ NOTHING = {"added": set(), "removed": set(), "changed": set(), "moved": set(), "
 def test_diff_follows_edits(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
     edits = ["unchanged", "transform", "shared-geometry", "material", "primvar", "visibility", "structure"]
     with appearance.appearance_cases(tmp_path / "scene") as cases:
-        steps = _steps(cases.root, edits, wheel, hydra_bridge, tmp_path)
+        steps = _steps(cases.root_layer_path, edits, wheel, hydra_bridge, tmp_path)
     assert _changes(steps["unchanged"]) == NOTHING
     assert _changes(steps["transform"]) == {**NOTHING, "changed": {f"{EQUAL}/MeshD"}, "moved": {f"{EQUAL}/MeshD"}}
-    (bodies,) = (uses for uses in cases.shared if any(path.endswith("/Body") for path in uses))
+    (bodies,) = (uses for uses in cases.shared_geometry_groups if any(path.endswith("/Body") for path in uses))
     assert _changes(steps["shared-geometry"]) == {**NOTHING, "changed": set(bodies), "new meshes": 1}
 
     red = {mesh for mesh, bound in cases.materials.items() if RED in bound}
@@ -75,7 +75,7 @@ def test_diff_follows_edits(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) 
 
 def test_diff_follows_payload_loading(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
     with interaction.universe_membership(tmp_path / "scene") as scene:
-        steps = _steps(scene.root, ["unload", "load"], wheel, hydra_bridge, tmp_path)
+        steps = _steps(scene.root_layer_path, ["unload", "load"], wheel, hydra_bridge, tmp_path)
     contents = {o["source"] for o in steps["unload"]["old"] if o["source"].startswith(f"{PAYLOAD}/")}
     assert contents
     assert _changes(steps["unload"]) == {**NOTHING, "removed": contents}
@@ -85,7 +85,7 @@ def test_diff_follows_payload_loading(wheel: Runtime, hydra_bridge: Path, tmp_pa
 def test_unchanged_stress_plan_matches_everything(wheel: Runtime, hydra_bridge: Path, tmp_path: Path) -> None:
     # Sheared and mirrored copies, and copies shown in one destination or neither, all matched unchanged.
     with appearance.nested_stress(tmp_path / "scene") as stress:
-        steps = _steps(stress.root, ["unchanged"], wheel, hydra_bridge, tmp_path)
+        steps = _steps(stress.root_layer_path, ["unchanged"], wheel, hydra_bridge, tmp_path)
     assert _changes(steps["unchanged"]) == NOTHING
 
 
@@ -112,7 +112,7 @@ def test_reused_builds_give_the_same_plan(fixture: str, wheel: Runtime, hydra_br
     }
     generator, edits = generators[fixture]
     with generator(tmp_path / "scene") as built:
-        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root_layer_path), "edits": edits}
         steps = run_isolated(wheel, BODY, "reuse_edits", tmp_path, **kwargs)
     for step in steps:
         assert step["differing"] == [], step["edit"]
@@ -149,7 +149,7 @@ def test_separate_processes_plan_the_same_content(
         "point_instancers": appearance.point_instancers,
     }
     with generators[fixture](tmp_path / "scene") as built:
-        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root)}
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root_layer_path)}
         digests = []
         # Several processes, since two often order a fixture's records the same.
         for run in range(4):

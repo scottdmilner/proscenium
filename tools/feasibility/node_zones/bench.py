@@ -45,18 +45,22 @@ def check_rules() -> None:
     links += _links((13, 5), (13, 9))
     result = zone_model.layout(nodes, links)
     outer, inner = result.zones
-    assert (outer.begin, inner.begin) == (2, 4), result.zones
+    assert (outer.begin_uid, inner.begin_uid) == (2, 4), result.zones
     assert inner.parent is outer and inner.depth == 1
-    assert inner.body == {5, 10}, inner.body
-    assert outer.body == {3, 4, 5, 6, 7, 10, 11}, outer.body
-    assert result.zone_of[5] is inner and result.zone_of[7] is outer and 13 not in result.zone_of
-    assert result.invalid_links == {10}, result.invalid_links  # 11 -> 9 leaves zone A
+    assert inner.body_node_uids == {5, 10}, inner.body_node_uids
+    assert outer.body_node_uids == {3, 4, 5, 6, 7, 10, 11}, outer.body_node_uids
+    assert (
+        result.innermost_zone_by_node_uid[5] is inner
+        and result.innermost_zone_by_node_uid[7] is outer
+        and 13 not in result.innermost_zone_by_node_uid
+    )
+    assert result.invalid_link_indices == {10}, result.invalid_link_indices  # 11 -> 9 leaves zone A
     assert result.problems == ["begin 12 (A) has no end"], result.problems
 
     # A link from inside back into the zone's begin, and an end's output used inside its own zone.
     nodes = [GraphNode(1, BEGIN, "A", 3), GraphNode(2), GraphNode(3, END, "A"), GraphNode(4)]
     result = zone_model.layout(nodes, _links((1, 2), (2, 3), (2, 1)))
-    assert result.invalid_links == {2}, result.invalid_links
+    assert result.invalid_link_indices == {2}, result.invalid_link_indices
     # Overlapping zones: B's begin is in A, B's end isn't.
     nodes = [GraphNode(1, BEGIN, "A", 3), GraphNode(2, BEGIN, "B", 4), GraphNode(3, END, "A"), GraphNode(4, END, "B")]
     result = zone_model.layout(nodes, _links((1, 2), (2, 3), (3, 4)))
@@ -159,7 +163,7 @@ def bench() -> None:
         start = time.perf_counter()
         result = zone_model.layout(nodes, links)
         layout_ms = (time.perf_counter() - start) * 1000
-        assert not result.problems and not result.invalid_links, result.problems[:3]
+        assert not result.problems and not result.invalid_link_indices, result.problems[:3]
         rects = {n.uid: zone_hull.Rect(n.uid * 200.0, 0.0, n.uid * 200.0 + 140, 100.0) for n in nodes}
         start = time.perf_counter()
         zone_hull.zone_hulls(result, rects, pad=18, nest_pad=14, radius=14)

@@ -171,7 +171,7 @@ def test_source_state_is_reported_when_preparation_fails(
     # source-state diagnostic its successful synchronization reports, since it exists before preparation. The scene
     # plans no placeholders, so preparation fails as it starts.
     with source_access.dirty_layer(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
         succeeded = handle.synchronize(0)
         assert succeeded.state is ResultState.SUCCESS
         monkeypatch.setattr(application, "prepare", _raising)

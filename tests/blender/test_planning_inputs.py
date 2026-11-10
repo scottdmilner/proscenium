@@ -68,13 +68,13 @@ def test_a_synchronization_plans_under_the_binding_settings_and_scene_scale(
     # USD world transform, or with conversion on that under the fixture's correction for the target scene's scale.
     with evaluation.units_up_axis(tmp_path) as scene:
         _scene().unit_settings.scale_length = scale_length
-        handle = binding_on_file(bindings, _scene(), scene.roots[stage], name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_paths[stage], name="Shot")
         assert handle.set_settings(coordinate_conversion=conversion).state is ResultState.SUCCESS
         assert handle.synchronize(0).state is ResultState.SUCCESS
         objects = _objects(handle)
-        assert objects.keys() == scene.world.keys()
+        assert objects.keys() == scene.world_matrices_by_source.keys()
         correction = scene.correction(stage, scale_length)
-        for path, world in scene.world.items():
+        for path, world in scene.world_matrices_by_source.items():
             expected = world * correction if conversion else world
             assert _close(objects[path].matrix_world, _blender(expected)), path
 
@@ -84,7 +84,7 @@ def test_a_synchronization_shows_the_binding_purposes(bindings: Bindings, tmp_pa
     # destination's copies; a copy whose purpose neither includes isn't drawn.
     viewport, render = ("default", "render"), ("proxy",)
     with evaluation.visibility_purpose(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         result = handle.set_settings(viewport_purposes=viewport, render_purposes=render)
         assert result.state is ResultState.SUCCESS
         assert handle.synchronize(0).state is ResultState.SUCCESS

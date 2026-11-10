@@ -44,7 +44,13 @@ def main(argv: list[str]) -> None:
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     select_tool.register(
         select_tool.Session(
-            interaction, display, view_layer, collection, keep=(stage, bridge, plan), stage=stage, time=time
+            interaction,
+            display,
+            view_layer,
+            collection,
+            retained_source_objects=(stage, bridge, plan),
+            stage=stage,
+            time_code=time,
         )
     )
     bpy.app.timers.register(_activate, first_interval=0.5)

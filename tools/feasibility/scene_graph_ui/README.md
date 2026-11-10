@@ -17,6 +17,9 @@ A USD prim tree in Blender's 3D View sidebar, as a virtualized UIList, with the 
 
 ## Running it
 
+Search results distinguish `matching_prims` from `visible_prims` (matches plus the ancestors that show them),
+and report the result limit with `is_truncated`. Row details expose active state as `is_active`.
+
 ```sh
 /Applications/Blender.app/Contents/MacOS/Blender --python tools/feasibility/scene_graph_ui/addon.py
 uv run python tools/feasibility/scene_graph_ui/bench.py

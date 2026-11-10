@@ -90,13 +90,13 @@ def resource_count(policy: PayloadPolicy) -> int:
 
 @dataclass
 class TransactionScene:
-    root: Path
+    root_layer_path: Path
     caller: Usd.Stage  # the caller's stage, to attach
 
 
 def _open(dest: Path) -> TransactionScene:
     root = copy_scene(Scene.TRANSACTION, dest) / "root.usda"
-    return TransactionScene(root=root, caller=open_stage_without_cache(root))
+    return TransactionScene(root_layer_path=root, caller=open_stage_without_cache(root))
 
 
 @dataclass
@@ -224,7 +224,7 @@ def source_change(dest: Path) -> Generator[SourceChangeScene]:
     report that the binding needs synchronizing.
     """
     scene = _open(dest)
-    yield SourceChangeScene(**vars(scene), sub_layer=scene.root.parent / "sub.usda")
+    yield SourceChangeScene(**vars(scene), sub_layer=scene.root_layer_path.parent / "sub.usda")
 
 
 @dataclass

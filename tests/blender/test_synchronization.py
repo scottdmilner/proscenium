@@ -207,7 +207,7 @@ def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
 def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path: Path) -> None:
     # The informational diagnostic names the dirty contributing layers and leaves the state success.
     with source_access.dirty_layer(tmp_path) as scene:
-        result = binding_on_file(bindings, _scene(), scene.root).synchronize(0)
+        result = binding_on_file(bindings, _scene(), scene.root_layer_path).synchronize(0)
         assert result.state == ResultState.SUCCESS
         [diagnostic] = result.diagnostics
         assert (diagnostic.code, diagnostic.category, diagnostic.severity) == (
@@ -221,7 +221,7 @@ def test_dirty_layers_are_reported_as_source_state(bindings: Bindings, tmp_path:
 def test_an_unchanged_refresh_reports_equal_diagnostics(bindings: Bindings, tmp_path: Path) -> None:
     # DIAG-07 on F-DIRTY-LAYER: nothing changes between the two, so they report equal diagnostics in the same order.
     with source_access.dirty_layer(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
         first, second = handle.synchronize(0), handle.synchronize(0)
         assert first.diagnostics
         assert second.diagnostics == first.diagnostics
@@ -230,7 +230,7 @@ def test_an_unchanged_refresh_reports_equal_diagnostics(bindings: Bindings, tmp_
 def test_reload_doesnt_synchronize(bindings: Bindings, tmp_path: Path) -> None:
     # The reload rereads the layers; the requested settings are as they were, and the next synchronize shows it.
     with source_access.dirty_layer(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
         handle.synchronize(1)
         before = handle.requested_settings()
         assert handle.reload() == Result()

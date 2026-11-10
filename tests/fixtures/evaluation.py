@@ -97,31 +97,37 @@ def animated_x(time_code: float | None) -> float:
 
 @dataclass
 class TransformsScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage, loading everything
-    projective_root: Path
+    projective_root_layer_path: Path
     projective_stage: Usd.Stage  # transforms_projective.usda's
-    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform at the default time code, Animated's at 0
+    world_matrices_by_source: dict[
+        str, Gf.Matrix4d
+    ]  # drawn mesh -> world transform at the default time code, Animated's at 0
     payload_meshes: frozenset[str]  # drawn only under load-all
-    negative: frozenset[str]  # world transform with a negative determinant
-    sheared: frozenset[str]  # world transform whose axes aren't orthogonal
-    resets: frozenset[str]  # reset the transform stack on their own prims (Socket/Geom's is on its instance root)
+    negative_determinant_paths: frozenset[str]  # world transform with a negative determinant
+    sheared_paths: frozenset[str]  # world transform whose axes aren't orthogonal
+    reset_transform_paths: frozenset[
+        str
+    ]  # reset the transform stack on their own prims (Socket/Geom's is on its instance root)
     instance_context: dict[str, tuple[str, ...]]  # drawn mesh inside instances -> instance roots, outermost first
-    projective: str  # in projective_stage: the mesh placed by its matrix's affine part, with a diagnostic
-    projective_world: Gf.Matrix4d  # its world transform as authored, projective column included
-    projective_affine: Gf.Matrix4d  # that matrix with its last column (0, 0, 0, 1)
+    projective_mesh_path: str  # in projective_stage: the mesh placed by its matrix's affine part, with a diagnostic
+    projective_world_matrix: Gf.Matrix4d  # its world transform as authored, projective column included
+    projective_affine_matrix: Gf.Matrix4d  # that matrix with its last column (0, 0, 0, 1)
     # In projective_stage: the copies of the same mesh inside two native instances -> their worlds by the affine part.
-    projective_instanced: dict[str, Gf.Matrix4d]
+    projective_instance_world_matrices: dict[str, Gf.Matrix4d]
     # The source each approximation diagnostic names, in source order: the mesh, and the instanced mesh's first copy.
-    projective_reported: tuple[str, ...]
+    projective_diagnostic_sources: tuple[str, ...]
     variation: TimeVariation
     equal_time_codes: tuple[tuple[float, float], ...]  # pairs whose evaluated values are equal (relation 5)
 
     def drawn(self, policy: PayloadPolicy) -> frozenset[str]:
-        return frozenset(self.world) - (self.payload_meshes if policy is PayloadPolicy.LOAD_NONE else frozenset())
+        return frozenset(self.world_matrices_by_source) - (
+            self.payload_meshes if policy is PayloadPolicy.LOAD_NONE else frozenset()
+        )
 
     def world_at(self, path: str, time_code: float | None) -> Gf.Matrix4d:
-        return translate(animated_x(time_code), 0, 0) if path == ANIMATED else self.world[path]
+        return translate(animated_x(time_code), 0, 0) if path == ANIMATED else self.world_matrices_by_source[path]
 
 
 def affine(matrix: Gf.Matrix4d) -> Gf.Matrix4d:
@@ -145,11 +151,11 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
     instanced, kit = translate(0, 0, 10), translate(1, 0, 0)
     projective = Gf.Matrix4d((1, 0, 0, 0.25), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1))
     yield TransformsScene(
-        root=root,
+        root_layer_path=root,
         stage=open_stage_without_cache(root),
-        projective_root=projective_root,
+        projective_root_layer_path=projective_root,
         projective_stage=open_stage_without_cache(projective_root),
-        world={
+        world_matrices_by_source={
             "/World/Ordered/OnMesh": world(translate(0, 0, 1), ordered),
             "/World/Pivoted/Geom": pivoted,
             "/World/Matrix/Geom": matrix,
@@ -164,23 +170,23 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
             ANIMATED: translate(0, 0, 0),
         },
         payload_meshes=PAYLOAD_MESHES,
-        negative=frozenset({"/World/Mirrored/Geom"}),
-        sheared=frozenset({"/World/Sheared/Geom"}),
-        resets=frozenset({"/World/Reset/Pinned", "/World/Instanced/Kit/Pinned"}),
+        negative_determinant_paths=frozenset({"/World/Mirrored/Geom"}),
+        sheared_paths=frozenset({"/World/Sheared/Geom"}),
+        reset_transform_paths=frozenset({"/World/Reset/Pinned", "/World/Instanced/Kit/Pinned"}),
         instance_context={
             "/World/Instanced/Kit/Body": ("/World/Instanced/Kit",),
             "/World/Instanced/Kit/Pinned": ("/World/Instanced/Kit",),
             "/World/Instanced/Kit/Socket/Geom": ("/World/Instanced/Kit", "/World/Instanced/Kit/Socket"),
         },
-        projective="/World/Projective/Geom",
-        projective_world=projective,
-        projective_affine=affine(projective),
+        projective_mesh_path="/World/Projective/Geom",
+        projective_world_matrix=projective,
+        projective_affine_matrix=affine(projective),
         # The whole world transform's affine part: the projective term reaches the instance's translation.
-        projective_instanced={
+        projective_instance_world_matrices={
             f"/World/Kits/{kit}/Projective/Geom": affine(projective * translate(0, y, 0))
             for kit, y in (("KitA", 5), ("KitB", 10))
         },
-        projective_reported=("/World/Kits/KitA/Projective/Geom", "/World/Projective/Geom"),
+        projective_diagnostic_sources=("/World/Kits/KitA/Projective/Geom", "/World/Projective/Geom"),
         variation=TimeVariation(start=0.0, end=30.0, samples=(0.0, 10.0, 20.0, 30.0), transitions=()),
         # Before the first sample and at it, after the last and at it, and two between the equal samples.
         equal_time_codes=((-5.0, 0.0), (35.0, 30.0), (12.5, 17.25)),
@@ -194,11 +200,13 @@ UNIT_SCALES = (1.0, 0.01)  # the target scenes' unit_settings.scale_length the c
 
 @dataclass
 class UnitsScene:
-    roots: dict[str, Path]  # "y-up-cm", "z-up-m" -> its root layer
+    root_layer_paths: dict[str, Path]  # "y-up-cm", "z-up-m" -> its root layer
     stages: dict[str, Usd.Stage]  # the caller's live stage of each
     meters_per_unit: dict[str, float]
     up_axis: dict[str, str]
-    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform in source units, the same in both stages
+    world_matrices_by_source: dict[
+        str, Gf.Matrix4d
+    ]  # drawn mesh -> world transform in source units, the same in both stages
     bounds: Bounds  # every mesh's local extent
     instance_context: dict[str, tuple[str, ...]]
 
@@ -224,11 +232,11 @@ def units_up_axis(dest: Path) -> Generator[UnitsScene]:
     scenes = copy_scene(Scene.EVALUATION, dest)
     roots = {"y-up-cm": scenes / "units_y_up_cm.usda", "z-up-m": scenes / "units_z_up_m.usda"}
     yield UnitsScene(
-        roots=roots,
+        root_layer_paths=roots,
         stages={key: open_stage_without_cache(path) for key, path in roots.items()},
         meters_per_unit={"y-up-cm": 0.01, "z-up-m": 1.0},
         up_axis={"y-up-cm": "Y", "z-up-m": "Z"},
-        world={
+        world_matrices_by_source={
             "/World/Box": translate(100, 20, 50),
             "/World/Kit/Body": world(translate(0, 100, 0), translate(0, 0, 200)),
         },
@@ -244,7 +252,7 @@ BLINKING = "/World/Blinking"
 
 @dataclass
 class VisibilityScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     purpose: dict[str, str]  # drawn mesh -> its computed purpose
     always_invisible: frozenset[str]  # invisible at every time code
@@ -268,7 +276,7 @@ def visibility_purpose(dest: Path) -> Generator[VisibilityScene]:
     """F-VISIBILITY-PURPOSE: see scenes/evaluation/visibility_purpose.usda."""
     root = copy_scene(Scene.EVALUATION, dest) / "visibility_purpose.usda"
     yield VisibilityScene(
-        root=root,
+        root_layer_path=root,
         stage=open_stage_without_cache(root),
         purpose={
             "/World/Hidden/Child": "default",
@@ -296,16 +304,16 @@ class Placeholder:
     """What the planner shows for untranslated content: a bounds box, or an empty marker when bounds is None."""
 
     type_name: str  # the prim's USD type
-    world: Gf.Matrix4d
-    bounds: Bounds | None  # local: the authored extent as given, else USD's computed one for curves and points
-    computed: bool  # bounds came from USD's computation, since none is authored
-    viewport: bool  # displays there under the default purposes
-    render: bool
+    world_matrix: Gf.Matrix4d
+    local_bounds: Bounds | None  # local: the authored extent as given, else USD's computed one for curves and points
+    bounds_computed_from_geometry: bool  # bounds came from USD's computation, since none is authored
+    visible_in_viewport: bool  # displays there under the default purposes
+    visible_in_render: bool
 
 
 @dataclass
 class UnsupportedScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     placeholders: dict[str, Placeholder]  # each with an untranslated-type diagnostic; markers also warn
     exact_conversions: frozenset[str]  # implicit shapes the filters turn into meshes exactly
@@ -323,10 +331,10 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
         return Gf.Vec3d(*corners[0]), Gf.Vec3d(*corners[1])
 
     def shown(type_name: str, at: Gf.Matrix4d, bounds: Bounds | None, *, computed: bool = False) -> Placeholder:
-        return Placeholder(type_name, at, bounds, computed, viewport=True, render=True)
+        return Placeholder(type_name, at, bounds, computed, visible_in_viewport=True, visible_in_render=True)
 
     yield UnsupportedScene(
-        root=root,
+        root_layer_path=root,
         stage=open_stage_without_cache(root),
         placeholders={
             "/World/Boxed": shown("BasisCurves", Gf.Matrix4d(1), box((-1, -1, -1), (2, 2, 2))),
@@ -344,25 +352,25 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
                 "BasisCurves",
                 world(rotate((0, 0, 1), 90), translate(0, 15, 0)),
                 box((0, 0, 0), (2, 0, 1)),
-                computed=False,
-                viewport=False,  # render purpose
-                render=True,
+                bounds_computed_from_geometry=False,
+                visible_in_viewport=False,  # render purpose
+                visible_in_render=True,
             ),
             "/World/Veiled": Placeholder(
                 "BasisCurves",
                 translate(0, 18, 0),
                 box((0, 0, 0), (0, 1, 0)),
-                computed=False,
-                viewport=False,
-                render=False,
+                bounds_computed_from_geometry=False,
+                visible_in_viewport=False,
+                visible_in_render=False,
             ),
             "/World/Parent": Placeholder(
                 "BasisCurves",
                 translate(0, 21, 0),
                 box((0, 0, 0), (0, 0, 1)),
-                computed=False,
-                viewport=False,
-                render=True,
+                bounds_computed_from_geometry=False,
+                visible_in_viewport=False,
+                visible_in_render=True,
             ),
         },
         exact_conversions=frozenset({"/World/Shapes/Box"}),
@@ -377,9 +385,9 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
 
 @dataclass
 class PointInstancerScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
-    world: dict[str, Gf.Matrix4d]  # drawn copy, by its point-instance path -> world transform
+    world_matrices_by_source: dict[str, Gf.Matrix4d]  # drawn copy, by its point-instance path -> world transform
     sources: dict[str, str]  # drawn copy -> the composed-stage prim it is a copy of
     instance_context: dict[
         str, tuple[str, ...]
@@ -448,9 +456,9 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
                 outer=(f"/World/Kits/{kit}",),
             )
     yield PointInstancerScene(
-        root=root,
+        root_layer_path=root,
         stage=open_stage_without_cache(root),
-        world=world,
+        world_matrices_by_source=world,
         sources=sources,
         instance_context=contexts,
         floors=floors,
@@ -480,13 +488,15 @@ _RESET = 0.15  # the chance a prim below World resets the transform stack
 
 @dataclass
 class HierarchyScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     seed: int
     meters_per_unit: float
     up_axis: str
-    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform, composed here from the ops written
-    resets: frozenset[str]  # the prims, meshes or Xforms, whose own ops reset the transform stack
+    world_matrices_by_source: dict[
+        str, Gf.Matrix4d
+    ]  # drawn mesh -> world transform, composed here from the ops written
+    reset_transform_paths: frozenset[str]  # the prims, meshes or Xforms, whose own ops reset the transform stack
 
 
 def _ops(rng: random.Random) -> list[tuple[str, object, Gf.Matrix4d]]:

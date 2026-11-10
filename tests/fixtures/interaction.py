@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class InteractionScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     times: tuple[float, ...]  # time codes the checks publish generations at
     elements: dict[float, frozenset[str]]  # time -> display elements (instance-proxy paths in instance contents)
@@ -71,7 +71,7 @@ def kind_hierarchy(dest: Path) -> Generator[InteractionScene]:
     elements = frozenset({seat, back, legs, shade, top, rock, vase, crate})
     root, stage = _open(dest, "kind_hierarchy.usda")
     yield InteractionScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
         times=(0.0,),
         elements={0.0: elements},
@@ -110,7 +110,7 @@ def nested_selection(dest: Path) -> Generator[InteractionScene]:
     nested_bolt = f"{crate_a}/Hardware/Bolt1/Head"
     root, stage = _open(dest, "nested_selection.usda")
     yield InteractionScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
         times=(0.0,),
         elements={0.0: frozenset(floors)},
@@ -151,7 +151,7 @@ def universe_membership(dest: Path) -> Generator[InteractionScene]:
     root, stage = _open(dest, "universe_membership.usda")
     stage.Unload("/World/Payload")
     yield InteractionScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
         times=(0.0, 5.0),
         elements={0.0: always | {blinker}, 5.0: always},

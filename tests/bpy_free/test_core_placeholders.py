@@ -50,7 +50,9 @@ def test_each_untranslated_prim_has_one_diagnostic_naming_its_fallback(
     for path, expected in unsupported.placeholders.items():
         diagnostic = untranslated[path]
         assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED, Severity.WARNING)
-        assert diagnostic.fallback_description == ("empty marker" if expected.bounds is None else "bounding box"), path
+        assert diagnostic.fallback_description == (
+            "empty marker" if expected.local_bounds is None else "bounding box"
+        ), path
         assert expected.type_name in diagnostic.message, path
 
 
@@ -58,13 +60,13 @@ def test_a_prim_without_usable_bounds_is_an_empty_marker(unsupported: evaluation
     # MODEL-05: the volume, with no authored extent and none computed, is an object holding no data at its transform.
     plan = plan_at(unsupported.stage, 0.0)
     shown = copies(plan)
-    markers = {path for path, expected in unsupported.placeholders.items() if expected.bounds is None}
+    markers = {path for path, expected in unsupported.placeholders.items() if expected.local_bounds is None}
     assert markers == {"/World/Fog"}
     for path, copy in shown.items():
         assert (copy.bounds_mesh_resource_index is None) == (path in markers), path
     (fog,) = markers
     assert plan.resources[shown[fog].object_resource_index].dependency_resource_indices == ()
-    assert_world(shown[fog], unsupported.placeholders[fog].world)
+    assert_world(shown[fog], unsupported.placeholders[fog].world_matrix)
 
 
 def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.UnsupportedScene) -> None:
@@ -75,10 +77,10 @@ def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.Unsuppo
     entries = {c.source_path for c in plan.correspondence}
     for path, expected in unsupported.placeholders.items():
         assert path in entries, path
-        assert_world(shown[path], expected.world)
+        assert_world(shown[path], expected.world_matrix)
         assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
-            expected.viewport,
-            expected.render,
+            expected.visible_in_viewport,
+            expected.visible_in_render,
         ), path
 
 

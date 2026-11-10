@@ -57,17 +57,17 @@ class Session:
     display: BatchedDisplay
     view_layer: bpy.types.ViewLayer
     collection: bpy.types.Collection  # the display's, which holds every managed object
-    level: str | None = None  # a model kind, or None for the prim level
-    targets: list[str] = field(default_factory=list)  # in the order picked
-    active: str | None = None
-    following: bool = False  # whether Blender's own selection changes become source selections
+    model_kind: str | None = None  # a model kind, or None for the prim level
+    selected_source_paths: list[str] = field(default_factory=list)  # in the order picked
+    active_source_path: str | None = None
+    follow_blender_selection: bool = False  # whether Blender's own selection changes become source selections
     selectable: bool = True  # whether managed objects are selectable, and mirror the source selection
-    keep: tuple[Any, ...] = ()  # what the interaction needs alive: the stage, its bridge, the plan
+    retained_source_objects: tuple[Any, ...] = ()  # what the interaction needs alive: the stage, its bridge, the plan
     stage: Any = None  # the live stage, which callers read values from, as the contract says
-    time: float | None = None  # the time code the display shows; None for the default
+    time_code: float | None = None  # the time code the display shows; None for the default
     listeners: list[Callable[[], None]] = field(default_factory=list)  # told when the source selection changes
     _applying: bool = False
-    _centers: dict[int, numpy.ndarray] | None = None  # the display's, which stays as it is built
+    _world_centers_by_element: dict[int, numpy.ndarray] | None = None  # the display's, which stays as it is built
 
     def pick(self, obj: bpy.types.Object | None, matrix: Any, mode: str) -> None:
         """Select the target of what a ray cast hit, its object and world matrix; None for nothing hit."""
@@ -84,20 +84,20 @@ class Session:
             resolved = self.interaction.resolve_pick(element)
             if resolved is not None:
                 entities.append((resolved["source"], tuple(resolved["instance_context"])))
-        picked = list(dict.fromkeys(self.interaction.select_targets(entities, self.level))) if entities else []
+        picked = list(dict.fromkeys(self.interaction.select_targets(entities, self.model_kind))) if entities else []
         if mode == "SET":
-            self.targets = picked
+            self.selected_source_paths = picked
         elif mode == "EXTEND":
-            self.targets += [t for t in picked if t not in self.targets]
+            self.selected_source_paths += [t for t in picked if t not in self.selected_source_paths]
         elif mode == "SUBTRACT":
-            self.targets = [t for t in self.targets if t not in picked]
+            self.selected_source_paths = [t for t in self.selected_source_paths if t not in picked]
         else:  # TOGGLE
-            kept = [t for t in self.targets if t not in picked]
-            self.targets = kept + [t for t in picked if t not in self.targets]
-        if picked and mode != "SUBTRACT" and picked[-1] in self.targets:
-            self.active = picked[-1]
-        elif self.active not in self.targets:
-            self.active = None
+            kept = [t for t in self.selected_source_paths if t not in picked]
+            self.selected_source_paths = kept + [t for t in picked if t not in self.selected_source_paths]
+        if picked and mode != "SUBTRACT" and picked[-1] in self.selected_source_paths:
+            self.active_source_path = picked[-1]
+        elif self.active_source_path not in self.selected_source_paths:
+            self.active_source_path = None
         self.apply()
 
     def apply(self) -> None:
@@ -106,8 +106,12 @@ class Session:
             listener()
         if not self.selectable:
             return
-        shown = set(self.interaction.highlight_targets(self.targets)) if self.targets else set()
-        active = set(self.interaction.highlight_targets([self.active])) if self.active else set()
+        shown = (
+            set(self.interaction.highlight_targets(self.selected_source_paths)) if self.selected_source_paths else set()
+        )
+        active = (
+            set(self.interaction.highlight_targets([self.active_source_path])) if self.active_source_path else set()
+        )
         self._applying = True
         try:
             batch_selection.apply_selection(self.view_layer, self.display, shown, active)
@@ -128,10 +132,10 @@ class Session:
             return
         blender = batch_selection.read_blender_selection(self.view_layer, self.display)
         found = self.interaction.selection_from_blender(
-            blender.selected_element_indices, blender.active_element_index, self.level
+            blender.selected_element_indices, blender.active_element_index, self.model_kind
         )
-        if (list(found["targets"]), found["active"]) != (self.targets, self.active):
-            self.targets, self.active = list(found["targets"]), found["active"]
+        if (list(found["targets"]), found["active"]) != (self.selected_source_paths, self.active_source_path):
+            self.selected_source_paths, self.active_source_path = list(found["targets"]), found["active"]
             self.apply()
 
     def centers(self) -> dict[int, numpy.ndarray]:
@@ -139,8 +143,8 @@ class Session:
 
         Computed once: Phase D's display holds still until it is built again, with a session of its own.
         """
-        if self._centers is not None:
-            return self._centers
+        if self._world_centers_by_element is not None:
+            return self._world_centers_by_element
         found = {}
         for element, obj in self.display.objects.items():
             if not obj.hide_viewport:
@@ -157,7 +161,7 @@ class Session:
             centers = world @ _center(batch.prototype)
             for point, element in enumerate(batch.elements):
                 found[element] = centers[point]
-        self._centers = found
+        self._world_centers_by_element = found
         return found
 
 
@@ -180,7 +184,7 @@ def levels() -> list[tuple[str, str, str]]:
 
 def _on_level(self: Any, _context: Any) -> None:
     if SESSION is not None:
-        SESSION.level = None if self.proscenium_level == PRIM_LEVEL else self.proscenium_level
+        SESSION.model_kind = None if self.proscenium_level == PRIM_LEVEL else self.proscenium_level
 
 
 def _on_outlines(self: Any, _context: Any) -> None:
@@ -193,7 +197,7 @@ def _on_outlines(self: Any, _context: Any) -> None:
 
 def _on_follow(self: Any, _context: Any) -> None:
     if SESSION is not None:
-        SESSION.following = self.proscenium_follow
+        SESSION.follow_blender_selection = self.proscenium_follow
         _watch_tool()
 
 
@@ -215,13 +219,13 @@ def _watch_tool(*_args: Any) -> None:
     """
     if SESSION is not None:
         active = _tool_active()
-        SESSION.set_selectable(SESSION.following or active)
+        SESSION.set_selectable(SESSION.follow_blender_selection or active)
         if OUTLINES is not None:
             OUTLINES.hide_blender_overlays(active)
 
 
 def _on_update(_scene: Any, _depsgraph: Any = None) -> None:
-    if SESSION is not None and SESSION.following:
+    if SESSION is not None and SESSION.follow_blender_selection:
         SESSION.follow_blender()
 
 
@@ -314,14 +318,14 @@ class PROSCENIUM_PT_source_selection(bpy.types.Panel):  # noqa: N801 - Blender's
         layout.prop(context.scene, "proscenium_level", text="Level")
         layout.prop(context.scene, "proscenium_follow", text="Follow Blender's Tools")
         layout.prop(context.scene, "proscenium_outlines", text="Draw Own Outlines")
-        if OUTLINES is not None and OUTLINES.draw_ms:
-            recent = OUTLINES.draw_ms[-60:]
+        if OUTLINES is not None and OUTLINES.draw_durations_ms:
+            recent = OUTLINES.draw_durations_ms[-60:]
             layout.label(text=f"Outlines: {sum(recent) / len(recent):.2f} ms a frame (CPU)")
         if SESSION is None:
             layout.label(text="No display")
             return
-        for target in SESSION.targets:
-            layout.label(text=target, icon="RADIOBUT_ON" if target == SESSION.active else "DOT")
+        for target in SESSION.selected_source_paths:
+            layout.label(text=target, icon="RADIOBUT_ON" if target == SESSION.active_source_path else "DOT")
 
 
 class PROSCENIUM_TT_source_select(bpy.types.WorkSpaceTool):  # noqa: N801 - Blender's tool naming

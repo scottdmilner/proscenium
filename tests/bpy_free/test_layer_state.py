@@ -115,7 +115,7 @@ def test_reload(tmp_path: Path) -> None:
         # LAYER-06: the caller composes the shared reloaded layers and its session opinions.
         assert read_values(scene.caller) == scene.disk_values | {"root": 4.0}
         assert caller_settings(scene.caller) == settings
-        fresh = _fresh_values(live.GetSessionLayer(), scene.root.parent, tmp_path / "fresh")
+        fresh = _fresh_values(live.GetSessionLayer(), scene.root_layer_path.parent, tmp_path / "fresh")
         assert read_values(stage) == fresh  # LAYER-07
 
 
@@ -203,10 +203,10 @@ def test_shared_reload(tmp_path: Path) -> None:
     # F-CACHED-STAGE "shared-reload": a rewrite isn't shown until a reload, which the cached ambient stage
     # sees too, with its own settings unchanged.
     with source_access.cached_stage(tmp_path / "scene") as scene:
-        source = binding(open_stage_without_cache(scene.root))
+        source = binding(open_stage_without_cache(scene.root_layer_path))
         source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.ambient)
-        rewrite_on_disk(scene.root.parent, "sub", 2.0)
+        rewrite_on_disk(scene.root_layer_path.parent, "sub", 2.0)
         assert (
             read_values(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))["sub"] == 1.0
         )  # LAYER-01: not reloaded by acquiring
@@ -215,4 +215,6 @@ def test_shared_reload(tmp_path: Path) -> None:
         assert read_values(stage) == scene.disk_values | {"sub": 2.0}
         assert read_values(scene.ambient) == scene.ambient_values | {"sub": 2.0}
         assert caller_settings(scene.ambient) == settings
-        assert read_values(stage) == _fresh_values(stage.GetSessionLayer(), scene.root.parent, tmp_path / "fresh")
+        assert read_values(stage) == _fresh_values(
+            stage.GetSessionLayer(), scene.root_layer_path.parent, tmp_path / "fresh"
+        )

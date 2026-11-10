@@ -40,10 +40,10 @@ CASES = [("appearance", *u) for u in UNITS + MATERIALS] + [("stress", *u) for u 
 def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[Path]:
     if request.param == "appearance":
         with appearance.appearance_cases(tmp_path) as cases:
-            yield cases.root
+            yield cases.root_layer_path
     else:
         with appearance.nested_stress(tmp_path) as stress:
-            yield stress.root
+            yield stress.root_layer_path
 
 
 @pytest.mark.parametrize(
@@ -141,7 +141,7 @@ def test_update_follows_edits(  # noqa: PLR0913 - pytest's parameters and fixtur
     }
     generator, edits = generators[fixture]
     with generator(tmp_path / "scene") as built:
-        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": edits}
+        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root_layer_path), "edits": edits}
         kwargs |= {"users": users, "representation": representation, "select": selection, "moves": moves}
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     _check_steps(steps, users, representation, selection, {edits.index("unchanged")}, moves)
@@ -251,7 +251,11 @@ def test_failed_publication_restores_the_display(  # noqa: PLR0913 - pytest's pa
     the changes in place include the moved objects' transforms.
     """
     with appearance.appearance_cases(tmp_path / "scene") as built:
-        kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(built.root), "edits": APPEARANCE_EDITS}
+        kwargs: dict[str, Any] = {
+            "module_dir": str(hydra_bridge),
+            "scene": str(built.root_layer_path),
+            "edits": APPEARANCE_EDITS,
+        }
         kwargs |= {"users": users, "representation": representation, "fail_publication": True, "moves": moves}
         steps = run_isolated(wheel, DIFF_BODY, "update_edits", tmp_path, **kwargs)
     for step in steps:

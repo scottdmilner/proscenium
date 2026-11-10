@@ -119,31 +119,33 @@ class Outlines:
     session: Session
     draw_outlines: bool = False  # whether to draw outlines, besides the origins
     # By mesh pointer, its triangles' indexed GPU batch and its bytes, the most recently used last.
-    _meshes: OrderedDict[int, tuple[Any, int]] = field(default_factory=OrderedDict)
-    _groups: list[tuple[bool, Any, Any, int]] = field(default_factory=list)  # (is active, batch, matrices, count)
-    _origins: Any = None  # the targets' origins, a quad each, or None for none
+    _mesh_batches_by_pointer: OrderedDict[int, tuple[Any, int]] = field(default_factory=OrderedDict)
+    _outline_groups: list[tuple[bool, Any, Any, int]] = field(
+        default_factory=list
+    )  # (is active, batch, matrices, count)
+    _origin_batch: Any = None  # the targets' origins, a quad each, or None for none
     _framebuffer: Any = None  # the mask: an id per pixel, with a depth buffer of its own
-    _mask: Any = None  # its color texture
-    _depth: Any = None  # and its depth texture
+    _mask_texture: Any = None  # its color texture
+    _depth_texture: Any = None  # and its depth texture
     _shaders: dict[str, Any] = field(default_factory=dict)  # by name, compiled once
-    _quad: Any = None
-    _handler: Any = None
+    _fullscreen_quad: Any = None
+    _draw_handler: Any = None
     # By 3D view space pointer, while Blender's overlays are hidden: the space, and its own selection outlines and
     # origins settings, to restore and to follow.
-    _overlays: dict[int, tuple[Any, bool, bool]] = field(default_factory=dict)
-    draw_ms: list[float] = field(default_factory=list)  # the draw handler's CPU time, per frame
+    _saved_overlay_settings: dict[int, tuple[Any, bool, bool]] = field(default_factory=dict)
+    draw_durations_ms: list[float] = field(default_factory=list)  # the draw handler's CPU time, per frame
 
     def enable(self) -> None:
-        if self._handler is None:
+        if self._draw_handler is None:
             self.session.listeners.append(self.rebuild)
             self.rebuild()
-            self._handler = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), "WINDOW", "POST_PIXEL")
+            self._draw_handler = bpy.types.SpaceView3D.draw_handler_add(self._draw, (), "WINDOW", "POST_PIXEL")
 
     def disable(self) -> None:
-        if self._handler is not None:
+        if self._draw_handler is not None:
             self.hide_blender_overlays(False)
-            bpy.types.SpaceView3D.draw_handler_remove(self._handler, "WINDOW")
-            self._handler = None
+            bpy.types.SpaceView3D.draw_handler_remove(self._draw_handler, "WINDOW")
+            self._draw_handler = None
             self.session.listeners.remove(self.rebuild)
 
     def hide_blender_overlays(self, hidden: bool) -> None:
@@ -151,7 +153,7 @@ class Outlines:
 
         Each view's settings are saved when hidden, and restored as saved.
         """
-        if hidden and self._overlays:
+        if hidden and self._saved_overlay_settings:
             self.hide_blender_overlays(False)  # whether outlines are drawn may have changed
         if hidden:
             manager: Any = bpy.context.window_manager
@@ -160,21 +162,21 @@ class Outlines:
                     if area.type == "VIEW_3D":
                         overlay = area.spaces.active.overlay
                         saved = (overlay.show_outline_selected, overlay.show_object_origins)
-                        self._overlays[area.spaces.active.as_pointer()] = (area.spaces.active, *saved)
+                        self._saved_overlay_settings[area.spaces.active.as_pointer()] = (area.spaces.active, *saved)
                         overlay.show_object_origins = False
                         if self.draw_outlines:
                             overlay.show_outline_selected = False
         elif not hidden:
-            for space, outlines, origins in self._overlays.values():
+            for space, outlines, origins in self._saved_overlay_settings.values():
                 try:
                     space.overlay.show_outline_selected, space.overlay.show_object_origins = outlines, origins
                 except ReferenceError:  # its area was closed
                     pass
-            self._overlays.clear()
+            self._saved_overlay_settings.clear()
 
     def _preferences(self, space: Any) -> tuple[bool, bool]:
         """Whether a 3D view shows selection outlines and origins, as its own settings say."""
-        saved = self._overlays.get(space.as_pointer())
+        saved = self._saved_overlay_settings.get(space.as_pointer())
         if saved is not None:
             return saved[1], saved[2]
         return space.overlay.show_outline_selected, space.overlay.show_object_origins
@@ -184,12 +186,12 @@ class Outlines:
         session = self.session
         # By element, its selection target's id, so each target has its own outline; negative for the active's.
         ids: dict[int, float] = {}
-        for index, target in enumerate(session.targets):
-            sign = -1.0 if target == session.active else 1.0
+        for index, target in enumerate(session.selected_source_paths):
+            sign = -1.0 if target == session.active_source_path else 1.0
             for element in session.interaction.highlight_targets([target]):
                 ids.setdefault(element, sign * (index + 1))
         active = {element for element, id_ in ids.items() if id_ < 0}
-        self._groups = []
+        self._outline_groups = []
         used = set()
         for is_active, elements in ((False, ids.keys() - active), (True, active)) if self.draw_outlines else ():
             for mesh, worlds, targets in self._instances(elements, ids):
@@ -197,9 +199,11 @@ class Outlines:
                 used.add(mesh.as_pointer())
                 for first in range(0, len(worlds), ROWS):
                     part = slice(first, first + ROWS)
-                    self._groups.append((is_active, batch, _matrices(worlds[part], targets[part]), len(worlds[part])))
+                    self._outline_groups.append(
+                        (is_active, batch, _matrices(worlds[part], targets[part]), len(worlds[part]))
+                    )
         self._evict(used)
-        self._origins = self._origin_quads()
+        self._origin_batch = self._origin_quads()
         # Blender redraws a view when its data changes, which a source selection alone doesn't, as Blender's
         # selection may be off: so ask for it.
         manager: Any = bpy.context.window_manager
@@ -237,8 +241,8 @@ class Outlines:
     def _mesh(self, mesh: Any) -> Any:
         """A mesh's triangles as an indexed GPU batch, in the mesh's own space, cached by mesh."""
         key = mesh.as_pointer()
-        if key in self._meshes:
-            self._meshes.move_to_end(key)
+        if key in self._mesh_batches_by_pointer:
+            self._mesh_batches_by_pointer.move_to_end(key)
         else:
             mesh.calc_loop_triangles()
             corners = numpy.empty(len(mesh.loop_triangles) * 3, dtype=numpy.int32)
@@ -249,35 +253,35 @@ class Outlines:
             content: Any = {"pos": positions.reshape(-1, 3)}  # the stubs list no numpy arrays
             indices: Any = corners.reshape(-1, 3)
             batch = batch_for_shader(self._shader("instanced"), "TRIS", content, indices=indices)
-            self._meshes[key] = (batch, positions.nbytes + corners.nbytes)
-        return self._meshes[key][0]
+            self._mesh_batches_by_pointer[key] = (batch, positions.nbytes + corners.nbytes)
+        return self._mesh_batches_by_pointer[key][0]
 
     def _evict(self, used: set[int]) -> None:
         """Drop the least recently used meshes not in `used` while the cache holds more than its budget."""
-        held = sum(size for _, size in self._meshes.values())
-        for key in [k for k in self._meshes if k not in used]:  # the least recently used first
+        held = sum(size for _, size in self._mesh_batches_by_pointer.values())
+        for key in [k for k in self._mesh_batches_by_pointer if k not in used]:  # the least recently used first
             if held <= CACHE_BUDGET:
                 break
-            held -= self._meshes.pop(key)[1]
+            held -= self._mesh_batches_by_pointer.pop(key)[1]
 
     @property
     def cached_bytes(self) -> int:
         """The cached meshes' vertices and indices, in bytes."""
-        return sum(size for _, size in self._meshes.values())
+        return sum(size for _, size in self._mesh_batches_by_pointer.values())
 
     def _origin_quads(self) -> Any:
         """A quad about each selection target's world origin, for the origin shader; None for none."""
         session = self.session
-        if session.stage is None or not session.targets:
+        if session.stage is None or not session.selected_source_paths:
             return None
-        cache = UsdGeom.XformCache(Usd.TimeCode.Default() if session.time is None else session.time)
+        cache = UsdGeom.XformCache(Usd.TimeCode.Default() if session.time_code is None else session.time_code)
         centers, actives = [], []
-        for path in session.targets:
+        for path in session.selected_source_paths:
             prim = session.stage.GetPrimAtPath(path)
             if prim:
                 at = cache.GetLocalToWorldTransform(prim).ExtractTranslation()
                 centers.append((at[0], at[1], at[2]))
-                actives.append(1.0 if path == session.active else 0.0)
+                actives.append(1.0 if path == session.active_source_path else 0.0)
         if not centers:
             return None
         count = len(centers)
@@ -332,14 +336,14 @@ class Outlines:
             info.fragment_source(_ORIGIN_FRAGMENT)
         self._shaders[name] = gpu.shader.create_from_info(info)
         if name == "edges":
-            self._quad = batch_for_shader(self._shaders[name], "TRIS", {"pos": _CORNERS.tolist()})
+            self._fullscreen_quad = batch_for_shader(self._shaders[name], "TRIS", {"pos": _CORNERS.tolist()})
         return self._shaders[name]
 
     def _draw(self) -> None:
         start = time.perf_counter()
         context: Any = bpy.context
         region, view = context.region, context.region_data
-        if not (self._groups or self._origins) or region is None or view is None:
+        if not (self._outline_groups or self._origin_batch) or region is None or view is None:
             return
         show_outlines, show_origins = self._preferences(context.space_data)
         show_outlines = show_outlines and self.draw_outlines
@@ -352,13 +356,13 @@ class Outlines:
         #     framebuffer.read_depth(0, 0, region.width, region.height)
         #     self.depth_readback = (time.perf_counter() - begin) * 1000
         size = (region.width, region.height)
-        if self._mask is None or (self._mask.width, self._mask.height) != size:
+        if self._mask_texture is None or (self._mask_texture.width, self._mask_texture.height) != size:
             # A target id a pixel, as a float, exact to 16 million, and a float depth buffer: 8 bytes a pixel.
             # Not DEPTH_COMPONENT24, which Blender 5.2 deprecates: it didn't tell apart depths 1e-4 apart near
             # the far end, as a large scene's are (ad hoc, Metal), so selected targets showed through each other.
-            self._mask = gpu.types.GPUTexture(size, format="R32F")
-            self._depth = gpu.types.GPUTexture(size, format="DEPTH_COMPONENT32F")
-            self._framebuffer = gpu.types.GPUFrameBuffer(depth_slot=self._depth, color_slots=self._mask)
+            self._mask_texture = gpu.types.GPUTexture(size, format="R32F")
+            self._depth_texture = gpu.types.GPUTexture(size, format="DEPTH_COMPONENT32F")
+            self._framebuffer = gpu.types.GPUFrameBuffer(depth_slot=self._depth_texture, color_slots=self._mask_texture)
         framebuffer: Any = self._framebuffer  # its bind() is a context manager the stubs don't declare
         projection = view.perspective_matrix
         with framebuffer.bind():
@@ -371,7 +375,7 @@ class Outlines:
             mask.uniform_float("view_projection", projection)
             # Every target hides those behind it, the active entry's too, so each pixel holds the nearest.
             gpu.state.depth_test_set("LESS_EQUAL")
-            for _, batch, matrices, count in self._groups:
+            for _, batch, matrices, count in self._outline_groups:
                 mask.uniform_sampler("matrices", matrices)
                 batch.draw_instanced(mask, instance_start=0, instance_count=count)
             gpu.state.depth_test_set("NONE")
@@ -383,11 +387,11 @@ class Outlines:
         edges.uniform_float("selected_color", selected)
         edges.uniform_float("active_color", active)
         edges.uniform_int("width", max(1, round(WIDTH * scale)))
-        edges.uniform_sampler("mask", self._mask)
+        edges.uniform_sampler("mask", self._mask_texture)
         gpu.state.blend_set("ALPHA")
         if show_outlines:
-            self._quad.draw(edges)
-        if self._origins is not None and show_origins:
+            self._fullscreen_quad.draw(edges)
+        if self._origin_batch is not None and show_origins:
             origin = self._shader("origin")
             origin.uniform_float("view_projection", projection)
             origin.uniform_float("selected_color", selected)
@@ -395,9 +399,9 @@ class Outlines:
             origin.uniform_float("viewport", (region.width, region.height))
             origin.uniform_float("radius", (ORIGIN / 2 + 1) * scale)  # the dot and its rim
             origin.uniform_float("rim", scale)
-            self._origins.draw(origin)
+            self._origin_batch.draw(origin)
         gpu.state.blend_set("NONE")
-        self.draw_ms.append((time.perf_counter() - start) * 1000)
+        self.draw_durations_ms.append((time.perf_counter() - start) * 1000)
 
 
 def _linear(color: Any) -> tuple[float, float, float, float]:

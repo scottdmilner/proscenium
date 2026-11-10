@@ -68,7 +68,7 @@ def check_demo() -> None:
     assert rows["/World/Geometry/Crates/Crate_01/Body"].is_instance_proxy
     assert rows["/World/Geometry/Prop_Payloaded"].has_payload
     assert rows["/World/Geometry/Prop_Variants"].has_variants
-    assert not rows["/World/Geometry/Disabled"].active
+    assert not rows["/World/Geometry/Disabled"].is_active
     crate = tree.stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")
     print("tooltips:")
     print("  row:", repr(addon._row_tooltip(wm.poc_sg_rows[tree.position(crate)])))  # noqa: SLF001
@@ -213,8 +213,8 @@ def time_search() -> None:
             shown = _timed(lambda: tree.set_search(result))  # noqa: B023
             prims = sum(1 for _ in Usd.PrimRange(stage.GetPseudoRoot(), tree_model.CHILD_PREDICATE))
             print(
-                f"  {prims:>8} prims, {text!r:>8}: search {searched:7.1f} ms ({len(result.matches):>5} matches"
-                f"{', capped' if result.truncated else ''}), rows {shown:6.1f} ms"
+                f"  {prims:>8} prims, {text!r:>8}: search {searched:7.1f} ms ({len(result.matching_prims):>5} matches"
+                f"{', capped' if result.is_truncated else ''}), rows {shown:6.1f} ms"
             )
 
 

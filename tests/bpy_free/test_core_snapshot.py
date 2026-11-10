@@ -72,7 +72,7 @@ def test_edits_and_time_changes_after_capture_leave_the_snapshot(transforms: eva
 
 
 def test_lent_buffers_outlive_the_plan_snapshot_chain_and_stage(transforms: evaluation.TransformsScene) -> None:
-    stage = open_stage_without_cache(transforms.root)
+    stage = open_stage_without_cache(transforms.root_layer_path)
     chain = _core.SceneIndexChain(stage)
     plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
     extents = [g.extent for g in plan.geometries]

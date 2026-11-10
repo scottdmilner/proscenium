@@ -179,7 +179,7 @@ def test_two_indexes_stop_creation(bindings: Bindings, tmp_path: Path) -> None:
 def test_settings_change_only_their_binding(bindings: Bindings, tmp_path: Path) -> None:
     # BIND-10: configurations of independent bindings on the same source stay separate.
     with source_access.multi_binding(tmp_path) as scene:
-        root = scene.roots[".usda"]
+        root = scene.root_layer_paths[".usda"]
         changed, other = binding_on_file(bindings, _scene(), root), binding_on_file(bindings, _scene(), root)
         attached = bindings.create_binding(_scene())
         attached.attach(scene.caller)
@@ -193,7 +193,7 @@ def test_conversion_and_purpose_settings_change_only_their_binding(bindings: Bin
     # BIND-06 on F-MULTI-BINDING: each binding keeps its own conversion and purpose settings, recorded in its
     # configuration, and a purpose USD doesn't define is refused, changing nothing.
     with source_access.multi_binding(tmp_path) as scene:
-        root = scene.roots[".usda"]
+        root = scene.root_layer_paths[".usda"]
         changed, other = binding_on_file(bindings, _scene(), root), binding_on_file(bindings, _scene(), root)
         assert changed.requested_settings() == new_settings(PayloadPolicy.LOAD_ALL)  # off, and the spec's purposes
         before = _config(other)
@@ -222,7 +222,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     # API-01: a handle holds only the identifier, so nothing it holds goes stale. On F-BINDING-STATE.
     undo.require_global_undo()
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
     undo.push("base")
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
     undo.push("change")
@@ -234,7 +234,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert BindingHandle(handle.binding_id) == handle
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
-    handle.attach(open_stage_without_cache(scene.root))
+    handle.attach(open_stage_without_cache(scene.root_layer_path))
     assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
 
 
@@ -242,7 +242,7 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
     # API-02, API-03, API-07: synchronizing changes no setting and retains the attached live stage;
     # set_settings and reload record or reread without synchronizing.
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
         before = _config(handle)
         assert handle.synchronize(Usd.TimeCode.Default()) == Result(
             attempted_time_codes=(Usd.TimeCode(Usd.TimeCode.Default()),)
@@ -276,7 +276,7 @@ def test_undoing_creation_makes_handles_raise(bindings: Bindings, tmp_path: Path
     undo.require_global_undo()
     undo.push("base")
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
     undo.push("create")
     undo.undo()
     for each in (handle, BindingHandle(handle.binding_id)):
@@ -319,7 +319,7 @@ def test_reopening_f_binding_state_synchronizes_nothing(
     # and its published generation and last attempt are as saved. Nothing writes them before M5, so the
     # test does. Its caller's stage keeps the root layer open, so the registry is the evidence.
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         handle.synchronize(0)
         generation = GenerationMetadata(
             handle.binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 0.0, SourceRevision("saved"), ()
@@ -399,7 +399,7 @@ def test_a_manifest_naming_an_unknown_role_is_kept_and_refuses(bindings: Binding
     # synchronize, saying why, before reading its source.
     with record_fixtures.schema_versions(tmp_path) as versions, source_access.binding_state(tmp_path) as scene:
         stored = versions.manifests["unknown-role"]
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         destination = bpy.data.collections["Shot"]
         destination[NAMESPACE][MANIFEST_KEY] = stored
         refused = manifests.read_manifest(destination)

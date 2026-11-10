@@ -56,7 +56,7 @@ def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_transforms_copies_and_contexts(policy: PayloadPolicy, transforms: evaluation.TransformsScene) -> None:
     # Under each payload policy, F-TRANSFORMS holding a payload (AFIX-06).
-    plan = plan_at(open_stage_without_cache(transforms.root, evaluation.LOAD[policy]), 0.0)
+    plan = plan_at(open_stage_without_cache(transforms.root_layer_path, evaluation.LOAD[policy]), 0.0)
     shown = copies(plan)
     assert set(shown) == transforms.drawn(policy)
     for path, copy in shown.items():
@@ -67,9 +67,11 @@ def test_transforms_copies_and_contexts(policy: PayloadPolicy, transforms: evalu
 def test_nested_copies_and_contexts(stress: appearance.StressScene) -> None:
     plan = plan_at(stress.stage, 0.0)
     shown = copies(plan)
-    assert set(shown) == stress.viewport | stress.render  # its guides, never explicitly visible, leave the plan
+    assert (
+        set(shown) == stress.viewport_paths | stress.render_paths
+    )  # its guides, never explicitly visible, leave the plan
     for path, copy in shown.items():
-        assert_world(copy, stress.world[path])
+        assert_world(copy, stress.world_matrices_by_source[path])
     contexts = _contexts(plan)
     assert contexts == {path: _usd_context(stress.stage, path) for path in shown}
     assert max(len(c) for c in contexts.values()) == 2  # nested instances, so the check above covers nesting
@@ -120,6 +122,6 @@ def test_known_gap_hydra_ignores_a_reset_inside_an_instance(stress: appearance.S
     def usd(path: str) -> Gf.Matrix4d:
         return cache.GetLocalToWorldTransform(stress.stage.GetPrimAtPath(path))
 
-    assert set(hydra) == set(stress.world)
+    assert set(hydra) == set(stress.world_matrices_by_source)
     wrong = {path for path, world in hydra.items() if not Gf.IsClose(world, usd(path), 1e-6)}
-    assert wrong == {path for path in stress.world if path.endswith("/Pinned/Pin")}
+    assert wrong == {path for path in stress.world_matrices_by_source if path.endswith("/Pinned/Pin")}

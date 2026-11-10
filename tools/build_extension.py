@@ -156,8 +156,8 @@ def sync_core(core_dir: Path, *, write: bool = True) -> Path:
     built = build_module(core_dir, CORE_BUILD, CORE)
     for stale in _core_modules(core_dir):
         stale.unlink()
-    module = Path(shutil.copy2(built.module, core_dir / built.module.name))
-    build = {k: v for k, v in built.manifest.items() if k not in {"imports", "linkage"}}
+    module = Path(shutil.copy2(built.module_path, core_dir / built.module_path.name))
+    build = {k: v for k, v in built.build_manifest.items() if k not in {"imports", "linkage"}}
     record.write_text(json.dumps({**inputs, "module_sha256": _sha256(module), "build": build}, indent=2) + "\n")
     print(f"built {module}")
     return module
