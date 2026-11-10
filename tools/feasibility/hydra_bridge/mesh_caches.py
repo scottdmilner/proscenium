@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import BufferFormat, Layer, flat, layers, new_mesh
+from apply import BufferFormat, MeshAttributeData, flat, mesh_attributes, new_mesh
 from attribute_samples import (
     BASE,
     FRAME_SEPARATOR,
@@ -57,9 +57,9 @@ class MeshCache:
     Once its topology varies, its whole meshes, and no attributes.
     """
 
-    base: dict[str, Layer]  # the values the mesh itself holds, by attribute
-    latest: dict[str, Layer]  # its values at the latest synchronization that wrote it
-    varying: dict[str, Layer] = field(default_factory=dict)  # by attribute, a layer of its kind
+    base: dict[str, MeshAttributeData]  # the values the mesh itself holds, by attribute
+    latest: dict[str, MeshAttributeData]  # its values at the latest synchronization that wrote it
+    varying: dict[str, MeshAttributeData] = field(default_factory=dict)  # by attribute, a layer of its kind
     whole: MeshSamples | None = None  # its whole meshes, once its topology varies, which split parts share
     shown: int = BASE  # of those, the sample at its latest synchronization
 
@@ -177,15 +177,15 @@ class MeshCaches:
 
     def _content(
         self, content: ContentKey, record: ObjectRecord, plan: Plan
-    ) -> tuple[dict[str, Layer], MeshRecord | None]:
+    ) -> tuple[dict[str, MeshAttributeData], MeshRecord | None]:
         """A content's attributes, and for a mesh its plan record; a placeholder's are its bounds."""
         kind, index = content
         if kind == "mesh":
             mesh_record = plan.meshes_at([index])[0]
-            return {layer.name: layer for layer in layers(mesh_record)}, mesh_record
+            return {layer.name: layer for layer in mesh_attributes(mesh_record)}, mesh_record
         return {"position": bounds_layer(record["bounds"])}, None
 
-    def _same_topology(self, key: HolderKey, found: dict[str, Layer], record: MeshRecord) -> bool:
+    def _same_topology(self, key: HolderKey, found: dict[str, MeshAttributeData], record: MeshRecord) -> bool:
         """Whether content has the faces, corners, material slots, and attributes of the mesh it would cache on."""
         topology = (flat(record["corner_verts"], BufferFormat.INT), flat(record["face_offsets"], BufferFormat.INT))
         mesh: Any = self.holder(key).data
@@ -251,7 +251,7 @@ class MeshCaches:
         self,
         mesh: bpy.types.Mesh,
         cache: MeshCache,
-        content: dict[str, Layer],
+        content: dict[str, MeshAttributeData],
         at: tuple[float, int],
         objects: list[bpy.types.Object],
     ) -> bool:
@@ -343,14 +343,14 @@ def ordered_parts(
     return sorted(parts.items(), key=lambda item: (not all(same(now, k) for k in item[1]), -len(item[1])))
 
 
-def new_cache(mesh: bpy.types.Mesh, content: dict[str, Layer]) -> MeshCache:
+def new_cache(mesh: bpy.types.Mesh, content: dict[str, MeshAttributeData]) -> MeshCache:
     """The cache of a mesh first found to vary, whose own values are the frames' before."""
     held: Any = mesh
     base = {}
     for name, layer in content.items():
         values = numpy.empty_like(layer.values)
         held.attributes[name].data.foreach_get(layer.prop, values)
-        base[name] = Layer(name, layer.data_type, layer.domain, layer.prop, values)
+        base[name] = MeshAttributeData(name, layer.data_type, layer.domain, layer.prop, values)
     return MeshCache(base, base)
 
 
@@ -364,8 +364,8 @@ def bounds_key(record: ObjectRecord) -> Any:
     return None if bounds is None else (tuple(bounds[0]), tuple(bounds[1]))
 
 
-def bounds_layer(bounds: Any) -> Layer:
+def bounds_layer(bounds: Any) -> MeshAttributeData:
     """A placeholder's bounds as its bounds mesh's corners (apply._bounds_mesh)."""
     low, high = bounds
     corners = [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-    return Layer("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, numpy.float32).ravel())  # ty: ignore[invalid-argument-type]
+    return MeshAttributeData("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, numpy.float32).ravel())  # ty: ignore[invalid-argument-type]

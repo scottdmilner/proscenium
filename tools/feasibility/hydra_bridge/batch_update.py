@@ -43,7 +43,15 @@ from batch import (
 )
 from batch_selection import states
 from selection import ELEMENT
-from update import Repoint, Transform, UserPolicy, kept_moves, new_data, retire_ids, with_parent
+from update import (
+    DependentObjectUpdatePolicy,
+    ObjectResourceUpdate,
+    Transform,
+    kept_moves,
+    new_data,
+    retire_ids,
+    with_parent,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,7 +60,7 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class Rebatch:
+class RetainedBatchUpdate:
     """A published batch the update keeps, and what publication changes on it."""
 
     batch: Batch  # once published
@@ -65,7 +73,7 @@ class Rebatch:
 
 
 @dataclass
-class Prepared:
+class PreparedBatchedDisplayUpdate:
     """An update built beside the published batched display, which it doesn't touch until publication."""
 
     # Where the new objects and carriers wait; None when there are none, since creating a collection is a write.
@@ -73,15 +81,18 @@ class Prepared:
     display: BatchedDisplay  # the display once published
     created: dict[int, bpy.types.Object]  # by new plan index: the new objects
     added: list[Batch]  # the new batches
-    kept: list[Rebatch]
+    kept: list[RetainedBatchUpdate]
     dropped: list[Batch]  # the published batches no group matched
     leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
-    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data or a new matrix
+    # By new plan index: kept objects that move onto rebuilt data or a new matrix.
+    repointed: dict[int, ObjectResourceUpdate]
     renumbered: list[int]  # new plan indices of kept objects whose index changed
     retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
 
-def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPolicy, moves: bool = False) -> Prepared:
+def prepare(
+    plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: DependentObjectUpdatePolicy, moves: bool = False
+) -> PreparedBatchedDisplayUpdate:
     """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links.
 
     With `moves`, a moved object that stays an object is kept and moved as update.prepare keeps one (M4 Phase E).
@@ -92,7 +103,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
     repointable = set(diff["repointable"])
     # Members whose points change; a change to only the mesh or materials is the prototype's.
     moved = set(diff["changed"]) - repointable
-    rebuilt = set(diff["changed"]) - (repointable if users is UserPolicy.REPOINT else set())
+    rebuilt = set(diff["changed"]) - (repointable if users is DependentObjectUpdatePolicy.REPOINT else set())
     shared, single = groups(plan, display.minimum)
     if moves:
         alone = set(single)
@@ -159,7 +170,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
         record = records[members[0]] if reprototyped else None
         renumbered = points is None and not numpy.array_equal(olds, members)
         batch = Batch(dict(old.carriers if changes is None else changes.carriers), old.prototype, members, key)
-        kept.append(Rebatch(batch, record, reprototyped, points, old.points, renumbered, changes))
+        kept.append(RetainedBatchUpdate(batch, record, reprototyped, points, old.points, renumbered, changes))
         batches.append(batch)
     claimed = {old.prototype.as_pointer() for old in matched if old is not None}
     dropped = [old for old in display.batches if old.prototype.as_pointer() not in claimed]
@@ -176,7 +187,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
                 record = records[index]
                 mesh = record["mesh"]
                 slots = [None if m is None else materials[m] for m in record["material_slots"]]
-                repointed[index] = Repoint(None if mesh is None else meshes[mesh], slots)
+                repointed[index] = ObjectResourceUpdate(None if mesh is None else meshes[mesh], slots)
             elif index in moving:
                 repointed[index] = moving[index]
             continue
@@ -185,10 +196,12 @@ def prepare(plan: Plan, diff: PlanDiff, display: BatchedDisplay, users: UserPoli
     kept_pointers = {obj.as_pointer() for obj in objects.values()}
     leaving = [obj for obj in display.objects.values() if obj.as_pointer() not in kept_pointers]
     new = BatchedDisplay(objects, batches, meshes, materials, display.nodes, serial, display.minimum)
-    return Prepared(staging, new, created, added, kept, dropped, leaving, repointed, renumbered)
+    return PreparedBatchedDisplayUpdate(staging, new, created, added, kept, dropped, leaving, repointed, renumbered)
 
 
-def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.Collection) -> BatchedDisplay:
+def publish(
+    prepared: PreparedBatchedDisplayUpdate, display: BatchedDisplay, collection: bpy.types.Collection
+) -> BatchedDisplay:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
     new = prepared.display
     undo: list[Callable[[], None]] = []  # each change's reversal, in the order made
@@ -262,7 +275,7 @@ def publish(prepared: Prepared, display: BatchedDisplay, collection: bpy.types.C
     return new
 
 
-def retire(prepared: Prepared) -> list[bpy.types.ID]:
+def retire(prepared: PreparedBatchedDisplayUpdate) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
     return retire_ids(prepared.retired, prepared.staging)
 
@@ -310,7 +323,7 @@ def _saved(obj: bpy.types.Object) -> Callable[[], None]:
     return restore
 
 
-def _retired(prepared: Prepared, display: BatchedDisplay) -> list[bpy.types.ID]:
+def _retired(prepared: PreparedBatchedDisplayUpdate, display: BatchedDisplay) -> list[bpy.types.ID]:
     """The old objects and batches, with their shear parents, placeholder meshes, and points, and the old data."""
     retired: list[bpy.types.ID] = []
     planned = {mesh.as_pointer() for mesh in display.meshes}

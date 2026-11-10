@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from apply import Layer
+    from apply import MeshAttributeData
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
@@ -206,7 +206,7 @@ def _lossy() -> None:
 
     exact = sequence_caches._primvar  # noqa: SLF001
 
-    def lossy(layer: Layer) -> tuple[sequence_caches.PrimvarKind, Any]:
+    def lossy(layer: MeshAttributeData) -> tuple[sequence_caches.PrimvarKind, Any]:
         if layer.data_type == "FLOAT2" and layer.domain == "POINT":
             return (Sdf.ValueTypeNames.Float2Array, "vertex"), Vt.Vec2fArray.FromNumpy(layer.values.reshape(-1, 2))
         if layer.name == sequence_caches.DISPLAY_COLOR:

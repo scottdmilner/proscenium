@@ -331,7 +331,7 @@ def run_update(scenario: str, time: float, session: SimpleNamespace, stage: Any,
     diff = native.diff_plans(session.plan, plan)
     done("update:diff")
     stage("update:prepare")
-    prepared = updater.prepare(plan, diff, session.display, update.UserPolicy.REPOINT)
+    prepared = updater.prepare(plan, diff, session.display, update.DependentObjectUpdatePolicy.REPOINT)
     done("update:prepare")
     stage("update:publish")
     updater.publish(prepared, session.display, session.collection)

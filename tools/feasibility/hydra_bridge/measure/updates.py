@@ -128,7 +128,9 @@ def main() -> int:
         snapshot = timed(steps, "incremental capture", lambda: bridge.capture(ALAB_TIME, incremental=True))
         published, plan = plan, timed(steps, "planning", partial(native.build_plan, snapshot))
         diff = timed(steps, "diff", partial(native.diff_plans, published, plan))
-        display, replaced = replacement(update, plan, diff, display, collection, update.UserPolicy.REPOINT)
+        display, replaced = replacement(
+            update, plan, diff, display, collection, update.DependentObjectUpdatePolicy.REPOINT
+        )
         steps |= {f"replace {step}": value for step, value in replaced["steps"].items()}
         steps["total"] = sum(steps[s] for s in ("incremental capture", "planning", "diff")) + replaced["steps"]["total"]
         edits.append({"steps": steps, "changed": replaced["changed"]})
@@ -137,9 +139,9 @@ def main() -> int:
     units = update.sample_units(plan.objects)
     replaced_units: dict[str, Any] = {}
     for name, unit in units.items():
-        policies = [update.UserPolicy.REPOINT]
+        policies = [update.DependentObjectUpdatePolicy.REPOINT]
         if unit.meshes or unit.materials:
-            policies.append(update.UserPolicy.REPLACE)
+            policies.append(update.DependentObjectUpdatePolicy.REPLACE)
         for users in policies:
             runs = []
             for _ in range(args.repeats):

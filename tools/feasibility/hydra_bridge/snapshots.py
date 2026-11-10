@@ -33,7 +33,7 @@ class Step:
     time: float
     plan: Plan
     diff: PlanDiff
-    prepared: Any  # update.Prepared, or batch_update.Prepared
+    prepared: Any  # update.PreparedDisplayUpdate, or batch_update.PreparedBatchedDisplayUpdate
     seconds: dict[str, float] = field(default_factory=dict)  # by stage: capture, planning, diff, prepare, ...
 
 
@@ -46,7 +46,7 @@ class Snapshots:
     display: Any  # apply.Display, or batch.BatchedDisplay
     collection: bpy.types.Collection
     batched: bool
-    users: update.UserPolicy
+    users: update.DependentObjectUpdatePolicy
     moves: bool  # whether updates keep moved objects and set their matrices
     settings: dict[str, Any]  # build_plan's settings
     last: Step | None  # the latest step, None before the first
@@ -58,7 +58,7 @@ class Snapshots:
         collection: bpy.types.Collection,
         time: float,
         representation: str = "objects",
-        users: update.UserPolicy = update.UserPolicy.REPOINT,
+        users: update.DependentObjectUpdatePolicy = update.DependentObjectUpdatePolicy.REPOINT,
         moves: bool = False,
         minimum: int = batch.MINIMUM,
         **settings: Any,

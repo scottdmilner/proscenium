@@ -321,7 +321,7 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     apply = importlib.import_module("batch" if batched else "apply")
     update = importlib.import_module("batch_update" if batched else "update")
     selection = importlib.import_module("batch_selection" if batched else "selection")
-    policy = importlib.import_module("update").UserPolicy(users)
+    policy = importlib.import_module("update").DependentObjectUpdatePolicy(users)
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
 
@@ -403,7 +403,7 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
     blender_scene.collection.children.link(collection)
     view_layer = blender_scene.view_layers[0]
     blender_scene.frame_set(times[0])
-    policy = importlib.import_module("update").UserPolicy(users)
+    policy = importlib.import_module("update").DependentObjectUpdatePolicy(users)
     followed = snapshots.Snapshots(native, stage, collection, float(times[0]), representation, policy, moves)
     handler = followed.follow(blender_scene)
     steps = []

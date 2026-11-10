@@ -53,7 +53,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import apply, new_material, new_mesh, new_object, object_color, shear_parent, shear_split, sheared, world
+from apply import (
+    apply,
+    create_shear_parent,
+    new_material,
+    new_mesh,
+    new_object,
+    object_color,
+    shear_split,
+    sheared,
+    usd_matrix_to_blender,
+)
 from attribute_samples import BASE
 from cached_batches import Batches
 from frames import Aspect, TrackKey, copy_of, place
@@ -417,9 +427,9 @@ class CachedDisplay:
 
     def _key_transform(self, key: TrackKey, time: float, record: ObjectRecord) -> None:
         obj = self.objects[key]
-        placed = world(record["matrix"])
+        placed = usd_matrix_to_blender(record["matrix"])
         if obj.parent is None and sheared(placed):
-            parent = shear_parent(obj, key[0], self.collection)
+            parent = create_shear_parent(obj, key[0], self.collection)
             for cached in self.cached:  # the identity, under the object's own keys
                 self.keys.insert_transform(parent, cached)
         if obj.parent is None:

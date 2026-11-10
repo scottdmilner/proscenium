@@ -12,7 +12,7 @@ from typing import Any
 
 import bpy
 import numpy
-from apply import Layer
+from apply import MeshAttributeData
 
 FRAME_SEPARATOR = "@"  # a sample's attribute is <name>@<sample>
 MODIFIER = "proscenium frames"
@@ -122,16 +122,16 @@ def stored_type(data_type: str) -> str:
     return "FLOAT_VECTOR" if data_type == "FLOAT2" else data_type
 
 
-def stored(layer: Layer) -> Layer:
+def stored(layer: MeshAttributeData) -> MeshAttributeData:
     """A layer as its sample attribute holds it."""
     if layer.data_type != "FLOAT2":
         return layer
     padded = numpy.zeros((len(layer.values) // 2, 3), numpy.float32)
     padded[:, :2] = layer.values.reshape(-1, 2)
-    return Layer(layer.name, "FLOAT_VECTOR", layer.domain, layer.prop, padded.ravel())
+    return MeshAttributeData(layer.name, "FLOAT_VECTOR", layer.domain, layer.prop, padded.ravel())
 
 
-def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, Layer]) -> bpy.types.Mesh:
+def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, MeshAttributeData]) -> bpy.types.Mesh:
     """A copy of `mesh` showing `sample` of its `varying` attributes, without its samples."""
     copy: Any = mesh.copy()
     for name, layer in varying.items() if sample != BASE else ():

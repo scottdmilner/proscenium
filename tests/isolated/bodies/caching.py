@@ -245,12 +245,12 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
 def _layers(apply: Any, plan: Any, record: Any) -> list[Any]:
     """An object's mesh layers as apply holds them, or its placeholder bounds as corners; empty for neither."""
     if record["mesh"] is not None:
-        return apply.layers(plan.meshes_at([record["mesh"]])[0])
+        return apply.mesh_attributes(plan.meshes_at([record["mesh"]])[0])
     if record["bounds"] is None:
         return []
     low, high = record["bounds"]
     corners = [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-    return [apply.Layer("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
+    return [apply.MeshAttributeData("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
 
 
 def predicting(module_dir: str, dest: str, time: float, later: float) -> dict[str, Any]:
@@ -480,11 +480,13 @@ def _usd(matrix: Any) -> list[float] | None:
 
 def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan: Any) -> list[str]:
     if record["mesh"] is not None:
-        expected = apply.layers(plan.meshes_at([record["mesh"]])[0])
+        expected = apply.mesh_attributes(plan.meshes_at([record["mesh"]])[0])
     elif record["bounds"] is not None:
         low, high = record["bounds"]
         corners = [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-        expected = [apply.Layer("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
+        expected = [
+            apply.MeshAttributeData("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())
+        ]
     else:
         return []
     geometry = evaluated.evaluated_geometry()  # its mesh is read while this is referenced

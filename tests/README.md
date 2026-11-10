@@ -108,6 +108,11 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 - Each call gets its own Blender user dir under the test's `tmp_path`.
 - The **`hydra_bridge`** fixture is the directory of M1b's compiled Hydra bridge (`tools/feasibility/hydra_bridge/`), which M4's prototype tests pass to their bodies. It builds the bridge from its sources once per run, into `build/hydra-bridge/` as `build.py` does; when nothing changed, the build only checks. `PROSCENIUM_HYDRA_BRIDGE` names a prebuilt one instead, as CI does on Linux, where the build must run on Blender's glibc floor.
 
+The bridge's application helpers describe mesh attributes with `apply.MeshAttributeData`, returned by
+`apply.mesh_attributes`. Updates prepare `update.PreparedDisplayUpdate` for the object representation or
+`batch_update.PreparedBatchedDisplayUpdate` for the batched representation. Both use
+`update.DependentObjectUpdatePolicy` to decide whether objects using rebuilt data are repointed or replaced.
+
 Current tests:
 - `test_roundtrip.py`: save/reopen with persistent and transient `load_post` handlers, and the extension's own load handler dropping an attachment.
 - `test_ci_fixture.py`: the CI fixture's inventory with the binary's `pxr`, under both payload policies.

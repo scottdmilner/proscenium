@@ -26,7 +26,16 @@ from typing import TYPE_CHECKING, Any, override
 
 import bpy
 import numpy
-from apply import ATTRIBUTE_FORMATS, DISPLAY_COLOR, PLAN_DOMAINS, POSITION, BufferFormat, Layer, flat, layers
+from apply import (
+    ATTRIBUTE_FORMATS,
+    DISPLAY_COLOR,
+    PLAN_DOMAINS,
+    POSITION,
+    BufferFormat,
+    MeshAttributeData,
+    flat,
+    mesh_attributes,
+)
 from attribute_samples import FRAME_SEPARATOR
 from mesh_caches import (
     MeshCaches,
@@ -56,7 +65,7 @@ type PrimvarKind = tuple[Sdf.ValueTypeName, str]  # its type, and its interpolat
 class MeshContent:
     """A mesh's content as a sample writes it: its attributes, positions and face material slots included."""
 
-    layers: dict[str, Layer]
+    layers: dict[str, MeshAttributeData]
     corner_verts: numpy.ndarray
     face_offsets: numpy.ndarray
 
@@ -186,7 +195,7 @@ class SequenceCaches(MeshCaches):
             if data["slot_count"] != len(self.meshes[uid].materials):
                 raise UncachedError(f"{self.meshes[uid].name}: its material slots vary")
             return MeshContent(
-                {layer.name: layer for layer in layers(data)},
+                {layer.name: layer for layer in mesh_attributes(data)},
                 _ints(data["corner_verts"]),
                 _ints(data["face_offsets"]),
             )
@@ -286,9 +295,9 @@ def mesh_content(mesh: bpy.types.Mesh) -> MeshContent:
         width = {"FLOAT2": 2, "FLOAT_VECTOR": 3, "FLOAT_COLOR": 4}.get(data_type, 1)
         values = numpy.empty(len(attribute.data) * width, numpy.float32 if fmt == BufferFormat.FLOAT else numpy.int32)
         attribute.data.foreach_get(prop, values)
-        found[name] = Layer(name, data_type, domain, prop, values)
+        found[name] = MeshAttributeData(name, data_type, domain, prop, values)
     if POSITION not in found:  # a mesh with no points
-        found[POSITION] = Layer(POSITION, "FLOAT_VECTOR", "POINT", "vector", numpy.empty(0, numpy.float32))  # ty: ignore[invalid-argument-type]
+        found[POSITION] = MeshAttributeData(POSITION, "FLOAT_VECTOR", "POINT", "vector", numpy.empty(0, numpy.float32))  # ty: ignore[invalid-argument-type]
     corners = numpy.empty(len(held.loops), numpy.int32)
     if len(corners):
         held.attributes[".corner_vert"].data.foreach_get("value", corners)
@@ -304,7 +313,7 @@ def _holding(content: MeshContent, latest: MeshContent) -> MeshContent:
     return replace(content, layers={**latest.layers, **content.layers})
 
 
-def _primvar(layer: Layer) -> tuple[PrimvarKind, Any]:
+def _primvar(layer: MeshAttributeData) -> tuple[PrimvarKind, Any]:
     """An attribute as a primvar Blender's reader gives back as apply holds it: its kind, and its value."""
     interpolation = INTERPOLATIONS[layer.domain]
     values = layer.values

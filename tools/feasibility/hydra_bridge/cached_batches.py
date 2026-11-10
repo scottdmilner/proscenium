@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import ForeachProperty, Layer, object_color
+from apply import ForeachProperty, MeshAttributeData, object_color
 from batch import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
 from frames import Aspect, TrackKey
 from mesh_caches import MeshCache, new_cache
@@ -56,7 +56,7 @@ class CachedBatch:
     prototype: bpy.types.Object
     carrier: bpy.types.Object
     tracks: list[TrackKey]  # by point
-    layers: dict[str, Layer]  # its points' values at the latest synchronization, by attribute
+    layers: dict[str, MeshAttributeData]  # its points' values at the latest synchronization, by attribute
     kinds: Kinds
     record: ObjectRecord  # a track's at the latest time one was present, as the prototype's
     mesh: int | None  # the prototype's content in the current plan; None when it has none there
@@ -172,16 +172,16 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     return CachedBatch(number, prototype, carrier, list(tracks), found, held, first, mesh)
 
 
-def point_layers(held: Kinds, records: list[ObjectRecord | None], blank: ObjectRecord) -> dict[str, Layer]:
+def point_layers(held: Kinds, records: list[ObjectRecord | None], blank: ObjectRecord) -> dict[str, MeshAttributeData]:
     """The point attributes of copies with primvar kinds `held`, one point per record.
 
     A None record shows nowhere, with `blank`'s other values.
     """
 
-    def column(name: str, data_type: str, value: Callable[[ObjectRecord], Any]) -> Layer:
+    def column(name: str, data_type: str, value: Callable[[ObjectRecord], Any]) -> MeshAttributeData:
         prop, dtype = POINT_ATTRIBUTES[data_type]
         values = numpy.array([value(r or blank) for r in records], dtype=dtype).ravel()
-        return Layer(name, data_type, "POINT", ForeachProperty(prop), values)  # ty: ignore[invalid-argument-type]
+        return MeshAttributeData(name, data_type, "POINT", ForeachProperty(prop), values)  # ty: ignore[invalid-argument-type]
 
     found = [
         column(TRANSFORM, "FLOAT4X4", lambda r: r["matrix"]),
@@ -217,7 +217,7 @@ def add_points(batch: CachedBatch, keys: list[TrackKey], records: list[ObjectRec
     for kept in (batch.layers, batch.cache.base if batch.cache else {}):
         for name, layer in kept.items():
             grown = numpy.concatenate([layer.values, joined[name].values])
-            kept[name] = Layer(layer.name, layer.data_type, layer.domain, layer.prop, grown)
+            kept[name] = MeshAttributeData(layer.name, layer.data_type, layer.domain, layer.prop, grown)
 
 
 def write_points(

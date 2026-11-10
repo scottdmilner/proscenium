@@ -24,7 +24,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 import bpy
-from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object, sheared, world
+from apply import SHEAR_PARENT, Display, new_material, new_mesh, new_object, sheared, usd_matrix_to_blender
 from selection import ELEMENT
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from plan_types import ObjectRecord, Plan, PlanDiff
 
 
-class UserPolicy(StrEnum):
+class DependentObjectUpdatePolicy(StrEnum):
     """What happens to the objects that differ only in using a rebuilt mesh or material."""
 
     REPOINT = "repoint"  # they are kept, and publication moves them onto the rebuilt data
@@ -42,8 +42,8 @@ class UserPolicy(StrEnum):
 
 
 @dataclass(frozen=True)
-class Unit:
-    """Part of a display to rebuild from an unchanged plan, by plan index (unit_diff)."""
+class DisplayRebuildSet:
+    """The object, mesh, and material indices selected for rebuilding from an unchanged plan (unit_diff)."""
 
     objects: frozenset[int] = frozenset()
     meshes: frozenset[int] = frozenset()
@@ -51,7 +51,7 @@ class Unit:
 
 
 @dataclass
-class Repoint:
+class ObjectResourceUpdate:
     """A kept object's data and slots, and its world matrix when it moved, as publication sets them."""
 
     data: Any  # the object's new mesh; Object.data is typed as every kind of object data
@@ -60,7 +60,7 @@ class Repoint:
 
 
 @dataclass
-class Prepared:
+class PreparedDisplayUpdate:
     """An update built beside the published display, which it doesn't touch until publication."""
 
     # Where the new objects wait; None when there are none, since creating a collection is a Blender write.
@@ -68,7 +68,8 @@ class Prepared:
     display: Display  # the display once published, in the new plan's order
     created: dict[int, bpy.types.Object]  # by new plan index: the new objects
     leaving: list[bpy.types.Object]  # the published objects the new display doesn't keep
-    repointed: dict[int, Repoint]  # by new plan index: kept objects that move onto rebuilt data or a new matrix
+    # By new plan index: kept objects that move onto rebuilt data or a new matrix.
+    repointed: dict[int, ObjectResourceUpdate]
     renumbered: list[int]  # new plan indices of kept objects whose index changed
     retired: list[bpy.types.ID] = field(default_factory=list)  # what publication left unused
 
@@ -109,7 +110,7 @@ class Transform:
 _ROTATIONS = {"QUATERNION": "rotation_quaternion", "AXIS_ANGLE": "rotation_axis_angle"}  # else Euler
 
 
-def unit_diff(plan: Plan, unit: Unit) -> PlanDiff:
+def unit_diff(plan: Plan, unit: DisplayRebuildSet) -> PlanDiff:
     """The diff that rebuilds `unit` of a display from the plan it shows: its objects, meshes, and materials.
 
     The objects that use a rebuilt mesh or material are changed and repointable.
@@ -131,7 +132,7 @@ def unit_diff(plan: Plan, unit: Unit) -> PlanDiff:
     }
 
 
-def sample_units(records: Sequence[ObjectRecord]) -> dict[str, Unit]:
+def sample_units(records: Sequence[ObjectRecord]) -> dict[str, DisplayRebuildSet]:
     """One unit of each kind the measurements and tests replace, from a plan's objects; a kind with none is left out.
 
     - object: the first object whose mesh other objects share;
@@ -153,27 +154,29 @@ def sample_units(records: Sequence[ObjectRecord]) -> dict[str, Unit]:
     units = {}
     shared = [objects for objects in users.values() if len(objects) > 1]
     if shared:
-        units["object"] = Unit(objects=frozenset({shared[0][0]}))
+        units["object"] = DisplayRebuildSet(objects=frozenset({shared[0][0]}))
     if users:
-        units["mesh"] = Unit(meshes=frozenset({max(users, key=lambda m: (len(users[m]), -m))}))
+        units["mesh"] = DisplayRebuildSet(meshes=frozenset({max(users, key=lambda m: (len(users[m]), -m))}))
     if slotted:
-        units["material"] = Unit(materials=frozenset({max(slotted, key=lambda m: (slotted[m], -m))}))
+        units["material"] = DisplayRebuildSet(materials=frozenset({max(slotted, key=lambda m: (slotted[m], -m))}))
     if floors:
         objects = set(max(floors.values(), key=len))
         others = [record for index, record in enumerate(records) if index not in objects]
         meshes = {records[i]["mesh"] for i in objects} - {r["mesh"] for r in others}
         slots = {m for i in objects for m in records[i]["material_slots"]}
         materials = slots - {m for r in others for m in r["material_slots"]}
-        units["asset"] = Unit(
+        units["asset"] = DisplayRebuildSet(
             frozenset(objects),
             frozenset(m for m in meshes if m is not None),
             frozenset(m for m in materials if m is not None),
         )
-    units["all"] = Unit(frozenset(range(len(records))), frozenset(users), frozenset(slotted))
+    units["all"] = DisplayRebuildSet(frozenset(range(len(records))), frozenset(users), frozenset(slotted))
     return units
 
 
-def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy, moves: bool = False) -> Prepared:
+def prepare(
+    plan: Plan, diff: PlanDiff, display: Display, users: DependentObjectUpdatePolicy, moves: bool = False
+) -> PreparedDisplayUpdate:
     """Build what `plan` needs beyond what `diff` keeps of `display`, in a collection no scene links.
 
     With `moves`, the moved objects that kept_moves keeps are moved at publication rather than replaced.
@@ -182,7 +185,7 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy, mov
     moving = (
         kept_moves(plan, diff, diff["moved"], display.objects.__getitem__, (meshes, materials), users) if moves else {}
     )
-    kept = set(diff["repointable"]) if users is UserPolicy.REPOINT else set()
+    kept = set(diff["repointable"]) if users is DependentObjectUpdatePolicy.REPOINT else set()
     rebuilt = set(diff["changed"]) - kept - set(moving)
     added = [index for index, old in enumerate(diff["objects"]) if old == -1 or index in rebuilt]
     # Only the records the update builds from: reading the plan's whole list converts every record.
@@ -209,9 +212,9 @@ def prepare(plan: Plan, diff: PlanDiff, display: Display, users: UserPolicy, mov
         record = records[index]
         mesh = record["mesh"]
         slots = [None if m is None else materials[m] for m in record["material_slots"]]
-        repointed[index] = Repoint(None if mesh is None else meshes[mesh], slots)
+        repointed[index] = ObjectResourceUpdate(None if mesh is None else meshes[mesh], slots)
     repointed |= moving
-    return Prepared(staging, Display(objects, meshes, materials), created, leaving, repointed, renumbered)
+    return PreparedDisplayUpdate(staging, Display(objects, meshes, materials), created, leaving, repointed, renumbered)
 
 
 def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the published objects, the data, the policy
@@ -220,8 +223,8 @@ def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the publi
     moved: list[int],
     published: Callable[[int], bpy.types.Object],
     data: tuple[list[bpy.types.Mesh], list[bpy.types.Material]],
-    users: UserPolicy,
-) -> dict[int, Repoint]:
+    users: DependentObjectUpdatePolicy,
+) -> dict[int, ObjectResourceUpdate]:
     """By new plan index, the objects of `moved` (from the diff's) an update keeps, with new matrix, data, and slots.
 
     `published(old)` is the published object of old plan index `old`, and `data` the new plan's meshes and
@@ -232,12 +235,12 @@ def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the publi
     kept = {}
     for index, record in zip(moved, plan.objects_at(moved), strict=True):
         obj = published(diff["objects"][index])
-        matrix = world(record["matrix"])
+        matrix = usd_matrix_to_blender(record["matrix"])
         if obj.parent is not None or sheared(matrix):
             continue
         mesh = record["mesh"]
         # A placeholder keeps its own bounds mesh: its bounds are the same, or it wouldn't have moved.
-        moving = Repoint(
+        moving = ObjectResourceUpdate(
             None if mesh is None else meshes[mesh],
             [None if m is None else materials[m] for m in record["material_slots"]],
             matrix,
@@ -245,7 +248,7 @@ def kept_moves(  # noqa: PLR0913 - the plan, its diff, the candidates, the publi
         same = (moving.data is None or moving.data == obj.data) and moving.materials == [
             slot.material for slot in obj.material_slots
         ]
-        if same or users is UserPolicy.REPOINT:
+        if same or users is DependentObjectUpdatePolicy.REPOINT:
             kept[index] = moving
     return kept
 
@@ -275,7 +278,7 @@ def new_data(
     )
 
 
-def publish(prepared: Prepared, display: Display, collection: bpy.types.Collection) -> Display:
+def publish(prepared: PreparedDisplayUpdate, display: Display, collection: bpy.types.Collection) -> Display:
     """Put the prepared update in place of `display` in `collection`; returns the published display."""
     new = prepared.display
     saved: list[Saved] = []
@@ -311,7 +314,7 @@ def publish(prepared: Prepared, display: Display, collection: bpy.types.Collecti
     return new
 
 
-def retire(prepared: Prepared) -> list[bpy.types.ID]:
+def retire(prepared: PreparedDisplayUpdate) -> list[bpy.types.ID]:
     """Remove what publication left unused; returns the old meshes and materials kept for other users."""
     return retire_ids(prepared.retired, prepared.staging)
 
@@ -337,7 +340,7 @@ def with_parent(obj: bpy.types.Object) -> list[bpy.types.Object]:
     return [obj] if parent is None or SHEAR_PARENT not in parent else [obj, parent]
 
 
-def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[Saved]) -> None:
+def _restore(prepared: PreparedDisplayUpdate, collection: bpy.types.Collection, saved: list[Saved]) -> None:
     """Put back what a failed publication changed; the prepared data stays for disposal."""
     for obj, data, slots, element, transform in reversed(saved):
         obj.data = data
@@ -359,7 +362,7 @@ def _restore(prepared: Prepared, collection: bpy.types.Collection, saved: list[S
                 collection.objects.link(old)
 
 
-def _retired(prepared: Prepared, display: Display) -> list[bpy.types.ID]:
+def _retired(prepared: PreparedDisplayUpdate, display: Display) -> list[bpy.types.ID]:
     """The old objects, with their shear parents and placeholder meshes, and the old meshes and materials."""
     retired: list[bpy.types.ID] = []
     planned = {mesh.as_pointer() for mesh in display.meshes}

@@ -115,7 +115,7 @@ def new_material(data: MaterialRecord) -> bpy.types.Material:
 def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
     """A plan mesh, with empty material slots for its objects to fill."""
     mesh = bpy.data.meshes.new(data["name"])
-    position, *others = layers(data)
+    position, *others = mesh_attributes(data)
     corner_verts = flat(data["corner_verts"], BufferFormat.INT)
     face_offsets = flat(data["face_offsets"], BufferFormat.INT)
     mesh.vertices.add(len(position.values) // 3)
@@ -140,7 +140,7 @@ def new_mesh(data: MeshRecord) -> bpy.types.Mesh:
 
 
 @dataclass(frozen=True)
-class Layer:
+class MeshAttributeData:
     """One attribute of a plan mesh as Blender holds it: its name, type, and domain, and its values, flat."""
 
     name: str
@@ -150,13 +150,17 @@ class Layer:
     values: numpy.ndarray
 
 
-def layers(data: MeshRecord) -> list[Layer]:
+def mesh_attributes(data: MeshRecord) -> list[MeshAttributeData]:
     """The attributes new_mesh writes for a plan mesh, positions first; its faces and corners are the rest."""
     face_offsets = flat(data["face_offsets"], BufferFormat.INT)
     corners = len(data["corner_verts"])
     found = [
-        Layer(POSITION, "FLOAT_VECTOR", "POINT", ForeachProperty.VECTOR, _array(data["positions"], BufferFormat.FLOAT)),
-        Layer(MATERIAL_INDEX, "INT", "FACE", ForeachProperty.VALUE, _array(data["material_indices"], BufferFormat.INT)),
+        MeshAttributeData(
+            POSITION, "FLOAT_VECTOR", "POINT", ForeachProperty.VECTOR, _array(data["positions"], BufferFormat.FLOAT)
+        ),
+        MeshAttributeData(
+            MATERIAL_INDEX, "INT", "FACE", ForeachProperty.VALUE, _array(data["material_indices"], BufferFormat.INT)
+        ),
     ]
     for attribute in data["attributes"]:
         data_type, domain = attribute["data_type"], attribute["domain"]
@@ -170,12 +174,14 @@ def layers(data: MeshRecord) -> list[Layer]:
             # per face for every mesh until it is released.
             values = _on_corners(values, face_offsets, corners)
             domain = "CORNER"
-        found.append(Layer(attribute["name"], data_type, domain, prop, values))
+        found.append(MeshAttributeData(attribute["name"], data_type, domain, prop, values))
     held = data["held_color"]
     if held is not None:  # the constant displayColor all its copies share, on every point
         color = numpy.array(held, dtype=numpy.float32)
         points = len(data["positions"])
-        found.append(Layer(DISPLAY_COLOR, "FLOAT_COLOR", "POINT", ForeachProperty.COLOR, numpy.tile(color, points)))
+        found.append(
+            MeshAttributeData(DISPLAY_COLOR, "FLOAT_COLOR", "POINT", ForeachProperty.COLOR, numpy.tile(color, points))
+        )
     return found
 
 
@@ -215,8 +221,8 @@ def _bounds_mesh(name: str, bounds: tuple[Sequence[float], Sequence[float]]) -> 
     return mesh
 
 
-def world(matrix: Gf.Matrix4d) -> Matrix:
-    """A plan matrix as Blender's world matrix.
+def usd_matrix_to_blender(matrix: Gf.Matrix4d) -> Matrix:
+    """Convert a USD matrix to Blender's matrix convention.
 
     USD multiplies row vectors (translation in the last row); Blender multiplies column vectors.
     """
@@ -252,8 +258,8 @@ def shear_split(world: Matrix) -> tuple[Matrix, Matrix]:
     return parent_world, Matrix(vt.tolist()).to_4x4()
 
 
-def shear_parent(obj: bpy.types.Object, source: str, collection: bpy.types.Collection) -> bpy.types.Object:
-    """A parent empty for `obj`, which carries the shear of `source`'s copy.
+def create_shear_parent(obj: bpy.types.Object, source: str, collection: bpy.types.Collection) -> bpy.types.Object:
+    """Create and link a parent empty for `obj` to carry the shear of `source`'s copy.
 
     It can't be selected, so a pick lands on the object.
     """
@@ -268,7 +274,7 @@ def shear_parent(obj: bpy.types.Object, source: str, collection: bpy.types.Colle
 def _shear_parent(obj: bpy.types.Object, source: str, world: Matrix, collection: bpy.types.Collection) -> None:
     """Give `obj` the sheared `world` through a parent empty (shear_split)."""
     parent_world, basis = shear_split(world)
-    shear_parent(obj, source, collection).matrix_world = parent_world
+    create_shear_parent(obj, source, collection).matrix_world = parent_world
     obj.matrix_basis = basis
 
 
@@ -302,7 +308,7 @@ def new_object(
         obj_data = None
     obj = bpy.data.objects.new(name, obj_data)
     collection.objects.link(obj)
-    placed = world(data["matrix"])
+    placed = usd_matrix_to_blender(data["matrix"])
     if sheared(placed):
         _shear_parent(obj, data["source"], placed, collection)
     else:
