@@ -210,18 +210,20 @@ void AssignSlots(const PrimRecord &prim, const PrimRefs &subsets, const Layout &
     bool overlap = false;
     // In path order, so which overlapping subset wins doesn't depend on the order Hydra lists children in.
     PrimRefs ordered(subsets);
-    std::sort(ordered.begin(), ordered.end(), [](const PrimRecord &a, const PrimRecord &b) { return a.path < b.path; });
+    std::sort(ordered.begin(), ordered.end(),
+              [](const PrimRecord &a, const PrimRecord &b) { return a.hydraPath < b.hydraPath; });
     for (const PrimRecord &subset : ordered) {
         if (!subset.geomSubset) continue;  // the planner lists only subsets, so never taken
         const GeomSubsetRecord &record = *subset.geomSubset;
         if (record.familyName != kMaterialBind) continue;
         if (record.type != HdGeomSubsetSchemaTokens->typeFaceSet) {
-            problems.push_back({Severity::Warning, "unsupported-subset", prim.path,
-                                subset.path.GetName() + ": a materialBind subset must list faces; it is ignored"});
+            problems.push_back({Severity::Warning, "unsupported-subset", prim.hydraPath,
+                                subset.hydraPath.GetName() + ": a materialBind subset must list faces; it is ignored"});
             continue;
         }
         if (const std::string problem = ValidateSubset(record, layout.source.faces); !problem.empty()) {
-            problems.push_back({Severity::Error, "invalid-subset", prim.path, subset.path.GetName() + ": " + problem});
+            problems.push_back(
+                {Severity::Error, "invalid-subset", prim.hydraPath, subset.hydraPath.GetName() + ": " + problem});
             continue;
         }
         const int slot = static_cast<int>(slots.size());
@@ -237,7 +239,7 @@ void AssignSlots(const PrimRecord &prim, const PrimRefs &subsets, const Layout &
         }
     }
     if (overlap)
-        problems.push_back({Severity::Warning, "overlapping-subsets", prim.path,
+        problems.push_back({Severity::Warning, "overlapping-subsets", prim.hydraPath,
                             "Faces in several materialBind subsets keep the material of the first, by name"});
     data.materialIndices.resize(faceCount);
     for (size_t face = 0; face < faceCount; ++face) data.materialIndices[face] = std::max(faceSlot[face], 0);
@@ -252,7 +254,7 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
     if (!prim.mesh) return std::nullopt;  // the planner builds only meshes, so never taken
     const MeshRecord &mesh = *prim.mesh;
     auto fail = [&](const std::string &message) {
-        problems.push_back({Severity::Error, "invalid-mesh", prim.path, message});
+        problems.push_back({Severity::Error, "invalid-mesh", prim.hydraPath, message});
         return std::nullopt;
     };
     std::optional<VtVec3fArray> positions = Positions(prim);
@@ -285,9 +287,9 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
         const ScopedFactTiming deletedTiming(FactTiming::MeshDeletedFaces);
         const RejectedFaces rejected = FacesBlenderDeletes(mesh.topology);
         if (rejected.repeatedPoint + rejected.duplicate > 0) {
-            work.leftOut = rejected.drop;
+            work.rejectedFaceMask = rejected.drop;
             work.problems.push_back(
-                {Severity::Warning, "faces-left-out", prim.path,
+                {Severity::Warning, "faces-left-out", prim.hydraPath,
                  std::to_string(rejected.repeatedPoint) + " face(s) using a point more than once and " +
                      std::to_string(rejected.duplicate) +
                      " face(s) on an earlier face's points are left out, as Blender's Mesh.validate() deletes them (" +
@@ -295,14 +297,14 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
         }
         if (!mesh.topology.GetHoleIndices().empty())
             work.problems.push_back(
-                {Severity::Warning, "holes-ignored", prim.path, "Hole faces are kept as ordinary faces"});
+                {Severity::Warning, "holes-ignored", prim.hydraPath, "Hole faces are kept as ordinary faces"});
     }
     problems.insert(problems.end(), work.problems.begin(), work.problems.end());
 
     std::optional<ScopedFactTiming> layoutTiming(std::in_place, FactTiming::MeshLayout);
-    const Layout layout = MakeLayout(mesh.topology, positions->size(), work.leftOut);
+    const Layout layout = MakeLayout(mesh.topology, positions->size(), work.rejectedFaceMask);
     MeshData data;
-    data.name = prim.path.GetName();
+    data.name = prim.hydraPath.GetName();
     data.positions = std::move(*positions);
     // An earlier build's of the same layout are equal, so its buffers are shared.
     data.cornerVerts = earlier ? earlier->cornerVerts : layout.cornerVerts;
@@ -326,7 +328,7 @@ std::optional<MeshData> BuildMesh(const PrimRecord &prim, const PrimRefs &subset
         // Positions are handled above; constants travel with each object, not the shared mesh.
         if (primvar.name == HdTokens->points || primvar.interpolation == HdPrimvarSchemaTokens->constant) continue;
         auto skip = [&](Severity severity, const char *code, const std::string &why) {
-            problems.push_back({severity, code, prim.path, "Primvar '" + primvar.name.GetString() + "': " + why});
+            problems.push_back({severity, code, prim.hydraPath, "Primvar '" + primvar.name.GetString() + "': " + why});
         };
         const std::string name = BlenderName(primvar);
         if (const std::string problem = ValidatePrimvar(primvar, layout.source); !problem.empty()) {

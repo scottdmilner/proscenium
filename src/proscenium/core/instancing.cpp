@@ -124,7 +124,8 @@ const TfToken* PurposeVisibilityOpinion(const PrimTable& table, const PrimRecord
   if (std::find(PurposesWithVisibilityOpinions().begin(), PurposesWithVisibilityOpinions().end(), prim.purpose) ==
       PurposesWithVisibilityOpinions().end())
     return nullptr;
-  const TfToken* opinion = NearestPurposeVisibilityOpinion(table, prim.path, copy.hydraRoot, prim.purpose);
+  const TfToken* opinion =
+      NearestPurposeVisibilityOpinion(table, prim.hydraPath, copy.hydraNamespaceRoot, prim.purpose);
   return opinion ? opinion : VisibilityOpinionForPurpose(copy.purposeVisibility, prim.purpose);
 }
 
@@ -159,7 +160,7 @@ const std::vector<DrawnCopy>& InstanceResolver::CopiesOf(const PrimRecord& prim,
   const InstancedByRecord& by = *prim.instancedBy;
   // Native instancing gives each prototype copy exactly one instancer.
   if (by.instancers.size() != 1 || by.prototypeRoots.size() != 1) {
-    Report(prim.path, DiagnosticCode::kUnsupportedInstancing,
+    Report(prim.hydraPath, DiagnosticCode::kUnsupportedInstancing,
            "Prims instanced by several instancers are not translated");
     return none_;
   }
@@ -187,7 +188,7 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
   const auto found = std::find(topology.prototypes.cbegin(), topology.prototypes.cend(), prototypeRoot);
   const auto p = static_cast<std::size_t>(found - topology.prototypes.cbegin());
   if (found == topology.prototypes.cend() || p >= topology.instanceIndices.size()) {
-    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+    Report(instancer.hydraPath, DiagnosticCode::kInvalidInstancer,
            "Prototype root " + prototypeRoot.GetString() + " has no instances");
     return {};
   }
@@ -196,7 +197,7 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
   if (locations.empty()) return ExpandPoints(instancer, topology, p, depth);
   const std::optional<VtMatrix4dArray> transforms = InstanceTransforms(instancer);
   if (!transforms) {
-    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+    Report(instancer.hydraPath, DiagnosticCode::kInvalidInstancer,
            "The native instancer has no unindexed instance transforms");
     return {};
   }
@@ -204,13 +205,13 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
   if (outers.empty()) return {};
   // The instances in range, each with what its instance root and its ancestors inside the outer prototype give it:
   // whether one resets the stack (WORKAROUND for OpenUSD #862), and the nearest purpose-visibility opinions. Every
-  // outer copy has the same hydraRoot, so each is found once.
+  // outer copy has the same Hydra namespace root, so each is found once.
   struct Instance {
     std::size_t index;
     bool resets;
     std::array<const TfToken*, 3> opinions;  // per PurposesWithVisibilityOpinions(); null for none
   };
-  const SdfPath& outerRoot = outers.front().hydraRoot;
+  const SdfPath& outerRoot = outers.front().hydraNamespaceRoot;
   std::vector<Instance> instances;
   bool invalidIndex = false;
   for (const int k : topology.instanceIndices[p]) {
@@ -226,21 +227,21 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
     instances.push_back(instance);
   }
   if (invalidIndex)
-    Report(instancer.path, DiagnosticCode::kInvalidInstancer, "Instance indices out of range were skipped");
+    Report(instancer.hydraPath, DiagnosticCode::kInvalidInstancer, "Instance indices out of range were skipped");
   const VtBoolArray& mask = topology.mask;
   std::vector<DrawnCopy> copies;
   copies.reserve(outers.size() * instances.size());
   for (const DrawnCopy& outer : outers) {
     for (const auto& [index, resets, opinions] : instances) {
       DrawnCopy copy;
-      copy.hydraRoot = prototypeRoot;
-      copy.usdRoot = outer.MapHydraPathToSource(locations[index]);
-      copy.context = outer.context;
-      copy.context.push_back(copy.usdRoot);
+      copy.hydraNamespaceRoot = prototypeRoot;
+      copy.sourceNamespaceRoot = outer.MapHydraPathToSource(locations[index]);
+      copy.instanceContext = outer.instanceContext;
+      copy.instanceContext.push_back(copy.sourceNamespaceRoot);
       copy.hydraInstanceRoot = locations[index];
       // Row vectors: the instance's own transform first, then the outer copy's, unless it resets.
       const GfMatrix4d& own = (*transforms)[index];
-      copy.world = resets ? own : own * outer.world;
+      copy.instanceWorldMatrix = resets ? own : own * outer.instanceWorldMatrix;
       // The mask already folds in the instance root's flattened visibility, its ancestors' included.
       copy.visible = outer.visible && (mask.empty() || (index < mask.size() && mask[index]));
       // Each purpose's nearest opinion inside the outer prototype, else the outer copy's.
@@ -261,7 +262,7 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
   const SdfPath& prototypeRoot = topology.prototypes[p];
   // Hydra copies each prototype under its original root as ForInstancer<hash>, so the original names the copies.
   if (!TfStringStartsWith(prototypeRoot.GetName(), "ForInstancer")) {
-    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+    Report(instancer.hydraPath, DiagnosticCode::kInvalidInstancer,
            "Prototype " + prototypeRoot.GetString() + " is not a propagated copy");
     return {};
   }
@@ -272,22 +273,22 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
     for (const int k : indices) points = std::max(points, static_cast<std::size_t>(std::max(k, 0)) + 1);
   const std::vector<GfMatrix4d> transforms = PointTransforms(instancer, points);
   // What the instancer and its ancestors inside the outer prototype give each copy, found once, as Expand does.
-  const SdfPath& outerRoot = outers.front().hydraRoot;
-  const bool resets = ResetsBelow(instancer.path, outerRoot);
+  const SdfPath& outerRoot = outers.front().hydraNamespaceRoot;
+  const bool resets = ResetsBelow(instancer.hydraPath, outerRoot);
   std::array<const TfToken*, 3> opinions{};
   for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i)
     opinions.at(i) =
-        NearestPurposeVisibilityOpinion(table_, instancer.path, outerRoot, PurposesWithVisibilityOpinions().at(i));
-  const GfMatrix4d local = instancer.matrix.value_or(GfMatrix4d(1.0));
+        NearestPurposeVisibilityOpinion(table_, instancer.hydraPath, outerRoot, PurposesWithVisibilityOpinions().at(i));
+  const GfMatrix4d local = instancer.flattenedWorldMatrix.value_or(GfMatrix4d(1.0));
   const VtBoolArray& mask = topology.mask;
   const TfToken prototypeName = prototypeRoot.GetParentPath().GetNameToken();
   std::vector<DrawnCopy> copies;
   bool invalidPoint = false;
   for (const DrawnCopy& outer : outers) {
-    const SdfPath instancerPath = outer.MapHydraPathToSource(instancer.path);
+    const SdfPath instancerPath = outer.MapHydraPathToSource(instancer.hydraPath);
     // The instancer's world transform in the outer copy, unless it or an ancestor inside the outer prototype resets
     // the stack (WORKAROUND for OpenUSD #862).
-    const GfMatrix4d world = resets ? local : local * outer.world;
+    const GfMatrix4d world = resets ? local : local * outer.instanceWorldMatrix;
     for (const int k : topology.instanceIndices[p]) {
       const auto point = static_cast<std::size_t>(k);
       const TfToken name = k < 0 || point >= transforms.size() ? TfToken() : PointInstancePathElement(instancer, point);
@@ -296,13 +297,13 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
         continue;
       }
       DrawnCopy copy;
-      copy.hydraRoot = prototypeRoot;
+      copy.hydraNamespaceRoot = prototypeRoot;
       // The point-instance path's root: the instancer, the point, then the prototype root's name.
-      copy.usdRoot = instancerPath.AppendChild(name).AppendChild(prototypeName);
-      copy.context = outer.context;
-      copy.context.push_back(instancerPath);
-      copy.context.push_back(instancerPath.AppendChild(name));
-      copy.world = transforms[point] * world;
+      copy.sourceNamespaceRoot = instancerPath.AppendChild(name).AppendChild(prototypeName);
+      copy.instanceContext = outer.instanceContext;
+      copy.instanceContext.push_back(instancerPath);
+      copy.instanceContext.push_back(instancerPath.AppendChild(name));
+      copy.instanceWorldMatrix = transforms[point] * world;
       copy.visible = outer.visible && instancer.visible && (mask.empty() || (point < mask.size() && mask[point]));
       for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i) {
         const TfToken* opinion = opinions.at(i);
@@ -314,7 +315,7 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
     }
   }
   if (invalidPoint)
-    Report(instancer.path, DiagnosticCode::kInvalidInstancer,
+    Report(instancer.hydraPath, DiagnosticCode::kInvalidInstancer,
            "Points out of range, or without an authored id, were skipped");
   return copies;
 }

@@ -45,11 +45,11 @@ constexpr uint64_t kForgotten = std::numeric_limits<uint64_t>::max();
 }  // namespace
 
 void SourceInfoSceneIndex::Invalidate(const SdfPath &path) const {
-    if (auto found = cache_.find(path); found != cache_.end()) ++*found->second.generation;
+    if (auto found = cache_.find(path); found != cache_.end()) ++*found->second.revisionCounter;
 }
 
 void SourceInfoSceneIndex::InvalidateAll() const {
-    for (auto &[path, cached] : cache_) ++*cached.generation;
+    for (auto &[path, cached] : cache_) ++*cached.revisionCounter;
 }
 
 void SourceInfoSceneIndex::Forget(const SdfPath &root) const {
@@ -59,24 +59,24 @@ void SourceInfoSceneIndex::Forget(const SdfPath &root) const {
             continue;
         }
         // A removed prim's container may still be read downstream; it then builds nothing.
-        *it->second.generation = kForgotten;
+        *it->second.revisionCounter = kForgotten;
         it = cache_.erase(it);
     }
 }
 
 void SourceInfoSceneIndex::Detach() {
     const std::scoped_lock lock(mutex_);
-    for (auto &[path, cached] : cache_) *cached.generation = kForgotten;
+    for (auto &[path, cached] : cache_) *cached.revisionCounter = kForgotten;
     cache_.clear();
     stage_ = nullptr;
 }
 
 std::shared_ptr<const CopyBindings> SourceInfoSceneIndex::CurrentCopyBindings() {
-    const uint64_t generation = bindingsGeneration_.load();
-    if (!copyBindings_ || copyBindingsAt_ != generation) {
+    const uint64_t revisionCounter = bindingsRevision_.load();
+    if (!copyBindings_ || copyBindingsRevision_ != revisionCounter) {
         const ScopedFactTiming timing(FactTiming::CopyBindings);
         copyBindings_ = std::make_shared<const CopyBindings>(ComputeCopyBindings(stage_));
-        copyBindingsAt_ = generation;
+        copyBindingsRevision_ = revisionCounter;
     }
     return copyBindings_;
 }
@@ -162,7 +162,7 @@ void SourceInfoSceneIndex::ApplyPendingUpdates() {
         // strength rules reach across instances, so every prim's bindings are re-resolved. Rare edits; a
         // per-collection dependency map would narrow it.
         if (bindingsChanged) {
-            ++bindingsGeneration_;
+            ++bindingsRevision_;
             for (const auto &[path, cached] : cache_) dirtied.emplace_back(path, facts);
             InvalidateAll();
         }
@@ -179,10 +179,10 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, con
     const std::scoped_lock lock(mutex_);
     if (auto found = cache_.find(prim.GetPath()); found != cache_.end()) return found->second.container;
     const SourceInfoSceneIndexPtr self = self_;
-    auto generation = std::make_shared<std::atomic<uint64_t>>(0);
+    auto revisionCounter = std::make_shared<std::atomic<uint64_t>>(0);
     HdContainerDataSourceHandle container = LazyContainer::New(
-        [self, prim, input, imaged, hydraType, generation]() -> HdContainerDataSourceHandle {
-            if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
+        [self, prim, input, imaged, hydraType, revisionCounter]() -> HdContainerDataSourceHandle {
+            if (!self || revisionCounter->load() == kForgotten || !prim.IsValid()) return nullptr;
             const ScopedFactTiming timing(FactTiming::Build);
             const HdContainerDataSourceHandle info = SourceInfo(prim, *self->globals_);
             // For a prim UsdImaging has no data for, the data it gives any prim without an adapter.
@@ -211,8 +211,8 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim &prim, con
                 if (more) added = added ? HdOverlayContainerDataSource::New(added, more) : more;
             return added;
         },
-        [generation]() -> uint64_t { return generation->load(); });
-    cache_.emplace(prim.GetPath(), Cached{container, generation});
+        [revisionCounter]() -> uint64_t { return revisionCounter->load(); });
+    cache_.emplace(prim.GetPath(), Cached{container, revisionCounter});
     return container;
 }
 
@@ -243,10 +243,10 @@ void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase &,
         const std::scoped_lock lock(mutex_);
         // Hydra lists every added prim, so an exact erase suffices; removals list only subtree roots.
         InvalidateAll();
-        ++bindingsGeneration_;
+        ++bindingsRevision_;
         for (const auto &entry : entries) {
             if (auto found = cache_.find(entry.primPath); found != cache_.end()) {
-                *found->second.generation = kForgotten;
+                *found->second.revisionCounter = kForgotten;
                 cache_.erase(found);
             }
         }
@@ -267,7 +267,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase &,
             Forget(entry.primPath);
         }
         InvalidateAll();
-        ++bindingsGeneration_;
+        ++bindingsRevision_;
     }
     _SendPrimsRemoved(entries);
 }

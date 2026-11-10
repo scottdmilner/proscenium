@@ -80,11 +80,11 @@ bool ReadPrim(const HdSceneIndexBase& scene, const SdfPath& path, PrimRecord& re
   const HdSceneIndexPrim prim = scene.GetPrim(path);
   if (!prim.dataSource) return false;
   const HdContainerDataSourceHandle& source = prim.dataSource;
-  record.path = path;
-  record.type = prim.primType;
+  record.hydraPath = path;
+  record.hydraPrimType = prim.primType;
   record.originPath = HdPrimOriginSchema::GetFromParent(source).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
   if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
-    record.matrix = matrix->GetTypedValue(kNow);
+    record.flattenedWorldMatrix = matrix->GetTypedValue(kNow);
   if (const HdBoolDataSourceHandle visible = HdVisibilitySchema::GetFromParent(source).GetVisibility())
     record.visible = visible->GetTypedValue(kNow);
   record.purpose = ValueOf(HdPurposeSchema::GetFromParent(source).GetPurpose());
@@ -105,19 +105,20 @@ bool ReadPrim(const HdSceneIndexBase& scene, const SdfPath& path, PrimRecord& re
 
 PrimTable ReadPrims(const Snapshot& snapshot) {
   SdfPathVector paths;
-  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.scene, SdfPath::AbsoluteRootPath())) paths.push_back(path);
+  for (const SdfPath& path : HdSceneIndexPrimView(snapshot.sceneIndex, SdfPath::AbsoluteRootPath()))
+    paths.push_back(path);
   // One parallel pass, as the bridge's reader: the snapshot is never changed after capture.
   std::vector<PrimRecord> records(paths.size());
   std::vector<char> present(paths.size(), 0);  // not vector<bool>, whose packed bits parallel writes would race on
   WorkParallelForN(paths.size(), [&](std::size_t begin, std::size_t end) {
     for (std::size_t i = begin; i < end; ++i)
-      present[i] = static_cast<char>(ReadPrim(*snapshot.scene, paths[i], records[i]));
+      present[i] = static_cast<char>(ReadPrim(*snapshot.sceneIndex, paths[i], records[i]));
   });
   PrimTable table;
   table.prims.reserve(records.size());
   for (std::size_t i = 0; i < records.size(); ++i) {
     if (!present[i]) continue;
-    table.index.emplace(records[i].path, table.prims.size());
+    table.primIndexByPath.emplace(records[i].hydraPath, table.prims.size());
     table.prims.push_back(std::move(records[i]));
   }
   return table;

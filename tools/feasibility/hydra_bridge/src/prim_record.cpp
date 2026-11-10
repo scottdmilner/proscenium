@@ -28,8 +28,8 @@ bool FlattenedConstant(const PrimvarRecord &primvar, VtValue &value, std::string
 }
 
 const PrimRecord *PrimTable::Find(const SdfPath &path) const {
-    auto found = index.find(path);
-    return found == index.end() ? nullptr : &prims[found->second];
+    auto found = primIndexByPath.find(path);
+    return found == primIndexByPath.end() ? nullptr : &prims[found->second];
 }
 
 }  // namespace hydra_bridge

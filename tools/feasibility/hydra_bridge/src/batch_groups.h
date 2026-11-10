@@ -27,13 +27,13 @@ struct BatchGroup {
     std::array<double, 4> color{1.0, 1.0, 1.0, 1.0};
     // (primvar, Blender attribute data type), by name: BOOLEAN, INT, FLOAT, FLOAT2, or FLOAT_VECTOR.
     std::vector<std::pair<std::string, std::string>> kinds;
-    int repeat = 0;            // among groups with the same key, by coincident transform
-    std::vector<int> members;  // plan object indices, ascending
+    int coincidentCopyIndex = 0;     // among groups with the same key, by coincident transform
+    std::vector<int> objectIndices;  // plan object indices, ascending
 };
 
 struct BatchGroups {
-    std::vector<BatchGroup> groups;  // of at least `minimum` members, in order of their first member
-    std::vector<int> single;         // every other object, ascending
+    std::vector<BatchGroup> groups;           // of at least `minimum` members, in order of their first member
+    std::vector<int> unbatchedObjectIndices;  // every other object, ascending
 };
 
 // Call without the GIL.

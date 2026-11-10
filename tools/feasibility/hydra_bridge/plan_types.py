@@ -93,7 +93,7 @@ class Plan(Protocol):
     """The module's Plan view. Each property builds a fresh list."""
 
     @property
-    def time(self) -> float | None: ...  # None at default time
+    def time_code(self) -> float | None: ...  # None at default time
     @property
     def meshes(self) -> list[MeshRecord]: ...
     @property

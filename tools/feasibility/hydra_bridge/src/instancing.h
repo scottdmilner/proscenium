@@ -28,12 +28,12 @@ namespace hydra_bridge {
 // PointName(point), which no prim has. The instancer is then the copy's floor, which interaction resolves, and
 // each point's copies keep their own identity (source, instance context).
 struct DrawnCopy {
-    pxr::SdfPath hydraRoot = pxr::SdfPath::AbsoluteRootPath();
-    pxr::SdfPath usdRoot = pxr::SdfPath::AbsoluteRootPath();
-    pxr::SdfPathVector context;  // instance roots, or a point instancer and its point, outermost first
+    pxr::SdfPath hydraNamespaceRoot = pxr::SdfPath::AbsoluteRootPath();
+    pxr::SdfPath sourceNamespaceRoot = pxr::SdfPath::AbsoluteRootPath();
+    pxr::SdfPathVector instanceContext;  // instance roots, or a point instancer and its point, outermost first
     // The Hydra prim behind each context entry: an instance root's, or for both of a point's entries its instancer.
     pxr::SdfPathVector hydraContext;
-    pxr::GfMatrix4d world{1.0};
+    pxr::GfMatrix4d instanceWorldMatrix{1.0};
     bool visible = true;
     ConstantPrimvars instancePrimvars;  // innermost instance first, one entry per name
     // The nearest authored guide/proxy/render visibility at or above the instance root, per purpose.
@@ -44,7 +44,7 @@ struct DrawnCopy {
     pxr::TfTokenVector strongPurposes;
 
     [[nodiscard]] pxr::SdfPath Map(const pxr::SdfPath &hydraPath) const {
-        return hydraPath.ReplacePrefix(hydraRoot, usdRoot);
+        return hydraPath.ReplacePrefix(hydraNamespaceRoot, sourceNamespaceRoot);
     }
 };
 

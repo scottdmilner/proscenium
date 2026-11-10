@@ -41,10 +41,10 @@ struct FlattenedPropertyValue {
     VtBoolArray bools;
     VtIntArray ints;
     VtDoubleArray doubles;
-    size_t tuple = 0;       // elements per vector or matrix row
-    bool matrix = false;    // the elements are matrix rows
-    std::string why;        // set when an element can't be held
-    bool narrowed = false;  // an integer was wrapped to 32 bits
+    size_t tupleSize = 0;         // elements per vector or matrix row
+    bool isMatrix = false;        // the elements are matrix rows
+    std::string rejectionReason;  // set when an element can't be held
+    bool narrowed = false;        // an integer was wrapped to 32 bits
 };
 
 void Add(FlattenedPropertyValue &flat, bool value) {
@@ -83,7 +83,7 @@ void Add(FlattenedPropertyValue &flat, double value) { AddFloat(flat, value); }
 
 template <class Vec>
 void AddVector(FlattenedPropertyValue &flat, const Vec &value) {
-    flat.tuple = Vec::dimension;
+    flat.tupleSize = Vec::dimension;
     for (size_t i = 0; i < Vec::dimension; ++i) Add(flat, value[i]);
 }
 
@@ -102,8 +102,8 @@ void Add(FlattenedPropertyValue &flat, const GfVec4d &value) { AddVector(flat, v
 
 template <class Matrix>
 void AddMatrix(FlattenedPropertyValue &flat, const Matrix &value) {
-    flat.tuple = Matrix::numColumns;
-    flat.matrix = true;
+    flat.tupleSize = Matrix::numColumns;
+    flat.isMatrix = true;
     // Gf matrices index rows by int (vectors take size_t).
     for (int row = 0; row < static_cast<int>(Matrix::numRows); ++row)
         for (int column = 0; column < static_cast<int>(Matrix::numColumns); ++column)
@@ -152,19 +152,19 @@ std::optional<PropertyValue> ToProperty(const VtValue &value, std::string &why, 
         why = "type " + value.GetTypeName() + " has no Blender property form";
         return std::nullopt;
     }
-    if (!flat.why.empty()) {
-        why = flat.why;
+    if (!flat.rejectionReason.empty()) {
+        why = flat.rejectionReason;
         return std::nullopt;
     }
-    if (array && flat.matrix) {
+    if (array && flat.isMatrix) {
         why = "an array of matrices has no Blender property form";
         return std::nullopt;
     }
     if (flat.narrowed) warning = "an integer outside Blender's 32-bit range was wrapped to its low 32 bits";
     PropertyValue property;
     // A lone vector is a flat array; an array of vectors, or a matrix, is nested by rows.
-    property.tupleSize = array || flat.matrix ? flat.tuple : 0;
-    const bool scalar = !array && flat.tuple == 0;
+    property.tupleSize = array || flat.isMatrix ? flat.tupleSize : 0;
+    const bool scalar = !array && flat.tupleSize == 0;
     switch (flat.kind) {
     case Kind::Bool:
         property.value = scalar ? VtValue(static_cast<bool>(flat.bools[0])) : VtValue(flat.bools);

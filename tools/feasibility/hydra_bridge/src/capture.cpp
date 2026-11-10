@@ -99,7 +99,7 @@ private:
 SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous, Diagnostics carried,
                     bool timeDependencies) {
     auto snapshot = std::make_shared<Snapshot>();
-    snapshot->time = time;
+    snapshot->timeCode = time;
     WarningCollector warnings;
     SdfPathVector paths;
     Diagnostics graphDiagnostics = std::move(carried);
@@ -128,7 +128,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     WorkParallelForN(paths.size(), [&](size_t begin, size_t end) {
         for (size_t i = begin; i < end; ++i) {
             if (previous && !affected.Contains(paths[i])) {
-                const HdSceneIndexPrim kept = previous->scene->GetPrim(paths[i]);
+                const HdSceneIndexPrim kept = previous->sceneIndex->GetPrim(paths[i]);
                 if (kept.dataSource) {
                     entries[i] = {paths[i], kept.primType, kept.dataSource};
                     continue;
@@ -151,8 +151,8 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
         HarvestErrors(mark, SdfPath(), graphDiagnostics);
     }
 
-    snapshot->scene = HdRetainedSceneIndex::New();
-    snapshot->scene->AddPrims(entries);
+    snapshot->sceneIndex = HdRetainedSceneIndex::New();
+    snapshot->sceneIndex->AddPrims(entries);
     // Warnings attributed to a copied prim belong to it; the rest were posted by the graph itself.
     std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> warned;
     for (Diagnostic &warning : warnings.Take()) {

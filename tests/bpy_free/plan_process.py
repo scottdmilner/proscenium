@@ -60,7 +60,8 @@ def contents(plan: _core.Plan) -> dict[str, Any]:
             [g.representative_source_path, memoryview(g.extent).tolist(), g.content_key] for g in plan.geometries
         ],
         "diagnostics": [
-            [d.code, d.source_path, d.message, d.property_path, d.asset, d.fallback] for d in plan.diagnostics
+            [d.code, d.source_path, d.message, d.property_path, d.asset_identifier, d.fallback_description]
+            for d in plan.diagnostics
         ],
         "batch groups": [
             [

@@ -33,10 +33,10 @@ struct SceneIndexEvent {
 };
 
 struct Snapshot {
-    pxr::UsdTimeCode time;
+    pxr::UsdTimeCode timeCode;
     // Every prim, with the planned schemas sampled at the capture time. Never modified after capture.
     // An incremental capture shares the previous snapshot's containers for prims no notice named.
-    pxr::HdRetainedSceneIndexRefPtr scene;
+    pxr::HdRetainedSceneIndexRefPtr sceneIndex;
     // Notices delivered since the previous capture, and a capture's own notices dirtying what depends on time
     // (capture.h).
     std::vector<SceneIndexEvent> events;

@@ -91,6 +91,11 @@ The compiled plan names references explicitly: `Partition.resource_indices`, `Ba
 `Plan.copy_object_resource_indices` contain indices, while `Plan.copy_world_matrices` contains world matrices.
 `plan_checks.PlannedDrawnCopy` uses the same distinctions when the plan tests compare drawn copies with USD.
 
+The native capture records use `sceneIndex`, `timeCode`, `hydraPath`, `hydraPrimType`, and
+`flattenedWorldMatrix` to distinguish scene indices, USD time codes, and Hydra coordinates. Instance copies carry
+`instanceContext` and `instanceWorldMatrix`; cache invalidation uses revision counters. The prototype's captured
+snapshots and plans expose their time code as `time_code`.
+
 ### `blender/`
 
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/state.py`, does the following:

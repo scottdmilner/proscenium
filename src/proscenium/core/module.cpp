@@ -123,14 +123,14 @@ void WrapPlan() {
       .add_property(
           "code", +[](const Diagnostic& d) { return DiagnosticCodeName(d.code); })
       .add_property(
-          "source_path", +[](const Diagnostic& d) { return d.source.GetString(); })
+          "source_path", +[](const Diagnostic& d) { return d.sourcePath.GetString(); })
       .add_property(
           "message", +[](const Diagnostic& d) { return d.message; })
       .add_property(
-          "property_path", +[](const Diagnostic& d) { return d.property.GetString(); })
+          "property_path", +[](const Diagnostic& d) { return d.propertyPath.GetString(); })
       .add_property(
-          "asset", +[](const Diagnostic& d) { return d.asset; })
-      .add_property("fallback", +[](const Diagnostic& d) { return d.fallback; });
+          "asset_identifier", +[](const Diagnostic& d) { return d.assetIdentifier; })
+      .add_property("fallback_description", +[](const Diagnostic& d) { return d.fallbackDescription; });
   bp::def(
       "diagnostic_codes", +[] {
         bp::list names;

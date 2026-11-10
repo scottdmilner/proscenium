@@ -43,14 +43,14 @@ const char* DiagnosticCodeName(DiagnosticCode code);
 // One reported problem. The fields that don't apply to it are empty (DIAG-02).
 struct Diagnostic {
   DiagnosticCode code;
-  PXR_NS::SdfPath source;  // the source entity it concerns, as a composed-stage path; a Hydra path in a snapshot
+  PXR_NS::SdfPath sourcePath;  // the source entity it concerns, as a composed-stage path; a Hydra path in a snapshot
   std::string message;
-  PXR_NS::SdfPath property;  // the property it concerns
-  std::string asset;         // the asset it concerns, as authored
-  std::string fallback;      // what is displayed in its place
+  PXR_NS::SdfPath propertyPath;     // the property it concerns
+  std::string assetIdentifier;      // the asset it concerns, as authored
+  std::string fallbackDescription;  // what is displayed in its place
   // What SummarizeRepeatedDiagnostics words into the message once planning is done:
-  PXR_NS::SdfPath hydraPrim;  // the Hydra prim one with no source entity concerns; empty for none
-  std::size_t copies = 0;     // the drawn copies of its source it covers, counted past one
+  PXR_NS::SdfPath hydraPrimPath;   // the Hydra prim one with no source entity concerns; empty for none
+  std::size_t drawnCopyCount = 0;  // the total drawn copies of its source covered; zero before source mapping
 };
 
 using Diagnostics = std::vector<Diagnostic>;

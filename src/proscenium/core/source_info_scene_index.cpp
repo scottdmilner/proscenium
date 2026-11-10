@@ -57,12 +57,12 @@ SourceInfoSceneIndex::SourceInfoSceneIndex(const HdSceneIndexBaseRefPtr& input, 
       globals_(std::make_unique<Globals>(*this)) {}
 
 void SourceInfoSceneIndex::Invalidate(const SdfPath& path) const {
-  if (auto found = cache_.find(path); found != cache_.end()) ++*found->second.generation;
+  if (auto found = cache_.find(path); found != cache_.end()) ++*found->second.revisionCounter;
 }
 
 void SourceInfoSceneIndex::Detach() {
   const std::scoped_lock lock(mutex_);
-  for (auto& [path, cached] : cache_) *cached.generation = kForgotten;
+  for (auto& [path, cached] : cache_) *cached.revisionCounter = kForgotten;
   cache_.clear();
   stage_ = nullptr;
 }
@@ -89,10 +89,10 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, boo
   const std::scoped_lock lock(mutex_);
   if (auto found = cache_.find(prim.GetPath()); found != cache_.end()) return found->second.container;
   const SourceInfoSceneIndexPtr self = self_;
-  auto generation = std::make_shared<std::atomic<uint64_t>>(0);
+  auto revisionCounter = std::make_shared<std::atomic<uint64_t>>(0);
   HdContainerDataSourceHandle container = RevisionCachedContainer::New(
-      [self, prim, imaged, generation]() -> HdContainerDataSourceHandle {
-        if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
+      [self, prim, imaged, revisionCounter]() -> HdContainerDataSourceHandle {
+        if (!self || revisionCounter->load() == kForgotten || !prim.IsValid()) return nullptr;
         HdContainerDataSourceHandle added;
         auto overlay = [&added](const HdContainerDataSourceHandle& more) {
           if (more) added = added ? HdOverlayContainerDataSource::New(added, more) : more;
@@ -107,8 +107,8 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, boo
         }
         return added;
       },
-      [generation]() -> uint64_t { return generation->load(); });
-  cache_.emplace(prim.GetPath(), Cached{container, generation});
+      [revisionCounter]() -> uint64_t { return revisionCounter->load(); });
+  cache_.emplace(prim.GetPath(), Cached{container, revisionCounter});
   return container;
 }
 
@@ -138,7 +138,7 @@ void SourceInfoSceneIndex::_PrimsAdded(const HdSceneIndexBase&, const HdSceneInd
     // Hydra lists every added prim, so an exact erase suffices; removals list only subtree roots.
     for (const auto& entry : entries) {
       if (auto found = cache_.find(entry.primPath); found != cache_.end()) {
-        *found->second.generation = kForgotten;
+        *found->second.revisionCounter = kForgotten;
         cache_.erase(found);
       }
     }
@@ -160,7 +160,7 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase&,
           ++it;
           continue;
         }
-        *it->second.generation = kForgotten;
+        *it->second.revisionCounter = kForgotten;
         it = cache_.erase(it);
       }
     }

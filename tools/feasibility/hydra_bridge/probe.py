@@ -92,7 +92,7 @@ def run(module_dir: Path, native: Any = None) -> dict[str, Any]:
         # must read the authored default value, not a sample.
         default = bridge.capture()
         check("default time reads default values", default.prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0))
-        check("default time reports no numeric time", default.time is None and edited.time == 1.0)
+        check("default time reports no numeric time", default.time_code is None and edited.time_code == 1.0)
         check(
             "None and Usd.TimeCode select times",
             bridge.capture(None).prim("/World/Tri")["points"][1] == Gf.Vec3f(1, 0, 0)

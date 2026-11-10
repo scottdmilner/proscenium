@@ -38,8 +38,8 @@ def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tup
             d.message,
             source_path=d.source_path,
             property_path=d.property_path,
-            asset_identifier=d.asset,
-            fallback_description=d.fallback,
+            asset_identifier=d.asset_identifier,
+            fallback_description=d.fallback_description,
         )
         for d in plan.diagnostics
     )

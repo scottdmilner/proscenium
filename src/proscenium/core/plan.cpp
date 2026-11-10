@@ -127,7 +127,7 @@ std::pair<GfMatrix4d, GfMatrix4d> ShearSplit(const GfMatrix4d& world) {
 }
 
 // Whether the prim is a gprim: by its Hydra type, or for a prim Hydra doesn't image, by its USD type.
-bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || prim.isGprim; }
+bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.hydraPrimType) || prim.isGprim; }
 
 // The Hydra paths of the point instancers in `table`. Under one, a prim Hydra doesn't image at its own path is drawn
 // only through the instancer's copies of its prototypes, as the bridge's planner decides: a prototype's original, or a
@@ -135,7 +135,7 @@ bool IsGprim(const PrimRecord& prim) { return HdPrimTypeIsGprim(prim.type) || pr
 SdfPathVector PointInstancers(const PrimTable& table) {
   SdfPathVector paths;
   for (const PrimRecord& prim : table.prims)
-    if (prim.instancer && prim.instancer->instanceLocations.empty()) paths.push_back(prim.path);
+    if (prim.instancer && prim.instancer->instanceLocations.empty()) paths.push_back(prim.hydraPath);
   return paths;
 }
 
@@ -148,7 +148,8 @@ bool ImplicitMeshConversionIsExact(const TfToken& type) {
 // The composed-stage source of the prim drawn in `copy`: an instance-proxy path inside instances. Outside instancing,
 // the stage scene index names a prim by its USD path, and the filtering scene indices that convert it keep that.
 SdfPath DrawnCopySourcePath(const PrimRecord& prim, const DrawnCopy& copy) {
-  return copy.context.empty() && !prim.originPath.IsEmpty() ? prim.originPath : copy.MapHydraPathToSource(prim.path);
+  return copy.instanceContext.empty() && !prim.originPath.IsEmpty() ? prim.originPath
+                                                                    : copy.MapHydraPathToSource(prim.hydraPath);
 }
 
 // Problems repeated across a USD prim's copies, each reported once, a repeated problem aggregated (with the user): at
@@ -175,8 +176,8 @@ class DrawnCopyDiagnosticAggregator {
   void FinalizeDiagnosticCoverage() {
     for (auto& [key, report] : reports_) {
       Diagnostic& diagnostic = to_[report.index];
-      diagnostic.source = report.first;
-      diagnostic.copies = report.count;
+      diagnostic.sourcePath = report.first;
+      diagnostic.drawnCopyCount = report.count;
     }
   }
 
@@ -192,8 +193,8 @@ class DrawnCopyDiagnosticAggregator {
   // path, which outside instancing is its USD path. Without the prototype fact, the Hydra prim stands for it.
   [[nodiscard]] SdfPath UsdPrimOf(const PrimRecord& prim, const DrawnCopy& copy) const {
     const PrimRecord* root = copy.hydraInstanceRoot.IsEmpty() ? nullptr : table_.Find(copy.hydraInstanceRoot);
-    if (!root || root->instancePrototype.IsEmpty()) return prim.path;
-    return SdfPath(root->instancePrototype).AppendPath(prim.path.MakeRelativePath(copy.hydraRoot));
+    if (!root || root->instancePrototype.IsEmpty()) return prim.hydraPath;
+    return SdfPath(root->instancePrototype).AppendPath(prim.hydraPath.MakeRelativePath(copy.hydraNamespaceRoot));
   }
 
   Report& FindOrCreateReport(Diagnostic diagnostic, SdfPath usdPrim) {
@@ -221,14 +222,14 @@ void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, Inst
                           Diagnostics& to) {
   DrawnCopyDiagnosticAggregator reports(table, to);
   for (Diagnostic diagnostic : snapshot.diagnostics) {
-    const PrimRecord* prim = diagnostic.source.IsEmpty() ? nullptr : table.Find(diagnostic.source);
+    const PrimRecord* prim = diagnostic.sourcePath.IsEmpty() ? nullptr : table.Find(diagnostic.sourcePath);
     const std::vector<DrawnCopy>* copies = prim ? &instances.CopiesOf(*prim) : nullptr;
     if (copies && !copies->empty()) {
       reports.Add(std::move(diagnostic), *prim, *copies);
       continue;
     }
-    diagnostic.hydraPrim = diagnostic.source;
-    diagnostic.source = SdfPath();
+    diagnostic.hydraPrimPath = diagnostic.sourcePath;
+    diagnostic.sourcePath = SdfPath();
     to.push_back(std::move(diagnostic));
   }
   reports.FinalizeDiagnosticCoverage();
@@ -240,25 +241,25 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
   const SdfPathVector pointInstancers = PointInstancers(table);
   for (const PrimRecord& prim : table.prims) {
     if (!IsGprim(prim)) continue;
-    if (prim.type.IsEmpty() && !prim.instancedBy &&
+    if (prim.hydraPrimType.IsEmpty() && !prim.instancedBy &&
         std::any_of(pointInstancers.begin(), pointInstancers.end(),
-                    [&](const SdfPath& instancer) { return prim.path.HasPrefix(instancer); }))
+                    [&](const SdfPath& instancer) { return prim.hydraPath.HasPrefix(instancer); }))
       continue;
     const std::vector<DrawnCopy>& copies = instances.CopiesOf(prim);
     if (copies.empty()) continue;
     // Flattened: in its prototype's namespace inside instances, else the world.
-    const GfMatrix4d local = prim.matrix.value_or(GfMatrix4d(1.0));
+    const GfMatrix4d local = prim.flattenedWorldMatrix.value_or(GfMatrix4d(1.0));
     // A reset inside the prototype drops the instance's transform too (WORKAROUND for OpenUSD #862). Every copy has
-    // the same hydraRoot, so it is checked once.
-    const bool resets = instances.ResetsBelow(prim.path, copies.front().hydraRoot);
-    const PrimRecord* mesh = prim.type == HdPrimTypeTokens->mesh ? &prim : nullptr;
+    // the same Hydra namespace root, so it is checked once.
+    const bool resets = instances.ResetsBelow(prim.hydraPath, copies.front().hydraNamespaceRoot);
+    const PrimRecord* mesh = prim.hydraPrimType == HdPrimTypeTokens->mesh ? &prim : nullptr;
     const TfToken purpose = UsdPurpose(prim);
     for (const DrawnCopy& copy : copies) {
       const TfToken* opinion = PurposeVisibilityOpinion(table, prim, copy);
       const bool explicitGuide = purpose == UsdGeomTokens->guide && opinion && *opinion == UsdGeomTokens->visible;
-      gprims.push_back({DrawnCopySourcePath(prim, copy), copy.context, resets ? local : local * copy.world, prim.extent,
-                        &prim, &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide,
-                        prim.usdType});
+      gprims.push_back({DrawnCopySourcePath(prim, copy), copy.instanceContext,
+                        resets ? local : local * copy.instanceWorldMatrix, prim.extent, &prim, &copy, mesh, purpose,
+                        EffectivelyVisible(table, prim, copy), explicitGuide, prim.usdType});
     }
   }
   std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
@@ -297,8 +298,8 @@ PlanningContext::PlanningContext(double scale, int version) : unitScale(scale), 
 PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
-  auto plan =
-      std::make_shared<Plan>(Plan{snapshot.time, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+  auto plan = std::make_shared<Plan>(
+      Plan{snapshot.timeCode, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
   TfTokenVector viewport = settings.viewportPurposes;
   if (!Includes(viewport, UsdGeomTokens->guide)) viewport.push_back(UsdGeomTokens->guide);
   const PrimTable table = ReadPrims(snapshot);
@@ -351,7 +352,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                    0},
                   *gprim.prim, *gprim.copy, gprim.source);
     if (!gprim.mesh) {
-      const TfToken& type = gprim.usdType.IsEmpty() ? gprim.prim->type : gprim.usdType;
+      const TfToken& type = gprim.usdType.IsEmpty() ? gprim.prim->hydraPrimType : gprim.usdType;
       planned.Add(
           {DiagnosticCode::kUntranslatedType,
            {},

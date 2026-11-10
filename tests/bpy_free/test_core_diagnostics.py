@@ -146,7 +146,9 @@ def test_a_problem_on_many_prims_lists_its_first_and_counts_the_rest(tmp_path: P
 
 
 def test_a_code_the_list_lacks_raises() -> None:
-    reported = SimpleNamespace(code="no-such-code", source_path="", message="", property_path="", asset="", fallback="")
+    reported = SimpleNamespace(
+        code="no-such-code", source_path="", message="", property_path="", asset_identifier="", fallback_description=""
+    )
     plan = cast("_core.Plan", SimpleNamespace(diagnostics=(reported,)))
     with pytest.raises(ValueError, match="no-such-code"):
         planning.plan_diagnostics(BINDING, plan)

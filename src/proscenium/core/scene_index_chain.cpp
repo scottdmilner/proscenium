@@ -150,7 +150,7 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   // A warning attributed to a prim is its own; the rest the chain posted.
   std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> warned;
   for (Diagnostic& warning : warnings.TakeDiagnostics())
-    (warning.source.IsEmpty() ? chain : warned[warning.source]).push_back(std::move(warning));
+    (warning.sourcePath.IsEmpty() ? chain : warned[warning.sourcePath]).push_back(std::move(warning));
   // A prim's diagnostics name its path, so they never repeat another's.
   Diagnostics prims;
   std::set<std::pair<DiagnosticCode, std::string>> attributed;

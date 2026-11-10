@@ -22,10 +22,10 @@ namespace proscenium {
 // One drawn copy of a prototype's contents: where its Hydra namespace sits on the composed stage, its instance
 // context, and the transform and visibility it takes from its instance roots.
 struct DrawnCopy {
-  PXR_NS::SdfPath hydraRoot = PXR_NS::SdfPath::AbsoluteRootPath();
-  PXR_NS::SdfPath usdRoot = PXR_NS::SdfPath::AbsoluteRootPath();
-  PXR_NS::SdfPathVector context;  // native-instance roots on the composed stage, outermost first
-  PXR_NS::GfMatrix4d world{1.0};  // the innermost instance root's, USD's row-vector convention
+  PXR_NS::SdfPath hydraNamespaceRoot = PXR_NS::SdfPath::AbsoluteRootPath();
+  PXR_NS::SdfPath sourceNamespaceRoot = PXR_NS::SdfPath::AbsoluteRootPath();
+  PXR_NS::SdfPathVector instanceContext;        // native-instance roots on the composed stage, outermost first
+  PXR_NS::GfMatrix4d instanceWorldMatrix{1.0};  // the innermost instance root's, USD's row-vector convention
   // The innermost native-instance root's Hydra path; empty outside native instancing and for a point's copy.
   PXR_NS::SdfPath hydraInstanceRoot;
   bool visible = true;  // every enclosing instancer's mask, which folds in each instance root's visibility
@@ -34,7 +34,7 @@ struct DrawnCopy {
 
   // The composed-stage path of the Hydra prim at `hydraPath` in this copy: an instance-proxy path inside instances.
   [[nodiscard]] PXR_NS::SdfPath MapHydraPathToSource(const PXR_NS::SdfPath& hydraPath) const {
-    return hydraPath.ReplacePrefix(hydraRoot, usdRoot);
+    return hydraPath.ReplacePrefix(hydraNamespaceRoot, sourceNamespaceRoot);
   }
 };
 
@@ -55,8 +55,8 @@ class InstanceResolver {
   // does, ignoring a reset inside an instance: only the known-gap check for OpenUSD #862 asks for it.
   InstanceResolver(const PrimTable& table, bool honorResets);
 
-  // Every drawn copy of `prim`, all with one hydraRoot: outside instancing one, the identity; none under a point
-  // instancer, and none when Hydra's instancing data can't be resolved, which the resolver reports once.
+  // Every drawn copy of `prim`, all with one hydraNamespaceRoot: outside instancing one, the identity; none under a
+  // point instancer, and none when Hydra's instancing data can't be resolved, which the resolver reports once.
   const std::vector<DrawnCopy>& CopiesOf(const PrimRecord& prim);
 
   // WORKAROUND for OpenUSD #862: whether `path` or an ancestor below `prototypeRoot` resets the transform stack, so a

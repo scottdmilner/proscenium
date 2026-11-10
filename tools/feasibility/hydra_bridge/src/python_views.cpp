@@ -194,10 +194,10 @@ bp::dict ObjectDict(const Plan &plan, std::size_t i) {
 
 bp::dict PrimDict(const PrimRecord &prim) {
     bp::dict record;
-    record["type"] = prim.type.GetString();
+    record["type"] = prim.hydraPrimType.GetString();
     record["usd_type"] = prim.usdTypeName.GetString();
     record["origin"] = PathOrNone(prim.originPath);
-    record["matrix"] = prim.matrix ? bp::object(*prim.matrix) : bp::object();
+    record["matrix"] = prim.flattenedWorldMatrix ? bp::object(*prim.flattenedWorldMatrix) : bp::object();
     record["visible"] = prim.visible;
     record["purpose"] = prim.purpose.GetString();
     record["is_gprim"] = prim.isGprim;
@@ -258,26 +258,26 @@ bp::dict PrimDict(const PrimRecord &prim) {
 
 }  // namespace
 
-bp::object SnapshotView::Time() const { return TimeOrNone(data->time); }
+bp::object SnapshotView::Time() const { return TimeOrNone(data->timeCode); }
 
 bp::list SnapshotView::Paths() const {
     bp::list result;
-    for (const SdfPath &path : HdSceneIndexPrimView(data->scene, SdfPath::AbsoluteRootPath()))
-        if (data->scene->GetPrim(path).dataSource) result.append(path.GetString());
+    for (const SdfPath &path : HdSceneIndexPrimView(data->sceneIndex, SdfPath::AbsoluteRootPath()))
+        if (data->sceneIndex->GetPrim(path).dataSource) result.append(path.GetString());
     return result;
 }
 
 bp::object SnapshotView::Prim(const bp::object &path) const {
     const SdfPath primPath = PrimPath(path, true);
     PrimRecord record;
-    if (primPath.IsEmpty() || !ReadPrim(*data->scene, primPath, record)) return {};
+    if (primPath.IsEmpty() || !ReadPrim(*data->sceneIndex, primPath, record)) return {};
     return PrimDict(record);
 }
 
 bp::object SnapshotView::Dump(const bp::object &path) const {
     const SdfPath primPath = PrimPath(path, true);
     if (primPath.IsEmpty()) return {};
-    const HdSceneIndexPrim prim = data->scene->GetPrim(primPath);
+    const HdSceneIndexPrim prim = data->sceneIndex->GetPrim(primPath);
     if (!prim.dataSource) return {};
     std::ostringstream out;
     HdDebugPrintDataSource(out, prim.dataSource);
@@ -329,7 +329,7 @@ bp::dict SnapshotView::CopyBindings() const {
     return result;
 }
 
-bp::object PlanView::Time() const { return TimeOrNone(data->time); }
+bp::object PlanView::Time() const { return TimeOrNone(data->timeCode); }
 
 bp::list PlanView::Meshes() const {
     bp::list result;
@@ -406,10 +406,10 @@ bp::tuple PlanView::BatchGroups(std::size_t minimum) const {
         for (const auto &[name, type] : group.kinds) kinds.append(bp::make_tuple(name, type));
         const auto &[r, g, b, a] = group.color;
         const bp::tuple key = bp::make_tuple(group.mesh, bp::tuple(slots), group.inViewport, group.inRender,
-                                             bp::make_tuple(r, g, b, a), bp::tuple(kinds), group.repeat);
-        groups.append(bp::make_tuple(key, list(group.members)));
+                                             bp::make_tuple(r, g, b, a), bp::tuple(kinds), group.coincidentCopyIndex);
+        groups.append(bp::make_tuple(key, list(group.objectIndices)));
     }
-    return bp::make_tuple(groups, list(grouped.single));
+    return bp::make_tuple(groups, list(grouped.unbatchedObjectIndices));
 }
 
 bp::list PlanView::Diagnostics() const { return DiagnosticList(data->diagnostics); }
@@ -592,7 +592,7 @@ std::size_t RebuildCorrespondence(const PlanView &plan) {
 
 void WrapViews() {
     bp::class_<SnapshotView>("Snapshot", bp::no_init)
-        .add_property("time", &SnapshotView::Time)
+        .add_property("time_code", &SnapshotView::Time)
         .def("paths", &SnapshotView::Paths)
         .def("prim", &SnapshotView::Prim)
         .def("dump", &SnapshotView::Dump)
@@ -604,7 +604,7 @@ void WrapViews() {
         .add_property("diagnostics", &SnapshotView::Diagnostics)
         .add_property("copy_bindings", &SnapshotView::CopyBindings);
     bp::class_<PlanView>("Plan", bp::no_init)
-        .add_property("time", &PlanView::Time)
+        .add_property("time_code", &PlanView::Time)
         .add_property("meshes", &PlanView::Meshes)
         .add_property("materials", &PlanView::Materials)
         .add_property("objects", &PlanView::Objects)

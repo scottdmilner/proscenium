@@ -101,21 +101,21 @@ BatchGroups GroupForBatches(const Plan &plan, std::size_t minimum) {
         const GfMatrix4f stored(object.matrix);
         std::string placed = key;
         for (int row = 0; row < 4; ++row) Append(placed, stored.GetRow(row));
-        group.repeat = repeats[placed]++;
-        Append(key, group.repeat);
+        group.coincidentCopyIndex = repeats[placed]++;
+        Append(key, group.coincidentCopyIndex);
         auto [found, added] = byKey.emplace(std::move(key), grouped.size());
         if (added) grouped.push_back(std::move(group));
-        grouped[found->second].members.push_back(static_cast<int>(i));
+        grouped[found->second].objectIndices.push_back(static_cast<int>(i));
     }
     BatchGroups result;
     for (BatchGroup &group : grouped) {
-        if (group.members.size() >= minimum)
+        if (group.objectIndices.size() >= minimum)
             result.groups.push_back(std::move(group));
         else
-            single.insert(single.end(), group.members.begin(), group.members.end());
+            single.insert(single.end(), group.objectIndices.begin(), group.objectIndices.end());
     }
     std::sort(single.begin(), single.end());
-    result.single = std::move(single);
+    result.unbatchedObjectIndices = std::move(single);
     return result;
 }
 
