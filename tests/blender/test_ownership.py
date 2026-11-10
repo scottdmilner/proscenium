@@ -71,7 +71,7 @@ def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
 
     The oracle, reading the records now, must agree.
     """
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
     return {id_: claims for id_ in bpy.data.user_map() if (claims := ownership.of(id_).claims)}
 
 

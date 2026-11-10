@@ -16,7 +16,7 @@ from fixtures import transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS, copies
 
@@ -58,7 +58,7 @@ def _identity(resource: _core.PlannedResource) -> tuple[str, str, int]:
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_a_copy_per_drawn_gprim(policy: PayloadPolicy, tmp_path: Path) -> None:
     with transaction.failed_settings(tmp_path) as scene:
-        plan = _plan(open_fresh(scene.root, policy.load_set))
+        plan = _plan(open_stage_without_cache(scene.root, policy.load_set))
         shown = copies(plan)
         assert shown.keys() == DRAWN[policy]
         assert plan.copy_count == len(shown) == len(plan.correspondence)

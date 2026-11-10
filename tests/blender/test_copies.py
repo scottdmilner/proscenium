@@ -25,14 +25,14 @@ from support import copies as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key
-from support.usd import binding_on_file, open_fresh
+from support.usd import binding_on_file, open_stage_without_cache
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from pxr import Usd
 
-    from fixtures.copies import Outcome
+    from fixtures.copies import CanonicalCandidateOutcome
     from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.runtime.copy_detection import CopiedBinding
 
@@ -81,7 +81,7 @@ def _evaluation(bindings: Bindings, handle: BindingHandle) -> Usd.Stage | None:
     return None if stages is None else stages.evaluation_stage
 
 
-def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[CopiedBinding]:
+def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidateOutcome) -> list[CopiedBinding]:
     """What the API reports for the binding, against the outcome; returns the report."""
     evaluation = _evaluation(bindings, handle)
     result = handle.synchronize(0)  # looks for copies first (COPY-18)
@@ -145,10 +145,10 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         handle = _published(bindings, scene.root)
         found = runtime.binding_configs.find_binding(handle.binding_id)
         assert found is not None
-        routes.run(route, tmp_path)
+        routes.run_binding_copy_route(route, tmp_path)
         before = routes.records_by_name()
         reported = _check(bindings, handle, expected.outcome)
-        oracle.assert_agrees()
+        oracle.assert_ownership_matches_manifests()
         # COPY-04, COPY-17: detection, and the refusals, changed no record, manifest, or content; a canonical
         # original's synchronization publishes again, which changes only its own.
         after = routes.records_by_name()
@@ -160,9 +160,9 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
         if expected.index_untouched:
             assert _index_entry() == bpy.data.collections["Shot"]  # COPY-06: the index isn't copied
         save_and_reopen(tmp_path / "copies.blend")
-        handle.attach(open_fresh(scene.root))
+        handle.attach(open_stage_without_cache(scene.root))
         reopened = _check(bindings, handle, expected.reopened or expected.outcome)
-        oracle.assert_agrees()
+        oracle.assert_ownership_matches_manifests()
         if expected.reopened is None:
             assert reopened == reported  # COPY-02, COPY-03: the same after save and reopen
         if expected.index_untouched:
@@ -173,7 +173,7 @@ def test_a_full_copy_scenes_content_is_its_own(bindings: Bindings, tmp_path: Pat
     # OWN-16 on "full-copy-scene": each copy's content is managed by its own manifest.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
-        routes.run("full-copy-scene", tmp_path)
+        routes.run_binding_copy_route("full-copy-scene", tmp_path)
         handle.synchronize(0)
         for name in ("Shot", "Shot.001"):
             objects = bpy.data.collections[name].objects
@@ -188,7 +188,7 @@ def test_a_duplicated_object_is_unmanaged(bindings: Bindings, tmp_path: Path) ->
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
         published = set(bpy.data.objects)
-        routes.run("duplicated-object", tmp_path)
+        routes.run_binding_copy_route("duplicated-object", tmp_path)
         [copy] = set(bpy.data.objects) - published
         assert ownership.of(copy).claims == ()
         assert len(ownership.of(routes.managed_object(routes.MANAGED)).claims) == 1
@@ -205,7 +205,7 @@ def test_a_copy_is_found_by_the_next_lookup(bindings: Bindings, tmp_path: Path) 
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
         assert bindings.copied() == []
-        routes.run("collection-copy", tmp_path)
+        routes.run_binding_copy_route("collection-copy", tmp_path)
         [report] = bindings.copied()
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert [(c.scene, c.destination, c.canonical) for c in report.candidates] == [
@@ -229,7 +229,7 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
             assert configs.index_texts() == []
             assert write().state is ResultState.SUCCESS
             assert _index_entry() == bpy.data.collections["Shot"]
-        routes.run("full-copy-scene", tmp_path)
+        routes.run_binding_copy_route("full-copy-scene", tmp_path)
         _check(bindings, handle, copies.INDEXED)
 
 
@@ -237,7 +237,7 @@ def test_a_write_replaces_a_cleared_entry(bindings: Bindings, tmp_path: Path) ->
     # COPY-19: an entry naming no collection is replaced by a write to the unique binding's records.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = _published(bindings, scene.root)
-        routes.run("entry-cleared", tmp_path)
+        routes.run_binding_copy_route("entry-cleared", tmp_path)
         assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
         assert _index_entry() == bpy.data.collections["Shot"]
 
@@ -246,9 +246,9 @@ def test_attaching_skips_a_disabled_binding(bindings: Bindings, tmp_path: Path) 
     # COPY-16: attaching writes the configuration, which a binding with no canonical candidate refuses.
     with copies.ownership_ambiguity(tmp_path) as scene:
         handle = bindings.create_binding(_scene(), name="Shot")
-        routes.run("index-lost", tmp_path)
+        routes.run_binding_copy_route("index-lost", tmp_path)
         assert bindings.copied()[0].disabled
-        caller = open_fresh(scene.root)
+        caller = open_stage_without_cache(scene.root)
         assert handle.attach(caller).state is ResultState.FATAL_FAILURE
         assert bindings.stages.get(handle.binding_id) is None
         assert handle.synchronize(0).state is ResultState.FATAL_FAILURE

@@ -19,7 +19,7 @@ from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import caller_settings, read_values, rewrite_on_disk
 from proscenium.binding.source_access.stages import PayloadPolicy, dirty_layers
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .bindings import binding
 
@@ -39,7 +39,7 @@ def _value(path: Path, name: str) -> float:
 def _fresh_values(session: Sdf.Layer, scene: Path, copy: Path) -> dict[str, float | None]:
     """What a stage newly opened from copies of scene's files composes, with session's opinions."""
     shutil.copytree(scene, copy)
-    fresh = open_fresh(copy / "root.usda")
+    fresh = open_stage_without_cache(copy / "root.usda")
     fresh.GetSessionLayer().TransferContent(session)
     return read_values(fresh)
 
@@ -153,7 +153,7 @@ def test_reload_named_layers(tmp_path: Path) -> None:
 def test_unchanged_layers_are_not_reloaded(tmp_path: Path) -> None:
     # A forced reload would notify every stage using the layer even when nothing changed.
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
-    caller = open_fresh(root)  # the attached source stage
+    caller = open_stage_without_cache(root)  # the attached source stage
     source = binding(caller)
     notices, listeners = _notices(source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), caller)
     source.reload(PayloadPolicy.LOAD_ALL)
@@ -168,7 +168,7 @@ def test_layer_brought_in_by_a_reload_is_reloaded(tmp_path: Path) -> None:
     scene = copy_scene(Scene.SOURCE_ACCESS, tmp_path)
     held = Sdf.Layer.FindOrOpen(str(scene / "var_b.usda"))
     rewrite_on_disk(scene, "var_b", 2.0)
-    caller = open_fresh(scene / "root.usda")
+    caller = open_stage_without_cache(scene / "root.usda")
     source = binding(caller)
     source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     root = Sdf.Layer.OpenAsAnonymous(str(scene / "root.usda"))
@@ -188,7 +188,7 @@ def test_rewrite_within_the_same_second(tmp_path: Path) -> None:
     sub = scene / "sub.usda"
     second = (time.time_ns() - 10_000_000_000) // 1_000_000_000 * 1_000_000_000
     os.utime(sub, ns=(second + 100_000_000, second + 100_000_000))
-    caller = open_fresh(scene / "root.usda")
+    caller = open_stage_without_cache(scene / "root.usda")
     source = binding(caller)
     source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
     rewrite_on_disk(scene, "sub", 3.0)
@@ -203,7 +203,7 @@ def test_shared_reload(tmp_path: Path) -> None:
     # F-CACHED-STAGE "shared-reload": a rewrite isn't shown until a reload, which the cached ambient stage
     # sees too, with its own settings unchanged.
     with source_access.cached_stage(tmp_path / "scene") as scene:
-        source = binding(open_fresh(scene.root))
+        source = binding(open_stage_without_cache(scene.root))
         source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         settings = caller_settings(scene.ambient)
         rewrite_on_disk(scene.root.parent, "sub", 2.0)

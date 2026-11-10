@@ -24,7 +24,7 @@ from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, prepared_work, removal
 from support.blend import save_and_reopen
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -306,7 +306,9 @@ def test_only_the_same_identity_takes_a_published_key(bindings: Bindings, tmp_pa
     with transaction.retirement_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         published = _prepared(binding_id, _plan(scene.caller, 0.0))
-        unloaded = _plan(open_fresh(scene.root, PayloadPolicy.LOAD_NONE.load_set), 0.0)  # without /World/Payloaded
+        unloaded = _plan(
+            open_stage_without_cache(scene.root, PayloadPolicy.LOAD_NONE.load_set), 0.0
+        )  # without /World/Payloaded
         drawn = transaction.DRAWN[PayloadPolicy.LOAD_NONE]
         kept = {key for key, entry in published.entries.items() if entry.covers[0] in drawn}
         replacement = _prepared(binding_id, unloaded, Manifest(published.entries))

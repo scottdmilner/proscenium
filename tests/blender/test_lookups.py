@@ -156,7 +156,7 @@ def test_a_removed_datablock_is_gone_from_its_manifest(bindings: Bindings, tmp_p
         assert found.record.entries[key("a")].datablock is None
     assert _resource(other, "b") == bpy.data.objects["B"]
     assert _resource(ids[0], "a") == bpy.data.objects["Managed"]  # Shot's entry "a"
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
 
 
 def _entry(datablock: bpy.types.ID, uses: tuple[str, ...] = ()) -> ManifestEntry:
@@ -196,7 +196,7 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     assert ownership.of(c).claims == (Claim(other, destination, key("c")),)
     entries = destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"]
     assert key("marker") in entries
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
 
 
 @pytest.mark.parametrize("first_removed", ["Other", "Shot"])
@@ -363,7 +363,7 @@ def test_a_scene_copy_made_after_a_lookup(bindings: Bindings, tmp_path: Path, ki
     assert bindings.in_scene(copy) == []
     assert bindings.in_scene(_scene()) == [handle]
     assert _scene_of(handle.binding_id) == _scene()  # lookups use the canonical candidate
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
     if kind == "FULL_COPY":
         [copied] = bindings.copied()
         assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]

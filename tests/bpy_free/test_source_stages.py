@@ -11,7 +11,7 @@ from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
 from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .bindings import binding
 
@@ -25,7 +25,7 @@ POLICIES = tuple(PayloadPolicy)
 def _caller(tmp_path: Path) -> Usd.Stage:
     """A copy of the source-access scene and a caller's stage over it, which an attached binding uses."""
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
-    return open_fresh(root)
+    return open_stage_without_cache(root)
 
 
 def _set_root_value_in_session(stage: Usd.Stage, value: float) -> None:
@@ -116,7 +116,7 @@ def test_ambient_cache(tmp_path: Path) -> None:
     # F-CACHED-STAGE: the caller opens a source whose session opinions differ from the cached stage's.
     with source_access.cached_stage(tmp_path) as scene:
         ambient_settings = caller_settings(scene.ambient)
-        caller = open_fresh(scene.root)
+        caller = open_stage_without_cache(scene.root)
         source = binding(caller)
         stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stage != caller and stage != scene.ambient
@@ -222,7 +222,7 @@ def test_a_caller_with_other_layers_gets_a_new_evaluation_stage(tmp_path: Path) 
     with source_access.private_stage(tmp_path) as scene:
         source = binding(scene.caller)
         first = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
-        other = open_fresh(scene.root)  # the same root layer, but its own session layer
+        other = open_stage_without_cache(scene.root)  # the same root layer, but its own session layer
         source.attach(other)
         second = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert second != first

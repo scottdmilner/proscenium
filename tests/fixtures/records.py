@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Sample:
+class SchemaMigrationSample:
     """A version 3 sample record."""
 
     label: str
@@ -57,14 +57,14 @@ def _v2_to_v3(fields: dict[str, Any]) -> dict[str, Any]:
     return fields | {"scale": 1.0}
 
 
-SAMPLE = Schema(name="sample", version=3, record_type=Sample, migrations={1: _v1_to_v2, 2: _v2_to_v3})
+SAMPLE = Schema(name="sample", version=3, record_type=SchemaMigrationSample, migrations={1: _v1_to_v2, 2: _v2_to_v3})
 
 
 @dataclass(frozen=True)
 class SchemaVersions:
-    schema: Schema[Sample]
+    schema: Schema[SchemaMigrationSample]
     stored: dict[str, object]  # record name -> the record as stored
-    loaded: dict[str, Sample]  # the records that load -> each at version 3
+    loaded: dict[str, SchemaMigrationSample]  # the records that load -> each at version 3
     refused: dict[str, RefusalReason]  # the records that don't -> why
     bindings: dict[str, object]  # binding configurations that can't be read, as stored
     bindings_refused: dict[str, RefusalReason]  # each -> why
@@ -106,9 +106,9 @@ def schema_versions(_dest: Path) -> Generator[SchemaVersions]:
             "not-a-group": "damaged",
         },
         loaded={
-            "v1": Sample(label="a", count=2, enabled=True, scale=1.0),
-            "v2": Sample(label="b", count=3, enabled=False, scale=1.0),
-            "v3": Sample(**current),
+            "v1": SchemaMigrationSample(label="a", count=2, enabled=True, scale=1.0),
+            "v2": SchemaMigrationSample(label="b", count=3, enabled=False, scale=1.0),
+            "v3": SchemaMigrationSample(**current),
         },
         refused={
             "failed-migration": RefusalReason.MIGRATION_FAILED,

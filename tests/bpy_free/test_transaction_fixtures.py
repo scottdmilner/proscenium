@@ -10,7 +10,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 from fixtures import transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
 from proscenium.binding.source_access.stages import PayloadPolicy
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 LOAD = {PayloadPolicy.LOAD_ALL: Usd.Stage.LoadAll, PayloadPolicy.LOAD_NONE: Usd.Stage.LoadNone}
 
@@ -22,7 +22,7 @@ def _meshes(stage: Usd.Stage) -> set[str]:
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_drawn_meshes_and_bounds(policy: PayloadPolicy, tmp_path: Path) -> None:
     with transaction.failed_settings(tmp_path) as scene:
-        stage = open_fresh(scene.root, LOAD[policy])
+        stage = open_stage_without_cache(scene.root, LOAD[policy])
         assert _meshes(stage) == DRAWN[policy]
         for path in DRAWN[policy]:
             mesh = UsdGeom.Mesh(stage.GetPrimAtPath(path))

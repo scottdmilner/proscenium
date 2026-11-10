@@ -40,7 +40,7 @@ ASSET_DEPTH = 3  # Looks/<Material>/Surface below an asset's root prim
 
 
 @dataclass(frozen=True)
-class Params:
+class ProductionSceneParameters:
     fanout: tuple[int, ...] = (2, 2, 3)  # children per organizational level: 2 sites x 2 areas x 3 bays
     levels: int = 3  # single-child Level_<n> Xforms below each bay, for depth
     crates_per_bay: int = 2
@@ -53,10 +53,10 @@ class Params:
             raise ValueError(f"fanout entries and crates_per_bay must be >= 1 and levels >= 0: {self}")
 
 
-DEFAULT = Params()
+DEFAULT = ProductionSceneParameters()
 
 
-def generate(dest: Path, params: Params = DEFAULT) -> Path:
+def generate(dest: Path, params: ProductionSceneParameters = DEFAULT) -> Path:
     """Write the fixture into dest (assets/ plus layout.usda) and return the root layer path."""
     copy_scene(Scene.PRODUCTION_LIKE, dest)
     root = dest / "layout.usda"
@@ -89,7 +89,7 @@ def generate(dest: Path, params: Params = DEFAULT) -> Path:
     return root
 
 
-def _bays(params: Params) -> list[str]:
+def _bays(params: ProductionSceneParameters) -> list[str]:
     """Paths of the deepest organizational prims, in a fixed order."""
     paths = ["/World"]
     for level, count in enumerate(params.fanout):
@@ -116,7 +116,7 @@ def _translate(spec: Sdf.PrimSpec, xyz: tuple[float, float, float]) -> None:
     order.default = Vt.TokenArray(["xformOp:translate"])
 
 
-def expected_inventory(params: Params, load_all: bool) -> dict[str, Any]:
+def expected_inventory(params: ProductionSceneParameters, load_all: bool) -> dict[str, Any]:
     """What a stage over the fixture must compose, derived from the parameters and asset structure."""
     instanced_crates = math.prod(params.fanout) * params.crates_per_bay
     crates_composed = (instanced_crates if load_all else 0) + 1  # + Crate_Unique, never a payload

@@ -33,7 +33,7 @@ def managed_object(prim: str) -> bpy.types.Object:
     return obj
 
 
-def run(route: str, tmp_path: Path) -> None:
+def run_binding_copy_route(route: str, tmp_path: Path) -> None:
     ROUTES[route](tmp_path)
 
 
@@ -45,21 +45,25 @@ def records_by_name() -> dict[tuple[str, str], Any]:
     found: dict[tuple[str, str], Any] = {}
     for kind, ids in (("scene", bpy.data.scenes), ("collection", bpy.data.collections), ("text", bpy.data.texts)):
         for id_ in ids:
-            found[kind, id_.name] = {key: _named(records.stored(id_, key)) for key in records.keys(id_)}
+            found[kind, id_.name] = {
+                key: _datablock_references_as_names(records.stored(id_, key)) for key in records.keys(id_)
+            }
     for obj in bpy.data.objects:
-        found["object", obj.name] = {key: _named(records.stored(obj, key)) for key in records.keys(obj)}
+        found["object", obj.name] = {
+            key: _datablock_references_as_names(records.stored(obj, key)) for key in records.keys(obj)
+        }
     for collection in bpy.data.collections:
         found["objects in", collection.name] = sorted(o.name for o in collection.objects)
     return found
 
 
-def _named(value: object) -> object:
+def _datablock_references_as_names(value: object) -> object:
     if isinstance(value, bpy.types.ID):
         return f"{type(value).__name__}:{value.name}"
     if isinstance(value, dict):
-        return {k: _named(v) for k, v in value.items()}
+        return {k: _datablock_references_as_names(v) for k, v in value.items()}
     if isinstance(value, list):
-        return [_named(v) for v in value]
+        return [_datablock_references_as_names(v) for v in value]
     return value
 
 
@@ -168,7 +172,7 @@ def _clear_entries(_: Path) -> None:
     _write_entries(lambda destinations: destinations.update(dict.fromkeys(destinations)))
 
 
-def _disagree(tmp_path: Path) -> None:
+def _copy_with_mismatched_index_entry(tmp_path: Path) -> None:
     """A collection copy, and the index's entry naming a collection that holds neither's records."""
     _copy_collection(tmp_path)
     elsewhere = bpy.data.collections.new("Elsewhere")
@@ -208,7 +212,7 @@ ROUTES: dict[str, Callable[[Path], object]] = {
     "index-lost-collection-copy": _then(_lose_index, _copy_collection),
     "index-lost-linked-copy": _then(_lose_index, _copy_scene("LINK_COPY")),
     "entry-cleared": _then(_clear_entries, _copy_scene("LINK_COPY")),
-    "index-disagrees": _disagree,
+    "index-disagrees": _copy_with_mismatched_index_entry,
     "unreadable-index": _then(_unreadable_index, _copy_scene("FULL_COPY")),
     "two-indexes": _append_index,
     "linked-binding": _link,

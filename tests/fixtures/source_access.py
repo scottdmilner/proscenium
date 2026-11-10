@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd, UsdUtils
 
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -141,7 +141,7 @@ def dirty_layer(dest: Path) -> Generator[DirtyLayerScene]:
     unselected variant is also dirty, but does not contribute.
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
-    caller = open_fresh(scene / "root.usda")
+    caller = open_stage_without_cache(scene / "root.usda")
     contributing = {name: _layer_file(scene, name) for name in ("ref", "pay", "var_a")}
     # Opened directly, as another tool might: the caller's stage never loads it.
     not_contributing = {"var_b": _layer_file(scene, "var_b")}
@@ -241,7 +241,7 @@ def cached_stage(dest: Path) -> Generator[CachedStageScene]:
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
     root = scene / "root.usda"
-    ambient = open_fresh(root, Usd.Stage.LoadNone)
+    ambient = open_stage_without_cache(root, Usd.Stage.LoadNone)
     ambient.MuteLayer(str(_layer_file(scene, "extra")))
     with Usd.EditContext(ambient, ambient.GetSessionLayer()):
         ambient.GetPrimAtPath("/World").GetAttribute("rootValue").Set(5.0)
@@ -282,9 +282,9 @@ def reattach(dest: Path) -> Generator[ReattachScene]:
     other = copy_scene(Scene.SOURCE_ACCESS, dest / "copy") / "root.usda"
     yield ReattachScene(
         root=root,
-        caller=open_fresh(root),
-        same_root=open_fresh(root),
-        other_root=open_fresh(other),
+        caller=open_stage_without_cache(root),
+        same_root=open_stage_without_cache(root),
+        other_root=open_stage_without_cache(other),
         values=dict(DISK),
     )
 
@@ -314,7 +314,7 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     for extension in (".usdc", ".usd"):
         roots[extension] = scene / f"root{extension}"
         root.Export(str(roots[extension]))
-    caller = open_fresh(roots[".usda"])
+    caller = open_stage_without_cache(roots[".usda"])
     with Usd.StageCacheContext(Usd.BlockStageCaches):
         anonymous_caller = Usd.Stage.Open(caller.Flatten())
     yield MultiBindingScene(roots=roots, caller=caller, anonymous_caller=anonymous_caller, values=dict(DISK))
@@ -334,7 +334,7 @@ def binding_state(dest: Path) -> Generator[BindingStateScene]:
     The tests make the bindings in Blender data themselves, since the generator runs without bpy.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest) / "root.usda"
-    yield BindingStateScene(root=root, caller=open_fresh(root), values=dict(DISK))
+    yield BindingStateScene(root=root, caller=open_stage_without_cache(root), values=dict(DISK))
 
 
 @dataclass(frozen=True)
@@ -376,7 +376,7 @@ class OfflineScene:
 
     def open_caller(self) -> Usd.Stage:
         """A caller's stage over root, to attach to a binding. Held, it keeps root's layers open after move_away."""
-        return open_fresh(self.root)
+        return open_stage_without_cache(self.root)
 
     def move_away(self) -> None:
         """Move the source's files to another directory, so root no longer exists."""

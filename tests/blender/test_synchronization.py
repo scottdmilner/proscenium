@@ -28,7 +28,7 @@ from proscenium.binding.source_access.identifiers import BindingId
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.destinations import destination
-from support.usd import binding_on_file, open_fresh
+from support.usd import binding_on_file, open_stage_without_cache
 
 
 def _scene() -> bpy.types.Scene:
@@ -150,7 +150,7 @@ def test_a_reload_before_any_synchronization_opens_under_the_requested_policy(
 
 def test_a_reload_after_attaching_opens_under_the_policy_requested_since(bindings: Bindings, tmp_path: Path) -> None:
     # Attaching makes the binding's source before any evaluation stage; the policy comes from the configuration.
-    caller = open_fresh(_root(tmp_path))
+    caller = open_stage_without_cache(_root(tmp_path))
     handle = bindings.create_binding(_scene())
     handle.attach(caller)
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
@@ -173,7 +173,7 @@ def test_an_unchanged_configuration_is_not_written(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Setting nothing, or attaching the stage a binding already stored, leaves Blender data alone.
-    caller = open_fresh(_root(tmp_path))
+    caller = open_stage_without_cache(_root(tmp_path))
     handle = bindings.create_binding(_scene())
     handle.attach(caller)
     written: list[str] = []
@@ -249,7 +249,7 @@ def test_reload_rejects_other_layers(bindings: Bindings, tmp_path: Path) -> None
 
 def test_attaching_through_a_handle(bindings: Bindings, tmp_path: Path) -> None:
     root = _root(tmp_path)
-    caller = open_fresh(root)
+    caller = open_stage_without_cache(root)
     handle = bindings.create_binding(_scene())
     assert handle.attach(caller) == Result()
     assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
@@ -322,7 +322,7 @@ def test_undoing_an_attached_bindings_creation_keeps_its_attachment(bindings: Bi
     # UNDO-06: undo neither restores nor removes attachments. The binding's evaluation stage goes; the
     # attachment stays for redo, and handle.release() still releases it while the binding doesn't exist.
     undo.require_global_undo()
-    caller = open_fresh(_root(tmp_path))
+    caller = open_stage_without_cache(_root(tmp_path))
     undo.push("base")
     handle = bindings.create_binding(_scene())
     handle.attach(caller)

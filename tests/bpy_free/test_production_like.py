@@ -8,7 +8,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import production_like
-from fixtures.production_like import Params
+from fixtures.production_like import ProductionSceneParameters
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -16,19 +16,19 @@ if TYPE_CHECKING:
 # SHA-256 of the default fixture. Update it deliberately when the generator or its
 # assets change; an unexpected change means the fixture is no longer what tests assume.
 # CI checks the same value on every platform.
-DEFAULT_CHECKSUM = "ae6c3245c9215e16a861473876f6e8448450f2da3711e078df239e1c229da3bc"
+DEFAULT_CHECKSUM = "576e6f2049bdf0c67d5c63819aee8d711a9b97f2a68a13e71ca3bec5ebe1aae2"
 
 POLICIES = {"load-all": Usd.Stage.LoadAll, "load-none": Usd.Stage.LoadNone}
 PARAMS = [
-    Params(),
-    Params(fanout=(3, 1, 2, 2), levels=1, crates_per_bay=1),
-    Params(fanout=(), levels=0, crates_per_bay=1),  # smallest: one crate directly under /World
+    ProductionSceneParameters(),
+    ProductionSceneParameters(fanout=(3, 1, 2, 2), levels=1, crates_per_bay=1),
+    ProductionSceneParameters(fanout=(), levels=0, crates_per_bay=1),  # smallest: one crate directly under /World
 ]
 
 
 @pytest.mark.parametrize("params", PARAMS, ids=str)
 @pytest.mark.parametrize("policy", list(POLICIES))
-def test_inventory_matches_parameters(params: Params, policy: str, tmp_path: Path) -> None:
+def test_inventory_matches_parameters(params: ProductionSceneParameters, policy: str, tmp_path: Path) -> None:
     root = production_like.generate(tmp_path, params)
     stage = Usd.Stage.Open(str(root), POLICIES[policy])
     assert production_like.inventory(stage) == production_like.expected_inventory(params, policy == "load-all")
@@ -39,7 +39,7 @@ def test_inventory_matches_parameters(params: Params, policy: str, tmp_path: Pat
 )
 def test_params_outside_the_inventory_formula_are_rejected(kwargs: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
-        Params(**kwargs)
+        ProductionSceneParameters(**kwargs)
 
 
 def test_inventory_rejects_two_prototypes_for_one_asset(tmp_path: Path) -> None:

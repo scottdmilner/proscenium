@@ -41,7 +41,7 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
     return found
 
 
-def assert_agrees() -> None:
+def assert_ownership_matches_manifests() -> None:
     """Assert the ownership index's claims are the oracle's, as sets, for every datablock of every type."""
     expected = claims()
     for id_ in bpy.data.user_map().keys() | expected.keys():

@@ -10,7 +10,7 @@ from pxr import Gf, Kind, Tf, Usd, UsdGeom
 from fixtures import evaluation
 from fixtures.evaluation import LOAD, RENDER_PURPOSES, UNIT_SCALES, VIEWPORT_PURPOSES
 from proscenium.binding.source_access.stages import PayloadPolicy
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -57,7 +57,7 @@ def transforms(tmp_path: Path) -> Iterator[evaluation.TransformsScene]:
 
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_transforms_drawn_meshes(policy: PayloadPolicy, transforms: evaluation.TransformsScene) -> None:
-    stage = open_fresh(transforms.root, LOAD[policy])
+    stage = open_stage_without_cache(transforms.root, LOAD[policy])
     assert _drawn(stage) == transforms.drawn(policy)
 
 

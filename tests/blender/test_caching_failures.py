@@ -15,7 +15,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import transaction
-from fixtures.transaction import Step, translation
+from fixtures.transaction import SynchronizationFailureStep, translation
 from proscenium.binding.persistence import binding_state, ledgers, records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
@@ -98,7 +98,7 @@ def test_a_failing_call_caches_none_of_its_time_codes(
     # keyed, the call returns its own failure and leaves the generation, its keys, and the last attempt as they were;
     # the frame of the failed time code still shows the latest cached before it.
     with transaction.cached_time_codes(tmp_path) as scene:
-        assert scene.failure is Step.PREPARE
+        assert scene.failure is SynchronizationFailureStep.PREPARE
         handle = _synchronized(bindings, scene)
         assert handle.cache(scene.cached).state is ResultState.SUCCESS
         before = _held(handle)

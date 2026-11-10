@@ -17,7 +17,7 @@ from fixtures import appearance, evaluation
 from proscenium.binding.source_access import source_entities
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .plan_checks import assert_world, copies, plan_at
 
@@ -56,7 +56,7 @@ def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_transforms_copies_and_contexts(policy: PayloadPolicy, transforms: evaluation.TransformsScene) -> None:
     # Under each payload policy, F-TRANSFORMS holding a payload (AFIX-06).
-    plan = plan_at(open_fresh(transforms.root, evaluation.LOAD[policy]), 0.0)
+    plan = plan_at(open_stage_without_cache(transforms.root, evaluation.LOAD[policy]), 0.0)
     shown = copies(plan)
     assert set(shown) == transforms.drawn(policy)
     for path, copy in shown.items():

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf
 
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -72,7 +72,7 @@ class StressScene:
 
 def _open(dest: Path, layer: str) -> tuple[Path, Usd.Stage]:
     root = copy_scene(Scene.APPEARANCE, dest) / layer
-    return root, open_fresh(root)
+    return root, open_stage_without_cache(root)
 
 
 @contextmanager

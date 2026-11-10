@@ -31,7 +31,7 @@ from pxr import Gf, Sdf, Usd, Vt
 
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support.time_codes import TimeVariation
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -146,9 +146,9 @@ def transforms(dest: Path) -> Generator[TransformsScene]:
     projective = Gf.Matrix4d((1, 0, 0, 0.25), (0, 1, 0, 0), (0, 0, 1, 0), (2, 0, 0, 1))
     yield TransformsScene(
         root=root,
-        stage=open_fresh(root),
+        stage=open_stage_without_cache(root),
         projective_root=projective_root,
-        projective_stage=open_fresh(projective_root),
+        projective_stage=open_stage_without_cache(projective_root),
         world={
             "/World/Ordered/OnMesh": world(translate(0, 0, 1), ordered),
             "/World/Pivoted/Geom": pivoted,
@@ -225,7 +225,7 @@ def units_up_axis(dest: Path) -> Generator[UnitsScene]:
     roots = {"y-up-cm": scenes / "units_y_up_cm.usda", "z-up-m": scenes / "units_z_up_m.usda"}
     yield UnitsScene(
         roots=roots,
-        stages={key: open_fresh(path) for key, path in roots.items()},
+        stages={key: open_stage_without_cache(path) for key, path in roots.items()},
         meters_per_unit={"y-up-cm": 0.01, "z-up-m": 1.0},
         up_axis={"y-up-cm": "Y", "z-up-m": "Z"},
         world={
@@ -269,7 +269,7 @@ def visibility_purpose(dest: Path) -> Generator[VisibilityScene]:
     root = copy_scene(Scene.EVALUATION, dest) / "visibility_purpose.usda"
     yield VisibilityScene(
         root=root,
-        stage=open_fresh(root),
+        stage=open_stage_without_cache(root),
         purpose={
             "/World/Hidden/Child": "default",
             "/World/Shown/Default": "default",
@@ -327,7 +327,7 @@ def unsupported_content(dest: Path) -> Generator[UnsupportedScene]:
 
     yield UnsupportedScene(
         root=root,
-        stage=open_fresh(root),
+        stage=open_stage_without_cache(root),
         placeholders={
             "/World/Boxed": shown("BasisCurves", Gf.Matrix4d(1), box((-1, -1, -1), (2, 2, 2))),
             # Points 0 to 2 on z, widened by half the constant width 0.2.
@@ -449,7 +449,7 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
             )
     yield PointInstancerScene(
         root=root,
-        stage=open_fresh(root),
+        stage=open_stage_without_cache(root),
         world=world,
         sources=sources,
         instance_context=contexts,
@@ -562,4 +562,4 @@ def generated_hierarchy(dest: Path, seed: int) -> Generator[HierarchyScene]:
     build(world_spec, world_matrix, 1)
     layer.Save()
     root = dest / "hierarchy.usda"
-    yield HierarchyScene(root, open_fresh(root), seed, meters_per_unit, up_axis, drawn, frozenset(resets))
+    yield HierarchyScene(root, open_stage_without_cache(root), seed, meters_per_unit, up_axis, drawn, frozenset(resets))

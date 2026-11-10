@@ -139,7 +139,7 @@ def test_a_value_id_properties_cannot_hold_changes_nothing() -> None:
 
 
 def test_writing_another_record_type_is_misuse(versions: fixture.SchemaVersions) -> None:
-    with pytest.raises(TypeError, match="sample: expected a Sample, not Single"):
+    with pytest.raises(TypeError, match="sample: expected a SchemaMigrationSample, not Single"):
         write(_scene(), "v3", versions.schema, Single(1))  # ty: ignore[invalid-argument-type]
 
 

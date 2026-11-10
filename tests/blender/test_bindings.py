@@ -36,7 +36,7 @@ from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevisio
 from support import undo
 from support.blend import save_and_reopen
 from support.destinations import destination
-from support.usd import binding_on_file, open_fresh
+from support.usd import binding_on_file, open_stage_without_cache
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -234,7 +234,7 @@ def test_handles_survive_undo_redo_and_reopen(bindings: Bindings, tmp_path: Path
     assert BindingHandle(handle.binding_id) == handle
     assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
     assert handle.live_stage() is None
-    handle.attach(open_fresh(scene.root))
+    handle.attach(open_stage_without_cache(scene.root))
     assert handle.synchronize(0) == Result(time_codes=(Usd.TimeCode(0),))
 
 

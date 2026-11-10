@@ -13,7 +13,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import transaction
-from fixtures.transaction import Step
+from fixtures.transaction import SynchronizationFailureStep
 from proscenium.binding.persistence import binding_state, manifests, records
 from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
 from proscenium.binding.persistence.records import LoadedRecord
@@ -36,11 +36,11 @@ if TYPE_CHECKING:
 
 # What a failure at each step before publication reports.
 FAILED = {
-    Step.ACQUIRE: DiagnosticCode.NO_ATTACHED_STAGE,
-    Step.EVALUATE: DiagnosticCode.EVALUATION_FAILED,
-    Step.PLAN: DiagnosticCode.PLANNING_FAILED,
-    Step.PREPARE: DiagnosticCode.PREPARATION_FAILED,
-    Step.PUBLISH: DiagnosticCode.PUBLICATION_FAILED,
+    SynchronizationFailureStep.ACQUIRE: DiagnosticCode.NO_ATTACHED_STAGE,
+    SynchronizationFailureStep.EVALUATE: DiagnosticCode.EVALUATION_FAILED,
+    SynchronizationFailureStep.PLAN: DiagnosticCode.PLANNING_FAILED,
+    SynchronizationFailureStep.PREPARE: DiagnosticCode.PREPARATION_FAILED,
+    SynchronizationFailureStep.PUBLISH: DiagnosticCode.PUBLICATION_FAILED,
 }
 PUBLICATION_WRITES = ("manifest", "generation")  # the destination's links are written first
 
@@ -85,15 +85,15 @@ def _fail_publication_write(monkeypatch: pytest.MonkeyPatch, write: str) -> None
         monkeypatch.setattr(binding_state, "write_generation", _raising)
 
 
-def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Step) -> None:
-    if step is Step.ACQUIRE:
+def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: SynchronizationFailureStep) -> None:
+    if step is SynchronizationFailureStep.ACQUIRE:
         handle.release()  # a source reason: the caller's stage is no longer attached
         return
     module, name = {
-        Step.EVALUATE: (_core, "SceneIndexChain"),
-        Step.PLAN: (_core, "plan"),
-        Step.PREPARE: (application, "prepare"),
-        Step.PUBLISH: (publication, "publish"),
+        SynchronizationFailureStep.EVALUATE: (_core, "SceneIndexChain"),
+        SynchronizationFailureStep.PLAN: (_core, "plan"),
+        SynchronizationFailureStep.PREPARE: (application, "prepare"),
+        SynchronizationFailureStep.PUBLISH: (publication, "publish"),
     }[step]
     monkeypatch.setattr(module, name, _raising)
 
@@ -168,7 +168,7 @@ def test_a_failed_publication_keeps_the_published_generation(
 
 @pytest.mark.parametrize("step", transaction.BEFORE_PUBLICATION)
 def test_a_failed_attempt_keeps_the_generation_and_records_itself(
-    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: Step
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: SynchronizationFailureStep
 ) -> None:
     # STATE-02, STATE-03, DIAG-04 on F-FAILED-SETTINGS "failed-attempt": published under load-all at 10, then
     # load-none requested and attempted at 20, which fails at step. The generation keeps its settings, time code, and
