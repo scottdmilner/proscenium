@@ -149,7 +149,7 @@ def child(config: dict[str, Any]) -> None:
     manifest = manifests.read_manifest(destination)
     result = {
         "steps": steps,
-        "manifest entries": len(manifest.record.entries) if isinstance(manifest, records.Loaded) else 0,
+        "manifest entries": len(manifest.record.entries) if isinstance(manifest, records.LoadedRecord) else 0,
         "objects": len(destination.all_objects),
         "file datablocks": sum(len(c) for c in (bpy.data.objects, bpy.data.meshes, bpy.data.actions)),
         "blender version": bpy.app.version_string,

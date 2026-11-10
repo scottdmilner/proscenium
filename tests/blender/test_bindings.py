@@ -26,10 +26,10 @@ from proscenium.api.bindings import (
 )
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_state, configs, manifests, records
-from proscenium.binding.persistence.binding_state import Generation, LastAttempt
+from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
 from proscenium.binding.persistence.configs import BindingConfig, BindingIndex
 from proscenium.binding.persistence.manifests import MANIFEST_KEY
-from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusedRecord, RefusedRecordError
+from proscenium.binding.persistence.records import NAMESPACE, LoadedRecord, RefusedRecord, RefusedRecordError
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.binding.source_access.binding_settings import new_settings
 from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
@@ -57,14 +57,14 @@ def _root(tmp_path: Path) -> Path:
 def _config(handle: BindingHandle) -> BindingConfig:
     """The binding's configuration as its record stores it, read from the collections, not the bindings' state."""
     [config] = [c for _, binding_id, c in configs.read_configs() if binding_id == handle.binding_id]
-    assert isinstance(config, Loaded)
+    assert isinstance(config, LoadedRecord)
     return config.record
 
 
 def _index() -> BindingIndex:
     [text] = configs.index_texts()
     result = records.read(text, configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(result, Loaded)
+    assert isinstance(result, LoadedRecord)
     return result.record
 
 
@@ -255,7 +255,9 @@ def test_handles_on_f_binding_state(bindings: Bindings, tmp_path: Path) -> None:
         assert live.GetLoadSet()  # not applied: nothing synchronized
         # Still the last synchronization's attempt: set_settings records none.
         last = binding_state.read_last_attempt(destination(handle))
-        assert last == Loaded(binding_state.LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 3.0, ()), 1)
+        assert last == LoadedRecord(
+            binding_state.LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), 3.0, ()), 1
+        )
         assert handle.reload() == Result()
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE  # API-07
         assert handle.live_stage() == live
@@ -317,17 +319,17 @@ def test_reopening_f_binding_state_synchronizes_nothing(
     with source_access.binding_state(tmp_path) as scene:
         handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
         handle.synchronize(0)
-        generation = Generation(
+        generation = GenerationMetadata(
             handle.binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 0.0, SourceRevision("saved"), ()
         )
-        attempt = LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ())
+        attempt = LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ())
         binding_state.write_generation(bpy.data.collections["Shot"], generation)
         binding_state.write_last_attempt(destination(handle), attempt)
         save_and_reopen(tmp_path / "reopen.blend")
         assert bindings.stages.get(handle.binding_id) is None
         assert handle.live_stage() is None
-        assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(generation, 1)
-        assert binding_state.read_last_attempt(destination(handle)) == Loaded(attempt, 1)
+        assert binding_state.read_generation(bpy.data.collections["Shot"]) == LoadedRecord(generation, 1)
+        assert binding_state.read_last_attempt(destination(handle)) == LoadedRecord(attempt, 1)
 
 
 def test_an_attached_source_is_unavailable_after_reopening(

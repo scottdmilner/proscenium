@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from proscenium.binding.persistence import configs, manifests
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
 
@@ -30,7 +30,7 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
     def claim(binding_id: BindingId, destination: bpy.types.Collection) -> None:
         seen.add(destination)
         manifest = manifests.read_manifest(destination)
-        if isinstance(manifest, Loaded):
+        if isinstance(manifest, LoadedRecord):
             for entry_key, entry in manifest.record.entries.items():
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))

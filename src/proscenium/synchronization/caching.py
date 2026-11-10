@@ -47,7 +47,7 @@ def cache(
     synchronized, or whose target scene's unit scale changed since, needs synchronizing, so the call fails caching
     nothing (CACHE-05, CACHE-12).
     """
-    scene, destination = config.scene, binding_configs.required_record(binding_id).collection
+    scene, destination = config.scene, binding_configs.require_canonical_binding_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
     manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)

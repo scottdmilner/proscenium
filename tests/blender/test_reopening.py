@@ -20,9 +20,9 @@ from fixtures import source_access
 from proscenium.api.bindings import BindingHandle, BindingNotFoundError, Bindings, Result
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_state, configs, records
-from proscenium.binding.persistence.binding_state import LastAttempt
+from proscenium.binding.persistence.binding_state import LastSynchronizationAttempt
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.binding.source_access.binding_settings import new_settings
@@ -57,13 +57,13 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     config = _config(handle)
     found = destination(handle)
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     entries = {
         entry_key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses, entry.place)
         for entry_key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(found)
-    assert isinstance(generation, Loaded)
+    assert isinstance(generation, LoadedRecord)
     assert config.scene is not None
     return {
         "config": replace(config, scene=None),  # a reference doesn't survive a reopen; its name does
@@ -139,7 +139,7 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
 def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
     [text] = configs.index_texts()
     index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(index, Loaded)
+    assert isinstance(index, LoadedRecord)
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
 
@@ -175,7 +175,9 @@ def _managed(bindings: Bindings, tmp_path: Path, scene: bpy.types.Scene) -> Bind
     bpy.data.collections["Shot"].objects.link(obj)
     _scene().collection.objects.link(obj)
     ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
-    binding_state.write_last_attempt(destination(handle), LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ()))
+    binding_state.write_last_attempt(
+        destination(handle), LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ())
+    )
     assert ownership.of(obj).claims != ()
     return handle
 

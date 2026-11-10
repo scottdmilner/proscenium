@@ -86,7 +86,7 @@ def _managed_names(handle: BindingHandle) -> set[tuple[str, str]]:
     manifest = ownership.manifest(handle.binding_id)
     if manifest is None:
         return set()
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, records.LoadedRecord)
     return {_key(e.datablock) for e in manifest.record.entries.values() if e.datablock is not None}
 
 
@@ -191,7 +191,7 @@ def test_background_mode_pushes_no_step(bindings: Bindings, tmp_path: Path) -> N
         policy, time_code = scene.published
         assert handle.synchronize(time_code).state is ResultState.SUCCESS
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, records.Loaded)
+        assert isinstance(generation, records.LoadedRecord)
         assert (generation.record.settings.payload_policy, generation.record.time_code) == (policy, time_code)
         undo.undo_unpushed()
         assert MARKER not in bpy.data.objects

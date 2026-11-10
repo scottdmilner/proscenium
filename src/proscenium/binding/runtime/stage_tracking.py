@@ -44,7 +44,7 @@ class BindingStageTracker:
         With no stages, as before a session's first synchronization, it reads no records.
         """
         if self._registry:
-            self._registry.prune(copy_detection.identities().keys())
+            self._registry.prune(copy_detection.candidates_by_binding().keys())
 
     def clear(self) -> None:
         """Drop every binding's stages, leaving each binding with no source stage or attachment."""

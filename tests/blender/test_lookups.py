@@ -16,7 +16,7 @@ from fixtures import source_access
 from proscenium.binding import persistence, runtime
 from proscenium.binding.persistence import configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
-from proscenium.binding.persistence.records import Loaded, RefusedRecord, RefusedRecordError
+from proscenium.binding.persistence.records import LoadedRecord, RefusedRecord, RefusedRecordError
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
 from proscenium.binding.source_access.stages import PayloadPolicy
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.persistence.configs import BindingConfig
-    from proscenium.binding.persistence.manifests import EntryChange
+    from proscenium.binding.persistence.manifests import ManifestEntryChange
     from proscenium.binding.source_access.identifiers import BindingId
 
 
@@ -70,7 +70,7 @@ def _resource(binding_id: BindingId, name: str) -> bpy.types.ID | None:
     if runtime.binding_configs.find_binding(binding_id) is None:
         return None
     manifest = ownership.manifest(binding_id)
-    entry = manifest.record.entries.get(key(name)) if isinstance(manifest, Loaded) else None
+    entry = manifest.record.entries.get(key(name)) if isinstance(manifest, LoadedRecord) else None
     return None if entry is None else entry.datablock
 
 
@@ -152,7 +152,7 @@ def test_a_removed_datablock_is_gone_from_its_manifest(bindings: Bindings, tmp_p
         assert _resource(other, "a") is None
     else:
         found = ownership.manifest(other)
-        assert isinstance(found, Loaded)
+        assert isinstance(found, LoadedRecord)
         assert found.record.entries[key("a")].datablock is None
     assert _resource(other, "b") == bpy.data.objects["B"]
     assert _resource(ids[0], "a") == bpy.data.objects["Managed"]  # Shot's entry "a"
@@ -163,7 +163,7 @@ def _entry(datablock: bpy.types.ID, uses: tuple[str, ...] = ()) -> ManifestEntry
     return object_entry(datablock, "/World", uses)
 
 
-def _change(uses: tuple[str, ...] = ()) -> EntryChange:
+def _change(uses: tuple[str, ...] = ()) -> ManifestEntryChange:
     return object_change("/World", uses)
 
 
@@ -190,7 +190,7 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     )
     assert [_resource(other, r) for r in ("a", "b", "c", "d")] == [None, b, c, d]
     found = ownership.manifest(other)
-    assert isinstance(found, Loaded)
+    assert isinstance(found, LoadedRecord)
     assert found.record.entries[key("b")] == object_entry(b, "/World/Kept")
     assert ownership.of(a).claims == ()
     assert ownership.of(c).claims == (Claim(other, destination, key("c")),)
@@ -210,7 +210,7 @@ def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: 
         "Shot": Claim(handle, bpy.data.collections["Shot"], key("x")),
     }
     stored = ownership.manifest(handle)
-    assert isinstance(stored, Loaded)
+    assert isinstance(stored, LoadedRecord)
     ownership.set_manifest(handle, Manifest({**stored.record.entries, key("x"): _entry(a)}))
     assert ownership.of(a).status is ownership.OwnershipStatus.AMBIGUOUS
     assert set(ownership.of(a).claims) == set(by_name.values())
@@ -245,7 +245,7 @@ def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path:
     assert ownership.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     ownership.set_manifest_entries(handle.binding_id, {key("a"): _change()}, created={key("a"): obj})
-    expected = Loaded(Manifest({key("a"): _entry(obj)}), manifests.MANIFEST.version)
+    expected = LoadedRecord(Manifest({key("a"): _entry(obj)}), manifests.MANIFEST.version)
     assert ownership.manifest(handle.binding_id) == expected
     assert ownership.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
     assert _resource(handle.binding_id, "a") == obj
@@ -258,7 +258,7 @@ def test_an_update_from_the_manifest_its_caller_read(
     ids, _names = _two_managed(bindings, tmp_path)
     other = ids[1]
     stored = ownership.manifest(other)
-    assert isinstance(stored, Loaded)
+    assert isinstance(stored, LoadedRecord)
     replacement = bpy.data.objects.new("Replacement", None)
 
     def no_reads(*_args: object) -> None:
@@ -270,7 +270,7 @@ def test_an_update_from_the_manifest_its_caller_read(
             other, {key("b"): _change()}, [key("a")], {key("b"): replacement}, published=stored.record
         )
     expected = stored.record.updated({key("b"): _change()}, [key("a")], {key("b"): replacement})
-    assert ownership.manifest(other) == Loaded(expected, manifests.MANIFEST.version)
+    assert ownership.manifest(other) == LoadedRecord(expected, manifests.MANIFEST.version)
 
 
 @pytest.mark.parametrize("removed", [["a"], ["a", "a"], []])
@@ -520,7 +520,7 @@ def test_a_manifest_cant_be_changed_through_a_caller(bindings: Bindings, tmp_pat
     uses.append(key("a"))
     entries[key("b")] = object_entry(bpy.data.objects.new("B", None), "/World/B")
     found = ownership.manifest(handle.binding_id)
-    assert isinstance(found, Loaded)
+    assert isinstance(found, LoadedRecord)
     assert found == manifests.read_manifest(bpy.data.collections["Shot"])
     with pytest.raises((TypeError, AttributeError)):
         found.record.entries[key("c")] = entries[key("b")]  # ty: ignore[invalid-assignment] - the point: it's read-only

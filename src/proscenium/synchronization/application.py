@@ -9,7 +9,7 @@ links, so nothing prepared is visible, and preparation only creates datablocks: 
 generation reaches (TXN-05). Each is held in the prepared work as soon as it exists (prepared_work).
 
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
-(manifests.entry_keys), and the entries preparation makes are the manifest a publication writes.
+(manifests.existing_or_new_entry_keys), and the entries preparation makes are the manifest a publication writes.
 
 A cache call has it key the published copies' transforms at the time codes it caches, in an action per object
 (key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the keys it
@@ -53,7 +53,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
     identities = [
         manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in resources
     ]
-    keys = manifests.entry_keys(published, identities)
+    keys = manifests.existing_or_new_entry_keys(published, identities)
     worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
     shears = memoryview(plan.copy_shears).tolist()
@@ -113,7 +113,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
 
 def key_time_codes(
     plans: Mapping[float, _core.Plan], published: manifests.Manifest, own: float, work: PreparationResources
-) -> dict[str, manifests.EntryChange]:
+) -> dict[str, manifests.ManifestEntryChange]:
     """Key each published copy's transform at each of plans' time codes; the manifest changes it makes.
 
     Each change to a published object is undoable through work.undo. A copy's object first keyed gets an action, made
@@ -123,7 +123,7 @@ def key_time_codes(
     M7's. Raises whatever Blender raises.
     """
     keys = {identity: key for key, e in published.entries.items() if (identity := e.identity) is not None}
-    changes: dict[str, manifests.EntryChange] = {}
+    changes: dict[str, manifests.ManifestEntryChange] = {}
     for time_code, plan in plans.items():
         resources = plan.resources  # each read builds the tuple anew
         worlds = memoryview(plan.copy_worlds)
@@ -143,9 +143,9 @@ def key_time_codes(
                 action_key = keys[action_identity] = manifests.new_entry_key()
                 _new_action(obj, action_key, own, work)
                 entry = published.entries[object_key]
-                changes[action_key] = manifests.EntryChange(entry.covers, action_identity.role, [], entry.place)
+                changes[action_key] = manifests.ManifestEntryChange(entry.covers, action_identity.role, [], entry.place)
                 uses = [*entry.uses, action_key]
-                changes[object_key] = manifests.EntryChange(entry.covers, entry.role, uses, entry.place)
+                changes[object_key] = manifests.ManifestEntryChange(entry.covers, entry.role, uses, entry.place)
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
             world = _matrix_from_buffer(worlds, copy)

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from proscenium.binding.persistence import binding_state
-from proscenium.binding.persistence.binding_state import Generation
+from proscenium.binding.persistence.binding_state import GenerationMetadata
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.runtime import ownership
 from proscenium.binding.source_access.binding_settings import new_settings
@@ -44,7 +44,8 @@ def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, di
     }
     ownership.set_manifest(binding_id, Manifest(entries))
     binding_state.write_generation(
-        destination, Generation(binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 0.0, SourceRevision("saved"), ())
+        destination,
+        GenerationMetadata(binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 0.0, SourceRevision("saved"), ()),
     )
     view_layer = bpy.context.view_layer
     assert view_layer is not None

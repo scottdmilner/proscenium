@@ -57,7 +57,7 @@ def _claims_by_scan(target: bpy.types.ID) -> list[tuple[str, str]]:
             continue
         seen.add(collection)
         manifest = manifests.read_manifest(collection)
-        if isinstance(manifest, records.Loaded):
+        if isinstance(manifest, records.LoadedRecord):
             found += [(binding_id, k) for k, e in manifest.record.entries.items() if e.datablock == target]
     return found
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
-from proscenium.binding.persistence.manifests import EntryChange, ManifestEntry, RepresentationRole
+from proscenium.binding.persistence.manifests import ManifestEntry, ManifestEntryChange, RepresentationRole
 
 if TYPE_CHECKING:
     import bpy
@@ -25,6 +25,6 @@ def object_entry(datablock: bpy.types.ID | None, entity: str, uses: tuple[str, .
     return ManifestEntry(datablock, [entity], RepresentationRole.OBJECT, [key(name) for name in uses], place=0)
 
 
-def object_change(entity: str, uses: tuple[str, ...] = ()) -> EntryChange:
+def object_change(entity: str, uses: tuple[str, ...] = ()) -> ManifestEntryChange:
     """object_entry's change, for an update: the same entry without its datablock."""
-    return EntryChange([entity], RepresentationRole.OBJECT, [key(name) for name in uses], place=0)
+    return ManifestEntryChange([entity], RepresentationRole.OBJECT, [key(name) for name in uses], place=0)

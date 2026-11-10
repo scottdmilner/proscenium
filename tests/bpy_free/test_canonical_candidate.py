@@ -10,8 +10,8 @@ import pytest
 
 from proscenium.binding.source_access.canonical_candidate import (
     UNREADABLE_INDEX_ENTRY,
+    CanonicalCandidateReason,
     CanonicalDecision,
-    DecisionReason,
     UnreadableIndexEntry,
     decide,
 )
@@ -21,23 +21,23 @@ from proscenium.binding.source_access.canonical_candidate import (
     ("candidates", "entries", "expected"),
     [
         # Unique: one candidate and at most one index naming it, whatever its entry says.
-        ([1], [1], CanonicalDecision(0, DecisionReason.UNIQUE)),
-        ([1], [], CanonicalDecision(0, DecisionReason.UNIQUE)),
-        ([1], [None], CanonicalDecision(0, DecisionReason.UNIQUE)),
-        ([1], [2], CanonicalDecision(0, DecisionReason.UNIQUE)),
-        ([1], [UNREADABLE_INDEX_ENTRY], CanonicalDecision(0, DecisionReason.UNIQUE)),
-        ([], [1], CanonicalDecision(None, DecisionReason.UNIQUE)),  # an identity with no binding left
+        ([1], [1], CanonicalDecision(0, CanonicalCandidateReason.UNIQUE)),
+        ([1], [], CanonicalDecision(0, CanonicalCandidateReason.UNIQUE)),
+        ([1], [None], CanonicalDecision(0, CanonicalCandidateReason.UNIQUE)),
+        ([1], [2], CanonicalDecision(0, CanonicalCandidateReason.UNIQUE)),
+        ([1], [UNREADABLE_INDEX_ENTRY], CanonicalDecision(0, CanonicalCandidateReason.UNIQUE)),
+        ([], [1], CanonicalDecision(None, CanonicalCandidateReason.UNIQUE)),  # an identity with no binding left
         # COPY-09: the index names the canonical candidate's collection, whatever the order found.
-        ([1, 2], [1], CanonicalDecision(0, DecisionReason.INDEXED)),
-        ([2, 1], [1], CanonicalDecision(1, DecisionReason.INDEXED)),
-        ([2, 3, 1], [1], CanonicalDecision(2, DecisionReason.INDEXED)),
+        ([1, 2], [1], CanonicalDecision(0, CanonicalCandidateReason.INDEXED)),
+        ([2, 1], [1], CanonicalDecision(1, CanonicalCandidateReason.INDEXED)),
+        ([2, 3, 1], [1], CanonicalDecision(2, CanonicalCandidateReason.INDEXED)),
         # COPY-11: the rule can't decide.
-        ([1], [1, 1], CanonicalDecision(None, DecisionReason.SEVERAL_INDEXES)),
-        ([1, 2], [1, UNREADABLE_INDEX_ENTRY], CanonicalDecision(None, DecisionReason.SEVERAL_INDEXES)),
-        ([1, 2], [UNREADABLE_INDEX_ENTRY], CanonicalDecision(None, DecisionReason.UNREADABLE_INDEX)),
-        ([1, 2], [], CanonicalDecision(None, DecisionReason.NOT_INDEXED)),
-        ([1, 2], [None], CanonicalDecision(None, DecisionReason.NOT_INDEXED)),
-        ([1, 2], [3], CanonicalDecision(None, DecisionReason.INDEX_DISAGREES)),
+        ([1], [1, 1], CanonicalDecision(None, CanonicalCandidateReason.SEVERAL_INDEXES)),
+        ([1, 2], [1, UNREADABLE_INDEX_ENTRY], CanonicalDecision(None, CanonicalCandidateReason.SEVERAL_INDEXES)),
+        ([1, 2], [UNREADABLE_INDEX_ENTRY], CanonicalDecision(None, CanonicalCandidateReason.UNREADABLE_INDEX)),
+        ([1, 2], [], CanonicalDecision(None, CanonicalCandidateReason.NOT_INDEXED)),
+        ([1, 2], [None], CanonicalDecision(None, CanonicalCandidateReason.NOT_INDEXED)),
+        ([1, 2], [3], CanonicalDecision(None, CanonicalCandidateReason.INDEX_DISAGREES)),
     ],
 )
 def test_rule(

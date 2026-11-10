@@ -184,7 +184,9 @@ class Bindings:
 
     stages: stage_tracking.BindingStageTracker  # never saved; cleared when a file is loaded (proscenium.addon)
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
-    published: dict[identifiers.BindingId, binding_state.Generation]  # each binding's last this session (UNDO-05)
+    published: dict[
+        identifiers.BindingId, binding_state.GenerationMetadata
+    ]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
         self.stages = stage_tracking.BindingStageTracker()
@@ -292,7 +294,7 @@ class Bindings:
         if result.state is not ResultState.FATAL_FAILURE:
             assert found.destination is not None  # a usable binding's
             generation = binding_state.read_generation(found.destination)
-            assert isinstance(generation, records.Loaded)  # the one just published
+            assert isinstance(generation, records.LoadedRecord)  # the one just published
             self.published[binding_id] = generation.record
             _push_undo("Synchronize USD Display")
         return result
@@ -363,7 +365,7 @@ class Bindings:
         if published is None or current is None or found.destination is None:
             return True
         shown = binding_state.read_generation(found.destination)
-        showing_it = isinstance(shown, records.Loaded) and _without_cached_time_codes(
+        showing_it = isinstance(shown, records.LoadedRecord) and _without_cached_time_codes(
             shown.record
         ) == _without_cached_time_codes(published)
         return not showing_it or published.source_revision != current.source_revision
@@ -408,7 +410,7 @@ def _push_undo(message: str) -> None:
         bpy.ops.ed.undo_push(message=message)
 
 
-def _without_cached_time_codes(generation: binding_state.Generation) -> binding_state.Generation:
+def _without_cached_time_codes(generation: binding_state.GenerationMetadata) -> binding_state.GenerationMetadata:
     """Copy the generation metadata with its cached time codes cleared."""
     return dataclasses.replace(generation, cached_time_codes=())
 

@@ -25,7 +25,7 @@ class UnreadableIndexEntry:
 UNREADABLE_INDEX_ENTRY: Final = UnreadableIndexEntry()  # an index entry from a binding index that can't be read
 
 
-class DecisionReason(StrEnum):
+class CanonicalCandidateReason(StrEnum):
     """Why the rule chose what it did."""
 
     UNIQUE = "unique"  # one candidate, and at most one index naming it: the identity is unique
@@ -41,7 +41,7 @@ class CanonicalDecision:
     """The rule's decision on an identity's candidates, and why."""
 
     canonical: int | None  # the canonical candidate's position in the candidates, or None: all are disabled
-    reason: DecisionReason
+    reason: CanonicalCandidateReason
 
 
 def decide(candidates: Sequence[int], entries: Sequence[int | None | UnreadableIndexEntry]) -> CanonicalDecision:
@@ -55,14 +55,14 @@ def decide(candidates: Sequence[int], entries: Sequence[int | None | UnreadableI
     An identity with one candidate and at most one entry is unique whatever its entry says.
     """
     if len(candidates) <= 1 and len(entries) <= 1:
-        return CanonicalDecision(0 if candidates else None, DecisionReason.UNIQUE)
+        return CanonicalDecision(0 if candidates else None, CanonicalCandidateReason.UNIQUE)
     if len(entries) > 1:
-        return CanonicalDecision(None, DecisionReason.SEVERAL_INDEXES)
+        return CanonicalDecision(None, CanonicalCandidateReason.SEVERAL_INDEXES)
     entry = entries[0] if entries else None
     if isinstance(entry, UnreadableIndexEntry):
-        return CanonicalDecision(None, DecisionReason.UNREADABLE_INDEX)
+        return CanonicalDecision(None, CanonicalCandidateReason.UNREADABLE_INDEX)
     if entry is None:
-        return CanonicalDecision(None, DecisionReason.NOT_INDEXED)
+        return CanonicalDecision(None, CanonicalCandidateReason.NOT_INDEXED)
     if entry in candidates:
-        return CanonicalDecision(candidates.index(entry), DecisionReason.INDEXED)
-    return CanonicalDecision(None, DecisionReason.INDEX_DISAGREES)
+        return CanonicalDecision(candidates.index(entry), CanonicalCandidateReason.INDEXED)
+    return CanonicalDecision(None, CanonicalCandidateReason.INDEX_DISAGREES)

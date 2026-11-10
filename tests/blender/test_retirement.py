@@ -13,7 +13,7 @@ import pytest
 
 from fixtures import transaction
 from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
@@ -40,7 +40,7 @@ def _binding(bindings: Bindings, scene: RetirementFailureScene) -> BindingHandle
 
 def _manifest(handle: BindingHandle) -> manifests.Manifest:
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     return manifest.record
 
 
@@ -95,7 +95,7 @@ def test_a_failed_retirement_completes_with_issues(
         assert sorted(d.role for d in result.diagnostics) == sorted(scene.failed_retirements)
         # The new generation is published and displayed.
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, Loaded) and generation.record.time_code == second
+        assert isinstance(generation, LoadedRecord) and generation.record.time_code == second
         published = {e.datablock for e in _manifest(handle).entries.values()}
         assert set(bpy.data.collections["Shot"].objects) == {d for d in published if isinstance(d, bpy.types.Object)}
         assert len(published) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
@@ -116,7 +116,7 @@ def test_a_failed_retirement_completes_with_issues(
         remaining = {d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes)}
         assert remaining & old_uids == {d.session_uid for d in leftovers if d is not None}
         attempt = binding_state.read_last_attempt(destination(handle))
-        assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
+        assert isinstance(attempt, LoadedRecord) and attempt.record.diagnostics == result.diagnostics
 
 
 def test_a_repeated_retirement_failure_reports_each_leftover_once(
@@ -205,4 +205,4 @@ def test_a_retirement_the_ledger_cant_record_raises(
         with pytest.raises(RuntimeError, match="injected ledger failure"):
             handle.synchronize(second)
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, Loaded) and generation.record.time_code == second
+        assert isinstance(generation, LoadedRecord) and generation.record.time_code == second

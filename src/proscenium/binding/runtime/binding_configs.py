@@ -62,8 +62,8 @@ class DisabledBindingError(LookupError):  # raised like KeyError
 
 def find_binding(binding_id: identifiers.BindingId) -> FoundBinding | None:
     """The binding, or None if no binding has this identifier."""
-    identity = copy_detection.identity(binding_id)
-    return None if identity is None else _found(binding_id, identity)
+    identity = copy_detection.candidates_for_binding(binding_id)
+    return None if identity is None else _binding_from_candidates(binding_id, identity)
 
 
 def find_bindings(scene: bpy.types.Scene | None = None) -> list[FoundBinding]:
@@ -73,20 +73,20 @@ def find_bindings(scene: bpy.types.Scene | None = None) -> list[FoundBinding]:
     a candidate naming it.
     """
     listed = []
-    for binding_id, identity in copy_detection.identities().items():
+    for binding_id, identity in copy_detection.candidates_by_binding().items():
         canonical = identity.canonical_record()
         reached = identity.candidates if canonical is None else (canonical,)
-        if scene is None or any(_on(r, scene) for r in reached):
-            listed.append(_found(binding_id, identity))
+        if scene is None or any(_record_belongs_to_scene(r, scene) for r in reached):
+            listed.append(_binding_from_candidates(binding_id, identity))
     return listed
 
 
 def copied_bindings() -> list[CopiedBinding]:
     """Every binding identity that isn't unique, with its candidates and the rule's decision."""
     return [
-        copy_detection.report(binding_id, identity)
-        for binding_id, identity in copy_detection.identities().items()
-        if identity.decision.reason is not canonical_candidate.DecisionReason.UNIQUE
+        copy_detection.copied_binding_report(binding_id, identity)
+        for binding_id, identity in copy_detection.candidates_by_binding().items()
+        if identity.decision.reason is not canonical_candidate.CanonicalCandidateReason.UNIQUE
     ]
 
 
@@ -104,30 +104,30 @@ def set_config(binding_id: identifiers.BindingId, config: configs.BindingConfig)
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
     DisabledBindingError if it has no canonical candidate.
     """
-    record = required_record(binding_id)
+    record = require_canonical_binding_record(binding_id)
     # write_config refuses only an unreadable or newer record, so an invalid one is refused here.
     if isinstance(record.config, records.RefusedRecord):
         raise records.RefusedRecordError(record.config)
     if config == record.config:
         return
     configs.write_config(record.collection, binding_id, config)
-    restore_entry(binding_id, record)
+    restore_missing_binding_index_entry(binding_id, record)
 
 
-def required_record(binding_id: identifiers.BindingId) -> BindingRecord:
+def require_canonical_binding_record(binding_id: identifiers.BindingId) -> BindingRecord:
     """The binding's canonical record, readable or not.
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
     """
-    identity = copy_detection.identity(binding_id)
+    identity = copy_detection.candidates_for_binding(binding_id)
     if identity is None:
         raise KeyError(binding_id)
     if (record := identity.canonical_record()) is None:
-        raise DisabledBindingError(copy_detection.report(binding_id, identity))
+        raise DisabledBindingError(copy_detection.copied_binding_report(binding_id, identity))
     return record
 
 
-def restore_entry(binding_id: identifiers.BindingId, record: BindingRecord) -> None:
+def restore_missing_binding_index_entry(binding_id: identifiers.BindingId, record: BindingRecord) -> None:
     """Write the binding index entry a unique binding is missing, after a write to its records.
 
     Only when the index has no entry for the identity, or one naming no collection, so it names the binding's
@@ -142,17 +142,19 @@ def restore_entry(binding_id: identifiers.BindingId, record: BindingRecord) -> N
         return
 
 
-def _on(record: BindingRecord, scene: bpy.types.Scene) -> bool:
+def _record_belongs_to_scene(record: BindingRecord, scene: bpy.types.Scene) -> bool:
     """Whether the record is on scene: its target scene, or for one that can't be read, one linking its collection."""
     if isinstance(record.config, records.RefusedRecord):
         return record.collection in scene.collection.children_recursive
     return record.scene == scene
 
 
-def _found(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> FoundBinding:
-    """The binding an identity is."""
+def _binding_from_candidates(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> FoundBinding:
+    """Build a binding lookup result from its candidates and canonical decision."""
     if (record := identity.canonical_record()) is None:
-        return FoundBinding(binding_id, None, None, None, None, copy_detection.report(binding_id, identity))
+        return FoundBinding(
+            binding_id, None, None, None, None, copy_detection.copied_binding_report(binding_id, identity)
+        )
     if isinstance(record.config, records.RefusedRecord):
         return FoundBinding(binding_id, record.collection, None, None, record.config, None)
     return FoundBinding(binding_id, record.collection, record.scene, record.config, None, None)

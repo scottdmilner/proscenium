@@ -19,7 +19,7 @@
 - A measurement of the synchronization undo step's memory cost.
 - Publication writes its manifest whole, and retirement removes what the old manifest named and the new one doesn't, so a removal costs what it removes. Lookups read the bindings' records when called, with no runtime cache (DECISIONS.md "Binding records read when called").
 - Resource identities and roles from M4's partitions ([M4 plan](../plans/M04-prototypes.md), F1): a copy shown as objects (its viewport and render objects, a shear parent, a placeholder's bounds mesh, their animation data), a batch (its carriers, points mesh, and prototype), and each shared mesh, material, and node group. A batch's `covers` follows its points' order, so an element's instance is its position in them, the order picks read (F3).
-- `cache` against the stub application layer: the generation record holds its cached time codes (`Generation.cached_time_codes`, F3), and M5 decides whether a failed call records a last attempt.
+- `cache` against the stub application layer: the generation record holds its cached time codes (`GenerationMetadata.cached_time_codes`, F3), and M5 decides whether a failed call records a last attempt.
 - Work over the whole plan belongs in the core; Python's work in an update grows with what the update builds, as a whole-plan pass in Python missed the small-update budget ([M4 plan](../plans/M04-prototypes.md), D8, F5).
 - Binding records on the destination collection, so removing it or the target scene removes the binding ([Removed Destination](../spec/lifecycle.md#removed-destination), DECISIONS.md "Removed destination").
 

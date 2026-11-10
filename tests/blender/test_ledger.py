@@ -20,7 +20,13 @@ from proscenium.binding import persistence, runtime
 from proscenium.binding.persistence import ledgers
 from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation
 from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.persistence.records import NAMESPACE, Loaded, RefusalReason, RefusedRecord, RefusedRecordError
+from proscenium.binding.persistence.records import (
+    NAMESPACE,
+    LoadedRecord,
+    RefusalReason,
+    RefusedRecord,
+    RefusedRecordError,
+)
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.synchronization import prepared_work
 from support.blend import save_and_reopen
@@ -73,7 +79,7 @@ def test_a_ledger_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -
         key("object"): replace(entries[key("object")], datablock=obj),
     }
     read = ledgers.read_ledger(_text())
-    assert read == Loaded(Ledger(expected), 1)
+    assert read == LoadedRecord(Ledger(expected), 1)
     assert runtime.pending_cleanup.ledger() == read
     assert all(type(e.role) is RepresentationRole for e in read.record.entries.values())
 
@@ -95,7 +101,7 @@ def test_a_removed_datablock_leaves_an_entry_with_nothing_to_dispose_of(bindings
     runtime.pending_cleanup.ledger()  # held
     bpy.data.objects.remove(bpy.data.objects["Leftover"])
     held = runtime.pending_cleanup.ledger()
-    assert isinstance(held, Loaded)
+    assert isinstance(held, LoadedRecord)
     assert held.record.entries[key("object")].datablock is None
     assert held.record.entries[key("mesh")].datablock == bpy.data.meshes["Leftover"]
 
@@ -185,7 +191,7 @@ def test_an_update_that_makes_no_ledger_changes_nothing(bindings: Bindings, remo
     with pytest.raises(ValueError, match=problem):
         runtime.pending_cleanup.set_ledger_entries({key("mesh"): entries[key("mesh")]}, removed)
     assert _stored() == stored
-    assert runtime.pending_cleanup.ledger() == Loaded(Ledger(entries), 1)
+    assert runtime.pending_cleanup.ledger() == LoadedRecord(Ledger(entries), 1)
 
 
 def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp_path: Path) -> None:

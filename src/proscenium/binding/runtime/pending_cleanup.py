@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ..source_access import identifiers
 
 
-def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
+def ledger() -> records.LoadedRecord[ledgers.Ledger] | records.RefusedRecord | None:
     """The file's pending-cleanup ledger, why it can't be read, or None if there is none yet.
 
     Raises ValueError if the file has more than one binding index.
@@ -41,7 +41,7 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
         held = ledger()
     except ValueError:
         return ()
-    if not isinstance(held, records.Loaded):
+    if not isinstance(held, records.LoadedRecord):
         return ()
     return tuple(e.diagnostic for _, e in sorted(held.record.entries.items()) if e.binding_id == binding_id)
 

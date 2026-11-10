@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 def publish(
     destination: bpy.types.Collection,
     work: PreparationResources,
-    generation: binding_state.Generation,
+    generation: binding_state.GenerationMetadata,
     before: manifests.Manifest | None,
-    previous: binding_state.Generation | None,
+    previous: binding_state.GenerationMetadata | None,
 ) -> Mapping[str, manifests.ManifestEntry]:
     """Make work, complete, the binding's published generation, described by generation; the obsolete resources.
 

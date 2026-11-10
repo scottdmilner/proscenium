@@ -26,7 +26,7 @@ from .records import RefusedRecord, RefusedRecordError, Schema
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .records import Loaded
+    from .records import LoadedRecord
 
 CONFIG_PREFIX = "binding."
 INDEX_KEY = "index"
@@ -113,7 +113,7 @@ def has_config(destination: bpy.types.Collection, binding_id: identifiers.Bindin
     return records.has(destination, config_key(binding_id))
 
 
-def read_index(text: bpy.types.Text) -> Loaded[BindingIndex] | RefusedRecord | None:
+def read_index(text: bpy.types.Text) -> LoadedRecord[BindingIndex] | RefusedRecord | None:
     """The binding index text holds, why it can't be read, or None if it holds none."""
     return records.read(text, INDEX_KEY, INDEX)
 
@@ -133,7 +133,7 @@ def binding_ids(collection: bpy.types.Collection) -> list[identifiers.BindingId]
 
 
 def read_configs() -> Iterator[
-    tuple[bpy.types.Collection, identifiers.BindingId, Loaded[BindingConfig] | RefusedRecord]
+    tuple[bpy.types.Collection, identifiers.BindingId, LoadedRecord[BindingConfig] | RefusedRecord]
 ]:
     """Every binding record in the file: its collection, identifier, and configuration or why it can't be read.
 
@@ -149,7 +149,7 @@ def read_configs() -> Iterator[
             yield collection, binding_id, result
 
 
-def binding_uids() -> frozenset[int]:
+def destination_collection_uids() -> frozenset[int]:
     """The session_uids of the collections read_configs reads, without reading their records."""
     return frozenset(c.session_uid for c in bpy.data.collections if c.library is None and binding_ids(c))
 

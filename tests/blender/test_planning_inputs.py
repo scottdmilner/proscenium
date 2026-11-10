@@ -38,7 +38,7 @@ def _scene() -> bpy.types.Scene:
 def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     """The published display's objects by the source each shows."""
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, records.LoadedRecord)
     found = {}
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:
@@ -110,7 +110,7 @@ def test_the_records_hold_what_the_synchronization_planned_under(bindings: Bindi
         destination = bpy.data.collections["Shot"]
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
-        assert isinstance(generation, records.Loaded) and isinstance(attempt, records.Loaded)
+        assert isinstance(generation, records.LoadedRecord) and isinstance(attempt, records.LoadedRecord)
         assert (generation.record.settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
         assert attempt.record.settings == requested
 

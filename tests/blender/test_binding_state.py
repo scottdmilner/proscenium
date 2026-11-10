@@ -13,12 +13,12 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding.persistence import binding_state, configs, manifests, records
-from proscenium.binding.persistence.binding_state import Generation, LastAttempt
+from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
-    Loaded,
+    LoadedRecord,
     RefusalReason,
     RefusedRecord,
     RefusedRecordError,
@@ -63,13 +63,13 @@ def _binding(bindings: Bindings, tmp_path: Path) -> BindingHandle:
         return binding_on_file(bindings, _scene(), scene.root, name="Shot")
 
 
-def _generation(handle: BindingHandle, time: float | None = 12.5) -> Generation:
+def _generation(handle: BindingHandle, time: float | None = 12.5) -> GenerationMetadata:
     cached = (13.0, 14.5) if time is not None else ()  # a generation at the default time code caches nothing
-    return Generation(handle.binding_id, SETTINGS, 0.01, time, REVISION, (DIRTY,), cached)
+    return GenerationMetadata(handle.binding_id, SETTINGS, 0.01, time, REVISION, (DIRTY,), cached)
 
 
-def _attempt(time: float | None = 20.0) -> LastAttempt:
-    return LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), time, (UNAVAILABLE,))
+def _attempt(time: float | None = 20.0) -> LastSynchronizationAttempt:
+    return LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), time, (UNAVAILABLE,))
 
 
 @pytest.mark.parametrize("time", [12.5, None], ids=["numeric", "default"])
@@ -79,8 +79,8 @@ def test_records_survive_save_and_reopen(bindings: Bindings, tmp_path: Path, tim
     binding_state.write_generation(bpy.data.collections["Shot"], _generation(handle, time))
     binding_state.write_last_attempt(_shot(), _attempt(time))
     save_and_reopen(tmp_path / "state.blend")
-    assert binding_state.read_generation(bpy.data.collections["Shot"]) == Loaded(_generation(handle, time), 1)
-    assert binding_state.read_last_attempt(_shot()) == Loaded(_attempt(time), 1)
+    assert binding_state.read_generation(bpy.data.collections["Shot"]) == LoadedRecord(_generation(handle, time), 1)
+    assert binding_state.read_last_attempt(_shot()) == LoadedRecord(_attempt(time), 1)
     assert destination_settings() == STORED_SETTINGS  # what the refusal cases change
 
 
@@ -95,8 +95,8 @@ def test_a_generation_stored_without_cached_time_codes_has_none(bindings: Bindin
     stored = destination[NAMESPACE][binding_state.GENERATION_KEY].to_dict()
     del stored["cached_time_codes"]
     destination[NAMESPACE][binding_state.GENERATION_KEY] = stored
-    expected = Generation(handle.binding_id, SETTINGS, 0.01, 12.5, REVISION, (DIRTY,))
-    assert binding_state.read_generation(destination) == Loaded(expected, 1)
+    expected = GenerationMetadata(handle.binding_id, SETTINGS, 0.01, 12.5, REVISION, (DIRTY,))
+    assert binding_state.read_generation(destination) == LoadedRecord(expected, 1)
 
 
 def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
@@ -129,7 +129,7 @@ def test_the_last_attempt_needs_no_publication(bindings: Bindings, tmp_path: Pat
     _binding(bindings, tmp_path)
     binding_state.write_last_attempt(_shot(), _attempt())
     assert binding_state.read_generation(_shot()) is None
-    assert binding_state.read_last_attempt(_shot()) == Loaded(_attempt(), 1)
+    assert binding_state.read_last_attempt(_shot()) == LoadedRecord(_attempt(), 1)
 
 
 def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindings, tmp_path: Path) -> None:
@@ -139,7 +139,7 @@ def test_a_full_copy_copies_the_generation_with_its_destination(bindings: Bindin
     assert window is not None
     window.scene = _scene()
     bpy.ops.scene.new(type="FULL_COPY")
-    assert binding_state.read_generation(bpy.data.collections["Shot.001"]) == Loaded(_generation(handle), 1)
+    assert binding_state.read_generation(bpy.data.collections["Shot.001"]) == LoadedRecord(_generation(handle), 1)
 
 
 @pytest.mark.parametrize(

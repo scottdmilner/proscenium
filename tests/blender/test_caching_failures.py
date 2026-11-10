@@ -80,7 +80,7 @@ def _failing_keying(monkeypatch: pytest.MonkeyPatch, after: int) -> None:
 def _shown_at(handle: BindingHandle, frame: float) -> tuple[float, ...]:
     bpy.data.scenes["Scene"].frame_set(int(frame))
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, records.LoadedRecord)
     [obj] = [
         e.datablock
         for e in manifest.record.entries.values()
@@ -178,7 +178,7 @@ def test_an_action_that_cant_be_disposed_of_is_pending_cleanup(
         codes = [d.code for d in result.diagnostics]
         assert codes == [DiagnosticCode.PREPARATION_FAILED, *[DiagnosticCode.DISPOSAL_FAILED] * (len(codes) - 1)]
         ledger = pending_cleanup.ledger()
-        assert isinstance(ledger, records.Loaded)
+        assert isinstance(ledger, records.LoadedRecord)
         entries = list(ledger.record.entries.values())
         assert len(entries) == len(codes) - 1 >= 1
         assert {(e.role, e.operation) for e in entries} == {

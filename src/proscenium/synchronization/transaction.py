@@ -42,7 +42,7 @@ def synchronize(
     t is frame t (transforms.md#transforms-and-time-codes). The binding's stages are current's, made only once the
     source is accessed, so a binding failing before that gets none.
     """
-    record = binding_configs.required_record(binding_id)
+    record = binding_configs.require_canonical_binding_record(binding_id)
     scene, destination = config.scene, record.collection
     assert scene is not None  # a binding's candidate names a target scene that exists
     if time_code is None:
@@ -52,10 +52,10 @@ def synchronize(
         return Result(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), time_codes=(time_code,))
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
-    binding_configs.restore_entry(binding_id, record)
+    binding_configs.restore_missing_binding_index_entry(binding_id, record)
     result = Result(*_attempt(binding_id, config, destination, current, time_code), time_codes=(time_code,))
-    stored_time = binding_state.stored_time(time_code)
-    attempt = binding_state.LastAttempt(config.settings, stored_time, result.diagnostics)
+    encoded_time_code = binding_state.encode_time_code(time_code)
+    attempt = binding_state.LastSynchronizationAttempt(config.settings, encoded_time_code, result.diagnostics)
     binding_state.write_last_attempt(destination, attempt)
     return result
 
@@ -103,8 +103,8 @@ def _attempt(
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
         return (*own, failed, *prepared_work.dispose(work))
-    described = binding_state.Generation(
-        binding_id, settings, unit_scale, binding_state.stored_time(time_code), revision, Result(*own).diagnostics
+    described = binding_state.GenerationMetadata(
+        binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, Result(*own).diagnostics
     )
     try:
         before = None if manifest is None else published

@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium.binding.source_access.canonical_candidate import DecisionReason
+from proscenium.binding.source_access.canonical_candidate import CanonicalCandidateReason
 
 from .scenes import Scene, copy_scene
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 class Outcome:
     candidates: int  # the identity's candidates after the route
     canonical: bool  # whether the original stays canonical; False: every candidate is disabled
-    reason: DecisionReason
+    reason: CanonicalCandidateReason
 
 
 @dataclass(frozen=True)
@@ -40,8 +40,8 @@ class Route:
     index_untouched: bool = True  # the file keeps one index, whose entry names the original destination
 
 
-INDEXED = Outcome(2, canonical=True, reason=DecisionReason.INDEXED)
-UNIQUE = Outcome(1, canonical=True, reason=DecisionReason.UNIQUE)
+INDEXED = Outcome(2, canonical=True, reason=CanonicalCandidateReason.INDEXED)
+UNIQUE = Outcome(1, canonical=True, reason=CanonicalCandidateReason.UNIQUE)
 
 ROUTES: dict[str, Route] = {
     # Copy routes: two collections hold the binding's records, and the index names the original.
@@ -53,19 +53,25 @@ ROUTES: dict[str, Route] = {
     # A linked-copy scene shares the destination, so it adds no candidate.
     "linked-copy-scene": Route(UNIQUE),
     # The index lost, cleared, or disagreeing: nothing decides between two candidates, and one is unique.
-    "index-lost": Route(Outcome(2, canonical=False, reason=DecisionReason.NOT_INDEXED), index_untouched=False),
+    "index-lost": Route(
+        Outcome(2, canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED), index_untouched=False
+    ),
     "index-lost-collection-copy": Route(
-        Outcome(2, canonical=False, reason=DecisionReason.NOT_INDEXED), index_untouched=False
+        Outcome(2, canonical=False, reason=CanonicalCandidateReason.NOT_INDEXED), index_untouched=False
     ),
     "index-lost-linked-copy": Route(UNIQUE, index_untouched=False),  # its synchronization restores the entry
     "entry-cleared": Route(UNIQUE, index_untouched=False),  # its synchronization replaces the entry
-    "index-disagrees": Route(Outcome(2, canonical=False, reason=DecisionReason.INDEX_DISAGREES), index_untouched=False),
+    "index-disagrees": Route(
+        Outcome(2, canonical=False, reason=CanonicalCandidateReason.INDEX_DISAGREES), index_untouched=False
+    ),
     "unreadable-index": Route(
-        Outcome(2, canonical=False, reason=DecisionReason.UNREADABLE_INDEX), index_untouched=False
+        Outcome(2, canonical=False, reason=CanonicalCandidateReason.UNREADABLE_INDEX), index_untouched=False
     ),
     # The appended index Text brings the destination it names, and its scene; the save drops the Text.
     "two-indexes": Route(
-        Outcome(2, canonical=False, reason=DecisionReason.SEVERAL_INDEXES), reopened=INDEXED, index_untouched=False
+        Outcome(2, canonical=False, reason=CanonicalCandidateReason.SEVERAL_INDEXES),
+        reopened=INDEXED,
+        index_untouched=False,
     ),
     # Not copies: a linked binding is library data, and a duplicated object has no manifest naming it.
     "linked-binding": Route(UNIQUE),

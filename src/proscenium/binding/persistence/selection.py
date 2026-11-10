@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     import bpy
 
     from ..source_access import identifiers
-    from .records import Loaded, RefusedRecord
+    from .records import LoadedRecord, RefusedRecord
 
 SELECTION_KEY = "selection"
 
@@ -57,7 +57,7 @@ class PersistentSelection:
 SELECTION = Schema("selection", version=1, record_type=PersistentSelection)
 
 
-def read_selection(scene: bpy.types.Scene) -> Loaded[PersistentSelection] | RefusedRecord | None:
+def read_selection(scene: bpy.types.Scene) -> LoadedRecord[PersistentSelection] | RefusedRecord | None:
     """The scene's persistent selection, why it can't be read, or None if it has none."""
     return records.read(scene, SELECTION_KEY, SELECTION)
 

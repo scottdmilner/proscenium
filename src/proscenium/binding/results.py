@@ -75,7 +75,7 @@ class DiagnosticCode(StrEnum):
     APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
 
-# The codes the compiled core reports, whose messages state their problems (Diagnostic.problem);
+# The codes the compiled core reports, whose messages state their problems (Diagnostic.aggregation_key);
 # synchronization.evaluation checks the core's list against it on import.
 CORE_CODES = frozenset(
     {
@@ -153,8 +153,8 @@ class Diagnostic:
         return _KINDS[self.code][1]
 
     @property
-    def problem(self) -> tuple[object, ...]:
-        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03).
+    def aggregation_key(self) -> tuple[object, ...]:
+        """The identity used to deduplicate reports of the same problem (DIAG-03).
 
         The core's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
         the problem; another's is prose about one, so it isn't.
@@ -183,7 +183,7 @@ def result_state(diagnostics: Iterable[Diagnostic]) -> ResultState:
     return max((_STATE_OF[d.category] for d in diagnostics), key=_WORSE.index, default=ResultState.SUCCESS)
 
 
-def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
+def deduplicated_diagnostics(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
     """The diagnostics with each problem once, in the order first reported (DIAG-03).
 
     A problem is a diagnostic's code and everything it concerns; its message is prose, so a repeat with another
@@ -191,7 +191,7 @@ def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
     """
     first: dict[tuple[object, ...], Diagnostic] = {}
     for diagnostic in diagnostics:
-        first.setdefault(diagnostic.problem, diagnostic)
+        first.setdefault(diagnostic.aggregation_key, diagnostic)
     return tuple(first.values())
 
 
@@ -214,9 +214,9 @@ class Result:
         time_codes: Iterable[Usd.TimeCode] = (),
         cleanup_status: Iterable[Diagnostic] = (),
     ) -> None:
-        object.__setattr__(self, "diagnostics", aggregated(diagnostics))
+        object.__setattr__(self, "diagnostics", deduplicated_diagnostics(diagnostics))
         object.__setattr__(self, "time_codes", tuple(time_codes))
-        object.__setattr__(self, "cleanup_status", aggregated(cleanup_status))
+        object.__setattr__(self, "cleanup_status", deduplicated_diagnostics(cleanup_status))
         if any(d.category is not DiagnosticCategory.PENDING_CLEANUP for d in self.cleanup_status):
             raise ValueError("a cleanup status holds only pending-cleanup diagnostics")
 

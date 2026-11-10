@@ -16,7 +16,7 @@ from fixtures import copies, transaction
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_state, configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.binding_configs import DisabledBindingError
@@ -71,7 +71,7 @@ def _republished(found: dict[tuple[str, str], Any], *, index_restored: bool) -> 
 def _index_entry() -> bpy.types.Collection | None:
     [text] = configs.index_texts()
     index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(index, Loaded)
+    assert isinstance(index, LoadedRecord)
     [destination] = index.record.destinations.values()
     return destination
 
@@ -86,7 +86,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: Outcome) -> list[
     evaluation = _evaluation(bindings, handle)
     result = handle.synchronize(0)  # looks for copies first (COPY-18)
     reported = bindings.copied()
-    if outcome.reason is copies.DecisionReason.UNIQUE:
+    if outcome.reason is copies.CanonicalCandidateReason.UNIQUE:
         assert reported == []  # COPY-14: nothing to report for a unique identity
         assert result.state is ResultState.SUCCESS
         assert bindings.in_scene(_scene()) == [handle]

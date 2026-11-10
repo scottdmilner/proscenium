@@ -72,7 +72,7 @@ def of(datablock: bpy.types.ID) -> Ownership:
     claims = []
     for holder in sorted(holders, key=lambda c: c.name):
         manifest = manifests.read_manifest(holder)
-        if isinstance(manifest, records.Loaded):  # one that can't be read claims nothing until it is repaired
+        if isinstance(manifest, records.LoadedRecord):  # one that can't be read claims nothing until it is repaired
             claimant = configs.binding_ids(holder)[0]
             claims += [
                 Claim(claimant, holder, k) for k, e in manifest.record.entries.items() if e.datablock == datablock
@@ -80,12 +80,14 @@ def of(datablock: bpy.types.ID) -> Ownership:
     return Ownership(tuple(claims))
 
 
-def manifest(binding_id: identifiers.BindingId) -> records.Loaded[manifests.Manifest] | records.RefusedRecord | None:
+def manifest(
+    binding_id: identifiers.BindingId,
+) -> records.LoadedRecord[manifests.Manifest] | records.RefusedRecord | None:
     """A binding's manifest, read from its destination: why it can't be read, or None if it has none yet.
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
     """
-    return manifests.read_manifest(binding_configs.required_record(binding_id).collection)
+    return manifests.read_manifest(binding_configs.require_canonical_binding_record(binding_id).collection)
 
 
 def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest | None) -> None:
@@ -94,17 +96,17 @@ def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
     DisabledBindingError if it has no canonical candidate.
     """
-    record = binding_configs.required_record(binding_id)
+    record = binding_configs.require_canonical_binding_record(binding_id)
     if manifest is None:
         manifests.remove_manifest(record.collection)
     else:
         manifests.write_manifest(record.collection, manifest)
-    binding_configs.restore_entry(binding_id, record)
+    binding_configs.restore_missing_binding_index_entry(binding_id, record)
 
 
 def set_manifest_entries(
     binding_id: identifiers.BindingId,
-    changed: Mapping[str, manifests.EntryChange],
+    changed: Mapping[str, manifests.ManifestEntryChange],
     removed: Collection[str] = (),
     created: Mapping[str, bpy.types.ID] = MappingProxyType({}),
     *,
@@ -121,7 +123,9 @@ def set_manifest_entries(
     Raises what set_manifest raises, and ValueError, TypeError, or KeyError (write_manifest_entries), changing nothing,
     over an update that makes no manifest.
     """
-    record = binding_configs.required_record(binding_id)  # raises as any update does, an empty one included
+    record = binding_configs.require_canonical_binding_record(
+        binding_id
+    )  # raises as any update does, an empty one included
     if not changed and not removed:
         return
     if published is None:
@@ -131,4 +135,4 @@ def set_manifest_entries(
         published = manifests.Manifest({}) if stored is None else stored.record
     after = published.updated(changed, removed, created)
     manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)
-    binding_configs.restore_entry(binding_id, record)
+    binding_configs.restore_missing_binding_index_entry(binding_id, record)

@@ -74,7 +74,7 @@ def _recorded(handle: BindingHandle) -> tuple[float | None, float | None]:
     """The time codes the binding's last attempt and its generation record."""
     last = binding_state.read_last_attempt(destination(handle))
     generation = binding_state.read_generation(bpy.data.collections["USD Display"])
-    assert isinstance(last, records.Loaded) and isinstance(generation, records.Loaded)
+    assert isinstance(last, records.LoadedRecord) and isinstance(generation, records.LoadedRecord)
     return last.record.time_code, generation.record.time_code
 
 

@@ -16,7 +16,7 @@ from fixtures import transaction
 from proscenium.binding import runtime
 from proscenium.binding.persistence import binding_state, configs, records
 from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from support.blend import save_and_reopen
@@ -61,7 +61,7 @@ def _check_failed(handle: BindingHandle, result: Result, scene: PreparationClean
         *[DiagnosticCode.DISPOSAL_FAILED] * len(scene.failed_disposals),
     ]
     attempt = binding_state.read_last_attempt(destination(handle))
-    assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
+    assert isinstance(attempt, LoadedRecord) and attempt.record.diagnostics == result.diagnostics
 
 
 def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.types.ID]) -> None:
@@ -100,7 +100,7 @@ def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bi
         assert handle.synchronize(0).state is ResultState.SUCCESS
         published = _published(handle)
         manifest = ownership.manifest(handle.binding_id)
-        assert isinstance(manifest, Loaded)
+        assert isinstance(manifest, LoadedRecord)
         named = {e.datablock for e in manifest.record.entries.values()}
         result, leftovers = failing_preparation(handle, scene, 10)
         _check_failed(handle, result, scene)
@@ -180,4 +180,4 @@ def test_removing_the_destination_leaves_the_pending_cleanup(bindings: Bindings,
             assert {k: (e.binding_id, e.role, e.datablock and e.datablock.name) for k, e in _ledger().items()} == named
             [text] = configs.index_texts()
             index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-            assert isinstance(index, Loaded) and index.record.destinations == {handle.binding_id: None}
+            assert isinstance(index, LoadedRecord) and index.record.destinations == {handle.binding_id: None}

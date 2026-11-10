@@ -43,15 +43,15 @@ def _synchronized(bindings: Bindings, scene: CachedTimeCodesScene) -> BindingHan
     return handle
 
 
-def _generation() -> binding_state.Generation:
+def _generation() -> binding_state.GenerationMetadata:
     generation = binding_state.read_generation(bpy.data.collections["Shot"])
-    assert isinstance(generation, records.Loaded)
+    assert isinstance(generation, records.LoadedRecord)
     return generation.record
 
 
 def _entries(handle: BindingHandle) -> dict[str, Any]:
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, records.LoadedRecord)
     return dict(manifest.record.entries)
 
 
@@ -80,7 +80,7 @@ def test_cached_time_codes_show_their_values_in_the_same_generation(bindings: Bi
         result = handle.cache(scene.cached)
         assert result.state is ResultState.SUCCESS
         assert result.time_codes == tuple(Usd.TimeCode(t) for t in scene.cached)
-        assert _generation() == binding_state.Generation(
+        assert _generation() == binding_state.GenerationMetadata(
             before.binding_id,
             before.settings,
             before.unit_scale,

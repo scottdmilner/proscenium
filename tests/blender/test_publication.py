@@ -15,8 +15,8 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import Step
 from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.binding_state import Generation, LastAttempt
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.binding_settings import new_settings
@@ -106,16 +106,16 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
         assert handle.synchronize(10) == Result(time_codes=(Usd.TimeCode(10),))
         first = _published(handle)
         manifest = manifests.read_manifest(_destination())
-        assert isinstance(manifest, Loaded)
+        assert isinstance(manifest, LoadedRecord)
         named = {e.datablock for e in manifest.record.entries.values()}
         assert len(named) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         assert first["objects"] == {d.session_uid for d in named if isinstance(d, bpy.types.Object)}
         stages = bindings.stages.get(handle.binding_id)
         assert stages is not None
-        expected = Generation(
+        expected = GenerationMetadata(
             handle.binding_id, new_settings(PayloadPolicy.LOAD_ALL), 1.0, 10.0, stages.source_revision, ()
         )
-        assert binding_state.read_generation(_destination()) == Loaded(expected, 1)
+        assert binding_state.read_generation(_destination()) == LoadedRecord(expected, 1)
         assert _ledger_entries() == {}
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone
         uids = {d.session_uid for d in named if d is not None}  # a removed datablock can't be compared
@@ -177,10 +177,12 @@ def test_a_failed_attempt_keeps_the_generation_and_records_itself(
         (published_policy, published_time), (attempted_policy, attempted_time) = scene.published, scene.attempted
         handle = _binding(bindings, scene, published_policy)
         assert handle.synchronize(published_time).state is ResultState.SUCCESS
-        assert _last_attempt(handle) == Loaded(LastAttempt(new_settings(published_policy), published_time, ()), 1)
+        assert _last_attempt(handle) == LoadedRecord(
+            LastSynchronizationAttempt(new_settings(published_policy), published_time, ()), 1
+        )
         published = _published(handle)
         generation = binding_state.read_generation(_destination())
-        assert isinstance(generation, Loaded)
+        assert isinstance(generation, LoadedRecord)
         assert handle.set_settings(payload_policy=attempted_policy).state is ResultState.SUCCESS
         _fail_step(monkeypatch, handle, step)
         before = datablocks()
@@ -189,14 +191,14 @@ def test_a_failed_attempt_keeps_the_generation_and_records_itself(
         assert [d.code for d in result.diagnostics] == [FAILED[step]]
         assert _published(handle) == published
         assert datablocks() == before  # prepared work disposed of
-        attempt = LastAttempt(new_settings(attempted_policy), attempted_time, result.diagnostics)
-        assert _last_attempt(handle) == Loaded(attempt, 1)
+        attempt = LastSynchronizationAttempt(new_settings(attempted_policy), attempted_time, result.diagnostics)
+        assert _last_attempt(handle) == LoadedRecord(attempt, 1)
         monkeypatch.undo()
         save_and_reopen(tmp_path / "failed.blend")
         assert binding_state.read_generation(_destination()) == generation
         assert generation.record.settings.payload_policy is published_policy
         assert generation.record.time_code == published_time
-        assert _last_attempt(handle) == Loaded(attempt, 1)
+        assert _last_attempt(handle) == LoadedRecord(attempt, 1)
 
 
 def test_every_outcome_records_the_last_attempt(bindings: Bindings, tmp_path: Path) -> None:
@@ -205,9 +207,11 @@ def test_every_outcome_records_the_last_attempt(bindings: Bindings, tmp_path: Pa
         handle = bindings.create_binding(_scene(), name="Shot")
         result = handle.synchronize(4)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
-        assert _last_attempt(handle) == Loaded(
-            LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 4.0, result.diagnostics), 1
+        assert _last_attempt(handle) == LoadedRecord(
+            LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), 4.0, result.diagnostics), 1
         )
         assert handle.attach(scene.caller).state is ResultState.SUCCESS
         assert handle.synchronize(Usd.TimeCode.Default()).state is ResultState.SUCCESS
-        assert _last_attempt(handle) == Loaded(LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), None, ()), 1)
+        assert _last_attempt(handle) == LoadedRecord(
+            LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), None, ()), 1
+        )

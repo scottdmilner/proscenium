@@ -7,8 +7,8 @@ uses, by entry key; its ownership is the binding whose manifest holds it (OWN-01
 
 A key is never the resource's identity (lifecycle.md#representation-roles-and-resource-identities). A copy's resource's
 entry records its identity (CopyResourceIdentity), so a prepared resource takes the key of the published entry whose
-identity it has (entry_keys). A batch's and a shared datablock's identities come from content keys, which aren't
-persisted: M7 decides where it holds them.
+identity it has (existing_or_new_entry_keys). A batch's and a shared datablock's identities come from content keys,
+which aren't persisted: M7 decides where it holds them.
 
 Nothing is stored on the managed datablocks: a datablock is managed by the binding whose manifest names it (OWN-16).
 
@@ -21,7 +21,7 @@ Nothing is stored on the managed datablocks: a datablock is managed by the bindi
 
 Reading a manifest reads every entry, so ownership of a datablock reads only the manifests among its users
 (proscenium.binding.runtime.ownership). write_manifest_entries writes only the entries that change; an update gives
-them without their datablocks (EntryChange), so it can't name a datablock another entry names.
+them without their datablocks (ManifestEntryChange), so it can't name a datablock another entry names.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import bpy
 
 from . import records
-from .records import Loaded, RefusedRecord, Schema
+from .records import LoadedRecord, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -134,7 +134,7 @@ class ManifestEntry:
 
 
 @dataclass(frozen=True, slots=True)
-class EntryChange:
+class ManifestEntryChange:
     """A changed entry without its datablock, which comes from the entry it changes or from what the operation made.
 
     So an update can't name a datablock another entry names (Manifest.updated). Checked when the entry is built.
@@ -145,7 +145,7 @@ class EntryChange:
     uses: Sequence[str]
     place: int | None = None
 
-    def entry(self, datablock: bpy.types.ID | None) -> ManifestEntry:
+    def entry_for_datablock(self, datablock: bpy.types.ID | None) -> ManifestEntry:
         """The entry naming datablock."""
         return ManifestEntry(datablock, self.covers, self.role, self.uses, self.place)
 
@@ -169,7 +169,7 @@ class Manifest:
 
     def updated(
         self,
-        changed: Mapping[str, EntryChange],
+        changed: Mapping[str, ManifestEntryChange],
         removed: Collection[str] = (),
         created: Mapping[str, bpy.types.ID] = MappingProxyType({}),
     ) -> Manifest:
@@ -193,15 +193,15 @@ class Manifest:
             raise ValueError("two entries name one datablock")
         made = {}
         for entry_key, change in changed.items():
-            if type(change) is not EntryChange:
-                raise TypeError("a changed entry is not an EntryChange")
+            if type(change) is not ManifestEntryChange:
+                raise TypeError("a changed entry is not a ManifestEntryChange")
             if entry_key in created:
                 datablock = created[entry_key]
             elif entry_key in self.entries:
                 datablock = self.entries[entry_key].datablock
             else:
                 raise ValueError(f"a new resource has no datablock made for it: {entry_key}")
-            entry = change.entry(datablock)
+            entry = change.entry_for_datablock(datablock)
             # Checked here, unlike in a whole manifest, since only the changed entries are.
             if not all(type(item) is str for item in (*entry.covers, *entry.uses)):
                 raise TypeError("an entry covers source-entity paths and uses entry keys, all strings")
@@ -225,18 +225,18 @@ def _check_keys(entries: Mapping[str, object]) -> None:
 MANIFEST = Schema("manifest", version=1, record_type=Manifest)
 
 
-def read_manifest(destination: bpy.types.Collection) -> Loaded[Manifest] | RefusedRecord | None:
+def read_manifest(destination: bpy.types.Collection) -> LoadedRecord[Manifest] | RefusedRecord | None:
     """The destination's manifest, why it can't be read, or None if it has none."""
     return records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
-def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> Loaded[Manifest]:
+def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> LoadedRecord[Manifest]:
     """Store the destination's manifest whole; the manifest as reading it back would give it.
 
     Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read.
     """
     records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
-    return Loaded(manifest, MANIFEST.version)
+    return LoadedRecord(manifest, MANIFEST.version)
 
 
 def remove_manifest(destination: bpy.types.Collection) -> None:
@@ -246,13 +246,13 @@ def remove_manifest(destination: bpy.types.Collection) -> None:
 
 def write_manifest_entries(
     destination: bpy.types.Collection, manifest: Manifest, changed: Collection[str], removed: Collection[str]
-) -> Loaded[Manifest]:
+) -> LoadedRecord[Manifest]:
     """Store manifest, writing only the entries under changed and removed; the manifest as reading it would give it.
 
     manifest differs from the stored one only in those entries (records.write_items). Raises as write_manifest does.
     """
     records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
-    return Loaded(manifest, MANIFEST.version)
+    return LoadedRecord(manifest, MANIFEST.version)
 
 
 def dependents(manifest: Manifest) -> Mapping[str, set[str]]:
@@ -264,7 +264,7 @@ def dependents(manifest: Manifest) -> Mapping[str, set[str]]:
     return found
 
 
-def entry_keys(manifest: Manifest, identities: Iterable[CopyResourceIdentity]) -> list[str]:
+def existing_or_new_entry_keys(manifest: Manifest, identities: Iterable[CopyResourceIdentity]) -> list[str]:
     """For each identity, the key of manifest's entry with it, or a new key if none has it (ROLE-05).
 
     A prepared resource that represents what a published one does takes its key, so publication replaces that entry.

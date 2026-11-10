@@ -66,7 +66,7 @@ class RefusalReason(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class Loaded[R]:
+class LoadedRecord[R]:
     """A record read from storage, and the version it was stored at."""
 
     record: R
@@ -93,7 +93,7 @@ class RefusedRecordError(Exception):
         self.refused = refused
 
 
-def load[R: DataclassInstance](schema: Schema[R], stored: object) -> Loaded[R] | RefusedRecord:
+def load[R: DataclassInstance](schema: Schema[R], stored: object) -> LoadedRecord[R] | RefusedRecord:
     """The stored record, as plain values, loaded at the schema's current version, or why it can't be.
 
     stored is left unchanged: migrations run on a copy.
@@ -101,14 +101,14 @@ def load[R: DataclassInstance](schema: Schema[R], stored: object) -> Loaded[R] |
     return _load(schema, stored, copy=True)
 
 
-def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool) -> Loaded[R] | RefusedRecord:
+def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool) -> LoadedRecord[R] | RefusedRecord:
     version = _version(schema, stored)
     if isinstance(version, RefusedRecord):
         return version
     assert isinstance(stored, Mapping)
     fields = {key: value for key, value in stored.items() if key != VERSION_KEY}
     if copy:
-        fields = _copy(fields)
+        fields = _copy_record_containers(fields)
     # Any exception is a refusal: stored data must never crash the extension. A missing or unknown
     # field is the dataclass's TypeError.
     for step in range(version, schema.version):
@@ -123,7 +123,7 @@ def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool
     except Exception as exc:  # noqa: BLE001
         refusal = RefusalReason.INVALID if version == schema.version else RefusalReason.MIGRATION_FAILED
         return _refuse(schema, refusal, version, f"{type(exc).__name__}: {exc}")
-    return Loaded(record, version)
+    return LoadedRecord(record, version)
 
 
 def _version(schema: Schema[Any], stored: object) -> int | RefusedRecord:
@@ -182,8 +182,8 @@ def stored(id_: bpy.types.ID, key: str) -> object | None:
     if namespace is None:
         return None
     if not _is_group(namespace):  # the namespace itself is damaged: its records are unreadable
-        return _plain(namespace)
-    return _plain(namespace.get(key))
+        return _id_property_to_python(namespace)
+    return _id_property_to_python(namespace.get(key))
 
 
 def has(id_: bpy.types.ID, key: str) -> bool:
@@ -198,7 +198,9 @@ def keys(id_: bpy.types.ID) -> list[str]:
     return list(namespace.keys()) if _is_group(namespace) else []
 
 
-def read[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R]) -> Loaded[R] | RefusedRecord | None:
+def read[R: DataclassInstance](
+    id_: bpy.types.ID, key: str, schema: Schema[R]
+) -> LoadedRecord[R] | RefusedRecord | None:
     """The record under key at the schema's current version, why it can't be read, or None if there is none."""
     value = stored(id_, key)  # already a copy, which the migrations may change
     return None if value is None else _load(schema, value, copy=False)
@@ -217,7 +219,7 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
     existing = None if namespace is None else namespace.get(key)
     if existing is not None and isinstance(result := _version(schema, existing), RefusedRecord):
         raise RefusedRecordError(result)
-    value = {VERSION_KEY: schema.version} | _unstructure(record)
+    value = {VERSION_KEY: schema.version} | _encode_record_fields(record)
     if namespace is None:
         id_[NAMESPACE] = {}
         namespace = id_[NAMESPACE]
@@ -265,7 +267,7 @@ def write_items[R: DataclassInstance](
     items = getattr(record, field)
     # Blender converts a whole group before storing it, so a value or key it can't hold fails here, having
     # stored nothing; then each item is copied from the staged group, which can't fail.
-    namespace[_STAGING_KEY] = {k: _unstructure(items[k]) for k in changed}
+    namespace[_STAGING_KEY] = {k: _encode_record_fields(items[k]) for k in changed}
     staged = namespace[_STAGING_KEY]
     for k in removed:
         if k in group:
@@ -275,30 +277,30 @@ def write_items[R: DataclassInstance](
     del namespace[_STAGING_KEY]
 
 
-def _unstructure(value: Any) -> Any:
+def _encode_record_fields(value: Any) -> Any:
     """The value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
 
     Tuples become lists. Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
     """
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {f.name: _unstructure(getattr(value, f.name)) for f in dataclasses.fields(value)}
+        return {f.name: _encode_record_fields(getattr(value, f.name)) for f in dataclasses.fields(value)}
     if isinstance(value, Mapping):
-        return {key: _unstructure(item) for key, item in value.items()}
+        return {key: _encode_record_fields(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
-        return [_unstructure(item) for item in value]
+        return [_encode_record_fields(item) for item in value]
     return value
 
 
-def _copy(value: Any) -> Any:
+def _copy_record_containers(value: Any) -> Any:
     """A copy of the groups and lists in value, for migrations to change; ID pointers are shared."""
     if isinstance(value, Mapping):
-        return {key: _copy(item) for key, item in value.items()}
+        return {key: _copy_record_containers(item) for key, item in value.items()}
     if isinstance(value, list):
-        return [_copy(item) for item in value]
+        return [_copy_record_containers(item) for item in value]
     return value
 
 
-def _plain(value: Any) -> Any:
+def _id_property_to_python(value: Any) -> Any:
     """ID-property groups and arrays as dicts and lists; ID pointers and scalars as they are."""
     if _is_group(value):
         return value.to_dict()

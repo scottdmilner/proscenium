@@ -30,7 +30,7 @@ import bpy
 from .. import results
 from . import records
 from .manifests import RepresentationRole
-from .records import Loaded, RefusedRecord, Schema
+from .records import LoadedRecord, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -121,18 +121,18 @@ def _check_keys(entries: Mapping[str, LedgerEntry]) -> None:
 LEDGER = Schema("pending-cleanup ledger", version=1, record_type=Ledger)
 
 
-def read_ledger(text: bpy.types.Text) -> Loaded[Ledger] | RefusedRecord | None:
+def read_ledger(text: bpy.types.Text) -> LoadedRecord[Ledger] | RefusedRecord | None:
     """The ledger on the binding index's Text, why it can't be read, or None if it has none."""
     return records.read(text, LEDGER_KEY, LEDGER)
 
 
 def write_ledger_entries(
     text: bpy.types.Text, ledger: Ledger, changed: Collection[str], removed: Collection[str]
-) -> Loaded[Ledger]:
+) -> LoadedRecord[Ledger]:
     """Store ledger, writing only the entries under changed and removed; the ledger as reading it would give it.
 
     ledger differs from the stored one only in those entries (records.write_items). Raises RefusedRecordError, changing
     nothing, over a stored ledger that can't be read.
     """
     records.write_items(text, LEDGER_KEY, LEDGER, ledger, "entries", changed, removed)
-    return Loaded(ledger, LEDGER.version)
+    return LoadedRecord(ledger, LEDGER.version)

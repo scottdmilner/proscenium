@@ -14,7 +14,7 @@ import bpy
 
 from proscenium.binding.persistence import configs, manifests, records
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence.records import LoadedRecord
 from support import blend
 
 if TYPE_CHECKING:
@@ -78,7 +78,7 @@ def _index_text() -> bpy.types.Text:
 
 def _write_entries(change: Callable[[dict[BindingId, bpy.types.Collection | None]], None]) -> None:
     index = records.read(_index_text(), configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(index, Loaded)
+    assert isinstance(index, LoadedRecord)
     destinations = dict(index.record.destinations)
     change(destinations)
     records.write(_index_text(), configs.INDEX_KEY, configs.INDEX, configs.BindingIndex(destinations))
@@ -103,7 +103,7 @@ def _deep_copy_collection(tmp_path: Path) -> None:
         copy.objects.unlink(obj)
         copy.objects.link(copies[obj])
     manifest = manifests.read_manifest(copy)
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     entries = {
         entry_key: replace(entry, datablock=copies.get(entry.datablock, entry.datablock))
         for entry_key, entry in manifest.record.entries.items()

@@ -1,9 +1,9 @@
 """Copied-binding detection (source-access.md#copied-bindings), from the records as they are when asked.
 
 A binding identity's candidates are the local collections' binding records for it that can't be read or whose target
-scene exists (BindingRecord). identity() finds one identity's, and identities() every identity's, with the decision of
-the canonical-candidate rule (proscenium.binding.source_access.canonical_candidate). report() describes an identity
-that isn't unique.
+scene exists (BindingRecord). candidates_for_binding() finds one identity's candidates, and candidates_by_binding()
+every identity's, with the canonical-candidate rule's decision (proscenium.binding.source_access.canonical_candidate).
+copied_binding_report() describes an identity that isn't unique.
 
 Detection reads the records each time and never writes, so whether a binding is disabled is never stored: it
 survives save and reopen, and no copy carries it.
@@ -65,7 +65,7 @@ class CopiedBinding:
     """A binding identity that isn't unique: its candidates, and why the rule chose its canonical one, or none."""
 
     binding_id: identifiers.BindingId
-    reason: canonical_candidate.DecisionReason
+    reason: canonical_candidate.CanonicalCandidateReason
     candidates: tuple[CandidateReport, ...]
 
     @property
@@ -88,7 +88,7 @@ class IdentityCandidates:
         return None if position is None else self.candidates[position]
 
 
-def identity(binding_id: identifiers.BindingId) -> IdentityCandidates | None:
+def candidates_for_binding(binding_id: identifiers.BindingId) -> IdentityCandidates | None:
     """One identity's candidates and decision, or None if it has none: reads only its own records and the index."""
     key = configs.config_key(binding_id)
     found = []
@@ -101,7 +101,7 @@ def identity(binding_id: identifiers.BindingId) -> IdentityCandidates | None:
     return _identity(binding_id, candidates, _indexes()) if candidates else None
 
 
-def identities() -> dict[identifiers.BindingId, IdentityCandidates]:
+def candidates_by_binding() -> dict[identifiers.BindingId, IdentityCandidates]:
     """Every identity with a candidate, in the order found, with its candidates and decision."""
     by_identity: dict[identifiers.BindingId, list[BindingRecord]] = {}
     for collection, binding_id, result in configs.read_configs():
@@ -112,7 +112,7 @@ def identities() -> dict[identifiers.BindingId, IdentityCandidates]:
     return {b: _identity(b, found, indexes) for b, found in by_identity.items()}
 
 
-def report(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> CopiedBinding:
+def copied_binding_report(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> CopiedBinding:
     """The identity's candidates by name, for reporting: names aren't identities, and may change."""
     canonical = identity.decision.canonical
     reports = [
@@ -125,7 +125,7 @@ def report(binding_id: identifiers.BindingId, identity: IdentityCandidates) -> C
 def _record(
     collection: bpy.types.Collection,
     binding_id: identifiers.BindingId,
-    result: records.Loaded[configs.BindingConfig] | records.RefusedRecord,
+    result: records.LoadedRecord[configs.BindingConfig] | records.RefusedRecord,
 ) -> BindingRecord:
     return BindingRecord(collection, binding_id, result if isinstance(result, records.RefusedRecord) else result.record)
 
@@ -148,7 +148,7 @@ def _indexes() -> list[Index]:
     found: list[Index] = []
     for text in configs.index_texts():
         index = configs.read_index(text)
-        if isinstance(index, records.Loaded):
+        if isinstance(index, records.LoadedRecord):
             found.append({b: None if d is None else d.session_uid for b, d in index.record.destinations.items()})
         else:
             found.append(canonical_candidate.UNREADABLE_INDEX_ENTRY)

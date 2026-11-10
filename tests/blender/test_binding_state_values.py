@@ -14,9 +14,9 @@ from proscenium.binding.results import Diagnostic, DiagnosticCategory, Diagnosti
 
 def test_time_codes_are_stored_as_their_value_or_none() -> None:
     # The default time code's value is NaN, which would make two equal records unequal.
-    assert binding_state.stored_time(Usd.TimeCode.Default()) is None
-    assert binding_state.time_code(None).IsDefault()
-    assert binding_state.time_code(binding_state.stored_time(Usd.TimeCode(7.25))) == Usd.TimeCode(7.25)
+    assert binding_state.encode_time_code(Usd.TimeCode.Default()) is None
+    assert binding_state.decode_time_code(None).IsDefault()
+    assert binding_state.decode_time_code(binding_state.encode_time_code(Usd.TimeCode(7.25))) == Usd.TimeCode(7.25)
 
 
 def test_a_diagnostic_rejects_values_it_cannot_hold() -> None:

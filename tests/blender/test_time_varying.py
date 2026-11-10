@@ -139,7 +139,7 @@ def _check(plan: _core.Plan, expected: Expected) -> None:
 def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     """The published display's objects by the source each shows."""
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, records.LoadedRecord)
     found = {}
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:

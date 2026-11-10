@@ -45,7 +45,7 @@ src/proscenium/
       records.py                 the versioned-record framework
       configs.py         BindingConfig, DestinationTag, BindingIndex
       manifests.py               ManifestEntry, Manifest, and their records
-      binding_state.py           Generation, LastAttempt
+      binding_state.py           GenerationMetadata, LastSynchronizationAttempt
       selection.py               PersistentSelection
     results.py                   Result, ResultState, Diagnostic, DiagnosticCategory, Severity
     source_access/
@@ -68,7 +68,7 @@ These go in AGENTS.md's Style section:
 - **One concept per word, the Glossary's where it has one.** A bare `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
 - **Spec terms keep their meaning.** *Generation* is a published generation, *layer* a USD layer or a pipeline layer, *synchronization* one attempt, and *claim* and *candidate* what the spec defines. None names anything else.
 - **Exceptions end in `Error`**, so they aren't mistaken for values (ruff's N818, without `noqa`).
-- **A type names its domain:** `DiagnosticCategory`, `DecisionReason`, not `Category` or `Reason`.
+- **A type names its domain:** `DiagnosticCategory`, `CanonicalCandidateReason`, not `Category` or `Reason`.
 - **A function is named for its effect.** One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
 
 ## Renames
@@ -83,14 +83,14 @@ These go in AGENTS.md's Style section:
 | `SourceRegistry.prune(existing, unreadable)` | `StageRegistry.prune(existing)` | The set of existing binding identities, including unreadable and disabled bindings |
 | `indexes._Binding` | `state.Binding`, then `Candidate` | It is one candidate of a binding identity |
 | `core.copies.Candidate` | `CandidateEvidence` | What the rule reads about a candidate |
-| `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `DecisionReason`, `UNREADABLE_INDEX_ENTRY` | |
+| `Decision`, `Reason`, `UNREADABLE` | `CanonicalDecision`, `CanonicalCandidateReason`, `UNREADABLE_INDEX_ENTRY` | |
 | `candidates`, `candidates.Identity`, `Found`, `find()` | `copy_detection`, `IdentityCandidates`, `CopyDetection`, `detect()` | |
 | `Identity.copies` | `IdentityCandidates.tagged_copies` | |
 | `_Share`, `_Ownership`, `_State`, `_Stale` | `DestinationClaims`, `OwnershipIndex`, `State`, `StaleError` | |
 | `indexes.find_copies()` | `refresh_if_tags_changed()` | It drops the state when tags changed, and returns nothing |
 | `indexes.rebuilds()` | `rebuild_count()` | |
 | `indexes.update_manifest()` | `set_manifest_entries()` | A write-through, like `set_manifest` |
-| `_ask`, `_current`, `_alive`, `_valid`, `_canonical`, `_existing`, `_restore_entry` | `query`, `current_state`, `alive`, `valid`, `canonical`, `existing`, `restore_entry` | Shared by the modules of `runtime/` |
+| `_ask`, `_current`, `_alive`, `_valid`, `_canonical`, `_existing`, `_restore_entry` | `query`, `current_state`, `alive`, `valid`, `canonical`, `existing`, `restore_missing_binding_index_entry` | Shared by the modules of `runtime/` |
 | `_give_manifest`, `_named` | `_cache_manifest`, `_datablock_of` | |
 | `Category` | `DiagnosticCategory` | |
 | `Refusal`, `Refused`, `RecordRefused` | `RefusalReason`, `RefusedRecord`, `RefusedRecordError` | A reason, a value, and an exception |

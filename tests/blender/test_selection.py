@@ -11,7 +11,7 @@ from fixtures import interaction, source_access
 from proscenium.binding.persistence.records import (
     NAMESPACE,
     VERSION_KEY,
-    Loaded,
+    LoadedRecord,
     RefusalReason,
     RefusedRecord,
     RefusedRecordError,
@@ -51,7 +51,7 @@ def test_a_selection_from_two_bindings_survives_save_and_reopen(bindings: Bindin
     selection = PersistentSelection(entries, entries[1])
     write_selection(_scene(), selection)
     save_and_reopen(tmp_path / "selection.blend")
-    assert read_selection(_scene()) == Loaded(selection, 1)
+    assert read_selection(_scene()) == LoadedRecord(selection, 1)
 
 
 def test_stored_entries_are_pairs_of_strings() -> None:
@@ -59,7 +59,7 @@ def test_stored_entries_are_pairs_of_strings() -> None:
     write_selection(_scene(), PersistentSelection((entry,), None))
     assert _scene()[NAMESPACE][SELECTION_KEY].to_dict()["entries"] == [["B1", "/World"]]
     loaded = read_selection(_scene())
-    assert isinstance(loaded, Loaded)
+    assert isinstance(loaded, LoadedRecord)
     assert loaded.record.entries == (("B1", "/World"),)  # a tuple, with names
     assert loaded.record.entries[0].path == "/World"
 
@@ -80,7 +80,7 @@ def test_the_oracles_targets_are_stored_exactly(tmp_path: Path) -> None:
         write_selection(_scene(), selection)
         save_and_reopen(tmp_path / "selection.blend")
         loaded = read_selection(_scene())
-        assert isinstance(loaded, Loaded)
+        assert isinstance(loaded, LoadedRecord)
         assert [entry.path for entry in loaded.record.entries] == targets
 
 
@@ -94,7 +94,7 @@ def test_replacing_the_attached_stage_leaves_the_selection(bindings: Bindings, t
         handle.attach(scene.caller)
         handle.attach(scene.same_root)
         handle.attach(scene.other_root, confirm=True)
-        assert read_selection(_scene()) == Loaded(selection, 1)
+        assert read_selection(_scene()) == LoadedRecord(selection, 1)
 
 
 def test_entries_for_a_binding_that_is_gone_stay_stored(bindings: Bindings, tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ def test_entries_for_a_binding_that_is_gone_stay_stored(bindings: Bindings, tmp_
     write_selection(_scene(), selection)
     save_and_reopen(tmp_path / "selection.blend")
     assert [h.binding_id for h in bindings.in_scene(_scene())] == [handle.binding_id]
-    assert read_selection(_scene()) == Loaded(selection, 1)
+    assert read_selection(_scene()) == LoadedRecord(selection, 1)
 
 
 @pytest.mark.parametrize(
@@ -140,4 +140,4 @@ def test_a_damaged_path_loads_and_is_left_to_resolution() -> None:
     # reported unresolved like any path the generation doesn't display.
     selection = PersistentSelection((SelectionEntry(BindingId("B1"), "World"),), None)
     write_selection(_scene(), selection)
-    assert read_selection(_scene()) == Loaded(selection, 1)
+    assert read_selection(_scene()) == LoadedRecord(selection, 1)
