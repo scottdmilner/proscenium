@@ -23,7 +23,7 @@ from proscenium.binding.persistence import id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import ResultState
 from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.synchronization import evaluation as planning
 from support import time_codes
 from support.usd import binding_on_file
@@ -62,8 +62,8 @@ def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
     got: list[_core.Plan] = []
     original = planning.evaluate_display_plans
 
-    def spy(*args: object) -> object:
-        planned = original(*args)  # ty: ignore[invalid-argument-type] - passed through as given
+    def spy(*args: object, **kwargs: object) -> object:
+        planned = original(*args, **kwargs)  # ty: ignore[invalid-argument-type] - passed through as given
         assert isinstance(planned, list), planned  # no fatal diagnostic
         got.extend(planned)
         return planned

@@ -17,7 +17,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import transaction
-from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
 
 from .attached_binding_stages import binding
 

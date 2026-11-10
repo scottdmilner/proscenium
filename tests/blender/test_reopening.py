@@ -25,8 +25,7 @@ from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
 from support import undo
 from support.blend import collection_content, save_and_reopen
 from support.destinations import destination

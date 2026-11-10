@@ -106,7 +106,7 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd, UsdGeom
 
-    from proscenium.binding.source_access import stages
+    from proscenium.binding.source_access import binding_settings, stages
     from proscenium.core import _core
     from proscenium.synchronization import application
 
@@ -124,7 +124,7 @@ def child(config: dict[str, Any]) -> None:
     mark("open")
     binding_stages = stages.BindingStages()
     binding_stages.attach(stage)
-    evaluation_stage = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
+    evaluation_stage = binding_stages.acquire_evaluation_stage(binding_settings.PayloadPolicy.LOAD_ALL)
     mark("acquire")
     settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), False)
     converting = _core.PlanSettings(("default", "proxy"), ("default", "render"), True)

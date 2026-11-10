@@ -20,7 +20,7 @@ from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.binding_operations import DisabledBindingError
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support import binding_copy_operations as routes
 from support import ownership as oracle
 from support.blend import save_and_reopen

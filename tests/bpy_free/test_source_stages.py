@@ -10,7 +10,8 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, caller_settings, layer_contents, read_values
-from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
 from support.usd import open_stage_without_cache
 
 from .attached_binding_stages import binding

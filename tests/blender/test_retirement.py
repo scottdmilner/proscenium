@@ -16,7 +16,7 @@ from proscenium.binding.persistence import binding_state, id_property_records, m
 from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.synchronization import datablock_removal
 from support.blend import prim_name
 from support.destinations import destination

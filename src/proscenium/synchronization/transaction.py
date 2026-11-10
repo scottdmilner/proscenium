@@ -91,7 +91,13 @@ def _attempt(
     own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
     # Before preparation nothing in Blender has changed, so a failure only reports.
     planned = evaluation.evaluate_display_plans(
-        binding_id, stages_, evaluation_stage, settings, unit_scale, (time_code,)
+        binding_id,
+        stages_,
+        evaluation_stage,
+        settings,
+        unit_scale,
+        (time_code,),
+        representation_version=application.REPRESENTATION_VERSION,
     )
     if isinstance(planned, Diagnostic):
         return (*own, planned)

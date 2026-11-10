@@ -13,7 +13,6 @@ from ..binding import results
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.source_access import stages
 from ..core import _core
-from . import application
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -60,11 +59,14 @@ def evaluate_display_plans(
     settings: binding_settings.RequestedSettings,
     unit_scale: float,
     time_codes: Sequence[Usd.TimeCode],
+    *,
+    representation_version: int,
 ) -> list[_core.Plan] | Diagnostic:
     """Evaluate snapshots and build display plans in time-code order, or return a fatal diagnostic.
 
     evaluation_stage is binding_stages' evaluation stage, acquired under settings' payload policy; the plans apply
-    settings' conversion and purposes, and unit_scale, the target scene's.
+    settings' conversion and purposes, and unit_scale, the target scene's. The caller supplies the representation
+    version its application layer consumes.
     """
     try:
         with binding_stages.monitor_evaluation_layer_changes() as changed:
@@ -84,7 +86,7 @@ def evaluate_display_plans(
         planned = _core.PlanSettings(
             settings.viewport_purposes, settings.render_purposes, settings.coordinate_conversion
         )
-        context = _core.PlanningContext(unit_scale, application.REPRESENTATION_VERSION)
+        context = _core.PlanningContext(unit_scale, representation_version)
         return [_core.plan(snapshot, planned, context) for snapshot in snapshots]
     except Exception as error:  # noqa: BLE001
         return Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")

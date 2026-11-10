@@ -24,8 +24,8 @@ from proscenium.binding.persistence.id_property_records import (
 )
 from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.results import Diagnostic, DiagnosticCode
-from proscenium.binding.source_access.binding_settings import RequestedSettings, new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, RequestedSettings, new_settings
+from proscenium.binding.source_access.stages import SourceRevision
 from support.blend import save_and_reopen
 from support.manifests import key, object_entry
 from support.usd import binding_on_file

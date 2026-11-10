@@ -17,7 +17,7 @@ from pxr import Gf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
 from proscenium.binding.source_access import stages
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 
 from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at

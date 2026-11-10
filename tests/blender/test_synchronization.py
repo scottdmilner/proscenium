@@ -25,7 +25,7 @@ from proscenium.binding import persistence
 from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
 from proscenium.binding.source_access.binding_ids import BindingId
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support import undo
 from support.destinations import destination
 from support.usd import binding_on_file, open_stage_without_cache

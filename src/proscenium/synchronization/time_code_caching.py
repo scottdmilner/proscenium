@@ -85,7 +85,13 @@ def cache(
         return Result()
     own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
     planned = evaluation.evaluate_display_plans(
-        binding_id, binding_stages, evaluation_stage, published.applied_settings, published.unit_scale, attempted
+        binding_id,
+        binding_stages,
+        evaluation_stage,
+        published.applied_settings,
+        published.unit_scale,
+        attempted,
+        representation_version=application.REPRESENTATION_VERSION,
     )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, attempted_time_codes=attempted)

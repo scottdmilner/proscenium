@@ -20,7 +20,7 @@ from proscenium.binding.persistence import binding_state, cleanup_ledgers, id_pr
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.synchronization import application, datablock_removal
 
 from .published_state import datablocks, published_generation

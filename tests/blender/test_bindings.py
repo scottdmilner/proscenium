@@ -36,8 +36,8 @@ from proscenium.binding.persistence.id_property_records import (
 )
 from proscenium.binding.persistence.manifests import MANIFEST_KEY
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
-from proscenium.binding.source_access.binding_settings import new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
+from proscenium.binding.source_access.stages import SourceRevision
 from support import undo
 from support.blend import save_and_reopen
 from support.destinations import destination

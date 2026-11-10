@@ -18,7 +18,7 @@ from proscenium import synchronization
 from proscenium.api.bindings import ReentrantCallError
 from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import datablock_removal
 from support.destinations import destination

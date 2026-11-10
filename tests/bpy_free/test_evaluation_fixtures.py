@@ -9,7 +9,7 @@ from pxr import Gf, Kind, Tf, Usd, UsdGeom
 
 from fixtures import evaluation
 from fixtures.evaluation import LOAD, RENDER_PURPOSES, UNIT_SCALES, VIEWPORT_PURPOSES
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:

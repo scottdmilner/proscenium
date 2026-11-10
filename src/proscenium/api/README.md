@@ -77,7 +77,7 @@ from time import perf_counter
 
 from pxr import Usd
 
-from proscenium.binding.source_access import stages
+from proscenium.binding.source_access import binding_settings, stages
 
 started = perf_counter()
 stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
@@ -85,9 +85,9 @@ opened = perf_counter()
 binding_stages = stages.BindingStages()
 binding_stages.attach(stage)
 attached = perf_counter()
-evaluation = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
+evaluation = binding_stages.acquire_evaluation_stage(binding_settings.PayloadPolicy.LOAD_ALL)
 acquired = perf_counter()
-reused = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
+reused = binding_stages.acquire_evaluation_stage(binding_settings.PayloadPolicy.LOAD_ALL)
 finished = perf_counter()
 assert reused == evaluation
 print(

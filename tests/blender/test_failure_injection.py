@@ -17,7 +17,7 @@ import pytest
 from fixtures import source_access, transaction
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import pending_cleanup
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, preparation_resources
 from support.usd import binding_on_file

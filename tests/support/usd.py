@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path

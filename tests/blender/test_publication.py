@@ -19,8 +19,7 @@ from proscenium.binding.persistence.binding_state import GenerationMetadata, Las
 from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.binding_settings import new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
 from proscenium.core import _core
 from proscenium.synchronization import application, publication
 from support.blend import save_and_reopen

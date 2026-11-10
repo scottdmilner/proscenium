@@ -146,7 +146,7 @@ class BindingHandle:
     def set_settings(
         self,
         *,
-        payload_policy: stages.PayloadPolicy | None = None,
+        payload_policy: binding_settings.PayloadPolicy | None = None,
         coordinate_conversion: bool | None = None,
         viewport_purposes: Iterable[str] | None = None,
         render_purposes: Iterable[str] | None = None,
@@ -199,7 +199,7 @@ class Bindings:
         self,
         scene: bpy.types.Scene,
         *,
-        payload_policy: stages.PayloadPolicy = stages.PayloadPolicy.LOAD_ALL,
+        payload_policy: binding_settings.PayloadPolicy = binding_settings.PayloadPolicy.LOAD_ALL,
         name: str = "USD Display",
     ) -> BindingHandle:
         """Create an unattached binding on scene with a new destination named name."""
@@ -255,7 +255,7 @@ class Bindings:
         self,
         binding_id: binding_ids.BindingId,
         *,
-        payload_policy: stages.PayloadPolicy | None = None,
+        payload_policy: binding_settings.PayloadPolicy | None = None,
         coordinate_conversion: bool | None = None,
         viewport_purposes: Iterable[str] | None = None,
         render_purposes: Iterable[str] | None = None,

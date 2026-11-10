@@ -15,7 +15,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
 from proscenium.binding.source_access import source_entity_ids
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 from support.usd import open_stage_without_cache
 

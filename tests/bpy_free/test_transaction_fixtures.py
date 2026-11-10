@@ -9,7 +9,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support.usd import open_stage_without_cache
 
 LOAD = {PayloadPolicy.LOAD_ALL: Usd.Stage.LoadAll, PayloadPolicy.LOAD_NONE: Usd.Stage.LoadNone}

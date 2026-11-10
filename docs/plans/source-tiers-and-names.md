@@ -52,11 +52,11 @@ src/proscenium/
     results.py                   results and diagnostics
     source_access/
       __init__.py                exports the source-access modules
-      stages.py                  BindingStages, PayloadPolicy, SourceUnavailableError
+      stages.py                  BindingStages, SourceUnavailableError
       stage_registry.py          StageRegistry
       binding_ids.py             BindingId
       canonical_candidate.py     the canonical-candidate rule
-      binding_settings.py        RequestedSettings
+      binding_settings.py        RequestedSettings, PayloadPolicy
       source_entity_ids.py       source-entity identifier encoding and validation
   synchronization/
     __init__.py                  transaction, time_code_caching, cleanup_retry

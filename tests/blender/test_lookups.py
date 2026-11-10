@@ -19,7 +19,7 @@ from proscenium.binding.persistence.id_property_records import LoadedRecord, Ref
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen

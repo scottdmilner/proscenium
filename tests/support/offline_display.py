@@ -14,8 +14,8 @@ from proscenium.binding.persistence import binding_state
 from proscenium.binding.persistence.binding_state import GenerationMetadata
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
 from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
+from proscenium.binding.source_access.stages import SourceRevision
 from support.manifests import key
 
 if TYPE_CHECKING:

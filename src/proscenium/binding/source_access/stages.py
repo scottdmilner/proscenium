@@ -5,10 +5,11 @@ from __future__ import annotations
 import itertools
 import uuid
 from contextlib import contextmanager
-from enum import StrEnum
 from typing import TYPE_CHECKING, NewType
 
 from pxr import Sdf, Tf, Usd
+
+from . import binding_settings
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator
@@ -19,22 +20,6 @@ SourceRevision = NewType("SourceRevision", str)
 
 _PROCESS = uuid.uuid4().hex
 _revision_numbers = itertools.count(1)
-
-
-class PayloadPolicy(StrEnum):
-    """A binding's payload policy: every payload loaded, or none (source-access.md#bindings-and-source-access).
-
-    The one type for it, from the synchronization API to the binding's configuration, which stores
-    its string value; USD's own Usd.Stage.InitialLoadSet appears only where a stage is opened.
-    """
-
-    LOAD_ALL = "load_all"
-    LOAD_NONE = "load_none"
-
-    @property
-    def load_set(self) -> Usd.Stage.InitialLoadSet:
-        """The initial load set to open a stage with."""
-        return Usd.Stage.LoadAll if self is PayloadPolicy.LOAD_ALL else Usd.Stage.LoadNone
 
 
 class SourceUnavailableError(Exception):
@@ -84,7 +69,8 @@ class BindingStages:
 
     _source_stage: Usd.Stage | None
     _evaluation_stage: Usd.Stage | None
-    _payload_policy: PayloadPolicy | None  # the evaluation stage's: opened under it, or loaded or unloaded to it
+    # The evaluation stage's policy: opened under it, or loaded or unloaded to it.
+    _payload_policy: binding_settings.PayloadPolicy | None
     _revisions: _SourceRevisions
     # Advances the revision on the evaluation stage's ObjectsChanged; it holds the revisions, not self, so it keeps
     # nothing else alive, and is revoked when dropped.
@@ -159,7 +145,7 @@ class BindingStages:
         self._source_stage = None
         self.drop_evaluation_stage()
 
-    def acquire_evaluation_stage(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+    def acquire_evaluation_stage(self, payload_policy: binding_settings.PayloadPolicy) -> Usd.Stage:
         """Acquire the evaluation stage, matching source settings and applying payload_policy.
 
         Raises SourceUnavailableError.
@@ -167,14 +153,14 @@ class BindingStages:
         stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if self._payload_policy != payload_policy:
             # A reused stage: never reopened, so the session layer's opinions stay.
-            if payload_policy is PayloadPolicy.LOAD_ALL:
+            if payload_policy is binding_settings.PayloadPolicy.LOAD_ALL:
                 stage.Load()
             else:
                 stage.Unload()
             self._payload_policy = payload_policy
         return stage
 
-    def reload(self, payload_policy: PayloadPolicy, layers: Iterable[str] | None = None) -> None:
+    def reload(self, payload_policy: binding_settings.PayloadPolicy, layers: Iterable[str] | None = None) -> None:
         """Reread contributing layers from disk, discarding the unsaved edits of dirty ones.
 
         The contributing layers are the evaluation stage's under the payload policy it has, which a
@@ -198,7 +184,7 @@ class BindingStages:
             Sdf.Layer.ReloadLayers(pending)
             reloaded |= pending
 
-    def _ensure_evaluation_stage_matches_source(self, payload_policy: PayloadPolicy) -> Usd.Stage:
+    def _ensure_evaluation_stage_matches_source(self, payload_policy: binding_settings.PayloadPolicy) -> Usd.Stage:
         """Open or reuse the evaluation stage and match the source's mask, muting, and interpolation."""
         attached = self._source_stage
         if attached is None:

@@ -20,7 +20,7 @@ from proscenium.binding import runtime
 from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 from proscenium.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen

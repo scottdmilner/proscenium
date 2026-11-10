@@ -18,7 +18,8 @@ from pxr import Sdf, Tf, Usd
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import caller_settings, read_values, rewrite_on_disk
-from proscenium.binding.source_access.stages import PayloadPolicy, dirty_layers
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium.binding.source_access.stages import dirty_layers
 from support.usd import open_stage_without_cache
 
 from .attached_binding_stages import binding

@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf, Sdf, Usd, Vt
 
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support.time_codes import TimeVariation
 from support.usd import open_stage_without_cache
 
