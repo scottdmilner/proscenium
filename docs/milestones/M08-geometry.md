@@ -1,6 +1,6 @@
 # M8 — Validated mesh and primvar translation
 
-**Implements:** [Geometry and Primvars](../spec/support/geometry.md), time-varying topology in [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), and correspondence through batching in [Source Inspection and Interaction](../spec/interaction.md#source-inspection-and-interaction).
+**Implements:** [Geometry and Primvars](../spec/support/geometry.md), time-varying topology in [Transforms and Time Codes](../spec/support/transforms.md#transforms-and-time-codes), batches and correspondence through them in [Source Inspection and Interaction](../spec/interaction.md#source-inspection-and-interaction), and the batch and shared-datablock identities in [Representation Roles and Resource Identities](../spec/lifecycle.md#representation-roles-and-resource-identities).
 
 **Depends on:** M6 (snapshot and planning), M7 (application layer).
 
@@ -13,6 +13,12 @@
   - The snapshot copies only the schemas planning reads (`PlannedSchemas()` in `snapshot.cpp`), so M8 adds mesh topology and primvars to it. On ALab, the bridge's capture with them took 0.46 s against M6's 0.08 s, and its plan held 904 MB against M6's 6 MB.
   - Batch groups are keyed by the geometry description, provisional until M8's content key. On ALab they held up to 898 copies, where M4 found groups of up to 1,282 leaves of one prototype, which a key per Hydra mesh prim may split, not yet checked; ALab's 3,945 meshes held 3,369 distinct contents in M1b.
 - Application: mesh data, attributes, and modifiers created from the plan.
+- Batches (with the user, 2026-11-10, from M7, which draws every copy as objects), from the bridge's `batched_display.py`, `batched_display_updates.py`, and `batched_display_selection.py` ([M4 plan](../plans/M04-prototypes.md), D3, D4, D8, D14, E5):
+  - `Plan.batch_groups(minimum)` groups the copies a batch shows. The plan's resources stay an object per copy, and M8 makes batch partitions from the groups: carriers, a points mesh, and a prototype, identified by the content their copies share (ROLE-04), with an object per selection state the batch's instances hold (D14).
+  - A batch's and a shared datablock's identities aren't persisted, so after reopening a synchronization may replace their published resources (ROLE-06).
+  - Incremental refresh on M7's framework: a batch updates as a unit, keeping its carriers and prototype and rebuilding its points (D4, D8); a copy moving between a batch and an object of its own is a repartitioning case M8 adds to the change matrix.
+  - Cached time codes: a carrier caches its points' transforms, destinations, and primvars, so batched copies may appear, vanish, and move (E5).
+  - Correspondence through batching: a pick on a batch's prototype resolves by the instance whose world transform the pick's matrix is (D3's `pick_element`), and highlighting goes through the carriers per selection state.
 - Geometry refreshes incrementally on M7's framework, from the bridge's reuse ([M4 plan](../plans/M04-prototypes.md), D9, E4):
   - Mesh build reuse (D9): a mesh prim's build is reused when its captured container and its subsets' are the ones it was built from, so Hydra's invalidation decides what is rebuilt. On ALab with its point instancers a batched transform update took 0.250 s against 0.493 s. What it leaves on every update is reading every prim's record and planning every object; reusing those needs a prim table that shares records with the previous plan's and dependency tracking for what an object takes from other prims (its frame, instance context, and materials).
   - Topology reuse (E4): a mesh rebuilt with the previous build's topology and point count takes its validation, left-out faces, corner and face buffers, equal material slots, and each attribute whose primvar matches in name, interpolation, role, values, and indices. Hydra hands an unchanged topology over as a new array, so it is compared by content. On ALab's frames it cut mesh building from 0.070–0.091 s to 0.019–0.022 s, and the frames' plans' heap from 6,673 MB to 4,247 MB.
@@ -41,6 +47,7 @@
 - Sharing assertions against M4's criteria: equivalent geometry and attribute requirements share resources; differing data remains correct where distinct resources are required.
 - The M5 failure-injection tests, rerun with geometry writes.
 - Incremental refresh of geometry changes: points, topology, normals, and primvars, each equal to a clean rebuild, rewriting only the affected meshes.
+- Batches: the interaction checks (`support/interaction_checks.py`) on a batched display; incremental refresh of batched copies, including a copy leaving and joining a batch, each equal to a clean rebuild; cached batches; and a synchronization after reopening replacing batches and shared meshes (ROLE-06).
 - M6's tests of the provisional mesh description, updated for the mesh content that replaces it ([M6 plan](../plans/M06-evaluation.md), C1, C8, D4):
   - `bpy_free/test_core_instancing.py` checks that copies share a description only among copies of one USD prototype mesh, its source their least and its content key that source's path. M8 shares meshes by content, as the bridge does, so copies of equal meshes share too.
   - `bpy_free/test_core_plan.py`, `test_core_placeholders.py`, `plan_checks.py`, and the plan contents `test_core_snapshot.py` and `plan_serialization.py` compare read a mesh's copy as a description with an extent and a content key, and its bounds as that extent. They read the mesh content M8 plans.

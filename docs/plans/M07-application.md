@@ -65,6 +65,10 @@ If a commit grows past one feature, it splits, and this list is updated in the s
    - **An edit-sequence fixture** (a new ID, such as `F-EDIT-SEQUENCE`) for the change matrix: one step per case, repeated edits of one prim, an edit inherited by descendants, a prim moved under another parent, a variant switch, a payload unloaded and reloaded, `instanceable` toggled, and a shear introduced and removed. Rows: DISC-01, DISC-02, AFF-01, TINC-01, TXN-12, PH2-02, PH2-03, and the change-matrix rows.
 8. **Oracles** for every row M7 delivers, and M7 joins `started`.
 
+#### Phase A log
+
+- **A2, batches moved to M8** (settled 1). ROLE-04 and ROLE-06 are M8's. The M7 milestone drops its batch-groups bullet, `batched_display_updates.py` from the bridge sources it ports, and the batch's object per selection state from its cached variations, and its scope limits say every drawn copy is drawn as objects. The M8 milestone's Implements line gains batches and the batch and shared-datablock identities; its deliverables gain batches from M4's D3, D4, D8, D14, and E5 (partitions from `Plan.batch_groups`, carriers per selection state, updates as a unit, cached carriers, picks through `pick_element`), and its tests gain batched interaction, incremental, cached, and reopening checks. DECISIONS.md "Display representation" and "Representation roles and resource identities" name M8 for what they left to M7 about batches.
+
 ### Phase B — The application layer
 
 1. **The real `prepare`,** replacing the stub's, partition by partition: a drawn copy's object, its bounds mesh, its shear parent, and later its action, made and tracked together (TXN-08), so Phase C can prepare only the partitions that change. It reads the copy table's buffers, never the tuples per copy, and keeps no borrowed buffer past its synchronization (SNAP-13). Names and hide flags follow the stub ("Managed object names"; hide flags set together). The layer imports no `pxr`, which a bpy-free import check enforces (APP-08). Suggested: split `synchronization/application.py` by responsibility (preparing copies, keying time codes) as it grows.
