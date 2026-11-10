@@ -64,8 +64,8 @@ struct MaterialRecord {
 using PurposeVisibility = std::vector<std::pair<pxr::TfToken, pxr::TfToken>>;
 
 struct PrimRecord {
-    pxr::SdfPath path;
-    pxr::TfToken type;
+    pxr::SdfPath hydraPath;
+    pxr::TfToken hydraPrimType;
     // The USD type before filters converted it: __usdPrimInfo, else the source-info filter's, which
     // also covers prims Hydra doesn't image.
     pxr::TfToken usdTypeName;
@@ -77,7 +77,7 @@ struct PrimRecord {
     pxr::TfTokenVector bindingsWithoutApi;  // source-info filter: material:binding relationships without the API
     bool resetsXformStack = false;          // source-info filter: USD's resetXformStack, which flattening hides
     pxr::SdfPath originPath;                // primOrigin/scenePath: prototype-relative inside prototypes
-    std::optional<pxr::GfMatrix4d> matrix;
+    std::optional<pxr::GfMatrix4d> flattenedWorldMatrix;
     bool visible = true;
     pxr::TfToken purpose;
     PurposeVisibility purposeVisibility;    // authored guide/proxy/render visibility; Hydra doesn't image it
@@ -114,7 +114,7 @@ bool FlattenedConstant(const PrimvarRecord &primvar, pxr::VtValue &value, std::s
 // Every prim of a scene index, depth-first with parents before children, and indexed by path.
 struct PrimTable {
     std::vector<PrimRecord> prims;
-    std::unordered_map<pxr::SdfPath, size_t, pxr::SdfPath::Hash> index;
+    std::unordered_map<pxr::SdfPath, size_t, pxr::SdfPath::Hash> primIndexByPath;
 
     [[nodiscard]] const PrimRecord *Find(const pxr::SdfPath &path) const;  // null when the table has no such prim
 };

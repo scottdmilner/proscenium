@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 
-from _common import Probe
+from runtime_probe_support import Probe
 
 if TYPE_CHECKING:
     from collections.abc import Callable

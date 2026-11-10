@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from _common import Probe
+from runtime_probe_support import Probe
 
 N = 1_000_000
 PROBE_INDEX = 123_457

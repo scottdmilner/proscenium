@@ -2,7 +2,7 @@
 
 Each unit imports only from itself and from units in lower tiers, and the lowest tier's units import only themselves.
 Between units, a public module (a package unit's exported module, or a module unit) is imported from its package, or
-names are imported from it.
+names are imported from it; a package unit that exports names is imported from its parent, or those names from it.
 
 Imports are read from each module's source with ast, without importing it, so type-only imports count too.
 """
@@ -80,6 +80,7 @@ class ModuleImport(NamedTuple):
     name: str
     via: str  # the package it was imported from, for "from package import module"; else empty, as for "from module
     # import names"
+    imported_name: str = ""  # the name taken from the module, for "from module import name"; else empty
 
 
 def _imports_in(tree: ast.Module, package: list[str]) -> list[ModuleImport]:
@@ -93,7 +94,10 @@ def _imports_in(tree: ast.Module, package: list[str]) -> list[ModuleImport]:
             # "from package import x" imports the module x when there is one, and else a name from package
             for alias in node.names:
                 name = _submodule(target, alias.name)
-                found.append(ModuleImport(node.lineno, name, target if name != target else ""))
+                if name != target:
+                    found.append(ModuleImport(node.lineno, name, target))
+                else:
+                    found.append(ModuleImport(node.lineno, name, "", alias.name))
     return [i for i in found if i.name.split(".")[0] == "proscenium"]
 
 
@@ -109,7 +113,7 @@ def _wrong_way(path: Path, unit: str) -> list[str]:
     """Of path's imports, read as unit's, those of units unit may not import."""
     return [
         f"{path.relative_to(PACKAGE)}:{line} imports {name}"
-        for line, name, _ in _imported(path)
+        for line, name, *_ in _imported(path)
         if (parts := name.split(".")[1:]) and _unit(parts) not in _allowed(unit)
     ]
 
@@ -136,31 +140,40 @@ def _exports(package: str) -> frozenset[str]:
     return frozenset()
 
 
-def _in_form(name: str, via: str) -> bool:
-    """Whether an import of another unit's module name, from via, reaches it through a public module.
+@functools.cache
+def _exported_names(package: str) -> frozenset[str]:
+    """The names other than modules a package of proscenium exports."""
+    return frozenset(n for n in _exports(package) if _submodule(package, n) == package)
+
+
+def _in_form(imported: ModuleImport) -> bool:
+    """Whether an import of another unit's module reaches it through a public module or a package's exported names.
 
     A package unit's public modules are those its package exports, and a module unit is public itself. One is imported
-    from its package, or names are imported from it.
+    from its package, or names are imported from it. A package unit that exports names is imported from its parent, or
+    those names are imported from it.
     """
+    name, via = imported.name, imported.via
     unit = f"proscenium.{_unit(name.split('.')[1:])}"
     package, _, module = name.rpartition(".")
-    if PACKAGE.parent.joinpath(*unit.split(".")).is_dir():
-        public = package == unit and module in _exports(unit)
-    else:
-        public = name == unit
-    return public and via in (package, "")
+    if not PACKAGE.parent.joinpath(*unit.split(".")).is_dir():
+        return name == unit and via in (package, "")
+    if name == unit:
+        names = _exported_names(unit)
+        return imported.imported_name in names if imported.imported_name else bool(names) and via in (package, "")
+    return package == unit and module in _exports(unit) and via in (package, "")
 
 
 def _out_of_form(path: Path, imports: list[ModuleImport]) -> list[str]:
     """Of path's imports of other units, those that don't take the one form."""
     own = _own_unit(path)
     return [
-        f"{path.relative_to(PACKAGE)}:{line} imports {name}"
-        for line, name, via in imports
-        if (parts := name.split(".")[1:])
+        f"{path.relative_to(PACKAGE)}:{imported.line} imports {imported.name}"
+        for imported in imports
+        if (parts := imported.name.split(".")[1:])
         and (unit := _unit(parts)) in TIER_OF
         and unit != own
-        and not _in_form(name, via)
+        and not _in_form(imported)
     ]
 
 
@@ -170,21 +183,26 @@ def test_units_import_each_other_in_one_form() -> None:
 
 
 def test_an_import_out_of_form_is_found() -> None:
-    # Guards the test above, from a runtime module: a public module from its package, and names from a public module,
-    # take the form; a name from a package, and an unexported module or a name from one, don't.
+    # Guards the test above, from a runtime module: a public module from its package, names from a public module, and a
+    # package that exports names, or those names from it, take the form; a name a package doesn't export, a package
+    # that exports only modules, and an unexported module or a name from one, don't.
     module = PACKAGE / "binding" / "runtime" / "copy_detection.py"
     runtime = ["proscenium", "binding", "runtime"]
 
     def out_of_form(code: str) -> int:
         return len(_out_of_form(module, _imports_in(ast.parse(code), runtime)))
 
-    assert out_of_form("from ..persistence import manifests, records") == 0
+    assert out_of_form("from ..persistence import manifests, id_property_records") == 0
     assert out_of_form("from .. import results") == 0
     assert out_of_form("from ...core import _core") == 0
     assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
     assert out_of_form("from ..persistence.manifests import Manifest, RepresentationRole") == 0
     assert out_of_form("from ..results import Diagnostic, Result") == 0
+    assert out_of_form("from ... import synchronization") == 0
+    assert out_of_form("from ...synchronization import synchronize, cache") == 0
     assert out_of_form("from ..persistence import Manifest") == 1
+    assert out_of_form("from .. import persistence") == 1
+    assert out_of_form("from ...synchronization import prepare") == 1
     assert out_of_form("from ...synchronization import application") == 1
     assert out_of_form("from ...synchronization.application import prepare") == 1
 
@@ -200,7 +218,7 @@ def test_a_wrong_way_import_is_found() -> None:
 def test_an_absolute_import_of_a_unit_is_found() -> None:
     # Guards the tests above: "from proscenium.binding import x" names the unit it imports.
     imports = _imports_in(ast.parse("from proscenium.binding import runtime"), ["proscenium", "core"])
-    assert [name for _, name, _ in imports] == ["proscenium.binding.runtime"]
+    assert [i.name for i in imports] == ["proscenium.binding.runtime"]
     assert "binding.runtime" not in _allowed("core")
 
 
@@ -250,5 +268,5 @@ def test_a_blender_import_is_found() -> None:
     # bundled packages, and the standard library are allowed. The bpy-free code is the units and their packages.
     code = "import os\nimport pxr.Usd\ndef f() -> None:\n    import bpy\n    from mathutils import Vector\n"
     assert [name for _, name in _blender_imports_in(ast.parse(code))] == ["bpy", "mathutils"]
-    assert _bpy_free(PACKAGE / "binding" / "source_access" / "identifiers.py")
-    assert not _bpy_free(PACKAGE / "binding" / "persistence" / "records.py")
+    assert _bpy_free(PACKAGE / "binding" / "source_access" / "source_entity_ids.py")
+    assert not _bpy_free(PACKAGE / "binding" / "persistence" / "id_property_records.py")

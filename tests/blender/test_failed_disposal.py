@@ -14,15 +14,15 @@ import pytest
 
 from fixtures import transaction
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_state, configs, records
-from proscenium.binding.persistence.ledgers import LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records
+from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry, OriginatingOperation
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from support.blend import save_and_reopen
 from support.destinations import destination
 
-from .published import datablocks, published_generation
+from .published_state import datablocks, published_generation
 from .transaction_failures import failing_preparation
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ def _destination() -> bpy.types.Collection:
 
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
@@ -61,7 +61,7 @@ def _check_failed(handle: BindingHandle, result: Result, scene: PreparationClean
         *[DiagnosticCode.DISPOSAL_FAILED] * len(scene.failed_disposals),
     ]
     attempt = binding_state.read_last_attempt(destination(handle))
-    assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
+    assert isinstance(attempt, LoadedRecord) and attempt.record.diagnostics == result.diagnostics
 
 
 def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.types.ID]) -> None:
@@ -71,10 +71,10 @@ def _check_leftovers(handle: BindingHandle, result: Result, leftovers: set[bpy.t
     for ledger_key, entry in ledger.items():
         assert (entry.binding_id, entry.operation) == (handle.binding_id, OriginatingOperation.SYNCHRONIZE)
         assert entry.diagnostic in result.diagnostics
-        assert (entry.diagnostic.resource, entry.diagnostic.role) == (ledger_key, entry.role)
+        assert (entry.diagnostic.pending_resource_key, entry.diagnostic.role) == (ledger_key, entry.role)
         assert entry.datablock is not None and ownership.of(entry.datablock).claims == ()
     assert all(not d.users_collection for d in leftovers if isinstance(d, bpy.types.Object))  # in no scene
-    assert set(result.cleanup_status) >= {e.diagnostic for e in ledger.values()}
+    assert set(result.pending_cleanup_diagnostics) >= {e.diagnostic for e in ledger.values()}
 
 
 def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: Bindings, tmp_path: Path) -> None:
@@ -89,7 +89,7 @@ def test_a_failed_first_synchronization_leaves_only_tracked_leftovers(bindings: 
         assert datablocks() - before == {(type(d).__name__, d.session_uid) for d in leftovers}
         assert {e.datablock for e in _ledger().values()} == leftovers
         assert _published(handle) == nothing
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(_ledger().items()))
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(_ledger().items()))
 
 
 def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bindings, tmp_path: Path) -> None:
@@ -100,7 +100,7 @@ def test_a_failed_replacement_leaves_the_published_generation_alone(bindings: Bi
         assert handle.synchronize(0).state is ResultState.SUCCESS
         published = _published(handle)
         manifest = ownership.manifest(handle.binding_id)
-        assert isinstance(manifest, Loaded)
+        assert isinstance(manifest, LoadedRecord)
         named = {e.datablock for e in manifest.record.entries.values()}
         result, leftovers = failing_preparation(handle, scene, 10)
         _check_failed(handle, result, scene)
@@ -125,8 +125,8 @@ def test_repeated_failures_add_only_tracked_leftovers_each_reported_once(binding
         assert {k: after[k] for k in before} == before
         assert len(after) == len(before) + len(leftovers)
         assert set(again.diagnostics[1:]).isdisjoint(earlier.diagnostics)
-        assert len(again.cleanup_status) == len(after)
-        assert set(again.cleanup_status) == {e.diagnostic for e in after.values()}
+        assert len(again.pending_cleanup_diagnostics) == len(after)
+        assert set(again.pending_cleanup_diagnostics) == {e.diagnostic for e in after.values()}
 
 
 def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_path: Path) -> None:
@@ -138,7 +138,7 @@ def test_a_later_success_keeps_the_earlier_pending_work(bindings: Bindings, tmp_
         before = _ledger()
         result = handle.synchronize(0)
         assert (result.state, result.diagnostics) == (ResultState.SUCCESS, ())
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(before.items()))
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(before.items()))
         assert _ledger() == before
 
 
@@ -176,8 +176,8 @@ def test_removing_the_destination_leaves_the_pending_cleanup(bindings: Bindings,
         for check in range(2):
             if check:
                 save_and_reopen(tmp_path / "removed.blend")
-            assert runtime.binding_configs.find_binding(handle.binding_id) is None
+            assert runtime.binding_operations.find_binding(handle.binding_id) is None
             assert {k: (e.binding_id, e.role, e.datablock and e.datablock.name) for k, e in _ledger().items()} == named
-            [text] = configs.index_texts()
-            index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-            assert isinstance(index, Loaded) and index.record.destinations == {handle.binding_id: None}
+            [text] = binding_records.index_texts()
+            index = id_property_records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+            assert isinstance(index, LoadedRecord) and index.record.destinations == {handle.binding_id: None}

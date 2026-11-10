@@ -1,6 +1,6 @@
 """Isolated body: support/interaction_checks.py's checks on M4's display representations.
 
-The object baseline (apply.py) and Phase D's batched display (batch.py). Runs in a fresh process
+The object baseline (object_display.py) and Phase D's batched display (batched_display.py). Runs in a fresh process
 (isolated/harness.py); see tests/isolated/test_interaction.py. The body builds the interaction fixture itself, so
 its stage is the live stage the functions read.
 """
@@ -16,7 +16,7 @@ import bpy
 from pxr import Usd
 
 from fixtures import appearance, interaction
-from support.interaction_checks import CHECKS, Entity, NotApplicableError, Resolved, SourceSelection
+from support.interaction_checks import CHECKS, NotApplicableError, ResolvedPick, SourceEntity, SourceSelection
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,10 +30,10 @@ FIXTURES = {
 
 
 class BaselineDisplay:
-    """The baseline as a support.interaction_checks.Display: one Blender object per drawn copy and destination.
+    """The object baseline as an InteractionTestDisplay, one object per drawn copy and destination.
 
     A pick supplies the object, which names its display element (`proscenium_element`), and display targets are
-    elements. What an object shows is the source apply.py recorded on it when it is in the viewport, which B1
+    elements. What an object shows is the source object_display.py recorded on it when it is in the viewport, which B1
     checks against USD.
     """
 
@@ -45,8 +45,8 @@ class BaselineDisplay:
     def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         sys.path[:0] = [str(BRIDGE), module_dir]
         self._native = importlib.import_module("_hydra_bridge")
-        self._apply = importlib.import_module("apply")
-        self._selection = importlib.import_module("selection")
+        self._apply = importlib.import_module("object_display")
+        self._selection = importlib.import_module("object_display_selection")
         self.stage = stage
         self.point_instancers = point_instancers
         self._bridge = self._native.Bridge(stage)
@@ -66,7 +66,7 @@ class BaselineDisplay:
         assert not errors, errors
         self._objects = self._apply.apply(plan, self.collection).objects
         self._records = plan.objects
-        self._interaction = self._native.Interaction(self.stage, plan)
+        self._interaction = self._native.SourceSelectionResolver(self.stage, plan)
 
     def managed_objects(self) -> list[bpy.types.Object]:
         return list(self._selection.managed(self.collection).values())
@@ -90,12 +90,14 @@ class BaselineDisplay:
         objects = self._selection.managed(self.collection)
         return [self.coverage(objects[element]) for element in display_targets]
 
-    def resolve_pick(self, pick: Any) -> Resolved:
+    def resolve_pick(self, pick: Any) -> ResolvedPick:
         resolved = self._interaction.resolve_pick(pick)
-        return Resolved(Entity(resolved["source"], tuple(resolved["instance_context"])), resolved["floor"])
+        return ResolvedPick(
+            SourceEntity(resolved["source_path"], tuple(resolved["instance_context"])), resolved["floor_path"]
+        )
 
-    def select_targets(self, entities: Sequence[Entity], level: str | None) -> list[str]:
-        return self._interaction.select_targets([(e.source, e.instance_context) for e in entities], level)
+    def select_targets(self, entities: Sequence[SourceEntity], level: str | None) -> list[str]:
+        return self._interaction.select_targets([(e.source_path, e.instance_context) for e in entities], level)
 
     def displayed(self, paths: Sequence[str]) -> list[bool]:
         return self._interaction.displayed(paths)
@@ -104,8 +106,10 @@ class BaselineDisplay:
         return self._interaction.highlight_targets(targets)
 
     def selection_from_blender(self, blender_selection: Any, level: str | None) -> SourceSelection:
-        found = self._interaction.selection_from_blender(blender_selection.selected, blender_selection.active, level)
-        return SourceSelection(found["targets"], found["active"])
+        found = self._interaction.selection_from_blender(
+            blender_selection.selected_element_indices, blender_selection.active_element_index, level
+        )
+        return SourceSelection(found["target_paths"], found["active_target_path"])
 
     def apply_selection(self, display_targets: Any, active: Any) -> None:
         self._selection.apply_selection(self.view_layer, self.collection, set(display_targets), set(active))
@@ -118,17 +122,18 @@ class BaselineDisplay:
 
 
 class BatchedDisplay(BaselineDisplay):
-    """Phase D's batched display (batch.py) as a Display: carriers of instances beside the objects kept as objects.
+    """The batched display as an InteractionTestDisplay, with instance carriers and individual objects.
 
     A pick supplies what a ray cast returns, the hit object and its world matrix: for an instance, its prototype
     and the instance's matrix as Blender evaluates it. What a carrier shows is the elements Blender evaluates it
-    to instance, so the mirroring checks see each carrier's coverage as drawn, not as batch_selection.py set it.
+    to instance, so the mirroring checks see each carrier's coverage as drawn, not as batched_display_selection.py
+    set it.
     """
 
     def __init__(self, module_dir: str, stage: Usd.Stage, point_instancers: bool = True) -> None:
         super().__init__(module_dir, stage, point_instancers)
-        self._batch = importlib.import_module("batch")
-        self._batched = importlib.import_module("batch_selection")
+        self._batch = importlib.import_module("batched_display")
+        self._batched = importlib.import_module("batched_display_selection")
         self._display: Any = None
 
     @override
@@ -141,7 +146,7 @@ class BatchedDisplay(BaselineDisplay):
         assert not errors, errors
         self._display = self._batch.apply_batched(plan, self.collection)
         self._records = plan.objects
-        self._interaction = self._native.Interaction(self.stage, plan)
+        self._interaction = self._native.SourceSelectionResolver(self.stage, plan)
 
     @override
     def managed_objects(self) -> list[bpy.types.Object]:
@@ -192,7 +197,7 @@ class BatchedDisplay(BaselineDisplay):
         return [frozenset({records[e]["source"]}) if records[e]["viewport"] else frozenset() for e in display_targets]
 
     @override
-    def resolve_pick(self, pick: Any) -> Resolved:
+    def resolve_pick(self, pick: Any) -> ResolvedPick:
         element = self._batched.pick_element(self._display, *pick)
         assert element is not None, pick
         return super().resolve_pick(element)
@@ -254,10 +259,10 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
                 for element, pick in zip(display.elements(obj), display.picks(obj), strict=True):
                     resolved = display.resolve_pick(pick)
                     entity = resolved.entity
-                    resolved_as = [entity.source, list(entity.instance_context)]
+                    resolved_as = [entity.source_path, list(entity.instance_context)]
                     picks.append(
                         {"element": element, "drawn": list(display.drawn(element))}
-                        | {"resolved": resolved_as, "floor": resolved.floor}
+                        | {"resolved": resolved_as, "floor": resolved.floor_path}
                     )
             shown = sorted(pick["element"] for pick in picks)
             targets, active = shown[::2], shown[:1]
@@ -269,7 +274,7 @@ def point_instancer_interaction(module_dir: str, dest: str, representation: str)
                 "picks": picks,
                 "targets": targets,
                 "selected": sorted(e for obj in selected for e in display.elements(obj)),
-                "read": {"selected": sorted(read.selected), "active": read.active},
+                "read": {"selected": sorted(read.selected_element_indices), "active": read.active_element_index},
             }
         finally:
             display.release()
@@ -323,13 +328,16 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             for (entity, level), target in scene.kind_targets.items():
                 if entity not in picks:
                     continue
-                session.level = level
+                session.model_kind = level
                 pick(entity, "SET")
-                if (session.targets, session.active) != ([target], target):
-                    found.append(f"{entity} at {level}: {session.targets}, active {session.active}, not {target}")
+                if (session.selected_source_paths, session.active_source_path) != ([target], target):
+                    found.append(
+                        f"{entity} at {level}: {session.selected_source_paths}, "
+                        f"active {session.active_source_path}, not {target}"
+                    )
                 if shown() != set(display.highlight_targets([target])):
                     found.append(f"{entity} at {level}: Blender shows {sorted(shown())}")
-            session.level = None
+            session.model_kind = None
             seat, back, top = "/World/Props/Chair/Geom/Seat", "/World/Props/Chair/Geom/Back", "/World/Table/Top"
             for source, mode, targets, active in (
                 (seat, "SET", [seat], seat),
@@ -342,9 +350,10 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
                 (None, "SET", [], None),
             ):
                 pick(source, mode)
-                if (session.targets, session.active) != (targets, active):
+                if (session.selected_source_paths, session.active_source_path) != (targets, active):
                     found.append(
-                        f"{mode} {source}: {session.targets}, active {session.active}, not {targets}, {active}"
+                        f"{mode} {source}: {session.selected_source_paths}, "
+                        f"active {session.active_source_path}, not {targets}, {active}"
                     )
             if shown():
                 found.append(f"cleared, Blender still shows {sorted(shown())}")
@@ -354,8 +363,8 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             if not display.collection.hide_select or shown():
                 found.append(f"unselectable: shows {sorted(shown())}")
             pick(back, "EXTEND")
-            if session.targets != [seat, back] or shown():
-                found.append(f"picked while unselectable: {session.targets}, shows {sorted(shown())}")
+            if session.selected_source_paths != [seat, back] or shown():
+                found.append(f"picked while unselectable: {session.selected_source_paths}, shows {sorted(shown())}")
             session.set_selectable(True)
             if display.collection.hide_select or shown() != set(display.highlight_targets([seat, back])):
                 found.append(f"selectable again: shows {sorted(shown())}")
@@ -372,11 +381,16 @@ def select_tool_session(module_dir: str, dest: str) -> list[str]:
             for obj in display.managed_objects():
                 obj.select_set(obj == kept, view_layer=display.view_layer)
             display.view_layer.objects.active = kept
-            session.level = "component"
+            session.model_kind = "component"
             expected = display.selection_from_blender(display.read_blender_selection(), "component")
             session.follow_blender()
-            if (session.targets, session.active) != (list(expected.targets), expected.active):
-                found.append(f"followed: {session.targets}, active {session.active}, not {expected}")
+            if (session.selected_source_paths, session.active_source_path) != (
+                list(expected.target_paths),
+                expected.active_target_path,
+            ):
+                found.append(
+                    f"followed: {session.selected_source_paths}, active {session.active_source_path}, not {expected}"
+                )
             return found
         finally:
             display.release()

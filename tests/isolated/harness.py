@@ -36,18 +36,18 @@ class RuntimeKind(StrEnum):
 @dataclass(frozen=True)
 class Runtime:
     kind: RuntimeKind
-    blender: str | None = None  # the executable; set exactly for RuntimeKind.BINARY
+    blender_executable: str | None = None  # the executable; set exactly for RuntimeKind.BINARY
 
     def __post_init__(self) -> None:
-        if (self.kind is RuntimeKind.BINARY) != (self.blender is not None):
+        if (self.kind is RuntimeKind.BINARY) != (self.blender_executable is not None):
             raise ValueError(f"the Blender executable is required for, and only for, the binary runtime: {self}")
 
     def command(self, *args: str) -> list[str]:
         """Command line that runs runner.py with `args`."""
-        if self.blender is None:
+        if self.blender_executable is None:
             return [sys.executable, str(RUNNER), *args]
         return [
-            self.blender,
+            self.blender_executable,
             "-b",
             "--factory-startup",
             "--python-exit-code",

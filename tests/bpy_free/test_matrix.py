@@ -112,7 +112,7 @@ def docs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 def test_repeated_headings_get_github_suffixes(docs: Path) -> None:
     (docs / "a.md").write_text("# T\n\n## Notes\n\n- one\n\n## Notes\n\n- two\n\n```\n## Notes\n```\n")
     assert matrix.anchors("a.md") == {"t", "notes", "notes-1"}
-    sections = {b.text: b.sections for b in matrix.blocks("a.md")}
+    sections = {b.text: b.section_anchors for b in matrix.blocks("a.md")}
     assert sections["one"] == ["t", "notes"]
     assert sections["two"] == ["t", "notes-1"]
 
@@ -121,7 +121,7 @@ def test_wrapped_list_item_is_one_block(docs: Path) -> None:
     (docs / "a.md").write_text(
         "# T\n\n- first line\n  wrapped on\n  and again\n- second\n\nparagraph\n  indented after\n"
     )
-    assert [(b.text, b.line) for b in matrix.blocks("a.md")] == [
+    assert [(b.text, b.line_number) for b in matrix.blocks("a.md")] == [
         ("first line wrapped on and again", 3),
         ("second", 6),
         ("paragraph indented after", 8),

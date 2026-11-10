@@ -16,7 +16,7 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import translation
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
@@ -43,21 +43,23 @@ def _synchronized(bindings: Bindings, scene: CachedTimeCodesScene) -> BindingHan
     return handle
 
 
-def _generation() -> binding_state.Generation:
+def _generation() -> binding_state.GenerationMetadata:
     generation = binding_state.read_generation(bpy.data.collections["Shot"])
-    assert isinstance(generation, records.Loaded)
+    assert isinstance(generation, id_property_records.LoadedRecord)
     return generation.record
 
 
 def _entries(handle: BindingHandle) -> dict[str, Any]:
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     return dict(manifest.record.entries)
 
 
 def _object(handle: BindingHandle, path: str) -> bpy.types.Object:
     [obj] = [
-        e.datablock for e in _entries(handle).values() if e.role is RepresentationRole.OBJECT and e.covers == (path,)
+        e.datablock
+        for e in _entries(handle).values()
+        if e.role is RepresentationRole.OBJECT and e.source_entity_paths == (path,)
     ]
     assert isinstance(obj, bpy.types.Object)
     return obj
@@ -79,10 +81,10 @@ def test_cached_time_codes_show_their_values_in_the_same_generation(bindings: Bi
         attempt = binding_state.read_last_attempt(bpy.data.collections["Shot"])
         result = handle.cache(scene.cached)
         assert result.state is ResultState.SUCCESS
-        assert result.time_codes == tuple(Usd.TimeCode(t) for t in scene.cached)
-        assert _generation() == binding_state.Generation(
+        assert result.attempted_time_codes == tuple(Usd.TimeCode(t) for t in scene.cached)
+        assert _generation() == binding_state.GenerationMetadata(
             before.binding_id,
-            before.settings,
+            before.applied_settings,
             before.unit_scale,
             before.time_code,
             before.source_revision,
@@ -110,11 +112,11 @@ def test_a_call_caches_only_the_time_codes_not_yet_cached(bindings: Bindings, tm
     with transaction.cached_time_codes(tmp_path) as scene:
         handle = _synchronized(bindings, scene)
         first, *rest = scene.cached
-        assert handle.cache([first]).time_codes == (Usd.TimeCode(first),)
+        assert handle.cache([first]).attempted_time_codes == (Usd.TimeCode(first),)
         again = bindings.cache(handle.binding_id, [scene.synchronized, first, *rest])
         assert again.state is ResultState.SUCCESS
-        assert again.time_codes == tuple(Usd.TimeCode(t) for t in rest)
-        assert handle.cache(scene.cached).time_codes == ()
+        assert again.attempted_time_codes == tuple(Usd.TimeCode(t) for t in rest)
+        assert handle.cache(scene.cached).attempted_time_codes == ()
         assert _generation().cached_time_codes == scene.cached
 
 
@@ -173,7 +175,7 @@ def test_caching_pushes_no_undo_step_and_undo_restores_what_was_cached(bindings:
 def pushing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Push undo steps as Blender with global undo on, outside background mode, would (test_undo.py)."""
     undo.require_global_undo()
-    monkeypatch.setattr(api, "_pushes_undo", lambda: True)
+    monkeypatch.setattr(api, "_undo_steps_enabled", lambda: True)
 
 
 def _unchanged_by_cache(handle: BindingHandle, call: Any) -> Any:
@@ -222,7 +224,7 @@ def test_without_a_source_change_the_same_call_caches(bindings: Bindings, tmp_pa
         assert handle.attach(scene.caller).state is ResultState.SUCCESS
         assert handle.synchronize(0).state is ResultState.SUCCESS
         assert handle.cache([5]).state is ResultState.SUCCESS
-        assert handle.cache([5, 10]).time_codes == (Usd.TimeCode(10),)
+        assert handle.cache([5, 10]).attempted_time_codes == (Usd.TimeCode(10),)
 
 
 def test_a_binding_with_nothing_published_needs_a_synchronization(bindings: Bindings, tmp_path: Path) -> None:
@@ -241,7 +243,7 @@ def test_a_generation_at_the_default_time_code_has_nothing_to_cache(bindings: Bi
         assert handle.attach(scene.caller).state is ResultState.SUCCESS
         assert handle.synchronize(Usd.TimeCode.Default()).state is ResultState.SUCCESS
         result = _unchanged_by_cache(handle, lambda: handle.cache([*scene.cached, *scene.failing]))
-        assert (result.state, result.time_codes) == (ResultState.SUCCESS, ())
+        assert (result.state, result.attempted_time_codes) == (ResultState.SUCCESS, ())
         assert _generation().cached_time_codes == ()
 
 

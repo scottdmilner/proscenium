@@ -40,17 +40,17 @@ HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle
 // The paths the notices since the previous capture name: exactly, or with all their descendants.
 class Affected {
 public:
-    explicit Affected(const std::vector<Event> &events) {
-        for (const Event &event : events) {
+    explicit Affected(const std::vector<SceneIndexEvent> &events) {
+        for (const SceneIndexEvent &event : events) {
             switch (event.kind) {
-            case EventKind::Added:
-            case EventKind::Dirtied:
+            case SceneIndexEventKind::Added:
+            case SceneIndexEventKind::Dirtied:
                 exact_.insert(event.path);
                 break;
-            case EventKind::Removed:
+            case SceneIndexEventKind::Removed:
                 subtrees_.insert(event.path);
                 break;
-            case EventKind::Renamed:
+            case SceneIndexEventKind::Renamed:
                 subtrees_.insert(event.oldPath);
                 subtrees_.insert(event.path);
                 break;
@@ -99,7 +99,7 @@ private:
 SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *previous, Diagnostics carried,
                     bool timeDependencies) {
     auto snapshot = std::make_shared<Snapshot>();
-    snapshot->time = time;
+    snapshot->timeCode = time;
     WarningCollector warnings;
     SdfPathVector paths;
     Diagnostics graphDiagnostics = std::move(carried);
@@ -111,7 +111,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
         // Depth-first, parents before children, with an explicit stack rather than recursion.
         for (const SdfPath &path : HdSceneIndexPrimView(graph.Terminal(), SdfPath::AbsoluteRootPath()))
             paths.push_back(path);
-        // WORKAROUND for OpenUSD #3690 (copy_bindings.h); before the read pass, which it must not overlap.
+        // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h); before the read pass, which it must not overlap.
         snapshot->copyBindings = graph.CopyBindingsNow();
         HarvestErrors(mark, SdfPath(), graphDiagnostics);
     }
@@ -128,7 +128,7 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     WorkParallelForN(paths.size(), [&](size_t begin, size_t end) {
         for (size_t i = begin; i < end; ++i) {
             if (previous && !affected.Contains(paths[i])) {
-                const HdSceneIndexPrim kept = previous->scene->GetPrim(paths[i]);
+                const HdSceneIndexPrim kept = previous->sceneIndex->GetPrim(paths[i]);
                 if (kept.dataSource) {
                     entries[i] = {paths[i], kept.primType, kept.dataSource};
                     continue;
@@ -145,14 +145,14 @@ SnapshotPtr Capture(SceneIndexGraph &graph, UsdTimeCode time, const Snapshot *pr
     if (timeDependencies) {
         const TfErrorMark mark;
         graph.DirtyTimeDependencies();
-        std::vector<Event> dirtied = graph.TakeEvents();
+        std::vector<SceneIndexEvent> dirtied = graph.TakeEvents();
         snapshot->events.insert(snapshot->events.end(), dirtied.begin(), dirtied.end());
         graph.RequeueEvents(std::move(dirtied));
         HarvestErrors(mark, SdfPath(), graphDiagnostics);
     }
 
-    snapshot->scene = HdRetainedSceneIndex::New();
-    snapshot->scene->AddPrims(entries);
+    snapshot->sceneIndex = HdRetainedSceneIndex::New();
+    snapshot->sceneIndex->AddPrims(entries);
     // Warnings attributed to a copied prim belong to it; the rest were posted by the graph itself.
     std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> warned;
     for (Diagnostic &warning : warnings.Take()) {

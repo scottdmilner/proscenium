@@ -7,9 +7,10 @@ and press Run Script. Running it again replaces the previous session.
 
 Another program, such as Houdini's Solaris writing the scene with a USD ROP, saves the file. The Update from USD
 button in the 3D view's sidebar (N, Proscenium tab) reloads each of the stage's layers whose file changed and
-synchronizes through the update path (snapshots.py): an incremental capture, a plan reusing the previous one's mesh
+synchronizes through the update path (per_frame_display.py): an incremental capture, a plan reusing the previous
+one's mesh
 builds, the plan diff, and an update by it that rebuilds only what changed. The sidebar and a viewport overlay show
-each update. With --select, the display is batched (batch.py) and Source Select (select_tool.py) becomes the
+each update. With --select, the display is batched (batched_display.py) and Source Select (select_tool.py) becomes the
 active tool, its interaction rebuilt over each update's plan, keeping the targets the new plan still has.
 With --follow, the display also synchronizes at each frame's time code. Without --select, a Y-up stage is shown Z-up
 through a rotated collection instance; Blender selects only objects in the view layer, so with --select it is shown
@@ -40,7 +41,7 @@ def _here() -> Path:
     candidates = [Path(globals().get("__file__", ""))]
     candidates += [Path(bpy.path.abspath(text.filepath)) for text in bpy.data.texts if text.filepath]
     for candidate in candidates:
-        if candidate.name == "live_demo.py" and (candidate.resolve().parent / "snapshots.py").exists():
+        if candidate.name == "live_demo.py" and (candidate.resolve().parent / "per_frame_display.py").exists():
             return candidate.resolve().parent
     raise RuntimeError("Can't find tools/feasibility/hydra_bridge: open live_demo.py from disk, not a copy")
 
@@ -49,11 +50,11 @@ HERE = _here()
 sys.path[:0] = [p for p in (str(HERE), str(HERE.parents[2] / "build/hydra-bridge")) if p not in sys.path]
 
 import _hydra_bridge as native  # noqa: E402  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-import batch  # noqa: E402
+import batched_display  # noqa: E402
 import blf  # noqa: E402
+import per_frame_display  # noqa: E402
 import select_outline  # noqa: E402
 import select_tool  # noqa: E402
-import snapshots  # noqa: E402
 from pxr import Sdf, Usd, UsdGeom  # noqa: E402
 
 SESSION_KEY = "proscenium_live_demo"  # where the running session is kept, in bpy.app.driver_namespace
@@ -63,31 +64,33 @@ SESSION_KEY = "proscenium_live_demo"  # where the running session is kept, in bp
 class Session:
     """A live display of one USD file: its stage, the bridge's synchronized display, and what the overlay shows."""
 
-    path: Path
+    root_layer_path: Path
     stage: Usd.Stage
-    display: snapshots.Snapshots
+    display: per_frame_display.Snapshots
     collection: bpy.types.Collection
-    instancer: bpy.types.Object | None  # the rotated collection instance of a Y-up stage
-    time: float
-    follow: bool
-    select: bool  # whether Source Select runs over the (batched) display
-    mtimes: dict[str, float] = field(default_factory=dict)  # by layer file: its time at the last synchronization
-    updates: int = 0
-    status: list[str] = field(default_factory=list)  # the overlay's lines below the title
-    error: str | None = None
-    draw_handle: Any = None
+    collection_instance: bpy.types.Object | None  # the rotated collection instance of a Y-up stage
+    time_code: float
+    follow_file_changes: bool
+    source_selection_enabled: bool  # whether Source Select runs over the (batched) display
+    layer_modification_times: dict[str, float] = field(
+        default_factory=dict
+    )  # by layer file: its time at the last synchronization
+    update_count: int = 0
+    status_lines: list[str] = field(default_factory=list)  # the overlay's lines below the title
+    error_message: str | None = None
+    draw_handler: Any = None
 
     def refresh(self) -> None:
         """Reload each layer whose file changed since the last synchronization, and synchronize."""
         try:
             start = clock.perf_counter()
-            changed = [p for p, t in _mtimes(self.stage).items() if t != self.mtimes.get(p)]
+            changed = [p for p, t in _mtimes(self.stage).items() if t != self.layer_modification_times.get(p)]
             for path in changed:
                 layer = Sdf.Layer.Find(path)
                 if layer is not None:
                     layer.Reload(force=True)
             reason = f"{', '.join(Path(p).name for p in changed)} changed" if changed else "no file changed"
-            self.synchronize(self.time, start, reason)
+            self.synchronize(self.time_code, start, reason)
         except Exception:  # noqa: BLE001 - shown in the sidebar, overlay, and console; the next click retries
             self.fail()
 
@@ -95,36 +98,37 @@ class Session:
         """Update the display by the stage at `time`, and say what changed."""
         step = self.display.step(time)
         total = clock.perf_counter() - start
-        self.mtimes = _mtimes(self.stage)
-        if self.select:
+        self.layer_modification_times = _mtimes(self.stage)
+        if self.source_selection_enabled:
             _select_over(self)
-        self.updates += 1
-        self.error = None
+        self.update_count += 1
+        self.error_message = None
         diff = step.diff
-        added = sum(1 for old in diff["objects"] if old == -1)
-        rebuilt_meshes = sum(1 for old in diff["meshes"] if old == -1)
+        added = sum(1 for old in diff["previous_object_indices"] if old == -1)
+        rebuilt_meshes = sum(1 for old in diff["previous_mesh_indices"] if old == -1)
         plan = step.plan
-        self.status = [
-            f"Update {self.updates}: {reason}",
-            f"+{added} added   ~{len(diff['changed'])} changed   -{len(diff['removed'])} removed   "
+        self.status_lines = [
+            f"Update {self.update_count}: {reason}",
+            f"+{added} added   ~{len(diff['changed_object_indices'])} changed   "
+            f"-{len(diff['removed_previous_object_indices'])} removed   "
             f"{rebuilt_meshes} meshes rebuilt",
             f"{plan.object_count} objects, {plan.mesh_count} meshes, {plan.material_count} materials at time {time:g}",
             f"{total * 1000:.0f} ms: "
-            + ", ".join(f"{name} {seconds * 1000:.0f}" for name, seconds in step.seconds.items()),
+            + ", ".join(f"{name} {seconds * 1000:.0f}" for name, seconds in step.stage_durations_seconds.items()),
         ]
-        print("[proscenium] " + " | ".join(self.status))
+        print("[proscenium] " + " | ".join(self.status_lines))
         _redraw()
 
     def fail(self) -> None:
-        self.error = traceback.format_exc().strip().splitlines()[-1]
+        self.error_message = traceback.format_exc().strip().splitlines()[-1]
         traceback.print_exc()
         _redraw()
 
     def on_frame(self, scene: bpy.types.Scene, _depsgraph: Any = None) -> None:
         if scene == bpy.context.scene:
-            self.time = scene.frame_current + scene.frame_subframe
+            self.time_code = scene.frame_current + scene.frame_subframe
             try:
-                self.synchronize(self.time, clock.perf_counter(), f"frame {self.time:g}")
+                self.synchronize(self.time_code, clock.perf_counter(), f"frame {self.time_code:g}")
             except Exception:  # noqa: BLE001 - shown in the overlay and console
                 self.fail()
 
@@ -132,10 +136,10 @@ class Session:
         """The overlay: the source, then the latest update or error."""
         font = 0
         blf.size(font, 15)
-        lines = [(f"Proscenium Hydra bridge: live from {self.path.name}", (1.0, 1.0, 1.0, 1.0))]
-        lines += [(line, (0.8, 0.9, 1.0, 1.0)) for line in self.status]
-        if self.error:
-            lines.append((f"Error: {self.error}", (1.0, 0.4, 0.4, 1.0)))
+        lines = [(f"Proscenium Hydra bridge: live from {self.root_layer_path.name}", (1.0, 1.0, 1.0, 1.0))]
+        lines += [(line, (0.8, 0.9, 1.0, 1.0)) for line in self.status_lines]
+        if self.error_message:
+            lines.append((f"Error: {self.error_message}", (1.0, 0.4, 0.4, 1.0)))
         y = 60 + 22 * len(lines)
         for text, color in lines:
             blf.color(font, *color)
@@ -147,18 +151,18 @@ class Session:
         """Unregister the session and remove its display."""
         if self.on_frame in bpy.app.handlers.frame_change_pre:
             bpy.app.handlers.frame_change_pre.remove(self.on_frame)
-        if self.draw_handle is not None:
-            bpy.types.SpaceView3D.draw_handler_remove(self.draw_handle, "WINDOW")
-        if self.select and select_tool.SESSION is not None:
+        if self.draw_handler is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.draw_handler, "WINDOW")
+        if self.source_selection_enabled and select_tool.SESSION is not None:
             select_tool.unregister()
         display = self.display.display
         objects = list(self.collection.all_objects)
         # With batches, the carriers' points meshes and their node group too.
         data = {obj.data for obj in objects if obj.data is not None}
-        nodes = [display.nodes.tree] if isinstance(display, batch.BatchedDisplay) else []
+        nodes = [display.nodes.tree] if isinstance(display, batched_display.BatchedDisplay) else []
         bpy.data.batch_remove({*objects, *data, *display.meshes, *display.materials, *nodes})
-        if self.instancer is not None:
-            bpy.data.objects.remove(self.instancer)
+        if self.collection_instance is not None:
+            bpy.data.objects.remove(self.collection_instance)
         bpy.data.collections.remove(self.collection)
         self.display.release()
         _redraw()
@@ -179,8 +183,8 @@ class PROSCENIUM_OT_live_update(bpy.types.Operator):  # noqa: N801 - Blender's o
     def execute(self, context: Any) -> set[OperatorReturnItems]:
         session: Session = bpy.app.driver_namespace[SESSION_KEY]
         session.refresh()
-        if session.error:
-            self.report({"ERROR"}, session.error)
+        if session.error_message:
+            self.report({"ERROR"}, session.error_message)
             return {"CANCELLED"}
         return {"FINISHED"}
 
@@ -200,15 +204,15 @@ class PROSCENIUM_PT_live(bpy.types.Panel):  # noqa: N801 - Blender's panel namin
         if session is None:
             layout.label(text="No USD session: run live_demo.py")
             return
-        layout.label(text=session.path.name, icon="FILE")
+        layout.label(text=session.root_layer_path.name, icon="FILE")
         row = layout.row()
         row.scale_y = 1.6
         row.operator(PROSCENIUM_OT_live_update.bl_idname, icon="FILE_REFRESH")
         column = layout.column(align=True)
-        for line in session.status:
+        for line in session.status_lines:
             column.label(text=line)
-        if session.error:
-            layout.label(text=session.error, icon="ERROR")
+        if session.error_message:
+            layout.label(text=session.error_message, icon="ERROR")
 
 
 CLASSES = (PROSCENIUM_OT_live_update, PROSCENIUM_PT_live)
@@ -226,25 +230,31 @@ def _register_classes() -> None:
 def _select_over(session: Session) -> None:
     """Install Source Select over the session's display, or move it onto the display's latest plan."""
     display = session.display
-    interaction = native.Interaction(session.stage, display.plan)
+    interaction = native.SourceSelectionResolver(session.stage, display.plan)
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
     selection = select_tool.Session(
         interaction,
         display.display,
         view_layer,
         session.collection,
-        keep=(session.stage, display.bridge, display.plan),
+        retained_source_objects=(session.stage, display.bridge, display.plan),
         stage=session.stage,
-        time=session.time,
+        time_code=session.time_code,
     )
     earlier = select_tool.SESSION
     if earlier is None:
         select_tool.register(selection)
         return
-    selection.level, selection.following, selection.selectable = earlier.level, earlier.following, earlier.selectable
+    selection.model_kind, selection.follow_blender_selection, selection.selectable = (
+        earlier.model_kind,
+        earlier.follow_blender_selection,
+        earlier.selectable,
+    )
     # The targets whose prims the new plan still draws; Phase 2 keeps a selection whose identities stay valid.
-    selection.targets = [t for t in earlier.targets if interaction.highlight_targets([t])]
-    selection.active = earlier.active if earlier.active in selection.targets else None
+    selection.selected_source_paths = [t for t in earlier.selected_source_paths if interaction.highlight_targets([t])]
+    selection.active_source_path = (
+        earlier.active_source_path if earlier.active_source_path in selection.selected_source_paths else None
+    )
     drawing = select_tool.OUTLINES is not None and select_tool.OUTLINES.draw_outlines
     if select_tool.OUTLINES is not None:
         select_tool.OUTLINES.disable()
@@ -279,16 +289,16 @@ def start(path: Path, time: float | None, follow: bool, select: bool) -> Session
         scene.collection.children.link(collection)
     begun = clock.perf_counter()
     representation = "batched" if select else "objects"
-    display = snapshots.Snapshots(native, stage, collection, time, representation=representation, moves=True)
+    display = per_frame_display.Snapshots(native, stage, collection, time, representation=representation, moves=True)
     session = Session(path, stage, display, collection, instancer, time, follow, select)
-    session.mtimes = _mtimes(stage)
+    session.layer_modification_times = _mtimes(stage)
     plan = display.plan
-    session.status = [
+    session.status_lines = [
         f"Synchronized in {(clock.perf_counter() - begun) * 1000:.0f} ms: {plan.object_count} objects, "
         f"{plan.mesh_count} meshes, {plan.material_count} materials at time {time:g}",
         "Save the USD file, then click Update from USD.",
     ]
-    print("[proscenium] " + " | ".join(session.status))
+    print("[proscenium] " + " | ".join(session.status_lines))
     bpy.app.driver_namespace[SESSION_KEY] = session
     _register_classes()
     if select:
@@ -296,7 +306,7 @@ def start(path: Path, time: float | None, follow: bool, select: bool) -> Session
     if follow:
         bpy.app.handlers.frame_change_pre.append(session.on_frame)
     if not bpy.app.background:
-        session.draw_handle = bpy.types.SpaceView3D.draw_handler_add(session.draw_overlay, (), "WINDOW", "POST_PIXEL")
+        session.draw_handler = bpy.types.SpaceView3D.draw_handler_add(session.draw_overlay, (), "WINDOW", "POST_PIXEL")
         bpy.app.timers.register(lambda: _frame_all(select), first_interval=0.3)
     return session
 

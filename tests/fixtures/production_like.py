@@ -40,23 +40,23 @@ ASSET_DEPTH = 3  # Looks/<Material>/Surface below an asset's root prim
 
 
 @dataclass(frozen=True)
-class Params:
+class ProductionSceneParameters:
     fanout: tuple[int, ...] = (2, 2, 3)  # children per organizational level: 2 sites x 2 areas x 3 bays
-    levels: int = 3  # single-child Level_<n> Xforms below each bay, for depth
+    levels_per_bay: int = 3  # single-child Level_<n> Xforms below each bay, for depth
     crates_per_bay: int = 2
 
     def __post_init__(self) -> None:
         # expected_inventory assumes at least one instanced crate and no negative depth.
         if len(self.fanout) > len(ORG_LEVELS):
             raise ValueError(f"at most {len(ORG_LEVELS)} organizational levels")
-        if any(count < 1 for count in self.fanout) or self.crates_per_bay < 1 or self.levels < 0:
-            raise ValueError(f"fanout entries and crates_per_bay must be >= 1 and levels >= 0: {self}")
+        if any(count < 1 for count in self.fanout) or self.crates_per_bay < 1 or self.levels_per_bay < 0:
+            raise ValueError(f"fanout entries and crates_per_bay must be >= 1 and levels_per_bay >= 0: {self}")
 
 
-DEFAULT = Params()
+DEFAULT = ProductionSceneParameters()
 
 
-def generate(dest: Path, params: Params = DEFAULT) -> Path:
+def generate(dest: Path, params: ProductionSceneParameters = DEFAULT) -> Path:
     """Write the fixture into dest (assets/ plus layout.usda) and return the root layer path."""
     copy_scene(Scene.PRODUCTION_LIKE, dest)
     root = dest / "layout.usda"
@@ -75,7 +75,7 @@ def generate(dest: Path, params: Params = DEFAULT) -> Path:
         _translate(unique, (-10, -10, 0))
         for index, bay in enumerate(_bays(params)):
             parent = bay
-            for level in range(params.levels):
+            for level in range(params.levels_per_bay):
                 parent = f"{parent}/Level_{level}"
             # Every prim between /World and the crates is a group, keeping the model hierarchy valid.
             for path in Sdf.Path(parent).GetPrefixes()[1:]:
@@ -89,7 +89,7 @@ def generate(dest: Path, params: Params = DEFAULT) -> Path:
     return root
 
 
-def _bays(params: Params) -> list[str]:
+def _bays(params: ProductionSceneParameters) -> list[str]:
     """Paths of the deepest organizational prims, in a fixed order."""
     paths = ["/World"]
     for level, count in enumerate(params.fanout):
@@ -116,7 +116,7 @@ def _translate(spec: Sdf.PrimSpec, xyz: tuple[float, float, float]) -> None:
     order.default = Vt.TokenArray(["xformOp:translate"])
 
 
-def expected_inventory(params: Params, load_all: bool) -> dict[str, Any]:
+def expected_inventory(params: ProductionSceneParameters, load_all: bool) -> dict[str, Any]:
     """What a stage over the fixture must compose, derived from the parameters and asset structure."""
     instanced_crates = math.prod(params.fanout) * params.crates_per_bay
     crates_composed = (instanced_crates if load_all else 0) + 1  # + Crate_Unique, never a payload
@@ -126,13 +126,13 @@ def expected_inventory(params: Params, load_all: bool) -> dict[str, Any]:
     prototypes = {"bolt": BOLTS_PER_CRATE * (2 if load_all else 1)}
     if load_all:
         prototypes["crate"] = instanced_crates
-    level_depth = 1 + len(params.fanout) + params.levels  # /World/<org levels>/<Level_n>
+    level_depth = 1 + len(params.fanout) + params.levels_per_bay  # /World/<org levels>/<Level_n>
     # Deepest loaded prim: a bolt's shader inside an instanced crate (+ Crate_n/Bolt_n) when
     # payloads load; otherwise the deepest Level_n (unloaded crates are not traversed), or a
     # bolt's shader in Crate_Unique (World/Crate_Unique/Bolt_n) if that is deeper.
     deepest = level_depth + 2 + ASSET_DEPTH if load_all else max(level_depth, 3 + ASSET_DEPTH)
     bays = math.prod(params.fanout)
-    org_prims = sum(math.prod(params.fanout[: n + 1]) for n in range(len(params.fanout))) + bays * params.levels
+    org_prims = sum(math.prod(params.fanout[: n + 1]) for n in range(len(params.fanout))) + bays * params.levels_per_bay
     return {
         "prototypes": prototypes,  # asset name -> number of instances of its prototype
         "meshes": crates_composed * per_crate_meshes + 1,  # + Ground

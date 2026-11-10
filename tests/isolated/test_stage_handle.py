@@ -46,7 +46,7 @@ def test_released_chain_lets_a_dropped_instancing_stage_expire(wheel: Runtime, t
     # On F-NESTED-STRESS's nested native instances, whose filters a release must not leave holding the stage, with the
     # snapshot and its plan still alive.
     with appearance.nested_stress(tmp_path / "scene") as scene:
-        root = str(scene.root)
+        root = str(scene.root_layer_path)
     result = run_isolated(
         wheel, BODIES / "stage_handle.py", "chain_with_instances_drops_then_release", tmp_path, root=root
     )

@@ -2,7 +2,8 @@
 
 A Blender object holds only location, rotation, and scale, so a sheared copy's world transform splits into its object's
 basis and a shear parent's world transform, each holding only those, whose product is the world transform (XFORM-03),
-as the bridge's apply.py splits it. A projective matrix places its mesh by its affine part (XFORM-05; C6 adds the
+as the bridge's object_display.py splits it. A projective matrix places its mesh by its affine part (XFORM-05; C6
+adds the
 diagnostic). Expected values come from the fixtures' construction.
 """
 
@@ -16,7 +17,7 @@ from pxr import Gf
 
 from fixtures import appearance, evaluation
 
-from .plan_checks import Copy, assert_world, copies, plan_at
+from .plan_checks import PlannedDrawnCopy, assert_world, copies, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -44,10 +45,10 @@ def _holds_location_rotation_scale(matrix: Gf.Matrix4d) -> bool:
     )
 
 
-def _assert_splits(path: str, copy: Copy, world: Gf.Matrix4d) -> None:
-    assert copy.shear is not None, path
-    parent, basis = copy.shear
-    assert_world(dataclasses.replace(copy, world=basis * parent), world)  # the object below its parent
+def _assert_splits(path: str, copy: PlannedDrawnCopy, world: Gf.Matrix4d) -> None:
+    assert copy.shear_transform_split is not None, path
+    parent, basis = copy.shear_transform_split
+    assert_world(dataclasses.replace(copy, world_matrix=basis * parent), world)  # the object below its parent
     assert _holds_location_rotation_scale(parent), path
     assert _holds_location_rotation_scale(basis), path
     assert basis.ExtractTranslation() == Gf.Vec3d(0), path
@@ -58,27 +59,32 @@ def test_exactly_the_sheared_copies_get_a_shear_parent(fixture: str, request: py
     scene = request.getfixturevalue(fixture)
     plan = plan_at(scene.stage, 0.0)
     shown = copies(plan)
-    assert {path for path, copy in shown.items() if copy.shear is not None} == scene.sheared & shown.keys()
+    assert {
+        path for path, copy in shown.items() if copy.shear_transform_split is not None
+    } == scene.sheared_paths & shown.keys()
     for path, copy in shown.items():
-        if path in scene.sheared:
-            _assert_splits(path, copy, scene.world[path])
+        if path in scene.sheared_paths:
+            _assert_splits(path, copy, scene.world_matrices_by_source[path])
         expected = {("object", path, 0), ("bounds mesh", path, 0)}
-        if copy.shear is not None:
+        if copy.shear_transform_split is not None:
             expected.add(("shear parent", path, 0))
         resources = plan.resources  # each read builds the tuple anew
-        (partition,) = (p for p in plan.partitions if copy.object in p.resources)
-        assert {(resources[r].role, resources[r].entity, resources[r].place) for r in partition.resources} == expected
-        used = {resources[u].role for u in resources[copy.object].uses}
+        (partition,) = (p for p in plan.partitions if copy.object_resource_index in p.resource_indices)
+        assert {
+            (resources[r].role, resources[r].source_entity_path, resources[r].object_index_in_copy)
+            for r in partition.resource_indices
+        } == expected
+        used = {resources[u].role for u in resources[copy.object_resource_index].dependency_resource_indices}
         assert used == {role for role, _, _ in expected if role != "object"}, path
 
 
 def test_a_reflection_in_a_sheared_copy_moves_into_a_negative_scale(stress: appearance.StressScene) -> None:
     # UnitA's and UnitC's leaves are sheared and mirrored, so one part of each split must take the reflection.
     shown = copies(plan_at(stress.stage, 0.0))
-    both = stress.sheared & stress.negative
+    both = stress.sheared_paths & stress.negative_determinant_paths
     assert both
     for path in both:
-        split = shown[path].shear
+        split = shown[path].shear_transform_split
         assert split is not None
         parent, basis = split
         assert parent.GetDeterminant3() < 0 < basis.GetDeterminant3(), path
@@ -87,8 +93,11 @@ def test_a_reflection_in_a_sheared_copy_moves_into_a_negative_scale(stress: appe
 def test_a_projective_matrix_places_its_mesh_by_its_affine_part(transforms: evaluation.TransformsScene) -> None:
     # XFORM-05 on F-TRANSFORMS' projective layer; its approximation diagnostic is C6's.
     shown = copies(plan_at(transforms.projective_stage, 0.0))
-    expected = {transforms.projective: transforms.projective_affine, **transforms.projective_instanced}
+    expected = {
+        transforms.projective_mesh_path: transforms.projective_affine_matrix,
+        **transforms.projective_instance_world_matrices,
+    }
     assert shown.keys() == expected.keys()
     for path, world in expected.items():
-        assert shown[path].world.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1), path
+        assert shown[path].world_matrix.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1), path
         assert_world(shown[path], world)

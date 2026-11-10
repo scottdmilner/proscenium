@@ -2,12 +2,12 @@
 
 The C++ side of the M1b prototype: a compiled Python module, `_hydra_bridge`, that turns a caller's USD stage into a display plan through a Hydra scene-index graph. It is feasibility code for the [M1b evaluation gate](../../../../docs/plans/M01b-evaluation-gate.md), not production code. It links against the OpenUSD that Blender ships and never against a second USD build.
 
-`../build.py` builds it (C++17, CMake, and Ninja from the dev group), and `../run.py` runs the checks in `../probe.py` (loading), `../prototype_probe.py` (the Phase B slice) and `../correctness_probe.py` (the Phase C cases in `../cases/`) in the bpy wheel and the Blender binary.
+`../build.py` builds it (C++17, CMake, and Ninja from the dev group), and `../run_runtime_probes.py` runs the checks in `../native_bridge_probe.py` (loading), `../end_to_end_display_probe.py` (the Phase B slice) and `../correctness_probe.py` (the Phase C cases in `../cases/`) in the bpy wheel and the Blender binary.
 
 ## Data flow
 
 ```text
-Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_plan──► Plan ──apply.py──► Blender
+Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_plan──► Plan ──object_display.py──► Blender
             (Hydra)   (C++, no GIL)  (immutable)  (C++, no GIL)  (immutable)    (Python, bpy)
 ```
 
@@ -54,7 +54,7 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
    - the correspondence derived from the objects (M4): each object's floor, the outermost native-instance root in its context or else its source; the browsing universe, the floors of the viewport's objects and their ancestors; and the viewport's objects sorted by floor, for expansion.
 
    Sources in a plan are USD paths; Hydra paths and instance indices never are.
-4. **Application** (`../apply.py`) passes the plan's Vt arrays to `foreach_set` as flat `memoryview`s, with no Python-side copy.
+4. **Application** (`../object_display.py`) passes the plan's Vt arrays to `foreach_set` as flat `memoryview`s, with no Python-side copy.
 
 ## Files
 
@@ -66,11 +66,11 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `scene_index_graph.h/.cpp` | Builds the scene-index graph, advances it in time, and records the terminal's notices |
 | `source_info_scene_index.h/.cpp` | The source-info filter: the source facts Hydra drops (a `prosceniumSource` container), `UsdImagingDataSourcePrim` on its own stage globals for unimaged prims, and notices for edits Hydra misses |
 | `source_facts.h/.cpp` | What the filter reads from USD: the `prosceniumSource` tokens and lazy containers, UsdShade's bindings per material purpose, the materialBind family verdict, dropped attributes, and computed extents for point-based prims other than meshes and NURBS patches |
-| `snapshot.h/.cpp` | The snapshot: time, retained scene index, events (`EventKind`), diagnostics |
+| `snapshot.h/.cpp` | The snapshot: time, retained scene index, events (`SceneIndexEventKind`), diagnostics |
 | `prim_record.h/.cpp` | Plain records of what planning reads: mesh topology as `PxOsdMeshTopology`, primvars (indices kept), subsets, instancers, materials |
 | `prim_reader.h/.cpp` | `PlannedSchemas()`, the schemas capture copies, and the reader of those records: traversal by `HdSceneIndexPrimView`, materials through `HdDataSourceMaterialNetworkInterface` |
 | `instancing.h/.cpp` | Reverse mapping from instancers to USD sources, as `HdxPrimOriginInfo` does it: walks `instancedBy` upward and folds in `instanceLocations`, instance transforms, the instancer's visibility mask, the instance roots' own constant primvars and bindings, and purpose-visibility opinions at each level. With `PlanSettings::pointInstancers` (M4 Phase D, for measurement), a point instancer's points too, each with its transform, mask, and per-point primvars, and a provisional context entry naming the point. `BoundMaterial` combines the filter's UsdShade bindings with what's bound at or above each instance root (Hydra's flattened bindings are unusable inside instances). Switch source identity to `HdxPrimOriginInfo` once Blender's USD has its `cdata()` fix (plan log) |
-| `validate.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
+| `mesh_validation.h/.cpp` | Checks before anything reaches Blender: `PxOsdMeshTopology::Validate`, then indices against the points, primvar lengths, and subset indices |
 | `mesh_builder.h/.cpp` | A captured mesh to Blender arrays: corner order (left-handed faces reversed), material slots from materialBind subsets, attributes (custom normals and velocity under Blender's names); given an earlier build of the same topology and point count, its topology work, corners, faces, and the attributes of equal primvars (E4) |
 | `mesh_sharing.h/.cpp` | M4: content deduplication: a built mesh's content hash and equality (with any display color it holds), and the plan's meshes by content |
 | `plan_diff.h/.cpp` | M4: what a new plan changes from the published one: meshes by content, materials by value, objects by identity |
@@ -78,12 +78,12 @@ Usd.Stage ──► SceneIndexGraph ──capture──► Snapshot ──build_
 | `correspondence.h/.cpp` | M4: the correspondence the interaction contract derives from a plan's objects: each object's floor, the browsing universe, and the viewport's elements by floor (both sorted, so a subtree is one range) |
 | `interaction.h/.cpp` | M4: the baseline's five core interaction functions over a plan's correspondence and the live stage, held weakly. Kind levels go to `inspection.h` in C++; each function raises once the stage has expired |
 | `inspection.h/.cpp` | M4's model of the inspection layer: kind promotion, the nearest ancestor-or-self of a floor on the live stage with a kind, read-only. It includes only USD, as M7's library will |
-| `properties.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
+| `id_property_conversion.h/.cpp` | Constant primvars to Blender ID-property values (scalars, strings, lists, nested rows), and which names and types Blender can't hold |
 | `diagnostics.h/.cpp` | Diagnostic records; Tf errors and warnings collected per prim, or raised as Python exceptions |
 | `batch_groups.h/.cpp` | M4 Phase D (D8): the batched display's groups, formed from the plan, so an update needn't convert and regroup every record in Python |
 | `python_views.h/.cpp` | The `Snapshot` and `Plan` Python views, and `build_plan`; the plan also gives its counts, the records at given indices, and its batch groups (D8); `build_plan`'s `previous` reuses that plan's mesh builds (D9) |
-| `loaded_images.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
-| `copy_bindings.h/.cpp` | **Workaround for OpenUSD #3690:** UsdShade's binding per drawn copy, on its instance-proxy path, for the instances a binding collection reaches (Hydra and per-prototype resolution miss collections naming paths inside instances). Cached in the source-info filter until a binding or collection edit; the planner uses it for those copies |
+| `loaded_usd_libraries.h/.cpp` | Which USD images the process has loaded, for the exactly-one-USD checks |
+| `instance_material_bindings.h/.cpp` | **Workaround for OpenUSD #3690:** UsdShade's binding per drawn copy, on its instance-proxy path, for the instances a binding collection reaches (Hydra and per-prototype resolution miss collections naming paths inside instances). Cached in the source-info filter until a binding or collection edit; the planner uses it for those copies |
 | `fact_timings.h/.cpp` | Phase E only: time the source-info filter spends building facts and in each USD query (bindings, strong purposes, family verdict, dropped attributes, computed extents), summed over threads, and how planning's time splits (reading, building each mesh and its parts, objects) |
 
 The rest of `hydra_bridge/` builds, runs and checks the module:
@@ -92,20 +92,20 @@ The rest of `hydra_bridge/` builds, runs and checks the module:
 |---|---|
 | `../CMakeLists.txt` | The module's build against Blender's USD headers and libraries |
 | `../build.py` | Builds the module and audits its USD linkage for this platform, through `tools/native_build.py`; the headers come from `tools/blender_deps.py`, pinned by the Blender release in `uv.lock` |
-| `../run.py` | Runs the three probes with the same compiled module in the bpy wheel and the Blender binary |
-| `../probe.py` | Loading checks: stage exchange, time, inheritance, instancing and stage expiry, on `../scene.usda` |
-| `../prototype_probe.py` | Phase B smoke checks of capture, plan and application, on `../prototype.usda` |
+| `../run_runtime_probes.py` | Runs the three probes with the same compiled module in the bpy wheel and the Blender binary |
+| `../native_bridge_probe.py` | Loading checks: stage exchange, time, inheritance, instancing and stage expiry, on `../stage_exchange.usda` |
+| `../end_to_end_display_probe.py` | Phase B smoke checks of capture, plan and application, on `../display_smoke.usda` |
 | `../correctness_probe.py` | Runs each Phase C case in `../cases/`; a failing case is recorded and the rest still run |
-| `../apply.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`); a mesh's display colors show under Solid shading's Attribute color: its own on points or corners, a uniform one each face's value on its corners (D12), and the constant one all its copies share, which the plan holds (D10, D13) |
-| `../batch.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one batch per group, of at least a minimum size, of copies that differ only in transform and constant primvars, which are its points' attributes (strings are left out), instanced by a carrier object for each selection state its points hold (D14) |
-| `../batch_selection.py` | M4 Phase D: the batched display's Python display component, `apply_selection` and `read_blender_selection` through the carriers' selection states, and `pick_element`, which resolves a ray cast's hit to an element |
-| `../update.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
-| `../batch_update.py` | M4 Phase D: updates a batched display from the plan diff, as `update.py` does, matching the new plan's groups to the published batches and rebuilding only the points of batches whose members changed |
+| `../object_display.py` | Applies a plan to Blender (meshes, slots, attributes, objects and their properties, placeholders, destination hide flags), recording on each object its source, instance context, and plan index (`proscenium_element`); a mesh's display colors show under Solid shading's Attribute color: its own on points or corners, a uniform one each face's value on its corners (D12), and the constant one all its copies share, which the plan holds (D10, D13) |
+| `../batched_display.py` | M4 Phase D: applies a plan as Geometry Nodes instances, one batch per group, of at least a minimum size, of copies that differ only in transform and constant primvars, which are its points' attributes (strings are left out), instanced by a carrier object for each selection state its points hold (D14) |
+| `../batched_display_selection.py` | M4 Phase D: the batched display's Python display component, `apply_selection` and `read_blender_selection` through the carriers' selection states, and `pick_element`, which resolves a ray cast's hit to an element |
+| `../object_display_updates.py` | M4: updates an applied display to a new plan from its diff, or rebuilds a unit of it: prepared beside it, published in one call, and retired |
+| `../batched_display_updates.py` | M4 Phase D: updates a batched display from the plan diff, as `object_display_updates.py` does, matching the new plan's groups to the published batches and rebuilding only the points of batches whose members changed |
 | `../detach.py` | M4: Detach As-Is: removes the baseline's own ID properties, and the `proscenium_element` attribute on a batched display's points meshes, and keeps everything else |
-| `../selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
+| `../object_display_selection.py` | M4: the baseline's Python display component, `apply_selection` and `read_blender_selection`, between plan indices and Blender's selection and active object |
 | `../plan_types.py` | `TypedDict`s for the plan dicts that `python_views.cpp` builds; production should bind classes instead |
 | `../cases/harness.py`, `../cases/oracle.py` | What each case gets (module, application, scratch directory, checks), and expected values from UsdGeom and UsdShade, never from Hydra |
-| `../measure/run.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`child.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters; M4 Phase C adds update modes that run `scenarios.py`'s scenarios after a synchronization, on ALab and the generated `updates-N` scenes, an interaction mode (`interaction_timing.py`), and an ownership mode (`ownership_timing.py`), to which M5 Phase S adds an uncached mode (`uncached_timing.py`), and `updates.py` times B6's unit replacements on ALab; M4 Phase D adds the batched display, ALab with its point instancers planned (`alab-instancers`), and viewport modes that time the 3D view's frames in a windowed Blender (`viewport_timing.py`), `--reuse-builds` plans each update with the published plan as `previous` (D9), and the generated `colors` scenes have copies of one mesh with differing constant display colors (D13); M5 Phase F's `undo_memory.py` measures the memory an undo step holds after a full rebuild, `removal_cost.py` what the shared removal costs, and `synchronization_profile.py` the product's synchronization and cache call step by step, each in processes of its own, to which M6 Phase F adds global undo off and the bpy wheel; M6 Phase F's `evaluation_cost.py` times the core's capture and planning by stage, with the live heap after each, on ALab and scene files such as the Kitchen set, and what reading the plan's per-copy content costs as tuples and as buffers |
+| `../measure/run_benchmarks.py` | Phase E measurements: Blender's USD importer against the prototype, one sampled Blender process per run (`synchronization_worker.py`), on the bespoke scenes, generated stress scenes (`stress.py`) and ALab through its measurement entry point (`alab_entry.py`); `report.py` summarizes, `memory.py` reads each platform's memory counters; M4 Phase C adds update modes that run `scenarios.py`'s scenarios after a synchronization, on ALab and the generated `updates-N` scenes, an interaction mode (`interaction_timing.py`), and an ownership mode (`ownership_timing.py`), to which M5 Phase S adds an uncached mode (`uncached_timing.py`), and `updates.py` times B6's unit replacements on ALab; M4 Phase D adds the batched display, ALab with its point instancers planned (`alab-instancers`), and viewport modes that time the 3D view's frames in a windowed Blender (`viewport_timing.py`), `--reuse-builds` plans each update with the published plan as `previous` (D9), and the generated `colors` scenes have copies of one mesh with differing constant display colors (D13); M5 Phase F's `undo_memory.py` measures the memory an undo step holds after a full rebuild, `removal_cost.py` what the shared removal costs, and `synchronization_profile.py` the product's synchronization and cache call step by step, each in processes of its own, to which M6 Phase F adds global undo off and the bpy wheel; M6 Phase F's `evaluation_cost.py` times the core's capture and planning by stage, with the live heap after each, on ALab and scene files such as the Kitchen set, and what reading the plan's per-copy content costs as tuples and as buffers |
 | `../cases/<case>.py`, `.usda` | One check module and scene per case: `subsets`, `implicit`, `instances`, `edits`, `untranslated`, `malformed`, `bindings`, `purposes`, `primvars`, `animation` (Phase D: what a time change dirties, and values at each time), and `large_arrays` (its scene is generated) |
 
 ## Python API
@@ -122,10 +122,14 @@ plan = _hydra_bridge.build_plan(snapshot)  # destinations: viewport_purposes, vi
 #   render_purposes, render_material_purpose (purposes by USD name; material purpose "", "preview", "full")
 plan.meshes, plan.materials, plan.objects, plan.diagnostics  # lists of dicts; a placeholder object has "bounds"
 plan.universe  # sorted USD paths; each object dict also has its "floor"
-_hydra_bridge.diff_plans(published, plan)  # M4: {"meshes", "materials", "objects": old index or -1 per new entry,
-#   "changed", "repointable" (changed only in mesh or materials): new object indices, "removed": old indices}
+_hydra_bridge.diff_plans(published, plan)  # M4: previous_mesh_indices, previous_material_indices,
+#   previous_object_indices: old index or -1 per new entry; changed_object_indices,
+#   repointable_object_indices (changed only in mesh or materials), transform_changed_object_indices: new indices;
+#   removed_previous_object_indices: old indices
 _hydra_bridge.rebuild_correspondence(plan)  # M4: derives the correspondence again, for timing; the universe's size
-interaction = _hydra_bridge.Interaction(stage, plan)  # M4: the core interaction functions; elements are plan indices
+interaction = _hydra_bridge.SourceSelectionResolver(
+    stage, plan
+)  # M4: the core interaction functions; elements are plan indices
 interaction.resolve_pick(element)  # {"source", "instance_context", "floor"}, or None for no element
 interaction.select_targets([(source, instance_context)], level)  # level None (prim) or a registered kind
 interaction.displayed(paths), interaction.highlight_targets(targets)  # [bool]; elements at or beneath the targets
@@ -143,7 +147,7 @@ A capture evaluates one time code. At default time it reads authored default val
 
 Only the schemas planning reads, each copied whole with `HdMakeStaticCopy`. The [spec](../../../../docs/spec/pipeline.md#evaluated-source-snapshot) requires values captured before planning and unchanged during it, not a copy of all scene data. Authoring goes through the USD stage, so an editor doesn't need a complete copy either.
 
-- **Untyped values.** `HdMakeStaticCopy` copies values typed only for Vt's value types and a fixed list of Sdf and Hd types. Any other type posts a Tf error and is dropped, and capture turns that error into a diagnostic. On `prototype.usda`, copying the planned schemas posts no Tf errors; other content, such as material parameters of unusual types, could. The `system` container, whose `ArResolverContext` Hydra can't copy, is not copied.
+- **Untyped values.** `HdMakeStaticCopy` copies values typed only for Vt's value types and a fixed list of Sdf and Hd types. Any other type posts a Tf error and is dropped, and capture turns that error into a diagnostic. On `display_smoke.usda`, copying the planned schemas posts no Tf errors; other content, such as material parameters of unusual types, could. The `system` container, whose `ArResolverContext` Hydra can't copy, is not copied.
 - **The source-info container** (`prosceniumSource`) and `extent` are copied with the Hydra schemas.
 - **Diffing two snapshots** with `HdsiComputeSceneIndexDiffDelta` compares data-source handles, not values. A prim whose handle differs is reported dirty for every locator (v26.03 `hdsi/computeSceneIndexDiff.cpp`). So between incremental captures it lists the prims that were re-copied, not the values that changed.
 

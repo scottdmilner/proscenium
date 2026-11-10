@@ -27,7 +27,7 @@ type AttributeArray = Vt.FloatArray | Vt.Vec2fArray | Vt.Vec3fArray | Vt.Vec4fAr
 type PlanArray = AttributeArray
 type PropertyScalar = bool | int | float
 type PropertyValue = PropertyScalar | list[PropertyScalar] | list[list[PropertyScalar]]
-type PathLike = Sdf.Path | str  # what Interaction takes as a path
+type PathLike = Sdf.Path | str  # what SourceSelectionResolver takes as a path
 
 
 class AttributeRecord(TypedDict):
@@ -77,7 +77,7 @@ class ObjectRecord(TypedDict):
     primvars: dict[str, Any]  # constant primvars as USD authored them (Gf and Vt values)
     # The same primvars as ID properties, all but strings: bool, int, float, or lists (nested by vector or matrix row)
     properties: dict[str, PropertyValue]
-    # M4 Phase E (E3): the aspects (frames.Aspect's values) the snapshot's dirtied locators reach; after a time
+    # M4 Phase E (E3): the aspects (frames.DisplayAspect's values) the snapshot's dirtied locators reach; after a time
     # change, or from a capture with time_dependencies, those that depend on time
     dirtied_aspects: list[str]
 
@@ -93,7 +93,7 @@ class Plan(Protocol):
     """The module's Plan view. Each property builds a fresh list."""
 
     @property
-    def time(self) -> float | None: ...  # None at default time
+    def time_code(self) -> float | None: ...  # None at default time
     @property
     def meshes(self) -> list[MeshRecord]: ...
     @property
@@ -120,31 +120,31 @@ class Plan(Protocol):
 class PlanDiff(TypedDict):
     """What a plan changes from the published one, as diff_plans returns it (M4)."""
 
-    meshes: list[int]  # per new mesh: an old mesh with equal content, or -1
-    materials: list[int]  # per new material: an equal old material, or -1
-    objects: list[int]  # per new object: the old object with its identity, or -1 for an added one
-    changed: list[int]  # new objects whose old counterpart differs, in plan order
-    repointable: list[int]  # changed objects that differ only in their mesh or materials, in plan order
+    previous_mesh_indices: list[int]  # per new mesh: an old mesh with equal content, or -1
+    previous_material_indices: list[int]  # per new material: an equal old material, or -1
+    previous_object_indices: list[int]  # per new object: the old object with its identity, or -1 for an added one
+    changed_object_indices: list[int]  # new objects whose old counterpart differs, in plan order
+    repointable_object_indices: list[int]  # changed objects that differ only in their mesh or materials, in plan order
     # Changed objects whose matrix differs, and otherwise at most their mesh or materials, in plan order (Phase E)
-    moved: list[int]
-    removed: list[int]  # old objects with no new counterpart, in plan order
+    transform_changed_object_indices: list[int]
+    removed_previous_object_indices: list[int]  # old objects with no new counterpart, in plan order
 
 
 class ResolvedEntity(TypedDict):
-    """An element's source entity, as Interaction.resolve_pick returns it."""
+    """An element's source entity, as SourceSelectionResolver.resolve_pick returns it."""
 
-    source: str
+    source_path: str
     instance_context: tuple[str, ...]  # native instance roots, outermost first
-    floor: str
+    floor_path: str
 
 
 class SourceSelection(TypedDict):
-    targets: list[str]  # USD paths, in the order of the selected elements, without repeats
-    active: str | None  # the active element's target
+    target_paths: list[str]  # USD paths, in the order of the selected elements, without repeats
+    active_target_path: str | None  # the active element's target
 
 
-class Interaction(Protocol):
-    """The module's Interaction (M4): the baseline's core interaction functions over a plan and the live stage.
+class SourceSelectionResolver(Protocol):
+    """Resolve source selections using a display plan's correspondence and the live stage.
 
     Elements are plan object indices; a level is None (the prim level) or a registered kind. Paths are taken as
     Sdf.Path or str and returned as str. Each raises RuntimeError once the live stage has expired.

@@ -9,7 +9,7 @@ from pxr import Sdf, Usd
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 
 def _layer_on_disk(path: Path, prim: str, attr: str) -> float:
@@ -20,7 +20,7 @@ def _layer_on_disk(path: Path, prim: str, attr: str) -> float:
 
 
 def test_unedited_scene_composes_disk_values(tmp_path: Path) -> None:
-    stage = open_fresh(copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda")
+    stage = open_stage_without_cache(copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda")
     assert read_values(stage) == DISK
 
 
@@ -52,7 +52,7 @@ def test_dirty_layer_of_unselected_variant_does_not_contribute(tmp_path: Path) -
 
 def test_dirty_payload_layer_contributes_only_when_loaded(tmp_path: Path) -> None:
     with source_access.dirty_layer(tmp_path) as scene:
-        unloaded = open_fresh(scene.root, Usd.Stage.LoadNone)
+        unloaded = open_stage_without_cache(scene.root_layer_path, Usd.Stage.LoadNone)
         expected = {scene.dirty_contributing["ref"], scene.dirty_contributing["var_a"]}
         assert _dirty_used_layers(unloaded) == expected
 
@@ -66,22 +66,22 @@ def test_dirty_layer_edits_released_on_exit(tmp_path: Path) -> None:
 
 def test_private_stage_settings_differ_from_defaults(tmp_path: Path) -> None:
     with source_access.private_stage(tmp_path) as scene:
-        default = source_access.caller_settings(open_fresh(scene.root))
+        default = source_access.caller_settings(open_stage_without_cache(scene.root_layer_path))
         differing = {key for key in scene.settings if scene.settings[key] != default[key]}
         assert differing == set(scene.settings)
         assert read_values(scene.caller) == scene.caller_values
         anim = scene.caller.GetPrimAtPath("/World").GetAttribute("animValue")
         assert anim.Get(5) == scene.caller_anim_at_5
         root = scene.caller.GetRootLayer()
-        assert root.dirty and "unsavedValue" not in scene.root.read_text(encoding="utf-8")
+        assert root.dirty and "unsavedValue" not in scene.root_layer_path.read_text(encoding="utf-8")
 
 
 def test_cached_stage_hazard_is_active(tmp_path: Path) -> None:
     with source_access.cached_stage(tmp_path) as scene:
         # The hazard the fixture sets up: a plain open hands back the ambient stage.
-        assert Usd.Stage.Open(str(scene.root)) == scene.ambient
+        assert Usd.Stage.Open(str(scene.root_layer_path)) == scene.ambient
         assert read_values(scene.ambient) == scene.ambient_values
-        assert read_values(open_fresh(scene.root)) == scene.disk_values
+        assert read_values(open_stage_without_cache(scene.root_layer_path)) == scene.disk_values
 
 
 def test_cached_stage_erased_on_exit(tmp_path: Path) -> None:
@@ -106,17 +106,19 @@ def test_reattach(tmp_path: Path) -> None:
 def test_binding_state(tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
         # Compared as paths: Sdf's identifier for a file uses forward slashes, also on Windows.
-        assert Path(scene.caller.GetRootLayer().identifier) == scene.root
-        assert read_values(open_fresh(scene.root)) == read_values(scene.caller) == scene.values
+        assert Path(scene.caller.GetRootLayer().identifier) == scene.root_layer_path
+        assert read_values(open_stage_without_cache(scene.root_layer_path)) == read_values(scene.caller) == scene.values
 
 
 def test_multi_binding(tmp_path: Path) -> None:
     with source_access.multi_binding(tmp_path) as scene:
-        assert list(scene.roots) == list(source_access.ROOT_FORMATS)
-        crate = {extension: path.read_bytes().startswith(b"PXR-USDC") for extension, path in scene.roots.items()}
+        assert list(scene.root_layer_paths) == list(source_access.ROOT_FORMATS)
+        crate = {
+            extension: path.read_bytes().startswith(b"PXR-USDC") for extension, path in scene.root_layer_paths.items()
+        }
         assert crate == {".usda": False, ".usdc": True, ".usd": True}  # .usd is written as crate
-        for path in scene.roots.values():
-            assert read_values(open_fresh(path)) == scene.values
+        for path in scene.root_layer_paths.values():
+            assert read_values(open_stage_without_cache(path)) == scene.values
         assert read_values(scene.caller) == scene.values
         assert scene.anonymous_caller.GetRootLayer().anonymous
         assert all(layer.anonymous for layer in scene.anonymous_caller.GetUsedLayers())
@@ -126,13 +128,13 @@ def test_multi_binding(tmp_path: Path) -> None:
 def test_offline(tmp_path: Path) -> None:
     # The display covers prims its source composes, and moving the source away leaves nothing at root.
     with source_access.offline(tmp_path) as scene:
-        stage = open_fresh(scene.root)
+        stage = open_stage_without_cache(scene.root_layer_path)
         covered = {path for covers, *_ in scene.display.entries.values() for path in covers}
         assert all(stage.GetPrimAtPath(path) for path in covered)
         uses = {use for _, _, used, _ in scene.display.entries.values() for use in used}
         assert uses <= scene.display.entries.keys()
         del stage
         scene.move_away()
-        assert not scene.root.exists()
-        assert not scene.root.parent.exists()
+        assert not scene.root_layer_path.exists()
+        assert not scene.root_layer_path.parent.exists()
         assert (tmp_path / "moved" / "root.usda").exists()

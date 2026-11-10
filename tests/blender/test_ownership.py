@@ -13,19 +13,19 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence
-from proscenium.binding.persistence import manifests, records
-from proscenium.binding.persistence.manifests import EntryChange, Manifest, ManifestEntry, RepresentationRole
-from proscenium.binding.persistence.records import (
+from proscenium.binding.persistence import binding_records, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
-    Loaded,
+    LoadedRecord,
     RefusalReason,
     RefusedRecord,
     RefusedRecordError,
 )
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key, object_change, object_entry
@@ -45,7 +45,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path, name: str = "Shot") -> tuple[BindingHandle, Manifest]:
     """A binding whose destination holds two managed objects sharing a managed mesh, and its manifest."""
     with source_access.binding_state(tmp_path / name) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name=name)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name=name)
     destination = bpy.data.collections[name]
     mesh = bpy.data.meshes.new(f"{name}Mesh")
     objects = [bpy.data.objects.new(f"{name}{i}", mesh) for i in range(2)]
@@ -71,7 +71,7 @@ def _claims() -> dict[bpy.types.ID, tuple[Claim, ...]]:
 
     The oracle, reading the records now, must agree.
     """
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
     return {id_: claims for id_ in bpy.data.user_map() if (claims := ownership.of(id_).claims)}
 
 
@@ -81,7 +81,7 @@ def test_a_manifest_survives_save_and_reopen(bindings: Bindings, tmp_path: Path)
     save_and_reopen(tmp_path / "manifest.blend")
     expected = _manifest(bpy.data.meshes["ShotMesh"], bpy.data.objects["Shot0"], bpy.data.objects["Shot1"])
     read = manifests.read_manifest(bpy.data.collections["Shot"])
-    assert read == Loaded(expected, 1)
+    assert read == LoadedRecord(expected, 1)
     assert all(type(e.role) is RepresentationRole for e in read.record.entries.values())
 
 
@@ -107,7 +107,7 @@ def test_content_two_manifests_name_is_ambiguous(bindings: Bindings, tmp_path: P
     second, _ = _managed(bindings, tmp_path, "Second")
     shared = bpy.data.objects["First0"]
     manifest = manifests.read_manifest(bpy.data.collections["Second"])
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     entries = {**manifest.record.entries, key("stolen"): object_entry(shared, "/World/Ref")}
     ownership.set_manifest(second.binding_id, Manifest(entries))
     first_claim = Claim(first.binding_id, bpy.data.collections["First"], key("a"))
@@ -173,7 +173,7 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(bindings: Bindi
     _managed(bindings, tmp_path)
     bpy.data.objects.remove(bpy.data.objects["Shot0"])
     manifest = manifests.read_manifest(bpy.data.collections["Shot"])
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     assert manifest.record.entries[key("a")].datablock is None
     assert len(_claims()) == 2
 
@@ -181,7 +181,7 @@ def test_a_deleted_datablock_leaves_an_entry_that_claims_nothing(bindings: Bindi
 def test_a_bindings_own_manifest(bindings: Bindings, tmp_path: Path) -> None:
     first, manifest = _managed(bindings, tmp_path, "First")
     second, _ = _managed(bindings, tmp_path, "Second")
-    assert ownership.manifest(first.binding_id) == Loaded(manifest, 1)
+    assert ownership.manifest(first.binding_id) == LoadedRecord(manifest, 1)
     assert ownership.manifest(second.binding_id) != ownership.manifest(first.binding_id)
     without = bindings.create_binding(_scene())
     assert ownership.manifest(without.binding_id) is None  # nothing managed yet
@@ -194,10 +194,10 @@ def test_a_bindings_manifest_is_read_though_its_configuration_cant_be(bindings: 
     handle, manifest = _managed(bindings, tmp_path)
     named = {k: e.datablock.name for k, e in manifest.entries.items() if e.datablock is not None}
     config = bpy.data.collections["Shot"][NAMESPACE]["binding." + handle.binding_id]
-    config[VERSION_KEY] = 2
+    config[VERSION_KEY] = binding_records.CONFIG.version + 1
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
     read = ownership.manifest(handle.binding_id)
-    assert isinstance(read, Loaded)  # references from before the reopen are stale, so compared by name
+    assert isinstance(read, LoadedRecord)  # references from before the reopen are stale, so compared by name
     assert {k: e.datablock.name for k, e in read.record.entries.items() if e.datablock is not None} == named
 
 
@@ -218,9 +218,13 @@ def test_a_prepared_resource_takes_the_key_of_the_entry_with_its_identity(bindin
     # ROLE-05: matched by role, source entity, and place; a new identity gets a new key. A content-keyed entry has none.
     _, manifest = _managed(bindings, tmp_path)
     object_at = manifests.CopyResourceIdentity(RepresentationRole.OBJECT, "/World/Pay", 0)
-    found, other_place, other_role = manifests.entry_keys(
+    found, other_place, other_role = manifests.existing_or_new_entry_keys(
         manifest,
-        [object_at, object_at._replace(place=1), object_at._replace(role=RepresentationRole.BOUNDS_MESH)],
+        [
+            object_at,
+            object_at._replace(object_index_in_copy=1),
+            object_at._replace(role=RepresentationRole.BOUNDS_MESH),
+        ],
     )
     assert found == key("b")
     assert len({other_place, other_role, *manifest.entries}) == 5
@@ -238,12 +242,12 @@ def test_entry_keys_are_random_and_stored_as_keys() -> None:
     [
         ({"role": ""}, "is not a valid RepresentationRole"),
         ({"role": "hologram"}, "is not a valid RepresentationRole"),  # ROLE-01: outside the vocabulary
-        ({"place": None}, "has a place among its copy's objects"),
-        ({"place": -1}, "has a place among its copy's objects"),
-        ({"covers": ["/World/Ref", "/World/Pay"]}, "covers one source entity"),
+        ({"object_index_in_copy": None}, "has a place among its copy's objects"),
+        ({"object_index_in_copy": -1}, "has a place among its copy's objects"),
+        ({"source_entity_paths": ["/World/Ref", "/World/Pay"]}, "covers one source entity"),
         # Not a list at all: ID properties can't hold a list mixing strings and ints.
-        ({"covers": "/World"}, "an entry covers a list of source-entity paths"),
-        ({"uses": ["nowhere"]}, "entries use resources the manifest doesn't have"),
+        ({"source_entity_paths": "/World"}, "an entry covers a list of source-entity paths"),
+        ({"dependency_entry_keys": ["nowhere"]}, "entries use resources the manifest doesn't have"),
     ],
 )
 def test_an_invalid_manifest_is_refused(
@@ -266,7 +270,7 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     # It claims nothing and is reported, and writing doesn't replace it.
     handle, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
-    destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = 2
+    destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = manifests.MANIFEST.version + 1
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)
@@ -278,7 +282,7 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     assert destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict() == stored
 
 
-def _change(uses: tuple[str, ...] = ()) -> EntryChange:
+def _change(uses: tuple[str, ...] = ()) -> ManifestEntryChange:
     return object_change("/World/Ref", uses)
 
 
@@ -312,10 +316,10 @@ _UPDATES: dict[str, tuple[_Update, type[Exception], str]] = {
     "is not a change": (
         lambda new: ({key("c"): object_entry(new, "/World/Ref")}, [], {key("c"): new}),
         TypeError,
-        "not an EntryChange",
+        "not a ManifestEntryChange",
     ),
     "covers a non-path": (
-        lambda new: ({key("c"): EntryChange([1], RepresentationRole.OBJECT, [], 0)}, [], {key("c"): new}),  # ty: ignore[invalid-argument-type]
+        lambda new: ({key("c"): ManifestEntryChange([1], RepresentationRole.OBJECT, [], 0)}, [], {key("c"): new}),  # ty: ignore[invalid-argument-type]
         TypeError,
         "all strings",
     ),
@@ -334,12 +338,12 @@ def test_an_update_that_makes_no_manifest_changes_nothing(bindings: Bindings, tm
     destination = bpy.data.collections["Shot"]
     objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
     new = bpy.data.objects.new("New", None)
-    stored = records.stored(destination, manifests.MANIFEST_KEY)
+    stored = id_property_records.stored(destination, manifests.MANIFEST_KEY)
     claims = {obj: ownership.of(obj).claims for obj in [*objects, new]}
     make, error, message = _UPDATES[update]
     changed, removed, created = make(new)
     with pytest.raises(error, match=message):
         ownership.set_manifest_entries(handle.binding_id, changed, removed, created)
-    assert records.stored(destination, manifests.MANIFEST_KEY) == stored
-    assert ownership.manifest(handle.binding_id) == Loaded(manifest, 1)
+    assert id_property_records.stored(destination, manifests.MANIFEST_KEY) == stored
+    assert ownership.manifest(handle.binding_id) == LoadedRecord(manifest, 1)
     assert {obj: ownership.of(obj).claims for obj in [*objects, new]} == claims

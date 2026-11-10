@@ -14,9 +14,9 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS, copies
 
@@ -38,30 +38,36 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
-        [p.resources for p in plan.partitions],
-        [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
-        [(c.element, c.source) for c in plan.correspondence],
-        [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
-        [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
-        [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
+        [p.resource_indices for p in plan.partitions],
+        [
+            (r.role, r.source_entity_path, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            for r in plan.resources
+        ],
+        [(c.object_resource_index, c.source_path) for c in plan.correspondence],
+        [
+            memoryview(b).tolist()
+            for b in (plan.copy_world_matrices, plan.copy_object_resource_indices, plan.copy_geometry_indices)
+        ],
+        [memoryview(b).tolist() for b in (plan.copy_placeholder_bounds_indices, plan.placeholder_bounds)],
+        [(g.representative_source_path, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
     )
 
 
-def _identity(resource: _core.Resource) -> tuple[str, str, int]:
+def _identity(resource: _core.PlannedResource) -> tuple[str, str, int]:
     """A copy's resource's identity: its role, its copy's source entity, and its place among the copy's objects."""
-    return (resource.role, resource.entity, resource.place)
+    return (resource.role, resource.source_entity_path, resource.object_index_in_copy)
 
 
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
 def test_a_copy_per_drawn_gprim(policy: PayloadPolicy, tmp_path: Path) -> None:
     with transaction.failed_settings(tmp_path) as scene:
-        plan = _plan(open_fresh(scene.root, policy.load_set))
+        plan = _plan(open_stage_without_cache(scene.root_layer_path, policy.load_set))
         shown = copies(plan)
         assert shown.keys() == DRAWN[policy]
         assert plan.copy_count == len(shown) == len(plan.correspondence)
         for copy in shown.values():
-            assert copy.bounds == (*EXTENT[0], *EXTENT[1])  # each a mesh's, with no placeholder
-            assert (copy.geometry >= 0, copy.placeholder) == (True, -1)
+            assert copy.local_bounds == (*EXTENT[0], *EXTENT[1])  # each a mesh's, with no placeholder
+            assert (copy.geometry_index >= 0, copy.placeholder_bounds_index) == (True, -1)
 
 
 def test_copy_content_crosses_as_blenders_element_types(tmp_path: Path) -> None:
@@ -69,10 +75,10 @@ def test_copy_content_crosses_as_blenders_element_types(tmp_path: Path) -> None:
         plan = _plan(scene.caller)
     count = plan.copy_count
     buffers = {
-        "copy_worlds": ("f", 16 * count),
-        "copy_objects": ("i", count),
-        "copy_geometries": ("i", count),
-        "copy_placeholders": ("i", count),
+        "copy_world_matrices": ("f", 16 * count),
+        "copy_object_resource_indices": ("i", count),
+        "copy_geometry_indices": ("i", count),
+        "copy_placeholder_bounds_indices": ("i", count),
         "placeholder_bounds": ("f", 0),  # the scene's gprims are all meshes
     }
     for name, (element, length) in buffers.items():
@@ -89,7 +95,7 @@ def test_world_transforms_at_the_time_code(time_code: float | None, tmp_path: Pa
         plan = _plan(scene.caller, time_code)
         assert plan.time_code == _time_code(time_code)
         for source, copy in copies(plan).items():
-            assert copy.world.ExtractTranslation() == translation(source, time_code)
+            assert copy.world_matrix.ExtractTranslation() == translation(source, time_code)
 
 
 def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None:
@@ -99,13 +105,23 @@ def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None
         assert len(plan.resources) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         shown = copies(plan)
         for source, copy in shown.items():
-            assert copy.bounds_mesh is not None  # the scene's gprims are all meshes
-            obj, mesh = plan.resources[copy.object], plan.resources[copy.bounds_mesh]
-            assert (obj.role, obj.covers, obj.uses) == ("object", (source,), (copy.bounds_mesh,))
-            assert (mesh.role, mesh.covers, mesh.uses) == ("bounds mesh", (source,), ())
-        assert sorted(p.resources for p in plan.partitions) == sorted((c.object, c.bounds_mesh) for c in shown.values())
-        assert sorted((c.element, c.source) for c in plan.correspondence) == sorted(
-            (c.object, source) for source, c in shown.items()
+            assert copy.bounds_mesh_resource_index is not None  # the scene's gprims are all meshes
+            obj, mesh = plan.resources[copy.object_resource_index], plan.resources[copy.bounds_mesh_resource_index]
+            assert (obj.role, obj.source_entity_paths, obj.dependency_resource_indices) == (
+                "object",
+                (source,),
+                (copy.bounds_mesh_resource_index,),
+            )
+            assert (mesh.role, mesh.source_entity_paths, mesh.dependency_resource_indices) == (
+                "bounds mesh",
+                (source,),
+                (),
+            )
+        assert sorted(p.resource_indices for p in plan.partitions) == sorted(
+            (c.object_resource_index, c.bounds_mesh_resource_index) for c in shown.values()
+        )
+        assert sorted((c.object_resource_index, c.source_path) for c in plan.correspondence) == sorted(
+            (c.object_resource_index, source) for source, c in shown.items()
         )
 
 
@@ -114,9 +130,9 @@ def test_identities_follow_role_and_source_entity(tmp_path: Path) -> None:
         for time_code in TIME_CODES:
             plan = _plan(scene.caller, time_code)
             for source, copy in copies(plan).items():
-                assert copy.bounds_mesh is not None
-                assert _identity(plan.resources[copy.object]) == ("object", source, 0)
-                assert _identity(plan.resources[copy.bounds_mesh]) == ("bounds mesh", source, 0)
+                assert copy.bounds_mesh_resource_index is not None
+                assert _identity(plan.resources[copy.object_resource_index]) == ("object", source, 0)
+                assert _identity(plan.resources[copy.bounds_mesh_resource_index]) == ("bounds mesh", source, 0)
 
 
 def test_planning_is_deterministic(tmp_path: Path) -> None:
@@ -133,13 +149,13 @@ def test_snapshot_outlives_edits_and_release(tmp_path: Path) -> None:
         planned = _contents(_core.plan(before, SETTINGS, CONTEXT))
         scene.edit()
         after = copies(_core.plan(chain.capture(0.0), SETTINGS, CONTEXT))
-        assert after["/World/Sub"].world.ExtractTranslation() == SUB_EDITED
+        assert after["/World/Sub"].world_matrix.ExtractTranslation() == SUB_EDITED
         chain.release()
         # Neither the edit nor the released chain reaches what the first capture copied.
         assert _contents(_core.plan(before, SETTINGS, CONTEXT)) == planned
-        assert copies(_core.plan(before, SETTINGS, CONTEXT))["/World/Sub"].world.ExtractTranslation() == translation(
-            "/World/Sub", 0.0
-        )
+        assert copies(_core.plan(before, SETTINGS, CONTEXT))[
+            "/World/Sub"
+        ].world_matrix.ExtractTranslation() == translation("/World/Sub", 0.0)
 
 
 def test_released_chain_refuses_capture(tmp_path: Path) -> None:

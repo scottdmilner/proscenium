@@ -1,4 +1,4 @@
-"""Isolated body: M4 Phase E, time-sampled data: frames captured over a range by the bridge's frames.py (E1).
+"""Isolated body: M4 Phase E, time-sampled data: frames captured over a range by the bridge's frame_capture.py (E1).
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_frames.py.
 """
@@ -31,7 +31,7 @@ def capture(module_dir: str, dest: str, times: list[float]) -> dict[str, Any]:
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    frames = importlib.import_module("frames")
+    frames = importlib.import_module("frame_capture")
     for name in SCENES:
         shutil.copy(BRIDGE / "cases" / name, dest)
     stage = Usd.Stage.Open(str(Path(dest) / "frames.usda"))
@@ -39,13 +39,13 @@ def capture(module_dir: str, dest: str, times: list[float]) -> dict[str, Any]:
     try:
         captured = frames.capture_frames(native, bridge, times)
         tracks = []
-        for key, objects in captured.tracks.items():
+        for key, objects in captured.object_indices_by_track.items():
             records = [captured.record(key, frame) for frame in range(len(times))]
             tracks.append(
                 {
                     "key": [*key[:2], key[2]],
                     "objects": objects,
-                    "varying": sorted(captured.varying[key]),
+                    "varying": sorted(captured.varying_aspects_by_track[key]),
                     "records": [None if r is None else _summary(r) for r in records],
                 }
             )

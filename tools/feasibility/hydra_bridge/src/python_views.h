@@ -42,7 +42,7 @@ struct PlanView {
     [[nodiscard]] bp::list Diagnostics() const;
     [[nodiscard]] bp::list Universe() const;
     // M4 Phase D (D8): the records at `indices` only, so an update converts what it uses; the counts; and
-    // GroupForBatches, as ((key, members), ...) with the key as batch.py's, and the objects in no batch.
+    // GroupForBatches, as ((key, members), ...) with the key as batched_display.py's, and the objects in no batch.
     [[nodiscard]] bp::list ObjectsAt(const bp::object &indices) const;
     [[nodiscard]] bp::list MeshesAt(const bp::object &indices) const;
     [[nodiscard]] std::size_t ObjectCount() const { return data->objects.size(); }
@@ -55,8 +55,8 @@ struct PlanView {
 // are plan object indices; entities are (source, instance context) pairs, and resolve_pick also gives the floor.
 // Each runs without the GIL, and raises RuntimeError once the stage has expired; a level is None (the prim
 // level) or a registered kind, and anything else raises ValueError.
-struct InteractionView {
-    InteractionView(const pxr::UsdStagePtr &stage, const PlanView &plan);
+struct SourceSelectionResolverView {
+    SourceSelectionResolverView(const pxr::UsdStagePtr &stage, const PlanView &plan);
 
     [[nodiscard]] bp::object ResolvePick(std::size_t element) const;  // dict, or None for no element
     [[nodiscard]] bp::list SelectTargets(const bp::object &entities, const bp::object &level) const;
@@ -66,7 +66,7 @@ struct InteractionView {
     [[nodiscard]] bp::dict SelectionFromBlender(const bp::object &selected, const bp::object &active,
                                                 const bp::object &level) const;
 
-    Interaction interaction;
+    SourceSelectionResolver interaction;
 };
 
 // Plans without holding the GIL. Each destination takes prim purposes by USD name ("default", "proxy",
@@ -77,9 +77,9 @@ PlanView MakePlan(const SnapshotView &snapshot, const bp::object &viewportPurpos
                   const bp::object &viewportMaterialPurpose, const bp::object &renderPurposes,
                   const bp::object &renderMaterialPurpose, bool pointInstancers, const bp::object &previous);
 
-// M4: what `next` changes from `published` (plan_diff.h), computed without the GIL, as {"meshes", "materials",
-// "objects": [old index or -1 per new entry], "changed" and "repointable": [new object indices], "removed": [old
-// object indices]}.
+// M4: what `next` changes from `published` (plan_diff.h), computed without the GIL. The previous_*_indices
+// mappings hold an old index or -1 per new entry; changed_object_indices, repointable_object_indices, and
+// transform_changed_object_indices name new objects; removed_previous_object_indices names old objects.
 bp::dict DiffPlanViews(const PlanView &published, const PlanView &next);
 
 // M4 (C4): derives the plan's correspondence again without the GIL, for timing; returns the universe's size.

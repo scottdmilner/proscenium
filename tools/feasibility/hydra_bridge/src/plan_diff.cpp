@@ -48,18 +48,19 @@ bool SameProperties(const ObjectEntry &a, const ObjectEntry &b) {
 
 // Whether the object's mesh and each slot's material are the old ones, through the diff's mappings.
 bool SameData(const ObjectEntry &next, const ObjectEntry &old, const PlanDiff &diff) {
-    const int mesh = next.mesh == -1 ? -1 : diff.meshes[static_cast<std::size_t>(next.mesh)];
+    const int mesh = next.mesh == -1 ? -1 : diff.previousMeshIndices[static_cast<std::size_t>(next.mesh)];
     if (mesh != old.mesh || (next.mesh != -1 && mesh == -1)) return false;
     if (next.materialSlots.size() != old.materialSlots.size()) return false;
     for (std::size_t i = 0; i < next.materialSlots.size(); ++i) {
         const int slot = next.materialSlots[i];
-        const int material = slot == -1 ? -1 : diff.materials[static_cast<std::size_t>(slot)];
+        const int material = slot == -1 ? -1 : diff.previousMaterialIndices[static_cast<std::size_t>(slot)];
         if (material != old.materialSlots[i] || (slot != -1 && material == -1)) return false;
     }
     return true;
 }
 
-// Everything else apply.py sets from an object entry but its matrix. A placeholder and a mesh object differ here.
+// Everything else object_display.py sets from an object entry but its matrix. A placeholder and a mesh object differ
+// here.
 bool SameRestButMatrix(const ObjectEntry &next, const ObjectEntry &old) {
     return std::tie(next.placeholderType, next.bounds, next.visible, next.purpose, next.constantPrimvars) ==
                std::tie(old.placeholderType, old.bounds, old.visible, old.purpose, old.constantPrimvars) &&
@@ -74,34 +75,34 @@ PlanDiff DiffPlans(const Plan &published, const Plan &next) {
     MeshContents contents;
     for (std::size_t i = 0; i < published.meshes.size(); ++i)
         contents.Add(published.meshHashes[i], static_cast<int>(i));
-    diff.meshes.reserve(next.meshes.size());
+    diff.previousMeshIndices.reserve(next.meshes.size());
     for (std::size_t i = 0; i < next.meshes.size(); ++i)
-        diff.meshes.push_back(contents.Find(next.meshes[i], next.meshHashes[i], published.meshes));
+        diff.previousMeshIndices.push_back(contents.Find(next.meshes[i], next.meshHashes[i], published.meshes));
 
     // Each material compares in full only against those with its name.
     std::unordered_multimap<std::string, int> materialsByName;
     for (std::size_t i = 0; i < published.materials.size(); ++i)
         materialsByName.emplace(published.materials[i].name, static_cast<int>(i));
-    diff.materials.reserve(next.materials.size());
+    diff.previousMaterialIndices.reserve(next.materials.size());
     for (const MaterialData &material : next.materials) {
         int same = -1;
         const auto [begin, end] = materialsByName.equal_range(material.name);
         for (auto it = begin; it != end && same == -1; ++it)
             if (SameMaterial(material, published.materials[static_cast<std::size_t>(it->second)])) same = it->second;
-        diff.materials.push_back(same);
+        diff.previousMaterialIndices.push_back(same);
     }
 
     std::unordered_map<Identity, int, IdentityHash> objectsByIdentity;
     for (std::size_t i = 0; i < published.objects.size(); ++i)
         objectsByIdentity.emplace(Identity{published.objects[i]}, static_cast<int>(i));
     std::vector<bool> matched(published.objects.size(), false);
-    diff.objects.reserve(next.objects.size());
+    diff.previousObjectIndices.reserve(next.objects.size());
     for (std::size_t i = 0; i < next.objects.size(); ++i) {
         const auto found = objectsByIdentity.find(Identity{next.objects[i]});
         // An identity the new plan repeats matches once; the planner gives each object its own.
         const int old =
             found == objectsByIdentity.end() || matched[static_cast<std::size_t>(found->second)] ? -1 : found->second;
-        diff.objects.push_back(old);
+        diff.previousObjectIndices.push_back(old);
         if (old == -1) continue;
         matched[static_cast<std::size_t>(old)] = true;
         const ObjectEntry &entry = next.objects[i];
@@ -109,14 +110,14 @@ PlanDiff DiffPlans(const Plan &published, const Plan &next) {
         const bool others = SameRestButMatrix(entry, before);
         const bool rest = others && entry.matrix == before.matrix;
         if (rest && SameData(entry, before, diff)) continue;
-        diff.changed.push_back(static_cast<int>(i));
+        diff.changedObjectIndices.push_back(static_cast<int>(i));
         if (rest)
-            diff.repointable.push_back(static_cast<int>(i));
+            diff.repointableObjectIndices.push_back(static_cast<int>(i));
         else if (others)
-            diff.moved.push_back(static_cast<int>(i));
+            diff.transformChangedObjectIndices.push_back(static_cast<int>(i));
     }
     for (std::size_t i = 0; i < matched.size(); ++i)
-        if (!matched[i]) diff.removed.push_back(static_cast<int>(i));
+        if (!matched[i]) diff.removedPreviousObjectIndices.push_back(static_cast<int>(i));
     return diff;
 }
 

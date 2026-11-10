@@ -12,12 +12,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.stages import PayloadPolicy
-from proscenium.synchronization import removal
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium.synchronization import datablock_removal
 from support.blend import prim_name
 from support.destinations import destination
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from fixtures.transaction import RetirementFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
 
 FAILING = "Still"  # the placeholder whose object and bounds mesh can't be retired: /World/Still's
 
@@ -40,38 +40,38 @@ def _binding(bindings: Bindings, scene: RetirementFailureScene) -> BindingHandle
 
 def _manifest(handle: BindingHandle) -> manifests.Manifest:
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     return manifest.record
 
 
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
 def _fail_retirement(monkeypatch: pytest.MonkeyPatch) -> None:
     """Removing FAILING's object or bounds mesh, of any generation, fails, and so does any call removing it."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
 
     def failing(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(prim_name(d) == FAILING for d in datablocks):
             raise RuntimeError("injected failure")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing)
 
 
 def _counted_removals(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """The lengths of the calls removing datablocks, as they're made."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
     calls: list[int] = []
 
     def counted(datablocks: Sequence[bpy.types.ID]) -> None:
         calls.append(len(datablocks))
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", counted)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", counted)
     return calls
 
 
@@ -95,15 +95,15 @@ def test_a_failed_retirement_completes_with_issues(
         assert sorted(d.role for d in result.diagnostics) == sorted(scene.failed_retirements)
         # The new generation is published and displayed.
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, Loaded) and generation.record.time_code == second
+        assert isinstance(generation, LoadedRecord) and generation.record.time_code == second
         published = {e.datablock for e in _manifest(handle).entries.values()}
         assert set(bpy.data.collections["Shot"].objects) == {d for d in published if isinstance(d, bpy.types.Object)}
         assert len(published) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
         # The leftovers: the ledger's, each with the diagnostic naming its ledger key and role.
         ledger = _ledger()
         assert {e.diagnostic for e in ledger.values()} == set(result.diagnostics)
-        assert all(e.diagnostic.resource == k for k, e in ledger.items())
-        assert result.cleanup_status == tuple(e.diagnostic for _, e in sorted(ledger.items()))
+        assert all(e.diagnostic.pending_resource_key == k for k, e in ledger.items())
+        assert result.pending_cleanup_diagnostics == tuple(e.diagnostic for _, e in sorted(ledger.items()))
         leftovers = [e.datablock for e in ledger.values()]
         assert sorted(prim_name(d) for d in leftovers if d is not None) == [FAILING, FAILING]
         for datablock in leftovers:
@@ -116,7 +116,7 @@ def test_a_failed_retirement_completes_with_issues(
         remaining = {d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes)}
         assert remaining & old_uids == {d.session_uid for d in leftovers if d is not None}
         attempt = binding_state.read_last_attempt(destination(handle))
-        assert isinstance(attempt, Loaded) and attempt.record.diagnostics == result.diagnostics
+        assert isinstance(attempt, LoadedRecord) and attempt.record.diagnostics == result.diagnostics
 
 
 def test_a_repeated_retirement_failure_reports_each_leftover_once(
@@ -137,8 +137,8 @@ def test_a_repeated_retirement_failure_reports_each_leftover_once(
         assert set(again.diagnostics).isdisjoint(earlier.diagnostics)  # this attempt's leftovers, not the earlier
         after = _ledger()
         assert {k: after[k] for k in before} == before
-        assert set(again.cleanup_status) == {*earlier.diagnostics, *again.diagnostics}
-        assert len(again.cleanup_status) == len(after) == 4
+        assert set(again.pending_cleanup_diagnostics) == {*earlier.diagnostics, *again.diagnostics}
+        assert len(again.pending_cleanup_diagnostics) == len(after) == 4
 
 
 def test_a_replacement_takes_its_resources_identities(
@@ -205,4 +205,4 @@ def test_a_retirement_the_ledger_cant_record_raises(
         with pytest.raises(RuntimeError, match="injected ledger failure"):
             handle.synchronize(second)
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, Loaded) and generation.record.time_code == second
+        assert isinstance(generation, LoadedRecord) and generation.record.time_code == second

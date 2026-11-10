@@ -67,7 +67,7 @@ HdContainerDataSourceHandle CopyPlannedSchemas(const HdContainerDataSourceHandle
 SceneIndexChain::SceneIndexChain(const UsdStagePtr& stage) : handle_(stage) {
   TfDiagnosticCollector warnings;
   Build();
-  pending_ = warnings.Take();
+  pending_ = warnings.TakeDiagnostics();
 }
 
 void SceneIndexChain::Build() {
@@ -149,15 +149,15 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   scene->AddPrims(entries);
   // A warning attributed to a prim is its own; the rest the chain posted.
   std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> warned;
-  for (Diagnostic& warning : warnings.Take())
-    (warning.source.IsEmpty() ? chain : warned[warning.source]).push_back(std::move(warning));
+  for (Diagnostic& warning : warnings.TakeDiagnostics())
+    (warning.sourcePath.IsEmpty() ? chain : warned[warning.sourcePath]).push_back(std::move(warning));
   // A prim's diagnostics name its path, so they never repeat another's.
   Diagnostics prims;
   std::set<std::pair<DiagnosticCode, std::string>> attributed;
   for (std::size_t i = 0; i < paths.size(); ++i) {
     Diagnostics own;
-    AppendUnique(errors[i], own);
-    if (const auto found = warned.find(paths[i]); found != warned.end()) AppendUnique(found->second, own);
+    AppendUniqueDiagnostics(errors[i], own);
+    if (const auto found = warned.find(paths[i]); found != warned.end()) AppendUniqueDiagnostics(found->second, own);
     for (const Diagnostic& diagnostic : own) attributed.emplace(diagnostic.code, diagnostic.message);
     prims.insert(prims.end(), own.begin(), own.end());
   }
@@ -167,7 +167,7 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
                              [&](const Diagnostic& d) { return attributed.count({d.code, d.message}) != 0; }),
               chain.end());
   Diagnostics diagnostics;
-  AppendUnique(chain, diagnostics);
+  AppendUniqueDiagnostics(chain, diagnostics);
   diagnostics.insert(diagnostics.end(), prims.begin(), prims.end());
   const UsdStagePtr stage = handle_.Stage();
   return std::make_shared<Snapshot>(

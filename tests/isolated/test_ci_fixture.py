@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from fixtures import production_like
-from fixtures.production_like import Params
+from fixtures.production_like import ProductionSceneParameters
 
 from .harness import Runtime, run_isolated
 
@@ -21,4 +21,4 @@ BODIES = Path(__file__).parent / "bodies"
 def test_ci_fixture_inventory(binary: Runtime, load_all: bool, tmp_path: Path) -> None:
     root = production_like.generate(tmp_path)
     result = run_isolated(binary, BODIES / "ci_fixture.py", "inventory", tmp_path, root=str(root), load_all=load_all)
-    assert result == production_like.expected_inventory(Params(), load_all)
+    assert result == production_like.expected_inventory(ProductionSceneParameters(), load_all)

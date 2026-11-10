@@ -15,7 +15,7 @@ from pxr import Sdf, Usd, UsdUtils
 
 import proscenium
 
-from . import state as blender_state
+from . import blender_state as blender_state
 
 if TYPE_CHECKING:
     from collections import Counter
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 def _reset_and_check(baseline_handlers: dict[str, Counter[str]], before: blender_state.HandlerLists) -> list[str]:
-    blender_state.cleanup(before)
+    blender_state.clear_test_registrations_and_stage_cache(before)
     blender_state.reset()
     return blender_state.baseline_problems(baseline_handlers)
 

@@ -13,13 +13,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import configs, manifests
-from proscenium.binding.persistence.records import Loaded
+from proscenium.binding.persistence import binding_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 def claims() -> dict[bpy.types.ID, list[Claim]]:
@@ -30,18 +30,18 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
     def claim(binding_id: BindingId, destination: bpy.types.Collection) -> None:
         seen.add(destination)
         manifest = manifests.read_manifest(destination)
-        if isinstance(manifest, Loaded):
+        if isinstance(manifest, LoadedRecord):
             for entry_key, entry in manifest.record.entries.items():
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))
 
-    for collection, binding_id, _config in configs.read_configs():
+    for collection, binding_id, _config in binding_records.read_configs():
         if collection not in seen:  # one holding two records claims once
             claim(binding_id, collection)
     return found
 
 
-def assert_agrees() -> None:
+def assert_ownership_matches_manifests() -> None:
     """Assert the ownership index's claims are the oracle's, as sets, for every datablock of every type."""
     expected = claims()
     for id_ in bpy.data.user_map().keys() | expected.keys():

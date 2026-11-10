@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Any
 import bpy
 import pytest
 
-from fixtures import records as fixture
-from proscenium.binding.persistence.records import (
+from fixtures import schema_version_cases as fixture
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
-    Loaded,
+    LoadedRecord,
     RefusedRecord,
     RefusedRecordError,
     Schema,
@@ -79,7 +79,7 @@ def test_a_record_with_pointers_survives_save_and_reopen(tmp_path: Path) -> None
     write(_scene(), "pointers", POINTERS, Pointers(collection, {"B1": collection}, [{"n": 1}]))
     save_and_reopen(tmp_path / "pointers.blend")
     collection = bpy.data.collections["Dest"]
-    assert read(_scene(), "pointers", POINTERS) == Loaded(Pointers(collection, {"B1": collection}, [{"n": 1}]), 1)
+    assert read(_scene(), "pointers", POINTERS) == LoadedRecord(Pointers(collection, {"B1": collection}, [{"n": 1}]), 1)
 
 
 def test_stored_records_survive_save_and_reopen_unchanged(versions: fixture.SchemaVersions, tmp_path: Path) -> None:
@@ -93,7 +93,7 @@ def test_reading_migrates_in_memory_and_changes_nothing(versions: fixture.Schema
     _store_raw(versions)
     save_and_reopen(tmp_path / "versions.blend")
     for name, expected in versions.loaded.items():
-        assert read(_scene(), name, versions.schema) == Loaded(expected, _version(versions.stored[name]))
+        assert read(_scene(), name, versions.schema) == LoadedRecord(expected, _version(versions.stored[name]))
     for name, refusal in versions.refused.items():
         result = read(_scene(), name, versions.schema)
         assert isinstance(result, RefusedRecord)
@@ -115,7 +115,7 @@ def test_writing_never_replaces_a_newer_or_unreadable_record(versions: fixture.S
 def test_writing_over_an_older_record_stores_the_current_version(versions: fixture.SchemaVersions) -> None:
     _store_raw(versions)
     loaded = read(_scene(), "v1", versions.schema)
-    assert isinstance(loaded, Loaded)
+    assert isinstance(loaded, LoadedRecord)
     write(_scene(), "v1", versions.schema, loaded.record)
     assert _raw()["v1"] == {VERSION_KEY: 3, "label": "a", "count": 2, "enabled": True, "scale": 1.0}
 
@@ -139,7 +139,7 @@ def test_a_value_id_properties_cannot_hold_changes_nothing() -> None:
 
 
 def test_writing_another_record_type_is_misuse(versions: fixture.SchemaVersions) -> None:
-    with pytest.raises(TypeError, match="sample: expected a Sample, not Single"):
+    with pytest.raises(TypeError, match="sample: expected a SchemaMigrationSample, not Single"):
         write(_scene(), "v3", versions.schema, Single(1))  # ty: ignore[invalid-argument-type]
 
 

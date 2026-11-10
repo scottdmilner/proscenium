@@ -10,7 +10,8 @@ reported as the median and range of its repeats; the parent's runs then give the
   instance context, and for a box selection over the top-level prim with the most viewport elements. The kind
   promotion's share is `selection_from_blender` at a kind level against the prim level.
 
-`selection` is the display component, the baseline's selection.py or the batched display's batch_selection.py, and
+`selection` is the display component, the baseline's object_display_selection.py or the batched display's
+batched_display_selection.py, and
 `target` what its functions take: the collection, or the batched display. On the batched display, a pick first
 resolves what a ray cast at the copy would return to its element (`pick_element`, timed too).
 """
@@ -46,7 +47,7 @@ def _timed(repeats: int, call: Callable[[], Any]) -> tuple[dict[str, float], Any
 def measure(native: Any, selection: Any, stage: Usd.Stage, plan: Any, target: Any, time_code: float) -> dict:
     """Every timing, by operation name, with the sizes it covered."""
     view_layer: Any = bpy.context.view_layer  # never None in a running Blender
-    interaction = native.Interaction(stage, plan)
+    interaction = native.SourceSelectionResolver(stage, plan)
     records = plan.objects
     universe = plan.universe
     results: dict[str, Any] = {}
@@ -127,7 +128,7 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
     results[f"{name}: resolve_pick"], entities = _timed(
         repeats, lambda: [interaction.resolve_pick(element) for element in picks]
     )
-    pairs = [(e["source"], e["instance_context"]) for e in entities]
+    pairs = [(e["source_path"], e["instance_context"]) for e in entities]
     results[f"{name}: select_targets, prim level"], _ = _timed(repeats, lambda: interaction.select_targets(pairs))
     targets: dict[str, Any] = {}
     for level in LEVELS:
@@ -163,11 +164,15 @@ def _entry(  # noqa: PLR0913 - the chain's whole context
         repeats, lambda: selection.read_blender_selection(view_layer, target)
     )
     results[f"{name}: selection_from_blender, prim level"], _ = _timed(
-        repeats, lambda: interaction.selection_from_blender(blender.selected, blender.active)
+        repeats,
+        lambda: interaction.selection_from_blender(blender.selected_element_indices, blender.active_element_index),
     )
     for level in LEVELS:
         results[f"{name}: selection_from_blender, {level}"], _ = _timed(
-            repeats, lambda level=level: interaction.selection_from_blender(blender.selected, blender.active, level)
+            repeats,
+            lambda level=level: interaction.selection_from_blender(
+                blender.selected_element_indices, blender.active_element_index, level
+            ),
         )
     clear()
     return results

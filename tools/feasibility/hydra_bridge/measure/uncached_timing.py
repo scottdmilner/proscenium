@@ -7,7 +7,7 @@ It then times, each REPEATS times, with the datablocks looked up before the cloc
   collections holding binding records among their users (a manifest's pointer is a user), and those manifests;
   ownership.of for one, and a scan of the stored entries for the pointers for 1,000;
 - ownership by scan, for comparison: every binding record and every manifest read, then the claims;
-- a binding lookup, binding_configs.find_binding;
+- a binding lookup, binding_operations.find_binding;
 - reading the binding's manifest whole, as a synchronization does.
 
 M5 Phase S first measured these against M3's cache of the records, which it then removed (runtime-record.md). Each
@@ -48,34 +48,34 @@ def _stats(call: Callable[[], Any]) -> dict[str, Any]:
 
 def _claims_by_scan(target: bpy.types.ID) -> list[tuple[str, str]]:
     """No cache: every binding record and every manifest read, then the claims on target."""
-    from proscenium.binding.persistence import configs, manifests, records
+    from proscenium.binding.persistence import binding_records, id_property_records, manifests
 
     found = []
     seen = set()
-    for collection, binding_id, _config in configs.read_configs():
+    for collection, binding_id, _config in binding_records.read_configs():
         if collection in seen:
             continue
         seen.add(collection)
         manifest = manifests.read_manifest(collection)
-        if isinstance(manifest, records.Loaded):
+        if isinstance(manifest, id_property_records.LoadedRecord):
             found += [(binding_id, k) for k, e in manifest.record.entries.items() if e.datablock == target]
     return found
 
 
 def _claims_by_users(targets: list[bpy.types.ID]) -> dict[int, list[tuple[str, str]]]:
     """No cache: the targets' users, the binding collections among them, and a scan of each one's stored entries."""
-    from proscenium.binding.persistence import configs, manifests, records
+    from proscenium.binding.persistence import binding_records, id_property_records, manifests
 
     user_map = bpy.data.user_map(subset=targets)
     holders: dict[bpy.types.Collection, set[int]] = {}
     for target in targets:
         for user in user_map[target]:
-            if isinstance(user, bpy.types.Collection) and configs.binding_ids(user):
+            if isinstance(user, bpy.types.Collection) and binding_records.binding_ids(user):
                 holders.setdefault(user, set()).add(target.session_uid)
     found: dict[int, list[tuple[str, str]]] = {t.session_uid: [] for t in targets}
     for collection, wanted in holders.items():
-        binding_id = configs.binding_ids(collection)[0]
-        for entry_key, entry in collection[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"].items():
+        binding_id = binding_records.binding_ids(collection)[0]
+        for entry_key, entry in collection[id_property_records.NAMESPACE][manifests.MANIFEST_KEY]["entries"].items():
             datablock = entry.get("datablock")
             if datablock is not None and datablock.session_uid in wanted:
                 found[datablock.session_uid].append((binding_id, entry_key))
@@ -86,11 +86,11 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
     """Write the manifest, then time the lookups."""
     from proscenium.binding.persistence import manifests
     from proscenium.binding.persistence.manifests import Manifest
-    from proscenium.binding.runtime import binding_configs, ownership
+    from proscenium.binding.runtime import binding_operations, ownership
 
     manifest = Manifest(ownership_timing.entries(display, records, materials))
     ownership.set_manifest(binding_id, manifest)
-    found = binding_configs.find_binding(binding_id)
+    found = binding_operations.find_binding(binding_id)
     assert found is not None and found.destination is not None
     destination = found.destination
     objects = list(display.objects)
@@ -107,7 +107,7 @@ def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materi
         "single: ownership.of": _stats(lambda: ownership.of(target)),
         f"ownership by users, {len(box):,} at once": _stats(lambda: _claims_by_users(box)),
         "single: ownership by scan": _stats(lambda: _claims_by_scan(target)),
-        "single: find_binding": _stats(lambda: binding_configs.find_binding(binding_id)),
+        "single: find_binding": _stats(lambda: binding_operations.find_binding(binding_id)),
         "the manifest read whole": _stats(lambda: manifests.read_manifest(destination)),
     }
     datablocks = sum(

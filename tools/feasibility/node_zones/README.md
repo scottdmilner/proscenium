@@ -6,11 +6,15 @@ Zones in a custom node tree, like Geometry Nodes' simulation and for-each elemen
 |---|---|
 | `zone_model.py` | The bpy-free zone rules: which begins and ends pair, what each zone holds, how zones nest, which links cross out, and how pairs are repaired after a copy |
 | `zone_hull.py` | The bpy-free outline: a convex hull of each zone's node rectangles, rounded, with nested zones inset |
-| `addon.py` | The add-on: a custom node tree and nodes that store their pairing, the draw handlers, link marking, an Add menu entry per zone kind, a pair operator, and a sidebar panel |
+| `addon.py` | The add-on: a custom node tree and nodes that store their pairing, `_ZoneRuntimeState`, `_CachedZoneTopology`, and `_ZoneDrawData` for its caches, the draw handlers, link marking, an Add menu entry per zone kind, a pair operator, and a sidebar panel |
 | `bench.py` | Headless checks of the zone rules, the pair repair, and the hull, and timings at scale |
 | `demo.py` | A windowed run in the binary: a demo tree, duplicate, paste, delete and undo through Blender's own operators and keys, screenshots, and draw timings |
 
 ## Running it
+
+Nodes store their paired end's identifier in `partner_uid`. Zone records use `begin_uid`, `end_uid`, and
+`body_node_uids`; layouts expose `innermost_zone_by_node_uid` and `invalid_link_indices`.
+Drawn zones keep a `geometry_cache_key`, `hull_points`, and their `gpu_batches`.
 
 ```sh
 /Applications/Blender.app/Contents/MacOS/Blender --python tools/feasibility/node_zones/addon.py

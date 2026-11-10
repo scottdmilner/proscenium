@@ -181,14 +181,14 @@ The prototype extends `tools/feasibility/hydra_bridge/` (suggested; it stays fea
 
 Branch `m01b-phase-b`, off `m01b-phase-a`.
 
-- **Status (2026-10-12): slice built and passing on all three platforms.** `prototype.usda` runs capture → C++ plan → Blender. 20 prototype checks and the loading checks (41, or 42 on Windows) pass in the wheel and the binary on macOS, Linux and Windows ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). Each prototype check takes its expected value from USD (`UsdGeom`, `UsdShade`) or from how the scene is built. Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-slice-m1b-phase-b).
+- **Status (2026-10-12): slice built and passing on all three platforms.** `display_smoke.usda` runs capture → C++ plan → Blender. 20 prototype checks and the loading checks (41, or 42 on Windows) pass in the wheel and the binary on macOS, Linux and Windows ("Hydra bridge" workflow, [run 38293887802](https://github.com/scottdmilner/proscenium/actions/runs/38293887802)). Each prototype check takes its expected value from USD (`UsdGeom`, `UsdShade`) or from how the scene is built. Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-slice-m1b-phase-b).
 - **C++17 sources in `src/`, one file per stage:**
   - `scene_index_graph`: the scene-index graph and its observer.
   - `capture`: produces the immutable `snapshot`.
   - `instancing`: reverse mapping.
   - `validate`, `mesh_builder` and `planner`: produce the `plan`.
   - `python_views` and `module`: the Python bindings.
-  - `diagnostics`, `loaded_images` and `bridge`.
+  - `diagnostics`, `loaded_usd_libraries` and `bridge`.
 
   `src/README.md` describes the data flow, the files, the Python API and the conventions.
 
@@ -230,7 +230,7 @@ Branch `m01b-phase-b`, off `m01b-phase-a`.
   - **For Phase D:** the copy keeps one sample per value, at shutter offset 0, so a snapshot is one time code. Several frames mean several captures.
 - **Source identity: `HdxPrimOriginInfo` measured against our frame mapping.**
   - For the comparison, a temporary `build_plan` mode took sources and instance contexts from Hydra's picking reverse mapping, `HdxPrimOriginInfo::FromPickHits` on the snapshot, instead of `Frame::Map`. Transforms, visibility and inherited primvars still came from the frames, because Hydra has no consumer-side helper for them.
-  - The two agreed on every source and context in `prototype.usda`, and at every benchmark size.
+  - The two agreed on every source and context in `display_smoke.usda`, and at every benchmark size.
   - **Benchmark** (*measured*, with a since-removed script; bpy wheel, Apple M1 Max, minimum of 5 runs, one machine). Each "branch" draws ten leaf meshes two instancing levels deep:
 
     | Branches | Objects | Capture | `build_plan`, frames | `build_plan`, `HdxPrimOriginInfo` |
@@ -255,7 +255,7 @@ Branch `m01b-phase-b`, off `m01b-phase-a`.
   Mesh topology is held as a `PxOsdMeshTopology`, and validation starts with `PxOsdMeshTopology::Validate`. Its checks cover corner counts, negative indices, the index count, hole indices, and the scheme and orientation tokens. The bridge adds only what USD can't check without the points: indices below the point count, and counts within Blender's `int`.
 
   `Validate` rejects USD's `"none"` scheme (no subdivision), because it accepts only OpenSubdiv's refinement schemes. Such meshes therefore validate as bilinear, since none of the other checks depend on the scheme. An ad hoc run confirmed the validator's messages for a two-corner face, a negative index, an index-count mismatch, a bad scheme, and an out-of-range index. Phase C's malformed-input fixtures will make these checks permanent.
-- **Application** (`apply.py`) sets `position`, `.corner_vert`, `polygons.loop_start`, `material_index`, and each attribute through flat `memoryview` casts of the Vt arrays. `flat()` rejects a format that doesn't match Blender's, rather than letting `foreach_set` fall back to reading items one at a time. Edges come from `mesh.update(calc_edges=True)`.
+- **Application** (`object_display.py`) sets `position`, `.corner_vert`, `polygons.loop_start`, `material_index`, and each attribute through flat `memoryview` casts of the Vt arrays. `flat()` rejects a format that doesn't match Blender's, rather than letting `foreach_set` fall back to reading items one at a time. Edges come from `mesh.update(calc_edges=True)`.
 
 ## Phase C — Prototype correctness
 
@@ -278,7 +278,7 @@ Also checked, because research found them and the spec requires them: collection
 Branch `m01b-phase-c`, off `m01b-phase-b`.
 
 - **Status (2026-10-13): all ten cases pass on macOS arm64, Windows x64 and Linux x64, in the wheel and the binary** ("Hydra bridge" workflow, [run 38359009667](https://github.com/scottdmilner/proscenium/actions/runs/38359009667)). That is 118 correctness checks per host, with the same count per case everywhere; the loading (42, 43 on Windows) and prototype (20) checks also pass. The run's Windows build had two `/W4` warnings, fixed since, with clang flags that now report them on macOS; the next run ([run 38361588537](https://github.com/scottdmilner/proscenium/actions/runs/38361588537)) builds without warnings on every platform. In that run a single-sample timing check failed in the macOS binary (4.8× against the 5× asked for); it now takes the minimum of five runs per path, and every job then passes ([run 38362866907](https://github.com/scottdmilner/proscenium/actions/runs/38362866907), commit `679566c`). Results are in the [feasibility record](../feasibility/runtime-record.md#prototype-correctness-m1b-phase-c).
-- **Layout.** `correctness_probe.py` runs each case in `cases/`: one `.usda` scene with a purpose comment and one check module per case. A failing case is recorded and the others still run. `run.py` runs it in both hosts beside the other probes.
+- **Layout.** `correctness_probe.py` runs each case in `cases/`: one `.usda` scene with a purpose comment and one check module per case. A failing case is recorded and the others still run. `run_runtime_probes.py` runs it in both hosts beside the other probes.
   - Scene values come from `cases/oracle.py` (UsdGeom, UsdShade) or the scene's construction. The prototype probe shares that module.
   - Application, and incremental capture, are checked against the plan or a full capture; the edits case also checks each step against USD and a new bridge.
   - **Known gaps are checks too.** `known_gap` asserts that each gap still reproduces, so the record can't go stale silently.
@@ -445,7 +445,7 @@ Branch `m01b-phase-c`, off `m01b-phase-b`.
   - **Upstream state:** `dev` reroots collection path expressions into prototypes, fixing collections authored inside assets in Hydra; the nested re-rooting bug and collections naming instance-proxy paths remain. `HdxPrimOriginInfo`'s quadratic cost is fixed in `dev` (`cdata()`).
   - **Production direction for subdivision:** Blender's Subdivision Surface modifier, as Blender's own USD importer uses; OpenSubdiv's refiner (`PxOsdRefinerFactory`, with Blender's `libosdCPU`) only if baked or loop results are needed.
 - **Diagnostics are deduplicated in capture.** Hydra can read a value more than once, posting the same warning each time.
-- **Plan records are typed by hand, for the prototype only.** `plan_types.py` describes the plan's records as `TypedDict`s copied from the dicts `python_views.cpp` builds, and `apply.py` is annotated with them. If Hydra is adopted, production code should bind the records as classes with attribute access (`mesh.positions`) and ship stubs for them, so the types can't drift from the bindings. This belongs to M5, where the plan interface becomes the C++/Python boundary.
+- **Plan records are typed by hand, for the prototype only.** `plan_types.py` describes the plan's records as `TypedDict`s copied from the dicts `python_views.cpp` builds, and `object_display.py` is annotated with them. If Hydra is adopted, production code should bind the records as classes with attribute access (`mesh.positions`) and ship stubs for them, so the types can't drift from the bindings. This belongs to M5, where the plan interface becomes the C++/Python boundary.
 
 ## Phase D — Time-sampled data detection
 
@@ -503,7 +503,7 @@ Kept separate, as the milestone requires: Hydra capture, C++ planning, C++ → P
       - objects for every purpose.
   - **Three importer configurations.**
     - **Defaults:** what a user gets.
-    - **Matched:** the options closest to the prototype. Every purpose and invisible prims are imported, and UsdPreviewSurface conversion, unit scaling and the types the prototype makes placeholders for are off (`measure/child.py` lists them).
+    - **Matched:** the options closest to the prototype. Every purpose and invisible prims are imported, and UsdPreviewSurface conversion, unit scaling and the types the prototype makes placeholders for are off (`measure/synchronization_worker.py` lists them).
     - **Expanded:** matched, with scene instancing off. Added during Phase E: with instancing on, the importer drops materials bound at an instance root, which the prototype honors (see the Phase E log).
     - **Counts recorded with every run:** objects, meshes, materials, collections, vertices and corners, so the difference in work shows next to the numbers.
   - **Compared end to end.** The importer is one operator call: its stage open, translation and construction can't be timed apart. The comparisons are:
@@ -569,8 +569,8 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
 
 - **Status (2026-10-14): measured on macOS arm64** (reference hardware, Blender 5.2.2 binary). Results are in the [feasibility record](../feasibility/runtime-record.md#measurements-m1b-phase-e). CI runs the harness on one small scene on all three platforms, recording no numbers. All checks and the harness pass on all three platforms ([run 38676508604](https://github.com/scottdmilner/proscenium/actions/runs/38676508604), commit `b0bb4ce`): 131 correctness checks in both hosts, no compiler warnings. A first run failed on Windows in the harness (it loaded the C library before checking the platform); fixed in `b0bb4ce`. Run 38676508604 then showed Linux's live heap reading 0 throughout, because Blender's binary replaces malloc with TBB's proxy there; the harness now reports no live heap in the binary on Linux, as on Windows. [Run 38677751979](https://github.com/scottdmilner/proscenium/actions/runs/38677751979) (commit `06dd5e9`) confirms it, with every job passing and the same check counts. The correctness checks pass in both hosts (macOS): 128 until the OpenUSD #3690 workaround, 131 since (bindings 13).
 - **Harness** (`hydra_bridge/measure/`):
-  - **`run.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
-  - **`child.py`** marks each stage with CPU time, the lifetime peak and the live heap.
+  - **`run_benchmarks.py`** runs each scene and mode in a fresh binary process and samples it from outside with psutil. psutil is in the dev group.
+  - **`synchronization_worker.py`** marks each stage with CPU time, the lifetime peak and the live heap.
   - **Inputs:** `stress.py` generates the scenes, and `alab_entry.py` writes ALab's entry point.
   - **`report.py`** summarizes the runs.
   - **Timers for the filter and the planner** (`src/fact_timings.*`, exposed as `take_filter_timings()`) are for this phase only.
@@ -600,7 +600,7 @@ Branch `m01b-phase-e`, off `m01b-phase-d`.
 - **Collection bindings inside instances: a workaround for OpenUSD #3690** (with the user, 2026-10-14).
   - **Why.** Phase C's two collection gaps break the prototype's contract to resolve bindings as USD does. Blender's importer, by contrast, matches USD only with scene instancing off.
   - **What.** For the instances a binding collection reaches, UsdShade resolves each drawn copy on its instance-proxy path at capture, and the planner uses those answers. Other instances keep the per-prototype resolution (option 2 of the options weighed: scoped, not every copy).
-  - **Labeling.** The code is labeled `WORKAROUND for OpenUSD #3690` at each site (`src/copy_bindings.*`, and its uses in the filter, capture, snapshot and planner). A known-gap check on Hydra's own bindings shows when a fix lands.
+  - **Labeling.** The code is labeled `WORKAROUND for OpenUSD #3690` at each site (`src/instance_material_bindings.*`, and its uses in the filter, capture, snapshot and planner). A known-gap check on Hydra's own bindings shows when a fix lands.
   - **Checks.** The two gap checks became checks that the plan matches UsdShade. Two more cover the workaround's scope and an edit. Each failed in a mutation run without the behavior it guards.
   - **Cost** (ad hoc): 0.001 s on instances-1000 and 0.044 s on ALab, neither of which has a binding collection; 0.185 s with a collection reaching all 1,000 instances (21,000 copies).
   - Details are in the record's [section on it](../feasibility/runtime-record.md#collection-bindings-inside-instances-workaround-for-openusd-3690).
@@ -645,7 +645,7 @@ Otherwise: "Hydra not adopted", and the Python-only row continues under M4.
   - **The core's source lives in `src/proscenium/core/`**, beside the extension's Python, and the built module goes in the same package. The milestone asked for a location outside the extension directory; the C++ sources are instead kept out of the zip by the manifest's `[build]` exclusions.
 - **Criteria:**
   1. **Native loading: holds.** 42 loading checks (43 on Windows) in both hosts on all three platforms ([run 38677751979](https://github.com/scottdmilner/proscenium/actions/runs/38677751979)).
-  2. **Distribution: holds** on all three platforms. `distribution.py` packages a test zip for the platform (a copy of `src/proscenium` with the module in `core/`, built by the extension CLI; the product build doesn't take the bridge), installs it from disk into the Blender binary, then in a new session loads it from saved preferences and passes the loading (42) and prototype (20) checks against the installed module, and then uninstalls it. Another platform's zip is refused. CI does this on a fresh runner per platform given only the zip ([run 38686507163](https://github.com/scottdmilner/proscenium/actions/runs/38686507163); [record](../feasibility/runtime-record.md#distribution-m1b-phase-f)).
+  2. **Distribution: holds** on all three platforms. `extension_install_probe.py` packages a test zip for the platform (a copy of `src/proscenium` with the module in `core/`, built by the extension CLI; the product build doesn't take the bridge), installs it from disk into the Blender binary, then in a new session loads it from saved preferences and passes the loading (42) and prototype (20) checks against the installed module, and then uninstalls it. Another platform's zip is refused. CI does this on a fresh runner per platform given only the zip ([run 38686507163](https://github.com/scottdmilner/proscenium/actions/runs/38686507163); [record](../feasibility/runtime-record.md#distribution-m1b-phase-f)).
   3. **Correctness: holds.** All ten Phase C cases pass, 131 checks per host on all three platforms. Each Hydra gap the cases found has a workaround in the core that keeps the requirement, and the known-gap checks fail when a gap stops reproducing. Hydra's flattened bindings are replaced by UsdShade's resolution, including the labeled workaround for OpenUSD #3690. The source-info filter supplies what UsdImaging doesn't image or misreports: HermiteCurves, purpose visibility, a Cube's `doubleSided`, subset families, dropped attributes, and the edits Hydra misses. The approximation diagnostic comes from the original USD type, and the core validates geometry that Hydra doesn't.
   4. **Performance: holds** on ALab against the matched importer: 1.08× its time and 1.73× its peak memory, and the Hydra stages take 1.15 s, including bridge construction (0.76 s without), against Blender construction's 1.62 s. Retained memory is reported, not gated: 1,453 MB of live heap with the bridge alive. Outside the criterion, the single 4.2M-point mesh took 2.89× the importer's time; it is in the [production-planning notes for M8](../feasibility/runtime-record.md#for-production-planning-m8).
 - **Follow-up updates, made in this change:** AGENTS.md (the core's location, build, C++ style and tests), PROJECT.md, the pipeline and incremental design notes, the requirement rows that applied "if Hydra is adopted", and milestones M2–M6, M8–M10 and M13.

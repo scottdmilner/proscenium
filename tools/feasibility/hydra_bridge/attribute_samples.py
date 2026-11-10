@@ -3,7 +3,7 @@
 A mesh whose topology holds caches each synchronization's values of each varying attribute as an attribute
 `<name>@<sample>` beside it, numbered in the order samples arrive. A Geometry Nodes group per set of varying
 attributes stores each over its attribute for the sample its modifier's keyed `Sample` input names, where it has
-one, and with blending mixes it with the next sample's (cached.py).
+one, and with blending mixes it with the next sample's (cached_display.py).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from typing import Any
 
 import bpy
 import numpy
-from apply import Layer
+from object_display import MeshAttributeData
 
 FRAME_SEPARATOR = "@"  # a sample's attribute is <name>@<sample>
 MODIFIER = "proscenium frames"
@@ -59,7 +59,7 @@ def frames_group(signature: Signature, blend: bool = False) -> bpy.types.NodeTre
             links.new(texts[sample].outputs[0], join.inputs["Strings"])  # Join Strings puts its newest link first
             links.new(prefix.outputs[0], join.inputs["Strings"])
             named = nodes.new("GeometryNodeInputNamedAttribute")
-            named.data_type = stored_type(data_type)
+            named.data_type = sample_attribute_storage_type(data_type)
             links.new(join.outputs[0], named.inputs["Name"])
             return named
 
@@ -70,7 +70,7 @@ def frames_group(signature: Signature, blend: bool = False) -> bpy.types.NodeTre
         links.new(geometry, store.inputs["Geometry"])
         if weight is not None and data_type in BLENDED:
             own = nodes.new("GeometryNodeInputNamedAttribute")
-            own.data_type = stored_type(data_type)
+            own.data_type = sample_attribute_storage_type(data_type)
             own.inputs["Name"].default_value = name
             mix = nodes.new("ShaderNodeMix")
             mix.data_type = BLENDED[data_type]
@@ -117,33 +117,33 @@ def input_path(name: str) -> str:
     return f'modifiers["{MODIFIER}"].properties.inputs.{INPUTS[name]}.value'
 
 
-def stored_type(data_type: str) -> str:
+def sample_attribute_storage_type(data_type: str) -> str:
     # A 2D vector on corners would be a UV map, so a sample's is stored as a 3D vector.
     return "FLOAT_VECTOR" if data_type == "FLOAT2" else data_type
 
 
-def stored(layer: Layer) -> Layer:
+def attribute_for_sample_storage(layer: MeshAttributeData) -> MeshAttributeData:
     """A layer as its sample attribute holds it."""
     if layer.data_type != "FLOAT2":
         return layer
     padded = numpy.zeros((len(layer.values) // 2, 3), numpy.float32)
     padded[:, :2] = layer.values.reshape(-1, 2)
-    return Layer(layer.name, "FLOAT_VECTOR", layer.domain, layer.prop, padded.ravel())
+    return MeshAttributeData(layer.name, "FLOAT_VECTOR", layer.domain, layer.foreach_property, padded.ravel())
 
 
-def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, Layer]) -> bpy.types.Mesh:
+def sample_mesh(mesh: bpy.types.Mesh, sample: int, varying: dict[str, MeshAttributeData]) -> bpy.types.Mesh:
     """A copy of `mesh` showing `sample` of its `varying` attributes, without its samples."""
     copy: Any = mesh.copy()
     for name, layer in varying.items() if sample != BASE else ():
         attribute = copy.attributes.get(f"{name}{FRAME_SEPARATOR}{sample}")
         if attribute is None:
             continue  # it varied only later, so the sample holds the mesh's own
-        held = stored(layer)
+        held = attribute_for_sample_storage(layer)
         values = numpy.empty_like(held.values)
-        attribute.data.foreach_get(held.prop, values)
+        attribute.data.foreach_get(held.foreach_property, values)
         if held is not layer:  # a 2D vector stored as 3D
             values = values.reshape(-1, 3)[:, :2].ravel()
-        copy.attributes[name].data.foreach_set(layer.prop, values)
+        copy.attributes[name].data.foreach_set(layer.foreach_property, values)
     remove_samples(copy)
     return copy
 

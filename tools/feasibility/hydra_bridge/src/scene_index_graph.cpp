@@ -37,32 +37,33 @@ HdContainerDataSourceHandle ImplicitSurfacesToMesh() {
 }  // namespace
 
 void RecordingObserver::PrimsAdded(const HdSceneIndexBase &, const AddedPrimEntries &entries) {
-    for (const auto &entry : entries) events_.push_back({EventKind::Added, entry.primPath, {}, {}});
+    for (const auto &entry : entries) events_.push_back({SceneIndexEventKind::Added, entry.primPath, {}, {}});
 }
 
 void RecordingObserver::PrimsRemoved(const HdSceneIndexBase &, const RemovedPrimEntries &entries) {
-    for (const auto &entry : entries) events_.push_back({EventKind::Removed, entry.primPath, {}, {}});
+    for (const auto &entry : entries) events_.push_back({SceneIndexEventKind::Removed, entry.primPath, {}, {}});
 }
 
 void RecordingObserver::PrimsDirtied(const HdSceneIndexBase &, const DirtiedPrimEntries &entries) {
     for (const auto &entry : entries) {
-        Event event{EventKind::Dirtied, entry.primPath, {}, {}};
+        SceneIndexEvent event{SceneIndexEventKind::Dirtied, entry.primPath, {}, {}};
         for (const auto &locator : entry.dirtyLocators) event.locators.push_back(locator.GetString());
         events_.push_back(std::move(event));
     }
 }
 
 void RecordingObserver::PrimsRenamed(const HdSceneIndexBase &, const RenamedPrimEntries &entries) {
-    for (const auto &entry : entries) events_.push_back({EventKind::Renamed, entry.newPrimPath, entry.oldPrimPath, {}});
+    for (const auto &entry : entries)
+        events_.push_back({SceneIndexEventKind::Renamed, entry.newPrimPath, entry.oldPrimPath, {}});
 }
 
-void RecordingObserver::Requeue(std::vector<Event> events) {
+void RecordingObserver::Requeue(std::vector<SceneIndexEvent> events) {
     events.insert(events.end(), std::make_move_iterator(events_.begin()), std::make_move_iterator(events_.end()));
     events_.swap(events);
 }
 
-std::vector<Event> RecordingObserver::Take() {
-    std::vector<Event> taken;
+std::vector<SceneIndexEvent> RecordingObserver::Take() {
+    std::vector<SceneIndexEvent> taken;
     taken.swap(events_);
     return taken;
 }

@@ -1,8 +1,8 @@
 """A binding's source revision and the layers that change during an evaluation (M5 plan, B3).
 
 The revision is what a generation is compared with before cache adds to it (CACHE-05): it changes with anything
-the evaluation stage evaluates, and only then. changed_layers names the layers a change during evaluation touched,
-for the attempt's diagnostic (CONS-03). Both run on F-SOURCE-CHANGE's scene.
+the evaluation stage evaluates, and only then. monitor_evaluation_layer_changes names the layers a change during
+evaluation touched, for the attempt's diagnostic (CONS-03). Both run on F-SOURCE-CHANGE's scene.
 """
 
 from __future__ import annotations
@@ -17,9 +17,10 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import transaction
-from proscenium.binding.source_access.stages import BindingStages, PayloadPolicy, SourceUnavailableError
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
 
-from .bindings import binding
+from .attached_binding_stages import binding
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -47,9 +48,9 @@ def _mask_world(scene: SourceChangeScene) -> None:
 def test_an_unchanged_source_keeps_its_revision(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         revision = stages.source_revision
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         stages.reload(PayloadPolicy.LOAD_ALL)  # nothing on disk changed, so nothing is reread
         Sdf.CreatePrimInLayer(Sdf.Layer.CreateAnonymous(), "/Elsewhere")  # a layer the stage doesn't compose
         assert stages.source_revision == revision
@@ -58,7 +59,7 @@ def test_an_unchanged_source_keeps_its_revision(tmp_path: Path) -> None:
 def test_an_edit_changes_the_revision(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         before = stages.source_revision
         scene.edit()
         assert stages.source_revision != before
@@ -67,7 +68,7 @@ def test_an_edit_changes_the_revision(tmp_path: Path) -> None:
 def test_a_reload_that_rereads_changes_the_revision(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         before = stages.source_revision
         scene.rewrite_on_disk()
         assert stages.source_revision == before  # not read yet
@@ -81,20 +82,20 @@ def test_a_caller_setting_matched_at_acquisition_changes_the_revision(
 ) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         before = stages.source_revision
         change(scene)
         assert stages.source_revision == before  # the evaluation stage matches it at the next acquisition
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stages.source_revision != before
 
 
 def test_another_payload_policy_changes_the_revision(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         before = stages.source_revision
-        stages.acquire(PayloadPolicy.LOAD_NONE)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE)
         assert stages.source_revision != before
 
 
@@ -102,7 +103,7 @@ def test_another_payload_policy_changes_the_revision(tmp_path: Path) -> None:
 def test_attachments_and_new_evaluation_stages_change_the_revision(step: str, tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         before = stages.source_revision
         if step == "drop":
             stages.drop_evaluation_stage()
@@ -110,14 +111,14 @@ def test_attachments_and_new_evaluation_stages_change_the_revision(step: str, tm
             if step == "release and attach":
                 stages.release()
             stages.attach(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stages.source_revision != before
 
 
 def test_a_dropped_evaluation_stage_changes_the_revision_no_more(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         stages.drop_evaluation_stage()
         revision = stages.source_revision
         scene.edit()  # the caller's stage still composes sub.usda, but nothing of the binding evaluates it
@@ -135,7 +136,7 @@ def test_revisions_are_unique_to_their_process() -> None:
 def test_the_listener_keeps_no_binding_alive(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        evaluation = weakref.ref(stages.acquire(PayloadPolicy.LOAD_ALL))
+        evaluation = weakref.ref(stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))
         alive = weakref.ref(stages)
         del stages
         gc.collect()
@@ -147,14 +148,14 @@ def test_the_listener_keeps_no_binding_alive(tmp_path: Path) -> None:
 def test_changed_layers_names_the_layers_changed_while_open(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        stages.acquire(PayloadPolicy.LOAD_ALL)
+        stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         session = scene.caller.GetSessionLayer()  # the evaluation stage composes the caller's session layer too
-        with stages.changed_layers() as changed:
+        with stages.monitor_evaluation_layer_changes() as changed:
             assert changed == set()
             scene.edit()
             Sdf.CreatePrimInLayer(Sdf.Layer.CreateAnonymous(), "/Elsewhere")  # a layer the stage doesn't compose
         assert changed == {_sub(scene).identifier}
-        with stages.changed_layers() as changed:
+        with stages.monitor_evaluation_layer_changes() as changed:
             session.comment = "edited"
         _sub(scene).GetAttributeAtPath("/World/Sub.xformOp:translate").default = (0, 0, 0)  # after: not gathered
         assert changed == {session.identifier}
@@ -163,5 +164,5 @@ def test_changed_layers_names_the_layers_changed_while_open(tmp_path: Path) -> N
 def test_changed_layers_needs_an_evaluation_stage(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        with pytest.raises(SourceUnavailableError), stages.changed_layers():
+        with pytest.raises(SourceUnavailableError), stages.monitor_evaluation_layer_changes():
             pass

@@ -6,7 +6,8 @@
 Each run makes a binding through the API (proscenium.api.bindings), attaches the scene's stage, and synchronizes at
 its time code, then synchronizes again at it, a full rebuild that retires the first generation, then caches CACHED
 later time codes. Global undo is on, or as --undo says (M6 Phase F, F5), and the API pushes its step as it would with a
-window (its _pushes_undo patched true, since background mode pushes none). --runtimes runs it in the bpy wheel too.
+window (its _undo_steps_enabled patched true, since background mode pushes none). --runtimes runs it in the bpy wheel
+too.
 Each step of the transaction is timed by wrapping the module function it calls (STEPS), so a time includes the steps
 it calls; a step called more than once is summed, with its calls counted. The stub application layer makes an object
 and a bounds mesh for each drawn copy, not M7's display, so this measures the work around it. Raw runs go to
@@ -34,28 +35,28 @@ ROOT = HERE.parents[3]
 sys.path[:0] = [str(HERE), str(ROOT / "tools")]
 
 CACHED = 3
-SCENES = ["updates", "alab"]  # run.py's groups
+SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 # (module, function) pairs the transaction and cache call reach their steps through, in the order they run.
 STEPS = [
-    ("proscenium.api.bindings", "Bindings._found"),
-    ("proscenium.synchronization.transaction", "synchronize"),
-    ("proscenium.synchronization.caching", "cache"),
+    ("proscenium.api.bindings", "Bindings._require_binding"),
+    ("proscenium.synchronization", "synchronize"),
+    ("proscenium.synchronization", "cache"),
     ("proscenium.binding.persistence.manifests", "read_manifest"),
     ("proscenium.binding.persistence.binding_state", "read_generation"),
-    ("proscenium.binding.source_access.stages", "BindingStages.acquire"),
-    ("proscenium.synchronization.evaluation", "source_state"),
-    ("proscenium.synchronization.evaluation", "plans"),
+    ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),
+    ("proscenium.synchronization.evaluation", "source_state_diagnostics"),
+    ("proscenium.synchronization.evaluation", "evaluate_display_plans"),
     ("proscenium.synchronization.application", "prepare"),
     ("proscenium.synchronization.application", "key_time_codes"),
     ("proscenium.synchronization.publication", "publish"),
     ("proscenium.binding.persistence.manifests", "write_manifest"),
     ("proscenium.binding.runtime.ownership", "set_manifest_entries"),
     ("proscenium.binding.persistence.binding_state", "write_generation"),
-    ("proscenium.synchronization.prepared_work", "remove_staging"),
+    ("proscenium.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
     ("proscenium.synchronization.retirement", "retire"),
-    ("proscenium.synchronization.removal", "remove_unused"),
+    ("proscenium.synchronization.datablock_removal", "remove_unused"),
     ("bpy.data", "user_map"),
-    ("proscenium.synchronization.removal", "_batch_remove"),
+    ("proscenium.synchronization.datablock_removal", "_batch_remove"),
     ("proscenium.binding.persistence.binding_state", "write_last_attempt"),
     ("proscenium.api.bindings", "_push_undo"),
 ]
@@ -95,12 +96,12 @@ def child(config: dict[str, Any]) -> None:
     from pxr import Usd
 
     from proscenium.api import bindings as api
-    from proscenium.binding.persistence import manifests, records
+    from proscenium.binding.persistence import id_property_records, manifests
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
     preferences.edit.use_global_undo = config.get("undo", True)
-    api._pushes_undo = lambda: True  # noqa: SLF001  # ty: ignore[invalid-assignment] - as with a window
+    api._undo_steps_enabled = lambda: True  # noqa: SLF001  # ty: ignore[invalid-assignment] - as with a window
     timings: dict[str, dict[str, float]] = {}
 
     def wrapped(label: str, call: Any) -> Any:
@@ -122,7 +123,7 @@ def child(config: dict[str, Any]) -> None:
         for part in path:
             owner = getattr(owner, part)
         if module_name == "bpy.data":  # bpy.data's functions can't be replaced, so the removal's use of it is
-            removal: Any = importlib.import_module("proscenium.synchronization.removal")
+            removal: Any = importlib.import_module("proscenium.synchronization.datablock_removal")
             removal.bpy = _Bpy(bpy, wrapped("user_map", bpy.data.user_map))
             continue
         setattr(owner, attribute, wrapped(name.split(".")[-1], getattr(owner, attribute)))
@@ -148,7 +149,9 @@ def child(config: dict[str, Any]) -> None:
     manifest = manifests.read_manifest(destination)
     result = {
         "steps": steps,
-        "manifest entries": len(manifest.record.entries) if isinstance(manifest, records.Loaded) else 0,
+        "manifest entries": len(manifest.record.entries)
+        if isinstance(manifest, id_property_records.LoadedRecord)
+        else 0,
         "objects": len(destination.all_objects),
         "file datablocks": sum(len(c) for c in (bpy.data.objects, bpy.data.meshes, bpy.data.actions)),
         "blender version": bpy.app.version_string,
@@ -249,14 +252,14 @@ def markdown(summary: dict[str, Any], setup: dict[str, Any]) -> str:
 def main() -> int:
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--undo", nargs="+", choices=["on", "off"], default=["on"], help="global undo settings")

@@ -98,9 +98,9 @@ def _uv_sets(prim: Usd.Prim, names: tuple[str, ...]) -> frozenset[str]:
 
 
 def test_shared_sets_are_the_equivalent_uses(cases: AppearanceScene) -> None:
-    drawn = {str(p.GetPath()): p for root in cases.shared_roots for p in _meshes(cases.stage, root)}
-    assert set().union(*cases.shared) == set(drawn)
-    keys = [{_sharing_key(drawn[path]) for path in uses} for uses in cases.shared]
+    drawn = {str(p.GetPath()): p for root in cases.shared_geometry_root_paths for p in _meshes(cases.stage, root)}
+    assert set().union(*cases.shared_geometry_groups) == set(drawn)
+    keys = [{_sharing_key(drawn[path]) for path in uses} for uses in cases.shared_geometry_groups]
     assert all(len(k) == 1 for k in keys)  # each set's uses are equivalent
     assert len({next(iter(k)) for k in keys}) == len(keys)  # and no two sets are
 
@@ -121,7 +121,7 @@ def test_display_color_and_opacity(cases: AppearanceScene) -> None:
 
 
 def test_bound_material_per_destination(cases: AppearanceScene) -> None:
-    for path, (viewport, render) in cases.materials.items():
+    for path, (viewport, render) in cases.destination_materials_by_source.items():
         prim = cases.stage.GetPrimAtPath(path)
         assert prim, path
         assert (_bound(prim, UsdShade.Tokens.preview), _bound(prim, UsdShade.Tokens.full)) == (viewport, render), path
@@ -129,7 +129,7 @@ def test_bound_material_per_destination(cases: AppearanceScene) -> None:
 
 def test_every_mesh_has_a_material_fact(cases: AppearanceScene) -> None:
     drawn = {str(p.GetPath()) for p in _meshes(cases.stage, "/World")}
-    assert set(cases.materials) | set(cases.face_materials) == drawn
+    assert set(cases.destination_materials_by_source) | set(cases.face_materials) == drawn
 
 
 def test_face_materials(cases: AppearanceScene) -> None:
@@ -187,7 +187,7 @@ def test_texture_uvs(cases: AppearanceScene) -> None:
         assert reader.GetIdAttr().Get() == "UsdPrimvarReader_float2"
         assert reader.GetInput("varname").Get() == uv_set
         assert UsdGeom.PrimvarsAPI(prim).GetPrimvar(uv_set).HasAuthoredValue()
-        assert (cases.root.parent / "grid.png").is_file()  # the texture the material names
+        assert (cases.root_layer_path.parent / "grid.png").is_file()  # the texture the material names
 
 
 # --- F-NESTED-STRESS ----------------------------------------------------------------------------------
@@ -200,22 +200,26 @@ def _sheared(matrix: Gf.Matrix4d) -> bool:
 
 def test_stress_world_transforms(stress: StressScene) -> None:
     drawn = {str(p.GetPath()): p for p in _meshes(stress.stage, "/World")}
-    assert set(stress.world) == set(drawn)
+    assert set(stress.world_matrices_by_source) == set(drawn)
     cache = UsdGeom.XformCache(Usd.TimeCode.Default())
-    for path, expected in stress.world.items():
+    for path, expected in stress.world_matrices_by_source.items():
         world = cache.GetLocalToWorldTransform(drawn[path])
         assert Gf.IsClose(world, expected, 1e-9), path
-        assert (world.GetDeterminant() < 0) == (path in stress.negative), path
-        assert _sheared(world) == (path in stress.sheared), path
+        assert (world.GetDeterminant() < 0) == (path in stress.negative_determinant_paths), path
+        assert _sheared(world) == (path in stress.sheared_paths), path
 
 
 def test_stress_purposes(stress: StressScene) -> None:
-    for path in stress.world:
+    for path in stress.world_matrices_by_source:
         imageable = UsdGeom.Imageable(stress.stage.GetPrimAtPath(path))
         visible = imageable.ComputeVisibility() == UsdGeom.Tokens.inherited
         purpose = imageable.ComputePurpose()
-        assert (visible and purpose in (UsdGeom.Tokens.default_, UsdGeom.Tokens.proxy)) == (path in stress.viewport)
-        assert (visible and purpose in (UsdGeom.Tokens.default_, UsdGeom.Tokens.render)) == (path in stress.render)
+        assert (visible and purpose in (UsdGeom.Tokens.default_, UsdGeom.Tokens.proxy)) == (
+            path in stress.viewport_paths
+        )
+        assert (visible and purpose in (UsdGeom.Tokens.default_, UsdGeom.Tokens.render)) == (
+            path in stress.render_paths
+        )
 
 
 def test_stress_display_color(stress: StressScene) -> None:
@@ -252,8 +256,8 @@ def test_point_instancer_world_transforms(scattered: PointInstancerScene) -> Non
         for mesh in _meshes(stage, str(root.GetPath())):
             within = cache.ComputeRelativeTransform(mesh, root)[0] if mesh != root else Gf.Matrix4d(1.0)
             computed[(str(mesh.GetPath()), point)] = within * transform * world
-    assert computed.keys() == scattered.world.keys()
-    for copy, expected in scattered.world.items():
+    assert computed.keys() == scattered.world_matrices_by_source.keys()
+    for copy, expected in scattered.world_matrices_by_source.items():
         assert Gf.IsClose(computed[copy], expected, 1e-6), copy
 
 
@@ -279,5 +283,5 @@ def test_point_instancer_materials_and_unused_prototype(scattered: PointInstance
             assert _bound(stage.GetPrimAtPath(mesh), purpose) == material, (mesh, purpose)
     instancer = UsdGeom.PointInstancer(stage.GetPrimAtPath(scattered.instancer))
     targets = [str(t) for t in instancer.GetPrototypesRel().GetTargets()]
-    assert stage.GetPrimAtPath(scattered.unused).IsA(MESH)
-    assert not any(scattered.unused.startswith(t) for t in targets)
+    assert stage.GetPrimAtPath(scattered.unused_prototype_path).IsA(MESH)
+    assert not any(scattered.unused_prototype_path.startswith(t) for t in targets)

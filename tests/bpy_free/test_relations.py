@@ -17,11 +17,11 @@ from pxr import Gf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
 from proscenium.binding.source_access import stages
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
 
-from .plan_checks import SETTINGS, Copy, assert_world, copies, plan_at
-from .plan_process import contents
+from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at
+from .plan_serialization import contents
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -43,9 +43,16 @@ def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
         yield scene
 
 
-def _unmoved(copy: Copy) -> tuple[object, ...]:
+def _unmoved(copy: PlannedDrawnCopy) -> tuple[object, ...]:
     """What relation 1 leaves alone: all but the world transform and a shear split, which follows it."""
-    return copy.bounds, copy.viewport, copy.render, copy.geometry, copy.placeholder, copy.shear is None
+    return (
+        copy.local_bounds,
+        copy.visible_in_viewport,
+        copy.visible_in_render,
+        copy.geometry_index,
+        copy.placeholder_bounds_index,
+        copy.shear_transform_split is None,
+    )
 
 
 def _resets(stage: Usd.Stage, path: str) -> bool:
@@ -76,7 +83,7 @@ def _check_root_translation(stage: Usd.Stage) -> set[str]:
     pinned = {path for path in shown if _resets(stage, path)}
     for path, copy in shown.items():
         translation = Gf.Matrix4d(1) if path in pinned else Gf.Matrix4d().SetTranslate(SHIFT)
-        assert_world(copy, moved[path].world * translation)
+        assert_world(copy, moved[path].world_matrix * translation)
         assert _unmoved(copy) == _unmoved(moved[path]), path
     assert contents(after)["correspondence"] == contents(before)["correspondence"]
     assert _diagnostics(after) == _diagnostics(before)
@@ -96,7 +103,7 @@ def test_relation_1_root_translation(fixture: str, request: pytest.FixtureReques
     pinned = _check_root_translation(scene.stage)
     assert pinned  # so the fixed copies are checked
     if fixture == "transforms":
-        assert scene.resets < pinned  # and Socket/Geom, below a nested instance root that resets it
+        assert scene.reset_transform_paths < pinned  # and Socket/Geom, below a nested instance root that resets it
 
 
 @pytest.mark.parametrize("seed", evaluation.GENERATED_SEEDS)
@@ -108,7 +115,11 @@ def test_relation_1_on_generated_hierarchies(seed: int, tmp_path: Path) -> None:
     """
     with evaluation.generated_hierarchy(tmp_path, seed) as scene:
         pinned = _check_root_translation(scene.stage)
-        assert pinned == {p for p in scene.world if any(p == r or p.startswith(f"{r}/") for r in scene.resets)}
+        assert pinned == {
+            p
+            for p in scene.world_matrices_by_source
+            if any(p == r or p.startswith(f"{r}/") for r in scene.reset_transform_paths)
+        }
 
 
 @pytest.mark.parametrize("scale_length", evaluation.UNIT_SCALES)
@@ -132,17 +143,20 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
         on = _core.plan(snapshot, CONVERTING, context)
         correction = evaluation.correction(scene.meters_per_unit, scene.up_axis, scale_length)
         plain, converted = copies(off), copies(on)
-        assert converted.keys() == plain.keys() == scene.world.keys()
+        assert converted.keys() == plain.keys() == scene.world_matrices_by_source.keys()
         for path, copy in converted.items():
-            assert_world(copy, scene.world[path] * correction)
-            if copy.shear is not None:  # the object below its shear parent
-                parent, basis = copy.shear
-                assert_world(dataclasses.replace(copy, world=basis * parent), scene.world[path] * correction)
-            assert_world(plain[path], scene.world[path])
-            assert (copy.bounds, copy.viewport, copy.render) == (
-                plain[path].bounds,
-                plain[path].viewport,
-                plain[path].render,
+            assert_world(copy, scene.world_matrices_by_source[path] * correction)
+            if copy.shear_transform_split is not None:  # the object below its shear parent
+                parent, basis = copy.shear_transform_split
+                assert_world(
+                    dataclasses.replace(copy, world_matrix=basis * parent),
+                    scene.world_matrices_by_source[path] * correction,
+                )
+            assert_world(plain[path], scene.world_matrices_by_source[path])
+            assert (copy.local_bounds, copy.visible_in_viewport, copy.visible_in_render) == (
+                plain[path].local_bounds,
+                plain[path].visible_in_viewport,
+                plain[path].visible_in_render,
             ), path
         assert contents(on)["correspondence"] == contents(off)["correspondence"]
         assert _diagnostics(on) == _diagnostics(off)
@@ -158,10 +172,10 @@ def test_relation_4_payload_round_trip(transforms: evaluation.TransformsScene) -
     binding_stages = stages.BindingStages()
     binding_stages.attach(transforms.stage)
     try:
-        first = contents(plan_at(binding_stages.acquire(PayloadPolicy.LOAD_ALL), 0.0))
-        unloaded = plan_at(binding_stages.acquire(PayloadPolicy.LOAD_NONE), 0.0)
+        first = contents(plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), 0.0))
+        unloaded = plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_NONE), 0.0)
         assert copies(unloaded).keys() == transforms.drawn(PayloadPolicy.LOAD_NONE)
-        assert contents(plan_at(binding_stages.acquire(PayloadPolicy.LOAD_ALL), 0.0)) == first
+        assert contents(plan_at(binding_stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL), 0.0)) == first
     finally:
         binding_stages.release()
 
@@ -203,11 +217,11 @@ def test_relation_6_instanceable(stress: appearance.StressScene) -> None:
     instanced, flat = copies(before), copies(after)
     assert flat.keys() == instanced.keys()
     for path, copy in flat.items():
-        assert_world(copy, instanced[path].world)
-        assert (copy.bounds, copy.viewport, copy.render) == (
-            instanced[path].bounds,
-            instanced[path].viewport,
-            instanced[path].render,
+        assert_world(copy, instanced[path].world_matrix)
+        assert (copy.local_bounds, copy.visible_in_viewport, copy.visible_in_render) == (
+            instanced[path].local_bounds,
+            instanced[path].visible_in_viewport,
+            instanced[path].visible_in_render,
         ), path
     assert all(c.instance_context == () for c in after.correspondence)
     assert len(after.geometries) > len(before.geometries)  # a mesh per prim, none shared by instancing

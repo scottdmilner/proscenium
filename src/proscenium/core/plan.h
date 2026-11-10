@@ -62,61 +62,62 @@ struct PlanSettings {
   PlanSettings(PXR_NS::TfTokenVector viewport, PXR_NS::TfTokenVector render, bool conversion);
 };
 
-// One managed resource, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its identity is
-// a value, compared by equality (DECISIONS.md "Representation roles and resource identities"): a drawn copy's
-// resource is identified by its role, its copy's source entity, and its place among the copy's objects.
-struct Resource {
+// One resource planned for Blender, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its
+// identity is a value, compared by equality (DECISIONS.md "Representation roles and resource identities"): a drawn
+// copy's resource is identified by its role, its copy's source entity, and its place among the copy's objects.
+struct PlannedResource {
   Role role;
-  PXR_NS::SdfPath entity;         // its copy's source entity
-  std::uint32_t place = 0;        // among its copy's objects
-  PXR_NS::SdfPathVector covers;   // the source entities it represents
-  std::vector<std::size_t> uses;  // the resources it depends on
+  PXR_NS::SdfPath sourceEntityPath;                    // its copy's source entity
+  std::uint32_t objectIndexInCopy = 0;                 // among its copy's objects
+  PXR_NS::SdfPathVector sourceEntityPaths;             // the source entities it represents
+  std::vector<std::size_t> dependencyResourceIndices;  // dependencies in Plan::resources
 };
 
 // A unit of display replacement, owning its resources.
 struct Partition {
-  std::vector<std::size_t> resources;
+  std::vector<std::size_t> resourceIndices;
 };
 
 // A display element and the source entity it represents (interaction-contract.md "Two Layers and the Live Stage").
 struct CorrespondenceEntry {
-  std::size_t element;     // the object that shows it
-  PXR_NS::SdfPath source;  // an instance-proxy path inside native instances
+  std::size_t objectResourceIndex;  // in Plan::resources: the object that shows it
+  PXR_NS::SdfPath sourcePath;       // an instance-proxy path inside native instances
   // Provisional (M10 completes instance descriptions): the native-instance roots the source lies in, outermost first.
   PXR_NS::SdfPathVector instanceContext;
 };
 
 // Provisional (M8 replaces it): a mesh's geometry, shared by every drawn copy of the mesh.
 struct GeometryDescription {
-  PXR_NS::SdfPath source;  // its first drawn copy's, in source order
+  PXR_NS::SdfPath representativeSourcePath;  // its first drawn copy's path, in source order
   // Local bounds as (min x, min y, min z, max x, max y, max z); empty when Hydra gives the mesh none.
   PXR_NS::VtFloatArray extent;
-  // Provisional: the source's path, one per mesh Hydra draws, so a prototype's mesh is shared by its copies. M8 keys
+  // Provisional: the source path, one per mesh Hydra draws, so a prototype's mesh is shared by its copies. M8 keys
   // a mesh by its content.
   std::string contentKey;
 };
 
 struct Plan {
-  PXR_NS::UsdTimeCode time;
+  PXR_NS::UsdTimeCode timeCode;
   PlanningContext context;
   std::vector<Partition> partitions;
-  std::vector<Resource> resources;
+  std::vector<PlannedResource> resources;
   std::vector<CorrespondenceEntry> correspondence;  // one per drawn copy, in the copies' order
   // The drawn copies, in source order, one element (or 16) per copy.
-  PXR_NS::VtFloatArray copyWorlds;    // 16 each: the world matrix in Blender's layout, which is USD's row-major one
-  PXR_NS::VtIntArray copyObjects;     // its object, in resources
-  PXR_NS::VtIntArray copyGeometries;  // its geometry description, in geometries; -1 for none
+  // 16 floats per copy: the world matrix in Blender's layout, which is USD's row-major one.
+  PXR_NS::VtFloatArray copyWorldMatrices;
+  PXR_NS::VtIntArray copyObjectResourceIndices;  // its object, in resources
+  PXR_NS::VtIntArray copyGeometryIndices;        // its geometry description, in geometries; -1 for none
   // Its placeholder, in placeholderBounds; -1 for none, and for a copy with neither a geometry nor bounds (C5 makes
   // it a marker).
-  PXR_NS::VtIntArray copyPlaceholders;
-  PXR_NS::VtFloatArray placeholderBounds;  // 6 each, as GeometryDescription::extent
-  PXR_NS::VtBoolArray copyViewport;        // whether it displays in the viewport
-  PXR_NS::VtBoolArray copyRender;          // whether it displays in the final render
-  PXR_NS::VtIntArray copyShears;           // its shear split, in the two arrays below; -1 for none
-  // A sheared copy's world transform split in two, 16 each in Blender's layout as copyWorlds: its shear parent's world
-  // transform, and its object's basis below that parent. Neither shears, and the basis has no translation.
-  PXR_NS::VtFloatArray shearParentWorlds;
-  PXR_NS::VtFloatArray shearObjectBases;
+  PXR_NS::VtIntArray copyPlaceholderBoundsIndices;
+  PXR_NS::VtFloatArray placeholderBounds;     // 6 each, as GeometryDescription::extent
+  PXR_NS::VtBoolArray copyVisibleInViewport;  // whether it displays in the viewport
+  PXR_NS::VtBoolArray copyVisibleInRender;    // whether it displays in the final render
+  PXR_NS::VtIntArray copyShearSplitIndices;   // its shear split, in the two arrays below; -1 for none
+  // A sheared copy's world transform split in two, 16 each in Blender's layout as copyWorldMatrices: its shear parent's
+  // world transform, and its object's basis below that parent. Neither shears, and the basis has no translation.
+  PXR_NS::VtFloatArray shearParentWorldMatrices;
+  PXR_NS::VtFloatArray shearObjectBasisMatrices;
   // In the order found. A problem repeated across a prim's copies is reported once; Python aggregates any other repeat.
   std::vector<Diagnostic> diagnostics;
   std::vector<GeometryDescription> geometries;

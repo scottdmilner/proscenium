@@ -15,7 +15,7 @@ import pytest
 
 from fixtures import evaluation
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access import BindingId
 from proscenium.synchronization import evaluation as planning
 
 from .plan_checks import assert_world, copies, plan_at
@@ -50,7 +50,9 @@ def test_each_untranslated_prim_has_one_diagnostic_naming_its_fallback(
     for path, expected in unsupported.placeholders.items():
         diagnostic = untranslated[path]
         assert (diagnostic.category, diagnostic.severity) == (DiagnosticCategory.UNSUPPORTED, Severity.WARNING)
-        assert diagnostic.fallback == ("empty marker" if expected.bounds is None else "bounding box"), path
+        assert diagnostic.fallback_description == (
+            "empty marker" if expected.local_bounds is None else "bounding box"
+        ), path
         assert expected.type_name in diagnostic.message, path
 
 
@@ -58,13 +60,13 @@ def test_a_prim_without_usable_bounds_is_an_empty_marker(unsupported: evaluation
     # MODEL-05: the volume, with no authored extent and none computed, is an object holding no data at its transform.
     plan = plan_at(unsupported.stage, 0.0)
     shown = copies(plan)
-    markers = {path for path, expected in unsupported.placeholders.items() if expected.bounds is None}
+    markers = {path for path, expected in unsupported.placeholders.items() if expected.local_bounds is None}
     assert markers == {"/World/Fog"}
     for path, copy in shown.items():
-        assert (copy.bounds_mesh is None) == (path in markers), path
+        assert (copy.bounds_mesh_resource_index is None) == (path in markers), path
     (fog,) = markers
-    assert plan.resources[shown[fog].object].uses == ()
-    assert_world(shown[fog], unsupported.placeholders[fog].world)
+    assert plan.resources[shown[fog].object_resource_index].dependency_resource_indices == ()
+    assert_world(shown[fog], unsupported.placeholders[fog].world_matrix)
 
 
 def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.UnsupportedScene) -> None:
@@ -72,11 +74,14 @@ def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.Unsuppo
     # entry.
     plan = plan_at(unsupported.stage, 0.0)
     shown = copies(plan)
-    entries = {c.source for c in plan.correspondence}
+    entries = {c.source_path for c in plan.correspondence}
     for path, expected in unsupported.placeholders.items():
         assert path in entries, path
-        assert_world(shown[path], expected.world)
-        assert (shown[path].viewport, shown[path].render) == (expected.viewport, expected.render), path
+        assert_world(shown[path], expected.world_matrix)
+        assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
+            expected.visible_in_viewport,
+            expected.visible_in_render,
+        ), path
 
 
 def test_inexact_filter_conversions_are_approximations(unsupported: evaluation.UnsupportedScene) -> None:
@@ -86,4 +91,4 @@ def test_inexact_filter_conversions_are_approximations(unsupported: evaluation.U
     assert all(d.category is DiagnosticCategory.APPROXIMATION for d in approximated.values())
     shown = copies(plan_at(unsupported.stage, 0.0))
     for path in unsupported.approximated | unsupported.exact_conversions:
-        assert shown[path].geometry >= 0, path  # a provisional mesh, not a placeholder
+        assert shown[path].geometry_index >= 0, path  # a provisional mesh, not a placeholder

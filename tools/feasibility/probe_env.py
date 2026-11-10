@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from _common import Probe
+from runtime_probe_support import Probe
 
 # Modules later milestones are expected to need.
 REQUIRED_PXR = ["Usd", "UsdGeom", "UsdShade", "UsdLux", "UsdSkel", "Sdf", "Ar", "Tf", "Vt", "Gf", "Plug", "UsdUtils"]

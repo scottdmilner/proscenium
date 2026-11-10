@@ -27,7 +27,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 TESTS = Path(__file__).resolve().parents[1]
-MANY = TimeVariation(start=0.0, end=40.0, samples=tuple(float(t) for t in range(0, 41, 2)), transitions=(13.0,))
+MANY = TimeVariation(
+    start=0.0, end=40.0, authored_sample_time_codes=tuple(float(t) for t in range(0, 41, 2)), transitions=(13.0,)
+)
 
 
 def _transforms(tmp_path: Path) -> TimeVariation:
@@ -51,13 +53,15 @@ def test_each_kind_of_time_code(fixture_id: str, tmp_path: Path) -> None:
     sampled = time_codes.sampled(fixture_id, variation)
     assert (sampled.start, sampled.end) == (variation.start, variation.end)
     assert variation.start < sampled.interior < variation.end and not sampled.interior.is_integer()
-    assert sampled.authored == variation.samples  # no more than 8 (ATIME-03)
+    assert sampled.authored == variation.authored_sample_time_codes  # no more than 8 (ATIME-03)
     for transition in variation.transitions:
         assert {transition - 0.5, transition, transition + 0.5} <= set(sampled.transitions)
-    relevant = sorted({variation.start, variation.end, *variation.samples, *variation.transitions})
+    relevant = sorted({variation.start, variation.end, *variation.authored_sample_time_codes, *variation.transitions})
     assert sampled.midpoints == tuple((a + b) / 2 for a, b in zip(relevant, relevant[1:], strict=False))
-    assert sampled.before < variation.start and sampled.after > variation.end
-    assert len(sampled.seeded) == 2 and all(variation.start <= t <= variation.end for t in sampled.seeded)
+    assert sampled.before_range < variation.start and sampled.after_range > variation.end
+    assert len(sampled.seeded_time_codes) == 2 and all(
+        variation.start <= t <= variation.end for t in sampled.seeded_time_codes
+    )
     every = sampled.time_codes
     assert every[0] is None and len(set(every)) == len(every)
     for time_code in every[1:]:
@@ -68,12 +72,12 @@ def test_each_kind_of_time_code(fixture_id: str, tmp_path: Path) -> None:
 
 def test_seeds_come_from_the_fixture_id() -> None:
     # ATIME-02: the same ID seeds the same samples, here and in a process with another hash seed; another ID others.
-    seeded = time_codes.sampled("F-TRANSFORMS", MANY).seeded
-    assert time_codes.sampled("F-TRANSFORMS", MANY).seeded == seeded
-    assert time_codes.sampled("F-VISIBILITY-PURPOSE", MANY).seeded != seeded
+    seeded = time_codes.sampled("F-TRANSFORMS", MANY).seeded_time_codes
+    assert time_codes.sampled("F-TRANSFORMS", MANY).seeded_time_codes == seeded
+    assert time_codes.sampled("F-VISIBILITY-PURPOSE", MANY).seeded_time_codes != seeded
     script = (
         "import json; from support import time_codes; from support.time_codes import TimeVariation; "
-        f"print(json.dumps(time_codes.sampled('F-TRANSFORMS', TimeVariation(*{astuple(MANY)!r})).seeded))"
+        f"print(json.dumps(time_codes.sampled('F-TRANSFORMS', TimeVariation(*{astuple(MANY)!r})).seeded_time_codes))"
     )
     env = {**os.environ, "PYTHONHASHSEED": "12345", "PYTHONPATH": os.pathsep.join([str(TESTS), *sys.path])}
     printed = subprocess.run([sys.executable, "-c", script], env=env, capture_output=True, text=True, check=True)
@@ -83,18 +87,21 @@ def test_seeds_come_from_the_fixture_id() -> None:
 def test_many_authored_samples_are_spread_evenly() -> None:
     # ATIME-03: with more than 8 authored samples, 8 spread evenly, the first and last included, and 2 seeded.
     sampled = time_codes.sampled("F-MANY", MANY)
-    assert len(sampled.authored) == 8 and set(sampled.authored) <= set(MANY.samples)
-    assert (sampled.authored[0], sampled.authored[-1]) == (MANY.samples[0], MANY.samples[-1])
+    assert len(sampled.authored) == 8 and set(sampled.authored) <= set(MANY.authored_sample_time_codes)
+    assert (sampled.authored[0], sampled.authored[-1]) == (
+        MANY.authored_sample_time_codes[0],
+        MANY.authored_sample_time_codes[-1],
+    )
     gaps = [b - a for a, b in zip(sampled.authored, sampled.authored[1:], strict=False)]
     assert max(gaps) - min(gaps) <= 2.0  # one sample interval
-    assert len(sampled.seeded) == 2
+    assert len(sampled.seeded_time_codes) == 2
 
 
 def test_a_production_scale_fixture_gets_only_the_other_kinds() -> None:
     # ATIME-03: no authored or seeded samples; its time codes are exactly the other kinds'.
     sampled = time_codes.sampled("F-MANY", MANY, production_scale=True)
-    assert (sampled.authored, sampled.seeded) == ((), ())
-    others = {sampled.start, sampled.end, sampled.interior, sampled.before, sampled.after}
+    assert (sampled.authored, sampled.seeded_time_codes) == ((), ())
+    others = {sampled.start, sampled.end, sampled.interior, sampled.before_range, sampled.after_range}
     others |= {*sampled.transitions, *sampled.midpoints}
     assert sampled.time_codes == (None, *sorted(others))
     assert sampled.midpoints == (6.5, 26.5)  # between start, the transition, and end alone

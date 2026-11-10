@@ -1,8 +1,9 @@
 """The headless interaction functions (M04-prototypes plan, B3 and D3), by the reusable checks.
 
 Each check in support/interaction_checks.py runs on each M2 interaction fixture in a fresh wheel process, with
-the bridge's C++ correspondence and kind promotion and a Python display component: the baseline's (selection.py)
-and the batched display's (batch_selection.py).
+the bridge's C++ correspondence and kind promotion and a Python display component: the baseline's
+(object_display_selection.py)
+and the batched display's (batched_display_object_display_selection.py).
 """
 
 from __future__ import annotations

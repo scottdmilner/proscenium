@@ -96,9 +96,9 @@ def zone_core(
         if rect is None:
             continue
         middle = (rect.left + rect.right) / 2
-        if uid == zone.begin:
+        if uid == zone.begin_uid:
             points += _corners(rect, inner_pad, left=middle + radius)
-        elif uid == zone.end:
+        elif uid == zone.end_uid:
             points += _corners(rect, inner_pad, right=middle - radius)
         else:
             points += _corners(rect, inner_pad)
@@ -113,8 +113,12 @@ def core_nodes(zone: zone_model.Zone, layout: zone_model.ZoneLayout) -> list[int
     They are its begin and end, the nodes it holds that no zone nested in it holds, and the begin and end of each
     zone nested directly in it, whose outer halves lie outside that zone's own hull.
     """
-    own = [uid for uid in (zone.begin, zone.end, *zone.body) if layout.zone_of.get(uid) is zone]
-    return own + [uid for child in zone.children for uid in (child.begin, child.end)]
+    own = [
+        uid
+        for uid in (zone.begin_uid, zone.end_uid, *zone.body_node_uids)
+        if layout.innermost_zone_by_node_uid.get(uid) is zone
+    ]
+    return own + [uid for child in zone.children for uid in (child.begin_uid, child.end_uid)]
 
 
 def zone_hulls(
@@ -123,8 +127,8 @@ def zone_hulls(
     """Each zone's hull, by its begin's uid; a zone whose nodes have no rectangles has none."""
     cores: dict[int, list[Point]] = {}
     for zone in sorted(layout.zones, key=lambda z: -z.depth):  # nested zones first
-        children = [cores[child.begin] for child in zone.children if cores.get(child.begin)]
-        cores[zone.begin] = zone_core(zone, layout, rects, children, pad, nest_pad, radius)
+        children = [cores[child.begin_uid] for child in zone.children if cores.get(child.begin_uid)]
+        cores[zone.begin_uid] = zone_core(zone, layout, rects, children, pad, nest_pad, radius)
     return {begin: grown(core, radius) for begin, core in cores.items() if core}
 
 

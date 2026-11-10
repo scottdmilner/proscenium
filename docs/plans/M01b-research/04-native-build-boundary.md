@@ -203,7 +203,7 @@ Other changes:
 - **Runs per platform:**
   - Build.
   - Static audit (above).
-  - The existing probe (`run.py`) in **both** the wheel and the binary.
+  - The existing probe (`run_runtime_probes.py`) in **both** the wheel and the binary.
   - An "exactly one USD" check (§2).
   - A shutdown-clean check: exit code 0 and no stderr crash banner.
 
@@ -359,7 +359,7 @@ These are single runs on one machine, not benchmarks.
   - other `std::exception` → `RuntimeError`
   - `...` → `RuntimeError("unidentifiable C++ exception")`
 
-  **[usd-v26.03 pxr/external/boost/python/src/errors.cpp:27-63]**. The bridge's `throw std::invalid_argument` becomes `ValueError`.
+  **[usd-v26.03 pxr/external/boost/python/src/python_error_translation.cpp:27-63]**. The bridge's `throw std::invalid_argument` becomes `ValueError`.
 - **Worker-thread errors:** `WorkParallelForN` and `WorkDispatcher` move `TfError`s from TBB workers back to the calling thread via `TfErrorTransport` **[usd-v26.03 pxr/base/work/loops.h:24-41; dispatcher.h:106-176]**, so a mark set on the calling thread sees them. C++ exceptions inside TBB `parallel_for` propagate to the waiting thread **[inferred, TBB semantics]**.
 - **Warnings and status:** install a `TfDiagnosticMgr::Delegate` scoped to the capture to collect `TF_WARN`/`TF_STATUS` into plan diagnostics **[inferred]**.
 

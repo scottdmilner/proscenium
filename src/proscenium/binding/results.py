@@ -75,7 +75,7 @@ class DiagnosticCode(StrEnum):
     APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
 
-# The codes the compiled core reports, whose messages state their problems (Diagnostic.problem);
+# The codes the compiled core reports, whose messages state their problems (Diagnostic.aggregation_key);
 # synchronization.evaluation checks the core's list against it on import.
 CORE_CODES = frozenset(
     {
@@ -126,18 +126,27 @@ class Diagnostic:
     message: str
     source_path: str = ""  # the source entity it concerns, as a composed-stage path
     property_path: str = ""  # the property it concerns
-    asset: str = ""  # the asset it concerns, as authored
-    fallback: str = ""  # what is displayed in its place
-    layers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
-    resource: str = ""  # for pending cleanup, the ledger key of the pending resource it concerns
+    asset_identifier: str = ""  # the asset it concerns, as authored
+    fallback_description: str = ""  # what is displayed in its place
+    layer_identifiers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
+    pending_resource_key: str = ""  # for pending cleanup, the ledger key of the pending resource it concerns
     role: str = ""  # that resource's representation role
 
     def __post_init__(self) -> None:
         # A stored diagnostic's code is a plain string and its layers a list; an unknown code raises ValueError.
         object.__setattr__(self, "code", DiagnosticCode(self.code))
-        object.__setattr__(self, "layers", tuple(self.layers))
-        texts = (self.binding_id, self.message, self.source_path, self.property_path, self.asset, self.fallback)
-        if not all(type(text) is str for text in (*texts, self.resource, self.role, *self.layers)):
+        object.__setattr__(self, "layer_identifiers", tuple(self.layer_identifiers))
+        texts = (
+            self.binding_id,
+            self.message,
+            self.source_path,
+            self.property_path,
+            self.asset_identifier,
+            self.fallback_description,
+        )
+        if not all(
+            type(text) is str for text in (*texts, self.pending_resource_key, self.role, *self.layer_identifiers)
+        ):
             raise TypeError("a diagnostic's fields are strings")
         if not self.binding_id:
             raise ValueError("a diagnostic names its binding")
@@ -153,8 +162,8 @@ class Diagnostic:
         return _KINDS[self.code][1]
 
     @property
-    def problem(self) -> tuple[object, ...]:
-        """What it reports, apart from how its message words it: repeats of one problem aggregate (DIAG-03).
+    def aggregation_key(self) -> tuple[object, ...]:
+        """The identity used to deduplicate reports of the same problem (DIAG-03).
 
         The core's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
         the problem; another's is prose about one, so it isn't.
@@ -183,7 +192,7 @@ def result_state(diagnostics: Iterable[Diagnostic]) -> ResultState:
     return max((_STATE_OF[d.category] for d in diagnostics), key=_WORSE.index, default=ResultState.SUCCESS)
 
 
-def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
+def deduplicated_diagnostics(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
     """The diagnostics with each problem once, in the order first reported (DIAG-03).
 
     A problem is a diagnostic's code and everything it concerns; its message is prose, so a repeat with another
@@ -191,7 +200,7 @@ def aggregated(diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
     """
     first: dict[tuple[object, ...], Diagnostic] = {}
     for diagnostic in diagnostics:
-        first.setdefault(diagnostic.problem, diagnostic)
+        first.setdefault(diagnostic.aggregation_key, diagnostic)
     return tuple(first.values())
 
 
@@ -205,19 +214,20 @@ class Result:
     """
 
     diagnostics: tuple[Diagnostic, ...]
-    time_codes: tuple[Usd.TimeCode, ...]  # those it attempted: a synchronization's one, none for most operations
-    cleanup_status: tuple[Diagnostic, ...]  # the binding's current cleanup diagnostics, aggregated
+    # Those it attempted: a synchronization's one, none for most operations.
+    attempted_time_codes: tuple[Usd.TimeCode, ...]
+    pending_cleanup_diagnostics: tuple[Diagnostic, ...]  # the binding's current cleanup diagnostics, aggregated
 
     def __init__(
         self,
         *diagnostics: Diagnostic,
-        time_codes: Iterable[Usd.TimeCode] = (),
-        cleanup_status: Iterable[Diagnostic] = (),
+        attempted_time_codes: Iterable[Usd.TimeCode] = (),
+        pending_cleanup_diagnostics: Iterable[Diagnostic] = (),
     ) -> None:
-        object.__setattr__(self, "diagnostics", aggregated(diagnostics))
-        object.__setattr__(self, "time_codes", tuple(time_codes))
-        object.__setattr__(self, "cleanup_status", aggregated(cleanup_status))
-        if any(d.category is not DiagnosticCategory.PENDING_CLEANUP for d in self.cleanup_status):
+        object.__setattr__(self, "diagnostics", deduplicated_diagnostics(diagnostics))
+        object.__setattr__(self, "attempted_time_codes", tuple(attempted_time_codes))
+        object.__setattr__(self, "pending_cleanup_diagnostics", deduplicated_diagnostics(pending_cleanup_diagnostics))
+        if any(d.category is not DiagnosticCategory.PENDING_CLEANUP for d in self.pending_cleanup_diagnostics):
             raise ValueError("a cleanup status holds only pending-cleanup diagnostics")
 
     @property

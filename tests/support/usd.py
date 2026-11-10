@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import BindingHandle, Bindings
 
 
-def open_fresh(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:
+def open_stage_without_cache(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:
     """Open a new stage for `path`, even if a stage cache context is active.
 
     Inside an active Usd.StageCacheContext, Usd.Stage.Open can return an
@@ -39,7 +39,7 @@ def binding_on_file(
     name: str | None = None,
 ) -> BindingHandle:
     """Open a copied fixture and attach its stage to a binding with independent runtime stages."""
-    stage = open_fresh(root)
+    stage = open_stage_without_cache(root)
     handle = bindings.create_binding(scene, payload_policy=payload_policy, name=name or root.stem)
     bindings.attach(handle.binding_id, stage)
     return handle

@@ -5,8 +5,8 @@
 
 #include "correspondence.h"
 #include "diagnostics.h"
+#include "id_property_conversion.h"
 #include "prim_record.h"
-#include "properties.h"
 #include "snapshot.h"
 
 #include <pxr/pxr.h>
@@ -75,7 +75,7 @@ struct MaterialData {
     std::vector<std::pair<pxr::TfToken, pxr::VtValue>> surfaceParameters;
 };
 
-// M4 Phase E: an aspect of an object that can vary over time, as frames.py's Aspect names it.
+// M4 Phase E: an aspect of an object that can vary over time, as frame_capture.py's Aspect names it.
 enum class Aspect : std::uint8_t { Transform, Visibility, Mesh, Materials, Properties, Bounds };
 
 const char *AspectName(Aspect aspect);  // "transform", "visibility", "mesh", "materials", "properties", "bounds"
@@ -106,8 +106,8 @@ struct ObjectEntry {
 
 // M4 Phase E (E4): what BuildMesh finds from a mesh's topology and point count alone.
 struct TopologyWork {
-    std::vector<bool> leftOut;  // per captured face, whether Blender would delete it; empty for none
-    Diagnostics problems;       // the topology's own, which come first among the build's
+    std::vector<bool> rejectedFaceMask;  // per captured face, whether Blender would delete it; empty for none
+    Diagnostics problems;                // the topology's own, which come first among the build's
 };
 
 // M4 Phase D (D9, a probe): a mesh prim's build, kept with the captured containers of the prim and its subsets
@@ -123,13 +123,13 @@ struct MeshBuild {
     std::optional<MeshData> mesh;
     std::size_t contentHash = 0;
     Diagnostics problems;
-    pxr::SdfPathVector slots;  // the prims whose bindings the mesh's slots take
+    pxr::SdfPathVector materialBindingPrimPaths;  // the prims whose bindings the mesh's slots take
 };
 
 using MeshBuilds = std::unordered_map<pxr::SdfPath, MeshBuild, pxr::SdfPath::Hash>;
 
 struct Plan {
-    pxr::UsdTimeCode time;
+    pxr::UsdTimeCode timeCode;
     std::vector<MeshData> meshes;
     std::vector<std::size_t> meshHashes;  // per mesh, its ContentHash, which a later plan's diff looks up (M4)
     std::vector<MaterialData> materials;

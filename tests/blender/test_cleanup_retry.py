@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING
 import bpy
 import pytest
 
-from fixtures import records as record_fixtures
+from fixtures import schema_version_cases as record_fixtures
 from fixtures import transaction
-from proscenium.binding.persistence import configs, ledgers, records
+from proscenium.binding.persistence import binding_records, cleanup_ledgers, id_property_records
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import pending_cleanup
-from proscenium.synchronization import removal
+from proscenium.synchronization import datablock_removal
 from support.blend import save_and_reopen
 
 from .transaction_failures import failing_preparation
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: str = "Shot") -> BindingHandle:
@@ -38,7 +38,7 @@ def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: st
 
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
@@ -49,21 +49,21 @@ def _names() -> set[tuple[str, str]]:
 def _by_name(ledger: dict[str, LedgerEntry]) -> dict[str, tuple[object, ...]]:
     """The ledger's entries with their pointers as names: references don't survive a reopen."""
     return {
-        k: (e.binding_id, e.entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
+        k: (e.binding_id, e.manifest_entry_key, e.role, e.datablock and e.datablock.name, e.operation, e.diagnostic)
         for k, e in ledger.items()
     }
 
 
 def _fail_removing(monkeypatch: pytest.MonkeyPatch, failing: set[bpy.types.ID]) -> None:
     """Make removing one of failing fail, or a call with one; by datablock, as an object and its mesh share a name."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(d in failing for d in datablocks):
             raise RuntimeError("injected failure")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing_remove)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing_remove)
 
 
 def test_a_retry_after_reopening_resolves_it_all(bindings: Bindings, tmp_path: Path) -> None:
@@ -81,7 +81,7 @@ def test_a_retry_after_reopening_resolves_it_all(bindings: Bindings, tmp_path: P
         assert names <= {name for _, name in _names()}  # no cleanup ran
         assert handle.live_stage() is None  # unattached: the retry needs no USD
         result = handle.retry_cleanup()
-        assert (result.state, result.diagnostics, result.cleanup_status) == (ResultState.SUCCESS, (), ())
+        assert (result.state, result.diagnostics, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, (), ())
         assert _ledger() == {}
         assert _names() == baseline
 
@@ -120,7 +120,7 @@ def test_a_retry_that_resolves_nothing_fails(
         after = _ledger()
         assert after.keys() == before.keys()
         assert {e.diagnostic for e in after.values()} == set(result.diagnostics[1:])
-        assert set(result.cleanup_status) == set(result.diagnostics[1:])
+        assert set(result.pending_cleanup_diagnostics) == set(result.diagnostics[1:])
         assert set(result.diagnostics[1:]).isdisjoint(failed.diagnostics)  # fresh, not the attempt's
 
 
@@ -137,7 +137,7 @@ def test_a_retry_that_resolves_some_completes_with_issues(
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         [diagnostic] = result.diagnostics
         [(ledger_key, entry)] = _ledger().items()
-        assert (entry.datablock, entry.diagnostic, diagnostic.resource) == (mesh, diagnostic, ledger_key)
+        assert (entry.datablock, entry.diagnostic, diagnostic.pending_resource_key) == (mesh, diagnostic, ledger_key)
 
 
 def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_path: Path) -> None:
@@ -148,7 +148,7 @@ def test_a_retry_resolves_only_its_bindings_leftovers(bindings: Bindings, tmp_pa
         others = {k: e for k, e in _ledger().items() if e.binding_id == other.binding_id}
         assert handle.retry_cleanup().state is ResultState.SUCCESS
         assert _ledger() == others
-        assert len(other.retry_cleanup().cleanup_status) == 0
+        assert len(other.retry_cleanup().pending_cleanup_diagnostics) == 0
         assert _ledger() == {}
 
 
@@ -179,8 +179,8 @@ def test_a_ledger_that_cant_be_read_refuses_and_disposes_of_nothing(bindings: Bi
         handle = _binding(bindings, scene)
         _, leftovers = failing_preparation(handle, scene, 0)
         names = {d.name for d in leftovers}
-        [text] = configs.index_texts()
-        text[records.NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers["newer"]
+        [text] = binding_records.index_texts()
+        text[id_property_records.NAMESPACE][cleanup_ledgers.LEDGER_KEY] = versions.ledgers["newer"]
         result = handle.retry_cleanup()
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics

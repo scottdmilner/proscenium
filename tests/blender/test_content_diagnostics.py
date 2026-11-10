@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import evaluation
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.results import DiagnosticCode, ResultState
 from support.usd import binding_on_file
 
@@ -44,7 +44,7 @@ def test_content_diagnostics_complete_the_synchronization_with_issues(bindings: 
     # DIAG-10 and DIAG-07 on F-UNSUPPORTED-CONTENT "content-diagnostics": each problem once, held by the generation and
     # the last attempt as the result reports it, and equal in the same order when nothing changed.
     with evaluation.unsupported_content(tmp_path) as unsupported:
-        handle = binding_on_file(bindings, _scene(), unsupported.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), unsupported.root_layer_path, name="Shot")
         result = handle.synchronize(0)
         assert result.state is ResultState.COMPLETED_WITH_ISSUES
         assert len(result.diagnostics) == len(_expected(unsupported))
@@ -52,7 +52,9 @@ def test_content_diagnostics_complete_the_synchronization_with_issues(bindings: 
         destination = bpy.data.collections["Shot"]
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
-        assert isinstance(generation, records.Loaded) and isinstance(attempt, records.Loaded)
+        assert isinstance(generation, id_property_records.LoadedRecord) and isinstance(
+            attempt, id_property_records.LoadedRecord
+        )
         assert generation.record.diagnostics == attempt.record.diagnostics == result.diagnostics
         assert handle.synchronize(0).diagnostics == result.diagnostics
 
@@ -60,7 +62,7 @@ def test_content_diagnostics_complete_the_synchronization_with_issues(bindings: 
 def test_a_cache_call_reports_its_plans_content_diagnostics(bindings: Bindings, tmp_path: Path) -> None:
     # Each problem once across the call's time codes, as the result aggregates them, the call completing with issues.
     with evaluation.unsupported_content(tmp_path) as unsupported:
-        handle = binding_on_file(bindings, _scene(), unsupported.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), unsupported.root_layer_path, name="Shot")
         synchronized = handle.synchronize(0)
         cached = handle.cache([5, 10])
         assert cached.state is ResultState.COMPLETED_WITH_ISSUES

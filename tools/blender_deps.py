@@ -34,32 +34,32 @@ class Platform(StrEnum):
 
 
 @dataclass(frozen=True)
-class Libs:
+class BlenderDependencyCheckout:
     """One platform's Blender library repo: what to check out of it, and what must exist after."""
 
-    repo: str  # projects.blender.org/blender/<repo>; the Blender repo's submodule is lib/<suffix>
-    paths: tuple[str, ...]  # non-cone sparse-checkout patterns
-    required: tuple[str, ...]  # files that must exist after checkout
+    repository_name: str  # projects.blender.org/blender/<repo>; the Blender repo's submodule is lib/<suffix>
+    sparse_checkout_patterns: tuple[str, ...]  # non-cone sparse-checkout patterns
+    required_files: tuple[str, ...]  # files that must exist after checkout
 
     @property
     def submodule(self) -> str:
         """The repo's submodule path in the Blender repo."""
-        return "lib/" + self.repo.removeprefix("lib-")
+        return "lib/" + self.repository_name.removeprefix("lib-")
 
 
 LIBS = {
-    Platform.MACOS_ARM64: Libs(
+    Platform.MACOS_ARM64: BlenderDependencyCheckout(
         "lib-macos_arm64",
         ("/usd/include/", "/tbb/include/", "/python/include/"),
         ("usd/include/pxr/pxr.h", "tbb/include/tbb/tbb.h", "python/include/python3.13/Python.h"),
     ),
-    Platform.LINUX_X64: Libs(
+    Platform.LINUX_X64: BlenderDependencyCheckout(
         "lib-linux_x64",
         ("/usd/include/", "/tbb/include/", "/python/include/"),
         ("usd/include/pxr/pxr.h", "tbb/include/tbb/tbb.h", "python/include/python3.13/Python.h"),
     ),
     # Windows links through import libraries, which only the lib repo has (not the bpy wheel).
-    Platform.WINDOWS_X64: Libs(
+    Platform.WINDOWS_X64: BlenderDependencyCheckout(
         "lib-windows_x64",
         (
             "/usd/include/",
@@ -118,11 +118,11 @@ def release() -> dict[str, str]:
 
 def deps_dir(key: Platform) -> Path:
     """Where the platform's dependency checkout is cached."""
-    return CACHE / LIBS[key].repo
+    return CACHE / LIBS[key].repository_name
 
 
-def prepare(key: Platform) -> Path:
-    """The platform's dependency checkout, at the locked Blender release's revision.
+def ensure_dependency_checkout(key: Platform) -> Path:
+    """Ensure the platform's dependency checkout exists at the locked Blender release's revision.
 
     Clones it if it isn't cached, and fetches and checks out the revision if it's elsewhere. Raises RuntimeError over a
     checkout with local changes, or one missing a required file.
@@ -130,7 +130,7 @@ def prepare(key: Platform) -> Path:
     libs = LIBS[key]
     revision = release()[libs.submodule]
     deps = deps_dir(key)
-    url = f"https://projects.blender.org/blender/{libs.repo}.git"
+    url = f"https://projects.blender.org/blender/{libs.repository_name}.git"
     if not deps.exists():
         deps.parent.mkdir(parents=True, exist_ok=True)
         major, minor = blender_version().split(".")[:2]
@@ -142,7 +142,7 @@ def prepare(key: Platform) -> Path:
     # A fresh --no-checkout clone has no index and reports every file deleted.
     if (deps / ".git/index").exists() and dirty:
         raise RuntimeError(f"Dependency checkout has local changes: {deps}")
-    if head == revision and all((deps / f).is_file() for f in libs.required):
+    if head == revision and all((deps / f).is_file() for f in libs.required_files):
         _log(f"Using cached Blender dependencies: {deps} ({revision})")
         return deps
     present = subprocess.run(
@@ -150,9 +150,9 @@ def prepare(key: Platform) -> Path:
     )
     if present.returncode:
         _git(deps, "fetch", "--depth=1", "origin", revision)
-    _git(deps, "sparse-checkout", "set", "--no-cone", *libs.paths)
+    _git(deps, "sparse-checkout", "set", "--no-cone", *libs.sparse_checkout_patterns)
     _git(deps, "checkout", "--detach", revision)
-    missing = [f for f in libs.required if not (deps / f).is_file()]
+    missing = [f for f in libs.required_files if not (deps / f).is_file()]
     if missing:
         raise RuntimeError(f"Expected dependency files are missing from {deps}: {missing}")
     return deps
@@ -173,4 +173,4 @@ def _log(message: str) -> None:
 
 
 if __name__ == "__main__":
-    print(prepare(current_platform()))
+    print(ensure_dependency_checkout(current_platform()))

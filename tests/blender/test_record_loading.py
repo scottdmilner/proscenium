@@ -12,8 +12,15 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from fixtures import records as fixture
-from proscenium.binding.persistence.records import VERSION_KEY, Loaded, RefusalReason, RefusedRecord, Schema, load
+from fixtures import schema_version_cases as fixture
+from proscenium.binding.persistence.id_property_records import (
+    VERSION_KEY,
+    LoadedRecord,
+    RefusalReason,
+    RefusedRecord,
+    Schema,
+    load,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -53,7 +60,7 @@ def test_generator_stores_each_version(versions: fixture.SchemaVersions) -> None
 def test_older_records_migrate_on_load(versions: fixture.SchemaVersions, name: str) -> None:
     # SCHEMA-02: an older record loads at the current version, keeping its fields.
     result = load(versions.schema, versions.stored[name])
-    assert result == Loaded(versions.loaded[name], _version(versions.stored[name]))
+    assert result == LoadedRecord(versions.loaded[name], _version(versions.stored[name]))
 
 
 @pytest.mark.parametrize("name", UNSUPPORTED)
@@ -85,7 +92,7 @@ def test_loading_never_changes_the_stored_record(versions: fixture.SchemaVersion
     # The migrations rename and add keys in place; they get a copy.
     stored = versions.stored["v1"]
     before = copy.deepcopy(stored)
-    assert isinstance(load(versions.schema, stored), Loaded)
+    assert isinstance(load(versions.schema, stored), LoadedRecord)
     assert stored == before
 
 

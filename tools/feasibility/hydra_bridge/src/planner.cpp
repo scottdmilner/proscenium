@@ -73,13 +73,14 @@ public:
         : snapshot_(snapshot),
           settings_(std::move(settings)),
           previous_(previous ? &previous->builds : nullptr),
-          table_(TimedRead(snapshot.scene)),
+          table_(TimedRead(snapshot.sceneIndex)),
           plan_(std::make_shared<Plan>()),
           resolver_(table_, plan_->diagnostics, settings_.pointInstancers) {
-        plan_->time = snapshot.time;
+        plan_->timeCode = snapshot.timeCode;
         // M4 Phase E: the two lookups DirtiedAspects maps to objects, from the snapshot's dirty notices.
-        for (const Event &event : snapshot.events) {
-            if (event.kind != EventKind::Dirtied) continue;  // added, removed, and renamed prims say nothing of time
+        for (const SceneIndexEvent &event : snapshot.events) {
+            if (event.kind != SceneIndexEventKind::Dirtied)
+                continue;  // added, removed, and renamed prims say nothing of time
             // Each prim's dirtied locators, once each: several notices can dirty one prim in a capture (the
             // filter's and UsdImaging's, and the time dependencies the previous capture handed on).
             std::vector<std::string> &locators = dirtiedLocators_[event.path];
@@ -97,7 +98,7 @@ public:
     PlanPtr Run() {
         const ScopedFactTiming timing(FactTiming::PlanRun);
         for (const PrimRecord &prim : table_.prims)
-            if (prim.geomSubset) subsets_[prim.path.GetParentPath()].emplace_back(prim);
+            if (prim.geomSubset) subsets_[prim.hydraPath.GetParentPath()].emplace_back(prim);
         static const TfToken kPointInstancer("PointInstancer");
         // A point instancer's descendants are drawn only as copies of its prototypes, as UsdImaging culls them:
         // its prototype originals (which carry Hydra's piPropagatedPrototypes marker) and anything else under it,
@@ -112,12 +113,12 @@ public:
         std::vector<BuiltMesh> built = BuildMeshes(plan_->builds);
         for (size_t i = 0; i < table_.prims.size(); ++i) {
             const PrimRecord &prim = table_.prims[i];
-            if (prim.type == HdPrimTypeTokens->mesh && prim.mesh)
+            if (prim.hydraPrimType == HdPrimTypeTokens->mesh && prim.mesh)
                 AddMesh(prim, built[i]);
-            else if (Untranslated(prim.type))
-                AddObjects(prim, -1, prim.type);
+            else if (Untranslated(prim.hydraPrimType))
+                AddObjects(prim, -1, prim.hydraPrimType);
             else if ((!settings_.pointInstancers && prim.instancer && prim.instancer->instanceLocations.empty()) ||
-                     (prim.type.IsEmpty() && prim.isGprim && !underPointInstancer(prim.path)))
+                     (prim.hydraPrimType.IsEmpty() && prim.isGprim && !underPointInstancer(prim.hydraPath)))
                 // A point instancer, unless the settings translate them (Hydra leaves instanceLocations null for
                 // point instancers, HdInstancerTopologySchema), or a gprim Hydra doesn't image, such as
                 // HermiteCurves, whose type the source-info filter supplies.
@@ -148,35 +149,36 @@ private:
         std::vector<BuiltMesh> built(table_.prims.size());
         std::vector<std::optional<MeshBuild>> kept(table_.prims.size());
         static const PrimRefs kNoSubsets;
-        const HdRetainedSceneIndex &scene = *snapshot_.scene;
+        const HdRetainedSceneIndex &scene = *snapshot_.sceneIndex;
         WorkParallelForN(table_.prims.size(), [&](size_t begin, size_t end) {
             for (size_t i = begin; i < end; ++i) {
                 const PrimRecord &prim = table_.prims[i];
-                if (prim.type != HdPrimTypeTokens->mesh || !prim.mesh) continue;
-                const auto found = subsets_.find(prim.path);
+                if (prim.hydraPrimType != HdPrimTypeTokens->mesh || !prim.mesh) continue;
+                const auto found = subsets_.find(prim.hydraPath);
                 const PrimRefs &subsets = found == subsets_.end() ? kNoSubsets : found->second;
                 MeshBuild build;
-                build.prim = scene.GetPrim(prim.path).dataSource;
-                for (const PrimRecord &subset : subsets) build.subsets.push_back(scene.GetPrim(subset.path).dataSource);
+                build.prim = scene.GetPrim(prim.hydraPath).dataSource;
+                for (const PrimRecord &subset : subsets)
+                    build.subsets.push_back(scene.GetPrim(subset.hydraPath).dataSource);
                 build.topology = prim.mesh->topology;
                 build.primvars = prim.primvars;
                 BuiltMesh &result = built[i];
-                if (!Reuse(prim.path, build, result)) {
+                if (!Reuse(prim.hydraPath, build, result)) {
                     const ScopedFactTiming timing(FactTiming::PlanBuildMesh);
                     result.mesh = BuildMesh(prim, subsets, result.problems, result.slots, build.topologyWork,
-                                            Previous(prim.path));
+                                            Previous(prim.hydraPath));
                     if (result.mesh) result.contentHash = ContentHash(*result.mesh);
                 }
                 build.mesh = result.mesh;
                 build.contentHash = result.contentHash;
                 build.problems = result.problems;
-                for (const PrimRecord &slot : result.slots) build.slots.push_back(slot.path);
+                for (const PrimRecord &slot : result.slots) build.materialBindingPrimPaths.push_back(slot.hydraPath);
                 kept[i] = std::move(build);
             }
         });
         for (size_t i = 0; i < kept.size(); ++i) {
             std::optional<MeshBuild> &build = kept[i];
-            if (build) builds.emplace(table_.prims[i].path, std::move(*build));
+            if (build) builds.emplace(table_.prims[i].hydraPath, std::move(*build));
         }
         return built;
     }
@@ -194,7 +196,7 @@ private:
         const MeshBuild *old = Previous(path);
         if (!old || !build.prim || old->prim != build.prim || old->subsets != build.subsets) return false;
         PrimRefs slots;
-        for (const SdfPath &slot : old->slots) {
+        for (const SdfPath &slot : old->materialBindingPrimPaths) {
             const PrimRecord *record = table_.Find(slot);
             if (!record) return false;
             slots.emplace_back(*record);
@@ -236,17 +238,17 @@ private:
         }
         AddObjects(prim, index, TfToken(), slots);
         // A subset has no object of its own; its bindings are reported on the mesh's copies.
-        for (const PrimRecord &subset : subsets_[prim.path])
-            WarnBindingsWithoutApi(subset, prim.path, "Subset " + subset.path.GetName() + ": ");
+        for (const PrimRecord &subset : subsets_[prim.hydraPath])
+            WarnBindingsWithoutApi(subset, prim.hydraPath, "Subset " + subset.hydraPath.GetName() + ": ");
         if (!prim.materialBindFamilyIssue.empty())
-            MapToSources({Severity::Warning, "invalid-subset-family", prim.path,
+            MapToSources({Severity::Warning, "invalid-subset-family", prim.hydraPath,
                           "USD rejects the materialBind family: " + prim.materialBindFamilyIssue});
         // The prototype displays the control cage; converted implicit shapes are diagnosed as approximations.
         if (subdivided && !Approximated(prim.usdTypeName))
-            MapToSources({Severity::Warning, "subdivision-not-applied", prim.path,
+            MapToSources({Severity::Warning, "subdivision-not-applied", prim.hydraPath,
                           "Subdivision is not applied: the control cage is displayed"});
         if (Approximated(prim.usdTypeName))
-            MapToSources({Severity::Warning, "approximated-surface", prim.path,
+            MapToSources({Severity::Warning, "approximated-surface", prim.hydraPath,
                           prim.usdTypeName.GetString() + " is displayed as a mesh approximation"});
     }
 
@@ -267,14 +269,15 @@ private:
         const Aspects own = dirtiedLocators_.empty() ? 0 : OwnDirtiedAspects(prim, mesh == -1, purpose);
         for (const DrawnCopy &copy : copies) {
             ObjectEntry object;
-            object.source = copy.Map(prim.path);
-            object.instanceContext = copy.context;
+            object.source = copy.Map(prim.hydraPath);
+            object.instanceContext = copy.instanceContext;
             object.mesh = mesh;
             object.placeholderType = placeholderType;
             if (mesh == -1) object.bounds = prim.extent;
-            object.matrix = prim.matrix.value_or(GfMatrix4d(1.0));
+            object.matrix = prim.flattenedWorldMatrix.value_or(GfMatrix4d(1.0));
             // A reset inside the prototype drops the instance's transform too (WORKAROUND for OpenUSD #862).
-            if (!ResetsBelow(table_, prim.path, copy.hydraRoot)) object.matrix *= copy.world;
+            if (!ResetsBelow(table_, prim.hydraPath, copy.hydraNamespaceRoot))
+                object.matrix *= copy.instanceWorldMatrix;
             object.visible = EffectivelyVisible(table_, prim, copy);
             object.purpose = purpose;
             object.constantPrimvars = Constants(prim, constants, copy);
@@ -311,22 +314,22 @@ private:
         if (mesh == -1 && placeholderType != HdPrimTypeTokens->mesh) {
             // A bounding box when Hydra has an extent, otherwise an empty marker; both are warned.
             const std::string shown = prim.extent ? "a bounding-box placeholder" : "an empty marker (no extent)";
-            std::string what = "Hydra type '" + prim.type.GetString() + "'";
-            if (prim.type.IsEmpty())
+            std::string what = "Hydra type '" + prim.hydraPrimType.GetString() + "'";
+            if (prim.hydraPrimType.IsEmpty())
                 what = "USD type '" + prim.usdTypeName.GetString() + "', which Hydra doesn't image,";
             else if (prim.instancer)
                 what = "Point instancer (USD type '" + prim.usdTypeName.GetString() +
                        "'), which the prototype doesn't translate,";
-            MapToSources({Severity::Warning, "untranslated-type", prim.path, what + " is displayed as " + shown});
+            MapToSources({Severity::Warning, "untranslated-type", prim.hydraPath, what + " is displayed as " + shown});
         }
         // UsdImaging passes only schema attributes and primvars to Hydra; anything else is lost.
         if (!prim.droppedAttributes.empty()) {
             std::string names;
             for (const TfToken &name : prim.droppedAttributes) names += (names.empty() ? "" : ", ") + name.GetString();
-            MapToSources({Severity::Warning, "dropped-attribute", prim.path,
+            MapToSources({Severity::Warning, "dropped-attribute", prim.hydraPath,
                           "Attributes that are neither primvars nor schema attributes are not transferred: " + names});
         }
-        WarnBindingsWithoutApi(prim, prim.path, "");
+        WarnBindingsWithoutApi(prim, prim.hydraPath, "");
     }
 
     // M4 Phase E (E3): the aspects the snapshot's dirtied locators reach in an object of `prim` drawn in `copy`, from
@@ -347,7 +350,7 @@ private:
         for (const auto &visibility : dirtiedPurposeVisibility_) {
             const SdfPath &path = visibility.first;  // a lambda can't capture a structured binding before C++20
             if (visibility.second != purpose) continue;
-            const bool above = (prim.path != path && prim.path.HasPrefix(path)) ||
+            const bool above = (prim.hydraPath != path && prim.hydraPath.HasPrefix(path)) ||
                                std::any_of(copy.hydraContext.begin(), copy.hydraContext.end(),
                                            [&](const SdfPath &root) { return root.HasPrefix(path); });
             if (above) found |= Bit(Aspect::Visibility);
@@ -364,7 +367,7 @@ private:
     Aspects OwnDirtiedAspects(const PrimRecord &prim, bool placeholder, const TfToken &purpose) const {
         const Aspects shape = Bit(placeholder ? Aspect::Bounds : Aspect::Mesh);
         Aspects found = 0;
-        if (const auto dirtied = dirtiedLocators_.find(prim.path); dirtied != dirtiedLocators_.end()) {
+        if (const auto dirtied = dirtiedLocators_.find(prim.hydraPath); dirtied != dirtiedLocators_.end()) {
             for (const std::string &locator : dirtied->second) {
                 if (const std::optional<Aspects> placed = Placement(locator, purpose)) {
                     found |= *placed;
@@ -386,9 +389,9 @@ private:
                 }
             }
         }
-        if (const auto subsets = subsets_.find(prim.path); subsets != subsets_.end())
+        if (const auto subsets = subsets_.find(prim.hydraPath); subsets != subsets_.end())
             for (const PrimRecord &subset : subsets->second)
-                if (dirtiedLocators_.count(subset.path)) found |= shape;
+                if (dirtiedLocators_.count(subset.hydraPath)) found |= shape;
         return found;
     }
 
@@ -497,7 +500,7 @@ private:
                 constants.emplace_back(primvar.name, std::move(value));
                 continue;
             }
-            MapToSources({Severity::Error, "invalid-primvar", prim.path,
+            MapToSources({Severity::Error, "invalid-primvar", prim.hydraPath,
                           "Constant primvar '" + primvar.name.GetString() + "': its index is invalid (" + error + ")"});
         }
         return constants;
@@ -550,12 +553,12 @@ private:
 
     // The Hydra material a slot binds in one drawn copy.
     SdfPath SlotMaterial(const PrimRecord &slot, const DrawnCopy &copy, const TfToken &purpose) {
-        // WORKAROUND for OpenUSD #3690 (copy_bindings.h): a copy a binding collection reaches takes
+        // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): a copy a binding collection reaches takes
         // UsdShade's own answer for its instance-proxy path.
         const CopyBindings *bindings = snapshot_.copyBindings.get();
-        if (bindings && !copy.context.empty()) {
+        if (bindings && !copy.instanceContext.empty()) {
             const std::optional<size_t> index = MaterialPurposeIndex(purpose);
-            const auto found = bindings->materials.find(copy.Map(slot.path));
+            const auto found = bindings->materials.find(copy.Map(slot.hydraPath));
             if (index && found != bindings->materials.end()) return HydraMaterial(found->second[*index]);
         }
         return BoundMaterial(table_, slot, copy, purpose);
@@ -571,7 +574,7 @@ private:
             for (const PrimRecord &prim : table_.prims)
                 if (prim.material)
                     for (const DrawnCopy &copy : resolver_.CopiesOf(prim))
-                        materialsByUsdPath_->emplace(copy.Map(prim.path), prim.path);
+                        materialsByUsdPath_->emplace(copy.Map(prim.hydraPath), prim.hydraPath);
         }
         const auto found = materialsByUsdPath_->find(usdPath);
         return found != materialsByUsdPath_->end() ? found->second : usdPath;

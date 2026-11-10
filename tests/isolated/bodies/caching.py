@@ -1,4 +1,4 @@
-"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached.py, E3 and E4).
+"""Isolated body: M4 Phase E, time-sampled data: the bridge's cached display (cached_display.py, E3 and E4).
 
 Runs in a fresh process (isolated/harness.py); see tests/isolated/test_cached.py.
 """
@@ -44,7 +44,7 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    cached = importlib.import_module("cached")
+    cached = importlib.import_module("cached_display")
     stage = _stage(dest)
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
@@ -53,14 +53,14 @@ def follow(  # noqa: PLR0913 - the scene, the times visited, and the display's o
     display = cached.CachedDisplay(
         native, stage, collection, start, predict=predict, minimum=minimum, sequence=_sequence(dest, sequence)
     )
-    handler = display.follow(scene, subframes)
+    handler = display.install_frame_change_handler(scene, subframes)
     result: dict[str, Any] = {"visits": []}
     try:
         for time in visits:
             result["visits"].append(_visit(native, stage, display, scene, time, subframes))
-        result["split"] = sum(s.split for s in display.synchronized)
+        result["split"] = sum(s.split_mesh_count for s in display.synchronized)
         result["predicted"] = _copies(display.predicted)
-        result["confirmed"] = _copies(display.confirmed())
+        result["confirmed"] = _copies(display.observed_varying_aspects())
         result["cached"] = sorted(display.cached)
         result["whole"] = _whole(display)
         result["batched"] = _batched(display)
@@ -105,7 +105,8 @@ def _whole(display: Any) -> list[str]:
         {
             key[0]
             for key, obj in holders
-            if obj.data is not None and getattr(display.meshes.caches.get(obj.data.session_uid), "whole", None)
+            if obj.data is not None
+            and getattr(display.meshes.caches.get(obj.data.session_uid), "whole_mesh_samples", None)
         }
     )
 
@@ -127,7 +128,7 @@ def _batched(display: Any) -> list[dict[str, Any]]:
             if key not in held:
                 track.append(display.objects[key].data == batch.prototype.data)
             tracks.append(track)
-        varying = sorted(batch.cache.varying) if batch.cache else []
+        varying = sorted(batch.points_cache.varying_attributes) if batch.points_cache else []
         found.append({"tracks": sorted(tracks), "varying": varying})
     return sorted(found, key=lambda b: b["tracks"])
 
@@ -153,9 +154,9 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    cached = importlib.import_module("cached")
-    apply = importlib.import_module("apply")
-    frames = importlib.import_module("frames")
+    cached = importlib.import_module("cached_display")
+    apply = importlib.import_module("object_display")
+    frames = importlib.import_module("frame_capture")
     stage = _stage(dest)
     collection = bpy.data.collections.new("Cached")
     scene: Any = bpy.context.scene  # never None in a running Blender
@@ -164,7 +165,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
     display = cached.CachedDisplay(
         native, stage, collection, synchronized[0], blend=True, minimum=minimum, sequence=_sequence(dest, sequence)
     )
-    handler = display.follow(scene)
+    handler = display.install_frame_change_handler(scene)
     plans: dict[float, dict[Any, tuple[Any, Any]]] = {}
 
     def fresh(time: float) -> dict[Any, tuple[Any, Any]]:  # by track: its record and its mesh's layers
@@ -216,7 +217,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
                 for layer in layers:
                     values = numpy.empty_like(layer.values)
                     try:
-                        geometry.mesh.attributes[layer.name].data.foreach_get(layer.prop, values)
+                        geometry.mesh.attributes[layer.name].data.foreach_get(layer.foreach_property, values)
                     except (RuntimeError, TypeError):  # of another size
                         found.append(f"{key}: no {layer.name} of its size")
                         continue
@@ -233,7 +234,7 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
             visits.append({"time": time, "between": [a, b], "mismatches": found})
         return {
             "visits": visits,
-            "synchronized": [s.time for s in display.synchronized[count:]],
+            "synchronized": [s.time_code for s in display.synchronized[count:]],
             "whole": sorted(whole),
             "unresolved": _unresolved(display),
         }
@@ -245,12 +246,12 @@ def blended(  # noqa: PLR0913 - the scene, the times, and the display's options
 def _layers(apply: Any, plan: Any, record: Any) -> list[Any]:
     """An object's mesh layers as apply holds them, or its placeholder bounds as corners; empty for neither."""
     if record["mesh"] is not None:
-        return apply.layers(plan.meshes_at([record["mesh"]])[0])
+        return apply.mesh_attributes(plan.meshes_at([record["mesh"]])[0])
     if record["bounds"] is None:
         return []
     low, high = record["bounds"]
     corners = [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-    return [apply.Layer("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
+    return [apply.MeshAttributeData("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
 
 
 def predicting(module_dir: str, dest: str, time: float, later: float) -> dict[str, Any]:
@@ -311,8 +312,8 @@ def _visit(  # noqa: PLR0913 - the display and the time visited
     synchronized = display.synchronized[count:]
     return {
         "time": time,
-        "synchronized": [s.time for s in synchronized],
-        "rebuilt": [s.rebuilt for s in synchronized],
+        "synchronized": [s.time_code for s in synchronized],
+        "rebuilt": [s.display_rebuilt for s in synchronized],
         "mismatches": _mismatches(native, stage, display, time if subframes else float(int(time))),
     }
 
@@ -323,8 +324,8 @@ def _mismatches(native: Any, stage: Usd.Stage, display: Any, time: float) -> lis
     Each track is shown by one of its holders, an object or a batch's point, which holds what its record does, and
     by no other.
     """
-    apply = importlib.import_module("apply")
-    frames = importlib.import_module("frames")
+    apply = importlib.import_module("object_display")
+    frames = importlib.import_module("frame_capture")
     bridge = native.Bridge(stage)
     plan = native.build_plan(bridge.capture(time))
     bridge.release()
@@ -480,11 +481,13 @@ def _usd(matrix: Any) -> list[float] | None:
 
 def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan: Any) -> list[str]:
     if record["mesh"] is not None:
-        expected = apply.layers(plan.meshes_at([record["mesh"]])[0])
+        expected = apply.mesh_attributes(plan.meshes_at([record["mesh"]])[0])
     elif record["bounds"] is not None:
         low, high = record["bounds"]
         corners = [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
-        expected = [apply.Layer("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())]
+        expected = [
+            apply.MeshAttributeData("position", "FLOAT_VECTOR", "POINT", "vector", numpy.array(corners, "f").ravel())
+        ]
     else:
         return []
     geometry = evaluated.evaluated_geometry()  # its mesh is read while this is referenced
@@ -494,7 +497,7 @@ def _content_mismatches(apply: Any, key: Any, evaluated: Any, record: Any, plan:
         attribute = mesh.attributes.get(layer.name)
         values = numpy.empty_like(layer.values)
         try:
-            attribute.data.foreach_get(layer.prop, values)
+            attribute.data.foreach_get(layer.foreach_property, values)
         except (AttributeError, RuntimeError, TypeError):  # missing, or of another size
             found.append(f"{key}: no {layer.name} of its size")
             continue

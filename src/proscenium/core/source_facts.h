@@ -10,10 +10,6 @@
 #include <pxr/usd/usd/timeCode.h>
 #include <pxr/usdImaging/usdImaging/dataSourceStageGlobals.h>
 
-#include <cstdint>
-#include <functional>
-#include <mutex>
-
 namespace proscenium {
 
 // The container and its fields.
@@ -35,27 +31,6 @@ struct SourceInfoTokens {
   static const PXR_NS::TfToken& PointIds();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
-};
-
-// Builds its contents from the prim as it is now, not as it was when made: downstream scene indices keep the input
-// container between notices. A build is reused until `generation` changes.
-class LazyContainer final : public PXR_NS::HdContainerDataSource {
- public:
-  HD_DECLARE_DATASOURCE(LazyContainer);
-
-  PXR_NS::TfTokenVector GetNames() override;
-  PXR_NS::HdDataSourceBaseHandle Get(const PXR_NS::TfToken& name) override;
-
- private:
-  LazyContainer(std::function<PXR_NS::HdContainerDataSourceHandle()> build, std::function<uint64_t()> generation);
-  PXR_NS::HdContainerDataSourceHandle Built();
-
-  std::function<PXR_NS::HdContainerDataSourceHandle()> build_;
-  std::function<uint64_t()> generation_;
-  std::mutex mutex_;
-  bool valid_ = false;
-  uint64_t builtAt_ = 0;
-  PXR_NS::HdContainerDataSourceHandle built_;
 };
 
 // The source facts of `prim` (the prosceniumSource container's contents), `imaged` if Hydra images it; null for none.

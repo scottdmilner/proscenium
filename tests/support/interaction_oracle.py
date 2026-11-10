@@ -62,7 +62,7 @@ def floor(stage: Usd.Stage, path: str) -> str:
 
 
 @dataclass(frozen=True)
-class Generation:
+class ExpectedInteractionGeneration:
     """What the contract expects of one published generation of a stage at a time code."""
 
     time: float
@@ -78,12 +78,12 @@ class Generation:
         return frozenset(e for e in self.elements if Sdf.Path(e).HasPrefix(root))
 
 
-def generation(stage: Usd.Stage, time: float) -> Generation:
+def generation(stage: Usd.Stage, time: float) -> ExpectedInteractionGeneration:
     """The expected generation of `stage` at `time`: its display elements, their floors, and the universe."""
     elements = display_elements(stage, time)
     floors = {e: floor(stage, e) for e in elements}
     universe = {str(p) for f in floors.values() for p in Sdf.Path(f).GetPrefixes()}
-    return Generation(time, elements, floors, frozenset(universe))
+    return ExpectedInteractionGeneration(time, elements, floors, frozenset(universe))
 
 
 def kind_target(stage: Usd.Stage, floor_path: str, level: str | None) -> str:

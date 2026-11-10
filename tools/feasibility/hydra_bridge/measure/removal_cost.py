@@ -4,7 +4,7 @@
 
 Retirement, disposal, and a cleanup retry share removal.remove_unused, which reads users once with bpy.data.user_map
 and removes a level at a time, users first, each level in one bpy.data.batch_remove call, halved when that call
-raises until each datablock that fails is alone. Each run builds the baseline's display (apply.py) twice, as a
+raises until each datablock that fails is alone. Each run builds the baseline's display (object_display.py) twice, as a
 synchronization again holds it before retirement: the published one and the prepared one. Then, removing from the
 published one, with its objects unlinked from their collection first, as publication unlinks them:
 
@@ -41,12 +41,12 @@ if TYPE_CHECKING:
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[3]
-# The bridge first: this directory has measurements named as its modules (mesh_caches.py).
+# Import display implementation modules from the bridge directory first.
 sys.path[:0] = [str(HERE.parent), str(HERE), str(ROOT / "tools")]
 
 FIXED = 10
 UNIT = 100
-SCENES = ["updates", "alab"]  # run.py's groups
+SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 
 
 def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -> dict[str, Any]:
@@ -79,7 +79,7 @@ def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -
 
 def _one_call_each(remove: Callable[[Sequence[bpy.types.ID]], None], datablocks: Sequence[bpy.types.ID]) -> int:
     """Remove datablocks in one call, and if it fails, one call each; how many fail."""
-    from proscenium.binding.persistence import records
+    from proscenium.binding.persistence import id_property_records
 
     try:
         remove(datablocks)
@@ -89,7 +89,7 @@ def _one_call_each(remove: Callable[[Sequence[bpy.types.ID]], None], datablocks:
         return 0
     failed = 0
     for datablock in datablocks:
-        if not records.alive(datablock):  # removed by the failed call
+        if not id_property_records.alive(datablock):  # removed by the failed call
             continue
         try:
             remove([datablock])
@@ -104,11 +104,11 @@ def child(config: dict[str, Any]) -> None:
 
     sys.path[:0] = [config["module_dir"], str(ROOT / "src")]
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
+    import object_display
     from pxr import Usd
 
-    from proscenium.binding.persistence import records
-    from proscenium.synchronization import removal
+    from proscenium.binding.persistence import id_property_records
+    from proscenium.synchronization import datablock_removal
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
@@ -124,7 +124,7 @@ def child(config: dict[str, Any]) -> None:
     displays = []
     for collection in (published, prepared):
         scene.collection.children.link(collection)
-        displays.append(apply.apply(plan, collection))
+        displays.append(object_display.apply(plan, collection))
     view_layer.update()
     display = displays[0]
     result: dict[str, Any] = {
@@ -134,7 +134,7 @@ def child(config: dict[str, Any]) -> None:
 
     calls: list[dict[str, float]] = []
     failing: set[int] = set()  # session_uids of the datablocks whose removal fails
-    batch_remove = removal._batch_remove  # noqa: SLF001 - the module's one call to Blender
+    batch_remove = datablock_removal._batch_remove  # noqa: SLF001 - the module's one call to Blender
 
     def timed(datablocks: Sequence[bpy.types.ID]) -> None:
         if failing & {d.session_uid for d in datablocks}:
@@ -144,7 +144,7 @@ def child(config: dict[str, Any]) -> None:
         batch_remove(datablocks)
         calls.append({"datablocks": len(datablocks), "s": time.perf_counter() - start})
 
-    removal._batch_remove = timed  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
+    datablock_removal._batch_remove = timed  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
 
     fixed = []
     for _ in range(FIXED):
@@ -180,18 +180,22 @@ def child(config: dict[str, Any]) -> None:
             "outcome": outcome,
         }
 
-    def summary(outcome: removal.RemovalOutcome) -> dict[str, int]:
-        return {"removed": len(outcome.removed), "released": len(outcome.released), "pending": len(outcome.pending)}
+    def summary(outcome: datablock_removal.RemovalOutcome) -> dict[str, int]:
+        return {
+            "removed": len(outcome.removed_keys),
+            "released": len(outcome.released_keys),
+            "pending": len(outcome.pending_reasons_by_key),
+        }
 
     for name, count in (("one object", 1), (f"{UNIT} objects", UNIT)):
         unit = unlinked(count)
-        removed(name, unit, lambda unit=unit: summary(removal.remove_unused(unit)))
+        removed(name, unit, lambda unit=unit: summary(datablock_removal.remove_unused(unit)))
     for name in ("halving", "one call each"):
         unit = unlinked(UNIT)
         failing.clear()
         failing.add(unit[UNIT // 2].session_uid)
         if name == "halving":
-            removed(name, unit, lambda unit=unit: summary(removal.remove_unused(unit)))
+            removed(name, unit, lambda unit=unit: summary(datablock_removal.remove_unused(unit)))
         else:
             removed(name, unit, lambda unit=unit: {"pending": _one_call_each(timed, list(unit.values()))})
     failing.clear()
@@ -200,11 +204,11 @@ def child(config: dict[str, Any]) -> None:
     for obj in parents:
         published.objects.unlink(obj)
     rest: dict[int, bpy.types.ID] = {d.session_uid: d for d in parents}
-    rest |= {o.session_uid: o for o in objects if records.alive(o)}
+    rest |= {o.session_uid: o for o in objects if id_property_records.alive(o)}
     rest |= {m.session_uid: m for m in display.meshes} | {m.session_uid: m for m in display.materials}
     rest |= {o.data.session_uid: o.data for o in rest.values() if isinstance(o, bpy.types.Object) and o.data}
     view_layer.update()
-    removed("rest of the display", rest, lambda: summary(removal.remove_unused(rest)))
+    removed("rest of the display", rest, lambda: summary(datablock_removal.remove_unused(rest)))
     bridge.release()
     result["blender version"] = bpy.app.version_string
     Path(config["result"]).write_text(json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")
@@ -290,14 +294,14 @@ def markdown(summary: dict[str, Any], setup: dict[str, Any]) -> str:
 def main() -> int:
     from blender_paths import find_blender
 
-    # run.py's scenes and environment; the bridge has a run.py of its own, which comes first on the path.
-    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run.py")
+    # Load the benchmark runner's scene and environment helpers by its script path.
+    spec = importlib.util.spec_from_file_location("measure_run", HERE / "run_benchmarks.py")
     assert spec is not None and spec.loader is not None
     run = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(run)
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run.py's scene groups")
+    parser.add_argument("--scenes", nargs="+", default=SCENES, help="run_benchmarks.py's scene groups")
     parser.add_argument("--exclude", nargs="*", default=[], help="scenes of those groups to leave out")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--undo-off", action="store_true", help="global undo off")

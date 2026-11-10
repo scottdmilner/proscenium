@@ -23,8 +23,8 @@ const PXR_NS::TfTokenVector& PlannedSchemas();
 const PXR_NS::TfTokenVector& PlannedPrimvars();
 
 struct Snapshot {
-  PXR_NS::UsdTimeCode time;
-  PXR_NS::HdRetainedSceneIndexRefPtr scene;  // every prim of the chain's terminal; never modified after capture
+  PXR_NS::UsdTimeCode timeCode;
+  PXR_NS::HdRetainedSceneIndexRefPtr sceneIndex;  // every prim of the chain's terminal; never modified after capture
   // The stage's metadata as UsdGeom reads it, its fallbacks included, which coordinate conversion reads (transforms.md
   // "Coordinate Conversion").
   double metersPerUnit;

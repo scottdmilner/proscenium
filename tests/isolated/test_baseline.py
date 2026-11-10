@@ -1,6 +1,7 @@
-"""M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and apply.py build in Blender.
+"""M4's object baseline (M04-prototypes plan, B1): the structure M1b's bridge and object_display.py build in Blender.
 
-Phase D's batched alternative (D1, batch.py) is held to the same checks, read from Blender's evaluated instances.
+Phase D's batched alternative (D1, batched_display.py) is held to the same checks, read from Blender's evaluated
+instances.
 
 One object per drawn copy and destination, sharing only equivalent geometry, with each destination's hide flag,
 materials, and world transform, on the two feasibility fixtures; and each case's appearance values where the
@@ -40,7 +41,7 @@ CLOSE = 1e-6
 class BaselineScene:
     """A fixture's scene, with the drawn meshes each destination shows, as the fixture is built."""
 
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage
     shown: dict[str, frozenset[str]]  # destination -> drawn meshes it shows
     facts: appearance.AppearanceScene | appearance.StressScene  # the fixture's own
@@ -52,14 +53,15 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[BaselineS
         with appearance.appearance_cases(tmp_path) as cases:
             # Every mesh in the appearance scene is visible with default purpose.
             drawn = frozenset(_drawn(cases.stage))
-            yield BaselineScene(cases.root, cases.stage, {"viewport": drawn, "render": drawn}, cases)
+            yield BaselineScene(cases.root_layer_path, cases.stage, {"viewport": drawn, "render": drawn}, cases)
     else:
         with appearance.nested_stress(tmp_path) as stress:
-            shown = {"viewport": stress.viewport, "render": stress.render}
-            yield BaselineScene(stress.root, stress.stage, shown, stress)
+            shown = {"viewport": stress.viewport_paths, "render": stress.render_paths}
+            yield BaselineScene(stress.root_layer_path, stress.stage, shown, stress)
 
 
-# The baseline's one object per copy (apply.py), and Phase D's batched alternative (batch.py), which must display
+# The baseline's one object per copy (object_display.py), and Phase D's batched alternative (batched_display.py),
+# which must display
 # the same: each test holds for both, except where a test names the difference.
 @pytest.fixture(params=["objects", "batched"])
 def representation(request: pytest.FixtureRequest) -> str:
@@ -72,7 +74,7 @@ def result(
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "module_dir": str(hydra_bridge),
-        "scene": str(scene.root),
+        "scene": str(scene.root_layer_path),
         "representation": representation,
     }
     result = run_isolated(wheel, BODY, "apply_scene", tmp_path, **kwargs)
@@ -215,7 +217,7 @@ def test_meshes_shared_exactly_among_equal_content(scene: BaselineScene, applied
     assert len(set(held)) == len(held)  # and no two meshes hold the same
     if isinstance(scene.facts, appearance.AppearanceScene):
         meshes = {obj["source"]: obj["mesh"] for obj in applied}
-        for uses in scene.facts.shared:
+        for uses in scene.facts.shared_geometry_groups:
             assert len({meshes[use] for use in uses}) == 1, uses
 
 
@@ -453,7 +455,7 @@ def test_groups_below_the_minimum_stay_objects(
     # minimum three objects, as the object baseline builds them.
     facts = scene.facts
     assert isinstance(facts, appearance.AppearanceScene)
-    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(scene.root), "minimum": minimum}
+    kwargs: dict[str, Any] = {"module_dir": str(hydra_bridge), "scene": str(scene.root_layer_path), "minimum": minimum}
     result = run_isolated(wheel, BODY, "apply_scene", tmp_path, representation="batched", **kwargs)
     grouped = _by_source(result["objects"])
     tags = [obj for mesh, _ in facts.string_values for obj in grouped[mesh]]

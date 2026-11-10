@@ -1,0 +1,309 @@
+"""Versioned records in Blender ID properties (lifecycle.md#schema-versions).
+
+A record is a dataclass stored as a nested ID-property group, with its version under VERSION_KEY. Each ID keeps its
+records in one group, id_["proscenium"], one per key. A Schema names a record's dataclass and the migration from each
+older version to the next.
+
+- Fields may hold dataclasses, in groups and lists too: writing stores them as groups, and the record's __post_init__
+  builds them again on load.
+- Datablocks are named by ID pointer, not by name. Blender clears a pointer when its datablock is removed. A full-copy
+  scene or an append points the copies at each other, while Collection.copy() keeps them naming the originals
+  (docs/feasibility/runtime-record.md#copy-routes-m3).
+- Reading never writes. An older record migrates in memory, and is stored at the current version only when it is next
+  written.
+- A record that can't be read is a RefusedRecord value, not an exception, so its binding keeps its display and can
+  report why.
+- A record that can't be read survives until the user repairs it: writers read a record first and refuse on any
+  refusal, and write() itself refuses to replace one that is unreadable or newer.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any
+
+import bpy  # noqa: TC002 - Blender creates the idprop module when bpy loads, so bpy is imported first
+import idprop
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+NAMESPACE = "proscenium"
+VERSION_KEY = "_schema_version"
+_STAGING_KEY = "_staging"  # write_items' scratch group, gone when it returns
+
+type Migration = Callable[[dict[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class Schema[R: DataclassInstance]:
+    """How one kind of record is stored: its name, current version, type, and migrations."""
+
+    name: str  # names the record in messages, e.g. "binding"
+    version: int  # the current version
+    record_type: type[R]  # the dataclass a current-version record loads as; it may check its fields
+    migrations: Mapping[int, Migration] = dataclasses.field(default_factory=dict)  # n -> n + 1, on plain values
+
+    def __post_init__(self) -> None:
+        if not dataclasses.is_dataclass(self.record_type):
+            raise TypeError(f"{self.name}: the record type must be a dataclass")
+        if set(self.migrations) != set(range(1, self.version)):
+            raise ValueError(f"{self.name}: needs one migration from each version below {self.version}")
+        if VERSION_KEY in {f.name for f in dataclasses.fields(self.record_type)}:
+            raise ValueError(f"{self.name}: {VERSION_KEY!r} is reserved")
+
+
+class RefusalReason(StrEnum):
+    """Why a stored record can't be read."""
+
+    NEWER = "newer than supported"
+    MIGRATION_FAILED = "migration failed"
+    INVALID = "invalid"  # at the current version, but its fields don't make a record
+    UNREADABLE = "unreadable"  # not a group, or no version
+
+
+@dataclass(frozen=True, slots=True)
+class LoadedRecord[R]:
+    """A record read from storage, and the version it was stored at."""
+
+    record: R
+    stored_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class RefusedRecord:
+    """A stored record that can't be read, and why."""
+
+    kind: str
+    stored_version: int | None  # None when the record has no readable version
+    refusal: RefusalReason
+    message: str  # names the record, the versions, and the problem
+
+
+class RefusedRecordError(Exception):
+    """Writing would replace a stored record the extension can't read."""
+
+    refused: RefusedRecord
+
+    def __init__(self, refused: RefusedRecord) -> None:
+        super().__init__(refused.message)
+        self.refused = refused
+
+
+def load[R: DataclassInstance](schema: Schema[R], stored: object) -> LoadedRecord[R] | RefusedRecord:
+    """The stored record, as plain values, loaded at the schema's current version, or why it can't be.
+
+    stored is left unchanged: migrations run on a copy.
+    """
+    return _load(schema, stored, copy=True)
+
+
+def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool) -> LoadedRecord[R] | RefusedRecord:
+    version = _version(schema, stored)
+    if isinstance(version, RefusedRecord):
+        return version
+    assert isinstance(stored, Mapping)
+    fields = {key: value for key, value in stored.items() if key != VERSION_KEY}
+    if copy:
+        fields = _copy_record_containers(fields)
+    # Any exception is a refusal: stored data must never crash the extension. A missing or unknown
+    # field is the dataclass's TypeError.
+    for step in range(version, schema.version):
+        try:
+            fields = schema.migrations[step](fields)
+        except Exception as exc:  # noqa: BLE001
+            return _refuse(
+                schema, RefusalReason.MIGRATION_FAILED, version, f"from version {step}: {type(exc).__name__}: {exc}"
+            )
+    try:
+        record = schema.record_type(**fields)
+    except Exception as exc:  # noqa: BLE001
+        refusal = RefusalReason.INVALID if version == schema.version else RefusalReason.MIGRATION_FAILED
+        return _refuse(schema, refusal, version, f"{type(exc).__name__}: {exc}")
+    return LoadedRecord(record, version)
+
+
+def _version(schema: Schema[Any], stored: object) -> int | RefusedRecord:
+    """The stored record's version, or why it's unreadable or newer than supported.
+
+    stored is a plain group or a stored ID-property group, so a write can check one without copying it.
+    """
+    if not isinstance(stored, Mapping) and not _is_group(stored):
+        return _refuse(schema, RefusalReason.UNREADABLE, None, f"stored as {type(stored).__name__}, not a group")
+    version = stored.get(VERSION_KEY)  # ty: ignore[unresolved-attribute] - a Mapping or an IDPropertyGroup
+    if type(version) is not int or version < 1:
+        return _refuse(schema, RefusalReason.UNREADABLE, None, f"no {VERSION_KEY} of 1 or more")
+    if version > schema.version:
+        return _refuse(schema, RefusalReason.NEWER, version, f"this extension reads up to version {schema.version}")
+    return version
+
+
+def _refuse(schema: Schema[Any], refusal: RefusalReason, version: int | None, detail: str) -> RefusedRecord:
+    at = "" if version is None else f" version {version}"
+    return RefusedRecord(schema.name, version, refusal, f"{schema.name} record{at}: {refusal}: {detail}")
+
+
+def _is_group(value: object) -> bool:
+    """Whether a stored value is an ID-property group, as a record and the namespace holding records are.
+
+    Not a TypeGuard: idprop's stubs give the group no item assignment or deletion.
+    """
+    return isinstance(value, idprop.types.IDPropertyGroup)
+
+
+def alive(id_: bpy.types.ID) -> bool:
+    """Whether the ID still exists: touching a removed one's reference raises."""
+    try:
+        id_.name  # noqa: B018 - touching a removed ID's reference raises
+    except ReferenceError:
+        return False
+    return True
+
+
+def _namespace(id_: bpy.types.ID, schema: Schema[Any]) -> Any:
+    """id_'s group of records, an IDPropertyGroup, or None if it has none.
+
+    Raises RefusedRecordError over one that isn't a group, whose records are all unreadable.
+    """
+    namespace = id_.get(NAMESPACE)
+    if namespace is not None and not _is_group(namespace):
+        raise RefusedRecordError(
+            RefusedRecord(schema.name, None, RefusalReason.UNREADABLE, f"{NAMESPACE} is not a group")
+        )
+    return namespace
+
+
+def stored(id_: bpy.types.ID, key: str) -> object | None:
+    """A copy of the stored record under key, as plain values; None if there is none."""
+    namespace = id_.get(NAMESPACE)
+    if namespace is None:
+        return None
+    if not _is_group(namespace):  # the namespace itself is damaged: its records are unreadable
+        return _id_property_to_python(namespace)
+    return _id_property_to_python(namespace.get(key))
+
+
+def has(id_: bpy.types.ID, key: str) -> bool:
+    """Whether id_ stores a record under key, without reading it."""
+    namespace = id_.get(NAMESPACE)
+    return _is_group(namespace) and key in namespace
+
+
+def keys(id_: bpy.types.ID) -> list[str]:
+    """The keys of id_'s records; none if its namespace is missing or damaged."""
+    namespace = id_.get(NAMESPACE)
+    return list(namespace.keys()) if _is_group(namespace) else []
+
+
+def read[R: DataclassInstance](
+    id_: bpy.types.ID, key: str, schema: Schema[R]
+) -> LoadedRecord[R] | RefusedRecord | None:
+    """The record under key at the schema's current version, why it can't be read, or None if there is none."""
+    value = stored(id_, key)  # already a copy, which the migrations may change
+    return None if value is None else _load(schema, value, copy=False)
+
+
+def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], record: R) -> None:
+    """Store record under key at the current version.
+
+    Raises RefusedRecordError, changing nothing, over a stored record that is unreadable or newer than supported.
+    It doesn't load the record, so one that is invalid or fails to migrate isn't caught here: every writer has already
+    read it and refused. A value ID properties can't hold raises Blender's own error, which also changes nothing.
+    """
+    if type(record) is not schema.record_type:
+        raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
+    namespace = _namespace(id_, schema)
+    existing = None if namespace is None else namespace.get(key)
+    if existing is not None and isinstance(result := _version(schema, existing), RefusedRecord):
+        raise RefusedRecordError(result)
+    value = {VERSION_KEY: schema.version} | _encode_record_fields(record)
+    if namespace is None:
+        id_[NAMESPACE] = {}
+        namespace = id_[NAMESPACE]
+    namespace[key] = value
+
+
+def remove(id_: bpy.types.ID, key: str, schema: Schema[Any]) -> None:
+    """Remove the record under key, if there is one.
+
+    Raises RefusedRecordError, changing nothing, over a stored record that is unreadable or newer than supported, as
+    write does.
+    """
+    if (namespace := _namespace(id_, schema)) is None or (existing := namespace.get(key)) is None:
+        return
+    if isinstance(result := _version(schema, existing), RefusedRecord):
+        raise RefusedRecordError(result)
+    del namespace[key]
+
+
+def write_items[R: DataclassInstance](
+    id_: bpy.types.ID,
+    key: str,
+    schema: Schema[R],
+    record: R,
+    field: str,
+    changed: Collection[str],
+    removed: Collection[str],
+) -> None:
+    """Store record, writing only the items of its mapping field under changed and removed.
+
+    record differs from the stored one only in those items: changed are added or replaced, and removed deleted. So a
+    write costs what changed, unless the stored record isn't at the current version: then all of record is written,
+    as write() does. Raises as write() does, changing nothing, including Blender's own error for a value or key ID
+    properties can't hold.
+    """
+    if type(record) is not schema.record_type:
+        raise TypeError(f"{schema.name}: expected a {schema.record_type.__name__}, not {type(record).__name__}")
+    namespace = id_.get(NAMESPACE)
+    existing = namespace.get(key) if _is_group(namespace) else None
+    group = None if existing is None or _version(schema, existing) != schema.version else existing.get(field)
+    if not _is_group(group):  # none stored, or not at the current version: written whole
+        write(id_, key, schema, record)
+        return
+    assert namespace is not None and group is not None
+    items = getattr(record, field)
+    # Blender converts a whole group before storing it, so a value or key it can't hold fails here, having
+    # stored nothing; then each item is copied from the staged group, which can't fail.
+    namespace[_STAGING_KEY] = {k: _encode_record_fields(items[k]) for k in changed}
+    staged = namespace[_STAGING_KEY]
+    for k in removed:
+        if k in group:
+            del group[k]
+    for k in changed:
+        group[k] = staged[k]
+    del namespace[_STAGING_KEY]
+
+
+def _encode_record_fields(value: Any) -> Any:
+    """The value as ID properties hold it: dataclasses, nested in groups and lists too, as dicts of their fields.
+
+    Tuples become lists. Not dataclasses.asdict, which deep-copies the other values, ID pointers included.
+    """
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _encode_record_fields(getattr(value, f.name)) for f in dataclasses.fields(value)}
+    if isinstance(value, Mapping):
+        return {key: _encode_record_fields(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_encode_record_fields(item) for item in value]
+    return value
+
+
+def _copy_record_containers(value: Any) -> Any:
+    """A copy of the groups and lists in value, for migrations to change; ID pointers are shared."""
+    if isinstance(value, Mapping):
+        return {key: _copy_record_containers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_record_containers(item) for item in value]
+    return value
+
+
+def _id_property_to_python(value: Any) -> Any:
+    """ID-property groups and arrays as dicts and lists; ID pointers and scalars as they are."""
+    if _is_group(value):
+        return value.to_dict()
+    if isinstance(value, idprop.types.IDPropertyArray):
+        return value.to_list()
+    return value

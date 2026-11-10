@@ -5,7 +5,8 @@
 Runs in the bpy wheel, in one process, timing each step with a monotonic clock. A full synchronization
 (capture, planning, construction, depsgraph evaluation) comes first. Then one real edit: a translation of one
 object outside instances, followed by an incremental capture, planning, the plan diff, and the update. Then each
-of update.py's sample units is replaced from the unchanged plan, under both user policies where they differ:
+of object_display_updates.py's sample units is replaced from the unchanged plan, under both user policies where they
+differ:
 prepare, publish, retire, and the depsgraph evaluation after it. Writes <out>/updates.json.
 """
 
@@ -32,7 +33,7 @@ from pxr import Gf, Usd, UsdGeom  # noqa: E402
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-ALAB_TIME = 1004.0  # the first of ALab's time codes, as run.py measures
+ALAB_TIME = 1004.0  # the first of ALab's time codes, as run_benchmarks.py measures
 
 
 def timed[T](steps: dict[str, float], name: str, call: Callable[[], T]) -> T:
@@ -52,15 +53,15 @@ def replacement(update: Any, plan: Any, diff: Any, display: Any, collection: Any
     steps: dict[str, float] = {}
     prepared = timed(steps, "prepare", lambda: update.prepare(plan, diff, display, users))
     published = timed(steps, "publish", lambda: update.publish(prepared, display, collection))
-    retired = len(prepared.retired)
+    retired = len(prepared.retired_resources)
     kept = timed(steps, "retire", lambda: update.retire(prepared))
     timed(steps, "evaluate", evaluate)
     steps["total"] = sum(steps.values())
     changed = {
-        "objects replaced": len(prepared.created),
-        "objects repointed": len(prepared.repointed),
-        "meshes replaced": diff["meshes"].count(-1),
-        "materials replaced": diff["materials"].count(-1),
+        "objects replaced": len(prepared.created_objects_by_index),
+        "objects repointed": len(prepared.retained_object_updates_by_index),
+        "meshes replaced": diff["previous_mesh_indices"].count(-1),
+        "materials replaced": diff["previous_material_indices"].count(-1),
         "retired": retired,
         "kept for other users": len(kept),
     }
@@ -93,8 +94,8 @@ def main() -> int:
 
     sys.path.insert(0, str(args.module_dir))
     import _hydra_bridge as native  # ty: ignore[unresolved-import] - built into build/hydra-bridge
-    import apply
-    import update
+    import object_display
+    import object_display_updates as update
 
     full: dict[str, float] = {}
     stage = timed(full, "stage open", lambda: Usd.Stage.Open(str(entry), Usd.Stage.LoadAll))
@@ -104,7 +105,7 @@ def main() -> int:
     collection = bpy.data.collections.new("Prototype")
     blender_scene: Any = bpy.context.scene  # never None in a running Blender
     blender_scene.collection.children.link(collection)
-    display = timed(full, "construction", lambda: apply.apply(plan, collection))
+    display = timed(full, "construction", lambda: object_display.apply(plan, collection))
     timed(full, "evaluate", evaluate)
     records = plan.objects  # each read converts every record
     full["synchronization"] = sum(full[s] for s in ("capture", "planning", "construction", "evaluate"))
@@ -128,7 +129,9 @@ def main() -> int:
         snapshot = timed(steps, "incremental capture", lambda: bridge.capture(ALAB_TIME, incremental=True))
         published, plan = plan, timed(steps, "planning", partial(native.build_plan, snapshot))
         diff = timed(steps, "diff", partial(native.diff_plans, published, plan))
-        display, replaced = replacement(update, plan, diff, display, collection, update.UserPolicy.REPOINT)
+        display, replaced = replacement(
+            update, plan, diff, display, collection, update.DependentObjectUpdatePolicy.REPOINT
+        )
         steps |= {f"replace {step}": value for step, value in replaced["steps"].items()}
         steps["total"] = sum(steps[s] for s in ("incremental capture", "planning", "diff")) + replaced["steps"]["total"]
         edits.append({"steps": steps, "changed": replaced["changed"]})
@@ -137,9 +140,9 @@ def main() -> int:
     units = update.sample_units(plan.objects)
     replaced_units: dict[str, Any] = {}
     for name, unit in units.items():
-        policies = [update.UserPolicy.REPOINT]
-        if unit.meshes or unit.materials:
-            policies.append(update.UserPolicy.REPLACE)
+        policies = [update.DependentObjectUpdatePolicy.REPOINT]
+        if unit.mesh_indices or unit.material_indices:
+            policies.append(update.DependentObjectUpdatePolicy.REPLACE)
         for users in policies:
             runs = []
             for _ in range(args.repeats):

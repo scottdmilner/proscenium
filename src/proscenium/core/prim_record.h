@@ -42,8 +42,8 @@ struct InstancerRecord {
 using PurposeVisibility = std::vector<std::pair<PXR_NS::TfToken, PXR_NS::TfToken>>;
 
 struct PrimRecord {
-  PXR_NS::SdfPath path;
-  PXR_NS::TfToken type;
+  PXR_NS::SdfPath hydraPath;
+  PXR_NS::TfToken hydraPrimType;
   bool isGprim = false;                 // source-info filter: a gprim by its USD type, for a prim Hydra doesn't image
   bool resetsXformStack = false;        // source-info filter: USD's resetXformStack, which flattening hides
   bool visible = true;                  // flattened
@@ -52,10 +52,10 @@ struct PrimRecord {
   PXR_NS::SdfPath originPath;           // primOrigin/scenePath: prototype-relative inside prototypes
   PXR_NS::TfToken instancePrototype;    // source-info filter: on an instance root, its USD prototype's path
   PXR_NS::TfToken usdType;              // source-info filter: on a gprim other than a mesh or a point instancer
-  std::optional<PXR_NS::VtInt64Array> pointIds;  // source-info filter: a point instancer's authored ids
-  std::optional<PXR_NS::GfMatrix4d> matrix;      // flattened
-  std::optional<PXR_NS::GfRange3d> extent;       // local
-  std::vector<PrimvarRecord> primvars;           // the snapshot's, PlannedPrimvars() only
+  std::optional<PXR_NS::VtInt64Array> pointIds;            // source-info filter: a point instancer's authored ids
+  std::optional<PXR_NS::GfMatrix4d> flattenedWorldMatrix;  // flattened
+  std::optional<PXR_NS::GfRange3d> extent;                 // local
+  std::vector<PrimvarRecord> primvars;                     // the snapshot's, PlannedPrimvars() only
   std::optional<InstancedByRecord> instancedBy;
   std::optional<InstancerRecord> instancer;
 
@@ -68,7 +68,7 @@ struct PrimRecord {
 // Every prim of a snapshot, depth-first with parents before children, and indexed by path.
 struct PrimTable {
   std::vector<PrimRecord> prims;
-  std::unordered_map<PXR_NS::SdfPath, std::size_t, PXR_NS::SdfPath::Hash> index;
+  std::unordered_map<PXR_NS::SdfPath, std::size_t, PXR_NS::SdfPath::Hash> primIndexByPath;
 
   [[nodiscard]] const PrimRecord* Find(const PXR_NS::SdfPath& path) const;  // null when the table has no such prim
 };

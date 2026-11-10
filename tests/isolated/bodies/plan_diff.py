@@ -305,8 +305,10 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
 ) -> list[dict[str, Any]]:
     """Apply `scene`'s plan, then update the display to the plan after each edit in turn, by its diff.
 
-    `representation` is the baseline's "objects" (apply.py and update.py) or Phase D's "batched" (batch.py and
-    batch_update.py). Before each edit, the elements `select` names are selected: "all", or "odd", those of odd
+    `representation` is the baseline's "objects" (object_display.py and object_display_updates.py) or Phase D's
+    "batched" (batched_display.py and
+    batched_display_updates.py). Before each edit, the elements `select` names are selected: "all", or "odd", those
+    of odd
     plan index. With `moves`, updates keep moved objects and set their matrices. Each step reports the diff, what
     the display held before and after, what the updated display holds against a fresh application of the same
     plan, and Blender's data counts for each.
@@ -318,10 +320,10 @@ def update_edits(  # noqa: PLR0913 - the scene, its edits, and how each update r
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
     batched = representation == "batched"
-    apply = importlib.import_module("batch" if batched else "apply")
-    update = importlib.import_module("batch_update" if batched else "update")
-    selection = importlib.import_module("batch_selection" if batched else "selection")
-    policy = importlib.import_module("update").UserPolicy(users)
+    apply = importlib.import_module("batched_display" if batched else "object_display")
+    update = importlib.import_module("batched_display_updates" if batched else "object_display_updates")
+    selection = importlib.import_module("batched_display_selection" if batched else "object_display_selection")
+    policy = importlib.import_module("object_display_updates").DependentObjectUpdatePolicy(users)
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
 
@@ -390,9 +392,9 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
     """
     sys.path[:0] = [str(BRIDGE), module_dir]
     native = importlib.import_module("_hydra_bridge")
-    snapshots = importlib.import_module("snapshots")
+    snapshots = importlib.import_module("per_frame_display")
     batched = representation == "batched"
-    selection = importlib.import_module("batch_selection" if batched else "selection")
+    selection = importlib.import_module("batched_display_selection" if batched else "object_display_selection")
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
     for name in ("animation.usda", "frames.usda"):  # frames.usda sublayers M1b's animation case
@@ -403,7 +405,7 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
     blender_scene.collection.children.link(collection)
     view_layer = blender_scene.view_layers[0]
     blender_scene.frame_set(times[0])
-    policy = importlib.import_module("update").UserPolicy(users)
+    policy = importlib.import_module("object_display_updates").DependentObjectUpdatePolicy(users)
     followed = snapshots.Snapshots(native, stage, collection, float(times[0]), representation, policy, moves)
     handler = followed.follow(blender_scene)
     steps = []
@@ -417,10 +419,10 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
             before = held_by(display, plan.objects)
             blender_scene.frame_set(frame)
             step = followed.last
-            assert step is not None and step.time == frame, (frame, step)
+            assert step is not None and step.time_code == frame, (frame, step)
             linked = {"published": _linked(collection), "expected": _published(followed.display, batched)}
             report = _report(step.plan, followed.display, batched)
-            written = _written(step.prepared, batched)
+            written = _written(step.prepared_update, batched)
             steps.append({"edit": f"frame {frame}", "diff": step.diff, "before": _pointers(before), "linked": linked})
             steps[-1]["before_values"] = _values_of(before)
             steps[-1] |= report | {"written": written, "restored": [], "operations": None}
@@ -432,7 +434,7 @@ def frame_steps(  # noqa: PLR0913 - the scene, its frames, and how each update r
 
 def _report(plan: Any, display: Any, batched: bool) -> dict[str, Any]:
     """What an updated display holds against a fresh application of its plan, with Blender's data counts for each."""
-    apply = importlib.import_module("batch" if batched else "apply")
+    apply = importlib.import_module("batched_display" if batched else "object_display")
     baseline = _baseline()
     held_by = baseline.batched_held if batched else baseline._held  # noqa: SLF001 - the sibling body's reader
     records = plan.objects
@@ -488,19 +490,19 @@ def _objects_of(display: Any) -> list[Any]:
 def _written(prepared: Any, batched: bool) -> dict[str, Any]:
     """What an update wrote to Blender, by kind; a staging collection is a Blender write too."""
     written = {
-        "created": len(prepared.created),
-        "repointed": len(prepared.repointed),
-        "renumbered": len(prepared.renumbered),
-        "retired": len(prepared.retired),
-        "staged": prepared.staging is not None,
+        "created": len(prepared.created_objects_by_index),
+        "repointed": len(prepared.retained_object_updates_by_index),
+        "renumbered": len(prepared.renumbered_object_indices),
+        "retired": len(prepared.retired_resources),
+        "staged": prepared.staging_collection is not None,
     }
     if batched:
         written |= {
-            "added": len(prepared.added),
-            "dropped": len(prepared.dropped),
-            "points": sum(rebatch.points is not None for rebatch in prepared.kept),
-            "reprototyped": sum(rebatch.reprototyped for rebatch in prepared.kept),
-            "renumbered batches": sum(rebatch.renumbered for rebatch in prepared.kept),
+            "added": len(prepared.added_batches),
+            "dropped": len(prepared.dropped_batches),
+            "points": sum(rebatch.replacement_points_mesh is not None for rebatch in prepared.retained_batch_updates),
+            "reprototyped": sum(rebatch.needs_prototype_update for rebatch in prepared.retained_batch_updates),
+            "renumbered batches": sum(rebatch.needs_element_renumbering for rebatch in prepared.retained_batch_updates),
         }
     return written
 

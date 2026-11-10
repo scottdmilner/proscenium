@@ -21,15 +21,15 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from .prepared_work import PreparedWork
+    from .preparation_resources import PreparationResources
 
 
 def publish(
     destination: bpy.types.Collection,
-    work: PreparedWork,
-    generation: binding_state.Generation,
+    work: PreparationResources,
+    generation: binding_state.GenerationMetadata,
     before: manifests.Manifest | None,
-    previous: binding_state.Generation | None,
+    previous: binding_state.GenerationMetadata | None,
 ) -> Mapping[str, manifests.ManifestEntry]:
     """Make work, complete, the binding's published generation, described by generation; the obsolete resources.
 
@@ -40,7 +40,7 @@ def publish(
     published = manifests.Manifest({}) if before is None else before
     named = {e.datablock for e in published.entries.values()}
     old = [obj for obj in destination.objects if obj in named]
-    current = {e.datablock for e in work.entries.values()}
+    current = {e.datablock for e in work.manifest_entries.values()}
     obsolete = {
         entry_key: e
         for entry_key, e in published.entries.items()
@@ -48,13 +48,13 @@ def publish(
     }
     undo: list[Callable[[], object]] = []
     try:
-        for obj in work.staging.objects:
+        for obj in work.staging_collection.objects:
             destination.objects.link(obj)
             undo.append(functools.partial(destination.objects.unlink, obj))
         for obj in old:
             destination.objects.unlink(obj)
             undo.append(functools.partial(destination.objects.link, obj))
-        manifests.write_manifest(destination, manifests.Manifest(work.entries))
+        manifests.write_manifest(destination, manifests.Manifest(work.manifest_entries))
         if before is None:
             undo.append(functools.partial(manifests.remove_manifest, destination))
         else:

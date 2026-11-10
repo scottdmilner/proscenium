@@ -99,7 +99,7 @@ std::vector<GfMatrix4d> PointTransforms(const PrimRecord &instancer, size_t poin
 template <class... Types>
 struct TypeList {};
 
-// Types a point's primvar value can take, as properties.cpp converts constant primvars.
+// Types a point's primvar value can take, as id_property_conversion.cpp converts constant primvars.
 using PointTypes =
     TypeList<bool, int, unsigned char, unsigned int, int64_t, uint64_t, GfHalf, float, double, std::string, TfToken,
              GfVec2i, GfVec3i, GfVec4i, GfVec2h, GfVec3h, GfVec4h, GfVec2f, GfVec3f, GfVec4f, GfVec2d, GfVec3d, GfVec4d,
@@ -146,7 +146,7 @@ const TfToken *Inherited(const PurposeVisibility &opinions, const TfToken &purpo
 // instance root is nearer the prim than an outer one.
 void Inherit(const PrimTable &table, const SdfPath &root, const DrawnCopy &outer, DrawnCopy &copy) {
     for (const TfToken &purpose : Purposes()) {
-        const TfToken *opinion = NearestOpinion(table, root, outer.hydraRoot, purpose);
+        const TfToken *opinion = NearestOpinion(table, root, outer.hydraNamespaceRoot, purpose);
         if (!opinion) opinion = Inherited(outer.purposeVisibility, purpose);
         if (opinion) copy.purposeVisibility.emplace_back(purpose, *opinion);
     }
@@ -183,7 +183,7 @@ bool AuthoredBelow(const PrimTable &table, SdfPath path, const SdfPath &stop, co
 std::optional<SdfPath> CorrectedBinding(const PrimTable &, const PrimRecord &prim, const DrawnCopy &copy,
                                         const TfToken &purpose) {
     const SdfPath *own = FindBinding(prim.usdBindings, purpose);
-    const SdfPath *fromRoot = copy.context.empty() ? nullptr : FindBinding(copy.bindings, purpose);
+    const SdfPath *fromRoot = copy.instanceContext.empty() ? nullptr : FindBinding(copy.bindings, purpose);
     // A strong binding at or above the instance root beats anything the prototype authors.
     if (fromRoot && Contains(copy.strongPurposes, purpose)) return *fromRoot;
     if (own) return *own;
@@ -204,7 +204,7 @@ bool EffectivelyVisible(const PrimTable &table, const PrimRecord &prim, const Dr
     if (!prim.visible || !copy.visible) return false;
     const TfToken &purpose = prim.purpose;
     if (std::find(Purposes().begin(), Purposes().end(), purpose) == Purposes().end()) return true;
-    const TfToken *opinion = NearestOpinion(table, prim.path, copy.hydraRoot, purpose);
+    const TfToken *opinion = NearestOpinion(table, prim.hydraPath, copy.hydraNamespaceRoot, purpose);
     if (!opinion) opinion = Inherited(copy.purposeVisibility, purpose);
     if (!opinion) return purpose != HdRenderTagTokens->guide;
     // The nearest authored opinion decides, "inherited" included, as in UsdGeom. A guide displays only when
@@ -288,16 +288,17 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
             }
             const SdfPath &location = topology.instanceLocations[index];
             DrawnCopy copy;
-            copy.hydraRoot = prototypeRoot;
-            copy.usdRoot = outer.Map(location);
-            copy.context = outer.context;
-            copy.context.push_back(copy.usdRoot);
+            copy.hydraNamespaceRoot = prototypeRoot;
+            copy.sourceNamespaceRoot = outer.Map(location);
+            copy.instanceContext = outer.instanceContext;
+            copy.instanceContext.push_back(copy.sourceNamespaceRoot);
             copy.hydraContext = outer.hydraContext;
             copy.hydraContext.push_back(location);
             // Row vectors: the instance's own transform first, then the outer copy's, unless the instance root
             // or an ancestor inside the outer prototype resets the stack (WORKAROUND for OpenUSD #862).
-            copy.world = ResetsBelow(table_, location, outer.hydraRoot) ? (*transforms)[index]
-                                                                        : (*transforms)[index] * outer.world;
+            copy.instanceWorldMatrix = ResetsBelow(table_, location, outer.hydraNamespaceRoot)
+                                           ? (*transforms)[index]
+                                           : (*transforms)[index] * outer.instanceWorldMatrix;
             copy.visible =
                 outer.visible && (topology.mask.empty() || (index < topology.mask.size() && topology.mask[index]));
             // The instance root's own constant primvars, flattened within its namespace, with the type and
@@ -322,7 +323,8 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
                         copy.bindings.emplace_back(purpose, std::move(*material));
                     // Strong at the instance root or above it inside the outer prototype, or above that.
                     if (Contains(outer.strongPurposes, purpose) ||
-                        AuthoredBelow(table_, location, outer.hydraRoot, purpose, &PrimRecord::strongBindingPurposes))
+                        AuthoredBelow(table_, location, outer.hydraNamespaceRoot, purpose,
+                                      &PrimRecord::strongBindingPurposes))
                         copy.strongPurposes.push_back(purpose);
                 }
             }
@@ -369,12 +371,14 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
     std::vector<DrawnCopy> copies;
     bool invalidIndex = false;
     for (const DrawnCopy &outer : CopiesOf(instancer, depth + 1)) {
-        const SdfPath instancerPath = outer.Map(instancer.path);
-        const SdfPath usdRoot = outer.Map(prototypeRoot.GetParentPath());
+        const SdfPath instancerPath = outer.Map(instancer.hydraPath);
+        const SdfPath sourceNamespaceRoot = outer.Map(prototypeRoot.GetParentPath());
         // The instancer's world transform in the outer copy, unless it or an ancestor inside the outer prototype resets
         // the stack (WORKAROUND for OpenUSD #862).
-        const GfMatrix4d local = instancer.matrix.value_or(GfMatrix4d(1.0));
-        const GfMatrix4d world = ResetsBelow(table_, instancer.path, outer.hydraRoot) ? local : local * outer.world;
+        const GfMatrix4d local = instancer.flattenedWorldMatrix.value_or(GfMatrix4d(1.0));
+        const GfMatrix4d world = ResetsBelow(table_, instancer.hydraPath, outer.hydraNamespaceRoot)
+                                     ? local
+                                     : local * outer.instanceWorldMatrix;
         for (const int k : topology.instanceIndices[prototype]) {
             const auto point = static_cast<size_t>(k);
             if (k < 0 || point >= transforms.size()) {
@@ -382,14 +386,14 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
                 continue;
             }
             DrawnCopy copy;
-            copy.hydraRoot = prototypeRoot;
-            copy.usdRoot = usdRoot;
-            copy.context = outer.context;
-            copy.context.push_back(instancerPath);
-            copy.context.push_back(instancerPath.AppendChild(PointName(point)));
+            copy.hydraNamespaceRoot = prototypeRoot;
+            copy.sourceNamespaceRoot = sourceNamespaceRoot;
+            copy.instanceContext = outer.instanceContext;
+            copy.instanceContext.push_back(instancerPath);
+            copy.instanceContext.push_back(instancerPath.AppendChild(PointName(point)));
             copy.hydraContext = outer.hydraContext;
-            copy.hydraContext.insert(copy.hydraContext.end(), 2, instancer.path);
-            copy.world = transforms[point] * world;
+            copy.hydraContext.insert(copy.hydraContext.end(), 2, instancer.hydraPath);
+            copy.instanceWorldMatrix = transforms[point] * world;
             copy.visible = outer.visible && instancer.visible &&
                            (topology.mask.empty() || (point < topology.mask.size() && topology.mask[point]));
             for (const auto &[name, values] : perPoint) {
@@ -403,7 +407,7 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
             // include the instancer's and its ancestors' inside the outer prototype; above that, the outer copy's.
             copy.bindings = outer.bindings;
             copy.strongPurposes = outer.strongPurposes;
-            Inherit(table_, instancer.path, outer, copy);
+            Inherit(table_, instancer.hydraPath, outer, copy);
             copies.push_back(std::move(copy));
         }
     }
@@ -415,7 +419,8 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
 
 // Instancers are reported by Hydra path: a native instancer has no USD counterpart.
 void InstanceResolver::Report(const PrimRecord &prim, const std::string &code, const std::string &message) {
-    diagnostics_.push_back({Severity::Error, code, SdfPath(), message + " (Hydra prim " + prim.path.GetString() + ")"});
+    diagnostics_.push_back(
+        {Severity::Error, code, SdfPath(), message + " (Hydra prim " + prim.hydraPath.GetString() + ")"});
 }
 
 }  // namespace hydra_bridge

@@ -33,8 +33,8 @@ from typing import TYPE_CHECKING
 from pxr import Gf, Sdf, Usd
 
 from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.stages import PayloadPolicy
-from support.usd import open_fresh
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-class Step(StrEnum):
+class SynchronizationFailureStep(StrEnum):
     """A step of the synchronization transaction, where a test injects a failure."""
 
     ACQUIRE = "acquire"
@@ -56,7 +56,13 @@ class Step(StrEnum):
 
 
 # The steps before publication: a failure in any leaves the published generation unchanged (TXN-02).
-BEFORE_PUBLICATION = (Step.ACQUIRE, Step.EVALUATE, Step.PLAN, Step.PREPARE, Step.PUBLISH)
+BEFORE_PUBLICATION = (
+    SynchronizationFailureStep.ACQUIRE,
+    SynchronizationFailureStep.EVALUATE,
+    SynchronizationFailureStep.PLAN,
+    SynchronizationFailureStep.PREPARE,
+    SynchronizationFailureStep.PUBLISH,
+)
 
 # Every drawn gprim's local bounds: tetra.usda's authored extent.
 EXTENT = (Gf.Vec3d(0, 0, 0), Gf.Vec3d(1, 1, 1))
@@ -84,20 +90,20 @@ def resource_count(policy: PayloadPolicy) -> int:
 
 @dataclass
 class TransactionScene:
-    root: Path
+    root_layer_path: Path
     caller: Usd.Stage  # the caller's stage, to attach
 
 
 def _open(dest: Path) -> TransactionScene:
     root = copy_scene(Scene.TRANSACTION, dest) / "root.usda"
-    return TransactionScene(root=root, caller=open_fresh(root))
+    return TransactionScene(root_layer_path=root, caller=open_stage_without_cache(root))
 
 
 @dataclass
 class FailedSettingsScene(TransactionScene):
     published: tuple[PayloadPolicy, float]  # the first synchronization's settings and time code; it publishes
     attempted: tuple[PayloadPolicy, float]  # the second's, set first through set_settings; it fails
-    failures: tuple[Step, ...]  # where the second fails, one test run each
+    failures: tuple[SynchronizationFailureStep, ...]  # where the second fails, one test run each
     outcome: ResultState
 
 
@@ -121,7 +127,7 @@ def failed_settings(dest: Path) -> Generator[FailedSettingsScene]:
 
 @dataclass
 class PublicationFailureScene(TransactionScene):
-    failure: Step  # publication fails at each of its writes in turn, correspondence among them
+    failure: SynchronizationFailureStep  # publication fails at each of its writes in turn, correspondence among them
     outcome: ResultState
 
 
@@ -133,7 +139,9 @@ def publication_failure(dest: Path) -> Generator[PublicationFailureScene]:
     later one, the published generation is the earlier one, whole, and its display unchanged. Prepared
     work is disposed of either way, and no undo step is pushed.
     """
-    yield PublicationFailureScene(**vars(_open(dest)), failure=Step.PUBLISH, outcome=ResultState.FATAL_FAILURE)
+    yield PublicationFailureScene(
+        **vars(_open(dest)), failure=SynchronizationFailureStep.PUBLISH, outcome=ResultState.FATAL_FAILURE
+    )
 
 
 @dataclass
@@ -216,7 +224,7 @@ def source_change(dest: Path) -> Generator[SourceChangeScene]:
     report that the binding needs synchronizing.
     """
     scene = _open(dest)
-    yield SourceChangeScene(**vars(scene), sub_layer=scene.root.parent / "sub.usda")
+    yield SourceChangeScene(**vars(scene), sub_layer=scene.root_layer_path.parent / "sub.usda")
 
 
 @dataclass
@@ -224,7 +232,7 @@ class CachedTimeCodesScene(TransactionScene):
     synchronized: float  # the generation's own time code
     cached: tuple[float, ...]  # cached in one call: Mover's translation differs at each
     failing: tuple[float, ...]  # a later call, failing at failure: it caches none of them
-    failure: Step
+    failure: SynchronizationFailureStep
     synchronized_again: float  # a new generation, holding only this time code
 
 
@@ -243,6 +251,6 @@ def cached_time_codes(dest: Path) -> Generator[CachedTimeCodesScene]:
         synchronized=0.0,
         cached=(5.0, 10.0, 20.0),
         failing=(15.0,),
-        failure=Step.PREPARE,
+        failure=SynchronizationFailureStep.PREPARE,
         synchronized_again=10.0,
     )

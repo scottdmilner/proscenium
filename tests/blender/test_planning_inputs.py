@@ -15,7 +15,7 @@ from mathutils import Matrix
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import translation
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
@@ -38,12 +38,12 @@ def _scene() -> bpy.types.Scene:
 def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     """The published display's objects by the source each shows."""
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.Loaded)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     found = {}
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:
             assert isinstance(entry.datablock, bpy.types.Object)
-            found[entry.covers[0]] = entry.datablock
+            found[entry.source_entity_paths[0]] = entry.datablock
     return found
 
 
@@ -68,13 +68,13 @@ def test_a_synchronization_plans_under_the_binding_settings_and_scene_scale(
     # USD world transform, or with conversion on that under the fixture's correction for the target scene's scale.
     with evaluation.units_up_axis(tmp_path) as scene:
         _scene().unit_settings.scale_length = scale_length
-        handle = binding_on_file(bindings, _scene(), scene.roots[stage], name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_paths[stage], name="Shot")
         assert handle.set_settings(coordinate_conversion=conversion).state is ResultState.SUCCESS
         assert handle.synchronize(0).state is ResultState.SUCCESS
         objects = _objects(handle)
-        assert objects.keys() == scene.world.keys()
+        assert objects.keys() == scene.world_matrices_by_source.keys()
         correction = scene.correction(stage, scale_length)
-        for path, world in scene.world.items():
+        for path, world in scene.world_matrices_by_source.items():
             expected = world * correction if conversion else world
             assert _close(objects[path].matrix_world, _blender(expected)), path
 
@@ -84,7 +84,7 @@ def test_a_synchronization_shows_the_binding_purposes(bindings: Bindings, tmp_pa
     # destination's copies; a copy whose purpose neither includes isn't drawn.
     viewport, render = ("default", "render"), ("proxy",)
     with evaluation.visibility_purpose(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         result = handle.set_settings(viewport_purposes=viewport, render_purposes=render)
         assert result.state is ResultState.SUCCESS
         assert handle.synchronize(0).state is ResultState.SUCCESS
@@ -110,9 +110,11 @@ def test_the_records_hold_what_the_synchronization_planned_under(bindings: Bindi
         destination = bpy.data.collections["Shot"]
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
-        assert isinstance(generation, records.Loaded) and isinstance(attempt, records.Loaded)
-        assert (generation.record.settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
-        assert attempt.record.settings == requested
+        assert isinstance(generation, id_property_records.LoadedRecord) and isinstance(
+            attempt, id_property_records.LoadedRecord
+        )
+        assert (generation.record.applied_settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
+        assert attempt.record.attempted_settings == requested
 
 
 def _cached(bindings: Bindings, scene: transaction.CachedTimeCodesScene) -> BindingHandle:

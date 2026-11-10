@@ -19,27 +19,26 @@ from pxr import Sdf, Usd
 from fixtures import source_access
 from proscenium.api.bindings import BindingHandle, BindingNotFoundError, Bindings, Result
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_state, configs, records
-from proscenium.binding.persistence.binding_state import LastAttempt
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records
+from proscenium.binding.persistence.binding_state import LastSynchronizationAttempt
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import Loaded
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import new_settings
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
 from support import undo
 from support.blend import collection_content, save_and_reopen
 from support.destinations import destination
-from support.display import expected_content, publish_by_hand
 from support.manifests import key, object_entry
+from support.offline_display import expected_content, publish_by_hand
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.persistence.configs import BindingConfig
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.persistence.binding_records import BindingConfig
+    from proscenium.binding.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -47,7 +46,7 @@ def _scene() -> bpy.types.Scene:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.binding_configs.find_binding(handle.binding_id)
+    found = runtime.binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
@@ -57,13 +56,19 @@ def _saved(handle: BindingHandle) -> dict[str, object]:
     config = _config(handle)
     found = destination(handle)
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, Loaded)
+    assert isinstance(manifest, LoadedRecord)
     entries = {
-        entry_key: (entry.datablock and entry.datablock.name, entry.covers, entry.role, entry.uses, entry.place)
+        entry_key: (
+            entry.datablock and entry.datablock.name,
+            entry.source_entity_paths,
+            entry.role,
+            entry.dependency_entry_keys,
+            entry.object_index_in_copy,
+        )
         for entry_key, entry in manifest.record.entries.items()
     }
     generation = binding_state.read_generation(found)
-    assert isinstance(generation, Loaded)
+    assert isinstance(generation, LoadedRecord)
     assert config.scene is not None
     return {
         "config": replace(config, scene=None),  # a reference doesn't survive a reopen; its name does
@@ -104,14 +109,14 @@ def test_reopening_after_source_files_move(bindings: Bindings, tmp_path: Path) -
     # F-OFFLINE "moved-file": the binding's source was open before saving, and reopening drops it. A reload opens it
     # without publishing over the display published by hand.
     with source_access.offline(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
         saved = _publish(handle, scene.display)
         assert handle.reload().state is ResultState.SUCCESS
         scene.move_away()
         save_and_reopen(tmp_path / "offline.blend")
         gc.collect()
-        assert not Sdf.Layer.Find(str(scene.root))
-        assert not scene.root.exists()
+        assert not Sdf.Layer.Find(str(scene.root_layer_path))
+        assert not scene.root_layer_path.exists()
         _check_kept(bindings, handle, saved, DiagnosticCode.NO_ATTACHED_STAGE)
 
 
@@ -137,9 +142,9 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
 
 
 def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
-    [text] = configs.index_texts()
-    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
-    assert isinstance(index, Loaded)
+    [text] = binding_records.index_texts()
+    index = id_property_records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
+    assert isinstance(index, LoadedRecord)
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
 
@@ -170,12 +175,14 @@ def _check_gone(bindings: Bindings, handle: BindingHandle, *, release: bool = Tr
 def _managed(bindings: Bindings, tmp_path: Path, scene: bpy.types.Scene) -> BindingHandle:
     """A binding "Shot" on scene, displaying an object "Managed" that the scene "Scene" also links."""
     with source_access.binding_state(tmp_path) as source:
-        handle = binding_on_file(bindings, scene, source.root, name="Shot")
+        handle = binding_on_file(bindings, scene, source.root_layer_path, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     _scene().collection.objects.link(obj)
     ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
-    binding_state.write_last_attempt(destination(handle), LastAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ()))
+    binding_state.write_last_attempt(
+        destination(handle), LastSynchronizationAttempt(new_settings(PayloadPolicy.LOAD_ALL), 0.0, ())
+    )
     assert ownership.of(obj).claims != ()
     return handle
 
@@ -200,7 +207,7 @@ def test_removed_target_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     handle = _managed(bindings, tmp_path, other)
     _scene().collection.children.link(bpy.data.collections["Shot"])
-    stored = records.stored(bpy.data.collections["Shot"], configs.config_key(handle.binding_id))
+    stored = id_property_records.stored(bpy.data.collections["Shot"], binding_records.config_key(handle.binding_id))
     assert isinstance(stored, dict)
     bpy.data.scenes.remove(other)
     for check in range(2):
@@ -208,7 +215,10 @@ def test_removed_target_scene(bindings: Bindings, tmp_path: Path) -> None:
             save_and_reopen(tmp_path / "removed.blend")
         _check_gone(bindings, handle)
         shot = bpy.data.collections["Shot"]
-        assert records.stored(shot, configs.config_key(handle.binding_id)) == {**stored, "scene": None}
+        assert id_property_records.stored(shot, binding_records.config_key(handle.binding_id)) == {
+            **stored,
+            "scene": None,
+        }
         claims = ownership.of(bpy.data.objects["Managed"]).claims
         assert [(c.binding_id, c.destination) for c in claims] == [(handle.binding_id, shot)]
 
@@ -217,7 +227,7 @@ def test_undoing_the_removal_restores_the_binding(bindings: Bindings, tmp_path: 
     # DEST-06 on F-BINDING-STATE "removed-destination": undo brings the binding back with its records.
     undo.require_global_undo()
     with source_access.binding_state(tmp_path) as source:
-        handle = binding_on_file(bindings, _scene(), source.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), source.root_layer_path, name="Shot")
         assert handle.synchronize(0).state is ResultState.SUCCESS
         saved = {
             "config": replace(_config(handle), scene=None),

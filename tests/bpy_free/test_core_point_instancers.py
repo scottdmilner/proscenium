@@ -14,7 +14,7 @@ import pytest
 from pxr import Sdf, Usd, Vt
 
 from fixtures import evaluation
-from proscenium.binding.source_access import source_entities
+from proscenium.binding.source_access import source_entity_ids
 from proscenium.core import _core
 
 from .plan_checks import CONTEXT, SETTINGS, assert_world, copies, plan_at
@@ -35,12 +35,12 @@ def test_each_point_draws_its_prototype(points: evaluation.PointInstancerScene) 
     # transform; the points invisibleIds hides in neither destination; nothing for a prototype prim at its own path.
     plan = plan_at(points.stage, 0.0)
     shown = copies(plan)
-    assert shown.keys() == points.world.keys()
+    assert shown.keys() == points.world_matrices_by_source.keys()
     for path, copy in shown.items():
-        assert_world(copy, points.world[path])
+        assert_world(copy, points.world_matrices_by_source[path])
         hidden = path in points.invisible
-        assert (copy.viewport, copy.render) == (not hidden, not hidden), path
-        assert copy.geometry >= 0, path  # a mesh's copy
+        assert (copy.visible_in_viewport, copy.visible_in_render) == (not hidden, not hidden), path
+        assert copy.geometry_index >= 0, path  # a mesh's copy
     assert shown.keys().isdisjoint(points.prototypes)
     # Only UsdImaging's warning about Wisp, which no point draws, named by its own path on the stage.
     assert [(d.code, d.source_path) for d in plan.diagnostics] == [("usd-warning", "/World/Scatter/Protos/Wisp")]
@@ -50,14 +50,16 @@ def test_copies_are_named_by_point_instance_paths(points: evaluation.PointInstan
     # ICON-42: each copy's source entity is its point-instance path, a valid identifier, with its instance context;
     # ICON-19's floor, the outermost native-instance root or point instancer, leads the context.
     plan = plan_at(points.stage, 0.0)
-    entries = {c.source: c.instance_context for c in plan.correspondence}
+    entries = {c.source_path: c.instance_context for c in plan.correspondence}
     assert entries == points.instance_context
     for path, context in entries.items():
-        assert source_entities.identifier(Sdf.Path(path)) == path
+        assert source_entity_ids.identifier(Sdf.Path(path)) == path
         assert context[0] == points.floors[path], path
     resources = plan.resources
-    assert {r.entity for r in resources} == points.world.keys()
-    assert len({(r.role, r.entity, r.place) for r in resources}) == len(resources)  # each copy its own identity
+    assert {r.source_entity_path for r in resources} == points.world_matrices_by_source.keys()
+    assert len({(r.role, r.source_entity_path, r.object_index_in_copy) for r in resources}) == len(
+        resources
+    )  # each copy its own identity
 
 
 def test_animated_ids_name_each_capture(points: evaluation.PointInstancerScene) -> None:

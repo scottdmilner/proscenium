@@ -20,8 +20,8 @@ def main() -> None:
     parser.add_argument("--usd-library", type=Path, help="libusd_ms to link (macOS/Linux; default: the bpy wheel's)")
     args = parser.parse_args()
     built = build_module(HERE, args.out.resolve(), "_hydra_bridge", args.usd_library)
-    (built.module.parent / "build.json").write_text(json.dumps(built.manifest, indent=2) + "\n")
-    print(json.dumps({k: v for k, v in built.manifest.items() if k not in {"imports", "linkage"}}, indent=2))
+    (built.module_path.parent / "build.json").write_text(json.dumps(built.build_manifest, indent=2) + "\n")
+    print(json.dumps({k: v for k, v in built.build_manifest.items() if k not in {"imports", "linkage"}}, indent=2))
 
 
 if __name__ == "__main__":

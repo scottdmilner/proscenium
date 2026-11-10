@@ -14,16 +14,16 @@ from proscenium.binding.results import Diagnostic, DiagnosticCategory, Diagnosti
 
 def test_time_codes_are_stored_as_their_value_or_none() -> None:
     # The default time code's value is NaN, which would make two equal records unequal.
-    assert binding_state.stored_time(Usd.TimeCode.Default()) is None
-    assert binding_state.time_code(None).IsDefault()
-    assert binding_state.time_code(binding_state.stored_time(Usd.TimeCode(7.25))) == Usd.TimeCode(7.25)
+    assert binding_state.encode_time_code(Usd.TimeCode.Default()) is None
+    assert binding_state.decode_time_code(None).IsDefault()
+    assert binding_state.decode_time_code(binding_state.encode_time_code(Usd.TimeCode(7.25))) == Usd.TimeCode(7.25)
 
 
 def test_a_diagnostic_rejects_values_it_cannot_hold() -> None:
     with pytest.raises(ValueError, match="not a valid DiagnosticCode"):
         Diagnostic("nonsense", "binding", "m")  # ty: ignore[invalid-argument-type]
     with pytest.raises(TypeError, match="fields are strings"):
-        Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "m", layers=(1,))  # ty: ignore[invalid-argument-type]
+        Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "m", layer_identifiers=(1,))  # ty: ignore[invalid-argument-type]
     with pytest.raises(ValueError, match="names its binding"):
         Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "", "m")
 

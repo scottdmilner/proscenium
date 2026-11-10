@@ -93,10 +93,10 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
   PXR_NS::UsdTimeCode time_{0.0};  // the stage scene index's starting time
   // Set once by New, so const members can hand containers a weak pointer to the filter.
   SourceInfoSceneIndexPtr self_;
-  // One container per prim, built when first read and rebuilt only when its generation moves.
+  // One container per prim, built when first read and rebuilt only when its revision changes.
   struct Cached {
     PXR_NS::HdContainerDataSourceHandle container;
-    std::shared_ptr<std::atomic<uint64_t>> generation;
+    std::shared_ptr<std::atomic<uint64_t>> revisionCounter;
   };
   mutable PathMap<Cached> cache_;  // guarded by mutex_
   std::unique_ptr<Globals> globals_;

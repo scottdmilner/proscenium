@@ -1,7 +1,7 @@
 // M4: the core's interaction functions for the baseline (interaction contract, "Headless Functions"), over one
 // published generation's plan and the live stage. Correspondence answers from the plan; kind levels go to the
 // inspection model (inspection.h) in C++, so paths never pass through Python between the two. A display
-// element is named by its plan object index, which apply.py records on its Blender object.
+// element is named by its plan object index, which object_display.py records on its Blender object.
 #pragma once
 
 #include "plan.h"
@@ -20,7 +20,7 @@ namespace hydra_bridge {
 
 // A binding's source entity: a USD path, and the native instance roots above it, outermost first.
 struct Entity {
-    pxr::SdfPath source;
+    pxr::SdfPath sourcePath;
     pxr::SdfPathVector instanceContext;
 };
 
@@ -35,15 +35,15 @@ public:
 };
 
 struct SourceSelection {
-    pxr::SdfPathVector targets;  // in the order of the selected elements, without repeats
-    pxr::SdfPath active;         // the active element's target; empty when no element is active
+    pxr::SdfPathVector targetPaths;  // in the order of the selected elements, without repeats
+    pxr::SdfPath activeTargetPath;   // the active element's target; empty when no element is active
 };
 
 // Every function raises SourceUnavailableError once the live stage has expired. A kind level is a registered
 // model kind; std::nullopt is the prim level.
-class Interaction {
+class SourceSelectionResolver {
 public:
-    Interaction(pxr::UsdStagePtr stage, PlanPtr plan);
+    SourceSelectionResolver(pxr::UsdStagePtr stage, PlanPtr plan);
 
     // The element's entity, or std::nullopt for an index that names no element of this generation.
     [[nodiscard]] std::optional<Entity> ResolvePick(std::size_t element) const;

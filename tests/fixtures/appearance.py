@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf
 
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -38,17 +38,17 @@ LOOKS = "/World/Looks"
 
 @dataclass
 class AppearanceScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     # Under `shared_roots`, each drawn mesh is in exactly one set: the equivalent uses, which share one geometry
     # resource. A representation may share more where the display stays correct (M4 plan, B5).
-    shared_roots: tuple[str, ...]
-    shared: tuple[frozenset[str], ...]
+    shared_geometry_root_paths: tuple[str, ...]
+    shared_geometry_groups: tuple[frozenset[str], ...]
     # Mesh -> (interpolation, values) of the displayColor and displayOpacity it shows, its own or inherited.
     display_color: dict[str, tuple[str, tuple[Color, ...]]]
     display_opacity: dict[str, tuple[str, tuple[float, ...]] | None]
     # Mesh without subsets -> its material in the viewport (preview purpose) and final render (full); None: none.
-    materials: dict[str, tuple[str | None, str | None]]
+    destination_materials_by_source: dict[str, tuple[str | None, str | None]]
     face_materials: dict[str, tuple[str | None, ...]]  # mesh with subsets -> each face's viewport material
     # (mesh, primvar a reader of its material reads) -> the value shown: the copy's own, or the reader's fallback.
     reader_values: dict[tuple[str, str], Color | float]
@@ -60,19 +60,19 @@ class AppearanceScene:
 
 @dataclass
 class StressScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
-    world: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform (USD row-vector convention)
-    negative: frozenset[str]  # drawn meshes whose world transform has a negative determinant
-    sheared: frozenset[str]  # drawn meshes whose world transform has non-orthogonal axes
-    viewport: frozenset[str]  # drawn meshes the viewport shows (default and proxy purposes)
-    render: frozenset[str]  # drawn meshes the final render shows (default and render purposes)
+    world_matrices_by_source: dict[str, Gf.Matrix4d]  # drawn mesh -> world transform (USD row-vector convention)
+    negative_determinant_paths: frozenset[str]  # drawn meshes whose world transform has a negative determinant
+    sheared_paths: frozenset[str]  # drawn meshes whose world transform has non-orthogonal axes
+    viewport_paths: frozenset[str]  # drawn meshes the viewport shows (default and proxy purposes)
+    render_paths: frozenset[str]  # drawn meshes the final render shows (default and render purposes)
     display_color: dict[str, Color | None]  # drawn mesh -> its inherited constant displayColor
 
 
 def _open(dest: Path, layer: str) -> tuple[Path, Usd.Stage]:
     root = copy_scene(Scene.APPEARANCE, dest) / layer
-    return root, open_fresh(root)
+    return root, open_stage_without_cache(root)
 
 
 @contextmanager
@@ -107,10 +107,10 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
     unbound += list(tags)
     root, stage = _open(dest, "appearance.usda")
     yield AppearanceScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
-        shared_roots=("/World/SharedPrototype", equal),
-        shared=(
+        shared_geometry_root_paths=("/World/SharedPrototype", equal),
+        shared_geometry_groups=(
             frozenset(f"{k}/Body" for k in kits),
             frozenset(f"{k}/Lid" for k in kits),
             frozenset({f"{equal}/MeshA", f"{equal}/MeshB"}),  # equal content
@@ -135,7 +135,7 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
             f"{colors}/FaceVarying": ("faceVarying", (1.0, 1.0, 1.0, 0.5, 0.5, 0.5)),
         }
         | inherited_opacity,
-        materials={mesh: (None, None) for mesh in unbound}
+        destination_materials_by_source={mesh: (None, None) for mesh in unbound}
         | {f"{k}/Body": (red, red) for k in kits}  # Body's own green displayColor doesn't show
         | {f"{k}/Lid": (blue, blue) for k in kits}
         | {f"{uvs}/Typed": (f"{LOOKS}/Textured", f"{LOOKS}/Textured")}
@@ -188,15 +188,15 @@ def appearance_cases(dest: Path) -> Generator[AppearanceScene]:
 
 @dataclass
 class PointInstancerScene:
-    root: Path
+    root_layer_path: Path
     stage: Usd.Stage  # the caller's live stage
     instancer: str
     # (drawn mesh, point) -> world transform (USD row-vector convention), for every point's prototype meshes.
-    world: dict[tuple[str, int], Gf.Matrix4d]
+    world_matrices_by_source: dict[tuple[str, int], Gf.Matrix4d]
     invisible: frozenset[int]  # points USD doesn't draw
     primvars: dict[int, dict[str, float | int]]  # point -> the per-point and constant primvars of its copies
     materials: dict[str, str]  # drawn mesh -> its bound material, for every purpose
-    unused: str  # a mesh under the instancer's prototypes that no point draws
+    unused_prototype_path: str  # a mesh under the instancer's prototypes that no point draws
 
 
 @contextmanager
@@ -230,14 +230,14 @@ def point_instancers(dest: Path) -> Generator[PointInstancerScene]:
     green, red = f"{LOOKS}/Green", f"{LOOKS}/Red"
     root, stage = _open(dest, "point_instancers.usda")
     yield PointInstancerScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
         instancer=instancer,
-        world=world,
+        world_matrices_by_source=world,
         invisible=frozenset({4}),
         primvars={point: {"heat": point + 0.5, "groupId": 7} for point in drawn},
         materials={f"{protos}/Leaf/Blade": green, f"{protos}/Rock": red, f"{protos}/Pebble/Geom": red},
-        unused=f"{protos}/Unused",
+        unused_prototype_path=f"{protos}/Unused",
     )
 
 
@@ -292,12 +292,12 @@ def nested_stress(dest: Path) -> Generator[StressScene]:
     drawn = frozenset(world)
     root, stage = _open(dest, "nested_stress.usda")
     yield StressScene(
-        root=root,
+        root_layer_path=root,
         stage=stage,
-        world=world,
-        negative=frozenset(negative),
-        sheared=frozenset(sheared),
-        viewport=frozenset(p for p in drawn if not p.endswith(("/Render", "/Guide"))),
-        render=frozenset(p for p in drawn if not p.endswith(("/Proxy", "/Guide"))),
+        world_matrices_by_source=world,
+        negative_determinant_paths=frozenset(negative),
+        sheared_paths=frozenset(sheared),
+        viewport_paths=frozenset(p for p in drawn if not p.endswith(("/Render", "/Guide"))),
+        render_paths=frozenset(p for p in drawn if not p.endswith(("/Proxy", "/Guide"))),
         display_color=display_color,
     )

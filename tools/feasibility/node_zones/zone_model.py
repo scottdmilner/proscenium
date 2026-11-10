@@ -37,7 +37,7 @@ class GraphNode:
     uid: int
     role: ZoneRole = ZoneRole.PLAIN
     zone_kind: str = ""  # begin and end nodes only
-    partner: int = 0  # a begin's end, or 0 when unpaired
+    partner_uid: int = 0  # a begin's end, or 0 when unpaired
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,9 +53,11 @@ class Zone:
     """A paired begin and end, the nodes between them, and where it nests."""
 
     kind: str
-    begin: int
-    end: int
-    body: frozenset[int] = frozenset()  # every node the zone holds, nested zones' included, its begin and end not
+    begin_uid: int
+    end_uid: int
+    body_node_uids: frozenset[int] = (
+        frozenset()
+    )  # every node the zone holds, nested zones' included, its begin and end not
     parent: Zone | None = None
     children: list[Zone] = field(default_factory=list)
 
@@ -66,7 +68,7 @@ class Zone:
 
     def holds(self, uid: int) -> bool:
         """Whether a node is in this zone, its begin and end included."""
-        return uid in self.body or uid in (self.begin, self.end)
+        return uid in self.body_node_uids or uid in (self.begin_uid, self.end_uid)
 
 
 @dataclass(slots=True)
@@ -74,8 +76,10 @@ class ZoneLayout:
     """The zones of one graph."""
 
     zones: list[Zone]  # outer zones before the zones nested in them
-    zone_of: dict[int, Zone]  # each node in a zone (begin and end included) to the innermost zone holding it
-    invalid_links: set[int]  # positions in the link list
+    innermost_zone_by_node_uid: dict[
+        int, Zone
+    ]  # each node in a zone (begin and end included) to the innermost zone holding it
+    invalid_link_indices: set[int]  # positions in the link list
     problems: list[str]
 
 
@@ -92,12 +96,12 @@ def layout(nodes: list[GraphNode], links: list[GraphLink]) -> ZoneLayout:
     problems: list[str] = []
     zones = _paired_zones(by_uid, problems)
     for zone in zones:
-        zone.body = _body(zone, by_uid, consumers, producers)
+        zone.body_node_uids = _body(zone, by_uid, consumers, producers)
     _nest(zones, problems)
 
     zone_of: dict[int, Zone] = {}
     for zone in sorted(zones, key=lambda z: z.depth):  # inner zones overwrite outer ones
-        for uid in (*zone.body, zone.begin, zone.end):
+        for uid in (*zone.body_node_uids, zone.begin_uid, zone.end_uid):
             zone_of[uid] = zone
     ordered = sorted(zones, key=lambda z: z.depth)
     return ZoneLayout(ordered, zone_of, _invalid_links(zones, links), problems)
@@ -109,7 +113,7 @@ def _paired_zones(by_uid: dict[int, GraphNode], problems: list[str]) -> list[Zon
     for node in by_uid.values():
         if node.role is not ZoneRole.BEGIN:
             continue
-        end = by_uid.get(node.partner)
+        end = by_uid.get(node.partner_uid)
         if end is None or end.role is not ZoneRole.END or end.zone_kind != node.zone_kind:
             problems.append(f"begin {node.uid} ({node.zone_kind}) has no end")
             continue
@@ -143,21 +147,21 @@ def _reach(start: int, edges: dict[int, list[int]], stop: set[int]) -> set[int]:
 def _body(
     zone: Zone, by_uid: dict[int, GraphNode], consumers: dict[int, list[int]], producers: dict[int, list[int]]
 ) -> frozenset[int]:
-    after_end = _reach(zone.end, consumers, set()) | {zone.end}
+    after_end = _reach(zone.end_uid, consumers, set()) | {zone.end_uid}
     pinned = {uid for uid, node in by_uid.items() if node.role is ZoneRole.PINNED}
-    body = _reach(zone.begin, consumers, after_end | pinned) - after_end - pinned - {zone.begin}
+    body = _reach(zone.begin_uid, consumers, after_end | pinned) - after_end - pinned - {zone.begin_uid}
 
     # Rule 2: a node joins once every node it feeds is inside; each node that joins makes its producers candidates.
-    inside = body | {zone.end}
+    inside = body | {zone.end_uid}
     queue = deque(inside)
     while queue:
         for producer in producers[queue.popleft()]:
-            if producer in inside or producer in pinned or producer in after_end or producer == zone.begin:
+            if producer in inside or producer in pinned or producer in after_end or producer == zone.begin_uid:
                 continue
             if all(consumer in inside for consumer in consumers[producer]):
                 inside.add(producer)
                 queue.append(producer)
-    return frozenset(inside - {zone.end})
+    return frozenset(inside - {zone.end_uid})
 
 
 def _nest(zones: list[Zone], problems: list[str]) -> None:
@@ -166,13 +170,13 @@ def _nest(zones: list[Zone], problems: list[str]) -> None:
         for zone in zones:
             if zone is inner:
                 continue
-            holds_begin, holds_end = inner.begin in zone.body, inner.end in zone.body
-            if holds_begin != holds_end or (holds_begin and zone.begin in inner.body):
-                problems.append(f"zone {inner.begin}-{inner.end} overlaps zone {zone.begin}-{zone.end}")
+            holds_begin, holds_end = inner.begin_uid in zone.body_node_uids, inner.end_uid in zone.body_node_uids
+            if holds_begin != holds_end or (holds_begin and zone.begin_uid in inner.body_node_uids):
+                problems.append(f"zone {inner.begin_uid}-{inner.end_uid} overlaps zone {zone.begin_uid}-{zone.end_uid}")
             elif holds_begin:
                 holders.append(zone)
         if holders:  # the innermost holder; every other holder holds it too, so its body is the smallest
-            inner.parent = min(holders, key=lambda zone: len(zone.body))
+            inner.parent = min(holders, key=lambda zone: len(zone.body_node_uids))
             inner.parent.children.append(inner)
 
 
@@ -180,16 +184,16 @@ def _invalid_links(zones: list[Zone], links: list[GraphLink]) -> set[int]:
     invalid: set[int] = set()
     for position, link in enumerate(links):
         for zone in zones:
-            if link.from_uid not in zone.body:
+            if link.from_uid not in zone.body_node_uids:
                 continue
             leaves = not zone.holds(link.to_uid)
-            feeds_back = link.to_uid == zone.begin
+            feeds_back = link.to_uid == zone.begin_uid
             if leaves or feeds_back:
                 invalid.add(position)
                 break
         else:
             for zone in zones:  # an end's output used inside its own zone
-                if link.from_uid == zone.end and link.to_uid in zone.body:
+                if link.from_uid == zone.end_uid and link.to_uid in zone.body_node_uids:
                     invalid.add(position)
                     break
     return invalid

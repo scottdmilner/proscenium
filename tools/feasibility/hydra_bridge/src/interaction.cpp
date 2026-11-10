@@ -1,4 +1,4 @@
-// Interaction: the baseline's core interaction functions, over a plan's correspondence and the live stage.
+// SourceSelectionResolver: the baseline's core interaction functions, over a plan's correspondence and the live stage.
 #include "interaction.h"
 
 #include "inspection.h"
@@ -22,37 +22,37 @@ SdfPath Target(const UsdStage &stage, const SdfPath &floor, const std::optional<
 }  // namespace
 
 SdfPath Floor(const Entity &entity) {
-    return entity.instanceContext.empty() ? entity.source : entity.instanceContext.front();
+    return entity.instanceContext.empty() ? entity.sourcePath : entity.instanceContext.front();
 }
 
-Interaction::Interaction(UsdStagePtr stage, PlanPtr plan)
+SourceSelectionResolver::SourceSelectionResolver(UsdStagePtr stage, PlanPtr plan)
     : stage_(std::move(stage)),
       plan_(std::move(plan)) {}
 
-void Interaction::CheckLevel(const TfToken &level) {
+void SourceSelectionResolver::CheckLevel(const TfToken &level) {
     if (!KindRegistry::HasKind(level))
         throw std::invalid_argument("'" + level.GetString() + "' is not a registered kind");
 }
 
-const UsdStage &Interaction::Live() const {
+const UsdStage &SourceSelectionResolver::Live() const {
     if (!stage_) throw SourceUnavailableError();
     return *stage_;
 }
 
-bool Interaction::InUniverse(const SdfPath &path) const {
+bool SourceSelectionResolver::InUniverse(const SdfPath &path) const {
     const SdfPathVector &universe = plan_->correspondence.universe;
     return std::binary_search(universe.begin(), universe.end(), path);
 }
 
-std::optional<Entity> Interaction::ResolvePick(std::size_t element) const {
-    Live();
+std::optional<Entity> SourceSelectionResolver::ResolvePick(std::size_t element) const {
+    static_cast<void>(Live());
     if (element >= plan_->objects.size()) return std::nullopt;
     const ObjectEntry &object = plan_->objects[element];
     return Entity{object.source, object.instanceContext};
 }
 
-SdfPathVector Interaction::SelectTargets(const std::vector<Entity> &entities,
-                                         const std::optional<TfToken> &level) const {
+SdfPathVector SourceSelectionResolver::SelectTargets(const std::vector<Entity> &entities,
+                                                     const std::optional<TfToken> &level) const {
     const UsdStage &stage = Live();
     SdfPathVector targets;
     targets.reserve(entities.size());
@@ -60,16 +60,16 @@ SdfPathVector Interaction::SelectTargets(const std::vector<Entity> &entities,
     return targets;
 }
 
-std::vector<bool> Interaction::Displayed(const SdfPathVector &paths) const {
-    Live();
+std::vector<bool> SourceSelectionResolver::Displayed(const SdfPathVector &paths) const {
+    static_cast<void>(Live());
     std::vector<bool> displayed;
     displayed.reserve(paths.size());
     for (const SdfPath &path : paths) displayed.push_back(InUniverse(path));
     return displayed;
 }
 
-std::vector<std::size_t> Interaction::HighlightTargets(const SdfPathVector &targets) const {
-    Live();
+std::vector<std::size_t> SourceSelectionResolver::HighlightTargets(const SdfPathVector &targets) const {
+    static_cast<void>(Live());
     const auto &elements = plan_->correspondence.elements;
     std::vector<std::size_t> covered;
     for (const SdfPath &target : targets) {
@@ -85,9 +85,9 @@ std::vector<std::size_t> Interaction::HighlightTargets(const SdfPathVector &targ
     return covered;
 }
 
-SourceSelection Interaction::SelectionFromBlender(const std::vector<std::size_t> &selected,
-                                                  std::optional<std::size_t> active,
-                                                  const std::optional<TfToken> &level) const {
+SourceSelection SourceSelectionResolver::SelectionFromBlender(const std::vector<std::size_t> &selected,
+                                                              std::optional<std::size_t> active,
+                                                              const std::optional<TfToken> &level) const {
     const UsdStage &stage = Live();
     SourceSelection selection;
     std::unordered_set<SdfPath, SdfPath::Hash> seen;
@@ -95,8 +95,8 @@ SourceSelection Interaction::SelectionFromBlender(const std::vector<std::size_t>
         const std::optional<Entity> entity = ResolvePick(element);
         if (!entity) continue;
         SdfPath target = Target(stage, Floor(*entity), level);
-        if (active == element) selection.active = target;
-        if (seen.insert(target).second) selection.targets.push_back(std::move(target));
+        if (active == element) selection.activeTargetPath = target;
+        if (seen.insert(target).second) selection.targetPaths.push_back(std::move(target));
     }
     return selection;
 }

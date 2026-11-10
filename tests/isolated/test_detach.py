@@ -38,7 +38,7 @@ def scene(request: pytest.FixtureRequest, tmp_path: Path) -> Generator[tuple[str
         "universe": interaction.universe_membership,
     }
     with generators[request.param](tmp_path) as built:
-        yield request.param, built.root
+        yield request.param, built.root_layer_path
 
 
 @pytest.mark.parametrize("representation", ["objects", "batched"])

@@ -33,10 +33,10 @@ def points(tmp_path: Path) -> Iterator[evaluation.PointInstancerScene]:
 
 def _groups(plan: _core.Plan, minimum: int) -> tuple[list[tuple[int, list[str]]], list[str]]:
     """The plan's groups as (repeat, member sources), and its single copies' sources."""
-    sources = [c.source for c in plan.correspondence]
+    sources = [c.source_path for c in plan.correspondence]
     groups, single = plan.batch_groups(minimum)
     return (
-        [(g.repeat, [sources[i] for i in memoryview(g.members).tolist()]) for g in groups],
+        [(g.coincident_copy_index, [sources[i] for i in memoryview(g.copy_indices).tolist()]) for g in groups],
         [sources[i] for i in memoryview(single).tolist()],
     )
 
@@ -46,11 +46,11 @@ def _expected(scene: evaluation.PointInstancerScene, minimum: int) -> tuple[list
     stage = scene.stage
     grouped: dict[tuple[str, bool, int], list[str]] = {}
     repeats: Counter[tuple[str, bool, tuple[float, ...]]] = Counter()
-    for path in sorted(scene.world):
+    for path in sorted(scene.world_matrices_by_source):
         prim = stage.GetPrimAtPath(scene.sources[path])
         drawn = str(prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else prim.GetPath())
         visible = path not in scene.invisible
-        world = scene.world[path]
+        world = scene.world_matrices_by_source[path]
         stored = tuple(array("f", [float(world[r, c]) for r in range(4) for c in range(4)]))  # as Blender stores it
         repeat = repeats[drawn, visible, stored]
         repeats[drawn, visible, stored] += 1

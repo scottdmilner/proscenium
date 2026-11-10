@@ -4,8 +4,8 @@
 // it. VtArrays share storage copy-on-write, so copying arrays is cheap. Paths here are Hydra paths.
 #pragma once
 
-#include "copy_bindings.h"
 #include "diagnostics.h"
+#include "instance_material_bindings.h"
 
 #include <pxr/pxr.h>
 #include <pxr/imaging/hd/retainedSceneIndex.h>
@@ -21,31 +21,31 @@
 namespace hydra_bridge {
 
 // The scene-index observer notices, one per prim entry.
-enum class EventKind : std::uint8_t { Added, Removed, Dirtied, Renamed };
+enum class SceneIndexEventKind : std::uint8_t { Added, Removed, Dirtied, Renamed };
 
-const char *EventKindName(EventKind kind);  // "added", "removed", "dirtied", "renamed"
+const char *SceneIndexEventKindName(SceneIndexEventKind kind);  // "added", "removed", "dirtied", "renamed"
 
-struct Event {
-    EventKind kind;
+struct SceneIndexEvent {
+    SceneIndexEventKind kind;
     pxr::SdfPath path;                  // for a rename, the new path
     pxr::SdfPath oldPath;               // renamed only
     std::vector<std::string> locators;  // dirtied only
 };
 
 struct Snapshot {
-    pxr::UsdTimeCode time;
+    pxr::UsdTimeCode timeCode;
     // Every prim, with the planned schemas sampled at the capture time. Never modified after capture.
     // An incremental capture shares the previous snapshot's containers for prims no notice named.
-    pxr::HdRetainedSceneIndexRefPtr scene;
+    pxr::HdRetainedSceneIndexRefPtr sceneIndex;
     // Notices delivered since the previous capture, and a capture's own notices dirtying what depends on time
     // (capture.h).
-    std::vector<Event> events;
+    std::vector<SceneIndexEvent> events;
     size_t copied = 0;  // prims copied by this capture, rather than shared with the previous one
     // Errors and warnings posted while copying each prim, kept so a shared prim keeps its diagnostics.
     std::unordered_map<pxr::SdfPath, Diagnostics, pxr::SdfPath::Hash> primDiagnostics;
     Diagnostics diagnostics;  // all of them, without duplicates; sources are Hydra paths
-    // WORKAROUND for OpenUSD #3690 (copy_bindings.h): UsdShade's bindings for the copies binding collections
-    // reach, by USD path. Shared between captures until a binding or collection edit or a resync.
+    // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): UsdShade's bindings for the copies binding
+    // collections reach, by USD path. Shared between captures until a binding or collection edit or a resync.
     std::shared_ptr<const CopyBindings> copyBindings;
 };
 

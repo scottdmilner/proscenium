@@ -56,9 +56,9 @@ class SearchQuery:
 class SearchResult:
     """The prims a search found, and those that show because they hold one."""
 
-    matches: frozenset[Usd.Prim]
-    shown: frozenset[Usd.Prim]  # the matches and all their ancestors
-    truncated: bool  # whether the search stopped at its match cap
+    matching_prims: frozenset[Usd.Prim]
+    visible_prims: frozenset[Usd.Prim]  # the matches and all their ancestors
+    is_truncated: bool  # whether the search stopped at its match cap
 
 
 class SearchError(ValueError):

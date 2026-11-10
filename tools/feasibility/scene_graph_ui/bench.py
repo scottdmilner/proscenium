@@ -39,7 +39,7 @@ def _timed(action: Callable[[], object]) -> float:
 
 
 def _tree() -> tree_model.StageTree:
-    tree = addon._State.tree  # noqa: SLF001 (the PoC's module state)
+    tree = addon._SceneGraphUiState.tree  # noqa: SLF001 (the PoC's module state)
     assert tree is not None
     return tree
 
@@ -68,7 +68,7 @@ def check_demo() -> None:
     assert rows["/World/Geometry/Crates/Crate_01/Body"].is_instance_proxy
     assert rows["/World/Geometry/Prop_Payloaded"].has_payload
     assert rows["/World/Geometry/Prop_Variants"].has_variants
-    assert not rows["/World/Geometry/Disabled"].active
+    assert not rows["/World/Geometry/Disabled"].is_active
     crate = tree.stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")
     print("tooltips:")
     print("  row:", repr(addon._row_tooltip(wm.poc_sg_rows[tree.position(crate)])))  # noqa: SLF001
@@ -160,10 +160,10 @@ def check_search() -> None:
     payloads = _search(wm, search_payload=True)
     assert [str(r.prim.GetPath()) for r in payloads.rows if payloads.is_match(r)] == ["/World/Geometry/Prop_Payloaded"]
     _search(wm, search="(", search_mode="REGEX")
-    assert addon._State.search_status.startswith("Search:"), addon._State.search_status  # noqa: SLF001
+    assert addon._SceneGraphUiState.search_status.startswith("Search:"), addon._SceneGraphUiState.search_status  # noqa: SLF001
 
     # Clearing the search restores the expansion from before it, plus the selected prim revealed.
-    addon._State.selected = tree.stage.GetPrimAtPath("/_Crate/Lid/Panel")  # noqa: SLF001
+    addon._SceneGraphUiState.selected = tree.stage.GetPrimAtPath("/_Crate/Lid/Panel")  # noqa: SLF001
     tree = _search(wm)
     assert set(before) < set(_paths(tree))
     assert "/_Crate/Lid/Panel" in _paths(tree)
@@ -177,13 +177,13 @@ def check_steps() -> None:
     assert OPS.open_demo() == {"FINISHED"}
     tree = _tree()
     world = _paths(tree).index("/World")
-    assert tree.step_in(world) == world and tree.is_expanded(tree.rows[world])
-    geometry = tree.step_in(world)
+    assert tree.expand_or_enter_row(world) == world and tree.is_expanded(tree.rows[world])
+    geometry = tree.expand_or_enter_row(world)
     assert _paths(tree)[geometry] == "/World/Geometry"
-    assert tree.step_out(geometry) == world  # Geometry is collapsed, so Left goes to its parent
-    assert tree.step_out(world) == world and not tree.is_expanded(tree.rows[world])
+    assert tree.collapse_or_select_parent(geometry) == world  # Geometry is collapsed, so Left goes to its parent
+    assert tree.collapse_or_select_parent(world) == world and not tree.is_expanded(tree.rows[world])
     camera_free = _paths(tree).index("/World_Override_Only")
-    assert tree.step_out(camera_free) == camera_free  # a top-level row has no parent to go to
+    assert tree.collapse_or_select_parent(camera_free) == camera_free  # a top-level row has no parent to go to
     # The addon's step, as the key watcher calls it, moves the active row as the model's steps do.
     wm: Any = bpy.context.window_manager
     wm.poc_sg_active = world
@@ -213,8 +213,8 @@ def time_search() -> None:
             shown = _timed(lambda: tree.set_search(result))  # noqa: B023
             prims = sum(1 for _ in Usd.PrimRange(stage.GetPseudoRoot(), tree_model.CHILD_PREDICATE))
             print(
-                f"  {prims:>8} prims, {text!r:>8}: search {searched:7.1f} ms ({len(result.matches):>5} matches"
-                f"{', capped' if result.truncated else ''}), rows {shown:6.1f} ms"
+                f"  {prims:>8} prims, {text!r:>8}: search {searched:7.1f} ms ({len(result.matching_prims):>5} matches"
+                f"{', capped' if result.is_truncated else ''}), rows {shown:6.1f} ms"
             )
 
 

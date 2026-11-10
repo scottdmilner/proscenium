@@ -19,8 +19,8 @@ const TfToken* PrimRecord::PurposeVisibilityOf(const TfToken& forPurpose) const 
 }
 
 const PrimRecord* PrimTable::Find(const SdfPath& path) const {
-  const auto found = index.find(path);
-  return found == index.end() ? nullptr : &prims[found->second];
+  const auto found = primIndexByPath.find(path);
+  return found == primIndexByPath.end() ? nullptr : &prims[found->second];
 }
 
 }  // namespace proscenium

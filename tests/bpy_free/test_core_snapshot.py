@@ -14,7 +14,7 @@ from pxr import Gf, Usd
 
 from fixtures import evaluation
 from proscenium.core import _core
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS
 
@@ -35,17 +35,23 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
-        [p.resources for p in plan.partitions],
-        [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
-        [(c.element, c.source) for c in plan.correspondence],
-        [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
-        [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
-        [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
+        [p.resource_indices for p in plan.partitions],
+        [
+            (r.role, r.source_entity_path, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            for r in plan.resources
+        ],
+        [(c.object_resource_index, c.source_path) for c in plan.correspondence],
+        [
+            memoryview(b).tolist()
+            for b in (plan.copy_world_matrices, plan.copy_object_resource_indices, plan.copy_geometry_indices)
+        ],
+        [memoryview(b).tolist() for b in (plan.copy_placeholder_bounds_indices, plan.placeholder_bounds)],
+        [(g.representative_source_path, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
     )
 
 
 def _sources(plan: _core.Plan) -> set[str]:
-    return {c.source for c in plan.correspondence}
+    return {c.source_path for c in plan.correspondence}
 
 
 def test_edits_and_time_changes_after_capture_leave_the_snapshot(transforms: evaluation.TransformsScene) -> None:
@@ -66,13 +72,13 @@ def test_edits_and_time_changes_after_capture_leave_the_snapshot(transforms: eva
 
 
 def test_lent_buffers_outlive_the_plan_snapshot_chain_and_stage(transforms: evaluation.TransformsScene) -> None:
-    stage = open_fresh(transforms.root)
+    stage = open_stage_without_cache(transforms.root_layer_path)
     chain = _core.SceneIndexChain(stage)
     plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
     extents = [g.extent for g in plan.geometries]
     # The Tetra's extent.
     assert extents and all(memoryview(e).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0] for e in extents)
-    lent = [*extents, plan.copy_worlds, plan.copy_objects, plan.copy_geometries]
+    lent = [*extents, plan.copy_world_matrices, plan.copy_object_resource_indices, plan.copy_geometry_indices]
     values = [memoryview(b).tolist() for b in lent]
     chain.release()
     del plan, chain, stage

@@ -93,7 +93,7 @@ def _copies(aspects: dict[Copy, list[str]]) -> list[list[object]]:
     return sorted([source, list(context), found] for (source, context), found in aspects.items())
 
 
-# Batched (E5), the scene's pairs batch: copies of one mesh, material slots, object color, and primvar kinds.
+# Batched (E5), the scene's pairs batch: copies of one mesh, material slots, object color, and primvar attribute types.
 MINIMUM = 2
 HAND, HID, TURNED = (
     ("/World/Rig/Arm/Hand", ()),

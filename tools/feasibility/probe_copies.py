@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from _common import Probe
+from runtime_probe_support import Probe
 
 if TYPE_CHECKING:
     from collections.abc import Callable

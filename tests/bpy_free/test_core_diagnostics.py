@@ -17,7 +17,7 @@ from pxr import Usd, UsdGeom
 from fixtures import appearance, evaluation
 from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access import BindingId
 from proscenium.core import _core
 from proscenium.synchronization import evaluation as planning
 
@@ -57,12 +57,15 @@ def test_a_projective_matrix_is_diagnosed_once_per_prim(tmp_path: Path) -> None:
     diagnostics = planning.plan_diagnostics(BINDING, plan)
     assert diagnostics == tuple(
         Diagnostic(DiagnosticCode.PROJECTIVE_TRANSFORM, BINDING, d.message, source)
-        for d, source in zip(diagnostics, transforms.projective_reported, strict=True)
+        for d, source in zip(diagnostics, transforms.projective_diagnostic_sources, strict=True)
     )
     assert all(d.category is DiagnosticCategory.APPROXIMATION for d in diagnostics)
     # The instanced mesh's message states how many copies its one diagnostic covers.
-    counts = {d.source_path: f"{len(transforms.projective_instanced)} drawn copies" in d.message for d in diagnostics}
-    assert counts == {min(transforms.projective_instanced): True, transforms.projective: False}
+    counts = {
+        d.source_path: f"{len(transforms.projective_instance_world_matrices)} drawn copies" in d.message
+        for d in diagnostics
+    }
+    assert counts == {min(transforms.projective_instance_world_matrices): True, transforms.projective_mesh_path: False}
 
 
 @pytest.mark.parametrize("generator", VALID)
@@ -140,13 +143,15 @@ def test_a_problem_on_many_prims_lists_its_first_and_counts_the_rest(tmp_path: P
     boxed = [d for d in untranslated if "BasisCurves" in d.message]
     assert [d.source_path for d in boxed] == [*curves[:LISTED], ""]
     assert boxed[-1].message.endswith(f"(and {len(curves) - LISTED} more with the same problem, not listed)")
-    assert boxed[-1].fallback == "bounding box"
+    assert boxed[-1].fallback_description == "bounding box"
     others = {p for p, box in unsupported.placeholders.items() if box.type_name != "BasisCurves"}
     assert {d.source_path for d in untranslated if d not in boxed} == others
 
 
 def test_a_code_the_list_lacks_raises() -> None:
-    reported = SimpleNamespace(code="no-such-code", source_path="", message="", property_path="", asset="", fallback="")
+    reported = SimpleNamespace(
+        code="no-such-code", source_path="", message="", property_path="", asset_identifier="", fallback_description=""
+    )
     plan = cast("_core.Plan", SimpleNamespace(diagnostics=(reported,)))
     with pytest.raises(ValueError, match="no-such-code"):
         planning.plan_diagnostics(BINDING, plan)

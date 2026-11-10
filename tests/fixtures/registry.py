@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, copies, evaluation, interaction, source_access, transaction
+from . import appearance, binding_copy_cases, evaluation, interaction, source_access, transaction
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -30,9 +30,9 @@ Generator = Callable[[Path], AbstractContextManager[object]]
 
 def _schema_versions(dest: Path) -> AbstractContextManager[object]:
     """F-SCHEMA-VERSIONS' generator, imported when used: it imports the records' package, which imports bpy."""
-    from . import records
+    from . import schema_version_cases
 
-    return records.schema_versions(dest)
+    return schema_version_cases.schema_versions(dest)
 
 
 class Operation(StrEnum):
@@ -348,7 +348,7 @@ FIXTURES: dict[str, Fixture] = {
             "F-OWNERSHIP-AMBIGUITY",
             "Ownership ambiguity",
             ("M3", "M11"),
-            copies.ownership_ambiguity,
+            binding_copy_cases.ownership_ambiguity,
             (
                 # Each copy route leaves the original canonical, and its copies reported and disabled; detection
                 # finds every candidate, the same after a rebuild and after save and reopen, and changes nothing.

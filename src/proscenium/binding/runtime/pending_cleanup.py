@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..persistence import configs, ledgers, records
+from ..persistence import binding_records, cleanup_ledgers
+from ..persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -18,19 +19,19 @@ if TYPE_CHECKING:
     import bpy
 
     from .. import results
-    from ..source_access import identifiers
+    from ..source_access import BindingId
 
 
-def ledger() -> records.Loaded[ledgers.Ledger] | records.RefusedRecord | None:
+def ledger() -> LoadedRecord[cleanup_ledgers.Ledger] | RefusedRecord | None:
     """The file's pending-cleanup ledger, why it can't be read, or None if there is none yet.
 
     Raises ValueError if the file has more than one binding index.
     """
     text = _index_text()
-    return None if text is None else ledgers.read_ledger(text)
+    return None if text is None else cleanup_ledgers.read_ledger(text)
 
 
-def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnostic, ...]:
+def cleanup_status(binding_id: BindingId) -> tuple[results.Diagnostic, ...]:
     """The binding's current cleanup diagnostics: the ledger's, one per resource it holds pending, by ledger key.
 
     A ledger entry is one resource with one originating operation, so these are deduplicated by operation and resource
@@ -41,23 +42,23 @@ def cleanup_status(binding_id: identifiers.BindingId) -> tuple[results.Diagnosti
         held = ledger()
     except ValueError:
         return ()
-    if not isinstance(held, records.Loaded):
+    if not isinstance(held, LoadedRecord):
         return ()
     return tuple(e.diagnostic for _, e in sorted(held.record.entries.items()) if e.binding_id == binding_id)
 
 
-def nothing_pending(binding_id: identifiers.BindingId) -> bool:
+def nothing_pending(binding_id: BindingId) -> bool:
     """Whether the ledger can be read and holds no entry of the binding, so a retry has nothing to do or report."""
     try:
         held = ledger()
     except ValueError:
         return False
-    if isinstance(held, records.RefusedRecord):
+    if isinstance(held, RefusedRecord):
         return False
     return held is None or all(e.binding_id != binding_id for e in held.record.entries.values())
 
 
-def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
+def set_ledger_entries(changed: Mapping[str, cleanup_ledgers.LedgerEntry], removed: Collection[str] = ()) -> None:
     """Change some of the ledger's entries, writing only those; a file with no ledger yet starts from an empty one.
 
     An empty update writes nothing. Raises as check_trackable does, and ValueError or TypeError, changing nothing, over
@@ -66,10 +67,10 @@ def set_ledger_entries(changed: Mapping[str, ledgers.LedgerEntry], removed: Coll
     text = _trackable_text()
     if not changed and not removed:
         return
-    stored = ledgers.read_ledger(text)
-    assert not isinstance(stored, records.RefusedRecord)  # _trackable_text refused it
-    after = (ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
-    ledgers.write_ledger_entries(text, after, changed.keys(), removed)
+    stored = cleanup_ledgers.read_ledger(text)
+    assert not isinstance(stored, RefusedRecord)  # _trackable_text refused it
+    after = (cleanup_ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
+    cleanup_ledgers.write_ledger_entries(text, after, changed.keys(), removed)
 
 
 def check_trackable() -> None:
@@ -86,14 +87,14 @@ def _trackable_text() -> bpy.types.Text:
     text = _index_text()
     if text is None:
         raise ValueError("This file has no binding index to hold the pending-cleanup ledger")
-    if isinstance(stored := ledgers.read_ledger(text), records.RefusedRecord):
-        raise records.RefusedRecordError(stored)
+    if isinstance(stored := cleanup_ledgers.read_ledger(text), RefusedRecord):
+        raise RefusedRecordError(stored)
     return text
 
 
 def _index_text() -> bpy.types.Text | None:
     """The file's only binding index Text, or None if it has none; ValueError if it has more."""
-    texts = configs.index_texts()
+    texts = binding_records.index_texts()
     if len(texts) > 1:
         raise ValueError(f"This file has {len(texts)} binding indexes")
     return texts[0] if texts else None

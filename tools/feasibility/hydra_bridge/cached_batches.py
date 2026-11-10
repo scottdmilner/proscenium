@@ -1,9 +1,10 @@
 """The batches of a cached display (M4 Phase E, E5): copies alike but for their placement, as instances of one mesh.
 
-At the build, copies of the same mesh, material slots, object color, and primvar kinds (batch.attribute_type)
-become a batch of at least the display's minimum: a prototype object that no scene links, on their mesh, and a
-carrier object on a mesh of one point per copy. Unlike Phase D's batches (batch.py), a cached batch has one
-carrier, and each instance's destinations are its own, so copies differing only in them share a batch:
+At the build, copies of the same mesh, material slots, object color, and primvar attribute types
+(batched_display.attribute_type) become a batch of at least the display's minimum: a prototype object that no
+scene links, on their mesh, and a carrier object on a mesh of one point per copy. Unlike Phase D's batches
+(batched_display.py), a cached batch has one carrier, and each instance's destinations are its own, so copies
+differing only in them share a batch:
 - **Points:** each point's attributes are its copy's world transform, whether it shows in the viewport and in the
   render, and its constant primvars by name. The carrier's frames modifier caches them like any mesh's attributes
   (mesh_caches.py), ahead of the modifier that instances the prototype on each point shown in the destination
@@ -14,8 +15,8 @@ carrier, and each instance's destinations are its own, so copies differing only 
   is predicted to vary in its materials: USD's bindings aren't time-sampled, and a subset's faces are its mesh's.
 
 At each synchronization, a batch keeps its tracks whose content is still its own: their mesh, its material
-slots' materials, object color, and primvar kinds. If its tracks' meshes come to differ, those whose mesh is the
-prototype's current one keep it, or else the most (the least track's on a tie). Any other track of it becomes an
+slots' materials, object color, and primvar attribute types. When track meshes differ, those whose mesh matches
+the prototype's current one keep it, or else the most (the least track's on a tie). Any other track of it becomes an
 object from then on, hidden at the times before, and shows nothing in the batch; a point shown nowhere keeps its
 values but its destinations. A track first present then joins a batch of its content, on a point added to its
 carrier's points, which every earlier sample shows in no destination and whose own values are its record's, so
@@ -29,10 +30,10 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import numpy
-from apply import ForeachProperty, Layer, object_color
-from batch import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
-from frames import Aspect, TrackKey
+from batched_display import POINT_ATTRIBUTES, TRANSFORM, attribute_type, set_prototype
+from frame_capture import DisplayAspect, TrackKey
 from mesh_caches import MeshCache, new_cache
+from object_display import ForeachProperty, MeshAttributeData, object_color
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -43,48 +44,54 @@ if TYPE_CHECKING:
 VIEWPORT, RENDER = "proscenium_viewport", "proscenium_render"  # point attributes: the destinations it shows in
 PROTOTYPE_INPUT = "Prototype"
 MODIFIER = "proscenium batch"
-type Kinds = tuple[tuple[str, str], ...]  # a copy's constant primvars: name, attribute data type
-# What a batch's copies share: their mesh in a plan, material slots' materials, object color, and primvar kinds.
-type Content = tuple[int, tuple[Any, ...], tuple[float, ...], Kinds]
+type PrimvarAttributeTypes = tuple[tuple[str, str], ...]  # a copy's constant primvars: name, attribute data type
+# Shared mesh, material slots, object color, and primvar attribute types determine batch compatibility.
+type Content = tuple[int, tuple[Any, ...], tuple[float, ...], PrimvarAttributeTypes]
 
 
 @dataclass
 class CachedBatch:
     """A batch of a cached display: its prototype and carrier, and the track of each point."""
 
-    number: int
+    batch_index: int
     prototype: bpy.types.Object
     carrier: bpy.types.Object
     tracks: list[TrackKey]  # by point
-    layers: dict[str, Layer]  # its points' values at the latest synchronization, by attribute
-    kinds: Kinds
-    record: ObjectRecord  # a track's at the latest time one was present, as the prototype's
-    mesh: int | None  # the prototype's content in the current plan; None when it has none there
-    cache: MeshCache | None = None  # its points' cache, once synchronized
+    latest_point_attributes: dict[
+        str, MeshAttributeData
+    ]  # its points' values at the latest synchronization, by attribute
+    primvar_attribute_types: PrimvarAttributeTypes
+    prototype_record: ObjectRecord  # a track's at the latest time one was present, as the prototype's
+    mesh_index: int | None  # the prototype's content in the current plan; None when it has none there
+    points_cache: MeshCache | None = None  # its points' cache, once synchronized
 
     @property
     def key(self) -> HolderKey:
         """The prototype's key as a holder of its mesh."""
-        return ("prototype", self.number)
+        return ("prototype", self.batch_index)
 
     @property
     def points(self) -> bpy.types.Mesh:
         return self.carrier.data  # ty: ignore[invalid-return-type] - a carrier's data is its points
 
-    def content(self) -> tuple[tuple[Any, ...], tuple[float, ...], Kinds]:
-        """What its tracks share but their mesh: its materials, object color, and primvar kinds."""
-        return (tuple(s.material for s in self.prototype.material_slots), tuple(self.prototype.color), self.kinds)
+    def content(self) -> tuple[tuple[Any, ...], tuple[float, ...], PrimvarAttributeTypes]:
+        """What its tracks share but their mesh: its materials, object color, and primvar attribute types."""
+        return (
+            tuple(s.material for s in self.prototype.material_slots),
+            tuple(self.prototype.color),
+            self.primvar_attribute_types,
+        )
 
 
-def kinds(record: ObjectRecord) -> Kinds | None:
-    """A copy's primvar kinds, or None if a point attribute can't hold one of them."""
+def batchable_primvar_types(record: ObjectRecord) -> PrimvarAttributeTypes | None:
+    """A copy's primvar attribute types, or None if a point attribute can't hold one of them."""
     found = tuple(sorted((name, attribute_type(value)) for name, value in record["properties"].items()))
-    return None if any(kind is None for _, kind in found) else found  # ty: ignore[invalid-return-type]
+    return None if any(attribute_type_name is None for _, attribute_type_name in found) else found  # ty: ignore[invalid-return-type]
 
 
-def content(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | None:
+def batch_compatibility_key(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | None:
     """A copy's content as its batch would hold it, or None for one no batch can hold."""
-    held = kinds(record)
+    held = batchable_primvar_types(record)
     if record["mesh"] is None or held is None:
         return None
     slots = tuple(None if m is None else materials(m) for m in record["material_slots"])
@@ -92,16 +99,16 @@ def content(record: ObjectRecord, materials: Callable[[int], Any]) -> Content | 
     return (record["mesh"], slots, color, held)
 
 
-def groups(
+def initial_batch_track_groups(
     records: Mapping[TrackKey, ObjectRecord], shown: Callable[[TrackKey], str], minimum: int
 ) -> list[list[TrackKey]]:
     """The tracks that batch at the build, in groups of at least `minimum`, from whether each is predicted to deform."""
     found: dict[tuple[Any, ...], list[TrackKey]] = {}
     for key, record in records.items():
-        held = content(record, lambda m: m)
+        held = batch_compatibility_key(record, lambda m: m)
         if held is None:
             continue
-        deforms = Aspect.MESH.value in record["dirtied_aspects"]
+        deforms = DisplayAspect.MESH.value in record["dirtied_aspects"]
         found.setdefault((*held, shown(key) if deforms else None), []).append(key)
     return [members for members in found.values() if len(members) >= minimum]
 
@@ -154,14 +161,14 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     assert mesh is not None  # noqa: S101 - the groups leave out placeholders
     prototype = bpy.data.objects.new(f"Prototype {number:06d}", meshes[mesh])
     set_prototype(prototype, first, meshes, materials)
-    held = kinds(first)
+    held = batchable_primvar_types(first)
     assert held is not None  # noqa: S101 - the groups leave out what no point can hold
     points = bpy.data.meshes.new(f"Carrier {number:06d}")
     points.vertices.add(len(tracks))
     found = point_layers(held, [records[key] for key in tracks], first)
     for layer in found.values():
         attribute: Any = points.attributes.new(layer.name, layer.data_type, "POINT")
-        attribute.data.foreach_set(layer.prop, layer.values)
+        attribute.data.foreach_set(layer.foreach_property, layer.values)
     carrier = bpy.data.objects.new(f"Carrier {number:06d}", points)
     collection.objects.link(carrier)  # shown in both destinations: each point says which it shows in
     modifier: Any = carrier.modifiers.new(MODIFIER, "NODES")
@@ -172,22 +179,24 @@ def new_batch(  # noqa: PLR0913 - a batch's whole context
     return CachedBatch(number, prototype, carrier, list(tracks), found, held, first, mesh)
 
 
-def point_layers(held: Kinds, records: list[ObjectRecord | None], blank: ObjectRecord) -> dict[str, Layer]:
-    """The point attributes of copies with primvar kinds `held`, one point per record.
+def point_layers(
+    held: PrimvarAttributeTypes, records: list[ObjectRecord | None], blank: ObjectRecord
+) -> dict[str, MeshAttributeData]:
+    """The point attributes of copies with primvar attribute types `held`, one point per record.
 
     A None record shows nowhere, with `blank`'s other values.
     """
 
-    def column(name: str, data_type: str, value: Callable[[ObjectRecord], Any]) -> Layer:
+    def column(name: str, data_type: str, value: Callable[[ObjectRecord], Any]) -> MeshAttributeData:
         prop, dtype = POINT_ATTRIBUTES[data_type]
         values = numpy.array([value(r or blank) for r in records], dtype=dtype).ravel()
-        return Layer(name, data_type, "POINT", ForeachProperty(prop), values)  # ty: ignore[invalid-argument-type]
+        return MeshAttributeData(name, data_type, "POINT", ForeachProperty(prop), values)  # ty: ignore[invalid-argument-type]
 
     found = [
         column(TRANSFORM, "FLOAT4X4", lambda r: r["matrix"]),
         column(VIEWPORT, "BOOLEAN", lambda r: r["viewport"]),
         column(RENDER, "BOOLEAN", lambda r: r["render"]),
-        *(column(name, kind, lambda r, n=name: r["properties"][n]) for name, kind in held),
+        *(column(name, data_type, lambda r, n=name: r["properties"][n]) for name, data_type in held),
     ]
     layers = {layer.name: layer for layer in found}
     for index, record in enumerate(records):
@@ -205,19 +214,19 @@ def add_points(batch: CachedBatch, keys: list[TrackKey], records: list[ObjectRec
     points: Any = batch.points
     points.vertices.add(len(keys))
     batch.tracks += keys
-    joined = point_layers(batch.kinds, list(records), records[0])
+    joined = point_layers(batch.primvar_attribute_types, list(records), records[0])
     for name in (VIEWPORT, RENDER):
         joined[name].values[:] = False
     for name, layer in joined.items():
         attribute = points.attributes[name]
         values = numpy.empty(len(batch.tracks) * (len(layer.values) // len(keys)), layer.values.dtype)
-        attribute.data.foreach_get(layer.prop, values)
+        attribute.data.foreach_get(layer.foreach_property, values)
         values[len(values) - len(layer.values) :] = layer.values
-        attribute.data.foreach_set(layer.prop, values)
-    for kept in (batch.layers, batch.cache.base if batch.cache else {}):
+        attribute.data.foreach_set(layer.foreach_property, values)
+    for kept in (batch.latest_point_attributes, batch.points_cache.base_attributes if batch.points_cache else {}):
         for name, layer in kept.items():
             grown = numpy.concatenate([layer.values, joined[name].values])
-            kept[name] = Layer(layer.name, layer.data_type, layer.domain, layer.prop, grown)
+            kept[name] = MeshAttributeData(layer.name, layer.data_type, layer.domain, layer.foreach_property, grown)
 
 
 def write_points(
@@ -230,43 +239,47 @@ def write_points(
 
     A point shown nowhere keeps its latest values but its destinations. Returns whether any attribute varies.
     """
-    found = point_layers(batch.kinds, records, batch.record)
+    found = point_layers(batch.primvar_attribute_types, records, batch.prototype_record)
     for index, record in enumerate(records):
         if record is None:
             for name, layer in found.items():
                 if name not in (VIEWPORT, RENDER):
                     width = len(layer.values) // len(records)
-                    layer.values[index * width : (index + 1) * width] = batch.layers[name].values[
+                    layer.values[index * width : (index + 1) * width] = batch.latest_point_attributes[name].values[
                         index * width : (index + 1) * width
                     ]
-    batch.layers = found
-    if batch.cache is None:
-        batch.cache = new_cache(batch.points, found)
-    return meshes.write(batch.points, batch.cache, found, at, [batch.carrier])
+    batch.latest_point_attributes = found
+    if batch.points_cache is None:
+        batch.points_cache = new_cache(batch.points, found)
+    return meshes.write(batch.points, batch.points_cache, found, at, [batch.carrier])
 
 
 @dataclass
 class Regrouped:
     """What a synchronization changed in the batches' tracks."""
 
-    leaving: list[TrackKey]  # tracks a batch no longer holds, which become objects
-    joined: list[TrackKey]  # tracks first present now, which a batch holds
-    varied: dict[TrackKey, set[Aspect]]  # per track a batch holds or held, the aspects found varying
-    holders: dict[HolderKey, tuple[int, ObjectRecord | None, int | None, int | None]]  # per prototype with a track
+    departing_tracks: list[TrackKey]  # tracks a batch no longer holds, which become objects
+    joined_tracks: list[TrackKey]  # tracks first present now, which a batch holds
+    varying_aspects_by_track: dict[
+        TrackKey, set[DisplayAspect]
+    ]  # per track a batch holds or held, the aspects found varying
+    prototype_holder_states: dict[
+        HolderKey, tuple[int, ObjectRecord | None, int | None, int | None]
+    ]  # per prototype with a track
     # present: a track's plan index, its record if read, the mesh in the plan, and the mesh in the current one
 
 
 class Batches:
     """A cached display's batches, and the tracks they hold."""
 
-    minimum: int  # the smallest group that becomes a batch at the build
+    minimum_batch_size: int  # the smallest group that becomes a batch at the build
     group: bpy.types.NodeTree | None  # the carriers' node group, once a batch is built
     batches: list[CachedBatch]
     points: dict[TrackKey, tuple[CachedBatch, int]]  # every track a batch has held, and its point
     held: set[TrackKey]  # the tracks the batches hold now
 
     def __init__(self, minimum: int) -> None:
-        self.minimum = minimum
+        self.minimum_batch_size = minimum
         self.group = None
         self.reset()
 
@@ -282,7 +295,7 @@ class Batches:
         collection: bpy.types.Collection,
     ) -> None:
         """Batch the build's tracks in groups of at least the minimum; the rest are the display's objects."""
-        for members in groups(records, shown, self.minimum):
+        for members in initial_batch_track_groups(records, shown, self.minimum_batch_size):
             if self.group is None:
                 self.group = batch_group()
             batch = new_batch(len(self.batches), members, records, meshes, materials, collection, self.group)
@@ -302,24 +315,24 @@ class Batches:
         materials: Callable[[int], Any],
     ) -> Regrouped:
         """Keep each batch's tracks of its content, find those leaving, and place `new_tracks` in batches."""
-        old_meshes = {old: new for new, old in enumerate(diff["meshes"]) if old != -1}
+        old_meshes = {old: new for new, old in enumerate(diff["previous_mesh_indices"]) if old != -1}
         result = Regrouped([], [], {}, {})
         before: dict[int, int | None] = {}  # by batch, its prototype's mesh in the current plan
         for batch in self.batches:
             members = [key for key in batch.tracks if key in self.held and key in present]
             share = batch.content()
-            mapped = None if batch.mesh is None else old_meshes.get(batch.mesh)
+            mapped = None if batch.mesh_index is None else old_meshes.get(batch.mesh_index)
             parts: dict[int | None, list[TrackKey]] = {}
             for key in members:
                 if key not in fresh:  # unchanged since it was read and kept, but its mesh, as plans renumber
                     parts.setdefault(mesh_index[key], []).append(key)
                     continue
-                held = content(fresh[key], materials)
+                held = batch_compatibility_key(fresh[key], materials)
                 if held is not None and held[1:] == share:
                     parts.setdefault(held[0], []).append(key)
                 else:
-                    reasons = {Aspect.MATERIALS if held and held[1] != share[0] else Aspect.PROPERTIES}
-                    reasons |= {Aspect.MESH} if fresh[key]["mesh"] != mapped else set()
+                    reasons = {DisplayAspect.MATERIALS if held and held[1] != share[0] else DisplayAspect.PROPERTIES}
+                    reasons |= {DisplayAspect.MESH} if fresh[key]["mesh"] != mapped else set()
                     self._leave(key, result, reasons | _differences(fresh[key], latest[key]))
             # The tracks of the prototype's current mesh keep it, or else the most, then the least track: plans
             # from separate processes can order their records differently.
@@ -330,47 +343,52 @@ class Batches:
             for others in parts.values():
                 for key in others:
                     found = _differences(fresh[key], latest[key]) if key in fresh else set()
-                    self._leave(key, result, {Aspect.MESH, *found})
-            before[batch.number] = batch.mesh
-            batch.mesh = mesh_index[kept[0]] if kept else mapped
+                    self._leave(key, result, {DisplayAspect.MESH, *found})
+            before[batch.batch_index] = batch.mesh_index
+            batch.mesh_index = mesh_index[kept[0]] if kept else mapped
             for key in members:
                 if key in self.held and key in fresh:
-                    result.varied.setdefault(key, set()).update(_differences(fresh[key], latest[key]))
+                    result.varying_aspects_by_track.setdefault(key, set()).update(_differences(fresh[key], latest[key]))
             for key in batch.tracks:
                 if key in self.held and key not in present and (latest[key]["viewport"] or latest[key]["render"]):
-                    result.varied[key] = {Aspect.VISIBILITY}
+                    result.varying_aspects_by_track[key] = {DisplayAspect.VISIBILITY}
         joining: dict[int, list[TrackKey]] = {}  # by batch, the new tracks joining it
         for key in new_tracks:
-            held = content(fresh[key], materials)
-            alike = [b for b in self.batches if b.mesh is not None and held == (b.mesh, *b.content())]
+            held = batch_compatibility_key(fresh[key], materials)
+            alike = [b for b in self.batches if b.mesh_index is not None and held == (b.mesh_index, *b.content())]
             if alike:
-                joining.setdefault(min(alike, key=lambda b: min(b.tracks)).number, []).append(key)
+                joining.setdefault(min(alike, key=lambda b: min(b.tracks)).batch_index, []).append(key)
         for number, keys in joining.items():
             batch = self.batches[number]
             add_points(batch, keys, [fresh[key] for key in keys])
             for point, key in enumerate(keys, start=len(batch.tracks) - len(keys)):
                 self.points[key] = (batch, point)
-                result.varied[key] = {Aspect.VISIBILITY}
+                result.varying_aspects_by_track[key] = {DisplayAspect.VISIBILITY}
             self.held.update(keys)
-            result.joined += keys
+            result.joined_tracks += keys
         for batch in self.batches:  # each prototype with a track present, as a holder of its mesh
             shown = [key for key in batch.tracks if key in self.held and key in present]
             if not shown:
                 continue
             read = next((key for key in shown if key in fresh), None)
-            batch.record = fresh[read] if read is not None else latest[shown[0]]
+            batch.prototype_record = fresh[read] if read is not None else latest[shown[0]]
             record = None if read is None else fresh[read]
-            result.holders[batch.key] = (present[shown[0]], record, batch.mesh, before[batch.number])
+            result.prototype_holder_states[batch.key] = (
+                present[shown[0]],
+                record,
+                batch.mesh_index,
+                before[batch.batch_index],
+            )
         return result
 
     def prototype(self, key: HolderKey) -> bpy.types.Object:
         """The prototype a holder key names."""
         return self.batches[key[1]].prototype  # ty: ignore[invalid-argument-type]
 
-    def _leave(self, key: TrackKey, result: Regrouped, aspects: set[Aspect]) -> None:
+    def _leave(self, key: TrackKey, result: Regrouped, aspects: set[DisplayAspect]) -> None:
         self.held.discard(key)
-        result.leaving.append(key)
-        result.varied[key] = aspects
+        result.departing_tracks.append(key)
+        result.varying_aspects_by_track[key] = aspects
 
     def write(
         self,
@@ -388,7 +406,9 @@ class Batches:
         """
         written = 0
         for batch in self.batches:
-            if (batch.cache is None or not batch.cache.varying) and changed.isdisjoint(batch.tracks):
+            if (batch.points_cache is None or not batch.points_cache.varying_attributes) and changed.isdisjoint(
+                batch.tracks
+            ):
                 continue
             records = [
                 (fresh.get(key) or latest[key]) if key in self.held and key in present else None for key in batch.tracks
@@ -397,13 +417,13 @@ class Batches:
         return written
 
 
-def _differences(record: ObjectRecord, old: ObjectRecord) -> set[Aspect]:
+def _differences(record: ObjectRecord, old: ObjectRecord) -> set[DisplayAspect]:
     """The aspects a batch's track changes in from its latest record, but its mesh, which its prototype's cache says."""
-    found: set[Aspect] = set()
+    found: set[DisplayAspect] = set()
     if record["matrix"] != old["matrix"]:
-        found.add(Aspect.TRANSFORM)
+        found.add(DisplayAspect.TRANSFORM)
     if (record["viewport"], record["render"]) != (old["viewport"], old["render"]):
-        found.add(Aspect.VISIBILITY)
+        found.add(DisplayAspect.VISIBILITY)
     if record["properties"] != old["properties"]:
-        found.add(Aspect.PROPERTIES)
+        found.add(DisplayAspect.PROPERTIES)
     return found

@@ -14,12 +14,12 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import configs, manifests, records
+from proscenium.binding.persistence import binding_records, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
-from proscenium.binding.persistence.records import Loaded, RefusedRecord, RefusedRecordError
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -30,9 +30,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.configs import BindingConfig
-    from proscenium.binding.persistence.manifests import EntryChange
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.persistence.binding_records import BindingConfig
+    from proscenium.binding.persistence.manifests import ManifestEntryChange
+    from proscenium.binding.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -42,7 +42,7 @@ def _scene() -> bpy.types.Scene:
 def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
     """A binding on F-BINDING-STATE whose destination holds one managed object, entry "a"."""
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
     obj = bpy.data.objects.new("Managed", None)
     bpy.data.collections["Shot"].objects.link(obj)
     ownership.set_manifest(handle.binding_id, Manifest({key("a"): object_entry(obj, "/World")}))
@@ -50,27 +50,27 @@ def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.binding_configs.find_binding(handle.binding_id)
+    found = runtime.binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
 
 def _scene_of(binding_id: BindingId) -> bpy.types.Scene | None:
     """The scene holding the binding's canonical record, or None if there's no such binding."""
-    found = runtime.binding_configs.find_binding(binding_id)
+    found = runtime.binding_operations.find_binding(binding_id)
     return None if found is None else found.scene
 
 
 def _binding_ids(scene: bpy.types.Scene | None = None) -> list[BindingId]:
-    return [found.binding_id for found in runtime.binding_configs.find_bindings(scene)]
+    return [found.binding_id for found in runtime.binding_operations.find_bindings(scene)]
 
 
 def _resource(binding_id: BindingId, name: str) -> bpy.types.ID | None:
     """The datablock of the binding's manifest entry called name, or None if there's no such binding or entry."""
-    if runtime.binding_configs.find_binding(binding_id) is None:
+    if runtime.binding_operations.find_binding(binding_id) is None:
         return None
     manifest = ownership.manifest(binding_id)
-    entry = manifest.record.entries.get(key(name)) if isinstance(manifest, Loaded) else None
+    entry = manifest.record.entries.get(key(name)) if isinstance(manifest, LoadedRecord) else None
     return None if entry is None else entry.datablock
 
 
@@ -108,10 +108,10 @@ def test_undo_reverts_a_configuration(bindings: Bindings, tmp_path: Path) -> Non
     handle = _managed(bindings, tmp_path)
     undo.push("base")
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    assert _config(handle).settings.payload_policy is PayloadPolicy.LOAD_NONE
+    assert _config(handle).requested_settings.payload_policy is PayloadPolicy.LOAD_NONE
     undo.push("settings")
     undo.undo()
-    assert _config(handle).settings.payload_policy is PayloadPolicy.LOAD_ALL
+    assert _config(handle).requested_settings.payload_policy is PayloadPolicy.LOAD_ALL
 
 
 def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], list[str]]:
@@ -121,7 +121,7 @@ def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], l
     """
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
+        other = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Other")
     ownership.set_manifest(other.binding_id, _entries(*(bpy.data.objects.new(name, None) for name in ("A", "B"))))
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a", "b"]
     assert _ownership_view(ids, names)
@@ -131,13 +131,13 @@ def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], l
 def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     """Every record read from here on, as (ID name, key)."""
     reads: list[tuple[str, str]] = []
-    read = records.read
+    read = id_property_records.read
 
     def counted_read(id_: bpy.types.ID, key: str, schema: object) -> object:
         reads.append((id_.name, key))
         return read(id_, key, schema)  # ty: ignore[invalid-argument-type]
 
-    monkeypatch.setattr(records, "read", counted_read)
+    monkeypatch.setattr(id_property_records, "read", counted_read)
     return reads
 
 
@@ -152,18 +152,18 @@ def test_a_removed_datablock_is_gone_from_its_manifest(bindings: Bindings, tmp_p
         assert _resource(other, "a") is None
     else:
         found = ownership.manifest(other)
-        assert isinstance(found, Loaded)
+        assert isinstance(found, LoadedRecord)
         assert found.record.entries[key("a")].datablock is None
     assert _resource(other, "b") == bpy.data.objects["B"]
     assert _resource(ids[0], "a") == bpy.data.objects["Managed"]  # Shot's entry "a"
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
 
 
 def _entry(datablock: bpy.types.ID, uses: tuple[str, ...] = ()) -> ManifestEntry:
     return object_entry(datablock, "/World", uses)
 
 
-def _change(uses: tuple[str, ...] = ()) -> EntryChange:
+def _change(uses: tuple[str, ...] = ()) -> ManifestEntryChange:
     return object_change("/World", uses)
 
 
@@ -174,12 +174,12 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     a, b = bpy.data.objects["A"], bpy.data.objects["B"]
     c, d = bpy.data.objects.new("C", None), bpy.data.objects.new("D", None)
     # An entry stored by hand: the update reads it, and keeps it, so a whole write would show as its loss.
-    destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"][key("marker")] = {
+    destination[id_property_records.NAMESPACE][manifests.MANIFEST_KEY]["entries"][key("marker")] = {
         "datablock": None,
-        "covers": ["/World/Marker"],
+        "source_entity_paths": ["/World/Marker"],
         "role": "object",
-        "uses": [],
-        "place": 0,
+        "dependency_entry_keys": [],
+        "object_index_in_copy": 0,
     }
     # b keeps its datablock and covers another path; c and d are new, and d uses c.
     ownership.set_manifest_entries(
@@ -190,13 +190,13 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     )
     assert [_resource(other, r) for r in ("a", "b", "c", "d")] == [None, b, c, d]
     found = ownership.manifest(other)
-    assert isinstance(found, Loaded)
+    assert isinstance(found, LoadedRecord)
     assert found.record.entries[key("b")] == object_entry(b, "/World/Kept")
     assert ownership.of(a).claims == ()
     assert ownership.of(c).claims == (Claim(other, destination, key("c")),)
-    entries = destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"]
+    entries = destination[id_property_records.NAMESPACE][manifests.MANIFEST_KEY]["entries"]
     assert key("marker") in entries
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
 
 
 @pytest.mark.parametrize("first_removed", ["Other", "Shot"])
@@ -210,7 +210,7 @@ def test_a_datablock_claimed_twice_and_once_again(bindings: Bindings, tmp_path: 
         "Shot": Claim(handle, bpy.data.collections["Shot"], key("x")),
     }
     stored = ownership.manifest(handle)
-    assert isinstance(stored, Loaded)
+    assert isinstance(stored, LoadedRecord)
     ownership.set_manifest(handle, Manifest({**stored.record.entries, key("x"): _entry(a)}))
     assert ownership.of(a).status is ownership.OwnershipStatus.AMBIGUOUS
     assert set(ownership.of(a).claims) == set(by_name.values())
@@ -234,18 +234,18 @@ def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monk
     def no_writes(*_args: object) -> None:
         raise AssertionError("a record was written")
 
-    monkeypatch.setattr(records, "write", no_writes)
-    monkeypatch.setattr(records, "write_items", no_writes)
+    monkeypatch.setattr(id_property_records, "write", no_writes)
+    monkeypatch.setattr(id_property_records, "write_items", no_writes)
     ownership.set_manifest_entries(handle.binding_id, {}, [])
 
 
 def test_an_update_to_a_binding_without_a_manifest(bindings: Bindings, tmp_path: Path) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root, name="Shot")
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Shot")
     assert ownership.manifest(handle.binding_id) is None
     obj = bpy.data.objects.new("Managed", None)
     ownership.set_manifest_entries(handle.binding_id, {key("a"): _change()}, created={key("a"): obj})
-    expected = Loaded(Manifest({key("a"): _entry(obj)}), manifests.MANIFEST.version)
+    expected = LoadedRecord(Manifest({key("a"): _entry(obj)}), manifests.MANIFEST.version)
     assert ownership.manifest(handle.binding_id) == expected
     assert ownership.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
     assert _resource(handle.binding_id, "a") == obj
@@ -258,7 +258,7 @@ def test_an_update_from_the_manifest_its_caller_read(
     ids, _names = _two_managed(bindings, tmp_path)
     other = ids[1]
     stored = ownership.manifest(other)
-    assert isinstance(stored, Loaded)
+    assert isinstance(stored, LoadedRecord)
     replacement = bpy.data.objects.new("Replacement", None)
 
     def no_reads(*_args: object) -> None:
@@ -270,7 +270,7 @@ def test_an_update_from_the_manifest_its_caller_read(
             other, {key("b"): _change()}, [key("a")], {key("b"): replacement}, published=stored.record
         )
     expected = stored.record.updated({key("b"): _change()}, [key("a")], {key("b"): replacement})
-    assert ownership.manifest(other) == Loaded(expected, manifests.MANIFEST.version)
+    assert ownership.manifest(other) == LoadedRecord(expected, manifests.MANIFEST.version)
 
 
 @pytest.mark.parametrize("removed", [["a"], ["a", "a"], []])
@@ -307,7 +307,7 @@ def test_a_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
     assert ownership.of(obj).claims
     bpy.data.collections.remove(bpy.data.collections["Shot"])
     # DEST-05, DEST-07: the binding went with its records, and its manifest with them, though the object remains.
-    assert runtime.binding_configs.find_binding(handle.binding_id) is None
+    assert runtime.binding_operations.find_binding(handle.binding_id) is None
     assert _resource(handle.binding_id, "a") is None
     with pytest.raises(KeyError):
         ownership.manifest(handle.binding_id)
@@ -363,10 +363,10 @@ def test_a_scene_copy_made_after_a_lookup(bindings: Bindings, tmp_path: Path, ki
     assert bindings.in_scene(copy) == []
     assert bindings.in_scene(_scene()) == [handle]
     assert _scene_of(handle.binding_id) == _scene()  # lookups use the canonical candidate
-    oracle.assert_agrees()
+    oracle.assert_ownership_matches_manifests()
     if kind == "FULL_COPY":
         [copied] = bindings.copied()
-        assert [(c.scene, c.canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
+        assert [(c.scene_name, c.is_canonical) for c in copied.candidates] == [("Scene", True), (copy.name, False)]
         (copied_object,) = (obj for obj in bpy.data.objects if obj.name != "Managed")
         destination = copy.collection.children[0]
         assert [c.destination for c in ownership.of(copied_object).claims] == [destination]
@@ -395,10 +395,12 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     # and stays unique.
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
-        other = binding_on_file(bindings, _scene(), scene.root, name="Other")
-    key_of_other = configs.config_key(other.binding_id)
+        other = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Other")
+    key_of_other = binding_records.config_key(other.binding_id)
     shot = bpy.data.collections["Shot"]
-    shot[records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][records.NAMESPACE][key_of_other]
+    shot[id_property_records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][id_property_records.NAMESPACE][
+        key_of_other
+    ]
     bpy.data.collections.remove(bpy.data.collections["Other"])
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     ownership.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
@@ -414,7 +416,7 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
 def test_a_removed_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, other, scene.root)
+        handle = binding_on_file(bindings, other, scene.root_layer_path)
     assert _binding_ids() == [handle.binding_id]
     address = other.as_pointer()
     bpy.data.scenes.remove(other)
@@ -429,8 +431,8 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
     # A binding on another scene isn't listed on this one; removing its destination removes it (DEST-05).
     other_scene = bpy.data.scenes.new("Other")
     with source_access.binding_state(tmp_path) as scene:
-        elsewhere = binding_on_file(bindings, other_scene, scene.root, name="Elsewhere")
-        here = binding_on_file(bindings, _scene(), scene.root, name="Here")
+        elsewhere = binding_on_file(bindings, other_scene, scene.root_layer_path, name="Elsewhere")
+        here = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Here")
     assert bindings.in_scene(_scene()) == [here]
     assert bindings.in_scene(other_scene) == [elsewhere]
     bpy.data.collections.remove(bpy.data.collections["Elsewhere"])
@@ -443,7 +445,7 @@ def test_listing_a_scene_checks_only_its_bindings(bindings: Bindings, tmp_path: 
 
 def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     with source_access.binding_state(tmp_path) as scene:
-        handle = binding_on_file(bindings, _scene(), scene.root)
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_path)
     handle.synchronize(0)
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
@@ -451,7 +453,7 @@ def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatc
     def refused() -> object:
         raise AssertionError("release must not read binding records")
 
-    monkeypatch.setattr(persistence.configs, "read_configs", refused)
+    monkeypatch.setattr(persistence.binding_records, "read_configs", refused)
     assert handle.release() is None
     assert (stages.live_stage, stages.evaluation_stage) == (None, None)
 
@@ -460,14 +462,16 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
     readable = bindings.create_binding(_scene(), name="A")
     unreadable = bindings.create_binding(_scene(), name="B")
-    bpy.data.collections["B"][records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = 2
-    found = runtime.binding_configs.find_bindings()
+    bpy.data.collections["B"][id_property_records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][
+        id_property_records.VERSION_KEY
+    ] = binding_records.CONFIG.version + 1
+    found = runtime.binding_operations.find_bindings()
     assert found == [
-        runtime.binding_configs.find_binding(readable.binding_id),
-        runtime.binding_configs.find_binding(unreadable.binding_id),
+        runtime.binding_operations.find_binding(readable.binding_id),
+        runtime.binding_operations.find_binding(unreadable.binding_id),
     ]
     assert [f.usable for f in found] == [True, False]
-    assert isinstance(found[1].unreadable, RefusedRecord)
+    assert isinstance(found[1].configuration_refusal, RefusedRecord)
     assert found[1].config is None
     with pytest.raises(RefusedRecordError):
         found[1].usable_config()
@@ -477,7 +481,7 @@ def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Pa
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(bindings, tmp_path)
     assert _binding_ids(_scene()) == [handle.binding_id]
-    del bpy.data.collections["Shot"][records.NAMESPACE][configs.config_key(handle.binding_id)]
+    del bpy.data.collections["Shot"][id_property_records.NAMESPACE][binding_records.config_key(handle.binding_id)]
     assert _binding_ids(_scene()) == []
 
 
@@ -520,14 +524,14 @@ def test_a_manifest_cant_be_changed_through_a_caller(bindings: Bindings, tmp_pat
     uses.append(key("a"))
     entries[key("b")] = object_entry(bpy.data.objects.new("B", None), "/World/B")
     found = ownership.manifest(handle.binding_id)
-    assert isinstance(found, Loaded)
+    assert isinstance(found, LoadedRecord)
     assert found == manifests.read_manifest(bpy.data.collections["Shot"])
     with pytest.raises((TypeError, AttributeError)):
         found.record.entries[key("c")] = entries[key("b")]  # ty: ignore[invalid-assignment] - the point: it's read-only
     with pytest.raises((TypeError, AttributeError)):
-        found.record.entries[key("a")].covers.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
+        found.record.entries[key("a")].source_entity_paths.append("/Elsewhere")  # ty: ignore[unresolved-attribute]
     with pytest.raises((TypeError, AttributeError)):
-        found.record.entries[key("a")].uses.append(key("a"))  # ty: ignore[unresolved-attribute]
+        found.record.entries[key("a")].dependency_entry_keys.append(key("a"))  # ty: ignore[unresolved-attribute]
     assert ownership.manifest(handle.binding_id) == manifests.read_manifest(bpy.data.collections["Shot"])
 
 

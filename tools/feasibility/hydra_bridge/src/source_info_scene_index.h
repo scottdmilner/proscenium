@@ -28,7 +28,7 @@
 // graph advances (ApplyPendingUpdates), asking UsdImagingDataSourcePrim::Invalidate which locators changed.
 #pragma once
 
-#include "copy_bindings.h"
+#include "instance_material_bindings.h"
 #include "source_facts.h"
 
 #include <pxr/pxr.h>
@@ -74,8 +74,8 @@ public:
     // stage aren't built again from USD. Call before the stage scene index's SetStage(nullptr), never
     // alongside reads.
     void Detach();
-    // WORKAROUND for OpenUSD #3690 (copy_bindings.h): UsdShade's bindings for the copies binding collections
-    // reach, recomputed only after a binding or collection edit or a resync. Call between graph advances,
+    // WORKAROUND for OpenUSD #3690 (instance_material_bindings.h): UsdShade's bindings for the copies binding
+    // collections reach, recomputed only after a binding or collection edit or a resync. Call between graph advances,
     // never alongside reads.
     std::shared_ptr<const CopyBindings> CurrentCopyBindings();
 
@@ -125,12 +125,12 @@ private:
     pxr::TfNotice::Key noticeKey_;
     // Set once by New, so const members can hand containers a weak pointer to the filter.
     SourceInfoSceneIndexPtr self_;
-    // One container per prim, built once and rebuilt only when its own generation moves: when the prim is
+    // One container per prim, built once and rebuilt only when its own revision changes: when the prim is
     // dirtied, or when something its facts depend on changes (an ancestor's binding, a collection, a
     // mesh's subsets), so one edit doesn't rebuild every prim.
     struct Cached {
         pxr::HdContainerDataSourceHandle container;
-        std::shared_ptr<std::atomic<uint64_t>> generation;
+        std::shared_ptr<std::atomic<uint64_t>> revisionCounter;
     };
     mutable std::unordered_map<pxr::SdfPath, Cached, pxr::SdfPath::Hash> cache_;  // guarded by mutex_
     std::unique_ptr<Globals> globals_;
@@ -139,10 +139,10 @@ private:
     // Locators flagged as time-varying, per prim, dirtied on every time change.
     mutable std::unordered_map<pxr::SdfPath, pxr::HdDataSourceLocatorSet, pxr::SdfPath::Hash> timeVarying_;
     // Moves whenever any prim's bindings may have changed (a binding or collection edit, a resync), and the
-    // copy bindings computed at a generation.
-    std::atomic<uint64_t> bindingsGeneration_{1};
+    // revision used to compute the copy bindings.
+    std::atomic<uint64_t> bindingsRevision_{1};
     std::shared_ptr<const CopyBindings> copyBindings_;
-    uint64_t copyBindingsAt_ = 0;
+    uint64_t copyBindingsRevision_ = 0;
     // Properties stage edits changed since the last ApplyPendingUpdates, per prim.
     std::unordered_map<pxr::SdfPath, pxr::TfTokenVector, pxr::SdfPath::Hash> pending_;
 };

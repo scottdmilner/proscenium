@@ -17,14 +17,14 @@ from pxr import Usd
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
-from proscenium.binding.persistence.ledgers import OriginatingOperation
+from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
-from proscenium.binding.source_access.stages import PayloadPolicy
+from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
-from proscenium.synchronization import application, prepared_work, removal
+from proscenium.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -33,9 +33,9 @@ if TYPE_CHECKING:
     from pxr import Gf
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
-    from proscenium.binding.source_access.identifiers import BindingId
-    from proscenium.synchronization.prepared_work import PreparedWork
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
+    from proscenium.binding.source_access import BindingId
+    from proscenium.synchronization.preparation_resources import PreparationResources
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
 SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
@@ -49,11 +49,11 @@ def _binding(bindings: Bindings) -> BindingId:
     return bindings.create_binding(bpy.data.scenes["Scene"]).binding_id
 
 
-def _work(binding_id: BindingId) -> PreparedWork:
-    return prepared_work.new_prepared_work(binding_id, OriginatingOperation.SYNCHRONIZE)
+def _work(binding_id: BindingId) -> PreparationResources:
+    return preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
-def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparedWork:
+def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
     application.prepare(plan, published or Manifest({}), work)
     return work
@@ -90,14 +90,14 @@ def test_a_drawn_copy_per_partition_in_no_scene(bindings: Bindings, tmp_path: Pa
     # TXN-05: an object drawing its bounds, and its bounds mesh, per drawn gprim, linked only in the staging collection.
     with transaction.retirement_failure(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
-        objects = list(work.staging.objects)
+        objects = list(work.staging_collection.objects)
         assert len(objects) == len(transaction.DRAWN[PayloadPolicy.LOAD_ALL])
-        assert not any(work.staging in s.collection.children_recursive for s in bpy.data.scenes)
-        assert all(obj.users_collection == (work.staging,) for obj in objects)
+        assert not any(work.staging_collection in s.collection.children_recursive for s in bpy.data.scenes)
+        assert all(obj.users_collection == (work.staging_collection,) for obj in objects)
         low, high = EXTENT
         corners = {(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])}
         for obj in objects:
-            source = work.entries[_key(work, obj)].covers[0]
+            source = work.manifest_entries[_key(work, obj)].source_entity_paths[0]
             assert obj.display_type == "BOUNDS"
             assert obj.matrix_world.translation[:] == pytest.approx(translation(source, 0.0))
             assert {v.co[:] for v in obj.data.vertices} == corners  # ty: ignore[unresolved-attribute]
@@ -108,43 +108,44 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
     # object using its own bounds mesh.
     with transaction.retirement_failure(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
-        assert len(work.entries) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
-        assert work.datablocks.keys() == work.entries.keys()
-        for key, entry in work.entries.items():
+        assert len(work.manifest_entries) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
+        assert work.datablocks.keys() == work.manifest_entries.keys()
+        for key, entry in work.manifest_entries.items():
             assert entry.datablock == work.datablocks[key]
             assert entry.role in ROLES_PER_PLACEHOLDER
             if entry.role is RepresentationRole.OBJECT:
-                [used] = entry.uses
+                [used] = entry.dependency_entry_keys
                 assert entry.datablock.data == work.datablocks[used]  # ty: ignore[unresolved-attribute]
-                bounds_mesh = CopyResourceIdentity(RepresentationRole.BOUNDS_MESH, entry.covers[0], 0)
-                assert work.entries[used].identity == bounds_mesh
-            assert entry.identity == CopyResourceIdentity(entry.role, entry.covers[0], 0)
-        Manifest(work.entries)  # a whole manifest
+                bounds_mesh = CopyResourceIdentity(RepresentationRole.BOUNDS_MESH, entry.source_entity_paths[0], 0)
+                assert work.manifest_entries[used].identity == bounds_mesh
+            assert entry.identity == CopyResourceIdentity(entry.role, entry.source_entity_paths[0], 0)
+        Manifest(work.manifest_entries)  # a whole manifest
 
 
 def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
-    # The plan's copy_worlds holds Blender's layout, so foreach_set writes it as it stands, and the stub's objects get
-    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
+    # The plan's copy_world_matrices holds Blender's layout, so foreach_set writes it directly, and the stub's objects
+    # get the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
     # copies. Blender's objects hold no shear, so foreach_set loses it, and the stub's sheared copy shows it through its
     # unselectable shear parent, as Blender composes them from what each stores.
     with evaluation.transforms(tmp_path) as scene:
         plan = _plan(scene.stage, 0.0)
         expected = {
-            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed() for p, w in scene.world.items()
+            p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed()
+            for p, w in scene.world_matrices_by_source.items()
         }
-        sources = [c.source for c in plan.correspondence]
+        sources = [c.source_path for c in plan.correspondence]
         made = [bpy.data.objects.new(f"copy-{copy:04}", None) for copy in range(plan.copy_count)]
         assert list(bpy.data.objects) == made  # in copy order, so foreach_set's buffer lines up
-        bpy.data.objects.foreach_set("matrix_world", plan.copy_worlds)
+        bpy.data.objects.foreach_set("matrix_world", plan.copy_world_matrices)
         work = _prepared(_binding(bindings), plan)
         prepared = {
-            work.entries[key].covers[0]: obj
-            for obj in work.staging.objects
-            if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+            work.manifest_entries[key].source_entity_paths[0]: obj
+            for obj in work.staging_collection.objects
+            if work.manifest_entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
         }
         for source, obj in zip(sources, made, strict=True):
             shown = prepared[source]
-            if source not in scene.sheared:
+            if source not in scene.sheared_paths:
                 assert _close(obj.matrix_world, expected[source]), source
                 assert (shown.parent, _close(shown.matrix_world, expected[source])) == (None, True), source
                 continue
@@ -160,8 +161,8 @@ def test_each_copy_is_hidden_where_it_does_not_display(bindings: Bindings, tmp_p
         plan = _plan(scene.stage, 0.0)
         work = _prepared(_binding(bindings), plan)
         hidden = {
-            work.entries[_key(work, obj)].covers[0]: (obj.hide_viewport, obj.hide_render)
-            for obj in work.staging.objects
+            work.manifest_entries[_key(work, obj)].source_entity_paths[0]: (obj.hide_viewport, obj.hide_render)
+            for obj in work.staging_collection.objects
         }
         assert hidden == {
             path: (
@@ -180,8 +181,8 @@ def test_each_provisional_mesh_copy_draws_its_extent(bindings: Bindings, tmp_pat
     with evaluation.units_up_axis(tmp_path) as scene:
         work = _prepared(_binding(bindings), _plan(scene.stages["z-up-m"], 0.0))
         shown = _shown(work)
-        assert shown.keys() == scene.world.keys()
-        for path, world in scene.world.items():
+        assert shown.keys() == scene.world_matrices_by_source.keys()
+        for path, world in scene.world_matrices_by_source.items():
             assert _close(shown[path].matrix_world, _blender(world)), path
             assert _vertices(shown[path]) == pytest.approx(_box(scene.bounds)), path
 
@@ -193,11 +194,11 @@ def test_an_empty_marker_is_an_object_holding_no_data(bindings: Bindings, tmp_pa
         work = _prepared(_binding(bindings), _plan(scene.stage, 0.0))
         shown = _shown(work)
         for path, expected in scene.placeholders.items():
-            assert _close(shown[path].matrix_world, _blender(expected.world)), path
-            if expected.bounds is None:
+            assert _close(shown[path].matrix_world, _blender(expected.world_matrix)), path
+            if expected.local_bounds is None:
                 assert shown[path].data is None, path
             else:
-                assert _vertices(shown[path]) == pytest.approx(_box(expected.bounds), rel=1e-6), path
+                assert _vertices(shown[path]) == pytest.approx(_box(expected.local_bounds), rel=1e-6), path
 
 
 def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindings, tmp_path: Path) -> None:
@@ -222,17 +223,19 @@ def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindi
         # In the plan's order: each object's prim, then a shear parent's after its object.
         resources = plan.resources
         prims = [
-            r.entity.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
+            r.source_entity_path.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
             for r in resources
             if r.role in ("object", "shear parent")
         ]
-        assert [n.split(" ", 1)[1] for n in sorted(o.name for o in first.staging.objects)] == prims
+        assert [n.split(" ", 1)[1] for n in sorted(o.name for o in first.staging_collection.objects)] == prims
         # The managed objects follow the user's, but for the one named to sort after them, the second generation's after
         # the first's.
-        managed = [o.name for o in (*first.staging.objects, *second.staging.objects)]
+        managed = [o.name for o in (*first.staging_collection.objects, *second.staging_collection.objects)]
         assert [o.name for o in bpy.data.objects] == ["Chair", "zebra", *sorted(managed), "~zzz user"]
-        assert max(o.name for o in first.staging.objects) < min(o.name for o in second.staging.objects)
-        for obj in (*first.staging.objects, *second.staging.objects):
+        assert max(o.name for o in first.staging_collection.objects) < min(
+            o.name for o in second.staging_collection.objects
+        )
+        for obj in (*first.staging_collection.objects, *second.staging_collection.objects):
             assert obj.data is None or obj.data.name == obj.name, obj.name
 
 
@@ -248,15 +251,15 @@ def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> N
         before = _records()
         work = _prepared(binding_id, _plan(scene.caller, 0.0))
         assert {(key, work.roles[key], d) for key, d in work.datablocks.items()} == {
-            (key, entry.role, entry.datablock) for key, entry in work.entries.items()
+            (key, entry.role, entry.datablock) for key, entry in work.manifest_entries.items()
         }
         assert _ledger() == {}
-        bpy.data.batch_remove([work.staging])  # which holds no records
+        bpy.data.batch_remove([work.staging_collection])  # which holds no records
         assert _records() == before
 
 
 # Preparation's fallible steps after a resource is made, by the function each runs: its call-th call fails.
-_STEPS = [("_corners", call) for call in range(1, 5)] + [("_world", call) for call in range(1, 5)]
+_STEPS = [("_corners", call) for call in range(1, 5)] + [("_matrix_from_buffer", call) for call in range(1, 5)]
 
 
 @pytest.mark.parametrize(("step", "call"), _STEPS)
@@ -273,10 +276,10 @@ def test_a_failure_after_a_resource_is_made_finds_it_held(
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):
             application.prepare(plan, Manifest({}), work)
-        made = _datablocks() - before - {work.staging}
+        made = _datablocks() - before - {work.staging_collection}
         assert made == set(work.datablocks.values())
         assert len(made) == 2 * call - (step == "_corners")  # a placeholder's mesh is made before its corners
-        assert prepared_work.dispose(work) == ()
+        assert preparation_resources.dispose(work) == ()
         assert _datablocks() == before
         assert _ledger() == {}
 
@@ -292,12 +295,12 @@ def test_a_replacement_takes_the_published_keys_and_changes_nothing_published(
         published = _prepared(binding_id, _plan(scene.caller, first))
         objects = _publish(published)
         before = _values(objects)
-        replacement = _prepared(binding_id, _plan(scene.caller, second), Manifest(published.entries))
-        assert replacement.entries.keys() == published.entries.keys()
+        replacement = _prepared(binding_id, _plan(scene.caller, second), Manifest(published.manifest_entries))
+        assert replacement.manifest_entries.keys() == published.manifest_entries.keys()
         assert set(replacement.datablocks.values()).isdisjoint(published.datablocks.values())
         assert _values(objects) == before
         assert _ledger() == {}
-        mover = next(o for o in replacement.staging.objects if "Mover" in o.name)
+        mover = next(o for o in replacement.staging_collection.objects if "Mover" in o.name)
         assert mover.matrix_world.translation[:] == pytest.approx(translation("/World/Mover", second))
 
 
@@ -306,11 +309,13 @@ def test_only_the_same_identity_takes_a_published_key(bindings: Bindings, tmp_pa
     with transaction.retirement_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         published = _prepared(binding_id, _plan(scene.caller, 0.0))
-        unloaded = _plan(open_fresh(scene.root, PayloadPolicy.LOAD_NONE.load_set), 0.0)  # without /World/Payloaded
+        unloaded = _plan(
+            open_stage_without_cache(scene.root_layer_path, PayloadPolicy.LOAD_NONE.load_set), 0.0
+        )  # without /World/Payloaded
         drawn = transaction.DRAWN[PayloadPolicy.LOAD_NONE]
-        kept = {key for key, entry in published.entries.items() if entry.covers[0] in drawn}
-        replacement = _prepared(binding_id, unloaded, Manifest(published.entries))
-        assert replacement.entries.keys() == kept
+        kept = {key for key, entry in published.manifest_entries.items() if entry.source_entity_paths[0] in drawn}
+        replacement = _prepared(binding_id, unloaded, Manifest(published.manifest_entries))
+        assert replacement.manifest_entries.keys() == kept
 
 
 def test_dispose_removes_what_was_prepared_and_writes_no_ledger_entry(bindings: Bindings, tmp_path: Path) -> None:
@@ -318,9 +323,9 @@ def test_dispose_removes_what_was_prepared_and_writes_no_ledger_entry(bindings: 
         binding_id = _binding(bindings)
         before = _datablocks()
         work = _prepared(binding_id, _plan(scene.caller, 0.0))
-        assert prepared_work.dispose(work) == ()
+        assert preparation_resources.dispose(work) == ()
         assert _datablocks() == before
-        assert (work.datablocks, work.roles, work.entries) == ({}, {}, {})
+        assert (work.datablocks, work.roles, work.manifest_entries) == ({}, {}, {})
         assert _ledger() == {}
 
 
@@ -333,20 +338,20 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         plan = _plan(scene.caller, 0.0)
-        _fail_on_call(monkeypatch, "_world", 2)
+        _fail_on_call(monkeypatch, "_matrix_from_buffer", 2)
         before = _datablocks()
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):
             application.prepare(plan, Manifest({}), work)
         assert len(work.datablocks) == scene.prepared_before_failure
         failing = _fail_disposal(monkeypatch, work, scene.failed_disposals)
-        diagnostics = prepared_work.dispose(work)
+        diagnostics = preparation_resources.dispose(work)
         assert _datablocks() - before == failing
         assert all(not d.users_collection for d in failing if isinstance(d, bpy.types.Object))
         ledger = _ledger()
         assert {e.datablock for e in ledger.values()} == failing
         assert {e.diagnostic for e in ledger.values()} == set(diagnostics)
-        assert {(d.code, d.binding_id, d.resource, d.role) for d in diagnostics} == {
+        assert {(d.code, d.binding_id, d.pending_resource_key, d.role) for d in diagnostics} == {
             (DiagnosticCode.DISPOSAL_FAILED, binding_id, ledger_key, entry.role) for ledger_key, entry in ledger.items()
         }
 
@@ -359,35 +364,37 @@ def test_a_leftover_survives_save_and_reopen_through_its_pointer(
         work = _prepared(_binding(bindings), _plan(scene.caller, 0.0))
         [leftover] = _fail_disposal(monkeypatch, work, (RepresentationRole.BOUNDS_MESH,))
         name = leftover.name
-        [diagnostic] = prepared_work.dispose(work)
+        [diagnostic] = preparation_resources.dispose(work)
         save_and_reopen(tmp_path / "leftover.blend")
         [(ledger_key, entry)] = _ledger().items()
         assert entry.datablock == bpy.data.meshes[name]
-        assert (ledger_key, entry.diagnostic) == (diagnostic.resource, diagnostic)
+        assert (ledger_key, entry.diagnostic) == (diagnostic.pending_resource_key, diagnostic)
 
 
-def _publish(work: PreparedWork) -> list[bpy.types.Object]:
+def _publish(work: PreparationResources) -> list[bpy.types.Object]:
     """Link work's objects into a destination, as a publication does; the objects."""
     destination = bpy.data.collections.new("Shot")
     bpy.data.scenes["Scene"].collection.children.link(destination)
-    objects = list(work.staging.objects)
+    objects = list(work.staging_collection.objects)
     for obj in objects:
         destination.objects.link(obj)
-        work.staging.objects.unlink(obj)
+        work.staging_collection.objects.unlink(obj)
     return objects
 
 
-def _fail_disposal(monkeypatch: pytest.MonkeyPatch, work: PreparedWork, roles: tuple[str, ...]) -> set[bpy.types.ID]:
+def _fail_disposal(
+    monkeypatch: pytest.MonkeyPatch, work: PreparationResources, roles: tuple[str, ...]
+) -> set[bpy.types.ID]:
     """Make disposal fail for the first held datablock of each role; those datablocks."""
     failing = {next(d for key, d in work.datablocks.items() if work.roles[key] == role) for role in roles}
-    remove = removal._batch_remove  # noqa: SLF001
+    remove = datablock_removal._batch_remove  # noqa: SLF001
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(d in failing for d in datablocks):  # a call removing one fails, the batch's included
             raise RuntimeError("disposal injected")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing_remove)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing_remove)
     return {d for d in failing if d is not None}
 
 
@@ -405,17 +412,17 @@ def _fail_on_call(monkeypatch: pytest.MonkeyPatch, step: str, call: int) -> None
     monkeypatch.setattr(application, step, failing)
 
 
-def _key(work: PreparedWork, datablock: bpy.types.ID) -> str:
+def _key(work: PreparationResources, datablock: bpy.types.ID) -> str:
     [key] = [k for k, d in work.datablocks.items() if d == datablock]
     return key
 
 
-def _shown(work: PreparedWork) -> dict[str, bpy.types.Object]:
+def _shown(work: PreparationResources) -> dict[str, bpy.types.Object]:
     """The prepared copies' objects, by the source each shows."""
     return {
-        work.entries[key].covers[0]: obj
-        for obj in work.staging.objects
-        if work.entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
+        work.manifest_entries[key].source_entity_paths[0]: obj
+        for obj in work.staging_collection.objects
+        if work.manifest_entries[key := _key(work, obj)].role == RepresentationRole.OBJECT
     }
 
 

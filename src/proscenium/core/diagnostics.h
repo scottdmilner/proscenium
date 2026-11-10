@@ -43,21 +43,21 @@ const char* DiagnosticCodeName(DiagnosticCode code);
 // One reported problem. The fields that don't apply to it are empty (DIAG-02).
 struct Diagnostic {
   DiagnosticCode code;
-  PXR_NS::SdfPath source;  // the source entity it concerns, as a composed-stage path; a Hydra path in a snapshot
+  PXR_NS::SdfPath sourcePath;  // the source entity it concerns, as a composed-stage path; a Hydra path in a snapshot
   std::string message;
-  PXR_NS::SdfPath property;  // the property it concerns
-  std::string asset;         // the asset it concerns, as authored
-  std::string fallback;      // what is displayed in its place
-  // What Summarize words into the message once planning is done:
-  PXR_NS::SdfPath hydraPrim;  // the Hydra prim one with no source entity concerns; empty for none
-  std::size_t copies = 0;     // the drawn copies of its source it covers, counted past one
+  PXR_NS::SdfPath propertyPath;     // the property it concerns
+  std::string assetIdentifier;      // the asset it concerns, as authored
+  std::string fallbackDescription;  // what is displayed in its place
+  // What SummarizeRepeatedDiagnostics words into the message once planning is done:
+  PXR_NS::SdfPath hydraPrimPath;   // the Hydra prim one with no source entity concerns; empty for none
+  std::size_t drawnCopyCount = 0;  // the total drawn copies of its source covered; zero before source mapping
 };
 
 using Diagnostics = std::vector<Diagnostic>;
 
 // Appends `from` to `to`, skipping exact repeats: Hydra may read a value more than once, posting the same warning each
 // time (M1b Phase C log).
-void AppendUnique(const Diagnostics& from, Diagnostics& to);
+void AppendUniqueDiagnostics(const Diagnostics& from, Diagnostics& to);
 
 // The most diagnostics one problem gets, each about its own prim, before a last one counts the rest (with the user):
 // a problem repeated across thousands of prims, such as curves of one untranslated type, stays a short list.
@@ -66,7 +66,7 @@ inline constexpr std::size_t kListedPerProblem = 10;
 // Finishes a plan's diagnostics in place. A problem, a diagnostic's code, message, property, asset, and fallback, keeps
 // its first kListedPerProblem diagnostics in order; the rest give way to one more, where the first left out was, with
 // no source, counting them. Each kept one's message then names its Hydra prim and counts its copies.
-void Summarize(Diagnostics& diagnostics);
+void SummarizeRepeatedDiagnostics(Diagnostics& diagnostics);
 
 // Moves the Tf errors posted since `mark` into `out` as usd-error diagnostics about `source`, clearing them.
 void HarvestErrors(const PXR_NS::TfErrorMark& mark, const PXR_NS::SdfPath& source, Diagnostics& out);
@@ -88,7 +88,7 @@ class TfDiagnosticCollector final : public PXR_NS::TfDiagnosticMgr::Delegate {
   void IssueWarning(const PXR_NS::TfWarning& warning) override;
 
   // What it has collected, in the order posted, which it then forgets.
-  Diagnostics Take();
+  Diagnostics TakeDiagnostics();
 
   // Attributes what the current thread posts, while it lives, to `source`, which must outlive it.
   class ScopedSource {

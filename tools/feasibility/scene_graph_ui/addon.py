@@ -50,7 +50,9 @@ TYPE_ICONS = {
 
 
 # The process's one tree, rebuilt from scratch whenever a stage opens (state outside RNA is lost on file load).
-class _State:
+class _SceneGraphUiState:
+    """The open scene graph, selected prim, and search status."""
+
     tree: tree_model.StageTree | None = None
     selected: Usd.Prim | None = None
     search_status = ""  # what the last search found, or why it couldn't run
@@ -65,26 +67,26 @@ def _type_icon(type_name: str) -> str:
 
 def _sync_rows(wm: Any) -> None:
     """Resize the UIList's collection to the model's row count, and keep the selected prim's row active."""
-    tree = _State.tree
+    tree = _SceneGraphUiState.tree
     rows = wm.poc_sg_rows
     count = len(tree.rows) if tree else 0
     if len(rows) > count:
         rows.clear()  # removing items one by one from the end is quadratic
     for _ in range(count - len(rows)):
         rows.add()
-    if tree and _State.selected is not None:
-        index = tree.position(_State.selected)
+    if tree and _SceneGraphUiState.selected is not None:
+        index = tree.position(_SceneGraphUiState.selected)
         # Blender 5 keeps bpy.props apart from dict-style ID properties, so a flag stops the update callback.
-        _State.syncing = True
+        _SceneGraphUiState.syncing = True
         try:
             wm.poc_sg_active = index
         finally:
-            _State.syncing = False
+            _SceneGraphUiState.syncing = False
 
 
 def _set_stage(context: Any, stage: Usd.Stage) -> None:
-    _State.tree = tree_model.StageTree(stage)
-    _State.selected = None
+    _SceneGraphUiState.tree = tree_model.StageTree(stage)
+    _SceneGraphUiState.selected = None
     native_tree.reset()
     _sync_rows(context.window_manager)
     context.window_manager.poc_sg_active = -1
@@ -92,11 +94,11 @@ def _set_stage(context: Any, stage: Usd.Stage) -> None:
 
 
 def _on_active_row(wm: Any, _context: Any) -> None:
-    if _State.syncing:
+    if _SceneGraphUiState.syncing:
         return
-    tree = _State.tree
+    tree = _SceneGraphUiState.tree
     index = wm.poc_sg_active
-    _State.selected = tree.rows[index].prim if tree and 0 <= index < len(tree.rows) else None
+    _SceneGraphUiState.selected = tree.rows[index].prim if tree and 0 <= index < len(tree.rows) else None
 
 
 def _redraw_sidebars() -> None:
@@ -128,24 +130,24 @@ def _query(wm: Any) -> tree_search.SearchQuery:
 
 def apply_search(wm: Any) -> None:
     """Filter the tree by the search fields now; an empty search shows everything, keeping the selection revealed."""
-    tree = _State.tree
+    tree = _SceneGraphUiState.tree
     if tree is None:
         return
     query = _query(wm)
     if query.is_empty():
-        tree.set_search(None, keep=_State.selected)
-        _State.search_status = ""
+        tree.set_search(None, keep=_SceneGraphUiState.selected)
+        _SceneGraphUiState.search_status = ""
     else:
         start = time.perf_counter()
         try:
             result = tree_search.search(tree.stage, query, SEARCH_CAP)
         except tree_search.SearchError as error:
-            _State.search_status = f"Search: {error}"
+            _SceneGraphUiState.search_status = f"Search: {error}"
             return
         elapsed = (time.perf_counter() - start) * 1000
         tree.set_search(result)
-        first = f"first {SEARCH_CAP:,} " if result.truncated else ""
-        _State.search_status = f"{first}{len(result.matches):,} matches in {elapsed:.0f} ms"
+        first = f"first {SEARCH_CAP:,} " if result.is_truncated else ""
+        _SceneGraphUiState.search_status = f"{first}{len(result.matching_prims):,} matches in {elapsed:.0f} ms"
     _sync_rows(wm)
 
 
@@ -167,7 +169,7 @@ def _row_index(item: Any) -> int:
 
 
 def _row_tooltip(item: Any) -> str:
-    tree = _State.tree
+    tree = _SceneGraphUiState.tree
     index = _row_index(item)
     return prim_text.row_tooltip(tree.rows[index].prim) if tree and index < len(tree.rows) else ""
 
@@ -195,7 +197,7 @@ class POC_SG_UL_tree(bpy.types.UIList):  # noqa: N801 - Blender's class naming
         index: int | None,
         flt_flag: int | None,
     ) -> None:
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None or index is None or index >= len(tree.rows):
             return
         tree_row = tree.rows[index]
@@ -203,7 +205,7 @@ class POC_SG_UL_tree(bpy.types.UIList):  # noqa: N801 - Blender's class naming
         split = layout.split(factor=NAME_COLUMN if data.poc_sg_show_type else 0.85)
         row = split.row(align=True)
         # Inactive prims, overs, classes, and rows that only hold search matches draw greyed.
-        row.active = row_data.active and row_data.specifier == Sdf.SpecifierDef and tree.is_match(tree_row)
+        row.is_active = row_data.is_active and row_data.specifier == Sdf.SpecifierDef and tree.is_match(tree_row)
         # One small separator per level: a separator's spacer is square, so one deep one would make the row taller.
         for _ in range(tree_row.depth):
             row.separator(factor=INDENT)
@@ -271,7 +273,7 @@ class POC_SG_OT_toggle(bpy.types.Operator):  # noqa: N801 - Blender's class nami
     @classmethod
     def description(cls, context: Any, properties: Any) -> str:
         # The disclosure triangle's tooltip: what a click does to this row, and the keys that do the same.
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None or properties.row_index >= len(tree.rows):
             return ""
         row = tree.rows[properties.row_index]
@@ -285,7 +287,7 @@ class POC_SG_OT_toggle(bpy.types.Operator):  # noqa: N801 - Blender's class nami
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None or not 0 <= self.row_index < len(tree.rows):
             return {"CANCELLED"}
         tree.toggle(self.row_index, recursive=self.recursive)
@@ -295,7 +297,7 @@ class POC_SG_OT_toggle(bpy.types.Operator):  # noqa: N801 - Blender's class nami
 
 def step(wm: Any, direction: str, recursive: bool) -> None:
     """Move through the tree from the keys: IN expands the active row or steps in, OUT collapses it or steps out."""
-    tree = _State.tree
+    tree = _SceneGraphUiState.tree
     if tree is None or not tree.rows:
         return
     index = min(max(wm.poc_sg_active, 0), len(tree.rows) - 1)
@@ -303,7 +305,7 @@ def step(wm: Any, direction: str, recursive: bool) -> None:
         tree.set_expanded(index, direction == "IN", recursive=True)
         target = index
     else:
-        target = tree.step_in(index) if direction == "IN" else tree.step_out(index)
+        target = tree.expand_or_enter_row(index) if direction == "IN" else tree.collapse_or_select_parent(index)
     _sync_rows(wm)
     wm.poc_sg_active = target
 
@@ -322,7 +324,7 @@ class POC_SG_OT_badge(bpy.types.Operator):  # noqa: N801 - Blender's class namin
     @classmethod
     def description(cls, context: Any, properties: Any) -> str:
         # The tooltip, asked for each button as it is hovered; properties are the button's own.
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None or properties.row_index >= len(tree.rows):
             return ""
         return prim_text.badge_tooltip(tree.rows[properties.row_index].prim, properties.badge)
@@ -403,7 +405,7 @@ class POC_SG_OT_find(bpy.types.Operator):  # noqa: N801 - Blender's class naming
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None:
             return {"CANCELLED"}
         needle = self.text.lower()
@@ -413,7 +415,7 @@ class POC_SG_OT_find(bpy.types.Operator):  # noqa: N801 - Blender's class naming
             self.report({"WARNING"}, f"No prim named like {self.text!r}")
             return {"CANCELLED"}
         tree.reveal(match)
-        _State.selected = match
+        _SceneGraphUiState.selected = match
         _sync_rows(context.window_manager)
         return {"FINISHED"}
 
@@ -433,7 +435,7 @@ class TreePanel:
         row.operator(POC_SG_OT_open_stage.bl_idname, icon="FILE_FOLDER", text="Open")
         row.operator(POC_SG_OT_generate.bl_idname, icon="ADD", text="Generate")
         row.operator(POC_SG_OT_find.bl_idname, icon="VIEWZOOM", text="")
-        tree = _State.tree
+        tree = _SceneGraphUiState.tree
         if tree is None:
             layout.label(text="No stage open")
             return
@@ -441,7 +443,7 @@ class TreePanel:
         search.prop(wm, "poc_sg_search", text="", icon="VIEWZOOM", placeholder="Search prims")
         search.prop(wm, "poc_sg_search_mode", text="")
         search.prop(wm, "poc_sg_search_case", text="Aa", toggle=True)
-        status = _State.search_status or f"{len(tree.rows):,} visible rows"
+        status = _SceneGraphUiState.search_status or f"{len(tree.rows):,} visible rows"
         layout.label(text=status, icon="ERROR" if status.startswith("Search:") else "NONE")
         _draw_header(layout, wm)
         layout.template_list(
@@ -465,8 +467,8 @@ class DetailsPanel:
 
     def draw(self, context: Any) -> None:
         layout: Any = self.layout  # never None while drawing
-        tree = _State.tree
-        prim = _State.selected
+        tree = _SceneGraphUiState.tree
+        prim = _SceneGraphUiState.selected
         native = native_tree.active_path()
         col = layout.column(align=True)
         if native is not None:
@@ -498,9 +500,9 @@ class POC_SG_PT_details(DetailsPanel, bpy.types.Panel):  # noqa: N801 - Blender'
 
 @persistent
 def _on_load_post(_file: str) -> None:
-    _State.tree = None
-    _State.selected = None
-    _State.search_status = ""
+    _SceneGraphUiState.tree = None
+    _SceneGraphUiState.selected = None
+    _SceneGraphUiState.search_status = ""
     native_tree.reset()
 
 
@@ -523,7 +525,7 @@ def register() -> None:
     badge_icons.register()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
-    native_tree.register(lambda: _State.tree.stage if _State.tree else None)
+    native_tree.register(lambda: _SceneGraphUiState.tree.stage if _SceneGraphUiState.tree else None)
     wm_type: Any = bpy.types.WindowManager
     wm_type.poc_sg_rows = bpy.props.CollectionProperty(type=POC_SG_Row)
     wm_type.poc_sg_active = bpy.props.IntProperty(default=-1, update=_on_active_row)

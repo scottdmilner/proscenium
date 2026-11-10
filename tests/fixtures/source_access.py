@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd, UsdUtils
 
-from support.usd import open_fresh
+from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
 
@@ -123,7 +123,7 @@ def rewrite_on_disk(scene: Path, layer: str, value: float) -> None:
 
 @dataclass
 class DirtyLayerScene:
-    root: Path
+    root_layer_path: Path
     caller: Usd.Stage  # another tool's stage; it keeps the edited layers open
     dirty_contributing: dict[str, Path]  # contributing layers (load-all) with unsaved in-process edits
     dirty_not_contributing: dict[str, Path]  # layers with unsaved edits that the stage does not compose
@@ -141,7 +141,7 @@ def dirty_layer(dest: Path) -> Generator[DirtyLayerScene]:
     unselected variant is also dirty, but does not contribute.
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
-    caller = open_fresh(scene / "root.usda")
+    caller = open_stage_without_cache(scene / "root.usda")
     contributing = {name: _layer_file(scene, name) for name in ("ref", "pay", "var_a")}
     # Opened directly, as another tool might: the caller's stage never loads it.
     not_contributing = {"var_b": _layer_file(scene, "var_b")}
@@ -150,7 +150,7 @@ def dirty_layer(dest: Path) -> Generator[DirtyLayerScene]:
         _set_layer_value(Sdf.Layer.Find(str(path)), name, 99.0)
     rewrite_on_disk(scene, "sub", 2.0)
     yield DirtyLayerScene(
-        root=scene / "root.usda",
+        root_layer_path=scene / "root.usda",
         caller=caller,
         dirty_contributing=contributing,
         dirty_not_contributing=not_contributing,
@@ -163,7 +163,7 @@ def dirty_layer(dest: Path) -> Generator[DirtyLayerScene]:
 
 @dataclass
 class PrivateStageScene:
-    root: Path
+    root_layer_path: Path
     caller: Usd.Stage  # the caller's stage, with non-default settings
     settings: dict[str, object]  # caller_settings(caller) at build time; a binding must not change it
     layers: dict[str, str]  # layer_contents(caller) at build time; a binding must not author to them
@@ -212,7 +212,7 @@ def private_stage(dest: Path) -> Generator[PrivateStageScene]:
     Sdf.AttributeSpec(world, "unsavedValue", Sdf.ValueTypeNames.Double).default = 7.0
     caller.SetEditTarget(Usd.EditTarget(Sdf.Layer.Find(str(_layer_file(scene, "sub")))))
     yield PrivateStageScene(
-        root=root,
+        root_layer_path=root,
         caller=caller,
         settings=caller_settings(caller),
         layers=layer_contents(caller),
@@ -224,7 +224,7 @@ def private_stage(dest: Path) -> Generator[PrivateStageScene]:
 
 @dataclass
 class CachedStageScene:
-    root: Path
+    root_layer_path: Path
     ambient: Usd.Stage  # cached stage for the same root, with non-default state
     cache_id: Usd.StageCache.Id  # its UsdUtils.StageCache id
     ambient_values: dict[str, float | None]  # what the ambient stage composes
@@ -241,7 +241,7 @@ def cached_stage(dest: Path) -> Generator[CachedStageScene]:
     """
     scene = copy_scene(Scene.SOURCE_ACCESS, dest)
     root = scene / "root.usda"
-    ambient = open_fresh(root, Usd.Stage.LoadNone)
+    ambient = open_stage_without_cache(root, Usd.Stage.LoadNone)
     ambient.MuteLayer(str(_layer_file(scene, "extra")))
     with Usd.EditContext(ambient, ambient.GetSessionLayer()):
         ambient.GetPrimAtPath("/World").GetAttribute("rootValue").Set(5.0)
@@ -251,7 +251,7 @@ def cached_stage(dest: Path) -> Generator[CachedStageScene]:
     try:
         with Usd.StageCacheContext(cache):
             yield CachedStageScene(
-                root=root,
+                root_layer_path=root,
                 ambient=ambient,
                 cache_id=cache_id,
                 ambient_values=DISK
@@ -264,7 +264,7 @@ def cached_stage(dest: Path) -> Generator[CachedStageScene]:
 
 @dataclass
 class ReattachScene:
-    root: Path
+    root_layer_path: Path
     caller: Usd.Stage  # the caller's stage, attached first
     same_root: Usd.Stage  # another stage over caller's root layer object, with its own session layer
     other_root: Usd.Stage  # a stage over a copy of the scene: same content, a different root-layer identifier
@@ -281,10 +281,10 @@ def reattach(dest: Path) -> Generator[ReattachScene]:
     root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
     other = copy_scene(Scene.SOURCE_ACCESS, dest / "copy") / "root.usda"
     yield ReattachScene(
-        root=root,
-        caller=open_fresh(root),
-        same_root=open_fresh(root),
-        other_root=open_fresh(other),
+        root_layer_path=root,
+        caller=open_stage_without_cache(root),
+        same_root=open_stage_without_cache(root),
+        other_root=open_stage_without_cache(other),
         values=dict(DISK),
     )
 
@@ -295,7 +295,7 @@ ROOT_FORMATS = (".usda", ".usdc", ".usd")
 
 @dataclass
 class MultiBindingScene:
-    roots: dict[str, Path]  # by extension in ROOT_FORMATS: the same root layer in each format
+    root_layer_paths: dict[str, Path]  # by extension in ROOT_FORMATS: the same root layer in each format
     caller: Usd.Stage  # a caller's stage over the .usda root, loading every payload
     anonymous_caller: Usd.Stage  # the composed scene in anonymous layers, independent of the files
     values: dict[str, float | None]  # what each root composes, load-all
@@ -314,15 +314,15 @@ def multi_binding(dest: Path) -> Generator[MultiBindingScene]:
     for extension in (".usdc", ".usd"):
         roots[extension] = scene / f"root{extension}"
         root.Export(str(roots[extension]))
-    caller = open_fresh(roots[".usda"])
+    caller = open_stage_without_cache(roots[".usda"])
     with Usd.StageCacheContext(Usd.BlockStageCaches):
         anonymous_caller = Usd.Stage.Open(caller.Flatten())
-    yield MultiBindingScene(roots=roots, caller=caller, anonymous_caller=anonymous_caller, values=dict(DISK))
+    yield MultiBindingScene(root_layer_paths=roots, caller=caller, anonymous_caller=anonymous_caller, values=dict(DISK))
 
 
 @dataclass
 class BindingStateScene:
-    root: Path  # the caller's root-layer file
+    root_layer_path: Path  # the caller's root-layer file
     caller: Usd.Stage  # over root, for bindings to attach
     values: dict[str, float | None]  # what both compose, load-all
 
@@ -334,7 +334,7 @@ def binding_state(dest: Path) -> Generator[BindingStateScene]:
     The tests make the bindings in Blender data themselves, since the generator runs without bpy.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest) / "root.usda"
-    yield BindingStateScene(root=root, caller=open_fresh(root), values=dict(DISK))
+    yield BindingStateScene(root_layer_path=root, caller=open_stage_without_cache(root), values=dict(DISK))
 
 
 @dataclass(frozen=True)
@@ -347,7 +347,7 @@ class SavedDisplay:
     """
 
     parent_location: tuple[float, float, float]
-    location: tuple[float, float, float]  # the mesh object's, relative to its parent
+    mesh_local_location: tuple[float, float, float]  # the mesh object's, relative to its parent
     vertices: tuple[tuple[float, float, float], ...]
     faces: tuple[tuple[int, ...], ...]
     material_color: tuple[float, float, float, float]
@@ -356,7 +356,7 @@ class SavedDisplay:
 
 DISPLAY = SavedDisplay(
     parent_location=(1.0, 2.0, 3.0),
-    location=(0.5, 0.0, -1.0),
+    mesh_local_location=(0.5, 0.0, -1.0),
     vertices=((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0)),
     faces=((0, 1, 2, 3),),
     material_color=(0.8, 0.2, 0.1, 1.0),
@@ -371,16 +371,16 @@ DISPLAY = SavedDisplay(
 
 @dataclass
 class OfflineScene:
-    root: Path  # a binding's source, until move_away
+    root_layer_path: Path  # a binding's source, until move_away
     display: SavedDisplay
 
     def open_caller(self) -> Usd.Stage:
         """A caller's stage over root, to attach to a binding. Held, it keeps root's layers open after move_away."""
-        return open_fresh(self.root)
+        return open_stage_without_cache(self.root_layer_path)
 
     def move_away(self) -> None:
         """Move the source's files to another directory, so root no longer exists."""
-        self.root.parent.rename(self.root.parent.with_name("moved"))
+        self.root_layer_path.parent.rename(self.root_layer_path.parent.with_name("moved"))
 
 
 @contextmanager
@@ -391,4 +391,4 @@ def offline(dest: Path) -> Generator[OfflineScene]:
     M9 adds materials with image textures, whose files move away too.
     """
     root = copy_scene(Scene.SOURCE_ACCESS, dest / "source") / "root.usda"
-    yield OfflineScene(root=root, display=DISPLAY)
+    yield OfflineScene(root_layer_path=root, display=DISPLAY)

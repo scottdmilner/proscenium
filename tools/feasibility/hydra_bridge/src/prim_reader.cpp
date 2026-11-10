@@ -105,7 +105,7 @@ SdfPath ToHydraPath(const PrimRecord &record, const SdfPath &stagePath) {
     if (origin.IsEmpty() || origin.IsAbsolutePath() || stagePath.GetPathElementCount() == 0) return stagePath;
     const SdfPath prototype = stagePath.GetPrefixes().front();
     if (!TfStringStartsWith(prototype.GetName(), "__Prototype_")) return stagePath;
-    SdfPath root = record.path;
+    SdfPath root = record.hydraPath;
     for (size_t i = 0; i < origin.GetPathElementCount() && !root.IsAbsoluteRootPath(); ++i) root = root.GetParentPath();
     return stagePath.ReplacePrefix(prototype, root);
 }
@@ -184,14 +184,14 @@ bool ReadPrim(const HdSceneIndexBase &scene, const SdfPath &path, PrimRecord &re
     const HdSceneIndexPrim prim = scene.GetPrim(path);
     if (!prim.dataSource) return false;
     const HdContainerDataSourceHandle &source = prim.dataSource;
-    record.path = path;
-    record.type = prim.primType;
+    record.hydraPath = path;
+    record.hydraPrimType = prim.primType;
     const UsdImagingUsdPrimInfoSchema primInfo = UsdImagingUsdPrimInfoSchema::GetFromParent(source);
     record.usdTypeName = ValueOr(primInfo.GetTypeName());
     record.pointInstancerPrototype = static_cast<bool>(primInfo.GetPiPropagatedPrototypes());
     record.originPath = HdPrimOriginSchema::GetFromParent(source).GetOriginPath(HdPrimOriginSchemaTokens->scenePath);
     if (const HdMatrixDataSourceHandle matrix = HdXformSchema::GetFromParent(source).GetMatrix())
-        record.matrix = matrix->GetTypedValue(kNow);
+        record.flattenedWorldMatrix = matrix->GetTypedValue(kNow);
     record.visible = ValueOr(HdVisibilitySchema::GetFromParent(source).GetVisibility(), true);
     record.purpose = ValueOr(HdPurposeSchema::GetFromParent(source).GetPurpose());
     ReadMaterialBindings(source, record);
@@ -225,7 +225,7 @@ PrimTable ReadPrims(const HdSceneIndexBaseRefPtr &scene) {
     PrimTable table;
     for (size_t i = 0; i < records.size(); ++i) {
         if (!present[i]) continue;
-        table.index.emplace(records[i].path, table.prims.size());
+        table.primIndexByPath.emplace(records[i].hydraPath, table.prims.size());
         table.prims.push_back(std::move(records[i]));
     }
     return table;
