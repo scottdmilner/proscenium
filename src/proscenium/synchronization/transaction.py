@@ -16,23 +16,23 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
-from ..binding.persistence import binding_state, ledgers, manifests, records
+from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_configs
+from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources, publication, retirement
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..binding.persistence import configs
+    from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_ids
 
 
 def synchronize(
-    binding_id: identifiers.BindingId,
-    config: configs.BindingConfig,
+    binding_id: binding_ids.BindingId,
+    config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode | None,
 ) -> Result:
@@ -42,19 +42,19 @@ def synchronize(
     t is frame t (transforms.md#transforms-and-time-codes). The binding's stages are current's, made only once the
     source is accessed, so a binding failing before that gets none.
     """
-    record = binding_configs.require_canonical_binding_record(binding_id)
+    record = binding_operations.require_canonical_binding_record(binding_id)
     scene, destination = config.scene, record.collection
     assert scene is not None  # a binding's candidate names a target scene that exists
     if time_code is None:
         time_code = Usd.TimeCode(scene.frame_current + scene.frame_subframe)
-    if isinstance(last := binding_state.read_last_attempt(destination), records.RefusedRecord):
+    if isinstance(last := binding_state.read_last_attempt(destination), id_property_records.RefusedRecord):
         # Kept, so this attempt goes unrecorded.
         return Result(
             Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, last.message), attempted_time_codes=(time_code,)
         )
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
-    binding_configs.restore_missing_binding_index_entry(binding_id, record)
+    binding_operations.restore_missing_binding_index_entry(binding_id, record)
     result = Result(*_attempt(binding_id, config, destination, current, time_code), attempted_time_codes=(time_code,))
     encoded_time_code = binding_state.encode_time_code(time_code)
     attempt = binding_state.LastSynchronizationAttempt(config.requested_settings, encoded_time_code, result.diagnostics)
@@ -63,8 +63,8 @@ def synchronize(
 
 
 def _attempt(
-    binding_id: identifiers.BindingId,
-    config: configs.BindingConfig,
+    binding_id: binding_ids.BindingId,
+    config: binding_records.BindingConfig,
     destination: bpy.types.Collection,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode,
@@ -75,9 +75,9 @@ def _attempt(
     # A manifest naming an unknown role is one that can't be read (ROLE-01).
     manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
-    if isinstance(manifest, records.RefusedRecord):
+    if isinstance(manifest, id_property_records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
-    if isinstance(generation, records.RefusedRecord):
+    if isinstance(generation, id_property_records.RefusedRecord):
         return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
     if (refused := preparation_resources.cleanup_tracking_diagnostic(binding_id)) is not None:
         return (refused,)
@@ -98,7 +98,7 @@ def _attempt(
     [plan] = planned
     own = (*own, *evaluation.plan_diagnostics(binding_id, plan))  # content's, so they join the generation's too
 
-    work = preparation_resources.new_preparation_resources(binding_id, ledgers.OriginatingOperation.SYNCHRONIZE)
+    work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
     try:
         application.prepare(plan, published, work)

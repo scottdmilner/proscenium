@@ -13,10 +13,10 @@ import pytest
 
 from fixtures import schema_version_cases as record_fixtures
 from fixtures import transaction
-from proscenium.binding.persistence import configs, ledgers, records
+from proscenium.binding.persistence import binding_records, cleanup_ledgers, id_property_records
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import pending_cleanup
-from proscenium.synchronization import removal
+from proscenium.synchronization import datablock_removal
 from support.blend import save_and_reopen
 
 from .transaction_failures import failing_preparation
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from fixtures.transaction import PreparationCleanupFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: str = "Shot") -> BindingHandle:
@@ -38,7 +38,7 @@ def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: st
 
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
@@ -56,14 +56,14 @@ def _by_name(ledger: dict[str, LedgerEntry]) -> dict[str, tuple[object, ...]]:
 
 def _fail_removing(monkeypatch: pytest.MonkeyPatch, failing: set[bpy.types.ID]) -> None:
     """Make removing one of failing fail, or a call with one; by datablock, as an object and its mesh share a name."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(d in failing for d in datablocks):
             raise RuntimeError("injected failure")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing_remove)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing_remove)
 
 
 def test_a_retry_after_reopening_resolves_it_all(bindings: Bindings, tmp_path: Path) -> None:
@@ -179,8 +179,8 @@ def test_a_ledger_that_cant_be_read_refuses_and_disposes_of_nothing(bindings: Bi
         handle = _binding(bindings, scene)
         _, leftovers = failing_preparation(handle, scene, 0)
         names = {d.name for d in leftovers}
-        [text] = configs.index_texts()
-        text[records.NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers["newer"]
+        [text] = binding_records.index_texts()
+        text[id_property_records.NAMESPACE][cleanup_ledgers.LEDGER_KEY] = versions.ledgers["newer"]
         result = handle.retry_cleanup()
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics

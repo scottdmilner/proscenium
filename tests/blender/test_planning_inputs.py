@@ -15,7 +15,7 @@ from mathutils import Matrix
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import translation
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
@@ -38,7 +38,7 @@ def _scene() -> bpy.types.Scene:
 def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     """The published display's objects by the source each shows."""
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.LoadedRecord)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     found = {}
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:
@@ -110,7 +110,9 @@ def test_the_records_hold_what_the_synchronization_planned_under(bindings: Bindi
         destination = bpy.data.collections["Shot"]
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
-        assert isinstance(generation, records.LoadedRecord) and isinstance(attempt, records.LoadedRecord)
+        assert isinstance(generation, id_property_records.LoadedRecord) and isinstance(
+            attempt, id_property_records.LoadedRecord
+        )
         assert (generation.record.applied_settings, generation.record.unit_scale) == (requested, pytest.approx(0.01))
         assert attempt.record.attempted_settings == requested
 

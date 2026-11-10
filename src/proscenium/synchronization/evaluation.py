@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from ..binding.source_access import binding_settings, identifiers
+    from ..binding.source_access import binding_ids, binding_settings
 
 
 # The core reports exactly the codes the documented list says it does: a core built against another list fails here, on
@@ -29,7 +29,7 @@ if frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes()) != resul
     raise ImportError("The compiled core reports other diagnostic codes than binding.results.CORE_CODES")
 
 
-def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:
+def plan_diagnostics(binding_id: binding_ids.BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:
     """The plan's source-side diagnostics as the binding's, in its order."""
     return tuple(
         Diagnostic(
@@ -45,7 +45,7 @@ def plan_diagnostics(binding_id: identifiers.BindingId, plan: _core.Plan) -> tup
     )
 
 
-def source_state_diagnostics(binding_id: identifiers.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
+def source_state_diagnostics(binding_id: binding_ids.BindingId, evaluation_stage: Usd.Stage) -> tuple[Diagnostic, ...]:
     """The informational diagnostics on the source's state that a display of it reports: its dirty layers."""
     if not (dirty := stages.dirty_layers(evaluation_stage)):
         return ()
@@ -54,7 +54,7 @@ def source_state_diagnostics(binding_id: identifiers.BindingId, evaluation_stage
 
 
 def evaluate_display_plans(
-    binding_id: identifiers.BindingId,
+    binding_id: binding_ids.BindingId,
     binding_stages: stages.BindingStages,
     evaluation_stage: Usd.Stage,
     settings: binding_settings.RequestedSettings,

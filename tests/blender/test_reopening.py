@@ -19,10 +19,10 @@ from pxr import Sdf, Usd
 from fixtures import source_access
 from proscenium.api.bindings import BindingHandle, BindingNotFoundError, Bindings, Result
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_state, configs, records
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.persistence.binding_state import LastSynchronizationAttempt
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.binding.source_access.binding_settings import new_settings
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.persistence.configs import BindingConfig
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.persistence.binding_records import BindingConfig
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -47,7 +47,7 @@ def _scene() -> bpy.types.Scene:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.binding_configs.find_binding(handle.binding_id)
+    found = runtime.binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
@@ -143,8 +143,8 @@ def test_unattached_source(bindings: Bindings, tmp_path: Path) -> None:
 
 
 def _index_entry(binding_id: BindingId) -> tuple[bool, bpy.types.Collection | None]:
-    [text] = configs.index_texts()
-    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
+    [text] = binding_records.index_texts()
+    index = id_property_records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, LoadedRecord)
     return binding_id in index.record.destinations, index.record.destinations.get(binding_id)
 
@@ -208,7 +208,7 @@ def test_removed_target_scene(bindings: Bindings, tmp_path: Path) -> None:
     other = bpy.data.scenes.new("Other")
     handle = _managed(bindings, tmp_path, other)
     _scene().collection.children.link(bpy.data.collections["Shot"])
-    stored = records.stored(bpy.data.collections["Shot"], configs.config_key(handle.binding_id))
+    stored = id_property_records.stored(bpy.data.collections["Shot"], binding_records.config_key(handle.binding_id))
     assert isinstance(stored, dict)
     bpy.data.scenes.remove(other)
     for check in range(2):
@@ -216,7 +216,10 @@ def test_removed_target_scene(bindings: Bindings, tmp_path: Path) -> None:
             save_and_reopen(tmp_path / "removed.blend")
         _check_gone(bindings, handle)
         shot = bpy.data.collections["Shot"]
-        assert records.stored(shot, configs.config_key(handle.binding_id)) == {**stored, "scene": None}
+        assert id_property_records.stored(shot, binding_records.config_key(handle.binding_id)) == {
+            **stored,
+            "scene": None,
+        }
         claims = ownership.of(bpy.data.objects["Managed"]).claims
         assert [(c.binding_id, c.destination) for c in claims] == [(handle.binding_id, shot)]
 

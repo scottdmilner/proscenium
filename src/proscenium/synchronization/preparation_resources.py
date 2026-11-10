@@ -6,8 +6,8 @@ are never held, so they're never disposal candidates (TXN-09). A cache call also
 keys, and holds how to undo each change before making it (PreparationResources.rollback_actions), so a failure partway
 reverts them all (CACHE-03).
 
-dispose removes the held resources as retirement and a cleanup retry do (removal.remove_unused), users first, the
-staging collection aside. Only one whose removal fails, or whose user's did, enters the pending-cleanup ledger,
+dispose removes the held resources through datablock_removal.remove_unused, as retirement and a cleanup retry do,
+users first, the staging collection aside. Only one whose removal fails, or whose user's did, enters the cleanup ledger,
 retryable, with a cleanup diagnostic naming its ledger key, which no later attempt erases; a disposal that removes
 everything writes nothing. One something else uses, as nothing should, is released intact.
 
@@ -22,24 +22,24 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding.persistence import ledgers, records
+from ..binding.persistence import cleanup_ledgers, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.runtime import pending_cleanup
-from . import removal
+from . import datablock_removal
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..binding.persistence import manifests
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_ids
 
 
 @dataclass
 class PreparationResources:
     """Track staged resources and rollback callbacks for changes to published resources."""
 
-    binding_id: identifiers.BindingId  # the binding preparing it, which owns it
-    operation: ledgers.OriginatingOperation
+    binding_id: binding_ids.BindingId  # the binding preparing it, which owns it
+    operation: cleanup_ledgers.OriginatingOperation
     staging_collection: bpy.types.Collection  # holds the prepared objects; no scene links it
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
     roles: dict[str, manifests.RepresentationRole] = field(default_factory=dict)  # entry key -> its datablock's role
@@ -56,11 +56,11 @@ class PreparationResources:
         self.roles[entry_key] = role
 
 
-def cleanup_tracking_diagnostic(binding_id: identifiers.BindingId) -> Diagnostic | None:
+def cleanup_tracking_diagnostic(binding_id: binding_ids.BindingId) -> Diagnostic | None:
     """Report why the ledger cannot track failed disposal, or None when preparation can proceed."""
     try:
         pending_cleanup.check_trackable()
-    except records.RefusedRecordError as error:
+    except id_property_records.RefusedRecordError as error:
         return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, error.refused.message)
     except ValueError as error:
         return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, str(error))
@@ -68,7 +68,7 @@ def cleanup_tracking_diagnostic(binding_id: identifiers.BindingId) -> Diagnostic
 
 
 def new_preparation_resources(
-    binding_id: identifiers.BindingId, operation: ledgers.OriginatingOperation
+    binding_id: binding_ids.BindingId, operation: cleanup_ledgers.OriginatingOperation
 ) -> PreparationResources:
     """Create resource tracking for binding_id and its unlinked staging collection.
 
@@ -84,16 +84,16 @@ def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
 
     Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
     """
-    outcome = removal.remove_unused(work.datablocks, holders=[work.staging_collection])
-    pending: dict[str, ledgers.LedgerEntry] = {}
+    outcome = datablock_removal.remove_unused(work.datablocks, holders=[work.staging_collection])
+    pending: dict[str, cleanup_ledgers.LedgerEntry] = {}
     for entry_key, problem in outcome.pending_reasons_by_key.items():
         datablock, role = work.datablocks[entry_key], work.roles[entry_key]
-        ledger_key = ledgers.new_ledger_key()
+        ledger_key = cleanup_ledgers.new_ledger_key()
         message = f"Couldn't dispose of prepared {role} {datablock.name!r}: {problem}"
         diagnostic = Diagnostic(
             DiagnosticCode.DISPOSAL_FAILED, work.binding_id, message, pending_resource_key=ledger_key, role=str(role)
         )
-        pending[ledger_key] = ledgers.LedgerEntry(
+        pending[ledger_key] = cleanup_ledgers.LedgerEntry(
             work.binding_id, entry_key, role, datablock, work.operation, diagnostic
         )
     try:

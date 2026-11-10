@@ -2,7 +2,7 @@
 
 Publication has already taken each out of the manifest and the destination, and handed it here, so removing one
 touches no manifest and no claim: a retirement costs what it removes. They're removed as disposal and a cleanup retry
-remove (removal.remove_unused), users first, each level in one call unless one fails.
+remove (datablock_removal.remove_unused), users first, each level in one call unless one fails.
 
 - One anything else uses is left intact and released from management (lifecycle.md#ownership-and-lifecycle), with no
   ledger entry, so no retry deletes it: unmanaged content, another manifest naming it (as a copied destination's does),
@@ -16,37 +16,37 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..binding.persistence import ledgers
+from ..binding.persistence import cleanup_ledgers
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.runtime import pending_cleanup
-from . import removal
+from . import datablock_removal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ..binding.persistence import manifests
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_ids
 
 
 def retire(
-    binding_id: identifiers.BindingId,
+    binding_id: binding_ids.BindingId,
     obsolete: Mapping[str, manifests.ManifestEntry],
-    operation: ledgers.OriginatingOperation,
+    operation: cleanup_ledgers.OriginatingOperation,
 ) -> tuple[Diagnostic, ...]:
     """Remove the obsolete resources publication handed over, by entry key; a cleanup diagnostic for each left pending.
 
     Each left pending enters the ledger as operation's. Raises what writing the ledger raises.
     """
-    outcome = removal.remove_unused({entry_key: e.datablock for entry_key, e in obsolete.items()})
-    pending: dict[str, ledgers.LedgerEntry] = {}  # by ledger key
+    outcome = datablock_removal.remove_unused({entry_key: e.datablock for entry_key, e in obsolete.items()})
+    pending: dict[str, cleanup_ledgers.LedgerEntry] = {}  # by ledger key
     for entry_key, problem in sorted(outcome.pending_reasons_by_key.items()):
         datablock, role = obsolete[entry_key].datablock, obsolete[entry_key].role
         assert datablock is not None  # one gone counts as removed
-        ledger_key = ledgers.new_ledger_key()
+        ledger_key = cleanup_ledgers.new_ledger_key()
         message = f"Couldn't retire obsolete {role} {datablock.name!r}: {problem}"
         diagnostic = Diagnostic(
             DiagnosticCode.RETIREMENT_FAILED, binding_id, message, pending_resource_key=ledger_key, role=str(role)
         )
-        pending[ledger_key] = ledgers.LedgerEntry(binding_id, entry_key, role, datablock, operation, diagnostic)
+        pending[ledger_key] = cleanup_ledgers.LedgerEntry(binding_id, entry_key, role, datablock, operation, diagnostic)
     pending_cleanup.set_ledger_entries(pending)
     return tuple(e.diagnostic for e in pending.values())

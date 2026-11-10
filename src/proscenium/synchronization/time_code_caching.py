@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
-from ..binding.persistence import binding_state, ledgers, manifests, records
+from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_configs, ownership
+from ..binding.runtime import binding_operations, ownership
 from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources
 
@@ -30,15 +30,15 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from ..binding.persistence import configs
+    from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
-    from ..binding.source_access import identifiers
+    from ..binding.source_access import binding_ids
     from ..core import _core
 
 
 def cache(
-    binding_id: identifiers.BindingId,
-    config: configs.BindingConfig,
+    binding_id: binding_ids.BindingId,
+    config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
     time_codes: Collection[Usd.TimeCode],
 ) -> Result:
@@ -50,15 +50,15 @@ def cache(
     synchronized, or whose target scene's unit scale changed since, needs synchronizing, so the call fails caching
     nothing (CACHE-05, CACHE-12).
     """
-    scene, destination = config.scene, binding_configs.require_canonical_binding_record(binding_id).collection
+    scene, destination = config.scene, binding_operations.require_canonical_binding_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
     manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if (unusable := _unusable_state_diagnostic(binding_id, manifest, generation)) is not None:
         return Result(unusable)
     # Narrowed for the type checker: the diagnostic covers a refused record and a missing generation.
-    assert generation is not None and not isinstance(generation, records.RefusedRecord)
-    assert not isinstance(manifest, records.RefusedRecord)
+    assert generation is not None and not isinstance(generation, id_property_records.RefusedRecord)
+    assert not isinstance(manifest, id_property_records.RefusedRecord)
     published = generation.record
     if published.time_code is None:  # nothing in it varies with time
         return Result()
@@ -91,7 +91,7 @@ def cache(
         return Result(*own, planned, attempted_time_codes=attempted)
     own = (*own, *_plans_diagnostics(binding_id, planned))
 
-    work = preparation_resources.new_preparation_resources(binding_id, ledgers.OriginatingOperation.CACHE)
+    work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.CACHE)
     before = _published_manifest(manifest)
     try:
         changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
@@ -114,13 +114,15 @@ def cache(
 
 
 def _unusable_state_diagnostic(
-    binding_id: identifiers.BindingId,
-    manifest: records.LoadedRecord[manifests.Manifest] | records.RefusedRecord | None,
-    generation: records.LoadedRecord[binding_state.GenerationMetadata] | records.RefusedRecord | None,
+    binding_id: binding_ids.BindingId,
+    manifest: id_property_records.LoadedRecord[manifests.Manifest] | id_property_records.RefusedRecord | None,
+    generation: id_property_records.LoadedRecord[binding_state.GenerationMetadata]
+    | id_property_records.RefusedRecord
+    | None,
 ) -> Diagnostic | None:
     """Why the stored manifest and generation can't be cached in: one is unreadable or there is no generation."""
     for stored in (manifest, generation):
-        if isinstance(stored, records.RefusedRecord):
+        if isinstance(stored, id_property_records.RefusedRecord):
             return Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, stored.message)
     if generation is None:
         message = "The binding has no published generation to cache time codes in; synchronize it first"
@@ -134,12 +136,12 @@ def _uncached_values(published: binding_state.GenerationMetadata, time_codes: Co
     return sorted({t.GetValue() for t in time_codes} - have)
 
 
-def _published_manifest(stored: records.LoadedRecord[manifests.Manifest] | None) -> manifests.Manifest:
+def _published_manifest(stored: id_property_records.LoadedRecord[manifests.Manifest] | None) -> manifests.Manifest:
     """The stored manifest's value, or an empty manifest if there is none."""
     return manifests.Manifest({}) if stored is None else stored.record
 
 
-def _plans_diagnostics(binding_id: identifiers.BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
+def _plans_diagnostics(binding_id: binding_ids.BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
     """The source-side diagnostics of each of the plans, in order."""
     return tuple(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan))
 

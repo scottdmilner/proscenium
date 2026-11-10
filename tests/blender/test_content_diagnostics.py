@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import evaluation
-from proscenium.binding.persistence import binding_state, records
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.results import DiagnosticCode, ResultState
 from support.usd import binding_on_file
 
@@ -52,7 +52,9 @@ def test_content_diagnostics_complete_the_synchronization_with_issues(bindings: 
         destination = bpy.data.collections["Shot"]
         generation = binding_state.read_generation(destination)
         attempt = binding_state.read_last_attempt(destination)
-        assert isinstance(generation, records.LoadedRecord) and isinstance(attempt, records.LoadedRecord)
+        assert isinstance(generation, id_property_records.LoadedRecord) and isinstance(
+            attempt, id_property_records.LoadedRecord
+        )
         assert generation.record.diagnostics == attempt.record.diagnostics == result.diagnostics
         assert handle.synchronize(0).diagnostics == result.diagnostics
 

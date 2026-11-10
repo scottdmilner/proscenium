@@ -13,7 +13,7 @@ from ..source_access import stage_registry
 from . import copy_detection
 
 if TYPE_CHECKING:
-    from ..source_access import identifiers, stages
+    from ..source_access import binding_ids, stages
 
 
 class BindingStageTracker:
@@ -24,17 +24,17 @@ class BindingStageTracker:
     def __init__(self) -> None:
         self._registry = stage_registry.StageRegistry()
 
-    def get_or_create_binding_stages(self, binding_id: identifiers.BindingId) -> stages.BindingStages:
+    def get_or_create_binding_stages(self, binding_id: binding_ids.BindingId) -> stages.BindingStages:
         """Return the binding's stages, creating unattached state after pruning vanished bindings."""
         self.prune()
         return self._registry.get_or_create_binding_stages(binding_id)
 
-    def get(self, binding_id: identifiers.BindingId) -> stages.BindingStages | None:
+    def get(self, binding_id: binding_ids.BindingId) -> stages.BindingStages | None:
         """The binding's stages, or None before their first use."""
         self.prune()
         return self._registry.get(binding_id)
 
-    def release(self, binding_id: identifiers.BindingId) -> None:
+    def release(self, binding_id: binding_ids.BindingId) -> None:
         """Release one binding without reading its records (StageRegistry.release)."""
         self._registry.release(binding_id)
 

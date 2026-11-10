@@ -12,12 +12,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.binding.persistence import binding_state, manifests, records
-from proscenium.binding.persistence.records import LoadedRecord
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
-from proscenium.synchronization import removal
+from proscenium.synchronization import datablock_removal
 from support.blend import prim_name
 from support.destinations import destination
 
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from fixtures.transaction import RetirementFailureScene
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
 
 FAILING = "Still"  # the placeholder whose object and bounds mesh can't be retired: /World/Still's
 
@@ -46,32 +46,32 @@ def _manifest(handle: BindingHandle) -> manifests.Manifest:
 
 def _ledger() -> dict[str, LedgerEntry]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 
 def _fail_retirement(monkeypatch: pytest.MonkeyPatch) -> None:
     """Removing FAILING's object or bounds mesh, of any generation, fails, and so does any call removing it."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
 
     def failing(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(prim_name(d) == FAILING for d in datablocks):
             raise RuntimeError("injected failure")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing)
 
 
 def _counted_removals(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """The lengths of the calls removing datablocks, as they're made."""
-    remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+    remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
     calls: list[int] = []
 
     def counted(datablocks: Sequence[bpy.types.ID]) -> None:
         calls.append(len(datablocks))
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", counted)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", counted)
     return calls
 
 

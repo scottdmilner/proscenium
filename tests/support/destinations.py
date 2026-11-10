@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.binding.runtime import binding_configs
+from proscenium.binding.runtime import binding_operations
 
 if TYPE_CHECKING:
     import bpy
@@ -14,6 +14,6 @@ if TYPE_CHECKING:
 
 def destination(handle: BindingHandle) -> bpy.types.Collection:
     """The collection holding the binding's canonical record: its configuration, last attempt, and generation."""
-    found = binding_configs.find_binding(handle.binding_id)
+    found = binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.destination is not None
     return found.destination

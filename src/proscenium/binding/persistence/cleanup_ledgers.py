@@ -28,14 +28,14 @@ from typing import TYPE_CHECKING
 import bpy
 
 from .. import results
-from . import records
+from . import id_property_records
+from .id_property_records import LoadedRecord, RefusedRecord, Schema
 from .manifests import RepresentationRole
-from .records import LoadedRecord, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from ..source_access import identifiers
+    from ..source_access import binding_ids
 
 LEDGER_KEY = "ledger"
 
@@ -58,7 +58,7 @@ def new_ledger_key() -> str:
 class LedgerEntry:
     """One pending resource."""
 
-    binding_id: identifiers.BindingId  # the binding that owns it
+    binding_id: binding_ids.BindingId  # the binding that owns it
     manifest_entry_key: str  # its key in that binding's manifest: the entry it was prepared as, or published as
     role: RepresentationRole  # a record stores the value
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it
@@ -123,7 +123,7 @@ LEDGER = Schema("pending-cleanup ledger", version=1, record_type=Ledger)
 
 def read_ledger(text: bpy.types.Text) -> LoadedRecord[Ledger] | RefusedRecord | None:
     """The ledger on the binding index's Text, why it can't be read, or None if it has none."""
-    return records.read(text, LEDGER_KEY, LEDGER)
+    return id_property_records.read(text, LEDGER_KEY, LEDGER)
 
 
 def write_ledger_entries(
@@ -131,8 +131,8 @@ def write_ledger_entries(
 ) -> LoadedRecord[Ledger]:
     """Store ledger, writing only the entries under changed and removed; the ledger as reading it would give it.
 
-    ledger differs from the stored one only in those entries (records.write_items). Raises RefusedRecordError, changing
-    nothing, over a stored ledger that can't be read.
+    ledger differs from the stored one only in those entries (id_property_records.write_items).
+    Raises RefusedRecordError, changing nothing, over a stored ledger that can't be read.
     """
-    records.write_items(text, LEDGER_KEY, LEDGER, ledger, "entries", changed, removed)
+    id_property_records.write_items(text, LEDGER_KEY, LEDGER, ledger, "entries", changed, removed)
     return LoadedRecord(ledger, LEDGER.version)

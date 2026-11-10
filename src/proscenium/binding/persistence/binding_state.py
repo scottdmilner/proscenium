@@ -26,14 +26,14 @@ from pxr import Usd
 
 from .. import results
 from ..source_access import binding_settings, stages
-from . import records
-from .records import Schema
+from . import id_property_records
+from .id_property_records import Schema
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access import identifiers
-    from .records import LoadedRecord, RefusedRecord
+    from ..source_access import binding_ids
+    from .id_property_records import LoadedRecord, RefusedRecord
 
 GENERATION_KEY = "generation"
 ATTEMPT_KEY = "attempt"
@@ -67,7 +67,7 @@ def _restore_record_field_types(record: Any, settings_field: str) -> None:
 class GenerationMetadata:
     """The settings, source state, time codes, and diagnostics of a binding's published generation."""
 
-    binding_id: identifiers.BindingId
+    binding_id: binding_ids.BindingId
     applied_settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
     unit_scale: float  # its target scene's then, which planning applied
     time_code: float | None  # see encode_time_code
@@ -123,7 +123,7 @@ ATTEMPT = Schema("last attempt", version=1, record_type=LastSynchronizationAttem
 
 def read_generation(destination: bpy.types.Collection) -> LoadedRecord[GenerationMetadata] | RefusedRecord | None:
     """The destination's published generation, why it can't be read, or None if it has none."""
-    return records.read(destination, GENERATION_KEY, GENERATION)
+    return id_property_records.read(destination, GENERATION_KEY, GENERATION)
 
 
 def write_generation(destination: bpy.types.Collection, generation: GenerationMetadata) -> None:
@@ -131,19 +131,19 @@ def write_generation(destination: bpy.types.Collection, generation: GenerationMe
 
     Raises RefusedRecordError, changing nothing, over a stored generation that can't be read.
     """
-    records.write(destination, GENERATION_KEY, GENERATION, generation)
+    id_property_records.write(destination, GENERATION_KEY, GENERATION, generation)
 
 
 def remove_generation(destination: bpy.types.Collection) -> None:
     """Remove the destination's published generation, if it has one; raises as write_generation does."""
-    records.remove(destination, GENERATION_KEY, GENERATION)
+    id_property_records.remove(destination, GENERATION_KEY, GENERATION)
 
 
 def read_last_attempt(
     destination: bpy.types.Collection,
 ) -> LoadedRecord[LastSynchronizationAttempt] | RefusedRecord | None:
     """The binding's last attempt on its destination, why it can't be read, or None if it has none."""
-    return records.read(destination, ATTEMPT_KEY, ATTEMPT)
+    return id_property_records.read(destination, ATTEMPT_KEY, ATTEMPT)
 
 
 def write_last_attempt(destination: bpy.types.Collection, attempt: LastSynchronizationAttempt) -> None:
@@ -151,4 +151,4 @@ def write_last_attempt(destination: bpy.types.Collection, attempt: LastSynchroni
 
     Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.
     """
-    records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)
+    id_property_records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)

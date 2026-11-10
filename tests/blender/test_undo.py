@@ -15,11 +15,11 @@ import pytest
 
 from fixtures import transaction
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.results import Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.core import _core
-from proscenium.synchronization import removal
+from proscenium.synchronization import datablock_removal
 from support import undo
 
 from .transaction_failures import failing_preparation
@@ -64,7 +64,7 @@ def _shown() -> dict[str, Any]:
     destination = bpy.data.collections["Shot"]
     return {
         "base": MARKER in bpy.data.objects,
-        "generation": records.stored(destination, binding_state.GENERATION_KEY),
+        "generation": id_property_records.stored(destination, binding_state.GENERATION_KEY),
         "objects": sorted(o.name for o in destination.objects),
     }
 
@@ -76,7 +76,7 @@ def _key(datablock: bpy.types.ID) -> tuple[str, str]:
 
 def _ledger_names() -> set[tuple[str, str]]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     entries = {} if ledger is None else ledger.record.entries
     assert all(e.datablock is not None for e in entries.values())  # each names a datablock in the file
     return {_key(e.datablock) for e in entries.values() if e.datablock is not None}
@@ -86,7 +86,7 @@ def _managed_names(handle: BindingHandle) -> set[tuple[str, str]]:
     manifest = ownership.manifest(handle.binding_id)
     if manifest is None:
         return set()
-    assert isinstance(manifest, records.LoadedRecord)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     return {_key(e.datablock) for e in manifest.record.entries.values() if e.datablock is not None}
 
 
@@ -191,7 +191,7 @@ def test_background_mode_pushes_no_step(bindings: Bindings, tmp_path: Path) -> N
         policy, time_code = scene.published
         assert handle.synchronize(time_code).state is ResultState.SUCCESS
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
-        assert isinstance(generation, records.LoadedRecord)
+        assert isinstance(generation, id_property_records.LoadedRecord)
         assert (generation.record.applied_settings.payload_policy, generation.record.time_code) == (policy, time_code)
         undo.undo_unpushed()
         assert MARKER not in bpy.data.objects
@@ -210,7 +210,9 @@ def test_a_committed_retry_is_one_step_and_a_failed_one_none(
         names = {_key(d) for d in leftovers}
         _base()
         with monkeypatch.context() as patch:
-            patch.setattr(removal, "_batch_remove", lambda _: (_ for _ in ()).throw(RuntimeError("injected failure")))
+            patch.setattr(
+                datablock_removal, "_batch_remove", lambda _: (_ for _ in ()).throw(RuntimeError("injected failure"))
+            )
             assert handle.retry_cleanup().state is ResultState.FATAL_FAILURE
         assert handle.retry_cleanup().state is ResultState.SUCCESS
         assert names.isdisjoint(_names()) and _ledger_names() == set()

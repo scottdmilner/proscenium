@@ -19,14 +19,15 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from ..source_access import binding_settings, identifiers
-from . import records
-from .records import RefusedRecord, RefusedRecordError, Schema
+from ..source_access import binding_settings
+from ..source_access.binding_ids import BindingId
+from . import id_property_records
+from .id_property_records import RefusedRecord, RefusedRecordError, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from .records import LoadedRecord
+    from .id_property_records import LoadedRecord
 
 CONFIG_PREFIX = "binding."
 INDEX_KEY = "index"
@@ -58,7 +59,7 @@ class BindingConfig:
 class BindingIndex:
     """The file's binding index: each binding's destination, which the canonical-candidate rule reads."""
 
-    destinations: dict[identifiers.BindingId, bpy.types.Collection | None]  # each binding's destination
+    destinations: dict[BindingId, bpy.types.Collection | None]  # each binding's destination
 
     def __post_init__(self) -> None:
         if not all(isinstance(d, bpy.types.Collection | None) for d in self.destinations.values()):
@@ -79,18 +80,18 @@ class WrittenIndex(NamedTuple):
 class CreatedBinding(NamedTuple):
     """What create stored: the new binding's identifier, destination, and records."""
 
-    binding_id: identifiers.BindingId
+    binding_id: BindingId
     destination: bpy.types.Collection
     config: BindingConfig  # on the destination
     index: WrittenIndex  # with the binding's entry
 
 
-def new_identifier() -> identifiers.BindingId:
+def new_identifier() -> BindingId:
     """A new, random binding identifier."""
-    return identifiers.BindingId(uuid.uuid4().hex)
+    return BindingId(uuid.uuid4().hex)
 
 
-def config_key(binding_id: identifiers.BindingId) -> str:
+def config_key(binding_id: BindingId) -> str:
     """The ID-property key of a binding's configuration record on its destination."""
     return CONFIG_PREFIX + binding_id
 
@@ -106,37 +107,35 @@ def create_binding(scene: bpy.types.Scene, settings: binding_settings.RequestedS
     destination = bpy.data.collections.new(name)
     scene.collection.children.link(destination)
     config = BindingConfig(scene, settings)
-    records.write(destination, config_key(binding_id), CONFIG, config)
+    id_property_records.write(destination, config_key(binding_id), CONFIG, config)
     return CreatedBinding(binding_id, destination, config, _write_entry(text, index, binding_id, destination))
 
 
-def has_config(destination: bpy.types.Collection, binding_id: identifiers.BindingId) -> bool:
+def has_config(destination: bpy.types.Collection, binding_id: BindingId) -> bool:
     """Whether destination stores a configuration record for binding_id, without reading it."""
-    return records.has(destination, config_key(binding_id))
+    return id_property_records.has(destination, config_key(binding_id))
 
 
 def read_index(text: bpy.types.Text) -> LoadedRecord[BindingIndex] | RefusedRecord | None:
     """The binding index text holds, why it can't be read, or None if it holds none."""
-    return records.read(text, INDEX_KEY, INDEX)
+    return id_property_records.read(text, INDEX_KEY, INDEX)
 
 
-def write_config(destination: bpy.types.Collection, binding_id: identifiers.BindingId, config: BindingConfig) -> None:
+def write_config(destination: bpy.types.Collection, binding_id: BindingId, config: BindingConfig) -> None:
     """Store a binding's changed configuration. Raises RefusedRecordError over one that can't be read."""
-    records.write(destination, config_key(binding_id), CONFIG, config)
+    id_property_records.write(destination, config_key(binding_id), CONFIG, config)
 
 
-def binding_ids(collection: bpy.types.Collection) -> list[identifiers.BindingId]:
+def binding_ids(collection: bpy.types.Collection) -> list[BindingId]:
     """The identifiers of the bindings whose configuration is on collection; normally one, or none."""
     return [
-        identifiers.BindingId(key.removeprefix(CONFIG_PREFIX))
-        for key in records.keys(collection)
+        BindingId(key.removeprefix(CONFIG_PREFIX))
+        for key in id_property_records.keys(collection)
         if key.startswith(CONFIG_PREFIX)
     ]
 
 
-def read_configs() -> Iterator[
-    tuple[bpy.types.Collection, identifiers.BindingId, LoadedRecord[BindingConfig] | RefusedRecord]
-]:
+def read_configs() -> Iterator[tuple[bpy.types.Collection, BindingId, LoadedRecord[BindingConfig] | RefusedRecord]]:
     """Every binding record in the file: its collection, identifier, and configuration or why it can't be read.
 
     Linked collections are left out: library data is read-only here, and its bindings belong to its library
@@ -146,7 +145,7 @@ def read_configs() -> Iterator[
         if collection.library is not None:
             continue
         for binding_id in binding_ids(collection):
-            result = records.read(collection, config_key(binding_id), CONFIG)
+            result = id_property_records.read(collection, config_key(binding_id), CONFIG)
             assert result is not None
             yield collection, binding_id, result
 
@@ -164,10 +163,10 @@ def index_texts() -> list[bpy.types.Text]:
     (source-access.md#canonical-candidate). A linked Text's index belongs to its library.
     """
     texts = bpy.data.texts
-    return [text for text in texts if text.library is None and records.stored(text, INDEX_KEY) is not None]
+    return [text for text in texts if text.library is None and id_property_records.stored(text, INDEX_KEY) is not None]
 
 
-def restore_index_entry(binding_id: identifiers.BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
+def restore_index_entry(binding_id: BindingId, destination: bpy.types.Collection) -> WrittenIndex | None:
     """Write a binding's index entry where it has none or one naming no collection; the index written, if any.
 
     Makes the index's Text if the file has none.
@@ -202,7 +201,7 @@ def _index() -> tuple[bpy.types.Text | None, BindingIndex]:
 def _write_entry(
     text: bpy.types.Text | None,
     index: BindingIndex,
-    binding_id: identifiers.BindingId,
+    binding_id: BindingId,
     destination: bpy.types.Collection,
 ) -> WrittenIndex:
     """Write the index with binding_id's entry naming destination, on a new Text if there is none."""
@@ -210,5 +209,5 @@ def _write_entry(
         text = bpy.data.texts.new(INDEX_NAME)
         text.use_fake_user = True
     written = BindingIndex(index.destinations | {binding_id: destination})
-    records.write(text, INDEX_KEY, INDEX, written)
+    id_property_records.write(text, INDEX_KEY, INDEX, written)
     return WrittenIndex(text, written)

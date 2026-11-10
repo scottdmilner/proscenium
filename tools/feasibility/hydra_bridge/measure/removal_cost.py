@@ -79,7 +79,7 @@ def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -
 
 def _one_call_each(remove: Callable[[Sequence[bpy.types.ID]], None], datablocks: Sequence[bpy.types.ID]) -> int:
     """Remove datablocks in one call, and if it fails, one call each; how many fail."""
-    from proscenium.binding.persistence import records
+    from proscenium.binding.persistence import id_property_records
 
     try:
         remove(datablocks)
@@ -89,7 +89,7 @@ def _one_call_each(remove: Callable[[Sequence[bpy.types.ID]], None], datablocks:
         return 0
     failed = 0
     for datablock in datablocks:
-        if not records.alive(datablock):  # removed by the failed call
+        if not id_property_records.alive(datablock):  # removed by the failed call
             continue
         try:
             remove([datablock])
@@ -107,8 +107,8 @@ def child(config: dict[str, Any]) -> None:
     import object_display
     from pxr import Usd
 
-    from proscenium.binding.persistence import records
-    from proscenium.synchronization import removal
+    from proscenium.binding.persistence import id_property_records
+    from proscenium.synchronization import datablock_removal
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
@@ -134,7 +134,7 @@ def child(config: dict[str, Any]) -> None:
 
     calls: list[dict[str, float]] = []
     failing: set[int] = set()  # session_uids of the datablocks whose removal fails
-    batch_remove = removal._batch_remove  # noqa: SLF001 - the module's one call to Blender
+    batch_remove = datablock_removal._batch_remove  # noqa: SLF001 - the module's one call to Blender
 
     def timed(datablocks: Sequence[bpy.types.ID]) -> None:
         if failing & {d.session_uid for d in datablocks}:
@@ -144,7 +144,7 @@ def child(config: dict[str, Any]) -> None:
         batch_remove(datablocks)
         calls.append({"datablocks": len(datablocks), "s": time.perf_counter() - start})
 
-    removal._batch_remove = timed  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
+    datablock_removal._batch_remove = timed  # noqa: SLF001  # ty: ignore[invalid-assignment] - a patch, for measurement
 
     fixed = []
     for _ in range(FIXED):
@@ -180,7 +180,7 @@ def child(config: dict[str, Any]) -> None:
             "outcome": outcome,
         }
 
-    def summary(outcome: removal.RemovalOutcome) -> dict[str, int]:
+    def summary(outcome: datablock_removal.RemovalOutcome) -> dict[str, int]:
         return {
             "removed": len(outcome.removed_keys),
             "released": len(outcome.released_keys),
@@ -189,13 +189,13 @@ def child(config: dict[str, Any]) -> None:
 
     for name, count in (("one object", 1), (f"{UNIT} objects", UNIT)):
         unit = unlinked(count)
-        removed(name, unit, lambda unit=unit: summary(removal.remove_unused(unit)))
+        removed(name, unit, lambda unit=unit: summary(datablock_removal.remove_unused(unit)))
     for name in ("halving", "one call each"):
         unit = unlinked(UNIT)
         failing.clear()
         failing.add(unit[UNIT // 2].session_uid)
         if name == "halving":
-            removed(name, unit, lambda unit=unit: summary(removal.remove_unused(unit)))
+            removed(name, unit, lambda unit=unit: summary(datablock_removal.remove_unused(unit)))
         else:
             removed(name, unit, lambda unit=unit: {"pending": _one_call_each(timed, list(unit.values()))})
     failing.clear()
@@ -204,11 +204,11 @@ def child(config: dict[str, Any]) -> None:
     for obj in parents:
         published.objects.unlink(obj)
     rest: dict[int, bpy.types.ID] = {d.session_uid: d for d in parents}
-    rest |= {o.session_uid: o for o in objects if records.alive(o)}
+    rest |= {o.session_uid: o for o in objects if id_property_records.alive(o)}
     rest |= {m.session_uid: m for m in display.meshes} | {m.session_uid: m for m in display.materials}
     rest |= {o.data.session_uid: o.data for o in rest.values() if isinstance(o, bpy.types.Object) and o.data}
     view_layer.update()
-    removed("rest of the display", rest, lambda: summary(removal.remove_unused(rest)))
+    removed("rest of the display", rest, lambda: summary(datablock_removal.remove_unused(rest)))
     bridge.release()
     result["blender version"] = bpy.app.version_string
     Path(config["result"]).write_text(json.dumps(result, indent=2, default=str) + "\n", encoding="utf-8")

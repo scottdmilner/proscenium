@@ -17,12 +17,12 @@ from pxr import Usd
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
 from proscenium.binding import runtime
-from proscenium.binding.persistence.ledgers import OriginatingOperation
+from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from proscenium.synchronization import application, preparation_resources, removal
+from proscenium.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
 
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from pxr import Gf
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.persistence.ledgers import LedgerEntry
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
+    from proscenium.binding.source_access.binding_ids import BindingId
     from proscenium.synchronization.preparation_resources import PreparationResources
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
@@ -387,14 +387,14 @@ def _fail_disposal(
 ) -> set[bpy.types.ID]:
     """Make disposal fail for the first held datablock of each role; those datablocks."""
     failing = {next(d for key, d in work.datablocks.items() if work.roles[key] == role) for role in roles}
-    remove = removal._batch_remove  # noqa: SLF001
+    remove = datablock_removal._batch_remove  # noqa: SLF001
 
     def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
         if any(d in failing for d in datablocks):  # a call removing one fails, the batch's included
             raise RuntimeError("disposal injected")
         remove(datablocks)
 
-    monkeypatch.setattr(removal, "_batch_remove", failing_remove)
+    monkeypatch.setattr(datablock_removal, "_batch_remove", failing_remove)
     return {d for d in failing if d is not None}
 
 

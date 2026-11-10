@@ -14,7 +14,7 @@ import bpy
 import pytest
 
 from fixtures import schema_version_cases as fixture
-from proscenium.binding.persistence.records import (
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,

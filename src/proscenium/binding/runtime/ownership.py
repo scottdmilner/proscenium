@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..persistence import configs, manifests, records
-from . import binding_configs
+from ..persistence import binding_records, id_property_records, manifests
+from . import binding_operations
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-    from ..source_access import identifiers
+    from ..source_access import binding_ids
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +35,7 @@ class Claim:
     an operator call or undo.
     """
 
-    binding_id: identifiers.BindingId  # the first binding whose record the manifest's collection holds
+    binding_id: binding_ids.BindingId  # the first binding whose record the manifest's collection holds
     destination: bpy.types.Collection  # the collection holding that manifest; a binding's copies share binding_id
     entry_key: str  # the entry's key in that manifest
 
@@ -67,13 +67,15 @@ def of(datablock: bpy.types.ID) -> Ownership:
     holders = [
         user
         for user in bpy.data.user_map(subset=[datablock])[datablock]
-        if isinstance(user, bpy.types.Collection) and user.library is None and configs.binding_ids(user)
+        if isinstance(user, bpy.types.Collection) and user.library is None and binding_records.binding_ids(user)
     ]
     claims = []
     for holder in sorted(holders, key=lambda c: c.name):
         manifest = manifests.read_manifest(holder)
-        if isinstance(manifest, records.LoadedRecord):  # one that can't be read claims nothing until it is repaired
-            claimant = configs.binding_ids(holder)[0]
+        if isinstance(
+            manifest, id_property_records.LoadedRecord
+        ):  # one that can't be read claims nothing until it is repaired
+            claimant = binding_records.binding_ids(holder)[0]
             claims += [
                 Claim(claimant, holder, k) for k, e in manifest.record.entries.items() if e.datablock == datablock
             ]
@@ -81,31 +83,31 @@ def of(datablock: bpy.types.ID) -> Ownership:
 
 
 def manifest(
-    binding_id: identifiers.BindingId,
-) -> records.LoadedRecord[manifests.Manifest] | records.RefusedRecord | None:
+    binding_id: binding_ids.BindingId,
+) -> id_property_records.LoadedRecord[manifests.Manifest] | id_property_records.RefusedRecord | None:
     """A binding's manifest, read from its destination: why it can't be read, or None if it has none yet.
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
     """
-    return manifests.read_manifest(binding_configs.require_canonical_binding_record(binding_id).collection)
+    return manifests.read_manifest(binding_operations.require_canonical_binding_record(binding_id).collection)
 
 
-def set_manifest(binding_id: identifiers.BindingId, manifest: manifests.Manifest | None) -> None:
+def set_manifest(binding_id: binding_ids.BindingId, manifest: manifests.Manifest | None) -> None:
     """Store a binding's manifest whole on its destination, or remove it with None.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
     DisabledBindingError if it has no canonical candidate.
     """
-    record = binding_configs.require_canonical_binding_record(binding_id)
+    record = binding_operations.require_canonical_binding_record(binding_id)
     if manifest is None:
         manifests.remove_manifest(record.collection)
     else:
         manifests.write_manifest(record.collection, manifest)
-    binding_configs.restore_missing_binding_index_entry(binding_id, record)
+    binding_operations.restore_missing_binding_index_entry(binding_id, record)
 
 
 def set_manifest_entries(
-    binding_id: identifiers.BindingId,
+    binding_id: binding_ids.BindingId,
     changed: Mapping[str, manifests.ManifestEntryChange],
     removed: Collection[str] = (),
     created: Mapping[str, bpy.types.ID] = MappingProxyType({}),
@@ -123,16 +125,16 @@ def set_manifest_entries(
     Raises what set_manifest raises, and ValueError, TypeError, or KeyError (write_manifest_entries), changing nothing,
     over an update that makes no manifest.
     """
-    record = binding_configs.require_canonical_binding_record(
+    record = binding_operations.require_canonical_binding_record(
         binding_id
     )  # raises as any update does, an empty one included
     if not changed and not removed:
         return
     if published is None:
         stored = manifests.read_manifest(record.collection)
-        if isinstance(stored, records.RefusedRecord):
-            raise records.RefusedRecordError(stored)
+        if isinstance(stored, id_property_records.RefusedRecord):
+            raise id_property_records.RefusedRecordError(stored)
         published = manifests.Manifest({}) if stored is None else stored.record
     after = published.updated(changed, removed, created)
     manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)
-    binding_configs.restore_missing_binding_index_entry(binding_id, record)
+    binding_operations.restore_missing_binding_index_entry(binding_id, record)

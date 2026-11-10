@@ -77,17 +77,17 @@ from time import perf_counter
 
 from pxr import Usd
 
-from proscenium.binding.source_access import BindingStages, PayloadPolicy
+from proscenium.binding.source_access import stages
 
 started = perf_counter()
 stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
 opened = perf_counter()
-stages = BindingStages()
-stages.attach(stage)
+binding_stages = stages.BindingStages()
+binding_stages.attach(stage)
 attached = perf_counter()
-evaluation = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
+evaluation = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
 acquired = perf_counter()
-reused = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
+reused = binding_stages.acquire_evaluation_stage(stages.PayloadPolicy.LOAD_ALL)
 finished = perf_counter()
 assert reused == evaluation
 print(
@@ -97,7 +97,7 @@ print(
         "reused evaluation acquisition": finished - acquired,
     }
 )
-stages.release()
+binding_stages.release()
 ```
 
 M4's feasibility bridge times its own source opening and bridge construction. It evaluates its supplied stage directly; measurements of the product's source access use `BindingStages` as above to include its evaluation-stage construction.

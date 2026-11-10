@@ -14,12 +14,12 @@ import pytest
 
 from fixtures import binding_copy_cases, transaction
 from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_state, configs, manifests, records
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
-from proscenium.binding.runtime.binding_configs import DisabledBindingError
+from proscenium.binding.runtime.binding_operations import DisabledBindingError
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import binding_copy_operations as routes
 from support import ownership as oracle
@@ -59,7 +59,7 @@ def _republished(found: dict[tuple[str, str], Any], *, index_restored: bool) -> 
     for (kind, name), value in found.items():
         if (kind == "object" and not value) or (kind, name) == ("objects in", "Shot"):
             continue
-        if index_restored and (kind, name) == ("text", configs.INDEX_NAME):
+        if index_restored and (kind, name) == ("text", binding_records.INDEX_NAME):
             continue
         dropped = {
             ("collection", "Shot"): {manifests.MANIFEST_KEY, binding_state.GENERATION_KEY, binding_state.ATTEMPT_KEY},
@@ -69,8 +69,8 @@ def _republished(found: dict[tuple[str, str], Any], *, index_restored: bool) -> 
 
 
 def _index_entry() -> bpy.types.Collection | None:
-    [text] = configs.index_texts()
-    index = records.read(text, configs.INDEX_KEY, configs.INDEX)
+    [text] = binding_records.index_texts()
+    index = id_property_records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, LoadedRecord)
     [destination] = index.record.destinations.values()
     return destination
@@ -104,7 +104,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         assert [c.is_canonical for c in report.candidates] == [True] + [False] * (outcome.candidate_count - 1)
         assert (report.candidates[0].scene_name, report.candidates[0].destination_name) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
-        found = runtime.binding_configs.find_binding(handle.binding_id)
+        found = runtime.binding_operations.find_binding(handle.binding_id)
         assert found is not None and found.scene == _scene()
         for name in scenes:
             assert bindings.in_scene(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
@@ -125,7 +125,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         assert handle.live_stage() is None
         # The runtime's lookup finds it disabled, with its copies; its manifest and writes raise.
         binding_id = handle.binding_id
-        assert runtime.binding_configs.find_binding(binding_id) == runtime.binding_configs.FoundBinding(
+        assert runtime.binding_operations.find_binding(binding_id) == runtime.binding_operations.FoundBinding(
             binding_id, None, None, None, None, report
         )
         for call in (
@@ -143,7 +143,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
     with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         expected = scene.routes[route]
         handle = _published(bindings, scene.root_layer_path)
-        found = runtime.binding_configs.find_binding(handle.binding_id)
+        found = runtime.binding_operations.find_binding(handle.binding_id)
         assert found is not None
         routes.run_binding_copy_route(route, tmp_path)
         before = routes.records_by_name()
@@ -224,9 +224,9 @@ def test_a_write_restores_a_lost_index_entry(bindings: Bindings, tmp_path: Path)
             lambda: handle.synchronize(0),
             lambda: handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE),
         ):
-            bpy.data.texts.remove(bpy.data.texts[configs.INDEX_NAME])
+            bpy.data.texts.remove(bpy.data.texts[binding_records.INDEX_NAME])
             assert bindings.in_scene(_scene()) == [handle]
-            assert configs.index_texts() == []
+            assert binding_records.index_texts() == []
             assert write().state is ResultState.SUCCESS
             assert _index_entry() == bpy.data.collections["Shot"]
         routes.run_binding_copy_route("full-copy-scene", tmp_path)

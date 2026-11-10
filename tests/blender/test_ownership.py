@@ -13,9 +13,8 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence
-from proscenium.binding.persistence import configs, manifests, records
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
-from proscenium.binding.persistence.records import (
+from proscenium.binding.persistence import binding_records, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -23,9 +22,10 @@ from proscenium.binding.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
+from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access.binding_ids import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key, object_change, object_entry
@@ -194,7 +194,7 @@ def test_a_bindings_manifest_is_read_though_its_configuration_cant_be(bindings: 
     handle, manifest = _managed(bindings, tmp_path)
     named = {k: e.datablock.name for k, e in manifest.entries.items() if e.datablock is not None}
     config = bpy.data.collections["Shot"][NAMESPACE]["binding." + handle.binding_id]
-    config[VERSION_KEY] = configs.CONFIG.version + 1
+    config[VERSION_KEY] = binding_records.CONFIG.version + 1
     save_and_reopen(tmp_path / "edited.blend")  # the state sees a record edited behind it once it's reloaded
     read = ownership.manifest(handle.binding_id)
     assert isinstance(read, LoadedRecord)  # references from before the reopen are stale, so compared by name
@@ -338,12 +338,12 @@ def test_an_update_that_makes_no_manifest_changes_nothing(bindings: Bindings, tm
     destination = bpy.data.collections["Shot"]
     objects = [bpy.data.objects["Shot0"], bpy.data.objects["Shot1"]]
     new = bpy.data.objects.new("New", None)
-    stored = records.stored(destination, manifests.MANIFEST_KEY)
+    stored = id_property_records.stored(destination, manifests.MANIFEST_KEY)
     claims = {obj: ownership.of(obj).claims for obj in [*objects, new]}
     make, error, message = _UPDATES[update]
     changed, removed, created = make(new)
     with pytest.raises(error, match=message):
         ownership.set_manifest_entries(handle.binding_id, changed, removed, created)
-    assert records.stored(destination, manifests.MANIFEST_KEY) == stored
+    assert id_property_records.stored(destination, manifests.MANIFEST_KEY) == stored
     assert ownership.manifest(handle.binding_id) == LoadedRecord(manifest, 1)
     assert {obj: ownership.of(obj).claims for obj in [*objects, new]} == claims

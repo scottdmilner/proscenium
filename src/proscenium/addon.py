@@ -4,7 +4,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 from .api import bindings
-from .binding.persistence import records
+from .binding.persistence import id_property_records
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):
@@ -39,7 +39,7 @@ def register() -> None:
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     for id_type in RECORD_TYPES:
-        setattr(id_type, records.NAMESPACE, bpy.props.PointerProperty(type=ProsceniumRecords))
+        setattr(id_type, id_property_records.NAMESPACE, bpy.props.PointerProperty(type=ProsceniumRecords))
     bpy.app.handlers.load_post.append(_file_loaded)
     bpy.app.handlers.undo_post.append(_undone_or_redone)
     bpy.app.handlers.redo_post.append(_undone_or_redone)
@@ -53,7 +53,7 @@ def unregister() -> None:
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)
     for id_type in RECORD_TYPES:
-        delattr(id_type, records.NAMESPACE)
+        delattr(id_type, id_property_records.NAMESPACE)
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
     _registered = False

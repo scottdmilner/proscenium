@@ -222,7 +222,7 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         handle = BINDINGS.create_binding(scene, name="Prototype")
         binding_id = handle.binding_id
         handle.attach(usd_stage)
-        found = runtime.binding_configs.find_binding(binding_id)
+        found = runtime.binding_operations.find_binding(binding_id)
         assert found is not None and found.destination is not None
         collection = found.destination
     else:

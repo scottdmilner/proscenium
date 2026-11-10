@@ -12,14 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
-from . import records
-from .records import Schema
+from . import id_property_records
+from .id_property_records import Schema
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access import identifiers
-    from .records import LoadedRecord, RefusedRecord
+    from ..source_access import binding_ids
+    from .id_property_records import LoadedRecord, RefusedRecord
 
 SELECTION_KEY = "selection"
 
@@ -27,8 +27,8 @@ SELECTION_KEY = "selection"
 class SelectionEntry(NamedTuple):
     """One selected source entity: its binding, and its source-entity identifier."""
 
-    binding_id: identifiers.BindingId
-    path: str  # a source-entity identifier: make it with proscenium.binding.source_access.source_entities.identifier
+    binding_id: binding_ids.BindingId
+    path: str  # a source-entity identifier: make it with proscenium.binding.source_access.source_entity_ids.identifier
 
 
 @dataclass(frozen=True)
@@ -59,7 +59,7 @@ SELECTION = Schema("selection", version=1, record_type=PersistentSelection)
 
 def read_selection(scene: bpy.types.Scene) -> LoadedRecord[PersistentSelection] | RefusedRecord | None:
     """The scene's persistent selection, why it can't be read, or None if it has none."""
-    return records.read(scene, SELECTION_KEY, SELECTION)
+    return id_property_records.read(scene, SELECTION_KEY, SELECTION)
 
 
 def write_selection(scene: bpy.types.Scene, selection: PersistentSelection) -> None:
@@ -67,4 +67,4 @@ def write_selection(scene: bpy.types.Scene, selection: PersistentSelection) -> N
 
     Raises RefusedRecordError, changing nothing, over a stored selection that can't be read.
     """
-    records.write(scene, SELECTION_KEY, SELECTION, selection)
+    id_property_records.write(scene, SELECTION_KEY, SELECTION, selection)

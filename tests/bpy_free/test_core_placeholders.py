@@ -15,7 +15,7 @@ import pytest
 
 from fixtures import evaluation
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access.binding_ids import BindingId
 from proscenium.synchronization import evaluation as planning
 
 from .plan_checks import assert_world, copies, plan_at

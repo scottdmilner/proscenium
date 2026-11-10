@@ -14,7 +14,7 @@ import pytest
 from pxr import Sdf, Usd, Vt
 
 from fixtures import evaluation
-from proscenium.binding.source_access import source_entities
+from proscenium.binding.source_access import source_entity_ids
 from proscenium.core import _core
 
 from .plan_checks import CONTEXT, SETTINGS, assert_world, copies, plan_at
@@ -53,7 +53,7 @@ def test_copies_are_named_by_point_instance_paths(points: evaluation.PointInstan
     entries = {c.source_path: c.instance_context for c in plan.correspondence}
     assert entries == points.instance_context
     for path, context in entries.items():
-        assert source_entities.identifier(Sdf.Path(path)) == path
+        assert source_entity_ids.identifier(Sdf.Path(path)) == path
         assert context[0] == points.floors[path], path
     resources = plan.resources
     assert {r.source_entity_path for r in resources} == points.world_matrices_by_source.keys()

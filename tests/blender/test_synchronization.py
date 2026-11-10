@@ -22,9 +22,9 @@ from proscenium.api.bindings import (
     Result,
 )
 from proscenium.binding import persistence
-from proscenium.binding.persistence import binding_state, configs, records
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
-from proscenium.binding.source_access.identifiers import BindingId
+from proscenium.binding.source_access.binding_ids import BindingId
 from proscenium.binding.source_access.stages import PayloadPolicy
 from support import undo
 from support.destinations import destination
@@ -74,7 +74,9 @@ def _recorded(handle: BindingHandle) -> tuple[float | None, float | None]:
     """The time codes the binding's last attempt and its generation record."""
     last = binding_state.read_last_attempt(destination(handle))
     generation = binding_state.read_generation(bpy.data.collections["USD Display"])
-    assert isinstance(last, records.LoadedRecord) and isinstance(generation, records.LoadedRecord)
+    assert isinstance(last, id_property_records.LoadedRecord) and isinstance(
+        generation, id_property_records.LoadedRecord
+    )
     return last.record.time_code, generation.record.time_code
 
 
@@ -177,19 +179,19 @@ def test_an_unchanged_configuration_is_not_written(
     handle = bindings.create_binding(_scene())
     handle.attach(caller)
     written: list[str] = []
-    write = records.write
+    write = id_property_records.write
 
     def counted(id_: bpy.types.ID, key: str, *args: object) -> None:
         written.append(key)
         write(id_, key, *args)  # ty: ignore[invalid-argument-type]
 
-    monkeypatch.setattr(records, "write", counted)
+    monkeypatch.setattr(id_property_records, "write", counted)
     assert handle.attach(caller) == Result()
     assert handle.set_settings() == Result()
     assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_ALL) == Result()  # the default
     assert written == []
     handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE)
-    assert written == [configs.config_key(handle.binding_id)]
+    assert written == [binding_records.config_key(handle.binding_id)]
 
 
 def test_unavailable_source_is_a_result(bindings: Bindings) -> None:
@@ -265,10 +267,10 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
             assert handle.attach(caller) == Result()
             assert handle.synchronize(0) == Result(attempted_time_codes=(Usd.TimeCode(0),))
         second_evaluation = _evaluation(bindings, second)
-        before = records.stored(_scene(), configs.config_key(first.binding_id))
+        before = id_property_records.stored(_scene(), binding_records.config_key(first.binding_id))
         assert first.release() is None
         assert first.release() is None
-        assert records.stored(_scene(), configs.config_key(first.binding_id)) == before
+        assert id_property_records.stored(_scene(), binding_records.config_key(first.binding_id)) == before
         assert first.live_stage() is None
         assert [d.code for d in first.synchronize(0).diagnostics] == [DiagnosticCode.NO_ATTACHED_STAGE]
         assert second.live_stage() == caller
@@ -280,13 +282,13 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time every binding record is read from here on, as pruning the stages reads them."""
     scans: list[int] = []
-    read_configs = persistence.configs.read_configs
+    read_configs = persistence.binding_records.read_configs
 
     def counted() -> object:
         scans.append(1)
         return read_configs()
 
-    monkeypatch.setattr(persistence.configs, "read_configs", counted)
+    monkeypatch.setattr(persistence.binding_records, "read_configs", counted)
     return scans
 
 
@@ -374,9 +376,11 @@ def test_an_unusable_binding_keeps_its_stages_but_has_no_live_stage(
     assert stages is not None
     caller, evaluation = stages.live_stage, stages.evaluation_stage
     if unusable == "unreadable":
-        destination(handle)[records.NAMESPACE][configs.config_key(handle.binding_id)][records.VERSION_KEY] = 99
+        destination(handle)[id_property_records.NAMESPACE][binding_records.config_key(handle.binding_id)][
+            id_property_records.VERSION_KEY
+        ] = 99
     else:
-        [text] = configs.index_texts()
+        [text] = binding_records.index_texts()
         text.copy()  # two indexes naming the identity leave no canonical candidate
     assert handle.synchronize(0).state == ResultState.FATAL_FAILURE
     assert handle.live_stage() is None

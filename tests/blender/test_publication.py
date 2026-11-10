@@ -14,9 +14,9 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import SynchronizationFailureStep
-from proscenium.binding.persistence import binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium.binding.persistence.records import LoadedRecord
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.binding_settings import new_settings
@@ -65,7 +65,7 @@ def _published(handle: BindingHandle) -> dict[str, Any]:
 
 def _ledger_entries() -> dict[str, object]:
     ledger = pending_cleanup.ledger()
-    assert not isinstance(ledger, records.RefusedRecord)
+    assert not isinstance(ledger, id_property_records.RefusedRecord)
     return {} if ledger is None else dict(ledger.record.entries)
 
 

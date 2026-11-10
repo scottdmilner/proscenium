@@ -15,7 +15,7 @@ import pytest
 from pxr import Sdf
 
 from fixtures import interaction
-from proscenium.binding.source_access.source_entities import entity_path, identifier
+from proscenium.binding.source_access.source_entity_ids import entity_path, identifier
 from support import interaction_oracle
 
 if TYPE_CHECKING:

@@ -17,16 +17,16 @@ import pytest
 from fixtures import schema_version_cases as record_fixtures
 from fixtures.scenes import Scene, copy_scene
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import ledgers
-from proscenium.binding.persistence.ledgers import Ledger, LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.persistence.records import (
+from proscenium.binding.persistence import cleanup_ledgers
+from proscenium.binding.persistence.cleanup_ledgers import Ledger, LedgerEntry, OriginatingOperation
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     LoadedRecord,
     RefusalReason,
     RefusedRecord,
     RefusedRecordError,
 )
+from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium.synchronization import preparation_resources
 from support.blend import save_and_reopen
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -45,7 +45,7 @@ def _binding(bindings: Bindings) -> BindingId:
 
 
 def _text() -> bpy.types.Text:
-    [text] = persistence.configs.index_texts()
+    [text] = persistence.binding_records.index_texts()
     return text
 
 
@@ -86,7 +86,7 @@ def test_a_ledger_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -
         key("mesh"): replace(entries[key("mesh")], datablock=mesh),
         key("object"): replace(entries[key("object")], datablock=obj),
     }
-    read = ledgers.read_ledger(_text())
+    read = cleanup_ledgers.read_ledger(_text())
     assert read == LoadedRecord(Ledger(expected), 1)
     assert runtime.pending_cleanup.ledger() == read
     assert all(type(e.role) is RepresentationRole for e in read.record.entries.values())
@@ -95,7 +95,7 @@ def test_a_ledger_survives_save_and_reopen(bindings: Bindings, tmp_path: Path) -
 def test_a_change_writes_only_its_entries(bindings: Bindings) -> None:
     binding_id = _binding(bindings)
     runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
-    group = _text()[NAMESPACE][ledgers.LEDGER_KEY]["entries"]
+    group = _text()[NAMESPACE][cleanup_ledgers.LEDGER_KEY]["entries"]
     kept = group[key("object")].to_dict()
     runtime.pending_cleanup.set_ledger_entries({}, [key("mesh")])
     assert list(group.keys()) == [key("object")]  # the stored group, changed in place
@@ -131,7 +131,7 @@ def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
     with pytest.raises(ValueError, match="2 binding indexes"):
         preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
     assert runtime.pending_cleanup.cleanup_status(binding_id) == ()  # no ledger names what's pending
-    assert all(ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.configs.index_texts())
+    assert all(cleanup_ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.binding_records.index_texts())
 
 
 @pytest.mark.parametrize("name", ["newer", "no-version", "not-a-group"])  # F-SCHEMA-VERSIONS' ledgers
@@ -140,9 +140,9 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
     # no work is prepared, since the ledger couldn't track it.
     with record_fixtures.schema_versions(tmp_path) as versions:
         binding_id = _binding(bindings)
-        _text()[NAMESPACE][ledgers.LEDGER_KEY] = versions.ledgers[name]
+        _text()[NAMESPACE][cleanup_ledgers.LEDGER_KEY] = versions.ledgers[name]
         stored = _stored()
-        refused = ledgers.read_ledger(_text())
+        refused = cleanup_ledgers.read_ledger(_text())
         assert isinstance(refused, RefusedRecord)
         assert refused.refusal is versions.ledgers_refused[name]
         assert runtime.pending_cleanup.ledger() == refused
@@ -150,7 +150,7 @@ def test_a_ledger_that_cant_be_read_is_kept_and_refuses(bindings: Bindings, tmp_
         with pytest.raises(RefusedRecordError):
             runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
         with pytest.raises(RefusedRecordError):
-            ledgers.write_ledger_entries(_text(), Ledger(_entries(binding_id)), [key("mesh")], [])
+            cleanup_ledgers.write_ledger_entries(_text(), Ledger(_entries(binding_id)), [key("mesh")], [])
         collections = len(bpy.data.collections)
         with pytest.raises(RefusedRecordError):
             preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
@@ -172,7 +172,7 @@ def test_an_invalid_ledger_is_refused(bindings: Bindings, change: dict[str, obje
     runtime.pending_cleanup.set_ledger_entries(_entries(binding_id))
     stored = _stored()
     stored["entries"][key("mesh")] |= change  # ty: ignore[not-subscriptable]
-    _text()[NAMESPACE][ledgers.LEDGER_KEY] = stored
+    _text()[NAMESPACE][cleanup_ledgers.LEDGER_KEY] = stored
     refused = runtime.pending_cleanup.ledger()
     assert isinstance(refused, RefusedRecord)
     assert refused.refusal is RefusalReason.INVALID
@@ -182,7 +182,7 @@ def test_an_invalid_ledger_is_refused(bindings: Bindings, change: dict[str, obje
 def test_a_ledger_key_is_32_hex_digits(bindings: Bindings) -> None:
     binding_id = _binding(bindings)
     entry = next(iter(_entries(binding_id).values()))
-    assert len(persistence.ledgers.new_ledger_key()) == 32
+    assert len(persistence.cleanup_ledgers.new_ledger_key()) == 32
     with pytest.raises(ValueError, match="ledger keys are 32 hex digits"):
         runtime.pending_cleanup.set_ledger_entries({"leftover": entry})
     assert runtime.pending_cleanup.ledger() is None
@@ -231,4 +231,4 @@ def test_each_result_reports_its_bindings_cleanup_status(bindings: Bindings, tmp
 
 
 def _stored() -> object:
-    return persistence.records.stored(_text(), ledgers.LEDGER_KEY)
+    return persistence.id_property_records.stored(_text(), cleanup_ledgers.LEDGER_KEY)

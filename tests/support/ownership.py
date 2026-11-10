@@ -13,13 +13,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import configs, manifests
-from proscenium.binding.persistence.records import LoadedRecord
+from proscenium.binding.persistence import binding_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def claims() -> dict[bpy.types.ID, list[Claim]]:
@@ -35,7 +35,7 @@ def claims() -> dict[bpy.types.ID, list[Claim]]:
                 if entry.datablock is not None:
                     found.setdefault(entry.datablock, []).append(Claim(binding_id, destination, entry_key))
 
-    for collection, binding_id, _config in configs.read_configs():
+    for collection, binding_id, _config in binding_records.read_configs():
         if collection not in seen:  # one holding two records claims once
             claim(binding_id, collection)
     return found

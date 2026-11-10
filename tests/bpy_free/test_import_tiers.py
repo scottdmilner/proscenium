@@ -178,7 +178,7 @@ def test_an_import_out_of_form_is_found() -> None:
     def out_of_form(code: str) -> int:
         return len(_out_of_form(module, _imports_in(ast.parse(code), runtime)))
 
-    assert out_of_form("from ..persistence import manifests, records") == 0
+    assert out_of_form("from ..persistence import manifests, id_property_records") == 0
     assert out_of_form("from .. import results") == 0
     assert out_of_form("from ...core import _core") == 0
     assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
@@ -250,5 +250,5 @@ def test_a_blender_import_is_found() -> None:
     # bundled packages, and the standard library are allowed. The bpy-free code is the units and their packages.
     code = "import os\nimport pxr.Usd\ndef f() -> None:\n    import bpy\n    from mathutils import Vector\n"
     assert [name for _, name in _blender_imports_in(ast.parse(code))] == ["bpy", "mathutils"]
-    assert _bpy_free(PACKAGE / "binding" / "source_access" / "identifiers.py")
-    assert not _bpy_free(PACKAGE / "binding" / "persistence" / "records.py")
+    assert _bpy_free(PACKAGE / "binding" / "source_access" / "binding_ids.py")
+    assert not _bpy_free(PACKAGE / "binding" / "persistence" / "id_property_records.py")

@@ -40,7 +40,7 @@ SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 STEPS = [
     ("proscenium.api.bindings", "Bindings._require_binding"),
     ("proscenium.synchronization.transaction", "synchronize"),
-    ("proscenium.synchronization.caching", "cache"),
+    ("proscenium.synchronization.time_code_caching", "cache"),
     ("proscenium.binding.persistence.manifests", "read_manifest"),
     ("proscenium.binding.persistence.binding_state", "read_generation"),
     ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),
@@ -54,9 +54,9 @@ STEPS = [
     ("proscenium.binding.persistence.binding_state", "write_generation"),
     ("proscenium.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
     ("proscenium.synchronization.retirement", "retire"),
-    ("proscenium.synchronization.removal", "remove_unused"),
+    ("proscenium.synchronization.datablock_removal", "remove_unused"),
     ("bpy.data", "user_map"),
-    ("proscenium.synchronization.removal", "_batch_remove"),
+    ("proscenium.synchronization.datablock_removal", "_batch_remove"),
     ("proscenium.binding.persistence.binding_state", "write_last_attempt"),
     ("proscenium.api.bindings", "_push_undo"),
 ]
@@ -96,7 +96,7 @@ def child(config: dict[str, Any]) -> None:
     from pxr import Usd
 
     from proscenium.api import bindings as api
-    from proscenium.binding.persistence import manifests, records
+    from proscenium.binding.persistence import id_property_records, manifests
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender
@@ -123,7 +123,7 @@ def child(config: dict[str, Any]) -> None:
         for part in path:
             owner = getattr(owner, part)
         if module_name == "bpy.data":  # bpy.data's functions can't be replaced, so the removal's use of it is
-            removal: Any = importlib.import_module("proscenium.synchronization.removal")
+            removal: Any = importlib.import_module("proscenium.synchronization.datablock_removal")
             removal.bpy = _Bpy(bpy, wrapped("user_map", bpy.data.user_map))
             continue
         setattr(owner, attribute, wrapped(name.split(".")[-1], getattr(owner, attribute)))
@@ -149,7 +149,9 @@ def child(config: dict[str, Any]) -> None:
     manifest = manifests.read_manifest(destination)
     result = {
         "steps": steps,
-        "manifest entries": len(manifest.record.entries) if isinstance(manifest, records.LoadedRecord) else 0,
+        "manifest entries": len(manifest.record.entries)
+        if isinstance(manifest, id_property_records.LoadedRecord)
+        else 0,
         "objects": len(destination.all_objects),
         "file datablocks": sum(len(c) for c in (bpy.data.objects, bpy.data.meshes, bpy.data.actions)),
         "blender version": bpy.app.version_string,

@@ -16,12 +16,12 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import SynchronizationFailureStep, translation
-from proscenium.binding.persistence import binding_state, ledgers, records
+from proscenium.binding.persistence import binding_state, cleanup_ledgers, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.stages import PayloadPolicy
-from proscenium.synchronization import application, removal
+from proscenium.synchronization import application, datablock_removal
 
 from .published_state import datablocks, published_generation
 
@@ -59,7 +59,7 @@ def _keys() -> dict[tuple[int, str, int], list[tuple[float, ...]]]:
 def _held(handle: BindingHandle) -> tuple[Any, ...]:
     """What a failing call must leave as it was: the generation, the last attempt, the keys, and the datablocks."""
     destination = bpy.data.collections["Shot"]
-    attempt = records.stored(destination, binding_state.ATTEMPT_KEY)
+    attempt = id_property_records.stored(destination, binding_state.ATTEMPT_KEY)
     return published_generation(handle.binding_id, destination), attempt, _keys(), datablocks()
 
 
@@ -80,7 +80,7 @@ def _failing_keying(monkeypatch: pytest.MonkeyPatch, after: int) -> None:
 def _shown_at(handle: BindingHandle, frame: float) -> tuple[float, ...]:
     bpy.data.scenes["Scene"].frame_set(int(frame))
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.LoadedRecord)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     [obj] = [
         e.datablock
         for e in manifest.record.entries.values()
@@ -164,7 +164,7 @@ def test_an_action_that_cant_be_disposed_of_is_pending_cleanup(
     with transaction.cached_time_codes(tmp_path) as scene:
         handle = _synchronized(bindings, scene)
         shown = _shown_at(handle, scene.cached[-1])
-        remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+        remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
 
         def failing_remove(datablocks: Sequence[bpy.types.ID]) -> None:
             if any(isinstance(d, bpy.types.Action) for d in datablocks):
@@ -173,16 +173,16 @@ def test_an_action_that_cant_be_disposed_of_is_pending_cleanup(
 
         with monkeypatch.context() as patch:
             _failing_keying(patch, PLACEHOLDERS + 1)
-            patch.setattr(removal, "_batch_remove", failing_remove)
+            patch.setattr(datablock_removal, "_batch_remove", failing_remove)
             result = handle.cache(scene.cached)
         codes = [d.code for d in result.diagnostics]
         assert codes == [DiagnosticCode.PREPARATION_FAILED, *[DiagnosticCode.DISPOSAL_FAILED] * (len(codes) - 1)]
         ledger = pending_cleanup.ledger()
-        assert isinstance(ledger, records.LoadedRecord)
+        assert isinstance(ledger, id_property_records.LoadedRecord)
         entries = list(ledger.record.entries.values())
         assert len(entries) == len(codes) - 1 >= 1
         assert {(e.role, e.operation) for e in entries} == {
-            (RepresentationRole.ACTION, ledgers.OriginatingOperation.CACHE)
+            (RepresentationRole.ACTION, cleanup_ledgers.OriginatingOperation.CACHE)
         }
         assert all(o.animation_data is None for o in bpy.data.collections["Shot"].objects)
         assert _shown_at(handle, scene.cached[-1]) == shown

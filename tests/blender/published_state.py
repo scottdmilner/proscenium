@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.runtime import ownership
 from support.blend import collection_content
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def published_generation(binding_id: BindingId, destination: bpy.types.Collection) -> dict[str, Any]:
@@ -24,9 +24,9 @@ def published_generation(binding_id: BindingId, destination: bpy.types.Collectio
     objects the destination links, and each one's values.
     """
     return {
-        "manifest": records.stored(destination, manifests.MANIFEST_KEY),
+        "manifest": id_property_records.stored(destination, manifests.MANIFEST_KEY),
         "held manifest": ownership.manifest(binding_id),
-        "generation": records.stored(destination, binding_state.GENERATION_KEY),
+        "generation": id_property_records.stored(destination, binding_state.GENERATION_KEY),
         "objects": {o.session_uid for o in destination.objects},
         "content": collection_content(destination),
     }

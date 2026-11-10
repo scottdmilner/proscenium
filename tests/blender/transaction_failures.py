@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import transaction
-from proscenium.synchronization import application, preparation_resources, removal
+from proscenium.synchronization import application, datablock_removal, preparation_resources
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -32,7 +32,7 @@ def failing_preparation(
     hold, world, remove = (
         preparation_resources.PreparationResources.track,
         application._matrix_from_buffer,
-        removal._batch_remove,
+        datablock_removal._batch_remove,
     )  # noqa: SLF001
     worlds: list[object] = []
 
@@ -57,7 +57,7 @@ def failing_preparation(
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(preparation_resources.PreparationResources, "track", recording)
         patch.setattr(application, "_matrix_from_buffer", failing_world)
-        patch.setattr(removal, "_batch_remove", failing_remove)
+        patch.setattr(datablock_removal, "_batch_remove", failing_remove)
         result = handle.synchronize(time_code)
     assert len(held) == scene.prepared_before_failure
     return result, failing

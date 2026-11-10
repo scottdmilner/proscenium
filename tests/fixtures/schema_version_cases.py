@@ -10,7 +10,7 @@ they have older versions of their own:
 
 The generator yields each stored record as ID properties hold it, with what loading it must give,
 derived from the migrations above. It also yields binding configurations
-(proscenium.binding.persistence.configs) a newer extension or damage could leave. Also an ownership manifest
+(proscenium.binding.persistence.binding_records) a newer extension or damage could leave. Also an ownership manifest
 naming an unknown representation role
 (lifecycle.md#representation-roles-and-resource-identities), and pending-cleanup ledgers a newer extension or
 damage could leave; the ledger's version 1 is M5's (DECISIONS.md "Pending-cleanup tracking mechanism"), and
@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from proscenium.binding.persistence.records import VERSION_KEY, RefusalReason, Schema
+from proscenium.binding.persistence.id_property_records import VERSION_KEY, RefusalReason, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Generator

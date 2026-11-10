@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, NamedTuple
 import bpy
 
 from proscenium import addon
-from proscenium.binding.persistence import records
+from proscenium.binding.persistence import id_property_records
 from support import undo
 from support.blend import save_and_reopen
 
@@ -41,7 +41,7 @@ def _registrations() -> _Registrations:
             for e, fns in handler_lists().items()
             if (names := [getattr(f, "__name__", repr(f)) for f in fns if _ours(f)])
         },
-        [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, records.NAMESPACE)],
+        [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, id_property_records.NAMESPACE)],
         [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
     )
 

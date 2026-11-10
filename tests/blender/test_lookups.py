@@ -14,9 +14,9 @@ import pytest
 
 from fixtures import source_access
 from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import configs, manifests, records
+from proscenium.binding.persistence import binding_records, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
-from proscenium.binding.persistence.records import LoadedRecord, RefusedRecord, RefusedRecordError
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
 from proscenium.binding.source_access.stages import PayloadPolicy
@@ -30,9 +30,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.configs import BindingConfig
+    from proscenium.binding.persistence.binding_records import BindingConfig
     from proscenium.binding.persistence.manifests import ManifestEntryChange
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -50,24 +50,24 @@ def _managed(bindings: Bindings, tmp_path: Path) -> BindingHandle:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = runtime.binding_configs.find_binding(handle.binding_id)
+    found = runtime.binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 
 
 def _scene_of(binding_id: BindingId) -> bpy.types.Scene | None:
     """The scene holding the binding's canonical record, or None if there's no such binding."""
-    found = runtime.binding_configs.find_binding(binding_id)
+    found = runtime.binding_operations.find_binding(binding_id)
     return None if found is None else found.scene
 
 
 def _binding_ids(scene: bpy.types.Scene | None = None) -> list[BindingId]:
-    return [found.binding_id for found in runtime.binding_configs.find_bindings(scene)]
+    return [found.binding_id for found in runtime.binding_operations.find_bindings(scene)]
 
 
 def _resource(binding_id: BindingId, name: str) -> bpy.types.ID | None:
     """The datablock of the binding's manifest entry called name, or None if there's no such binding or entry."""
-    if runtime.binding_configs.find_binding(binding_id) is None:
+    if runtime.binding_operations.find_binding(binding_id) is None:
         return None
     manifest = ownership.manifest(binding_id)
     entry = manifest.record.entries.get(key(name)) if isinstance(manifest, LoadedRecord) else None
@@ -131,13 +131,13 @@ def _two_managed(bindings: Bindings, tmp_path: Path) -> tuple[list[BindingId], l
 def _counted_reads(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     """Every record read from here on, as (ID name, key)."""
     reads: list[tuple[str, str]] = []
-    read = records.read
+    read = id_property_records.read
 
     def counted_read(id_: bpy.types.ID, key: str, schema: object) -> object:
         reads.append((id_.name, key))
         return read(id_, key, schema)  # ty: ignore[invalid-argument-type]
 
-    monkeypatch.setattr(records, "read", counted_read)
+    monkeypatch.setattr(id_property_records, "read", counted_read)
     return reads
 
 
@@ -174,7 +174,7 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     a, b = bpy.data.objects["A"], bpy.data.objects["B"]
     c, d = bpy.data.objects.new("C", None), bpy.data.objects.new("D", None)
     # An entry stored by hand: the update reads it, and keeps it, so a whole write would show as its loss.
-    destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"][key("marker")] = {
+    destination[id_property_records.NAMESPACE][manifests.MANIFEST_KEY]["entries"][key("marker")] = {
         "datablock": None,
         "source_entity_paths": ["/World/Marker"],
         "role": "object",
@@ -194,7 +194,7 @@ def test_an_update_writes_and_indexes_only_what_changes(bindings: Bindings, tmp_
     assert found.record.entries[key("b")] == object_entry(b, "/World/Kept")
     assert ownership.of(a).claims == ()
     assert ownership.of(c).claims == (Claim(other, destination, key("c")),)
-    entries = destination[records.NAMESPACE][manifests.MANIFEST_KEY]["entries"]
+    entries = destination[id_property_records.NAMESPACE][manifests.MANIFEST_KEY]["entries"]
     assert key("marker") in entries
     oracle.assert_ownership_matches_manifests()
 
@@ -234,8 +234,8 @@ def test_an_empty_update_writes_nothing(bindings: Bindings, tmp_path: Path, monk
     def no_writes(*_args: object) -> None:
         raise AssertionError("a record was written")
 
-    monkeypatch.setattr(records, "write", no_writes)
-    monkeypatch.setattr(records, "write_items", no_writes)
+    monkeypatch.setattr(id_property_records, "write", no_writes)
+    monkeypatch.setattr(id_property_records, "write_items", no_writes)
     ownership.set_manifest_entries(handle.binding_id, {}, [])
 
 
@@ -307,7 +307,7 @@ def test_a_removed_destination(bindings: Bindings, tmp_path: Path) -> None:
     assert ownership.of(obj).claims
     bpy.data.collections.remove(bpy.data.collections["Shot"])
     # DEST-05, DEST-07: the binding went with its records, and its manifest with them, though the object remains.
-    assert runtime.binding_configs.find_binding(handle.binding_id) is None
+    assert runtime.binding_operations.find_binding(handle.binding_id) is None
     assert _resource(handle.binding_id, "a") is None
     with pytest.raises(KeyError):
         ownership.manifest(handle.binding_id)
@@ -396,9 +396,11 @@ def test_a_publication_keeps_its_destinations_claimant(bindings: Bindings, tmp_p
     handle = _managed(bindings, tmp_path)
     with source_access.binding_state(tmp_path) as scene:
         other = binding_on_file(bindings, _scene(), scene.root_layer_path, name="Other")
-    key_of_other = configs.config_key(other.binding_id)
+    key_of_other = binding_records.config_key(other.binding_id)
     shot = bpy.data.collections["Shot"]
-    shot[records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][records.NAMESPACE][key_of_other]
+    shot[id_property_records.NAMESPACE][key_of_other] = bpy.data.collections["Other"][id_property_records.NAMESPACE][
+        key_of_other
+    ]
     bpy.data.collections.remove(bpy.data.collections["Other"])
     ids, names = [handle.binding_id, other.binding_id], ["managed", "a"]
     ownership.set_manifest(other.binding_id, _entries(bpy.data.objects.new("A", None)))
@@ -451,7 +453,7 @@ def test_release_reads_no_records(bindings: Bindings, tmp_path: Path, monkeypatc
     def refused() -> object:
         raise AssertionError("release must not read binding records")
 
-    monkeypatch.setattr(persistence.configs, "read_configs", refused)
+    monkeypatch.setattr(persistence.binding_records, "read_configs", refused)
     assert handle.release() is None
     assert (stages.live_stage, stages.evaluation_stage) == (None, None)
 
@@ -460,13 +462,13 @@ def test_every_binding(bindings: Bindings, tmp_path: Path) -> None:
     # As find_binding() finds each: usable with its configuration, or unreadable with why, checked.
     readable = bindings.create_binding(_scene(), name="A")
     unreadable = bindings.create_binding(_scene(), name="B")
-    bpy.data.collections["B"][records.NAMESPACE][configs.config_key(unreadable.binding_id)][records.VERSION_KEY] = (
-        configs.CONFIG.version + 1
-    )
-    found = runtime.binding_configs.find_bindings()
+    bpy.data.collections["B"][id_property_records.NAMESPACE][binding_records.config_key(unreadable.binding_id)][
+        id_property_records.VERSION_KEY
+    ] = binding_records.CONFIG.version + 1
+    found = runtime.binding_operations.find_bindings()
     assert found == [
-        runtime.binding_configs.find_binding(readable.binding_id),
-        runtime.binding_configs.find_binding(unreadable.binding_id),
+        runtime.binding_operations.find_binding(readable.binding_id),
+        runtime.binding_operations.find_binding(unreadable.binding_id),
     ]
     assert [f.usable for f in found] == [True, False]
     assert isinstance(found[1].configuration_refusal, RefusedRecord)
@@ -479,7 +481,7 @@ def test_a_configuration_record_removed_by_hand(bindings: Bindings, tmp_path: Pa
     # As from the Custom Properties panel with Developer Extras on: no handler, and no scene added or removed.
     handle = _managed(bindings, tmp_path)
     assert _binding_ids(_scene()) == [handle.binding_id]
-    del bpy.data.collections["Shot"][records.NAMESPACE][configs.config_key(handle.binding_id)]
+    del bpy.data.collections["Shot"][id_property_records.NAMESPACE][binding_records.config_key(handle.binding_id)]
     assert _binding_ids(_scene()) == []
 
 

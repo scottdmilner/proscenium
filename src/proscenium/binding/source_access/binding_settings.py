@@ -1,7 +1,7 @@
 """RequestedSettings, the settings a binding's next synchronization uses (lifecycle.md#binding-state).
 
-The binding's configuration holds them (proscenium.binding.persistence.configs), and set_settings changes them. A
-record gives every field: one without the conversion and purpose settings, which configuration version 1 gained in
+The binding's configuration holds them (proscenium.binding.persistence.binding_records), and set_settings changes them.
+A record gives every field: one without the conversion and purpose settings, which configuration version 1 gained in
 place (DECISIONS.md "Conversion and purpose settings"), is refused like any other invalid record.
 """
 

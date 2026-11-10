@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import configs, manifests, records
+from proscenium.binding.persistence import binding_records, id_property_records, manifests
+from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import LoadedRecord
 from support import blend
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.binding.source_access.identifiers import BindingId
+    from proscenium.binding.source_access.binding_ids import BindingId
 
 
 MANAGED = "Still"  # one of the published objects: /World/Still's placeholder
@@ -46,11 +46,13 @@ def records_by_name() -> dict[tuple[str, str], Any]:
     for kind, ids in (("scene", bpy.data.scenes), ("collection", bpy.data.collections), ("text", bpy.data.texts)):
         for id_ in ids:
             found[kind, id_.name] = {
-                key: _datablock_references_as_names(records.stored(id_, key)) for key in records.keys(id_)
+                key: _datablock_references_as_names(id_property_records.stored(id_, key))
+                for key in id_property_records.keys(id_)
             }
     for obj in bpy.data.objects:
         found["object", obj.name] = {
-            key: _datablock_references_as_names(records.stored(obj, key)) for key in records.keys(obj)
+            key: _datablock_references_as_names(id_property_records.stored(obj, key))
+            for key in id_property_records.keys(obj)
         }
     for collection in bpy.data.collections:
         found["objects in", collection.name] = sorted(o.name for o in collection.objects)
@@ -76,16 +78,18 @@ def _shot() -> bpy.types.Collection:
 
 
 def _index_text() -> bpy.types.Text:
-    [text] = configs.index_texts()
+    [text] = binding_records.index_texts()
     return text
 
 
 def _write_entries(change: Callable[[dict[BindingId, bpy.types.Collection | None]], None]) -> None:
-    index = records.read(_index_text(), configs.INDEX_KEY, configs.INDEX)
+    index = id_property_records.read(_index_text(), binding_records.INDEX_KEY, binding_records.INDEX)
     assert isinstance(index, LoadedRecord)
     destinations = dict(index.record.destinations)
     change(destinations)
-    records.write(_index_text(), configs.INDEX_KEY, configs.INDEX, configs.BindingIndex(destinations))
+    id_property_records.write(
+        _index_text(), binding_records.INDEX_KEY, binding_records.INDEX, binding_records.BindingIndex(destinations)
+    )
 
 
 def _copy_collection(_: Path) -> bpy.types.Collection:
@@ -153,7 +157,7 @@ def _link(tmp_path: Path) -> None:
 
 def _append_index(tmp_path: Path) -> None:
     """A user appends the other file's index Text; its entry's pointer brings the destination, and its scene."""
-    _load(tmp_path, "texts", configs.INDEX_NAME, link=False)
+    _load(tmp_path, "texts", binding_records.INDEX_NAME, link=False)
 
 
 def _copy_records(_: Path) -> None:
@@ -161,7 +165,7 @@ def _copy_records(_: Path) -> None:
     scene = bpy.data.scenes.new("Scripted")
     destination = bpy.data.collections.new("Shot Scripted")  # found after "Shot"
     scene.collection.children.link(destination)
-    destination[records.NAMESPACE] = _shot()[records.NAMESPACE]
+    destination[id_property_records.NAMESPACE] = _shot()[id_property_records.NAMESPACE]
 
 
 def _lose_index(_: Path) -> None:
@@ -180,7 +184,9 @@ def _copy_with_mismatched_index_entry(tmp_path: Path) -> None:
 
 
 def _unreadable_index(_: Path) -> None:
-    _index_text()[records.NAMESPACE][configs.INDEX_KEY][records.VERSION_KEY] = 2  # a newer extension's
+    _index_text()[id_property_records.NAMESPACE][binding_records.INDEX_KEY][id_property_records.VERSION_KEY] = (
+        2  # a newer extension's
+    )
 
 
 def _duplicate_object(_: Path) -> None:

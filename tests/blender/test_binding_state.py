@@ -12,10 +12,9 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding.persistence import binding_state, configs, manifests, records
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records, manifests
 from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.persistence.records import (
+from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -23,6 +22,7 @@ from proscenium.binding.persistence.records import (
     RefusedRecord,
     RefusedRecordError,
 )
+from proscenium.binding.persistence.manifests import Manifest
 from proscenium.binding.results import Diagnostic, DiagnosticCode
 from proscenium.binding.source_access.binding_settings import RequestedSettings, new_settings
 from proscenium.binding.source_access.stages import PayloadPolicy, SourceRevision
@@ -112,10 +112,10 @@ def test_the_records_are_kept_apart(bindings: Bindings, tmp_path: Path) -> None:
 
     def stored() -> list[object]:
         return [
-            records.stored(destination, configs.config_key(handle.binding_id)),
-            records.stored(destination, manifests.MANIFEST_KEY),
-            records.stored(destination, binding_state.GENERATION_KEY),
-            records.stored(destination, binding_state.ATTEMPT_KEY),
+            id_property_records.stored(destination, binding_records.config_key(handle.binding_id)),
+            id_property_records.stored(destination, manifests.MANIFEST_KEY),
+            id_property_records.stored(destination, binding_state.GENERATION_KEY),
+            id_property_records.stored(destination, binding_state.ATTEMPT_KEY),
         ]
 
     config, manifest, _, _ = stored()

@@ -35,8 +35,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from . import records
-from .records import LoadedRecord, RefusedRecord, Schema
+from . import id_property_records
+from .id_property_records import LoadedRecord, RefusedRecord, Schema
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -241,7 +241,7 @@ MANIFEST = Schema("manifest", version=1, record_type=Manifest)
 
 def read_manifest(destination: bpy.types.Collection) -> LoadedRecord[Manifest] | RefusedRecord | None:
     """The destination's manifest, why it can't be read, or None if it has none."""
-    return records.read(destination, MANIFEST_KEY, MANIFEST)
+    return id_property_records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> LoadedRecord[Manifest]:
@@ -249,13 +249,13 @@ def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> Loa
 
     Raises RefusedRecordError, changing nothing, over a stored manifest that can't be read.
     """
-    records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
+    id_property_records.write(destination, MANIFEST_KEY, MANIFEST, manifest)
     return LoadedRecord(manifest, MANIFEST.version)
 
 
 def remove_manifest(destination: bpy.types.Collection) -> None:
     """Remove the destination's manifest, if it has one; raises as write_manifest does."""
-    records.remove(destination, MANIFEST_KEY, MANIFEST)
+    id_property_records.remove(destination, MANIFEST_KEY, MANIFEST)
 
 
 def write_manifest_entries(
@@ -263,9 +263,10 @@ def write_manifest_entries(
 ) -> LoadedRecord[Manifest]:
     """Store manifest, writing only the entries under changed and removed; the manifest as reading it would give it.
 
-    manifest differs from the stored one only in those entries (records.write_items). Raises as write_manifest does.
+    manifest differs from the stored one only in those entries (id_property_records.write_items).
+    Raises as write_manifest does.
     """
-    records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
+    id_property_records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
     return LoadedRecord(manifest, MANIFEST.version)
 
 

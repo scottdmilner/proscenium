@@ -15,7 +15,7 @@ from .stages import BindingStages
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from .identifiers import BindingId
+    from .binding_ids import BindingId
 
 
 class StageRegistry:

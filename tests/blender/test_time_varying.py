@@ -19,7 +19,7 @@ from mathutils import Matrix
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium.binding.persistence import records
+from proscenium.binding.persistence import id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import ResultState
 from proscenium.binding.runtime import ownership
@@ -142,7 +142,7 @@ def _check(plan: _core.Plan, expected: Expected) -> None:
 def _objects(handle: BindingHandle) -> dict[str, bpy.types.Object]:
     """The published display's objects by the source each shows."""
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.LoadedRecord)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     found = {}
     for entry in manifest.record.entries.values():
         if entry.role is RepresentationRole.OBJECT:

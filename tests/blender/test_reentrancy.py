@@ -16,11 +16,11 @@ import pytest
 from fixtures import transaction
 from proscenium import synchronization
 from proscenium.api.bindings import ReentrantCallError
-from proscenium.binding.persistence import binding_state, configs, records
+from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.results import ResultState
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
-from proscenium.synchronization import removal
+from proscenium.synchronization import datablock_removal
 from support.destinations import destination
 
 from .transaction_failures import failing_preparation
@@ -47,8 +47,10 @@ def _binding(bindings: Bindings, scene: TransactionScene, name: str) -> BindingH
 
 def _held(bindings: Bindings, handles: Sequence[BindingHandle]) -> tuple[Any, ...]:
     """The bindings' records, stages, and the file's datablocks, by what a call could change."""
-    stored = [records.stored(_scene(), configs.config_key(h.binding_id)) for h in handles]
-    stored += [id_.get(records.NAMESPACE) for id_ in (*bpy.data.collections, *configs.index_texts())]
+    stored = [id_property_records.stored(_scene(), binding_records.config_key(h.binding_id)) for h in handles]
+    stored += [
+        id_.get(id_property_records.NAMESPACE) for id_ in (*bpy.data.collections, *binding_records.index_texts())
+    ]
     held = [bindings.stages.get(h.binding_id) for h in handles]
     stages = [None if s is None else (s, s.live_stage, s.evaluation_stage, s.source_revision) for s in held]
     datablocks = {d.session_uid for d in (*bpy.data.objects, *bpy.data.meshes, *bpy.data.collections)}
@@ -101,7 +103,7 @@ def test_calls_during_a_synchronization_raise(
         assert handle.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
         last = binding_state.read_last_attempt(destination(handle))
         assert (
-            isinstance(last, records.LoadedRecord)
+            isinstance(last, id_property_records.LoadedRecord)
             and last.record.attempted_settings.payload_policy is PayloadPolicy.LOAD_ALL
         )
         monkeypatch.setattr(_core, "SceneIndexChain", chain)
@@ -127,7 +129,9 @@ def test_calls_during_a_cache_call_raise(bindings: Bindings, tmp_path: Path, mon
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS
         generation = binding_state.read_generation(destination(handle))
-        assert isinstance(generation, records.LoadedRecord) and generation.record.cached_time_codes == (10.0,)
+        assert isinstance(generation, id_property_records.LoadedRecord) and generation.record.cached_time_codes == (
+            10.0,
+        )
         assert other.requested_settings().payload_policy is PayloadPolicy.LOAD_NONE
 
 
@@ -139,7 +143,7 @@ def test_calls_during_a_cleanup_retry_raise(
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
         failing_preparation(handle, scene, 0)
-        remove = removal._batch_remove  # noqa: SLF001 - the step's module function
+        remove = datablock_removal._batch_remove  # noqa: SLF001 - the step's module function
         made: list[int] = []
 
         def reentering(datablocks: Sequence[bpy.types.ID]) -> None:
@@ -148,7 +152,7 @@ def test_calls_during_a_cleanup_retry_raise(
                 assert other.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
             remove(datablocks)
 
-        monkeypatch.setattr(removal, "_batch_remove", reentering)
+        monkeypatch.setattr(datablock_removal, "_batch_remove", reentering)
         result = handle.retry_cleanup()
         assert made == [CALLS]  # once
         assert (result.state, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, ())

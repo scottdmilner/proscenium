@@ -16,7 +16,7 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import translation
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, manifests, records
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
@@ -45,13 +45,13 @@ def _synchronized(bindings: Bindings, scene: CachedTimeCodesScene) -> BindingHan
 
 def _generation() -> binding_state.GenerationMetadata:
     generation = binding_state.read_generation(bpy.data.collections["Shot"])
-    assert isinstance(generation, records.LoadedRecord)
+    assert isinstance(generation, id_property_records.LoadedRecord)
     return generation.record
 
 
 def _entries(handle: BindingHandle) -> dict[str, Any]:
     manifest = ownership.manifest(handle.binding_id)
-    assert isinstance(manifest, records.LoadedRecord)
+    assert isinstance(manifest, id_property_records.LoadedRecord)
     return dict(manifest.record.entries)
 
 

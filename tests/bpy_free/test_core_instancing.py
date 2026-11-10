@@ -14,7 +14,7 @@ import pytest
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
-from proscenium.binding.source_access import source_entities
+from proscenium.binding.source_access import source_entity_ids
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 from support.usd import open_stage_without_cache
@@ -104,7 +104,7 @@ def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appeara
     plan = plan_at(stress.stage, 0.0)
     for resource in plan.resources:
         assert resource.source_entity_paths == (resource.source_entity_path,)
-        assert source_entities.identifier(Sdf.Path(resource.source_entity_path)) == resource.source_entity_path
+        assert source_entity_ids.identifier(Sdf.Path(resource.source_entity_path)) == resource.source_entity_path
         assert stress.stage.GetPrimAtPath(resource.source_entity_path).IsInstanceProxy(), resource.source_entity_path
 
 

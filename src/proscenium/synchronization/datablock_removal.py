@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding.persistence import records
+from ..binding.persistence import id_property_records
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Hashable, Mapping, Sequence
@@ -49,7 +49,7 @@ def remove_unused[K: Hashable](
     outcome: RemovalOutcome[K] = RemovalOutcome()
     present: dict[K, bpy.types.ID] = {}
     for key, datablock in datablocks.items():
-        if datablock is None or not records.alive(datablock):
+        if datablock is None or not id_property_records.alive(datablock):
             outcome.removed_keys.add(key)
         else:
             present[key] = datablock
@@ -109,7 +109,7 @@ def _remove_halving(indexed: list[tuple[int, bpy.types.ID]], failures: dict[int,
         if len(indexed) == 1:
             failures[indexed[0][0]] = error
             return
-        left = [(index, d) for index, d in indexed if records.alive(d)]  # removed by the failed call
+        left = [(index, d) for index, d in indexed if id_property_records.alive(d)]  # removed by the failed call
         half = len(left) // 2
         for part in (left[:half], left[half:]):
             if part:
