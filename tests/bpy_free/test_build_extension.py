@@ -55,11 +55,11 @@ def test_stale_without_record(tmp_path: Path) -> None:
 def test_sources_hash_covers_sources_only(tmp_path: Path) -> None:
     core_dir = tmp_path / "core"
     core_dir.mkdir()
-    (core_dir / "module.cpp").write_text("int a;")
+    (core_dir / "python_bindings.cpp").write_text("int a;")
     before = _core_inputs(core_dir)["sources_sha256"]
     (core_dir / "__init__.py").write_text("x = 1")
     assert _core_inputs(core_dir)["sources_sha256"] == before
-    (core_dir / "module.cpp").write_text("int b;")
+    (core_dir / "python_bindings.cpp").write_text("int b;")
     assert _core_inputs(core_dir)["sources_sha256"] != before
 
 

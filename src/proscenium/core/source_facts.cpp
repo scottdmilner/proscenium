@@ -15,7 +15,6 @@
 #include <pxr/usd/usdGeom/xformable.h>
 #include <pxr/usdImaging/usdImaging/dataSourceAttribute.h>
 
-#include <utility>
 #include <vector>
 
 PXR_NAMESPACE_USING_DIRECTIVE
@@ -50,31 +49,6 @@ const TfToken& SourceInfoTokens::UsdType() {
 const TfToken& SourceInfoTokens::PointIds() {
   static const TfToken token("pointIds");
   return token;
-}
-
-RevisionCachedContainer::RevisionCachedContainer(std::function<HdContainerDataSourceHandle()> build,
-                                                 std::function<uint64_t()> generation)
-    : build_(std::move(build)), generation_(std::move(generation)) {}
-
-HdContainerDataSourceHandle RevisionCachedContainer::GetOrBuildContents() {
-  const uint64_t generation = generation_();
-  const std::scoped_lock lock(mutex_);
-  if (!valid_ || generation != builtAt_) {
-    built_ = build_();
-    builtAt_ = generation;
-    valid_ = true;
-  }
-  return built_;
-}
-
-TfTokenVector RevisionCachedContainer::GetNames() {
-  const HdContainerDataSourceHandle built = GetOrBuildContents();
-  return built ? built->GetNames() : TfTokenVector();
-}
-
-HdDataSourceBaseHandle RevisionCachedContainer::Get(const TfToken& name) {
-  const HdContainerDataSourceHandle built = GetOrBuildContents();
-  return built ? built->Get(name) : nullptr;
 }
 
 HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,

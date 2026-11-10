@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "instancing.h"
-#include "prim_reader.h"
+#include "snapshot_prim_reader.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE
 

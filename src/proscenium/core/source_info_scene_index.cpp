@@ -16,6 +16,7 @@
 #include <mutex>
 #include <utility>
 
+#include "revision_cached_container.h"
 #include "source_facts.h"
 
 PXR_NAMESPACE_USING_DIRECTIVE

@@ -1,4 +1,4 @@
-#include "prim_reader.h"
+#include "snapshot_prim_reader.h"
 
 #include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/extentSchema.h>

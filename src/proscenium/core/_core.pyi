@@ -1,4 +1,4 @@
-# Types of the compiled core, proscenium.core._core (module.cpp), so ty checks its callers without a build.
+# Types of the compiled core, proscenium.core._core (python_bindings.cpp), so ty checks its callers without a build.
 from collections.abc import Buffer, Iterable
 
 from pxr import Gf, Usd

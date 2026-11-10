@@ -36,10 +36,11 @@ Python_add_library(_core MODULE WITH_SOABI
   diagnostics.cpp
   python_error_translation.cpp
   instancing.cpp
-  module.cpp
+  python_bindings.cpp
   plan.cpp
-  prim_reader.cpp
+  snapshot_prim_reader.cpp
   prim_record.cpp
+  revision_cached_container.cpp
   scene_index_chain.cpp
   snapshot.cpp
   source_facts.cpp
