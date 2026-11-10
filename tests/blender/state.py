@@ -3,7 +3,7 @@
 Each pytest-xdist worker is one process running the bpy wheel; its tests run one
 at a time. tests/blender/conftest.py calls these around every test:
 - before: `reset()`, then `baseline_problems()` must report nothing;
-- after: `cleanup()` removes what the test registered.
+- after: `clear_test_registrations_and_stage_cache()` removes what the test registered.
 
 USD's layer registry and stage caches are per process, so tests in different
 workers never share stages; within a worker, the baseline check catches leftovers.
@@ -53,7 +53,7 @@ def _name(fn: Callable[..., object]) -> str:
     return f"{getattr(fn, '__module__', '?')}.{getattr(fn, '__qualname__', repr(fn))}"
 
 
-def cleanup(before: HandlerLists) -> None:
+def clear_test_registrations_and_stage_cache(before: HandlerLists) -> None:
     """Remove what a test left behind: the registered extension, added handlers, cached stages."""
     if addon.is_registered():
         proscenium.unregister()

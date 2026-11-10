@@ -16,7 +16,7 @@ import bpy
 from pxr import Usd
 
 from fixtures import appearance, interaction
-from support.interaction_checks import CHECKS, Entity, NotApplicableError, Resolved, SourceSelection
+from support.interaction_checks import CHECKS, NotApplicableError, ResolvedPick, SourceEntity, SourceSelection
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -30,7 +30,7 @@ FIXTURES = {
 
 
 class BaselineDisplay:
-    """The baseline as a support.interaction_checks.Display: one Blender object per drawn copy and destination.
+    """The object baseline as an InteractionTestDisplay, one object per drawn copy and destination.
 
     A pick supplies the object, which names its display element (`proscenium_element`), and display targets are
     elements. What an object shows is the source apply.py recorded on it when it is in the viewport, which B1
@@ -90,11 +90,11 @@ class BaselineDisplay:
         objects = self._selection.managed(self.collection)
         return [self.coverage(objects[element]) for element in display_targets]
 
-    def resolve_pick(self, pick: Any) -> Resolved:
+    def resolve_pick(self, pick: Any) -> ResolvedPick:
         resolved = self._interaction.resolve_pick(pick)
-        return Resolved(Entity(resolved["source"], tuple(resolved["instance_context"])), resolved["floor"])
+        return ResolvedPick(SourceEntity(resolved["source"], tuple(resolved["instance_context"])), resolved["floor"])
 
-    def select_targets(self, entities: Sequence[Entity], level: str | None) -> list[str]:
+    def select_targets(self, entities: Sequence[SourceEntity], level: str | None) -> list[str]:
         return self._interaction.select_targets([(e.source, e.instance_context) for e in entities], level)
 
     def displayed(self, paths: Sequence[str]) -> list[bool]:
@@ -118,7 +118,7 @@ class BaselineDisplay:
 
 
 class BatchedDisplay(BaselineDisplay):
-    """Phase D's batched display (batch.py) as a Display: carriers of instances beside the objects kept as objects.
+    """The batched display as an InteractionTestDisplay, with instance carriers and individual objects.
 
     A pick supplies what a ray cast returns, the hit object and its world matrix: for an instance, its prototype
     and the instance's matrix as Blender evaluates it. What a carrier shows is the elements Blender evaluates it
@@ -192,7 +192,7 @@ class BatchedDisplay(BaselineDisplay):
         return [frozenset({records[e]["source"]}) if records[e]["viewport"] else frozenset() for e in display_targets]
 
     @override
-    def resolve_pick(self, pick: Any) -> Resolved:
+    def resolve_pick(self, pick: Any) -> ResolvedPick:
         element = self._batched.pick_element(self._display, *pick)
         assert element is not None, pick
         return super().resolve_pick(element)

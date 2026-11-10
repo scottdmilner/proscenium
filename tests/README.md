@@ -41,7 +41,7 @@ tests/
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
 │   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
-│   ├── plan_checks.py        the core's plans at a time code, drawn copies by source, and their corners within the bounds tolerance
+│   ├── plan_checks.py        the core's plans at a time code, PlannedDrawnCopy values by source, and their corners within the bounds tolerance
 │   └── plan_process.py       every part of a plan as plain values, and a script printing a scene's plan from a fresh process
 ├── blender/                  in-process bpy-wheel tests
 │   ├── conftest.py           reset + clean-baseline check per test; `extension` fixture
@@ -92,7 +92,7 @@ Blender modules are recognized by origin rather than a name list: anything loade
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/state.py`, does the following:
 
 1. Before the test, it resets to Blender's empty factory state and asserts a clean baseline: the extension isn't registered, handlers match Blender's own, there is no data beyond the factory UI and one empty scene, `UsdUtils.StageCache` is empty, and no file-backed layer with unsaved edits is still loaded.
-2. After the test, it unregisters the extension, removes handlers the test added, and clears the stage cache.
+2. After the test, `clear_test_registrations_and_stage_cache()` unregisters the extension, removes handlers the test added, and clears the stage cache.
 
 A test therefore always starts clean, even after a failing test. If the baseline assertion fires, something escaped the reset; fix the reset rather than the test. `test_state_reset.py` shows that each kind of leftover is detected and removed.
 
@@ -151,8 +151,8 @@ Helpers used by more than one layer or by `fixtures/`. A helper used by only one
 | `display.py` | `publish_by_hand(binding_id, destination, display)`: build `F-OFFLINE`'s saved display and record it as a publication would, since nothing publishes until M5. `expected_content(display)` is what `collection_content` reads from it. |
 | `time_codes.py` | `sampled(fixture_id, variation)`: a time-varying fixture's [sampled time codes](../docs/testing/acceptance.md#sampled-time-codes) by kind, from the `TimeVariation` its generator declares, seeded from its fixture ID; `.time_codes` gives them all, the default time code (`None`) first. `production_scale=True` leaves out the authored and seeded samples. |
 | `undo.py` | `push`, `undo`, `redo` an undo step, failing if none is available. Undo only from a pushed state: `undo_unpushed` pushes the current state first, for a test checking an operation pushed no step, since an undo over unpushed changes can read freed datablocks. `require_global_undo()` skips when global undo is off, where background-mode undo is unavailable (see the [feasibility record](../docs/feasibility/runtime-record.md#undo)). |
-| `interaction_oracle.py` | Expected results of the [interaction contract](../docs/spec/interaction-contract.md) on a fixture's live stage, from USD's own APIs: display elements, floors, the browsing universe, and kind-level targets. Checks of a representation's headless functions compare against it. |
-| `interaction_checks.py` | The checks of a representation's seven headless interaction functions against `interaction_oracle.py`, written once and reused by M4, M7, and M10. A representation passes an adapter, a `Display`, that publishes generations of an interaction fixture's live stage; `CHECKS` names each check, and each check names its matrix rows. Uses bpy, so it runs where the display does. |
+| `interaction_oracle.py` | Expected results of the [interaction contract](../docs/spec/interaction-contract.md) on a fixture's live stage, from USD's own APIs: display elements, floors, the browsing universe, and kind-level targets. Its `ExpectedInteractionGeneration` holds those expected values for one time code. Checks of a representation's headless functions compare against it. |
+| `interaction_checks.py` | The checks of a representation's seven headless interaction functions against `interaction_oracle.py`, written once and reused by M4, M7, and M10. A representation passes an adapter, an `InteractionTestDisplay`, that publishes generations of an interaction fixture's live stage; `CHECKS` names each check, and each check names its matrix rows. `SourceEntity` identifies a picked source and its instance context; `ResolvedPick` adds its selection floor. Uses bpy, so it runs where the display does. |
 
 ### `fixtures/`
 

@@ -20,7 +20,7 @@ from proscenium.binding.source_access import stages
 from proscenium.binding.source_access.stages import PayloadPolicy
 from proscenium.core import _core
 
-from .plan_checks import SETTINGS, Copy, assert_world, copies, plan_at
+from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at
 from .plan_process import contents
 
 if TYPE_CHECKING:
@@ -43,7 +43,7 @@ def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
         yield scene
 
 
-def _unmoved(copy: Copy) -> tuple[object, ...]:
+def _unmoved(copy: PlannedDrawnCopy) -> tuple[object, ...]:
     """What relation 1 leaves alone: all but the world transform and a shear split, which follows it."""
     return copy.bounds, copy.viewport, copy.render, copy.geometry, copy.placeholder, copy.shear is None
 

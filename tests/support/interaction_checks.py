@@ -1,7 +1,7 @@
 """Checks of a display representation's headless interaction functions against the M2 oracle (M4, B3).
 
 Written once and reused: M4 passes each prototype's adapter, M7 and M10 the real display. A check takes a
-`Display`, which publishes generations of an interaction fixture's live stage, and asserts the contract's
+`InteractionTestDisplay`, which publishes generations of an interaction fixture's live stage, and asserts the contract's
 results (interaction-contract.md) against support/interaction_oracle.py, at every time code the fixture lists.
 Each check names the matrix rows it covers.
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Entity:
+class SourceEntity:
     """A source entity: a USD path, with the native-instance roots enclosing it, outermost first."""
 
     source: str
@@ -36,10 +36,10 @@ class Entity:
 
 
 @dataclass(frozen=True)
-class Resolved:
+class ResolvedPick:
     """What resolve_pick returns: the hit entity and its floor."""
 
-    entity: Entity
+    entity: SourceEntity
     floor: str
 
 
@@ -55,7 +55,7 @@ class NotApplicableError(Exception):
     """The fixture has no case for this check."""
 
 
-class Display(Protocol):
+class InteractionTestDisplay(Protocol):
     """A display representation under check, with its implementation of the seven headless functions."""
 
     @property
@@ -78,8 +78,8 @@ class Display(Protocol):
     def covered(self, display_targets: Any) -> list[frozenset[str]]:
         """Per display target, the viewport display elements it covers, by the same record."""
 
-    def resolve_pick(self, pick: Any) -> Resolved: ...
-    def select_targets(self, entities: Sequence[Entity], level: str | None) -> list[str]: ...
+    def resolve_pick(self, pick: Any) -> ResolvedPick: ...
+    def select_targets(self, entities: Sequence[SourceEntity], level: str | None) -> list[str]: ...
     def displayed(self, paths: Sequence[str]) -> list[bool]: ...
     def highlight_targets(self, targets: Sequence[str]) -> Any: ...
     def selection_from_blender(self, blender_selection: Any, level: str | None) -> SourceSelection: ...
@@ -87,19 +87,19 @@ class Display(Protocol):
     def read_blender_selection(self) -> Any: ...
 
 
-def entity(stage: Usd.Stage, path: str) -> Entity:
+def entity(stage: Usd.Stage, path: str) -> SourceEntity:
     """The entity at `path`, with its instance context from the stage."""
-    return Entity(path, oracle.instance_context(stage, path))
+    return SourceEntity(path, oracle.instance_context(stage, path))
 
 
-def _generations(display: Display, scene: InteractionScene) -> Any:
+def _generations(display: InteractionTestDisplay, scene: InteractionScene) -> Any:
     """Publish each of the fixture's generations in turn, yielding the oracle's expectations for it."""
     for time in scene.times:
         display.publish(time)
         yield oracle.generation(display.stage, time)
 
 
-def check_picks(display: Display, scene: InteractionScene) -> None:
+def check_picks(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """INSP-01, ICON-01, ICON-19: each pick resolves to the entity it hit, with instance context and floor."""
     for expected in _generations(display, scene):
         found = set()
@@ -114,7 +114,7 @@ def check_picks(display: Display, scene: InteractionScene) -> None:
         assert found == expected.elements, expected.time
 
 
-def check_picks_ignore_names_and_parenting(display: Display, scene: InteractionScene) -> None:
+def check_picks_ignore_names_and_parenting(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-17: picks resolve to the same entities after the display objects are renamed and reparented.
 
     The new parent is offset, so reparenting moves every object, and a pick's own data changes with it. Mirroring
@@ -144,14 +144,14 @@ def check_picks_ignore_names_and_parenting(display: Display, scene: InteractionS
         assert sorted(map(repr, after)) == sorted(map(repr, resolved))
 
 
-def check_displayed(display: Display, scene: InteractionScene) -> None:
+def check_displayed(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-11 to ICON-15, and ICON-25 and ICON-26's membership per generation: displayed is the universe."""
     for expected in _generations(display, scene):
         paths = [*oracle.all_paths(display.stage), *scene.probes]
         assert dict(zip(paths, display.displayed(paths), strict=True)) == {p: p in expected.universe for p in paths}
 
 
-def check_select_targets(display: Display, scene: InteractionScene) -> None:
+def check_select_targets(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-18, ICON-20, ICON-21: each element's target at the prim level and every kind, and the fixture's cases."""
     stage = display.stage
     for expected in _generations(display, scene):
@@ -164,7 +164,7 @@ def check_select_targets(display: Display, scene: InteractionScene) -> None:
             assert display.select_targets([entity(stage, path)], level) == [target], (path, level)
 
 
-def check_absent_floor(display: Display, scene: InteractionScene) -> None:
+def check_absent_floor(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-21: at a kind level, an entity whose floor is absent from the live stage targets its floor."""
     if scene.absent_floor is None:
         raise NotApplicableError
@@ -178,7 +178,7 @@ def check_absent_floor(display: Display, scene: InteractionScene) -> None:
     assert display.select_targets([source], level) == [floor]
 
 
-def check_inspection_is_read_only(display: Display, scene: InteractionScene) -> None:
+def check_inspection_is_read_only(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-06: kind-level selection leaves the stage's layers, load set, and population mask unchanged."""
     stage = display.stage
 
@@ -197,7 +197,7 @@ def check_inspection_is_read_only(display: Display, scene: InteractionScene) -> 
         assert state() == before, expected.time
 
 
-def check_highlight_targets(display: Display, scene: InteractionScene) -> None:
+def check_highlight_targets(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-10, ICON-22, ICON-23, INSP-02: highlighting covers exactly the expanded entities' viewport elements."""
     stage = display.stage
     for expected in _generations(display, scene):
@@ -208,13 +208,13 @@ def check_highlight_targets(display: Display, scene: InteractionScene) -> None:
             _assert_covers(display, targets, frozenset().union(*map(expected.beneath, targets)))
 
 
-def _assert_covers(display: Display, targets: list[str], elements: frozenset[str]) -> None:
+def _assert_covers(display: InteractionTestDisplay, targets: list[str], elements: frozenset[str]) -> None:
     covered = display.covered(display.highlight_targets(targets))
     assert all(c <= elements for c in covered), (targets, covered)  # none outside
     assert frozenset().union(*covered) == elements, targets  # none missing
 
 
-def check_apply_selection(display: Display, scene: InteractionScene) -> None:
+def check_apply_selection(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-27, ICON-28, ICON-29: mirroring a source selection into Blender's selection and active object, exactly."""
     import bpy
 
@@ -262,7 +262,7 @@ def check_apply_selection(display: Display, scene: InteractionScene) -> None:
                 assert [o.select_get(view_layer=view_layer) for o in unmanaged] == [True, False], selected
 
 
-def check_selection_from_blender(display: Display, scene: InteractionScene) -> None:
+def check_selection_from_blender(display: InteractionTestDisplay, scene: InteractionScene) -> None:
     """ICON-30: Blender's selection, read back, gives the targets of its objects' entities at each level."""
     view_layer = display.view_layer
     stage = display.stage
@@ -291,7 +291,7 @@ def _scene_collection() -> bpy.types.Collection:
     return scene.collection
 
 
-CHECKS: dict[str, Callable[[Display, InteractionScene], None]] = {
+CHECKS: dict[str, Callable[[InteractionTestDisplay, InteractionScene], None]] = {
     check.__name__.removeprefix("check_"): check
     for check in (
         check_picks,

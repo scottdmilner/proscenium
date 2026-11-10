@@ -37,7 +37,7 @@ def clean_blender(baseline_handlers: dict[str, Counter[str]]) -> Generator[None]
     assert not problems, "Blender state is not clean before the test:\n" + "\n".join(problems)
     before = blender_state.snapshot_handlers()
     yield
-    blender_state.cleanup(before)
+    blender_state.clear_test_registrations_and_stage_cache(before)
 
 
 @pytest.fixture

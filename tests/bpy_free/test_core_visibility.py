@@ -17,7 +17,7 @@ from fixtures import appearance, evaluation, interaction
 from fixtures.evaluation import RENDER_PURPOSES, VIEWPORT_PURPOSES
 from proscenium.core import _core
 
-from .plan_checks import CONTEXT, SETTINGS, Copy, copies, plan_at
+from .plan_checks import CONTEXT, SETTINGS, PlannedDrawnCopy, copies, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -54,7 +54,7 @@ def _usd_participation(stage: Usd.Stage, path: str, time_code: Usd.TimeCode) -> 
     return visible and purpose in VIEWPORT_PURPOSES, visible and purpose in RENDER_PURPOSES
 
 
-def _participation(shown: dict[str, Copy]) -> dict[str, tuple[bool, bool]]:
+def _participation(shown: dict[str, PlannedDrawnCopy]) -> dict[str, tuple[bool, bool]]:
     return {path: (copy.viewport, copy.render) for path, copy in shown.items()}
 
 

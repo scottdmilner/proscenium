@@ -16,7 +16,7 @@ from pxr import Gf
 
 from fixtures import appearance, evaluation
 
-from .plan_checks import Copy, assert_world, copies, plan_at
+from .plan_checks import PlannedDrawnCopy, assert_world, copies, plan_at
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -44,7 +44,7 @@ def _holds_location_rotation_scale(matrix: Gf.Matrix4d) -> bool:
     )
 
 
-def _assert_splits(path: str, copy: Copy, world: Gf.Matrix4d) -> None:
+def _assert_splits(path: str, copy: PlannedDrawnCopy, world: Gf.Matrix4d) -> None:
     assert copy.shear is not None, path
     parent, basis = copy.shear
     assert_world(dataclasses.replace(copy, world=basis * parent), world)  # the object below its parent
