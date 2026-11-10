@@ -38,7 +38,7 @@ Distinguish three levels:
 2. **Dependency-affected resources:** depend on changed state.
 3. **Replacement-affected resources:** replaced only because they share an approved partition with affected content.
 
-"Unaffected" means outside levels 1 and 2. Level 3 is permitted but bounded by churn and performance budgets, so partition choice cannot make the unaffected requirement meaningless. Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes.
+"Unaffected" means outside levels 1 and 2. Level 3 is permitted but bounded by churn and performance budgets, so partition choice cannot make the unaffected requirement meaningless. Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. A refresh after reopening a `.blend`, or after an undo or redo restores a generation the session no longer holds what it compares against (DECISIONS.md "Incremental refresh comparison"), may instead replace every display resource, with the result of a clean full rebuild.
 
 > **Change discovery proposes work; comparing evaluated content decides whether a resource actually requires replacement or mutation.**
 

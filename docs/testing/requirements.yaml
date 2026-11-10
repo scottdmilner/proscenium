@@ -1278,6 +1278,8 @@ requirements:
         risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
+      - id: AFF-04
+        quote: "may instead replace every display resource, with the result of a clean full rebuild."
         fixtures: [F-NO-OP-REFRESH]
         risk: high
 

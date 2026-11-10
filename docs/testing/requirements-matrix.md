@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-406 rows: 329 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
+407 rows: 330 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
 
 ## PROJECT.md
 
@@ -301,7 +301,8 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [DISC-08](../spec/incremental.md#change-discovery) | Editor-provided change descriptions may be hints, but are not the sole correctness mechanism. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-02](../spec/incremental.md#affected-content) | Level 3 is permitted but bounded by churn and performance budgets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
-| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 ## spec/support/transforms.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
