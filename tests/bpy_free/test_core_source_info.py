@@ -45,11 +45,11 @@ def test_placeholders_show_authored_or_computed_bounds(unsupported: evaluation.U
     shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
         assert path in shown, path
-        assert shown[path].geometry == -1, path  # not a mesh
+        assert shown[path].geometry_index == -1, path  # not a mesh
         if expected.bounds is None:  # a marker
-            assert shown[path].placeholder == -1, path
+            assert shown[path].placeholder_bounds_index == -1, path
         else:
-            assert shown[path].placeholder >= 0, path
+            assert shown[path].placeholder_bounds_index >= 0, path
             assert_box(shown[path], expected.world, *expected.bounds)
 
 
@@ -69,7 +69,7 @@ def test_stage_edits_reach_computed_extents_and_unimaged_prims(unsupported: eval
     for path in (COMBED, DOTS, TANGENTS):
         assert_box(shown[path], *_usd_box(stage, path, 0.0))
     # The edits reached the plan, so the checks above could fail.
-    assert shown[TANGENTS].world == Gf.Matrix4d().SetScale(2) * Gf.Matrix4d().SetTranslate((9, 5, 0))
+    assert shown[TANGENTS].world_matrix == Gf.Matrix4d().SetScale(2) * Gf.Matrix4d().SetTranslate((9, 5, 0))
 
 
 def test_time_changes_reach_computed_extents_and_unimaged_prims(unsupported: evaluation.UnsupportedScene) -> None:
@@ -89,5 +89,5 @@ def test_time_changes_reach_computed_extents_and_unimaged_prims(unsupported: eva
     for time, at in shown.items():
         for path in (COMBED, TANGENTS):
             assert_box(at[path], *_usd_box(stage, path, time))
-    assert shown[0.0][TANGENTS].world != shown[10.0][TANGENTS].world  # the checks above could fail
-    assert list(shown[0.0][COMBED].bounds) != list(shown[10.0][COMBED].bounds)
+    assert shown[0.0][TANGENTS].world_matrix != shown[10.0][TANGENTS].world_matrix  # the checks above could fail
+    assert list(shown[0.0][COMBED].local_bounds) != list(shown[10.0][COMBED].local_bounds)

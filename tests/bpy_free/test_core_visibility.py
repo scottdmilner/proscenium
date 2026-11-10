@@ -55,7 +55,7 @@ def _usd_participation(stage: Usd.Stage, path: str, time_code: Usd.TimeCode) -> 
 
 
 def _participation(shown: dict[str, PlannedDrawnCopy]) -> dict[str, tuple[bool, bool]]:
-    return {path: (copy.viewport, copy.render) for path, copy in shown.items()}
+    return {path: (copy.visible_in_viewport, copy.visible_in_render) for path, copy in shown.items()}
 
 
 @pytest.mark.parametrize("time_code", TIME_CODES)
@@ -87,7 +87,10 @@ def test_one_chain_follows_visibility_over_time(visibility: evaluation.Visibilit
         shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 15.0, 25.0)}
     finally:
         chain.release()
-    blinking = {t: (at[visibility.blinking].viewport, at[visibility.blinking].render) for t, at in shown.items()}
+    blinking = {
+        t: (at[visibility.blinking].visible_in_viewport, at[visibility.blinking].visible_in_render)
+        for t, at in shown.items()
+    }
     assert blinking == {0.0: (True, True), 15.0: (False, False), 25.0: (True, True)}
 
 
@@ -122,12 +125,19 @@ def test_a_destinations_purposes_change_only_its_participation(visibility: evalu
         assert after.keys() == before.keys() - left, case
         for path, copy in after.items():
             old = before[path]
-            expected = visibility.visible(path, 0.0) and added if path in changed else getattr(old, destination)
-            assert getattr(copy, destination) == expected, (case, path)
-            assert getattr(copy, other) == getattr(old, other), (case, path)
-            assert (copy.world, copy.bounds) == (old.world, old.bounds), (case, path)
+            expected = (
+                visibility.visible(path, 0.0) and added
+                if path in changed
+                else getattr(old, f"visible_in_{destination}")
+            )
+            assert getattr(copy, f"visible_in_{destination}") == expected, (case, path)
+            assert getattr(copy, f"visible_in_{other}") == getattr(old, f"visible_in_{other}"), (case, path)
+            assert (copy.world_matrix, copy.local_bounds) == (old.world_matrix, old.local_bounds), (case, path)
         # Each change shows in the plan, so the checks above could fail.
-        assert left or any(getattr(after[p], destination) != getattr(before[p], destination) for p in changed), case
+        assert left or any(
+            getattr(after[p], f"visible_in_{destination}") != getattr(before[p], f"visible_in_{destination}")
+            for p in changed
+        ), case
 
 
 def test_nested_instances_give_both_destinations_from_one_snapshot(stress: appearance.StressScene) -> None:
@@ -177,10 +187,10 @@ def test_animated_purpose_visibility_reaches_each_capture(visibility: evaluation
         shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
     finally:
         chain.release()
-    assert {t: at[proxy].viewport for t, at in shown.items()} == {
+    assert {t: at[proxy].visible_in_viewport for t, at in shown.items()} == {
         t: _usd_participation(stage, proxy, Usd.TimeCode(t)) == (True, False) for t in (0.0, 10.0)
     }
-    assert shown[0.0][proxy].viewport != shown[10.0][proxy].viewport  # the check above could fail
+    assert shown[0.0][proxy].visible_in_viewport != shown[10.0][proxy].visible_in_viewport  # the check above could fail
 
 
 def test_an_explicitly_visible_guide_displays_in_the_viewport(tmp_path: Path) -> None:
@@ -191,9 +201,9 @@ def test_an_explicitly_visible_guide_displays_in_the_viewport(tmp_path: Path) ->
         UsdGeom.Imageable(scene.stage.GetPrimAtPath("/World/VisibleGuide")).MakeInvisible()
         hidden = copies(plan_at(scene.stage, 0.0))
     guide = "/World/VisibleGuide/Box"
-    assert (shown[guide].viewport, shown[guide].render) == (True, False)
+    assert (shown[guide].visible_in_viewport, shown[guide].visible_in_render) == (True, False)
     assert "/World/Guide/Box" not in shown
-    assert (hidden[guide].viewport, hidden[guide].render) == (False, False)
+    assert (hidden[guide].visible_in_viewport, hidden[guide].visible_in_render) == (False, False)
 
 
 def test_placeholders_take_visibility_and_purpose(tmp_path: Path) -> None:
@@ -201,9 +211,15 @@ def test_placeholders_take_visibility_and_purpose(tmp_path: Path) -> None:
     with evaluation.unsupported_content(tmp_path) as unsupported:
         shown = copies(plan_at(unsupported.stage, 0.0))
     for path, expected in unsupported.placeholders.items():
-        assert (shown[path].viewport, shown[path].render) == (expected.viewport, expected.render), path
+        assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
+            expected.viewport,
+            expected.render,
+        ), path
     for path, (_, purpose) in unsupported.supported_beneath.items():
-        assert (shown[path].viewport, shown[path].render) == (purpose in VIEWPORT_PURPOSES, purpose in RENDER_PURPOSES)
+        assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
+            purpose in VIEWPORT_PURPOSES,
+            purpose in RENDER_PURPOSES,
+        )
 
 
 def test_settings_refuse_another_purpose() -> None:

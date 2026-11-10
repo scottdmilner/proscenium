@@ -87,6 +87,10 @@ What is checked is that the bpy-free code works without Blender ([AGENTS.md](../
 
 Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything that can't be found without `bpy`, such as `mathutils`, which bpy's C code creates (see `bpy_blocker.py`).
 
+The compiled plan names references explicitly: `Partition.resource_indices`, `BatchGroup.copy_indices`, and
+`Plan.copy_object_resource_indices` contain indices, while `Plan.copy_world_matrices` contains world matrices.
+`plan_checks.PlannedDrawnCopy` uses the same distinctions when the plan tests compare drawn copies with USD.
+
 ### `blender/`
 
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/state.py`, does the following:

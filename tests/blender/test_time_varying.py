@@ -110,12 +110,15 @@ def _value(time_code: Usd.TimeCode) -> float | None:
 
 def _shown(plan: _core.Plan) -> dict[str, Shown]:
     """Each drawn copy by its source."""
-    worlds = memoryview(plan.copy_worlds).tolist()
-    viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
-    sources = {c.object_resource_index: c.source for c in plan.correspondence}
+    worlds = memoryview(plan.copy_world_matrices).tolist()
+    viewport, render = (
+        memoryview(plan.copy_visible_in_viewport).tolist(),
+        memoryview(plan.copy_visible_in_render).tolist(),
+    )
+    sources = {c.object_resource_index: c.source_path for c in plan.correspondence}
     return {
         sources[obj]: Shown(Gf.Matrix4d(*worlds[16 * copy : 16 * copy + 16]), bool(viewport[copy]), bool(render[copy]))
-        for copy, obj in enumerate(memoryview(plan.copy_objects).tolist())
+        for copy, obj in enumerate(memoryview(plan.copy_object_resource_indices).tolist())
     }
 
 

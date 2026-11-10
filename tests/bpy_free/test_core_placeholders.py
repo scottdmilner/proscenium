@@ -61,9 +61,9 @@ def test_a_prim_without_usable_bounds_is_an_empty_marker(unsupported: evaluation
     markers = {path for path, expected in unsupported.placeholders.items() if expected.bounds is None}
     assert markers == {"/World/Fog"}
     for path, copy in shown.items():
-        assert (copy.bounds_mesh is None) == (path in markers), path
+        assert (copy.bounds_mesh_resource_index is None) == (path in markers), path
     (fog,) = markers
-    assert plan.resources[shown[fog].object].dependency_resource_indices == ()
+    assert plan.resources[shown[fog].object_resource_index].dependency_resource_indices == ()
     assert_world(shown[fog], unsupported.placeholders[fog].world)
 
 
@@ -72,11 +72,14 @@ def test_placeholders_keep_their_other_behaviors(unsupported: evaluation.Unsuppo
     # entry.
     plan = plan_at(unsupported.stage, 0.0)
     shown = copies(plan)
-    entries = {c.source for c in plan.correspondence}
+    entries = {c.source_path for c in plan.correspondence}
     for path, expected in unsupported.placeholders.items():
         assert path in entries, path
         assert_world(shown[path], expected.world)
-        assert (shown[path].viewport, shown[path].render) == (expected.viewport, expected.render), path
+        assert (shown[path].visible_in_viewport, shown[path].visible_in_render) == (
+            expected.viewport,
+            expected.render,
+        ), path
 
 
 def test_inexact_filter_conversions_are_approximations(unsupported: evaluation.UnsupportedScene) -> None:
@@ -86,4 +89,4 @@ def test_inexact_filter_conversions_are_approximations(unsupported: evaluation.U
     assert all(d.category is DiagnosticCategory.APPROXIMATION for d in approximated.values())
     shown = copies(plan_at(unsupported.stage, 0.0))
     for path in unsupported.approximated | unsupported.exact_conversions:
-        assert shown[path].geometry >= 0, path  # a provisional mesh, not a placeholder
+        assert shown[path].geometry_index >= 0, path  # a provisional mesh, not a placeholder

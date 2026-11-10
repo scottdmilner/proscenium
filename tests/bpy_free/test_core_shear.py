@@ -45,9 +45,9 @@ def _holds_location_rotation_scale(matrix: Gf.Matrix4d) -> bool:
 
 
 def _assert_splits(path: str, copy: PlannedDrawnCopy, world: Gf.Matrix4d) -> None:
-    assert copy.shear is not None, path
-    parent, basis = copy.shear
-    assert_world(dataclasses.replace(copy, world=basis * parent), world)  # the object below its parent
+    assert copy.shear_transform_split is not None, path
+    parent, basis = copy.shear_transform_split
+    assert_world(dataclasses.replace(copy, world_matrix=basis * parent), world)  # the object below its parent
     assert _holds_location_rotation_scale(parent), path
     assert _holds_location_rotation_scale(basis), path
     assert basis.ExtractTranslation() == Gf.Vec3d(0), path
@@ -58,19 +58,22 @@ def test_exactly_the_sheared_copies_get_a_shear_parent(fixture: str, request: py
     scene = request.getfixturevalue(fixture)
     plan = plan_at(scene.stage, 0.0)
     shown = copies(plan)
-    assert {path for path, copy in shown.items() if copy.shear is not None} == scene.sheared & shown.keys()
+    assert {
+        path for path, copy in shown.items() if copy.shear_transform_split is not None
+    } == scene.sheared & shown.keys()
     for path, copy in shown.items():
         if path in scene.sheared:
             _assert_splits(path, copy, scene.world[path])
         expected = {("object", path, 0), ("bounds mesh", path, 0)}
-        if copy.shear is not None:
+        if copy.shear_transform_split is not None:
             expected.add(("shear parent", path, 0))
         resources = plan.resources  # each read builds the tuple anew
-        (partition,) = (p for p in plan.partitions if copy.object in p.resources)
+        (partition,) = (p for p in plan.partitions if copy.object_resource_index in p.resource_indices)
         assert {
-            (resources[r].role, resources[r].entity, resources[r].object_index_in_copy) for r in partition.resources
+            (resources[r].role, resources[r].source_entity_path, resources[r].object_index_in_copy)
+            for r in partition.resource_indices
         } == expected
-        used = {resources[u].role for u in resources[copy.object].dependency_resource_indices}
+        used = {resources[u].role for u in resources[copy.object_resource_index].dependency_resource_indices}
         assert used == {role for role, _, _ in expected if role != "object"}, path
 
 
@@ -80,7 +83,7 @@ def test_a_reflection_in_a_sheared_copy_moves_into_a_negative_scale(stress: appe
     both = stress.sheared & stress.negative
     assert both
     for path in both:
-        split = shown[path].shear
+        split = shown[path].shear_transform_split
         assert split is not None
         parent, basis = split
         assert parent.GetDeterminant3() < 0 < basis.GetDeterminant3(), path
@@ -92,5 +95,5 @@ def test_a_projective_matrix_places_its_mesh_by_its_affine_part(transforms: eval
     expected = {transforms.projective: transforms.projective_affine, **transforms.projective_instanced}
     assert shown.keys() == expected.keys()
     for path, world in expected.items():
-        assert shown[path].world.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1), path
+        assert shown[path].world_matrix.GetColumn(3) == Gf.Vec4d(0, 0, 0, 1), path
         assert_world(shown[path], world)

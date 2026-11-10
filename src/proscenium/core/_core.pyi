@@ -84,7 +84,7 @@ class PlannedResource:
     @property
     def role(self) -> str: ...
     @property
-    def entity(self) -> str: ...  # its copy's source entity
+    def source_entity_path(self) -> str: ...  # its copy's source entity
     @property
     def object_index_in_copy(self) -> int: ...  # among its copy's objects
     @property
@@ -94,13 +94,13 @@ class PlannedResource:
 
 class Partition:
     @property
-    def resources(self) -> tuple[int, ...]: ...
+    def resource_indices(self) -> tuple[int, ...]: ...
 
 class CorrespondenceEntry:
     @property
     def object_resource_index(self) -> int: ...  # in Plan.resources: the object showing this source entity
     @property
-    def source(self) -> str: ...  # an instance-proxy path inside native instances
+    def source_path(self) -> str: ...  # an instance-proxy path inside native instances
     @property
     def instance_context(self) -> tuple[str, ...]: ...  # provisional: native-instance roots, outermost first
 
@@ -108,7 +108,7 @@ class GeometryDescription:
     """Provisional (M8 replaces it): a mesh's geometry, shared by every drawn copy of the mesh."""
 
     @property
-    def source(self) -> str: ...  # its first drawn copy's, in source order
+    def representative_source_path(self) -> str: ...  # its first drawn copy's, in source order
     @property
     def extent(self) -> Buffer: ...  # local (min x, y, z, max x, y, z), a read-only 'f' Vt.FloatArray; empty for none
     @property
@@ -118,15 +118,15 @@ class BatchGroup:
     """Copies a batch shows as instances of one prototype. Provisional: M9 and M10 add materials, color, primvars."""
 
     @property
-    def geometry(self) -> int: ...  # in Plan.geometries
+    def geometry_index(self) -> int: ...  # in Plan.geometries
     @property
-    def viewport(self) -> bool: ...
+    def visible_in_viewport(self) -> bool: ...
     @property
-    def render(self) -> bool: ...
+    def visible_in_render(self) -> bool: ...
     @property
     def coincident_copy_index(self) -> int: ...  # among groups with the same key, by coincident world transform
     @property
-    def members(self) -> Buffer: ...  # 'i': copy indices, ascending
+    def copy_indices(self) -> Buffer: ...  # 'i': copy indices, ascending
 
 class Plan:
     """The immutable display plan.
@@ -149,25 +149,25 @@ class Plan:
     @property
     def copy_count(self) -> int: ...
     @property
-    def copy_worlds(self) -> Buffer: ...  # 'f', 16 each: the world matrix in Blender's layout (USD's row-major one)
+    def copy_world_matrices(self) -> Buffer: ...  # 'f', 16 each: world matrices in Blender's layout (USD row-major)
     @property
-    def copy_objects(self) -> Buffer: ...  # 'i': its object, in resources
+    def copy_object_resource_indices(self) -> Buffer: ...  # 'i': its object, in resources
     @property
-    def copy_geometries(self) -> Buffer: ...  # 'i': its geometry description, in geometries; -1 for none
+    def copy_geometry_indices(self) -> Buffer: ...  # 'i': its geometry description, in geometries; -1 for none
     @property
-    def copy_placeholders(self) -> Buffer: ...  # 'i': its placeholder, in placeholder_bounds; -1 for none
+    def copy_placeholder_bounds_indices(self) -> Buffer: ...  # 'i': its placeholder, in placeholder_bounds; -1 for none
     @property
     def placeholder_bounds(self) -> Buffer: ...  # 'f', 6 each: local (min x, y, z, max x, y, z)
     @property
-    def copy_viewport(self) -> Buffer: ...  # '?': whether it displays in the viewport
+    def copy_visible_in_viewport(self) -> Buffer: ...  # '?': whether it displays in the viewport
     @property
-    def copy_render(self) -> Buffer: ...  # '?': whether it displays in the final render
+    def copy_visible_in_render(self) -> Buffer: ...  # '?': whether it displays in the final render
     @property
-    def copy_shears(self) -> Buffer: ...  # 'i': its shear split, in the two buffers below; -1 for none
+    def copy_shear_split_indices(self) -> Buffer: ...  # 'i': its shear split, in the two buffers below; -1 for none
     @property
-    def shear_parent_worlds(self) -> Buffer: ...  # 'f', 16 each, as copy_worlds: its shear parent's world matrix
+    def shear_parent_world_matrices(self) -> Buffer: ...  # 'f', 16 each: the shear parent's world matrix
     @property
-    def shear_object_bases(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
+    def shear_object_basis_matrices(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
     @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
     @property

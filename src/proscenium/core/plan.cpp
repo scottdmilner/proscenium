@@ -310,7 +310,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   // Planning's own problems with a copy, reported once per USD prim.
   DrawnCopyDiagnosticAggregator planned(table, plan->diagnostics);
   const GfMatrix4d correction = CoordinateConversionMatrix(snapshot, settings, context);
-  plan->copyWorlds.reserve(16 * gprims.size());
+  plan->copyWorldMatrices.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
   std::unordered_map<const PrimRecord*, int> geometries;
   for (const DrawnGprim& gprim : gprims) {
@@ -318,8 +318,8 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     const bool inRender = Includes(settings.renderPurposes, gprim.purpose);
     // A guide shows only where it is explicitly visible, so one that isn't is never displayed.
     if ((!inViewport && !inRender) || (gprim.purpose == UsdGeomTokens->guide && !gprim.explicitGuide)) continue;
-    plan->copyViewport.push_back(gprim.visible && inViewport);
-    plan->copyRender.push_back(gprim.visible && inRender);
+    plan->copyVisibleInViewport.push_back(gprim.visible && inViewport);
+    plan->copyVisibleInRender.push_back(gprim.visible && inRender);
     // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
     const GfMatrix4d corrected = gprim.world * correction;
     if (corrected.GetColumn(3) != AffineColumn())
@@ -373,23 +373,23 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     if (!marker) owned.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
     if (sheared) owned.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
     for (std::size_t i = 0; i < owned.size(); ++i) {
-      partition.resources.push_back(object + 1 + i);
+      partition.resourceIndices.push_back(object + 1 + i);
       uses.push_back(object + 1 + i);
     }
     plan->partitions.push_back(std::move(partition));
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, std::move(uses)});
     plan->resources.insert(plan->resources.end(), owned.begin(), owned.end());
     plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
-    AppendWorld(world, plan->copyWorlds);
+    AppendWorld(world, plan->copyWorldMatrices);
     int shear = -1;
     if (sheared) {
-      shear = static_cast<int>(plan->shearParentWorlds.size() / 16);
+      shear = static_cast<int>(plan->shearParentWorldMatrices.size() / 16);
       const auto [parentWorld, objectBasis] = ShearSplit(world);
-      AppendWorld(parentWorld, plan->shearParentWorlds);
-      AppendWorld(objectBasis, plan->shearObjectBases);
+      AppendWorld(parentWorld, plan->shearParentWorldMatrices);
+      AppendWorld(objectBasis, plan->shearObjectBasisMatrices);
     }
-    plan->copyShears.push_back(shear);
-    plan->copyObjects.push_back(static_cast<int>(object));
+    plan->copyShearSplitIndices.push_back(shear);
+    plan->copyObjectResourceIndices.push_back(static_cast<int>(object));
     int geometry = -1;
     int placeholder = -1;
     if (gprim.mesh) {
@@ -404,8 +404,8 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
       placeholder = static_cast<int>(plan->placeholderBounds.size() / 6);
       AppendBounds(*bounds, plan->placeholderBounds);
     }
-    plan->copyGeometries.push_back(geometry);
-    plan->copyPlaceholders.push_back(placeholder);
+    plan->copyGeometryIndices.push_back(geometry);
+    plan->copyPlaceholderBoundsIndices.push_back(placeholder);
   }
   planned.FinalizeDiagnosticCoverage();
   SummarizeRepeatedDiagnostics(plan->diagnostics);

@@ -23,15 +23,16 @@ XYZ = tuple[float, float, float]
 class PlannedDrawnCopy:
     """A drawn copy as the plan's copy table gives it."""
 
-    object: int  # in resources
-    bounds_mesh: int | None  # in resources: one of the object's uses; None for an empty marker's
-    world: Gf.Matrix4d  # USD's row-vector convention
-    geometry: int  # in geometries; -1 for none
-    placeholder: int  # in placeholder_bounds; -1 for none
-    bounds: tuple[float, ...]  # local: its geometry's extent, else its placeholder's bounds; empty for none
-    viewport: bool  # displays in the viewport
-    render: bool  # displays in the final render
-    shear: tuple[Gf.Matrix4d, Gf.Matrix4d] | None  # a sheared copy's shear parent's world, and its object's basis
+    object_resource_index: int  # in resources
+    bounds_mesh_resource_index: int | None  # in resources: one of the object's uses; None for an empty marker's
+    world_matrix: Gf.Matrix4d  # USD's row-vector convention
+    geometry_index: int  # in geometries; -1 for none
+    placeholder_bounds_index: int  # in placeholder_bounds; -1 for none
+    local_bounds: tuple[float, ...]  # local: its geometry's extent, else its placeholder's bounds; empty for none
+    visible_in_viewport: bool  # displays in the viewport
+    visible_in_render: bool  # displays in the final render
+    # A sheared copy's shear parent's world matrix, and its object's basis.
+    shear_transform_split: tuple[Gf.Matrix4d, Gf.Matrix4d] | None
 
 
 def plan_at(stage: Usd.Stage, time: float, settings: _core.PlanSettings = SETTINGS) -> _core.Plan:
@@ -45,17 +46,20 @@ def plan_at(stage: Usd.Stage, time: float, settings: _core.PlanSettings = SETTIN
 
 def copies(plan: _core.Plan) -> dict[str, PlannedDrawnCopy]:
     """Each drawn copy by its source, read from the plan's copy table."""
-    objects = memoryview(plan.copy_objects).tolist()
-    worlds = memoryview(plan.copy_worlds).tolist()
-    geometries = memoryview(plan.copy_geometries).tolist()
-    placeholders = memoryview(plan.copy_placeholders).tolist()
+    objects = memoryview(plan.copy_object_resource_indices).tolist()
+    worlds = memoryview(plan.copy_world_matrices).tolist()
+    geometries = memoryview(plan.copy_geometry_indices).tolist()
+    placeholders = memoryview(plan.copy_placeholder_bounds_indices).tolist()
     bounds = memoryview(plan.placeholder_bounds).tolist()
-    viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
-    shears = memoryview(plan.copy_shears).tolist()
-    parent_worlds = memoryview(plan.shear_parent_worlds).tolist()
-    bases = memoryview(plan.shear_object_bases).tolist()
+    viewport, render = (
+        memoryview(plan.copy_visible_in_viewport).tolist(),
+        memoryview(plan.copy_visible_in_render).tolist(),
+    )
+    shears = memoryview(plan.copy_shear_split_indices).tolist()
+    parent_worlds = memoryview(plan.shear_parent_world_matrices).tolist()
+    bases = memoryview(plan.shear_object_basis_matrices).tolist()
     extents = [tuple(memoryview(g.extent).tolist()) for g in plan.geometries]
-    sources = {c.object_resource_index: c.source for c in plan.correspondence}
+    sources = {c.object_resource_index: c.source_path for c in plan.correspondence}
     resources = plan.resources
     shown: dict[str, PlannedDrawnCopy] = {}
     for copy, (obj, geometry, placeholder) in enumerate(zip(objects, geometries, placeholders, strict=True)):
@@ -94,16 +98,17 @@ def corners(world: Gf.Matrix4d, low: XYZ, high: XYZ) -> list[XYZ]:
 
 def assert_box(copy: PlannedDrawnCopy, world: Gf.Matrix4d, low: Gf.Vec3d, high: Gf.Vec3d) -> None:
     """The copy's corners are the expected ones, within the bounds comparison contract's tolerance."""
-    assert len(copy.bounds) == 6
+    assert len(copy.local_bounds) == 6
     _assert_corners(
-        corners(copy.world, xyz(copy.bounds[:3]), xyz(copy.bounds[3:])), corners(world, xyz(low), xyz(high))
+        corners(copy.world_matrix, xyz(copy.local_bounds[:3]), xyz(copy.local_bounds[3:])),
+        corners(world, xyz(low), xyz(high)),
     )
 
 
 def assert_world(copy: PlannedDrawnCopy, world: Gf.Matrix4d) -> None:
     """The copy's world transform is `world`, compared by where each takes the unit cube's corners."""
     unit = (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)
-    _assert_corners(corners(copy.world, *unit), corners(world, *unit))
+    _assert_corners(corners(copy.world_matrix, *unit), corners(world, *unit))
 
 
 def _assert_corners(shown: list[XYZ], expected: list[XYZ]) -> None:

@@ -51,14 +51,19 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
     """
     resources = plan.resources  # each read builds the tuple anew
     identities = [
-        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.object_index_in_copy)
+        manifests.CopyResourceIdentity(
+            manifests.RepresentationRole(r.role), r.source_entity_path, r.object_index_in_copy
+        )
         for r in resources
     ]
     keys = manifests.existing_or_new_entry_keys(published, identities)
-    worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
-    viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
-    shears = memoryview(plan.copy_shears).tolist()
-    parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
+    worlds, bounds = memoryview(plan.copy_world_matrices), _bounds(plan)
+    viewport, render = (
+        memoryview(plan.copy_visible_in_viewport).tolist(),
+        memoryview(plan.copy_visible_in_render).tolist(),
+    )
+    shears = memoryview(plan.copy_shear_split_indices).tolist()
+    parent_worlds, bases = memoryview(plan.shear_parent_world_matrices), memoryview(plan.shear_object_basis_matrices)
     # Objects, and their bounds meshes, are named in the plan's order after a new generation (DECISIONS.md "Managed
     # object names").
     prefix, object_indices = f"~{_next_object_generation_number():06d}.", itertools.count()
@@ -66,11 +71,11 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
     # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
     # published display of as many, ad hoc).
     hidden: dict[str, list[bool]] = {"hide_viewport": [], "hide_render": []}
-    for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
+    for copy, object_index in enumerate(memoryview(plan.copy_object_resource_indices).tolist()):
         # The object's uses: its bounds mesh, but for an empty marker's, and a sheared copy's shear parent.
         used = {identities[u].role: u for u in resources[object_index].dependency_resource_indices}
         object_key = keys[object_index]
-        source = resources[object_index].entity
+        source = resources[object_index].source_entity_path
         name = source.rsplit("/", 1)[-1]
         made: list[tuple[int, str, bpy.types.ID]] = []
         object_name = f"{prefix}{next(object_indices):07d} {name}"
@@ -131,11 +136,11 @@ def key_time_codes(
     changes: dict[str, manifests.ManifestEntryChange] = {}
     for time_code, plan in plans.items():
         resources = plan.resources  # each read builds the tuple anew
-        worlds = memoryview(plan.copy_worlds)
-        for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
+        worlds = memoryview(plan.copy_world_matrices)
+        for copy, object_index in enumerate(memoryview(plan.copy_object_resource_indices).tolist()):
             resource = resources[object_index]
             object_identity = manifests.CopyResourceIdentity(
-                manifests.RepresentationRole(resource.role), resource.entity, resource.object_index_in_copy
+                manifests.RepresentationRole(resource.role), resource.source_entity_path, resource.object_index_in_copy
             )
             if (object_key := keys.get(object_identity)) is None:
                 continue
@@ -215,8 +220,8 @@ def _bounds(plan: _core.Plan) -> list[Sequence[float]]:
     """Each copy's local bounds as (min x, y, z, max x, y, z), or empty for none."""
     extents = [memoryview(g.extent).tolist() for g in plan.geometries]
     placeholder_bounds = memoryview(plan.placeholder_bounds).tolist()
-    geometries = memoryview(plan.copy_geometries).tolist()
-    placeholders = memoryview(plan.copy_placeholders).tolist()
+    geometries = memoryview(plan.copy_geometry_indices).tolist()
+    placeholders = memoryview(plan.copy_placeholder_bounds_indices).tolist()
     return [
         extents[g] if g >= 0 else placeholder_bounds[6 * p : 6 * p + 6] if p >= 0 else []
         for g, p in zip(geometries, placeholders, strict=True)

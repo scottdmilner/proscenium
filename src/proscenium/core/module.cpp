@@ -100,7 +100,7 @@ bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
     TF_PY_ALLOW_THREADS_IN_SCOPE();
     return GroupForBatches(*plan.data, minimum);
   });
-  return bp::make_tuple(ToTuple(grouped.groups), grouped.single);
+  return bp::make_tuple(ToTuple(grouped.groups), grouped.unbatchedCopyIndices);
 }
 
 PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
@@ -155,7 +155,7 @@ void WrapPlan() {
       .add_property(
           "role", +[](const PlannedResource& r) { return RoleName(r.role); })
       .add_property(
-          "entity", +[](const PlannedResource& r) { return r.entity.GetString(); })
+          "source_entity_path", +[](const PlannedResource& r) { return r.sourceEntityPath.GetString(); })
       .add_property(
           "object_index_in_copy", +[](const PlannedResource& r) { return r.objectIndexInCopy; })
       .add_property(
@@ -164,34 +164,35 @@ void WrapPlan() {
           "dependency_resource_indices",
           +[](const PlannedResource& r) { return ToTuple(r.dependencyResourceIndices); });
   bp::class_<Partition>("Partition", bp::no_init)
-      .add_property("resources", +[](const Partition& p) { return ToTuple(p.resources); });
+      .add_property("resource_indices", +[](const Partition& p) { return ToTuple(p.resourceIndices); });
   bp::class_<CorrespondenceEntry>("CorrespondenceEntry", bp::no_init)
       .add_property(
           "object_resource_index", +[](const CorrespondenceEntry& e) { return e.objectResourceIndex; })
       .add_property(
-          "source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); })
+          "source_path", +[](const CorrespondenceEntry& e) { return e.sourcePath.GetString(); })
       .add_property("instance_context", +[](const CorrespondenceEntry& e) { return PathStrings(e.instanceContext); });
   // Arrays cross as copy-on-write copies, sharing the plan's storage.
   bp::class_<GeometryDescription>("GeometryDescription", bp::no_init)
       .add_property(
-          "source", +[](const GeometryDescription& g) { return g.source.GetString(); })
+          "representative_source_path",
+          +[](const GeometryDescription& g) { return g.representativeSourcePath.GetString(); })
       .add_property(
           "extent", +[](const GeometryDescription& g) { return g.extent; })
       .add_property("content_key", +[](const GeometryDescription& g) { return g.contentKey; });
   bp::class_<BatchGroup>("BatchGroup", bp::no_init)
       .add_property(
-          "geometry", +[](const BatchGroup& g) { return g.geometry; })
+          "geometry_index", +[](const BatchGroup& g) { return g.geometryIndex; })
       .add_property(
-          "viewport", +[](const BatchGroup& g) { return g.viewport; })
+          "visible_in_viewport", +[](const BatchGroup& g) { return g.visibleInViewport; })
       .add_property(
-          "render", +[](const BatchGroup& g) { return g.render; })
+          "visible_in_render", +[](const BatchGroup& g) { return g.visibleInRender; })
       .add_property(
           "coincident_copy_index", +[](const BatchGroup& g) { return g.coincidentCopyIndex; })
-      .add_property("members", +[](const BatchGroup& g) { return g.members; });
+      .add_property("copy_indices", +[](const BatchGroup& g) { return g.copyIndices; });
   bp::class_<PlanView>("Plan", bp::no_init)
       .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))
       .add_property(
-          "time_code", +[](const PlanView& p) { return p.data->time; })
+          "time_code", +[](const PlanView& p) { return p.data->timeCode; })
       .add_property(
           "context", +[](const PlanView& p) { return p.data->context; })
       .add_property(
@@ -201,27 +202,27 @@ void WrapPlan() {
       .add_property(
           "correspondence", +[](const PlanView& p) { return ToTuple(p.data->correspondence); })
       .add_property(
-          "copy_count", +[](const PlanView& p) { return p.data->copyObjects.size(); })
+          "copy_count", +[](const PlanView& p) { return p.data->copyObjectResourceIndices.size(); })
       .add_property(
-          "copy_worlds", +[](const PlanView& p) { return p.data->copyWorlds; })
+          "copy_world_matrices", +[](const PlanView& p) { return p.data->copyWorldMatrices; })
       .add_property(
-          "copy_objects", +[](const PlanView& p) { return p.data->copyObjects; })
+          "copy_object_resource_indices", +[](const PlanView& p) { return p.data->copyObjectResourceIndices; })
       .add_property(
-          "copy_geometries", +[](const PlanView& p) { return p.data->copyGeometries; })
+          "copy_geometry_indices", +[](const PlanView& p) { return p.data->copyGeometryIndices; })
       .add_property(
-          "copy_placeholders", +[](const PlanView& p) { return p.data->copyPlaceholders; })
+          "copy_placeholder_bounds_indices", +[](const PlanView& p) { return p.data->copyPlaceholderBoundsIndices; })
       .add_property(
           "placeholder_bounds", +[](const PlanView& p) { return p.data->placeholderBounds; })
       .add_property(
-          "copy_viewport", +[](const PlanView& p) { return p.data->copyViewport; })
+          "copy_visible_in_viewport", +[](const PlanView& p) { return p.data->copyVisibleInViewport; })
       .add_property(
-          "copy_render", +[](const PlanView& p) { return p.data->copyRender; })
+          "copy_visible_in_render", +[](const PlanView& p) { return p.data->copyVisibleInRender; })
       .add_property(
-          "copy_shears", +[](const PlanView& p) { return p.data->copyShears; })
+          "copy_shear_split_indices", +[](const PlanView& p) { return p.data->copyShearSplitIndices; })
       .add_property(
-          "shear_parent_worlds", +[](const PlanView& p) { return p.data->shearParentWorlds; })
+          "shear_parent_world_matrices", +[](const PlanView& p) { return p.data->shearParentWorldMatrices; })
       .add_property(
-          "shear_object_bases", +[](const PlanView& p) { return p.data->shearObjectBases; })
+          "shear_object_basis_matrices", +[](const PlanView& p) { return p.data->shearObjectBasisMatrices; })
       .add_property(
           "geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); })
       .add_property("diagnostics", +[](const PlanView& p) { return ToTuple(p.data->diagnostics); });

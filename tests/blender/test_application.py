@@ -123,8 +123,8 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
 
 
 def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
-    # The plan's copy_worlds holds Blender's layout, so foreach_set writes it as it stands, and the stub's objects get
-    # the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
+    # The plan's copy_world_matrices holds Blender's layout, so foreach_set writes it directly, and the stub's objects
+    # get the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
     # copies. Blender's objects hold no shear, so foreach_set loses it, and the stub's sheared copy shows it through its
     # unselectable shear parent, as Blender composes them from what each stores.
     with evaluation.transforms(tmp_path) as scene:
@@ -132,10 +132,10 @@ def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path:
         expected = {
             p: Matrix([[w[r, c] for c in range(4)] for r in range(4)]).transposed() for p, w in scene.world.items()
         }
-        sources = [c.source for c in plan.correspondence]
+        sources = [c.source_path for c in plan.correspondence]
         made = [bpy.data.objects.new(f"copy-{copy:04}", None) for copy in range(plan.copy_count)]
         assert list(bpy.data.objects) == made  # in copy order, so foreach_set's buffer lines up
-        bpy.data.objects.foreach_set("matrix_world", plan.copy_worlds)
+        bpy.data.objects.foreach_set("matrix_world", plan.copy_world_matrices)
         work = _prepared(_binding(bindings), plan)
         prepared = {
             work.manifest_entries[key].source_entity_paths[0]: obj
@@ -222,7 +222,7 @@ def test_objects_are_named_to_land_at_the_end_of_the_object_list(bindings: Bindi
         # In the plan's order: each object's prim, then a shear parent's after its object.
         resources = plan.resources
         prims = [
-            r.entity.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
+            r.source_entity_path.rsplit("/", 1)[-1] + (" shear" if r.role == "shear parent" else "")
             for r in resources
             if r.role in ("object", "shear parent")
         ]

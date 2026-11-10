@@ -11,8 +11,8 @@ across the boundary once, and groups its copies in batches of at least BATCH_MIN
 plan. Reading the plan is every tuple property converted once (each description's extent with it), every buffer
 viewed, and the buffers the stub application layer turns into lists turned into lists. Then per copy (F3): every
 field of the tuples' elements read, each copy's object index from a fresh read of the correspondence tuple and from
-the copy_objects buffer, the same content, and each copy's world matrix made from the buffer as the stub makes it.
-Each stage is timed by wall
+the copy_object_resource_indices buffer, the same content, and each copy's world matrix made from the buffer as the
+stub makes it. Each stage is timed by wall
 clock and by the process's CPU time, all threads', and the live heap (memory.heap_in_use) is read after it. Raw runs
 go to <out>/runs/, the summary to <out>/summary.json and summary.md.
 """
@@ -49,19 +49,25 @@ STAGES += [
 STAGES += ["matrices from the buffer", "batch groups", "drop"]
 TUPLES = ["partitions", "resources", "correspondence", "geometries", "diagnostics"]
 BUFFERS = [
-    "copy_worlds",
-    "copy_objects",
-    "copy_geometries",
-    "copy_placeholders",
+    "copy_world_matrices",
+    "copy_object_resource_indices",
+    "copy_geometry_indices",
+    "copy_placeholder_bounds_indices",
     "placeholder_bounds",
-    "copy_viewport",
-    "copy_render",
-    "copy_shears",
-    "shear_parent_worlds",
-    "shear_object_bases",
+    "copy_visible_in_viewport",
+    "copy_visible_in_render",
+    "copy_shear_split_indices",
+    "shear_parent_world_matrices",
+    "shear_object_basis_matrices",
 ]
-LISTED = ["copy_objects", "copy_geometries", "copy_placeholders", "placeholder_bounds", "copy_viewport"]
-LISTED += ["copy_render", "copy_shears"]  # the buffers application.py calls tolist() on
+LISTED = [
+    "copy_object_resource_indices",
+    "copy_geometry_indices",
+    "copy_placeholder_bounds_indices",
+    "placeholder_bounds",
+    "copy_visible_in_viewport",
+]
+LISTED += ["copy_visible_in_render", "copy_shear_split_indices"]  # the buffers application.py calls tolist() on
 
 
 def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -> dict[str, Any]:
@@ -148,26 +154,26 @@ def child(config: dict[str, Any]) -> None:
         mark("read buffers")
         lists = {name: views[name].tolist() for name in LISTED}
         mark("buffers to lists")
-        entry_fields = [(c.object_resource_index, c.source, c.instance_context) for c in read["correspondence"]]
+        entry_fields = [(c.object_resource_index, c.source_path, c.instance_context) for c in read["correspondence"]]
         mark("correspondence fields")
         resource_fields = [
-            (r.role, r.entity, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            (r.role, r.source_entity_path, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
             for r in read["resources"]
         ]
         mark("resource fields")
         from_tuple = [c.object_resource_index for c in plan.correspondence]
         mark("objects from the tuple")
-        from_buffer = memoryview(plan.copy_objects).tolist()
+        from_buffer = memoryview(plan.copy_object_resource_indices).tolist()
         mark("objects from the buffer")
         assert from_tuple == from_buffer
-        worlds = views["copy_worlds"]
+        worlds = views["copy_world_matrices"]
         matrices = []
         for copy in range(plan.copy_count):  # as application._matrix_from_buffer
             columns = worlds[16 * copy : 16 * copy + 16].tolist()
             matrices.append(Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed())
         mark("matrices from the buffer")
         groups, singles = plan.batch_groups(BATCH_MINIMUM)
-        members = [len(memoryview(g.members)) for g in groups]
+        members = [len(memoryview(g.copy_indices)) for g in groups]
         mark("batch groups")
         contexts = [entry.instance_context for entry in read["correspondence"]]
         counts = {
@@ -175,7 +181,7 @@ def child(config: dict[str, Any]) -> None:
             "resources": len(read["resources"]),
             "geometries": len(read["geometries"]),
             "placeholders": len(views["placeholder_bounds"]) // 6,
-            "shears": len(views["shear_object_bases"]) // 16,
+            "shears": len(views["shear_object_basis_matrices"]) // 16,
             "diagnostics": len(read["diagnostics"]),
             "instanced copies": sum(1 for c in contexts if c),
             "instance contexts": len(set(contexts) - {()}),

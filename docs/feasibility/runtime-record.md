@@ -1651,8 +1651,8 @@ What reading a plan's per-copy content costs in Python, as a tuple property and 
 
 **Method:** the probe and statistics of [Capture and planning](#capture-and-planning-m6-phase-f), with stages after the plan's reading:
 - **Fields:** every field of each correspondence entry (its element, source, and instance context) and of each resource (role, entity, place, covers, and uses), two resources per copy, from the tuples already read.
-- **The same content both ways:** each copy's object index from a fresh read of the correspondence tuple, `[c.element for c in plan.correspondence]`, and from the `copy_objects` buffer, `memoryview(...).tolist()`; they are checked equal.
-- **Matrices:** each copy's world matrix made from the `copy_worlds` buffer as the stub makes it, a 16-float slice's list into a `mathutils.Matrix`, transposed.
+- **The same content both ways:** each copy's object index from a fresh read of the correspondence tuple, `[c.element for c in plan.correspondence]`, and from the `copy_object_resource_indices` buffer, `memoryview(...).tolist()`; they are checked equal.
+- **Matrices:** each copy's world matrix made from the `copy_world_matrices` buffer as the stub makes it, a 16-float slice's list into a `mathutils.Matrix`, transposed.
 
 | Stage (ms), first; again | updates-100 | updates-1000 | ALab | updates-10000 |
 |---|---|---|---|---|

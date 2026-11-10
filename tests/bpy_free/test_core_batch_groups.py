@@ -33,10 +33,10 @@ def points(tmp_path: Path) -> Iterator[evaluation.PointInstancerScene]:
 
 def _groups(plan: _core.Plan, minimum: int) -> tuple[list[tuple[int, list[str]]], list[str]]:
     """The plan's groups as (repeat, member sources), and its single copies' sources."""
-    sources = [c.source for c in plan.correspondence]
+    sources = [c.source_path for c in plan.correspondence]
     groups, single = plan.batch_groups(minimum)
     return (
-        [(g.coincident_copy_index, [sources[i] for i in memoryview(g.members).tolist()]) for g in groups],
+        [(g.coincident_copy_index, [sources[i] for i in memoryview(g.copy_indices).tolist()]) for g in groups],
         [sources[i] for i in memoryview(single).tolist()],
     )
 

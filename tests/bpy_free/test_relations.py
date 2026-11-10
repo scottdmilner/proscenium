@@ -45,7 +45,14 @@ def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
 
 def _unmoved(copy: PlannedDrawnCopy) -> tuple[object, ...]:
     """What relation 1 leaves alone: all but the world transform and a shear split, which follows it."""
-    return copy.bounds, copy.viewport, copy.render, copy.geometry, copy.placeholder, copy.shear is None
+    return (
+        copy.local_bounds,
+        copy.visible_in_viewport,
+        copy.visible_in_render,
+        copy.geometry_index,
+        copy.placeholder_bounds_index,
+        copy.shear_transform_split is None,
+    )
 
 
 def _resets(stage: Usd.Stage, path: str) -> bool:
@@ -76,7 +83,7 @@ def _check_root_translation(stage: Usd.Stage) -> set[str]:
     pinned = {path for path in shown if _resets(stage, path)}
     for path, copy in shown.items():
         translation = Gf.Matrix4d(1) if path in pinned else Gf.Matrix4d().SetTranslate(SHIFT)
-        assert_world(copy, moved[path].world * translation)
+        assert_world(copy, moved[path].world_matrix * translation)
         assert _unmoved(copy) == _unmoved(moved[path]), path
     assert contents(after)["correspondence"] == contents(before)["correspondence"]
     assert _diagnostics(after) == _diagnostics(before)
@@ -135,14 +142,14 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
         assert converted.keys() == plain.keys() == scene.world.keys()
         for path, copy in converted.items():
             assert_world(copy, scene.world[path] * correction)
-            if copy.shear is not None:  # the object below its shear parent
-                parent, basis = copy.shear
-                assert_world(dataclasses.replace(copy, world=basis * parent), scene.world[path] * correction)
+            if copy.shear_transform_split is not None:  # the object below its shear parent
+                parent, basis = copy.shear_transform_split
+                assert_world(dataclasses.replace(copy, world_matrix=basis * parent), scene.world[path] * correction)
             assert_world(plain[path], scene.world[path])
-            assert (copy.bounds, copy.viewport, copy.render) == (
-                plain[path].bounds,
-                plain[path].viewport,
-                plain[path].render,
+            assert (copy.local_bounds, copy.visible_in_viewport, copy.visible_in_render) == (
+                plain[path].local_bounds,
+                plain[path].visible_in_viewport,
+                plain[path].visible_in_render,
             ), path
         assert contents(on)["correspondence"] == contents(off)["correspondence"]
         assert _diagnostics(on) == _diagnostics(off)
@@ -203,11 +210,11 @@ def test_relation_6_instanceable(stress: appearance.StressScene) -> None:
     instanced, flat = copies(before), copies(after)
     assert flat.keys() == instanced.keys()
     for path, copy in flat.items():
-        assert_world(copy, instanced[path].world)
-        assert (copy.bounds, copy.viewport, copy.render) == (
-            instanced[path].bounds,
-            instanced[path].viewport,
-            instanced[path].render,
+        assert_world(copy, instanced[path].world_matrix)
+        assert (copy.local_bounds, copy.visible_in_viewport, copy.visible_in_render) == (
+            instanced[path].local_bounds,
+            instanced[path].visible_in_viewport,
+            instanced[path].visible_in_render,
         ), path
     assert all(c.instance_context == () for c in after.correspondence)
     assert len(after.geometries) > len(before.geometries)  # a mesh per prim, none shared by instancing

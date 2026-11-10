@@ -74,12 +74,15 @@ def test_conversion_prefixes_the_correction(units: evaluation.UnitsScene, stage:
     converted = copies(on)
     for path, copy in converted.items():
         assert_world(copy, units.world[path] * correction)
-        assert copy.bounds == (*units.bounds[0], *units.bounds[1]), path  # local bounds unchanged
-    assert {p: (c.bounds, c.viewport, c.render, c.geometry) for p, c in converted.items()} == {
-        p: (c.bounds, c.viewport, c.render, c.geometry) for p, c in copies(off).items()
+        assert copy.local_bounds == (*units.bounds[0], *units.bounds[1]), path  # local bounds unchanged
+    assert {
+        p: (c.local_bounds, c.visible_in_viewport, c.visible_in_render, c.geometry_index) for p, c in converted.items()
+    } == {
+        p: (c.local_bounds, c.visible_in_viewport, c.visible_in_render, c.geometry_index)
+        for p, c in copies(off).items()
     }
-    assert [(c.source, c.instance_context) for c in on.correspondence] == [
-        (c.source, c.instance_context) for c in off.correspondence
+    assert [(c.source_path, c.instance_context) for c in on.correspondence] == [
+        (c.source_path, c.instance_context) for c in off.correspondence
     ]
     assert [(d.code, d.source_path, d.message) for d in on.diagnostics] == [
         (d.code, d.source_path, d.message) for d in off.diagnostics
@@ -92,8 +95,8 @@ def test_a_z_up_stage_in_meters_into_a_scene_of_scale_1_plans_as_with_conversion
     # CONV-08: the correction is the identity there.
     snapshot = _snapshot(units.stages["z-up-m"])
     assert (
-        memoryview(_plan(snapshot, CONVERTING, 1.0).copy_worlds).tolist()
-        == memoryview(_plan(snapshot, SETTINGS, 1.0).copy_worlds).tolist()
+        memoryview(_plan(snapshot, CONVERTING, 1.0).copy_world_matrices).tolist()
+        == memoryview(_plan(snapshot, SETTINGS, 1.0).copy_world_matrices).tolist()
     )
 
 

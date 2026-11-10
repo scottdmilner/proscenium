@@ -24,16 +24,16 @@ from pxr import Usd
 from proscenium.core import _core
 
 BUFFERS = (
-    "copy_worlds",
-    "copy_objects",
-    "copy_geometries",
-    "copy_placeholders",
+    "copy_world_matrices",
+    "copy_object_resource_indices",
+    "copy_geometry_indices",
+    "copy_placeholder_bounds_indices",
     "placeholder_bounds",
-    "copy_viewport",
-    "copy_render",
-    "copy_shears",
-    "shear_parent_worlds",
-    "shear_object_bases",
+    "copy_visible_in_viewport",
+    "copy_visible_in_render",
+    "copy_shear_split_indices",
+    "shear_parent_world_matrices",
+    "shear_object_basis_matrices",
 )
 
 
@@ -41,19 +41,36 @@ def contents(plan: _core.Plan) -> dict[str, Any]:
     """Every part of the plan, in its order, as JSON values: what equal plans share."""
     groups, single = plan.batch_groups(1)
     return {
-        "partitions": [list(p.resources) for p in plan.partitions],
+        "partitions": [list(p.resource_indices) for p in plan.partitions],
         "resources": [
-            [r.role, r.entity, r.object_index_in_copy, list(r.source_entity_paths), list(r.dependency_resource_indices)]
+            [
+                r.role,
+                r.source_entity_path,
+                r.object_index_in_copy,
+                list(r.source_entity_paths),
+                list(r.dependency_resource_indices),
+            ]
             for r in plan.resources
         ],
-        "correspondence": [[c.object_resource_index, c.source, list(c.instance_context)] for c in plan.correspondence],
+        "correspondence": [
+            [c.object_resource_index, c.source_path, list(c.instance_context)] for c in plan.correspondence
+        ],
         "buffers": {name: memoryview(getattr(plan, name)).tolist() for name in BUFFERS},
-        "geometries": [[g.source, memoryview(g.extent).tolist(), g.content_key] for g in plan.geometries],
+        "geometries": [
+            [g.representative_source_path, memoryview(g.extent).tolist(), g.content_key] for g in plan.geometries
+        ],
         "diagnostics": [
             [d.code, d.source_path, d.message, d.property_path, d.asset, d.fallback] for d in plan.diagnostics
         ],
         "batch groups": [
-            [g.geometry, g.viewport, g.render, g.coincident_copy_index, memoryview(g.members).tolist()] for g in groups
+            [
+                g.geometry_index,
+                g.visible_in_viewport,
+                g.visible_in_render,
+                g.coincident_copy_index,
+                memoryview(g.copy_indices).tolist(),
+            ]
+            for g in groups
         ]
         + [memoryview(single).tolist()],
     }

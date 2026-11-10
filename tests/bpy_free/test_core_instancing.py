@@ -39,7 +39,7 @@ def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
 
 
 def _contexts(plan: _core.Plan) -> dict[str, tuple[str, ...]]:
-    return {c.source: c.instance_context for c in plan.correspondence}
+    return {c.source_path: c.instance_context for c in plan.correspondence}
 
 
 def _usd_context(stage: Usd.Stage, path: str) -> tuple[str, ...]:
@@ -84,14 +84,14 @@ def test_copies_of_a_mesh_share_its_geometry_description(stress: appearance.Stre
     sharing: dict[int, list[str]] = {}
     for path, copy in shown.items():
         assert stress.stage.GetPrimAtPath(path).GetTypeName() == "Mesh", path
-        assert (copy.geometry >= 0, copy.placeholder) == (True, -1), path
-        sharing.setdefault(copy.geometry, []).append(path)
+        assert (copy.geometry_index >= 0, copy.placeholder_bounds_index) == (True, -1), path
+        sharing.setdefault(copy.geometry_index, []).append(path)
     assert sorted(sharing) == list(range(len(plan.geometries)))
     assert len(plan.geometries) < len(shown)  # some copies share, so the checks below could fail
     for geometry, paths in sharing.items():
         description = plan.geometries[geometry]
-        assert description.source == min(paths)  # its first copy's, in source order
-        assert description.content_key == description.source
+        assert description.representative_source_path == min(paths)  # its first copy's, in source order
+        assert description.content_key == description.representative_source_path
         prims = [stress.stage.GetPrimAtPath(p) for p in paths]
         assert len({p.GetPrimInPrototype().GetPath() if p.IsInstanceProxy() else p.GetPath() for p in prims}) == 1
         extent = UsdGeom.Mesh(prims[0]).GetExtentAttr().Get(Usd.TimeCode(0.0))
@@ -101,9 +101,9 @@ def test_copies_of_a_mesh_share_its_geometry_description(stress: appearance.Stre
 def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appearance.StressScene) -> None:
     plan = plan_at(stress.stage, 0.0)
     for resource in plan.resources:
-        assert resource.source_entity_paths == (resource.entity,)
-        assert source_entities.identifier(Sdf.Path(resource.entity)) == resource.entity
-        assert stress.stage.GetPrimAtPath(resource.entity).IsInstanceProxy(), resource.entity
+        assert resource.source_entity_paths == (resource.source_entity_path,)
+        assert source_entities.identifier(Sdf.Path(resource.source_entity_path)) == resource.source_entity_path
+        assert stress.stage.GetPrimAtPath(resource.source_entity_path).IsInstanceProxy(), resource.source_entity_path
 
 
 def test_known_gap_hydra_ignores_a_reset_inside_an_instance(stress: appearance.StressScene) -> None:
