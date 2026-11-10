@@ -34,7 +34,7 @@ class Platform(StrEnum):
 
 
 @dataclass(frozen=True)
-class Libs:
+class BlenderDependencyCheckout:
     """One platform's Blender library repo: what to check out of it, and what must exist after."""
 
     repo: str  # projects.blender.org/blender/<repo>; the Blender repo's submodule is lib/<suffix>
@@ -48,18 +48,18 @@ class Libs:
 
 
 LIBS = {
-    Platform.MACOS_ARM64: Libs(
+    Platform.MACOS_ARM64: BlenderDependencyCheckout(
         "lib-macos_arm64",
         ("/usd/include/", "/tbb/include/", "/python/include/"),
         ("usd/include/pxr/pxr.h", "tbb/include/tbb/tbb.h", "python/include/python3.13/Python.h"),
     ),
-    Platform.LINUX_X64: Libs(
+    Platform.LINUX_X64: BlenderDependencyCheckout(
         "lib-linux_x64",
         ("/usd/include/", "/tbb/include/", "/python/include/"),
         ("usd/include/pxr/pxr.h", "tbb/include/tbb/tbb.h", "python/include/python3.13/Python.h"),
     ),
     # Windows links through import libraries, which only the lib repo has (not the bpy wheel).
-    Platform.WINDOWS_X64: Libs(
+    Platform.WINDOWS_X64: BlenderDependencyCheckout(
         "lib-windows_x64",
         (
             "/usd/include/",
@@ -121,8 +121,8 @@ def deps_dir(key: Platform) -> Path:
     return CACHE / LIBS[key].repo
 
 
-def prepare(key: Platform) -> Path:
-    """The platform's dependency checkout, at the locked Blender release's revision.
+def ensure_dependency_checkout(key: Platform) -> Path:
+    """Ensure the platform's dependency checkout exists at the locked Blender release's revision.
 
     Clones it if it isn't cached, and fetches and checks out the revision if it's elsewhere. Raises RuntimeError over a
     checkout with local changes, or one missing a required file.
@@ -173,4 +173,4 @@ def _log(message: str) -> None:
 
 
 if __name__ == "__main__":
-    print(prepare(current_platform()))
+    print(ensure_dependency_checkout(current_platform()))

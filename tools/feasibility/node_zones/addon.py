@@ -63,9 +63,11 @@ ZONE_KINDS = (
 
 
 # Runtime state, rebuilt on demand: never saved, and dropped whenever the tree's data may have changed under it.
-class _State:
-    layouts: ClassVar[dict[int, _Layout]] = {}  # by tree session_uid
-    drawn: ClassVar[dict[int, _Drawn]] = {}  # the batches the last fill drew, by tree session_uid
+class _ZoneRuntimeState:
+    """The node-zone caches, pending updates, and registered handlers."""
+
+    layouts: ClassVar[dict[int, _CachedZoneTopology]] = {}  # by tree session_uid
+    drawn: ClassVar[dict[int, _ZoneDrawData]] = {}  # the batches the last fill drew, by tree session_uid
     pending_marks: ClassVar[set[str]] = set()  # trees whose links a timer will mark
     deleted: ClassVar[dict[int, list[tuple[int, int]]]] = {}  # begins and ends just freed, by tree session_uid
     # Each node's last size, by tree session_uid then node uid. Undo rebuilds the nodes, whose `dimensions` then
@@ -100,8 +102,8 @@ class ZoneTree(bpy.types.NodeTree):
         repair_pairs(self)
         refresh_layout(self)
         # Blender sets every link's validity after this returns, so links are marked from a timer just after.
-        if self.name not in _State.pending_marks:
-            _State.pending_marks.add(self.name)
+        if self.name not in _ZoneRuntimeState.pending_marks:
+            _ZoneRuntimeState.pending_marks.add(self.name)
             name = self.name
             bpy.app.timers.register(lambda: _mark_later(name), first_interval=0.0)
 
@@ -132,7 +134,7 @@ class ZoneNodeBase:
         # Blender calls this as it deletes the node; the tree's update, which follows, deletes its partner.
         if self.zone_role in _ZONE_ROLES:
             tree: Any = self.id_data  # ty: ignore[unresolved-attribute] - a Node's, through the mixin
-            _State.deleted.setdefault(tree.session_uid, []).append((self.uid, self.partner))
+            _ZoneRuntimeState.deleted.setdefault(tree.session_uid, []).append((self.uid, self.partner))
 
     def copy(self, node: Any) -> None:
         # Duplicating and pasting both copy; the copy keeps the original's partner until the tree repairs it.
@@ -147,17 +149,17 @@ class ZoneNodeBase:
         layout.label(text=f"uid {self.uid}, partner {self.partner}")
 
 
-def _plain(idname: str, label: str, role: zone_model.ZoneRole = zone_model.ZoneRole.PLAIN) -> type[Any]:
+def _plain_node_type(idname: str, label: str, role: zone_model.ZoneRole = zone_model.ZoneRole.PLAIN) -> type[Any]:
     return type(idname, (ZoneNodeBase, bpy.types.Node), {"bl_idname": idname, "bl_label": label, "zone_role": role})
 
 
 PLAIN_NODES = [
-    _plain("POC_ZONES_stage_input", "Stage Input", zone_model.ZoneRole.PINNED),
-    _plain("POC_ZONES_stage_output", "Stage Output", zone_model.ZoneRole.PINNED),
-    _plain("POC_ZONES_set_attribute", "Set Attribute"),
-    _plain("POC_ZONES_transform", "Transform"),
-    _plain("POC_ZONES_select_variant", "Select Variant"),
-    _plain("POC_ZONES_value", "Value"),
+    _plain_node_type("POC_ZONES_stage_input", "Stage Input", zone_model.ZoneRole.PINNED),
+    _plain_node_type("POC_ZONES_stage_output", "Stage Output", zone_model.ZoneRole.PINNED),
+    _plain_node_type("POC_ZONES_set_attribute", "Set Attribute"),
+    _plain_node_type("POC_ZONES_transform", "Transform"),
+    _plain_node_type("POC_ZONES_select_variant", "Select Variant"),
+    _plain_node_type("POC_ZONES_value", "Value"),
 ]
 
 
@@ -195,7 +197,7 @@ def _graph(tree: Any) -> tuple[list[zone_model.GraphNode], list[zone_model.Graph
 
 
 @dataclass(frozen=True, slots=True)
-class _Layout:
+class _CachedZoneTopology:
     """A tree's zones, and the graph they were worked out from."""
 
     nodes: list[zone_model.GraphNode]
@@ -209,15 +211,17 @@ def refresh_layout(tree: Any) -> zone_model.ZoneLayout:
     The tree's update runs on every change, a node moved from Python included, and positions don't change zones.
     """
     nodes, links, _ = _graph(tree)
-    cached = _State.layouts.get(tree.session_uid)
+    cached = _ZoneRuntimeState.layouts.get(tree.session_uid)
     if cached is None or cached.nodes != nodes or cached.links != links:
-        cached = _State.layouts[tree.session_uid] = _Layout(nodes, links, zone_model.layout(nodes, links))
+        cached = _ZoneRuntimeState.layouts[tree.session_uid] = _CachedZoneTopology(
+            nodes, links, zone_model.layout(nodes, links)
+        )
     return cached.zones
 
 
 def zone_layout(tree: Any) -> zone_model.ZoneLayout:
     """The tree's zones, worked out once per change to its links or pairs."""
-    cached = _State.layouts.get(tree.session_uid)
+    cached = _ZoneRuntimeState.layouts.get(tree.session_uid)
     return refresh_layout(tree) if cached is None else cached.zones
 
 
@@ -226,7 +230,7 @@ def remove_orphans(tree: Any) -> None:
 
     This runs after the delete has pushed its undo step, so the partner's removal is a step of its own.
     """
-    deleted = _State.deleted.pop(tree.session_uid, [])
+    deleted = _ZoneRuntimeState.deleted.pop(tree.session_uid, [])
     if not deleted:
         return
     zone_nodes = [node for node in tree.nodes if getattr(node, "zone_role", None) in _ZONE_ROLES]
@@ -251,7 +255,7 @@ _ZONE_ROLES = (zone_model.ZoneRole.BEGIN, zone_model.ZoneRole.END)
 
 
 def _mark_later(tree_name: str) -> None:
-    _State.pending_marks.discard(tree_name)
+    _ZoneRuntimeState.pending_marks.discard(tree_name)
     node_groups: Any = bpy.data.node_groups
     tree = node_groups.get(tree_name)
     if tree is not None and tree.bl_idname == TREE_IDNAME:
@@ -438,7 +442,7 @@ def node_rects(tree: Any) -> tuple[dict[int, zone_hull.Rect], set[int], dict[int
     rects: dict[int, zone_hull.Rect] = {}
     selected: set[int] = set()
     colors: dict[int, Color] = {}
-    sizes = _State.sizes.setdefault(tree.session_uid, {})
+    sizes = _ZoneRuntimeState.sizes.setdefault(tree.session_uid, {})
     for node in tree.nodes:
         if not isinstance(node, ZoneNodeBase):
             continue
@@ -478,7 +482,7 @@ class _DrawnZone:
 
 
 @dataclass(slots=True)
-class _Drawn:
+class _ZoneDrawData:
     """A tree's zones as drawn, and what they were made from."""
 
     layout: zone_model.ZoneLayout
@@ -488,20 +492,20 @@ class _Drawn:
     zones: dict[int, _DrawnZone]  # by begin
 
 
-def _drawn(tree: Any, rects: dict[int, zone_hull.Rect]) -> _Drawn:
-    """The tree's zones as drawn, each remade only when one of its nodes' bounds changes.
+def _build_zone_draw_data(tree: Any, rects: dict[int, zone_hull.Rect]) -> _ZoneDrawData:
+    """Build or reuse cached zone draw data, rebuilding zones whose node bounds changed.
 
     So a drag remakes the zones holding the dragged node and keeps the rest.
     """
     result = zone_layout(tree)
     scale = _ui_scale()
-    drawn = _State.drawn.get(tree.session_uid)
+    drawn = _ZoneRuntimeState.drawn.get(tree.session_uid)
     if drawn is not None and drawn.layout is result and drawn.scale == scale:
         if drawn.rects == rects:
             return drawn
     else:
         core = {zone.begin: zone_hull.core_nodes(zone, result) for zone in result.zones}
-        drawn = _Drawn(result, scale, {}, core, {})
+        drawn = _ZoneDrawData(result, scale, {}, core, {})
     zones: dict[int, _DrawnZone] = {}
     for zone in sorted(result.zones, key=lambda z: -z.depth):  # nested zones first
         core_rects = tuple(rects.get(uid) for uid in drawn.core_nodes[zone.begin])
@@ -524,7 +528,7 @@ def _drawn(tree: Any, rects: dict[int, zone_hull.Rect]) -> _Drawn:
             key, core, _zone_batches(zone_hull.grown(core, RADIUS * scale)) if core else None
         )
     drawn.rects, drawn.zones = rects, zones
-    _State.drawn[tree.session_uid] = drawn
+    _ZoneRuntimeState.drawn[tree.session_uid] = drawn
     return drawn
 
 
@@ -562,7 +566,7 @@ def _draw_zones() -> None:
         return
     start = time.perf_counter_ns()
     rects, selected, colors = node_rects(tree)
-    drawn = _drawn(tree, rects)
+    drawn = _build_zone_draw_data(tree, rects)
     scale = _ui_scale()
     region: Any = bpy.context.region
     fill, line = _shader("UNIFORM_COLOR"), _shader("POLYLINE_UNIFORM_COLOR")
@@ -581,7 +585,7 @@ def _draw_zones() -> None:
         line.uniform_float("color", (*_lighter(color, OUTLINE_LIGHTEN), 0.9 if highlighted else 0.6))
         outline_batch.draw(line)
     gpu.state.blend_set("NONE")
-    _State.draw_ns.append(time.perf_counter_ns() - start)
+    _ZoneRuntimeState.draw_ns.append(time.perf_counter_ns() - start)
 
 
 def _check_sizes() -> None:
@@ -589,15 +593,15 @@ def _check_sizes() -> None:
     tree = _zone_tree_in_context()
     if tree is None:
         return
-    drawn = _State.drawn.get(tree.session_uid)
-    if drawn is not None and drawn.rects != node_rects(tree)[0] and not _State.redraw_pending:
+    drawn = _ZoneRuntimeState.drawn.get(tree.session_uid)
+    if drawn is not None and drawn.rects != node_rects(tree)[0] and not _ZoneRuntimeState.redraw_pending:
         # A redraw tagged while the region draws didn't happen, so it's tagged from a timer after the draw.
-        _State.redraw_pending = True
+        _ZoneRuntimeState.redraw_pending = True
         bpy.app.timers.register(_redraw_node_editors, first_interval=0.0)
 
 
 def _redraw_node_editors() -> None:
-    _State.redraw_pending = False
+    _ZoneRuntimeState.redraw_pending = False
     wm: Any = bpy.context.window_manager
     for window in wm.windows:
         for area in window.screen.areas:
@@ -608,16 +612,16 @@ def _redraw_node_editors() -> None:
 @persistent
 def _forget_layouts(*_: Any) -> None:
     # Undo, redo, and loading replace the tree's data without calling its update.
-    _State.layouts.clear()
-    _State.drawn.clear()
-    _State.deleted.clear()  # undo frees and rebuilds nodes; those aren't deletions
+    _ZoneRuntimeState.layouts.clear()
+    _ZoneRuntimeState.drawn.clear()
+    _ZoneRuntimeState.deleted.clear()  # undo frees and rebuilds nodes; those aren't deletions
 
 
 @persistent
 def _forget_all(*_: Any) -> None:
     # A loaded file's trees are new, and their sizes come with their first draw.
     _forget_layouts()
-    _State.sizes.clear()
+    _ZoneRuntimeState.sizes.clear()
 
 
 _HANDLERS = (
@@ -641,7 +645,7 @@ def register() -> None:
         bpy.utils.register_class(cls)
     bpy.types.NODE_MT_add.append(_draw_add_menu)  # ty: ignore[invalid-argument-type] - the stubs want a bound draw
     space = bpy.types.SpaceNodeEditor
-    _State.handlers = [
+    _ZoneRuntimeState.handlers = [
         space.draw_handler_add(_draw_zones, (), "WINDOW", "PRE_VIEW"),
         space.draw_handler_add(_check_sizes, (), "WINDOW", "POST_VIEW"),
     ]
@@ -663,20 +667,20 @@ def _add_keymap() -> None:
     for key, ctrl, reconnect in _DELETE_KEYS:
         item: Any = keymap.keymap_items.new(POC_ZONES_OT_delete.bl_idname, key, "PRESS", ctrl=ctrl)
         item.properties.reconnect = reconnect
-        _State.keymap_items.append((keymap, item))
+        _ZoneRuntimeState.keymap_items.append((keymap, item))
 
 
 def unregister() -> None:
     _forget_all()  # the batches too: Blender would report them as unfreed memory at quit
-    for keymap, item in _State.keymap_items:
+    for keymap, item in _ZoneRuntimeState.keymap_items:
         keymap.keymap_items.remove(item)
-    _State.keymap_items = []
+    _ZoneRuntimeState.keymap_items = []
     for handlers, handler in _HANDLERS:
         if handler in handlers:
             handlers.remove(handler)
-    for handler in _State.handlers:
+    for handler in _ZoneRuntimeState.handlers:
         bpy.types.SpaceNodeEditor.draw_handler_remove(handler, "WINDOW")
-    _State.handlers = []
+    _ZoneRuntimeState.handlers = []
     bpy.types.NODE_MT_add.remove(_draw_add_menu)  # ty: ignore[invalid-argument-type]
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

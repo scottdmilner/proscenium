@@ -69,7 +69,7 @@ class _Slugger:
         return base if n == 0 else f"{base}-{n}"
 
 
-def plain(text: str) -> str:
+def normalize_markdown_text(text: str) -> str:
     """Markdown reduced to comparable text: link targets, emphasis, and code marks dropped."""
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"[*`]", "", text)
@@ -106,7 +106,7 @@ def blocks(doc: str) -> list[Block]:
     def flush() -> None:
         """End the current paragraph, if any, as a block."""
         if para:
-            out.append(Block(doc, [a for _, a in stack], plain(" ".join(para)), para_line))
+            out.append(Block(doc, [a for _, a in stack], normalize_markdown_text(" ".join(para)), para_line))
             para.clear()
 
     while i < len(lines):
@@ -125,7 +125,9 @@ def blocks(doc: str) -> list[Block]:
             start, i = i, i + 1
             while i < len(lines) and not lines[i].strip().startswith("```"):
                 i += 1
-            out.append(Block(doc, [a for _, a in stack], plain(" ".join(lines[start + 1 : i])), start + 1))
+            out.append(
+                Block(doc, [a for _, a in stack], normalize_markdown_text(" ".join(lines[start + 1 : i])), start + 1)
+            )
         elif stripped.startswith("|"):
             # A row followed by a separator row (|---|) is a header; neither is a requirement.
             flush()
@@ -133,17 +135,17 @@ def blocks(doc: str) -> list[Block]:
             header = i + 1 < len(lines) and re.match(r"^\|[\s|:-]+\|$", lines[i + 1].strip())
             separator = re.match(r"^\|[\s|:-]+\|$", stripped)
             if not header and not separator:
-                out.append(Block(doc, [a for _, a in stack], plain(stripped.strip("|")), i + 1))
+                out.append(Block(doc, [a for _, a in stack], normalize_markdown_text(stripped.strip("|")), i + 1))
         elif re.match(r"^\s*(?:[-*]|\d+\.) ", line) or stripped.startswith(">"):
             flush()
             text = re.sub(r"^\s*(?:[-*]|\d+\.|>)\s*", "", line)
-            item = Block(doc, [a for _, a in stack], plain(text), i + 1)
+            item = Block(doc, [a for _, a in stack], normalize_markdown_text(text), i + 1)
             out.append(item)
         elif not stripped:
             flush()
             item = None
         elif item and line[0].isspace():
-            item.text = f"{item.text} {plain(stripped)}"  # a wrapped line continues its list item
+            item.text = f"{item.text} {normalize_markdown_text(stripped)}"  # a wrapped line continues its list item
         else:
             if not para:
                 para_line = i + 1
@@ -317,7 +319,7 @@ def check(matrix: Matrix) -> list[str]:
             problems.append(f"{r.id}: no heading for #{anchor} in {doc}")
             continue
         # A quote matches a block in its section or any subsection; it must match exactly one.
-        hits = [b for b in all_blocks[doc] if anchor in b.sections and plain(r.quote) in b.text]
+        hits = [b for b in all_blocks[doc] if anchor in b.sections and normalize_markdown_text(r.quote) in b.text]
         if not hits:
             problems.append(f"{r.id}: quote not found under {r.section}: {r.quote!r}")
         elif len(hits) > 1:
@@ -338,7 +340,7 @@ def check(matrix: Matrix) -> list[str]:
         # every table row); a section without an anchor is the whole doc.
         in_section = [b for b in all_blocks[doc] if not anchor or anchor in b.sections]
         for quote in ex.get("quotes") or [""]:  # no quotes: the whole section
-            hits = [b for b in in_section if plain(quote) in b.text]
+            hits = [b for b in in_section if normalize_markdown_text(quote) in b.text]
             if not hits:
                 problems.append(f"{where}: matches nothing: {quote!r}")
             covered.update((b.doc, b.line) for b in hits)

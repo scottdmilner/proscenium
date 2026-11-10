@@ -107,7 +107,7 @@ def _queue_moves(window: Any, count: int) -> None:
 
 def _start(window: Any, watcher: bool, stand_ins: int) -> None:
     _Stats.running = True
-    tree_keys._State.watching = watcher  # noqa: SLF001 - the bench starts and ends the watcher itself
+    tree_keys._TreeKeyboardWatcherState.watching = watcher  # noqa: SLF001 - the bench starts and ends the watcher itself
     for i in range(stand_ins):
         _invoke(window, bpy.ops.poc_sg.stand_in, counts=i == 0)  # ty: ignore[unresolved-attribute]
     if watcher:
@@ -116,7 +116,7 @@ def _start(window: Any, watcher: bool, stand_ins: int) -> None:
 
 def _stop(window: Any) -> None:
     _Stats.running = False
-    tree_keys._State.watching = False  # noqa: SLF001
+    tree_keys._TreeKeyboardWatcherState.watching = False  # noqa: SLF001
     _queue_moves(window, 1)  # each modal operator ends at its next event
 
 
@@ -126,7 +126,7 @@ def _bench() -> Iterator[float]:
     window: Any = wm.windows[0]
     watcher: Any = tree_keys.POC_SG_OT_watch_keys
     watcher.modal = _timed(watcher.modal)
-    tree_keys._State.watching = False  # noqa: SLF001 - ends the watcher the add-on started
+    tree_keys._TreeKeyboardWatcherState.watching = False  # noqa: SLF001 - ends the watcher the add-on started
     _queue_moves(window, 1)
     yield 0.5
     times: dict[str, list[float]] = {label: [] for label, _, _ in CONFIGS}
@@ -157,7 +157,7 @@ def _bench() -> Iterator[float]:
     print(f"tree watcher's modal in Python: {_Stats.watcher_ns / max(calls, 1) / 1000:.2f} µs/call, {calls} calls")
 
     # Unregistering while the watcher runs: Blender is expected to drop the operator's handlers with its type.
-    tree_keys._State.watching = True  # noqa: SLF001
+    tree_keys._TreeKeyboardWatcherState.watching = True  # noqa: SLF001
     _invoke(window, bpy.ops.poc_sg.watch_keys)  # ty: ignore[unresolved-attribute]
     yield 0.2
     addon.unregister()

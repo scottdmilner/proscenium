@@ -86,7 +86,7 @@ class StageTree:
         """Whether a row shows because it matched the filter (rather than holding a match), or no filter is set."""
         return self.search_result is None or row.prim in self.search_result.matches
 
-    def step_in(self, row_index: int) -> int:
+    def expand_or_enter_row(self, row_index: int) -> int:
         """Right arrow: expand a collapsed row, or move into an expanded one. Returns the row now active."""
         row = self.rows[row_index]
         if not self.details(row).has_children:
@@ -97,7 +97,7 @@ class StageTree:
         has_visible_child = row_index + 1 < len(self.rows) and self.rows[row_index + 1].depth > row.depth
         return row_index + 1 if has_visible_child else row_index
 
-    def step_out(self, row_index: int) -> int:
+    def collapse_or_select_parent(self, row_index: int) -> int:
         """Left arrow: collapse an expanded row, or move to its parent. Returns the row now active."""
         row = self.rows[row_index]
         if self.is_expanded(row) and self.details(row).has_children:

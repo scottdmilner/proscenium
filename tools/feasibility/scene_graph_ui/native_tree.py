@@ -20,7 +20,9 @@ if TYPE_CHECKING:
 NATIVE_TREE_NAME = ".poc_scene_graph"  # a leading dot hides the node group from ID browsers
 
 
-class _State:
+class _NativeTreeState:
+    """The interface-item paths and accessor for the open USD stage."""
+
     paths: dict[str, Sdf.Path] = {}  # interface item key (`item_key`) -> prim path
     stage: Callable[[], Usd.Stage | None] = lambda: None  # the open stage, as the add-on gives it
 
@@ -45,7 +47,7 @@ def build(stage: Usd.Stage, cap: int) -> int:
     interface: Any = node_tree.interface
     interface.clear()
     parents: dict[Sdf.Path, Any] = {}  # prim path -> its NodeTreeInterfacePanel
-    _State.paths = {}
+    _NativeTreeState.paths = {}
     built = 0
     for prim in _capped(Usd.PrimRange(stage.GetPseudoRoot(), tree_model.CHILD_PREDICATE), cap):
         if prim.IsPseudoRoot():
@@ -58,7 +60,7 @@ def build(stage: Usd.Stage, cap: int) -> int:
             parents[prim.GetPath()] = item
         else:
             item = interface.new_socket(prim.GetName(), in_out="INPUT", socket_type="NodeSocketFloat", parent=parent)
-        _State.paths[item_key(item)] = prim.GetPath()
+        _NativeTreeState.paths[item_key(item)] = prim.GetPath()
         built += 1
     return built
 
@@ -70,14 +72,14 @@ def item_key(item: Any) -> str:
 
 def paths() -> dict[str, Sdf.Path]:
     """Each interface item's prim, by `item_key`."""
-    return _State.paths
+    return _NativeTreeState.paths
 
 
 def active_path() -> Sdf.Path | None:
     """The prim of the tree's active item, if it has one."""
     node_tree = bpy.data.node_groups.get(NATIVE_TREE_NAME)
     active_item = node_tree.interface.active if node_tree else None
-    return _State.paths.get(item_key(active_item)) if active_item else None
+    return _NativeTreeState.paths.get(item_key(active_item)) if active_item else None
 
 
 def _capped(prims: Iterable[Usd.Prim], cap: int) -> Iterable[Usd.Prim]:
@@ -98,7 +100,7 @@ class POC_SG_OT_build_native(bpy.types.Operator):  # noqa: N801 - Blender's clas
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        stage = _State.stage()
+        stage = _NativeTreeState.stage()
         if stage is None:
             return {"CANCELLED"}
         self.report({"INFO"}, f"Native tree: {build(stage, self.cap)} prims")
@@ -129,7 +131,7 @@ CLASSES = (POC_SG_NodeTree, POC_SG_OT_build_native, POC_SG_PT_native)
 
 def register(stage: Callable[[], Usd.Stage | None]) -> None:
     """Register the native tree's classes; stage gives the open stage when the tree is built."""
-    _State.stage = stage
+    _NativeTreeState.stage = stage
     for cls in CLASSES:
         bpy.utils.register_class(cls)
 
@@ -138,9 +140,9 @@ def unregister() -> None:
     """Undo `register`."""
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
-    _State.paths = {}
+    _NativeTreeState.paths = {}
 
 
 def reset() -> None:
     """Forget the item-to-prim map, as when a new stage opens."""
-    _State.paths = {}
+    _NativeTreeState.paths = {}

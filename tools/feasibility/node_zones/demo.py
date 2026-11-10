@@ -280,7 +280,7 @@ def steps() -> Iterator[float]:
     demo.press("Z", ctrl=True)
     yield 0.3
     tree = _node_groups()["Zones demo"]
-    print(f"after undo: {_zone_names(tree)}; cached layouts {len(addon._State.layouts)}")  # noqa: SLF001
+    print(f"after undo: {_zone_names(tree)}; cached layouts {len(addon._ZoneRuntimeState.layouts)}")  # noqa: SLF001
 
     # Collapse and expand a member: the fill should follow on the next draw.
     member = next(node for node in tree.nodes if node.name == "Set Attribute")
@@ -298,7 +298,7 @@ def steps() -> Iterator[float]:
         yield 0.3
         demo.frame_all()
         yield 0.5
-        state = addon._State  # noqa: SLF001 - the demo reads the add-on's timing and drops its cache
+        state = addon._ZoneRuntimeState  # noqa: SLF001 - the demo reads the add-on's timing and drops its cache
         dragged = next(node for node in large.nodes if node.bl_idname == "POC_ZONES_transform")
         for case in ("batches reused", "one node moved per draw", "every zone remade"):
             state.draw_ns.clear()
