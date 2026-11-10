@@ -101,7 +101,7 @@ def test_copies_of_a_mesh_share_its_geometry_description(stress: appearance.Stre
 def test_instanced_copies_are_identified_by_instance_proxy_paths(stress: appearance.StressScene) -> None:
     plan = plan_at(stress.stage, 0.0)
     for resource in plan.resources:
-        assert resource.covers == (resource.entity,)
+        assert resource.source_entity_paths == (resource.entity,)
         assert source_entities.identifier(Sdf.Path(resource.entity)) == resource.entity
         assert stress.stage.GetPrimAtPath(resource.entity).IsInstanceProxy(), resource.entity
 

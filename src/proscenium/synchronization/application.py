@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from .prepared_work import PreparationResources
 
 # A managed object's name, which its bounds mesh shares: a tilde, which sorts after ASCII letters, digits, and most
-# punctuation, then its generation and its ordinal in the plan's order, zero-padded, then its prim's name, so each lands
+# punctuation, then its generation and its index in the plan's order, zero-padded, then its prim's name, so each lands
 # at the end of Blender's sorted lists (DECISIONS.md "Managed object names").
 _MANAGED_NAME = re.compile(r"~(\d{6})\.\d{7} ")
 
@@ -51,7 +51,8 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
     """
     resources = plan.resources  # each read builds the tuple anew
     identities = [
-        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.place) for r in resources
+        manifests.CopyResourceIdentity(manifests.RepresentationRole(r.role), r.entity, r.object_index_in_copy)
+        for r in resources
     ]
     keys = manifests.existing_or_new_entry_keys(published, identities)
     worlds, bounds = memoryview(plan.copy_worlds), _bounds(plan)
@@ -60,19 +61,19 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
     parent_worlds, bases = memoryview(plan.shear_parent_worlds), memoryview(plan.shear_object_bases)
     # Objects, and their bounds meshes, are named in the plan's order after a new generation (DECISIONS.md "Managed
     # object names").
-    prefix, ordinals = f"~{_next_object_generation_number():06d}.", itertools.count()
+    prefix, object_indices = f"~{_next_object_generation_number():06d}.", itertools.count()
     # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
     # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
     # published display of as many, ad hoc).
     hidden: dict[str, list[bool]] = {"hide_viewport": [], "hide_render": []}
     for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
         # The object's uses: its bounds mesh, but for an empty marker's, and a sheared copy's shear parent.
-        used = {identities[u].role: u for u in resources[object_index].uses}
+        used = {identities[u].role: u for u in resources[object_index].dependency_resource_indices}
         object_key = keys[object_index]
         source = resources[object_index].entity
         name = source.rsplit("/", 1)[-1]
         made: list[tuple[int, str, bpy.types.ID]] = []
-        object_name = f"{prefix}{next(ordinals):07d} {name}"
+        object_name = f"{prefix}{next(object_indices):07d} {name}"
         mesh = None
         if (mesh_index := used.get(manifests.RepresentationRole.BOUNDS_MESH)) is not None:
             mesh = bpy.data.meshes.new(object_name)
@@ -91,7 +92,7 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
         else:
             # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
             parent_index = used[manifests.RepresentationRole.SHEAR_PARENT]
-            parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
+            parent = bpy.data.objects.new(f"{prefix}{next(object_indices):07d} {name} shear", None)
             work.track(keys[parent_index], identities[parent_index].role, parent)
             work.staging.objects.link(parent)
             hidden["hide_viewport"].append(False)
@@ -103,9 +104,13 @@ def prepare(plan: _core.Plan, published: manifests.Manifest, work: PreparationRe
             obj.matrix_basis = _matrix_from_buffer(bases, shear)
         for index, key, datablock in made:
             resource = resources[index]
-            uses = [keys[used] for used in resource.uses]
+            uses = [keys[used] for used in resource.dependency_resource_indices]
             work.entries[key] = manifests.ManifestEntry(
-                datablock, list(resource.covers), identities[index].role, uses, resource.place
+                datablock,
+                list(resource.source_entity_paths),
+                identities[index].role,
+                uses,
+                resource.object_index_in_copy,
             )
     for flag, values in hidden.items():
         work.staging.objects.foreach_set(flag, values)
@@ -130,7 +135,7 @@ def key_time_codes(
         for copy, object_index in enumerate(memoryview(plan.copy_objects).tolist()):
             resource = resources[object_index]
             object_identity = manifests.CopyResourceIdentity(
-                manifests.RepresentationRole(resource.role), resource.entity, resource.place
+                manifests.RepresentationRole(resource.role), resource.entity, resource.object_index_in_copy
             )
             if (object_key := keys.get(object_identity)) is None:
                 continue

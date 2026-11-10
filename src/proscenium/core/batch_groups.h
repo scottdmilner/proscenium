@@ -23,8 +23,8 @@ struct BatchGroup {
   int geometry = -1;  // in Plan::geometries
   bool viewport = false;
   bool render = false;
-  int repeat = 0;              // among groups with the same key, by coincident world transform
-  PXR_NS::VtIntArray members;  // copy indices, ascending
+  int coincidentCopyIndex = 0;  // among groups with the same key, by coincident world transform
+  PXR_NS::VtIntArray members;   // copy indices, ascending
 };
 
 struct BatchGroups {

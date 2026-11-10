@@ -90,7 +90,7 @@ HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, boo
   if (auto found = cache_.find(prim.GetPath()); found != cache_.end()) return found->second.container;
   const SourceInfoSceneIndexPtr self = self_;
   auto generation = std::make_shared<std::atomic<uint64_t>>(0);
-  HdContainerDataSourceHandle container = LazyContainer::New(
+  HdContainerDataSourceHandle container = RevisionCachedContainer::New(
       [self, prim, imaged, generation]() -> HdContainerDataSourceHandle {
         if (!self || generation->load() == kForgotten || !prim.IsValid()) return nullptr;
         HdContainerDataSourceHandle added;

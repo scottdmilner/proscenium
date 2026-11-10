@@ -148,11 +148,14 @@ def child(config: dict[str, Any]) -> None:
         mark("read buffers")
         lists = {name: views[name].tolist() for name in LISTED}
         mark("buffers to lists")
-        entry_fields = [(c.element, c.source, c.instance_context) for c in read["correspondence"]]
+        entry_fields = [(c.object_resource_index, c.source, c.instance_context) for c in read["correspondence"]]
         mark("correspondence fields")
-        resource_fields = [(r.role, r.entity, r.place, r.covers, r.uses) for r in read["resources"]]
+        resource_fields = [
+            (r.role, r.entity, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            for r in read["resources"]
+        ]
         mark("resource fields")
-        from_tuple = [c.element for c in plan.correspondence]
+        from_tuple = [c.object_resource_index for c in plan.correspondence]
         mark("objects from the tuple")
         from_buffer = memoryview(plan.copy_objects).tolist()
         mark("objects from the buffer")

@@ -78,19 +78,19 @@ class PlanningContext:
 
 # A plan's parts name its resources by their positions in Plan.resources, within that plan only.
 
-class Resource:
-    """A managed resource, as its ownership entry records it; a copy's is identified by role, entity, and place."""
+class PlannedResource:
+    """A planned Blender resource identified by its role, source entity, and index within its copy."""
 
     @property
     def role(self) -> str: ...
     @property
     def entity(self) -> str: ...  # its copy's source entity
     @property
-    def place(self) -> int: ...  # among its copy's objects
+    def object_index_in_copy(self) -> int: ...  # among its copy's objects
     @property
-    def covers(self) -> tuple[str, ...]: ...  # composed-stage paths
+    def source_entity_paths(self) -> tuple[str, ...]: ...  # composed-stage paths
     @property
-    def uses(self) -> tuple[int, ...]: ...
+    def dependency_resource_indices(self) -> tuple[int, ...]: ...  # dependencies in Plan.resources
 
 class Partition:
     @property
@@ -98,7 +98,7 @@ class Partition:
 
 class CorrespondenceEntry:
     @property
-    def element(self) -> int: ...  # the object that shows it
+    def object_resource_index(self) -> int: ...  # in Plan.resources: the object showing this source entity
     @property
     def source(self) -> str: ...  # an instance-proxy path inside native instances
     @property
@@ -124,7 +124,7 @@ class BatchGroup:
     @property
     def render(self) -> bool: ...
     @property
-    def repeat(self) -> int: ...  # among groups with the same key, by coincident world transform
+    def coincident_copy_index(self) -> int: ...  # among groups with the same key, by coincident world transform
     @property
     def members(self) -> Buffer: ...  # 'i': copy indices, ascending
 
@@ -143,7 +143,7 @@ class Plan:
     @property
     def partitions(self) -> tuple[Partition, ...]: ...
     @property
-    def resources(self) -> tuple[Resource, ...]: ...
+    def resources(self) -> tuple[PlannedResource, ...]: ...
     @property
     def correspondence(self) -> tuple[CorrespondenceEntry, ...]: ...
     @property

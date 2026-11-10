@@ -55,7 +55,7 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
     parent_worlds = memoryview(plan.shear_parent_worlds).tolist()
     bases = memoryview(plan.shear_object_bases).tolist()
     extents = [tuple(memoryview(g.extent).tolist()) for g in plan.geometries]
-    sources = {c.element: c.source for c in plan.correspondence}
+    sources = {c.object_resource_index: c.source for c in plan.correspondence}
     resources = plan.resources
     shown: dict[str, Copy] = {}
     for copy, (obj, geometry, placeholder) in enumerate(zip(objects, geometries, placeholders, strict=True)):
@@ -63,7 +63,9 @@ def copies(plan: _core.Plan) -> dict[str, Copy]:
             local = extents[geometry]
         else:
             local = tuple(bounds[6 * placeholder : 6 * placeholder + 6]) if placeholder >= 0 else ()
-        bounds_mesh = next((u for u in resources[obj].uses if resources[u].role == "bounds mesh"), None)
+        bounds_mesh = next(
+            (u for u in resources[obj].dependency_resource_indices if resources[u].role == "bounds mesh"), None
+        )
         shear = shears[copy]
         split = None if shear < 0 else (_matrix(parent_worlds, shear), _matrix(bases, shear))
         shown_in = bool(viewport[copy]), bool(render[copy])

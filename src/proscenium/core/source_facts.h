@@ -39,16 +39,17 @@ struct SourceInfoTokens {
 
 // Builds its contents from the prim as it is now, not as it was when made: downstream scene indices keep the input
 // container between notices. A build is reused until `generation` changes.
-class LazyContainer final : public PXR_NS::HdContainerDataSource {
+class RevisionCachedContainer final : public PXR_NS::HdContainerDataSource {
  public:
-  HD_DECLARE_DATASOURCE(LazyContainer);
+  HD_DECLARE_DATASOURCE(RevisionCachedContainer);
 
   PXR_NS::TfTokenVector GetNames() override;
   PXR_NS::HdDataSourceBaseHandle Get(const PXR_NS::TfToken& name) override;
 
  private:
-  LazyContainer(std::function<PXR_NS::HdContainerDataSourceHandle()> build, std::function<uint64_t()> generation);
-  PXR_NS::HdContainerDataSourceHandle Built();
+  RevisionCachedContainer(std::function<PXR_NS::HdContainerDataSourceHandle()> build,
+                          std::function<uint64_t()> generation);
+  PXR_NS::HdContainerDataSourceHandle GetOrBuildContents();
 
   std::function<PXR_NS::HdContainerDataSourceHandle()> build_;
   std::function<uint64_t()> generation_;

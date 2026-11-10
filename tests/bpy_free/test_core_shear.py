@@ -67,8 +67,10 @@ def test_exactly_the_sheared_copies_get_a_shear_parent(fixture: str, request: py
             expected.add(("shear parent", path, 0))
         resources = plan.resources  # each read builds the tuple anew
         (partition,) = (p for p in plan.partitions if copy.object in p.resources)
-        assert {(resources[r].role, resources[r].entity, resources[r].place) for r in partition.resources} == expected
-        used = {resources[u].role for u in resources[copy.object].uses}
+        assert {
+            (resources[r].role, resources[r].entity, resources[r].object_index_in_copy) for r in partition.resources
+        } == expected
+        used = {resources[u].role for u in resources[copy.object].dependency_resource_indices}
         assert used == {role for role, _, _ in expected if role != "object"}, path
 
 

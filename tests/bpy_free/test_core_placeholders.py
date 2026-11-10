@@ -63,7 +63,7 @@ def test_a_prim_without_usable_bounds_is_an_empty_marker(unsupported: evaluation
     for path, copy in shown.items():
         assert (copy.bounds_mesh is None) == (path in markers), path
     (fog,) = markers
-    assert plan.resources[shown[fog].object].uses == ()
+    assert plan.resources[shown[fog].object].dependency_resource_indices == ()
     assert_world(shown[fog], unsupported.placeholders[fog].world)
 
 

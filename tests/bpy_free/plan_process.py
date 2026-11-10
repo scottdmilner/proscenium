@@ -42,14 +42,19 @@ def contents(plan: _core.Plan) -> dict[str, Any]:
     groups, single = plan.batch_groups(1)
     return {
         "partitions": [list(p.resources) for p in plan.partitions],
-        "resources": [[r.role, r.entity, r.place, list(r.covers), list(r.uses)] for r in plan.resources],
-        "correspondence": [[c.element, c.source, list(c.instance_context)] for c in plan.correspondence],
+        "resources": [
+            [r.role, r.entity, r.object_index_in_copy, list(r.source_entity_paths), list(r.dependency_resource_indices)]
+            for r in plan.resources
+        ],
+        "correspondence": [[c.object_resource_index, c.source, list(c.instance_context)] for c in plan.correspondence],
         "buffers": {name: memoryview(getattr(plan, name)).tolist() for name in BUFFERS},
         "geometries": [[g.source, memoryview(g.extent).tolist(), g.content_key] for g in plan.geometries],
         "diagnostics": [
             [d.code, d.source_path, d.message, d.property_path, d.asset, d.fallback] for d in plan.diagnostics
         ],
-        "batch groups": [[g.geometry, g.viewport, g.render, g.repeat, memoryview(g.members).tolist()] for g in groups]
+        "batch groups": [
+            [g.geometry, g.viewport, g.render, g.coincident_copy_index, memoryview(g.members).tolist()] for g in groups
+        ]
         + [memoryview(single).tolist()],
     }
 

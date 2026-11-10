@@ -62,15 +62,15 @@ struct PlanSettings {
   PlanSettings(PXR_NS::TfTokenVector viewport, PXR_NS::TfTokenVector render, bool conversion);
 };
 
-// One managed resource, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its identity is
-// a value, compared by equality (DECISIONS.md "Representation roles and resource identities"): a drawn copy's
-// resource is identified by its role, its copy's source entity, and its place among the copy's objects.
-struct Resource {
+// One resource planned for Blender, as its ownership entry records it (lifecycle.md "Ownership and Lifecycle"). Its
+// identity is a value, compared by equality (DECISIONS.md "Representation roles and resource identities"): a drawn
+// copy's resource is identified by its role, its copy's source entity, and its place among the copy's objects.
+struct PlannedResource {
   Role role;
-  PXR_NS::SdfPath entity;         // its copy's source entity
-  std::uint32_t place = 0;        // among its copy's objects
-  PXR_NS::SdfPathVector covers;   // the source entities it represents
-  std::vector<std::size_t> uses;  // the resources it depends on
+  PXR_NS::SdfPath entity;                              // its copy's source entity
+  std::uint32_t objectIndexInCopy = 0;                 // among its copy's objects
+  PXR_NS::SdfPathVector sourceEntityPaths;             // the source entities it represents
+  std::vector<std::size_t> dependencyResourceIndices;  // dependencies in Plan::resources
 };
 
 // A unit of display replacement, owning its resources.
@@ -80,8 +80,8 @@ struct Partition {
 
 // A display element and the source entity it represents (interaction-contract.md "Two Layers and the Live Stage").
 struct CorrespondenceEntry {
-  std::size_t element;     // the object that shows it
-  PXR_NS::SdfPath source;  // an instance-proxy path inside native instances
+  std::size_t objectResourceIndex;  // in Plan::resources: the object that shows it
+  PXR_NS::SdfPath source;           // an instance-proxy path inside native instances
   // Provisional (M10 completes instance descriptions): the native-instance roots the source lies in, outermost first.
   PXR_NS::SdfPathVector instanceContext;
 };
@@ -100,7 +100,7 @@ struct Plan {
   PXR_NS::UsdTimeCode time;
   PlanningContext context;
   std::vector<Partition> partitions;
-  std::vector<Resource> resources;
+  std::vector<PlannedResource> resources;
   std::vector<CorrespondenceEntry> correspondence;  // one per drawn copy, in the copies' order
   // The drawn copies, in source order, one element (or 16) per copy.
   PXR_NS::VtFloatArray copyWorlds;    // 16 each: the world matrix in Blender's layout, which is USD's row-major one

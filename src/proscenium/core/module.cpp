@@ -151,21 +151,23 @@ void WrapPlan() {
       .add_property(
           "unit_scale", +[](const PlanningContext& c) { return c.unitScale; })
       .add_property("representation_version", +[](const PlanningContext& c) { return c.representationVersion; });
-  bp::class_<Resource>("Resource", bp::no_init)
+  bp::class_<PlannedResource>("PlannedResource", bp::no_init)
       .add_property(
-          "role", +[](const Resource& r) { return RoleName(r.role); })
+          "role", +[](const PlannedResource& r) { return RoleName(r.role); })
       .add_property(
-          "entity", +[](const Resource& r) { return r.entity.GetString(); })
+          "entity", +[](const PlannedResource& r) { return r.entity.GetString(); })
       .add_property(
-          "place", +[](const Resource& r) { return r.place; })
+          "object_index_in_copy", +[](const PlannedResource& r) { return r.objectIndexInCopy; })
       .add_property(
-          "covers", +[](const Resource& r) { return PathStrings(r.covers); })
-      .add_property("uses", +[](const Resource& r) { return ToTuple(r.uses); });
+          "source_entity_paths", +[](const PlannedResource& r) { return PathStrings(r.sourceEntityPaths); })
+      .add_property(
+          "dependency_resource_indices",
+          +[](const PlannedResource& r) { return ToTuple(r.dependencyResourceIndices); });
   bp::class_<Partition>("Partition", bp::no_init)
       .add_property("resources", +[](const Partition& p) { return ToTuple(p.resources); });
   bp::class_<CorrespondenceEntry>("CorrespondenceEntry", bp::no_init)
       .add_property(
-          "element", +[](const CorrespondenceEntry& e) { return e.element; })
+          "object_resource_index", +[](const CorrespondenceEntry& e) { return e.objectResourceIndex; })
       .add_property(
           "source", +[](const CorrespondenceEntry& e) { return e.source.GetString(); })
       .add_property("instance_context", +[](const CorrespondenceEntry& e) { return PathStrings(e.instanceContext); });
@@ -184,7 +186,7 @@ void WrapPlan() {
       .add_property(
           "render", +[](const BatchGroup& g) { return g.render; })
       .add_property(
-          "repeat", +[](const BatchGroup& g) { return g.repeat; })
+          "coincident_copy_index", +[](const BatchGroup& g) { return g.coincidentCopyIndex; })
       .add_property("members", +[](const BatchGroup& g) { return g.members; });
   bp::class_<PlanView>("Plan", bp::no_init)
       .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))

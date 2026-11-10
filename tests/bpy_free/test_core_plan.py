@@ -39,17 +39,20 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     return (
         plan.time_code,
         [p.resources for p in plan.partitions],
-        [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
-        [(c.element, c.source) for c in plan.correspondence],
+        [
+            (r.role, r.entity, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            for r in plan.resources
+        ],
+        [(c.object_resource_index, c.source) for c in plan.correspondence],
         [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
         [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
         [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],
     )
 
 
-def _identity(resource: _core.Resource) -> tuple[str, str, int]:
+def _identity(resource: _core.PlannedResource) -> tuple[str, str, int]:
     """A copy's resource's identity: its role, its copy's source entity, and its place among the copy's objects."""
-    return (resource.role, resource.entity, resource.place)
+    return (resource.role, resource.entity, resource.object_index_in_copy)
 
 
 @pytest.mark.parametrize("policy", list(PayloadPolicy))
@@ -101,10 +104,18 @@ def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None
         for source, copy in shown.items():
             assert copy.bounds_mesh is not None  # the scene's gprims are all meshes
             obj, mesh = plan.resources[copy.object], plan.resources[copy.bounds_mesh]
-            assert (obj.role, obj.covers, obj.uses) == ("object", (source,), (copy.bounds_mesh,))
-            assert (mesh.role, mesh.covers, mesh.uses) == ("bounds mesh", (source,), ())
+            assert (obj.role, obj.source_entity_paths, obj.dependency_resource_indices) == (
+                "object",
+                (source,),
+                (copy.bounds_mesh,),
+            )
+            assert (mesh.role, mesh.source_entity_paths, mesh.dependency_resource_indices) == (
+                "bounds mesh",
+                (source,),
+                (),
+            )
         assert sorted(p.resources for p in plan.partitions) == sorted((c.object, c.bounds_mesh) for c in shown.values())
-        assert sorted((c.element, c.source) for c in plan.correspondence) == sorted(
+        assert sorted((c.object_resource_index, c.source) for c in plan.correspondence) == sorted(
             (c.object, source) for source, c in shown.items()
         )
 

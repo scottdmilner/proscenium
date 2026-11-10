@@ -72,7 +72,8 @@ bool Includes(const TfTokenVector& purposes, const TfToken& purpose) {
 // The correction matrix C, which every world transform takes last: in USD's row vectors, the scale
 // metersPerUnit / unitScale, then +90 degrees about X for a Y-up stage. That is transforms.md's C = R_upaxis @
 // Scale(scale) in Blender's column vectors. The identity with conversion off.
-GfMatrix4d Correction(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context) {
+GfMatrix4d CoordinateConversionMatrix(const Snapshot& snapshot, const PlanSettings& settings,
+                                      const PlanningContext& context) {
   if (!settings.coordinateConversion) return GfMatrix4d(1.0);
   GfMatrix4d correction = GfMatrix4d().SetScale(snapshot.metersPerUnit / context.unitScale);
   if (snapshot.upAxis == UsdGeomTokens->y) correction *= GfMatrix4d().SetRotate(GfRotation(GfVec3d::XAxis(), 90.0));
@@ -83,7 +84,7 @@ GfMatrix4d Correction(const Snapshot& snapshot, const PlanSettings& settings, co
 GfVec4d AffineColumn() { return {0.0, 0.0, 0.0, 1.0}; }
 
 // The matrix's affine part: a Blender object can't hold a projective column (XFORM-05).
-GfMatrix4d Affine(GfMatrix4d world) {
+GfMatrix4d WithoutProjectiveComponent(GfMatrix4d world) {
   world.SetColumn(3, AffineColumn());
   return world;
 }
@@ -140,36 +141,38 @@ SdfPathVector PointInstancers(const PrimTable& table) {
 
 // Whether a filter's conversion of a prim of USD type `type` to a mesh is exact: a cube's and a plane's are; a
 // sphere's, cylinder's, cone's, capsule's, and NURBS patch's are tessellated (SNAP-16).
-bool ConvertsExactly(const TfToken& type) { return type == UsdGeomTokens->Cube || type == UsdGeomTokens->Plane; }
+bool ImplicitMeshConversionIsExact(const TfToken& type) {
+  return type == UsdGeomTokens->Cube || type == UsdGeomTokens->Plane;
+}
 
 // The composed-stage source of the prim drawn in `copy`: an instance-proxy path inside instances. Outside instancing,
 // the stage scene index names a prim by its USD path, and the filtering scene indices that convert it keep that.
-SdfPath SourceOf(const PrimRecord& prim, const DrawnCopy& copy) {
-  return copy.context.empty() && !prim.originPath.IsEmpty() ? prim.originPath : copy.Map(prim.path);
+SdfPath DrawnCopySourcePath(const PrimRecord& prim, const DrawnCopy& copy) {
+  return copy.context.empty() && !prim.originPath.IsEmpty() ? prim.originPath : copy.MapHydraPathToSource(prim.path);
 }
 
 // Problems repeated across a USD prim's copies, each reported once, a repeated problem aggregated (with the user): at
 // its first copy in source order, across every Hydra prim that copies it, its message counting the copies it covers.
 // The USD prim is found only when a problem is reported, so planning without problems pays nothing for it.
-class CopyReports {
+class DrawnCopyDiagnosticAggregator {
  public:
   // `table` must outlive the reports.
-  CopyReports(const PrimTable& table, Diagnostics& to) : table_(table), to_(to) {}
+  DrawnCopyDiagnosticAggregator(const PrimTable& table, Diagnostics& to) : table_(table), to_(to) {}
 
   // Reports `diagnostic` about `copies` of `prim`, or adds them to an equal problem's report.
   void Add(Diagnostic diagnostic, const PrimRecord& prim, const std::vector<DrawnCopy>& copies) {
     // Every copy of a Hydra prim copies one USD prim.
-    Report& report = Find(std::move(diagnostic), UsdPrimOf(prim, copies.front()));
-    for (const DrawnCopy& copy : copies) Count(report, SourceOf(prim, copy));
+    Report& report = FindOrCreateReport(std::move(diagnostic), UsdPrimOf(prim, copies.front()));
+    for (const DrawnCopy& copy : copies) Count(report, DrawnCopySourcePath(prim, copy));
   }
 
   // Reports `diagnostic` about one copy of `prim`, at `source`, or adds it to an equal problem's report.
   void Add(Diagnostic diagnostic, const PrimRecord& prim, const DrawnCopy& copy, const SdfPath& source) {
-    Count(Find(std::move(diagnostic), UsdPrimOf(prim, copy)), source);
+    Count(FindOrCreateReport(std::move(diagnostic), UsdPrimOf(prim, copy)), source);
   }
 
-  // Names each report's first copy and counts its copies, which Summarize words into its message.
-  void Finish() {
+  // Names each report's first copy and counts its copies, which SummarizeRepeatedDiagnostics words into its message.
+  void FinalizeDiagnosticCoverage() {
     for (auto& [key, report] : reports_) {
       Diagnostic& diagnostic = to_[report.index];
       diagnostic.source = report.first;
@@ -193,7 +196,7 @@ class CopyReports {
     return SdfPath(root->instancePrototype).AppendPath(prim.path.MakeRelativePath(copy.hydraRoot));
   }
 
-  Report& Find(Diagnostic diagnostic, SdfPath usdPrim) {
+  Report& FindOrCreateReport(Diagnostic diagnostic, SdfPath usdPrim) {
     const auto [found, added] = reports_.try_emplace({diagnostic.code, diagnostic.message, std::move(usdPrim)});
     if (added) {
       found->second.index = to_.size();
@@ -211,11 +214,12 @@ class CopyReports {
   std::map<std::tuple<DiagnosticCode, std::string, SdfPath>, Report> reports_;
 };
 
-// The snapshot's diagnostics as the plan's, each about a prim reported once per USD prim (CopyReports). One about no
-// prim, or a prim with no copies, names no source, and its message names the Hydra prim, as the bridge's planner does.
+// The snapshot's diagnostics as the plan's, each about a prim reported once per USD prim
+// (DrawnCopyDiagnosticAggregator). One about no prim, or a prim with no copies, names no source, and its message names
+// the Hydra prim, as the bridge's planner does.
 void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, InstanceResolver& instances,
                           Diagnostics& to) {
-  CopyReports reports(table, to);
+  DrawnCopyDiagnosticAggregator reports(table, to);
   for (Diagnostic diagnostic : snapshot.diagnostics) {
     const PrimRecord* prim = diagnostic.source.IsEmpty() ? nullptr : table.Find(diagnostic.source);
     const std::vector<DrawnCopy>* copies = prim ? &instances.CopiesOf(*prim) : nullptr;
@@ -227,7 +231,7 @@ void AddSourceDiagnostics(const Snapshot& snapshot, const PrimTable& table, Inst
     diagnostic.source = SdfPath();
     to.push_back(std::move(diagnostic));
   }
-  reports.Finish();
+  reports.FinalizeDiagnosticCoverage();
 }
 
 // A drawn copy of each gprim in `table`, sorted by source, with its world transform composed by `instances`.
@@ -252,8 +256,9 @@ std::vector<DrawnGprim> DrawnGprims(const PrimTable& table, InstanceResolver& in
     for (const DrawnCopy& copy : copies) {
       const TfToken* opinion = PurposeVisibilityOpinion(table, prim, copy);
       const bool explicitGuide = purpose == UsdGeomTokens->guide && opinion && *opinion == UsdGeomTokens->visible;
-      gprims.push_back({SourceOf(prim, copy), copy.context, resets ? local : local * copy.world, prim.extent, &prim,
-                        &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide, prim.usdType});
+      gprims.push_back({DrawnCopySourcePath(prim, copy), copy.context, resets ? local : local * copy.world, prim.extent,
+                        &prim, &copy, mesh, purpose, EffectivelyVisible(table, prim, copy), explicitGuide,
+                        prim.usdType});
     }
   }
   std::sort(gprims.begin(), gprims.end(), [](const DrawnGprim& a, const DrawnGprim& b) { return a.source < b.source; });
@@ -303,8 +308,8 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   AddSourceDiagnostics(snapshot, table, instances, plan->diagnostics);
   plan->diagnostics.insert(plan->diagnostics.end(), instances.Diagnostics().begin(), instances.Diagnostics().end());
   // Planning's own problems with a copy, reported once per USD prim.
-  CopyReports planned(table, plan->diagnostics);
-  const GfMatrix4d correction = Correction(snapshot, settings, context);
+  DrawnCopyDiagnosticAggregator planned(table, plan->diagnostics);
+  const GfMatrix4d correction = CoordinateConversionMatrix(snapshot, settings, context);
   plan->copyWorlds.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
   std::unordered_map<const PrimRecord*, int> geometries;
@@ -327,7 +332,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                    {},
                    0},
                   *gprim.prim, *gprim.copy, gprim.source);
-    const GfMatrix4d world = Affine(corrected);
+    const GfMatrix4d world = WithoutProjectiveComponent(corrected);
     const bool sheared = Sheared(world);
     // Each behavior is decided on its own (MODEL-03): content the core doesn't translate keeps its transform,
     // participation, and correspondence. A mesh is a provisional geometry description; a filter's inexact conversion
@@ -335,7 +340,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     // with none, an empty marker (MODEL-05), its untranslated-type diagnostic naming which.
     const GfRange3d* bounds = gprim.bounds ? &*gprim.bounds : nullptr;  // null when Hydra gives it none
     const bool marker = !gprim.mesh && !bounds;
-    if (gprim.mesh && !gprim.usdType.IsEmpty() && !ConvertsExactly(gprim.usdType))
+    if (gprim.mesh && !gprim.usdType.IsEmpty() && !ImplicitMeshConversionIsExact(gprim.usdType))
       planned.Add({DiagnosticCode::kApproximatedGeometry,
                    {},
                    "Its type, " + gprim.usdType.GetString() + ", is drawn as a mesh approximating its surface",
@@ -364,7 +369,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     const std::size_t object = plan->resources.size();
     Partition partition{{object}};
     std::vector<std::size_t> uses;
-    std::vector<Resource> owned;
+    std::vector<PlannedResource> owned;
     if (!marker) owned.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
     if (sheared) owned.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
     for (std::size_t i = 0; i < owned.size(); ++i) {
@@ -402,8 +407,8 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyGeometries.push_back(geometry);
     plan->copyPlaceholders.push_back(placeholder);
   }
-  planned.Finish();
-  Summarize(plan->diagnostics);
+  planned.FinalizeDiagnosticCoverage();
+  SummarizeRepeatedDiagnostics(plan->diagnostics);
   return plan;
 }
 

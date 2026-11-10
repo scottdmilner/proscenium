@@ -46,7 +46,7 @@ std::optional<VtMatrix4dArray> InstanceTransforms(const PrimRecord& instancer) {
 
 // `values` as an array of `T` if it holds an array of `Source`.
 template <class T, class Source>
-bool Converted(const VtValue& values, VtArray<T>& converted) {
+bool TryConvertArray(const VtValue& values, VtArray<T>& converted) {
   if (!values.IsHolding<VtArray<Source>>()) return false;
   const auto& held = values.UncheckedGet<VtArray<Source>>();
   converted.reserve(held.size());
@@ -60,7 +60,7 @@ VtArray<T> PointValues(const PrimRecord& instancer, const TfToken& name) {
   const PrimvarRecord* primvar = instancer.FindPrimvar(name);
   if (!primvar || primvar->indices) return {};
   VtArray<T> converted;
-  Converted<T, T>(primvar->values, converted) || (Converted<T, From>(primvar->values, converted) || ...);
+  TryConvertArray<T, T>(primvar->values, converted) || (TryConvertArray<T, From>(primvar->values, converted) || ...);
   return converted;
 }
 
@@ -86,7 +86,7 @@ std::vector<GfMatrix4d> PointTransforms(const PrimRecord& instancer, std::size_t
 // The point-instance path element naming `point` (DECISIONS.md "Point instancers"): __id_<id> by its authored id,
 // __id_n<id> for a negative one, or __index_<index> when the instancer authors no ids; empty for a point the authored
 // ids leave out.
-TfToken PointName(const PrimRecord& instancer, std::size_t point) {
+TfToken PointInstancePathElement(const PrimRecord& instancer, std::size_t point) {
   if (!instancer.pointIds) return TfToken("__index_" + std::to_string(point));
   if (point >= instancer.pointIds->size()) return {};
   const int64_t id = (*instancer.pointIds)[point];
@@ -96,14 +96,15 @@ TfToken PointName(const PrimRecord& instancer, std::size_t point) {
 }
 
 // The purposes with their own visibility. Built on first use, after Hydra's static tokens.
-const std::array<TfToken, 3>& Purposes() {
+const std::array<TfToken, 3>& PurposesWithVisibilityOpinions() {
   static const std::array<TfToken, 3> purposes{HdRenderTagTokens->guide, HdRenderTagTokens->proxy,
                                                HdRenderTagTokens->render};
   return purposes;
 }
 
 // The nearest authored opinion on `path` or its ancestors, below `stop`; null for none.
-const TfToken* NearestOpinion(const PrimTable& table, SdfPath path, const SdfPath& stop, const TfToken& purpose) {
+const TfToken* NearestPurposeVisibilityOpinion(const PrimTable& table, SdfPath path, const SdfPath& stop,
+                                               const TfToken& purpose) {
   for (; !path.IsEmpty() && path != stop && !path.IsAbsoluteRootPath(); path = path.GetParentPath())
     if (const PrimRecord* prim = table.Find(path))
       if (const TfToken* opinion = prim->PurposeVisibilityOf(purpose)) return opinion;
@@ -111,7 +112,7 @@ const TfToken* NearestOpinion(const PrimTable& table, SdfPath path, const SdfPat
 }
 
 // The opinion for `purpose` among `opinions`; null for none.
-const TfToken* Inherited(const PurposeVisibility& opinions, const TfToken& purpose) {
+const TfToken* VisibilityOpinionForPurpose(const PurposeVisibility& opinions, const TfToken& purpose) {
   for (const auto& [authored, visibility] : opinions)
     if (authored == purpose) return &visibility;
   return nullptr;
@@ -120,14 +121,18 @@ const TfToken* Inherited(const PurposeVisibility& opinions, const TfToken& purpo
 }  // namespace
 
 const TfToken* PurposeVisibilityOpinion(const PrimTable& table, const PrimRecord& prim, const DrawnCopy& copy) {
-  if (std::find(Purposes().begin(), Purposes().end(), prim.purpose) == Purposes().end()) return nullptr;
-  const TfToken* opinion = NearestOpinion(table, prim.path, copy.hydraRoot, prim.purpose);
-  return opinion ? opinion : Inherited(copy.purposeVisibility, prim.purpose);
+  if (std::find(PurposesWithVisibilityOpinions().begin(), PurposesWithVisibilityOpinions().end(), prim.purpose) ==
+      PurposesWithVisibilityOpinions().end())
+    return nullptr;
+  const TfToken* opinion = NearestPurposeVisibilityOpinion(table, prim.path, copy.hydraRoot, prim.purpose);
+  return opinion ? opinion : VisibilityOpinionForPurpose(copy.purposeVisibility, prim.purpose);
 }
 
 bool EffectivelyVisible(const PrimTable& table, const PrimRecord& prim, const DrawnCopy& copy) {
   if (!prim.visible || !copy.visible) return false;
-  if (std::find(Purposes().begin(), Purposes().end(), prim.purpose) == Purposes().end()) return true;
+  if (std::find(PurposesWithVisibilityOpinions().begin(), PurposesWithVisibilityOpinions().end(), prim.purpose) ==
+      PurposesWithVisibilityOpinions().end())
+    return true;
   const TfToken* opinion = PurposeVisibilityOpinion(table, prim, copy);
   if (!opinion) return prim.purpose != HdRenderTagTokens->guide;
   // A guide only when explicitly visible; a proxy or render prim unless invisible.
@@ -203,7 +208,7 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
   struct Instance {
     std::size_t index;
     bool resets;
-    std::array<const TfToken*, 3> opinions;  // per Purposes(); null for none
+    std::array<const TfToken*, 3> opinions;  // per PurposesWithVisibilityOpinions(); null for none
   };
   const SdfPath& outerRoot = outers.front().hydraRoot;
   std::vector<Instance> instances;
@@ -215,8 +220,9 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
       continue;
     }
     Instance instance{index, ResetsBelow(locations[index], outerRoot), {}};
-    for (std::size_t i = 0; i < Purposes().size(); ++i)
-      instance.opinions.at(i) = NearestOpinion(table_, locations[index], outerRoot, Purposes().at(i));
+    for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i)
+      instance.opinions.at(i) =
+          NearestPurposeVisibilityOpinion(table_, locations[index], outerRoot, PurposesWithVisibilityOpinions().at(i));
     instances.push_back(instance);
   }
   if (invalidIndex)
@@ -228,7 +234,7 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
     for (const auto& [index, resets, opinions] : instances) {
       DrawnCopy copy;
       copy.hydraRoot = prototypeRoot;
-      copy.usdRoot = outer.Map(locations[index]);
+      copy.usdRoot = outer.MapHydraPathToSource(locations[index]);
       copy.context = outer.context;
       copy.context.push_back(copy.usdRoot);
       copy.hydraInstanceRoot = locations[index];
@@ -238,10 +244,11 @@ std::vector<DrawnCopy> InstanceResolver::Expand(  // NOLINT(misc-no-recursion)
       // The mask already folds in the instance root's flattened visibility, its ancestors' included.
       copy.visible = outer.visible && (mask.empty() || (index < mask.size() && mask[index]));
       // Each purpose's nearest opinion inside the outer prototype, else the outer copy's.
-      for (std::size_t i = 0; i < Purposes().size(); ++i) {
+      for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i) {
         const TfToken* opinion = opinions.at(i);
-        if (!opinion) opinion = Inherited(outer.purposeVisibility, Purposes().at(i));
-        if (opinion) copy.purposeVisibility.emplace_back(Purposes().at(i), *opinion);
+        if (!opinion)
+          opinion = VisibilityOpinionForPurpose(outer.purposeVisibility, PurposesWithVisibilityOpinions().at(i));
+        if (opinion) copy.purposeVisibility.emplace_back(PurposesWithVisibilityOpinions().at(i), *opinion);
       }
       copies.push_back(std::move(copy));
     }
@@ -268,21 +275,22 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
   const SdfPath& outerRoot = outers.front().hydraRoot;
   const bool resets = ResetsBelow(instancer.path, outerRoot);
   std::array<const TfToken*, 3> opinions{};
-  for (std::size_t i = 0; i < Purposes().size(); ++i)
-    opinions.at(i) = NearestOpinion(table_, instancer.path, outerRoot, Purposes().at(i));
+  for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i)
+    opinions.at(i) =
+        NearestPurposeVisibilityOpinion(table_, instancer.path, outerRoot, PurposesWithVisibilityOpinions().at(i));
   const GfMatrix4d local = instancer.matrix.value_or(GfMatrix4d(1.0));
   const VtBoolArray& mask = topology.mask;
   const TfToken prototypeName = prototypeRoot.GetParentPath().GetNameToken();
   std::vector<DrawnCopy> copies;
   bool invalidPoint = false;
   for (const DrawnCopy& outer : outers) {
-    const SdfPath instancerPath = outer.Map(instancer.path);
+    const SdfPath instancerPath = outer.MapHydraPathToSource(instancer.path);
     // The instancer's world transform in the outer copy, unless it or an ancestor inside the outer prototype resets
     // the stack (WORKAROUND for OpenUSD #862).
     const GfMatrix4d world = resets ? local : local * outer.world;
     for (const int k : topology.instanceIndices[p]) {
       const auto point = static_cast<std::size_t>(k);
-      const TfToken name = k < 0 || point >= transforms.size() ? TfToken() : PointName(instancer, point);
+      const TfToken name = k < 0 || point >= transforms.size() ? TfToken() : PointInstancePathElement(instancer, point);
       if (name.IsEmpty()) {
         invalidPoint = true;
         continue;
@@ -296,10 +304,11 @@ std::vector<DrawnCopy> InstanceResolver::ExpandPoints(  // NOLINT(misc-no-recurs
       copy.context.push_back(instancerPath.AppendChild(name));
       copy.world = transforms[point] * world;
       copy.visible = outer.visible && instancer.visible && (mask.empty() || (point < mask.size() && mask[point]));
-      for (std::size_t i = 0; i < Purposes().size(); ++i) {
+      for (std::size_t i = 0; i < PurposesWithVisibilityOpinions().size(); ++i) {
         const TfToken* opinion = opinions.at(i);
-        if (!opinion) opinion = Inherited(outer.purposeVisibility, Purposes().at(i));
-        if (opinion) copy.purposeVisibility.emplace_back(Purposes().at(i), *opinion);
+        if (!opinion)
+          opinion = VisibilityOpinionForPurpose(outer.purposeVisibility, PurposesWithVisibilityOpinions().at(i));
+        if (opinion) copy.purposeVisibility.emplace_back(PurposesWithVisibilityOpinions().at(i), *opinion);
       }
       copies.push_back(std::move(copy));
     }

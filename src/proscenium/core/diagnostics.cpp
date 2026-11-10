@@ -38,7 +38,7 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
   throw std::invalid_argument("Not a diagnostic code");
 }
 
-void AppendUnique(const Diagnostics& from, Diagnostics& to) {
+void AppendUniqueDiagnostics(const Diagnostics& from, Diagnostics& to) {
   // As the bridge's UniqueAppender: the fields a captured diagnostic sets, the others being empty.
   using Key = std::tuple<DiagnosticCode, SdfPath, std::string>;
   std::set<Key> seen;
@@ -50,7 +50,7 @@ void AppendUnique(const Diagnostics& from, Diagnostics& to) {
 namespace {
 
 // Words what `diagnostic` covers into its message.
-void Word(Diagnostic& diagnostic) {
+void AppendDiagnosticContext(Diagnostic& diagnostic) {
   if (diagnostic.copies > 1)
     diagnostic.message +=
         " (for its " + std::to_string(diagnostic.copies) + " drawn copies; the first in source order is named)";
@@ -59,7 +59,7 @@ void Word(Diagnostic& diagnostic) {
 
 }  // namespace
 
-void Summarize(Diagnostics& diagnostics) {
+void SummarizeRepeatedDiagnostics(Diagnostics& diagnostics) {
   using Problem = std::tuple<DiagnosticCode, std::string, SdfPath, std::string, std::string>;
   std::map<Problem, std::size_t> reported;  // each problem's diagnostics, listed or not
   std::map<Problem, std::size_t> counting;  // the position of each problem's count, in summarized
@@ -69,7 +69,7 @@ void Summarize(Diagnostics& diagnostics) {
                           diagnostic.fallback};
     const std::size_t before = reported[problem]++;
     if (before < kListedPerProblem) {
-      Word(diagnostic);
+      AppendDiagnosticContext(diagnostic);
       summarized.push_back(std::move(diagnostic));
     } else if (before == kListedPerProblem) {
       counting.emplace(problem, summarized.size());
@@ -104,7 +104,7 @@ void TfDiagnosticCollector::IssueWarning(const TfWarning& warning) {
   Add(DiagnosticCode::kUsdWarning, warning.GetCommentary());
 }
 
-Diagnostics TfDiagnosticCollector::Take() {
+Diagnostics TfDiagnosticCollector::TakeDiagnostics() {
   Diagnostics taken;
   const std::scoped_lock lock(mutex_);
   taken.swap(diagnostics_);

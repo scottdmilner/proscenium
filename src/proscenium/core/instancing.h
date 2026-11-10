@@ -33,7 +33,7 @@ struct DrawnCopy {
   PurposeVisibility purposeVisibility;
 
   // The composed-stage path of the Hydra prim at `hydraPath` in this copy: an instance-proxy path inside instances.
-  [[nodiscard]] PXR_NS::SdfPath Map(const PXR_NS::SdfPath& hydraPath) const {
+  [[nodiscard]] PXR_NS::SdfPath MapHydraPathToSource(const PXR_NS::SdfPath& hydraPath) const {
     return hydraPath.ReplacePrefix(hydraRoot, usdRoot);
   }
 };

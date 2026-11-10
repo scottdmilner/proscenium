@@ -46,8 +46,8 @@ BatchGroups GroupForBatches(const Plan& plan, std::size_t minimum) {
     // exactly as a pick sees them.
     std::string placed = key;
     for (std::size_t i = 16 * copy; i < 16 * (copy + 1); ++i) Append(placed, plan.copyWorlds[i]);
-    group.repeat = repeats[placed]++;
-    Append(key, group.repeat);
+    group.coincidentCopyIndex = repeats[placed]++;
+    Append(key, group.coincidentCopyIndex);
     const auto [found, added] = byKey.emplace(std::move(key), grouped.size());
     if (added) grouped.push_back(std::move(group));
     grouped[found->second].members.push_back(static_cast<int>(copy));

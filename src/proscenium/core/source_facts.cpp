@@ -52,10 +52,11 @@ const TfToken& SourceInfoTokens::PointIds() {
   return token;
 }
 
-LazyContainer::LazyContainer(std::function<HdContainerDataSourceHandle()> build, std::function<uint64_t()> generation)
+RevisionCachedContainer::RevisionCachedContainer(std::function<HdContainerDataSourceHandle()> build,
+                                                 std::function<uint64_t()> generation)
     : build_(std::move(build)), generation_(std::move(generation)) {}
 
-HdContainerDataSourceHandle LazyContainer::Built() {
+HdContainerDataSourceHandle RevisionCachedContainer::GetOrBuildContents() {
   const uint64_t generation = generation_();
   const std::scoped_lock lock(mutex_);
   if (!valid_ || generation != builtAt_) {
@@ -66,13 +67,13 @@ HdContainerDataSourceHandle LazyContainer::Built() {
   return built_;
 }
 
-TfTokenVector LazyContainer::GetNames() {
-  const HdContainerDataSourceHandle built = Built();
+TfTokenVector RevisionCachedContainer::GetNames() {
+  const HdContainerDataSourceHandle built = GetOrBuildContents();
   return built ? built->GetNames() : TfTokenVector();
 }
 
-HdDataSourceBaseHandle LazyContainer::Get(const TfToken& name) {
-  const HdContainerDataSourceHandle built = Built();
+HdDataSourceBaseHandle RevisionCachedContainer::Get(const TfToken& name) {
+  const HdContainerDataSourceHandle built = GetOrBuildContents();
   return built ? built->Get(name) : nullptr;
 }
 

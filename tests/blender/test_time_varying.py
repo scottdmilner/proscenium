@@ -112,7 +112,7 @@ def _shown(plan: _core.Plan) -> dict[str, Shown]:
     """Each drawn copy by its source."""
     worlds = memoryview(plan.copy_worlds).tolist()
     viewport, render = memoryview(plan.copy_viewport).tolist(), memoryview(plan.copy_render).tolist()
-    sources = {c.element: c.source for c in plan.correspondence}
+    sources = {c.object_resource_index: c.source for c in plan.correspondence}
     return {
         sources[obj]: Shown(Gf.Matrix4d(*worlds[16 * copy : 16 * copy + 16]), bool(viewport[copy]), bool(render[copy]))
         for copy, obj in enumerate(memoryview(plan.copy_objects).tolist())

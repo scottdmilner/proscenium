@@ -36,8 +36,11 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     return (
         plan.time_code,
         [p.resources for p in plan.partitions],
-        [(r.role, r.entity, r.place, r.covers, r.uses) for r in plan.resources],
-        [(c.element, c.source) for c in plan.correspondence],
+        [
+            (r.role, r.entity, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
+            for r in plan.resources
+        ],
+        [(c.object_resource_index, c.source) for c in plan.correspondence],
         [memoryview(b).tolist() for b in (plan.copy_worlds, plan.copy_objects, plan.copy_geometries)],
         [memoryview(b).tolist() for b in (plan.copy_placeholders, plan.placeholder_bounds)],
         [(g.source, memoryview(g.extent).tolist(), g.content_key) for g in plan.geometries],

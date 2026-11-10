@@ -57,7 +57,9 @@ def test_copies_are_named_by_point_instance_paths(points: evaluation.PointInstan
         assert context[0] == points.floors[path], path
     resources = plan.resources
     assert {r.entity for r in resources} == points.world.keys()
-    assert len({(r.role, r.entity, r.place) for r in resources}) == len(resources)  # each copy its own identity
+    assert len({(r.role, r.entity, r.object_index_in_copy) for r in resources}) == len(
+        resources
+    )  # each copy its own identity
 
 
 def test_animated_ids_name_each_capture(points: evaluation.PointInstancerScene) -> None:
