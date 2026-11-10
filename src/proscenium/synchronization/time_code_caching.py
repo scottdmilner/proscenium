@@ -32,12 +32,12 @@ if TYPE_CHECKING:
 
     from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
     from ..core import _core
 
 
 def cache(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
     time_codes: Collection[Usd.TimeCode],
@@ -120,7 +120,7 @@ def cache(
 
 
 def _unusable_state_diagnostic(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     manifest: id_property_records.LoadedRecord[manifests.Manifest] | id_property_records.RefusedRecord | None,
     generation: id_property_records.LoadedRecord[binding_state.GenerationMetadata]
     | id_property_records.RefusedRecord
@@ -147,7 +147,7 @@ def _published_manifest(stored: id_property_records.LoadedRecord[manifests.Manif
     return manifests.Manifest({}) if stored is None else stored.record
 
 
-def _plans_diagnostics(binding_id: binding_ids.BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
+def _plans_diagnostics(binding_id: BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
     """The source-side diagnostics of each of the plans, in order."""
     return tuple(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan))
 

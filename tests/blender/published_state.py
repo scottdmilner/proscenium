@@ -14,7 +14,7 @@ from proscenium.binding.runtime import ownership
 from support.blend import collection_content
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 def published_generation(binding_id: BindingId, destination: bpy.types.Collection) -> dict[str, Any]:

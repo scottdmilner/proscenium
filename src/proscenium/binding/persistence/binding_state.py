@@ -32,7 +32,7 @@ from .id_property_records import Schema
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access import binding_ids
+    from ..source_access import BindingId
     from .id_property_records import LoadedRecord, RefusedRecord
 
 GENERATION_KEY = "generation"
@@ -67,7 +67,7 @@ def _restore_record_field_types(record: Any, settings_field: str) -> None:
 class GenerationMetadata:
     """The settings, source state, time codes, and diagnostics of a binding's published generation."""
 
-    binding_id: binding_ids.BindingId
+    binding_id: BindingId
     applied_settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
     unit_scale: float  # its target scene's then, which planning applied
     time_code: float | None  # see encode_time_code

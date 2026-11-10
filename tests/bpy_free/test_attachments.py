@@ -13,7 +13,7 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access import BindingId
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.binding.source_access.stage_registry import StageRegistry
 from proscenium.binding.source_access.stages import SourceUnavailableError

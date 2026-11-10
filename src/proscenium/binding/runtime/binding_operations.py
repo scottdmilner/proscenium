@@ -13,14 +13,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ..persistence import binding_records, id_property_records
+from ..persistence import binding_records
+from ..persistence.id_property_records import RefusedRecord, RefusedRecordError
 from ..source_access import canonical_candidate
 from . import copy_detection
 
 if TYPE_CHECKING:
     import bpy
 
-    from ..source_access import binding_ids, binding_settings
+    from ..persistence.binding_records import BindingConfig
+    from ..source_access import BindingId, binding_settings
     from .copy_detection import BindingRecord, CopiedBinding, IdentityCandidates
 
 
@@ -28,11 +30,11 @@ if TYPE_CHECKING:
 class FoundBinding:
     """A binding as a lookup by identity finds it. Exactly one of config, unreadable, and copies is set."""
 
-    binding_id: binding_ids.BindingId
+    binding_id: BindingId
     destination: bpy.types.Collection | None  # the collection holding its canonical record; None if it is disabled
     scene: bpy.types.Scene | None  # its target scene, if its configuration can be read and it isn't disabled
-    config: binding_records.BindingConfig | None  # its configuration, if it is usable
-    configuration_refusal: id_property_records.RefusedRecord | None  # why its configuration can't be read, if it can't
+    config: BindingConfig | None  # its configuration, if it is usable
+    configuration_refusal: RefusedRecord | None  # why its configuration can't be read, if it can't
     disabled_candidate_report: CopiedBinding | None  # its candidates, and why none is canonical, if it is disabled
 
     @property
@@ -40,10 +42,10 @@ class FoundBinding:
         """Whether the binding can be used: its configuration can be read, and it isn't disabled."""
         return self.config is not None
 
-    def usable_config(self) -> binding_records.BindingConfig:
+    def usable_config(self) -> BindingConfig:
         """The configuration; raises RefusedRecordError or DisabledBindingError for a binding that isn't usable."""
         if self.configuration_refusal is not None:
-            raise id_property_records.RefusedRecordError(self.configuration_refusal)
+            raise RefusedRecordError(self.configuration_refusal)
         if self.disabled_candidate_report is not None:
             raise DisabledBindingError(self.disabled_candidate_report)
         assert self.config is not None
@@ -60,7 +62,7 @@ class DisabledBindingError(LookupError):  # raised like KeyError
         self.disabled_candidate_report = copies
 
 
-def find_binding(binding_id: binding_ids.BindingId) -> FoundBinding | None:
+def find_binding(binding_id: BindingId) -> FoundBinding | None:
     """The binding, or None if no binding has this identifier."""
     identity = copy_detection.candidates_for_binding(binding_id)
     return None if identity is None else _binding_from_candidates(binding_id, identity)
@@ -90,7 +92,7 @@ def copied_bindings() -> list[CopiedBinding]:
     ]
 
 
-def create(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings, name: str) -> binding_ids.BindingId:
+def create(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings, name: str) -> BindingId:
     """Make an unattached binding on scene requesting settings, and record it; it has no manifest yet.
 
     Returns its identifier. Raises what binding_records.create_binding raises.
@@ -98,7 +100,7 @@ def create(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings,
     return binding_records.create_binding(scene, settings, name).binding_id
 
 
-def set_config(binding_id: binding_ids.BindingId, config: binding_records.BindingConfig) -> None:
+def set_config(binding_id: BindingId, config: BindingConfig) -> None:
     """Store a binding's changed configuration; an unchanged one writes nothing.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
@@ -106,15 +108,15 @@ def set_config(binding_id: binding_ids.BindingId, config: binding_records.Bindin
     """
     record = require_canonical_binding_record(binding_id)
     # write_config refuses only an unreadable or newer record, so an invalid one is refused here.
-    if isinstance(record.config, id_property_records.RefusedRecord):
-        raise id_property_records.RefusedRecordError(record.config)
+    if isinstance(record.config, RefusedRecord):
+        raise RefusedRecordError(record.config)
     if config == record.config:
         return
     binding_records.write_config(record.collection, binding_id, config)
     restore_missing_binding_index_entry(binding_id, record)
 
 
-def require_canonical_binding_record(binding_id: binding_ids.BindingId) -> BindingRecord:
+def require_canonical_binding_record(binding_id: BindingId) -> BindingRecord:
     """The binding's canonical record, readable or not.
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
@@ -127,34 +129,34 @@ def require_canonical_binding_record(binding_id: binding_ids.BindingId) -> Bindi
     return record
 
 
-def restore_missing_binding_index_entry(binding_id: binding_ids.BindingId, record: BindingRecord) -> None:
+def restore_missing_binding_index_entry(binding_id: BindingId, record: BindingRecord) -> None:
     """Write the binding index entry a unique binding is missing, after a write to its records.
 
     Only when the index has no entry for the identity, or one naming no collection, so it names the binding's
     destination (source-access.md#canonical-candidate). A file with two indexes, or one that can't be read, is left
     alone. Writes restore entries; detection never does.
     """
-    if isinstance(record.config, id_property_records.RefusedRecord):
+    if isinstance(record.config, RefusedRecord):
         return
     try:
         binding_records.restore_index_entry(binding_id, record.collection)
-    except (ValueError, id_property_records.RefusedRecordError):
+    except (ValueError, RefusedRecordError):
         return
 
 
 def _record_belongs_to_scene(record: BindingRecord, scene: bpy.types.Scene) -> bool:
     """Whether the record is on scene: its target scene, or for one that can't be read, one linking its collection."""
-    if isinstance(record.config, id_property_records.RefusedRecord):
+    if isinstance(record.config, RefusedRecord):
         return record.collection in scene.collection.children_recursive
     return record.scene == scene
 
 
-def _binding_from_candidates(binding_id: binding_ids.BindingId, identity: IdentityCandidates) -> FoundBinding:
+def _binding_from_candidates(binding_id: BindingId, identity: IdentityCandidates) -> FoundBinding:
     """Build a binding lookup result from its candidates and canonical decision."""
     if (record := identity.canonical_record()) is None:
         return FoundBinding(
             binding_id, None, None, None, None, copy_detection.copied_binding_report(binding_id, identity)
         )
-    if isinstance(record.config, id_property_records.RefusedRecord):
+    if isinstance(record.config, RefusedRecord):
         return FoundBinding(binding_id, record.collection, None, None, record.config, None)
     return FoundBinding(binding_id, record.collection, record.scene, record.config, None, None)

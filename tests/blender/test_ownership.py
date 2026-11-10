@@ -25,7 +25,7 @@ from proscenium.binding.persistence.id_property_records import (
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
 from proscenium.binding.runtime import ownership
 from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key, object_change, object_entry

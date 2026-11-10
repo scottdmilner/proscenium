@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
     from fixtures.source_access import SavedDisplay
     from proscenium.binding.persistence.binding_records import BindingConfig
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:

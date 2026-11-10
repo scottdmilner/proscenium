@@ -170,7 +170,7 @@ def test_an_exception_escaping_a_synchronization_ends_it(
         def failing(*_args: object) -> None:
             raise RuntimeError("injected bug")
 
-        monkeypatch.setattr(synchronization.transaction, "synchronize", failing)
+        monkeypatch.setattr(synchronization, "synchronize", failing)
         with pytest.raises(RuntimeError, match="injected bug"):
             handle.synchronize(0)
         assert handle.reload().state is ResultState.SUCCESS

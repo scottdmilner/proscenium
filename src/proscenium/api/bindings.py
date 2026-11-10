@@ -45,18 +45,18 @@ from typing import TYPE_CHECKING
 import bpy
 from pxr import Usd
 
+from .. import synchronization
 from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_operations, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
-from ..synchronization import cleanup_retry, time_code_caching, transaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Concatenate
 
     from ..binding.runtime import copy_detection
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
 
 
 # The types callers pass and receive, so callers outside proscenium import only this module: these, and Result,
@@ -65,12 +65,12 @@ RequestedSettings = binding_settings.RequestedSettings
 
 
 def _reporting_cleanup[**P](
-    operation: Callable[Concatenate[Bindings, binding_ids.BindingId, P], Result],
-) -> Callable[Concatenate[Bindings, binding_ids.BindingId, P], Result]:
+    operation: Callable[Concatenate[Bindings, BindingId, P], Result],
+) -> Callable[Concatenate[Bindings, BindingId, P], Result]:
     """operation, its result reporting the binding's cleanup status once it ends."""
 
     @functools.wraps(operation)
-    def reporting(bindings: Bindings, binding_id: binding_ids.BindingId, *args: P.args, **kwargs: P.kwargs) -> Result:
+    def reporting(bindings: Bindings, binding_id: BindingId, *args: P.args, **kwargs: P.kwargs) -> Result:
         result = operation(bindings, binding_id, *args, **kwargs)
         status = pending_cleanup.cleanup_status(binding_id)
         return Result(
@@ -125,7 +125,7 @@ class BindingHandle:
     Release also works after removal or undo. Two handles are equal when their identifiers are.
     """
 
-    binding_id: binding_ids.BindingId
+    binding_id: BindingId
 
     def attach(self, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach a caller-owned stage to this binding, confirming a changed root identifier explicitly."""
@@ -186,9 +186,7 @@ class Bindings:
 
     stages: stage_tracking.BindingStageTracker  # never saved; cleared when a file is loaded (proscenium.addon)
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
-    published: dict[
-        binding_ids.BindingId, binding_state.GenerationMetadata
-    ]  # each binding's last this session (UNDO-05)
+    published: dict[BindingId, binding_state.GenerationMetadata]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
         self.stages = stage_tracking.BindingStageTracker()
@@ -219,7 +217,7 @@ class Bindings:
 
     @_not_while_exclusive
     @_reporting_cleanup
-    def attach(self, binding_id: binding_ids.BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
+    def attach(self, binding_id: BindingId, stage: Usd.Stage, *, confirm: bool = False) -> Result:
         """Attach stage to one binding, requiring confirmation when its stored root identifier differs."""
         found = self._require_binding(binding_id)
         if not found.usable:
@@ -238,11 +236,11 @@ class Bindings:
         return Result()
 
     @_not_while_exclusive
-    def release(self, binding_id: binding_ids.BindingId) -> None:
+    def release(self, binding_id: BindingId) -> None:
         """Release one binding's runtime stages; its persistent record need not exist."""
         self.stages.release(binding_id)
 
-    def requested_settings(self, binding_id: binding_ids.BindingId) -> RequestedSettings:
+    def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
 
         Raises RefusedRecordError if the binding's configuration can't be read, and DisabledBindingError if it has
@@ -253,7 +251,7 @@ class Bindings:
     @_reporting_cleanup
     def set_settings(
         self,
-        binding_id: binding_ids.BindingId,
+        binding_id: BindingId,
         *,
         payload_policy: binding_settings.PayloadPolicy | None = None,
         coordinate_conversion: bool | None = None,
@@ -281,7 +279,7 @@ class Bindings:
 
     @_exclusive
     @_reporting_cleanup
-    def synchronize(self, binding_id: binding_ids.BindingId, time_code: Usd.TimeCode | float | None = None) -> Result:
+    def synchronize(self, binding_id: BindingId, time_code: Usd.TimeCode | float | None = None) -> Result:
         """Synchronize through the transaction (proscenium.synchronization), at time_code if given.
 
         The result names the time code attempted; a refusal before the attempt names only one given.
@@ -293,8 +291,8 @@ class Bindings:
                 *_unusable_binding_result(found).diagnostics, attempted_time_codes=() if given is None else (given,)
             )
         config = found.usable_config()
-        result = transaction.synchronize(binding_id, config, self.stages, given)
-        # Every failure before publication is fatal, and none after it (transaction.synchronize), so it published.
+        result = synchronization.synchronize(binding_id, config, self.stages, given)
+        # Every failure before publication is fatal, and none after it (synchronization.synchronize), so it published.
         if result.state is not ResultState.FATAL_FAILURE:
             assert found.destination is not None  # a usable binding's
             generation = binding_state.read_generation(found.destination)
@@ -305,7 +303,7 @@ class Bindings:
 
     @_exclusive
     @_reporting_cleanup
-    def cache(self, binding_id: binding_ids.BindingId, time_codes: Iterable[Usd.TimeCode | float]) -> Result:
+    def cache(self, binding_id: BindingId, time_codes: Iterable[Usd.TimeCode | float]) -> Result:
         """Cache the published generation at each of time_codes not yet cached.
 
         See proscenium.synchronization.time_code_caching.
@@ -320,11 +318,11 @@ class Bindings:
         found = self._require_binding(binding_id)
         if not found.usable:
             return _unusable_binding_result(found)
-        return time_code_caching.cache(binding_id, found.usable_config(), self.stages, given)
+        return synchronization.cache(binding_id, found.usable_config(), self.stages, given)
 
     @_not_while_exclusive
     @_reporting_cleanup
-    def reload(self, binding_id: binding_ids.BindingId, layers: Iterable[str] | None = None) -> Result:
+    def reload(self, binding_id: BindingId, layers: Iterable[str] | None = None) -> Result:
         """Reread the binding's source layers on request, without synchronizing.
 
         Raises ValueError, and reloads nothing, if layers names one that isn't a contributing layer.
@@ -341,7 +339,7 @@ class Bindings:
 
     @_exclusive
     @_reporting_cleanup
-    def retry_cleanup(self, binding_id: binding_ids.BindingId) -> Result:
+    def retry_cleanup(self, binding_id: BindingId) -> Result:
         """Retry the binding's pending cleanup, without USD access (proscenium.synchronization.cleanup_retry).
 
         Only this retries it, neither reopening the file nor a synchronization. Its result reports what's pending.
@@ -351,12 +349,12 @@ class Bindings:
             return _unusable_binding_result(found)
         if pending_cleanup.nothing_pending(binding_id):
             return Result()  # nothing to retry, so nothing committed and no undo step
-        result = cleanup_retry.retry_cleanup(binding_id)
+        result = synchronization.retry_cleanup(binding_id)
         if result.state is not ResultState.FATAL_FAILURE:  # a retry resolving nothing, or unrecorded, is fatal
             _push_undo("Retry USD Display Cleanup")
         return result
 
-    def possibly_out_of_date(self, binding_id: binding_ids.BindingId) -> bool:
+    def possibly_out_of_date(self, binding_id: BindingId) -> bool:
         """Whether the binding's display may not show its source as it is now (lifecycle.md#undo-and-runtime-state).
 
         It's current only while it shows the generation this session last published for the binding, with any time codes
@@ -376,7 +374,7 @@ class Bindings:
         ) == _without_cached_time_codes(published)
         return not showing_it or published.source_revision != current.source_revision
 
-    def live_stage(self, binding_id: binding_ids.BindingId) -> Usd.Stage | None:
+    def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""
         if not self._require_binding(binding_id).usable:
             return None
@@ -390,13 +388,13 @@ class Bindings:
         """Drop evaluation stages of bindings that no longer exist (BindingStageTracker.prune)."""
         self.stages.prune()
 
-    def _require_binding(self, binding_id: binding_ids.BindingId) -> binding_operations.FoundBinding:
+    def _require_binding(self, binding_id: BindingId) -> binding_operations.FoundBinding:
         """Find the binding or raise BindingNotFoundError if it doesn't exist."""
         if (found := binding_operations.find_binding(binding_id)) is None:
             raise BindingNotFoundError(binding_id)
         return found
 
-    def _get_or_create_stages(self, binding_id: binding_ids.BindingId) -> stages.BindingStages:
+    def _get_or_create_stages(self, binding_id: BindingId) -> stages.BindingStages:
         """The binding's stages, created unattached on first use."""
         return self.stages.get_or_create_binding_stages(binding_id)
 
@@ -421,7 +419,7 @@ def _without_cached_time_codes(generation: binding_state.GenerationMetadata) -> 
     return dataclasses.replace(generation, cached_time_codes=())
 
 
-def _source_unavailable_result(binding_id: binding_ids.BindingId, error: stages.SourceUnavailableError) -> Result:
+def _source_unavailable_result(binding_id: BindingId, error: stages.SourceUnavailableError) -> Result:
     """Build the failure result for a binding with no attached source stage."""
     return Result(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)))
 

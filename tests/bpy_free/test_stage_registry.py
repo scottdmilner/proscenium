@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access import BindingId
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.binding.source_access.stage_registry import StageRegistry
 

@@ -17,7 +17,7 @@ from pxr import Usd, UsdGeom
 from fixtures import appearance, evaluation
 from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
-from proscenium.binding.source_access.binding_ids import BindingId
+from proscenium.binding.source_access import BindingId
 from proscenium.core import _core
 from proscenium.synchronization import evaluation as planning
 

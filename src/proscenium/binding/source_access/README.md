@@ -4,8 +4,7 @@ The stages a binding reads its source from ([Source Access](../../../../docs/spe
 
 | File | Holds |
 |---|---|
-| `__init__.py` | The package's exports: its modules, which code in other units imports ([import rules](../../README.md#import-rules)). |
-| `binding_ids.py` | `BindingId`, a binding's persistent identifier: a `NewType` of `str`, so the checker tells it from other strings. Both tiers use it. |
+| `__init__.py` | The package's exports, which code in other units imports ([import rules](../../README.md#import-rules)): its modules, and `BindingId`, a binding's persistent identifier, which it defines: a `NewType` of `str`, so the checker tells it from other strings. Both tiers use it. |
 | `canonical_candidate.py` | The canonical-candidate rule, as a pure function of what Blender data says about each candidate and each binding index ([Canonical Candidate](../../../../docs/spec/source-access.md#canonical-candidate)). `proscenium.binding.runtime.copy_detection` reads that evidence from the records. |
 | `binding_settings.py` | `RequestedSettings`, the settings a binding's next synchronization uses ([Binding State](../../../../docs/spec/lifecycle.md#binding-state)): its payload policy, coordinate conversion, and each destination's USD purposes; and `new_settings`, a new binding's. Also `PayloadPolicy`, shared by settings, records, and stage access. The binding's configuration holds the requested settings. |
 | `source_entity_ids.py` | Source-entity identifiers: an entity's path in the composed stage, with the instance context its instance-proxy path carries. |

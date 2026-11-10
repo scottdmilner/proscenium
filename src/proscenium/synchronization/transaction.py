@@ -27,11 +27,11 @@ if TYPE_CHECKING:
 
     from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
 
 
 def synchronize(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode | None,
@@ -63,7 +63,7 @@ def synchronize(
 
 
 def _attempt(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     config: binding_records.BindingConfig,
     destination: bpy.types.Collection,
     current: stage_tracking.BindingStageTracker,

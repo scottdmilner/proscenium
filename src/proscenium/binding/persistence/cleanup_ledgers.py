@@ -35,7 +35,7 @@ from .manifests import RepresentationRole
 if TYPE_CHECKING:
     from collections.abc import Collection
 
-    from ..source_access import binding_ids
+    from ..source_access import BindingId
 
 LEDGER_KEY = "ledger"
 
@@ -58,7 +58,7 @@ def new_ledger_key() -> str:
 class LedgerEntry:
     """One pending resource."""
 
-    binding_id: binding_ids.BindingId  # the binding that owns it
+    binding_id: BindingId  # the binding that owns it
     manifest_entry_key: str  # its key in that binding's manifest: the entry it was prepared as, or published as
     role: RepresentationRole  # a record stores the value
     datablock: bpy.types.ID | None  # None once it's removed: removing a datablock clears pointers to it

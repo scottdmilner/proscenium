@@ -39,8 +39,8 @@ SCENES = ["updates", "alab"]  # run_benchmarks.py's groups
 # (module, function) pairs the transaction and cache call reach their steps through, in the order they run.
 STEPS = [
     ("proscenium.api.bindings", "Bindings._require_binding"),
-    ("proscenium.synchronization.transaction", "synchronize"),
-    ("proscenium.synchronization.time_code_caching", "cache"),
+    ("proscenium.synchronization", "synchronize"),
+    ("proscenium.synchronization", "cache"),
     ("proscenium.binding.persistence.manifests", "read_manifest"),
     ("proscenium.binding.persistence.binding_state", "read_generation"),
     ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),

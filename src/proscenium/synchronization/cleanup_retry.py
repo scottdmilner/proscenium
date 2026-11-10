@@ -23,10 +23,10 @@ from ..binding.runtime import pending_cleanup
 from . import datablock_removal
 
 if TYPE_CHECKING:
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
 
 
-def retry_cleanup(binding_id: binding_ids.BindingId) -> Result:
+def retry_cleanup(binding_id: BindingId) -> Result:
     """Retry the binding's pending cleanup, disposing of or releasing each leftover; what's still pending."""
     try:
         ledger = pending_cleanup.ledger()

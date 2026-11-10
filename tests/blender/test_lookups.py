@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from proscenium.api.bindings import BindingHandle, Bindings
     from proscenium.binding.persistence.binding_records import BindingConfig
     from proscenium.binding.persistence.manifests import ManifestEntryChange
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:

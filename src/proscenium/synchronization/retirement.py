@@ -25,11 +25,11 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ..binding.persistence import manifests
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
 
 
 def retire(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     obsolete: Mapping[str, manifests.ManifestEntry],
     operation: cleanup_ledgers.OriginatingOperation,
 ) -> tuple[Diagnostic, ...]:

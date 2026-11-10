@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from ..source_access import binding_settings
-from ..source_access.binding_ids import BindingId
+from ..source_access import BindingId
+from ..source_access.binding_settings import RequestedSettings
 from . import id_property_records
 from .id_property_records import RefusedRecord, RefusedRecordError, Schema
 
@@ -39,15 +39,13 @@ class BindingConfig:
     """A binding's configuration: its target scene, last attached root identifier, and requested settings."""
 
     scene: bpy.types.Scene | None  # its target scene; None once the scene is removed, which removes the binding
-    requested_settings: binding_settings.RequestedSettings
+    requested_settings: RequestedSettings
     root_layer_identifier: str | None = None  # of the stage last attached; informative only
 
     def __post_init__(self) -> None:
         if isinstance(self.requested_settings, Mapping):
-            object.__setattr__(
-                self, "requested_settings", binding_settings.RequestedSettings(**self.requested_settings)
-            )
-        if not isinstance(self.requested_settings, binding_settings.RequestedSettings):
+            object.__setattr__(self, "requested_settings", RequestedSettings(**self.requested_settings))
+        if not isinstance(self.requested_settings, RequestedSettings):
             raise TypeError("the requested settings are not a group")
         if not isinstance(self.root_layer_identifier, str | None):
             raise TypeError("the root-layer identifier is not a string")
@@ -96,7 +94,7 @@ def config_key(binding_id: BindingId) -> str:
     return CONFIG_PREFIX + binding_id
 
 
-def create_binding(scene: bpy.types.Scene, settings: binding_settings.RequestedSettings, name: str) -> CreatedBinding:
+def create_binding(scene: bpy.types.Scene, settings: RequestedSettings, name: str) -> CreatedBinding:
     """Make a binding on scene: its destination, linked under the scene's collection, and its records.
 
     Raises RefusedRecordError, changing nothing, if the binding index can't be read; ValueError if the

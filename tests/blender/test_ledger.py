@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 def _binding(bindings: Bindings) -> BindingId:

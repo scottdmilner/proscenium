@@ -31,14 +31,14 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..binding.persistence import manifests
-    from ..binding.source_access import binding_ids
+    from ..binding.source_access import BindingId
 
 
 @dataclass
 class PreparationResources:
     """Track staged resources and rollback callbacks for changes to published resources."""
 
-    binding_id: binding_ids.BindingId  # the binding preparing it, which owns it
+    binding_id: BindingId  # the binding preparing it, which owns it
     operation: cleanup_ledgers.OriginatingOperation
     staging_collection: bpy.types.Collection  # holds the prepared objects; no scene links it
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
@@ -56,7 +56,7 @@ class PreparationResources:
         self.roles[entry_key] = role
 
 
-def cleanup_tracking_diagnostic(binding_id: binding_ids.BindingId) -> Diagnostic | None:
+def cleanup_tracking_diagnostic(binding_id: BindingId) -> Diagnostic | None:
     """Report why the ledger cannot track failed disposal, or None when preparation can proceed."""
     try:
         pending_cleanup.check_trackable()
@@ -68,7 +68,7 @@ def cleanup_tracking_diagnostic(binding_id: binding_ids.BindingId) -> Diagnostic
 
 
 def new_preparation_resources(
-    binding_id: binding_ids.BindingId, operation: cleanup_ledgers.OriginatingOperation
+    binding_id: BindingId, operation: cleanup_ledgers.OriginatingOperation
 ) -> PreparationResources:
     """Create resource tracking for binding_id and its unlinked staging collection.
 

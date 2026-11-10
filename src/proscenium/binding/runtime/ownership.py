@@ -18,13 +18,14 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..persistence import binding_records, id_property_records, manifests
+from ..persistence import binding_records, manifests
+from ..persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 from . import binding_operations
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
 
-    from ..source_access import binding_ids
+    from ..source_access import BindingId
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +36,7 @@ class Claim:
     an operator call or undo.
     """
 
-    binding_id: binding_ids.BindingId  # the first binding whose record the manifest's collection holds
+    binding_id: BindingId  # the first binding whose record the manifest's collection holds
     destination: bpy.types.Collection  # the collection holding that manifest; a binding's copies share binding_id
     entry_key: str  # the entry's key in that manifest
 
@@ -72,9 +73,7 @@ def of(datablock: bpy.types.ID) -> Ownership:
     claims = []
     for holder in sorted(holders, key=lambda c: c.name):
         manifest = manifests.read_manifest(holder)
-        if isinstance(
-            manifest, id_property_records.LoadedRecord
-        ):  # one that can't be read claims nothing until it is repaired
+        if isinstance(manifest, LoadedRecord):  # one that can't be read claims nothing until it is repaired
             claimant = binding_records.binding_ids(holder)[0]
             claims += [
                 Claim(claimant, holder, k) for k, e in manifest.record.entries.items() if e.datablock == datablock
@@ -82,9 +81,7 @@ def of(datablock: bpy.types.ID) -> Ownership:
     return Ownership(tuple(claims))
 
 
-def manifest(
-    binding_id: binding_ids.BindingId,
-) -> id_property_records.LoadedRecord[manifests.Manifest] | id_property_records.RefusedRecord | None:
+def manifest(binding_id: BindingId) -> LoadedRecord[manifests.Manifest] | RefusedRecord | None:
     """A binding's manifest, read from its destination: why it can't be read, or None if it has none yet.
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
@@ -92,7 +89,7 @@ def manifest(
     return manifests.read_manifest(binding_operations.require_canonical_binding_record(binding_id).collection)
 
 
-def set_manifest(binding_id: binding_ids.BindingId, manifest: manifests.Manifest | None) -> None:
+def set_manifest(binding_id: BindingId, manifest: manifests.Manifest | None) -> None:
     """Store a binding's manifest whole on its destination, or remove it with None.
 
     Raises RefusedRecordError, changing nothing, over one that can't be read; KeyError if there's no such binding;
@@ -107,7 +104,7 @@ def set_manifest(binding_id: binding_ids.BindingId, manifest: manifests.Manifest
 
 
 def set_manifest_entries(
-    binding_id: binding_ids.BindingId,
+    binding_id: BindingId,
     changed: Mapping[str, manifests.ManifestEntryChange],
     removed: Collection[str] = (),
     created: Mapping[str, bpy.types.ID] = MappingProxyType({}),
@@ -132,8 +129,8 @@ def set_manifest_entries(
         return
     if published is None:
         stored = manifests.read_manifest(record.collection)
-        if isinstance(stored, id_property_records.RefusedRecord):
-            raise id_property_records.RefusedRecordError(stored)
+        if isinstance(stored, RefusedRecord):
+            raise RefusedRecordError(stored)
         published = manifests.Manifest({}) if stored is None else stored.record
     after = published.updated(changed, removed, created)
     manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)

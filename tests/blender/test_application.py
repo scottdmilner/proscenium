@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from proscenium.api.bindings import Bindings
     from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
     from proscenium.synchronization.preparation_resources import PreparationResources
 
 CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.binding.source_access.binding_ids import BindingId
+    from proscenium.binding.source_access import BindingId
 
 
 MANAGED = "Still"  # one of the published objects: /World/Still's placeholder

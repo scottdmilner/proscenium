@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..persistence import binding_records, cleanup_ledgers, id_property_records
+from ..persistence import binding_records, cleanup_ledgers
+from ..persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -18,10 +19,10 @@ if TYPE_CHECKING:
     import bpy
 
     from .. import results
-    from ..source_access import binding_ids
+    from ..source_access import BindingId
 
 
-def ledger() -> id_property_records.LoadedRecord[cleanup_ledgers.Ledger] | id_property_records.RefusedRecord | None:
+def ledger() -> LoadedRecord[cleanup_ledgers.Ledger] | RefusedRecord | None:
     """The file's pending-cleanup ledger, why it can't be read, or None if there is none yet.
 
     Raises ValueError if the file has more than one binding index.
@@ -30,7 +31,7 @@ def ledger() -> id_property_records.LoadedRecord[cleanup_ledgers.Ledger] | id_pr
     return None if text is None else cleanup_ledgers.read_ledger(text)
 
 
-def cleanup_status(binding_id: binding_ids.BindingId) -> tuple[results.Diagnostic, ...]:
+def cleanup_status(binding_id: BindingId) -> tuple[results.Diagnostic, ...]:
     """The binding's current cleanup diagnostics: the ledger's, one per resource it holds pending, by ledger key.
 
     A ledger entry is one resource with one originating operation, so these are deduplicated by operation and resource
@@ -41,18 +42,18 @@ def cleanup_status(binding_id: binding_ids.BindingId) -> tuple[results.Diagnosti
         held = ledger()
     except ValueError:
         return ()
-    if not isinstance(held, id_property_records.LoadedRecord):
+    if not isinstance(held, LoadedRecord):
         return ()
     return tuple(e.diagnostic for _, e in sorted(held.record.entries.items()) if e.binding_id == binding_id)
 
 
-def nothing_pending(binding_id: binding_ids.BindingId) -> bool:
+def nothing_pending(binding_id: BindingId) -> bool:
     """Whether the ledger can be read and holds no entry of the binding, so a retry has nothing to do or report."""
     try:
         held = ledger()
     except ValueError:
         return False
-    if isinstance(held, id_property_records.RefusedRecord):
+    if isinstance(held, RefusedRecord):
         return False
     return held is None or all(e.binding_id != binding_id for e in held.record.entries.values())
 
@@ -67,7 +68,7 @@ def set_ledger_entries(changed: Mapping[str, cleanup_ledgers.LedgerEntry], remov
     if not changed and not removed:
         return
     stored = cleanup_ledgers.read_ledger(text)
-    assert not isinstance(stored, id_property_records.RefusedRecord)  # _trackable_text refused it
+    assert not isinstance(stored, RefusedRecord)  # _trackable_text refused it
     after = (cleanup_ledgers.Ledger({}) if stored is None else stored.record).updated(changed, removed)
     cleanup_ledgers.write_ledger_entries(text, after, changed.keys(), removed)
 
@@ -86,8 +87,8 @@ def _trackable_text() -> bpy.types.Text:
     text = _index_text()
     if text is None:
         raise ValueError("This file has no binding index to hold the pending-cleanup ledger")
-    if isinstance(stored := cleanup_ledgers.read_ledger(text), id_property_records.RefusedRecord):
-        raise id_property_records.RefusedRecordError(stored)
+    if isinstance(stored := cleanup_ledgers.read_ledger(text), RefusedRecord):
+        raise RefusedRecordError(stored)
     return text
 
 
