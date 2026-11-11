@@ -48,10 +48,12 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-BINDING-STATE` | **Binding state through handles:** bindings created, configured, synchronized, saved and reopened, undone, and removed through handles, with a persistent selection over two bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
 | `F-CACHED-TIME-CODES` | **Cached time codes:** time codes cached in a published generation, a `cache` call that fails, a generation synchronized at the default time code, and synchronizing again. |
+| `F-TIME-VARIATIONS` | **Every variation over time:** a transform, a shear that changes and one that appears, visibility, a placeholder's bounds that change and ones that appear and vanish, and a point instancer whose points appear, vanish, and change prototype, synchronized at one time code and cached at the others in several groupings. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
 | `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |
 | `F-RETIREMENT-FAILURE` | **Retirement failure:** the new display is active; obsolete resources remain tracked. |
+| `F-APPLICATION-FAILURE` | **Application-time failure:** a resource operation fails, or the destination is removed, partway through preparation; the attempt aborts with a diagnostic, and the published generation is unchanged. |
 | `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities on each copy route, a missing, cleared, or duplicated binding index, a linked binding, managed content copied without its manifest, and manifest entries whose content was deleted. |
 | `F-UNMANAGED-USER` | **Unmanaged user of managed data:** refresh and removal preserve unrelated content. |
 | `F-DETACH-SHARED` | **Detach with shared instance content:** a later refresh cannot mutate the detached result. |

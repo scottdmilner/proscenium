@@ -1,0 +1,154 @@
+#usda 1.0
+# F-TIME-VARIATIONS (tests/fixtures/time_variations.py): one drawn copy for each way M7's content varies over
+# time, for synchronizing at one time code and caching the others (CACHE-01, CACHE-10), samples at 0, 10, and 20:
+# - Mover's translate moves it; Blink is invisible from 10 on;
+# - Skew is sheared throughout, its shear changing; Shearing is unsheared until 10 and sheared after;
+# - Grows is basis curves, a placeholder box, whose extent grows; Flicker is a Volume whose extent is blocked
+#   until 10 and from 20, so it is a marker, then a box, then a marker again;
+# - Scatter is a point instancer without ids: two points, a third from 10 until 20, and the second point's
+#   prototype Stone, not Pebble, from 10 until 20;
+# - Still is a mesh nothing varies on.
+# Default values equal the samples at 0, so the default time code shows what 0 does.
+(
+    defaultPrim = "World"
+    endTimeCode = 20
+    metersPerUnit = 1
+    startTimeCode = 0
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Mesh "Mover"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 0, 0)
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 0, 0),
+            20: (10, 0, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Blink"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        token visibility = "inherited"
+        token visibility.timeSamples = {
+            0: "inherited",
+            10: "invisible",
+        }
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Skew"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 6, 0, 1) )
+        matrix4d xformOp:transform.timeSamples = {
+            0: ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 6, 0, 1) ),
+            20: ( (1, 0, 0, 0), (1, 1, 0, 0), (0, 0, 1, 0), (0, 6, 0, 1) ),
+        }
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def Mesh "Shearing"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (3, 6, 0, 1) )
+        matrix4d xformOp:transform.timeSamples = {
+            0: ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (3, 6, 0, 1) ),
+            10: ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (3, 6, 0, 1) ),
+            20: ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (3, 6, 0, 1) ),
+        }
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def BasisCurves "Grows"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        float3[] extent.timeSamples = {
+            0: [(0, 0, 0), (1, 1, 1)],
+            20: [(0, 0, 0), (3, 3, 3)],
+        }
+        point3f[] points = [(0, 0, 0), (1, 1, 1)]
+        uniform token type = "linear"
+        double3 xformOp:translate = (6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Volume "Flicker"
+    {
+        float3[] extent = None
+        float3[] extent.timeSamples = {
+            0: None,
+            10: [(0, 0, 0), (1, 1, 1)],
+            20: None,
+        }
+        double3 xformOp:translate = (9, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def PointInstancer "Scatter"
+    {
+        int[] protoIndices = [0, 0]
+        int[] protoIndices.timeSamples = {
+            0: [0, 0],
+            10: [0, 1, 0],
+            20: [0, 0],
+        }
+        point3f[] positions = [(0, 9, 0), (2, 9, 0)]
+        point3f[] positions.timeSamples = {
+            0: [(0, 9, 0), (2, 9, 0)],
+            10: [(0, 9, 0), (2, 9, 0), (4, 9, 0)],
+            20: [(0, 9, 0), (2, 9, 0)],
+        }
+        rel prototypes = [
+            </World/Scatter/Protos/Pebble>,
+            </World/Scatter/Protos/Stone>,
+        ]
+
+        def Scope "Protos"
+        {
+            def Mesh "Pebble"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            }
+
+            def Mesh "Stone"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 1)]
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            }
+        }
+    }
+
+    def Mesh "Still"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (6, 6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

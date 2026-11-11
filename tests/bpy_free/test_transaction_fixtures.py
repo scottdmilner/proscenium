@@ -75,6 +75,13 @@ def test_preparation_cleanup_failure_counts(tmp_path: Path) -> None:
         assert scene.prepared_before_failure < transaction.resource_count(PayloadPolicy.LOAD_ALL)
 
 
+def test_application_failure_comes_partway(tmp_path: Path) -> None:
+    with transaction.application_failure(tmp_path) as scene:
+        # Some resources are prepared before the failure, and not all a generation holds.
+        assert 0 < scene.prepared_before_failure < transaction.resource_count(PayloadPolicy.LOAD_ALL)
+        assert set(scene.failures) == set(transaction.ApplicationFailureKind)
+
+
 def test_retirement_failure_moves_the_mover(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
         first, second = scene.time_codes

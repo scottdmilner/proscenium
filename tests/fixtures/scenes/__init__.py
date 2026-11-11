@@ -25,6 +25,7 @@ class Scene(Enum):
     TRANSACTION = "transaction"  # layers for every generator in fixtures/transaction.py
     EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py, generated ones' base included
     INCREMENTAL = "incremental"  # layers for every generator in fixtures/incremental.py and edit_sequence.py
+    TIME_VARIATIONS = "time_variations"  # F-TIME-VARIATIONS' layer, for fixtures/time_variations.py
 
     @property
     def path(self) -> Path:
