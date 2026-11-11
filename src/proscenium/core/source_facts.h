@@ -39,8 +39,9 @@ struct SourceInfoTokens {
 PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged,
                                                const PXR_NS::UsdImagingDataSourceStageGlobals& globals);
 
-// Whether USD computes the extent of `prim` for the filter when none is authored: point-based prims that Hydra
-// doesn't draw as meshes, such as curves and points.
+// Whether USD computes the extent of `prim` for the filter when none is authored: gprims other than meshes, so the
+// curves and points Hydra doesn't draw as meshes, and the implicit shapes and NURBS patches its filters turn into
+// meshes that carry no extent of their own. USD computes none for a volume.
 bool ComputesExtent(const PXR_NS::UsdPrim& prim);
 
 // USD's computed extent at `time` for a prim ComputesExtent accepts, as an extent schema container; null otherwise.

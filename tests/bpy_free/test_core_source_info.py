@@ -35,7 +35,13 @@ def _usd_box(stage: Usd.Stage, path: str, time: float) -> tuple[Gf.Matrix4d, Gf.
     prim = stage.GetPrimAtPath(path)
     code = Usd.TimeCode(time)
     boundable = UsdGeom.Boundable(prim)
-    extent = boundable.GetExtentAttr().Get(code) or UsdGeom.Boundable.ComputeExtentFromPlugins(boundable, code)
+    authored = boundable.GetExtentAttr()
+    # Get gives an implicit shape's schema fallback extent when none is authored, so it's read only when authored.
+    extent = (
+        authored.Get(code)
+        if authored.HasAuthoredValue()
+        else UsdGeom.Boundable.ComputeExtentFromPlugins(boundable, code)
+    )
     assert extent is not None
     world = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(code)
     return world, Gf.Vec3d(extent[0]), Gf.Vec3d(extent[1])
@@ -91,3 +97,36 @@ def test_time_changes_reach_computed_extents_and_unimaged_prims(unsupported: eva
             assert_box(at[path], *_usd_box(stage, path, time))
     assert shown[0.0][TANGENTS].world_matrix != shown[10.0][TANGENTS].world_matrix  # the checks above could fail
     assert list(shown[0.0][COMBED].local_bounds) != list(shown[10.0][COMBED].local_bounds)
+
+
+SHAPES = ("/World/Shapes/Box", "/World/Shapes/Ball", "/World/Shapes/Sheet")  # a Cube, a Sphere, and a NURBS patch
+
+
+def test_implicit_shapes_and_nurbs_meshes_show_computed_bounds(unsupported: evaluation.UnsupportedScene) -> None:
+    # The meshes Hydra's filters make of implicit shapes and NURBS patches carry no extent, so the filter gives them
+    # USD's computed one, which M7's application draws as their box.
+    shown = copies(plan_at(unsupported.stage, 0.0))
+    for path in SHAPES:
+        assert shown[path].geometry_index >= 0, path  # a mesh
+        assert_box(shown[path], *_usd_box(unsupported.stage, path, 0.0))
+
+
+def test_edits_and_time_reach_an_implicit_shapes_bounds(unsupported: evaluation.UnsupportedScene) -> None:
+    # A stage edit to a Cube's size, and a Sphere's radius sampled over time, reach their computed extents.
+    stage = unsupported.stage
+    box, ball = (stage.GetPrimAtPath(p) for p in SHAPES[:2])
+    radius = UsdGeom.Sphere(ball).GetRadiusAttr()
+    radius.Set(1.0, Usd.TimeCode(0.0))
+    radius.Set(4.0, Usd.TimeCode(10.0))
+    chain = _core.SceneIndexChain(stage)
+    try:
+        before = copies(_core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT))
+        UsdGeom.Cube(box).GetSizeAttr().Set(6.0)
+        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
+    finally:
+        chain.release()
+    assert list(before[SHAPES[0]].local_bounds) != list(shown[0.0][SHAPES[0]].local_bounds)  # the checks could fail
+    for time, at in shown.items():
+        for path in SHAPES[:2]:
+            assert_box(at[path], *_usd_box(stage, path, time))
+    assert list(shown[0.0][SHAPES[1]].local_bounds) != list(shown[10.0][SHAPES[1]].local_bounds)

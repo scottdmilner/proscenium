@@ -96,11 +96,9 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
   return HdRetainedContainerDataSource::New(names.size(), names.data(), values.data());
 }
 
-// Point instancers and volumes are left out: their extents would mean evaluating prototypes or reading field files
-// merely for a placeholder.
-bool ComputesExtent(const UsdPrim& prim) {
-  return prim.IsA<UsdGeomPointBased>() && !prim.IsA<UsdGeomMesh>() && !prim.IsA<UsdGeomNurbsPatch>();
-}
+// Point instancers aren't gprims, and USD has no extent computation for a volume: theirs would mean evaluating
+// prototypes or reading field files merely for a placeholder.
+bool ComputesExtent(const UsdPrim& prim) { return prim.IsA<UsdGeomGprim>() && !prim.IsA<UsdGeomMesh>(); }
 
 HdContainerDataSourceHandle ComputedExtent(const UsdPrim& prim, UsdTimeCode time) {
   if (!ComputesExtent(prim)) return nullptr;

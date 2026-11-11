@@ -2,7 +2,8 @@
 // - For a prim UsdImaging doesn't image at all (no __usdPrimInfo, such as a HermiteCurves), UsdImaging's own data for
 //   a prim without an adapter (UsdImagingDataSourcePrim: transform, visibility, purpose, extent), so flattening
 //   applies them, and whether its USD type is a gprim.
-// - For curves and points without an authored extent, USD's computed extent, so their placeholders show bounds.
+// - For a gprim other than a mesh without an authored extent, USD's computed extent, so curves' and points'
+//   placeholders show bounds, and so do the meshes implicit shapes and NURBS patches become.
 // - For an xformable prim, whether it resets the transform stack (WORKAROUND for OpenUSD #862, ResetsBelow in
 //   instancing.h).
 // - For an imageable prim, its authored guide, proxy, and render visibility (UsdGeomVisibilityAPI is not imaged), as

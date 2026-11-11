@@ -28,9 +28,15 @@ constexpr uint64_t kForgotten = std::numeric_limits<uint64_t>::max();
 
 // Whether USD's extent computation for `prim` reads anything animated.
 bool ComputedExtentVaries(const UsdPrim& prim) {
-  if (UsdGeomPointBased(prim).GetPointsAttr().ValueMightBeTimeVarying()) return true;
-  if (const UsdGeomCurves curves{prim}) return curves.GetWidthsAttr().ValueMightBeTimeVarying();
-  if (const UsdGeomPoints points{prim}) return points.GetWidthsAttr().ValueMightBeTimeVarying();
+  if (const UsdGeomPointBased pointBased{prim}) {
+    if (pointBased.GetPointsAttr().ValueMightBeTimeVarying()) return true;
+    if (const UsdGeomCurves curves{prim}) return curves.GetWidthsAttr().ValueMightBeTimeVarying();
+    if (const UsdGeomPoints points{prim}) return points.GetWidthsAttr().ValueMightBeTimeVarying();
+    return false;
+  }
+  // An implicit shape's extent follows its own parameters, such as its size, radius, height, and axis.
+  for (const UsdAttribute& attribute : prim.GetAuthoredAttributes())
+    if (attribute.ValueMightBeTimeVarying()) return true;
   return false;
 }
 
