@@ -244,13 +244,14 @@ def draw_details(layout: Any, view_name: str) -> None:
     """Draw what a view's selected prim is."""
     prim_tree_view = widget_views.scene_graph_view(view_name).prim_tree_view
     tree = prim_tree_view.live_tree()
-    stage = tree.stage() if tree is not None else None
-    prim = stage.GetPrimAtPath(prim_tree_view.selected_path) if stage and prim_tree_view.selected_path else None
+    path = prim_tree_view.selected_path
+    details = tree.details_at(path) if tree is not None and path else None
+    prim_details = tree.prim_details(path) if tree is not None and path else None
     column = layout.column(align=True)
-    if not prim:
+    if details is None or prim_details is None:
         column.label(text="Select a row")
         return
-    for line in prim_descriptions.details_lines(prim):
+    for line in prim_descriptions.details_lines(details, prim_details):
         column.label(text=line)
 
 

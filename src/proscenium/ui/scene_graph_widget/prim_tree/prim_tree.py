@@ -2,7 +2,11 @@
 
 Rows are spliced in on expand and cut out on collapse, so each costs the rows it adds or removes, and a row holds
 only its prim and depth. What a row draws (`RowDetails`) is read from the prim when the row is first drawn, so a
-widget pays for the rows on screen, not the rows in the list.
+widget pays for the rows on screen, not the rows in the list. What only one prim's details or tooltips show at a time
+(`PrimDetails`) is read when first asked for, so a panel redrawing it doesn't read it again.
+
+These two records are all the tree reads of a prim's details: what the tree says about a prim (prim_descriptions) is
+worded from them alone.
 
 A tree holds its stage's prims and never the stage, so it never keeps a stage alive: once the stage's last owner
 releases it, the tree is expired. Expansion and details are kept by path, so they survive the stage recomposing.
@@ -18,6 +22,8 @@ from pxr import Kind, Sdf, Usd
 from .prim_children import CHILD_PREDICATE, has_children
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .prim_search import SearchResult
 
 
@@ -26,23 +32,20 @@ class TreeRow:
     """One visible prim and how deep it sits; top-level prims are at depth 0."""
 
     prim: Usd.Prim
+    path: Sdf.Path  # the prim's, kept so the rows can be searched and drawn without asking USD for it
     depth: int
-
-    @property
-    def path(self) -> Sdf.Path:
-        """The row's prim path."""
-        return self.prim.GetPath()
 
 
 @dataclass(frozen=True, slots=True)
 class RowDetails:
-    """What a row draws, read from its prim."""
+    """What a row draws and its tooltip says, read from its prim."""
 
+    path: Sdf.Path
     name: str
     display_name: str  # the prim's displayName metadata, or empty
     type_name: str
     model_kind: str  # the prim's kind metadata, or empty
-    is_invalid_model: bool  # see is_invalid_model
+    is_invalid_model: bool  # see _is_invalid_model
     has_children: bool
     is_active: bool
     specifier: Sdf.Specifier
@@ -63,6 +66,22 @@ class RowDetails:
         return self.specifier == Sdf.SpecifierOver
 
 
+@dataclass(frozen=True, slots=True)
+class PrimDetails:
+    """What the details panel and badge tooltips say about one prim beyond its `RowDetails`, read when asked for."""
+
+    is_loaded: bool
+    has_inherits: bool
+    has_specializes: bool
+    reference_targets: tuple[str, ...]  # each as @asset@prim, or a bare prim path for an internal reference
+    payload_targets: tuple[str, ...]
+    variant_selections: tuple[tuple[str, str], ...]  # (variant set name, selection), the selection empty if unset
+    prototype_path: Sdf.Path | None  # an instance's prototype
+    prim_in_prototype_path: Sdf.Path | None  # an instance proxy's prim in its prototype
+    authored_attribute_count: int
+    child_count: int  # instance proxies included
+
+
 class PrimTree:
     """The expansion state of one stage's hierarchy, and the rows it makes visible."""
 
@@ -72,12 +91,14 @@ class PrimTree:
     search_result: SearchResult | None  # the filter, while one is set
     _pseudo_root: Usd.Prim
     _details_by_path: dict[Sdf.Path, RowDetails]
+    _prim_details_by_path: dict[Sdf.Path, PrimDetails]
     _expanded_paths_before_search: set[Sdf.Path]  # restored when the filter clears
 
     def __init__(self, stage: Usd.Stage) -> None:
         self._pseudo_root = stage.GetPseudoRoot()
         self.expanded_paths = set()
         self._details_by_path = {}
+        self._prim_details_by_path = {}
         self._expanded_paths_before_search = set()
         self.version = 0
         self.search_result = None
@@ -97,16 +118,26 @@ class PrimTree:
 
     def has_prim(self, path: Sdf.Path) -> bool:
         """Whether the stage has a prim at a path, so the tree can show it, whether or not its row is visible now."""
-        stage = self.stage()
-        return stage is not None and path.IsPrimPath() and bool(stage.GetPrimAtPath(path))
+        return self._prim_at(path) is not None
 
     def details(self, row: TreeRow) -> RowDetails:
         """What a row draws, read on first use."""
-        path = row.path
-        found = self._details_by_path.get(path)
+        found = self._details_by_path.get(row.path)
         if found is None:
-            found = self._details_by_path[path] = _read_details(row.prim)
+            found = self._details_by_path[row.path] = _read_details(row.prim)
         return found
+
+    def details_at(self, path: Sdf.Path) -> RowDetails | None:
+        """A prim's `RowDetails`, whether or not its row is visible now; None if the stage has no prim there."""
+        return self._cached_at(path, self._details_by_path, _read_details)
+
+    def prim_details(self, path: Sdf.Path) -> PrimDetails | None:
+        """A prim's `PrimDetails`, read on first use; None if the stage has no prim there.
+
+        A details panel asks on every redraw, so this is cached as `RowDetails` is, and read again after the same
+        changes, and after a property is added or removed (`forget_prim_details`).
+        """
+        return self._cached_at(path, self._prim_details_by_path, _read_prim_details)
 
     def is_expanded(self, row: TreeRow) -> bool:
         """Whether a row's children are showing."""
@@ -127,14 +158,16 @@ class PrimTree:
     def set_expanded(self, row_index: int, expand: bool, recursive: bool = False) -> None:
         """Expand or collapse one row, or with recursive, it and everything under it."""
         row = self.rows[row_index]
-        prims = Usd.PrimRange(row.prim, CHILD_PREDICATE) if recursive else (row.prim,)
-        paths = {prim.GetPath() for prim in prims}
         # Cut out whatever shows under the row now, then splice in what shows under it after the change.
         end = self._subtree_end(row_index)
-        if expand:
-            self.expanded_paths.update(paths)
+        if expand and recursive:
+            self.expanded_paths.update(prim.GetPath() for prim in Usd.PrimRange(row.prim, CHILD_PREDICATE))
+        elif expand:
+            self.expanded_paths.add(row.path)
+        elif recursive:  # only expanded paths can be collapsed, so filter them rather than walk the subtree
+            self.expanded_paths.difference_update([path for path in self.expanded_paths if path.HasPrefix(row.path)])
         else:
-            self.expanded_paths.difference_update(paths)
+            self.expanded_paths.discard(row.path)
         self.rows[row_index + 1 : end] = self._subtree_rows(row.prim, row.depth) if expand else []
         self.version += 1
 
@@ -198,13 +231,38 @@ class PrimTree:
         if stage is None:
             return
         self._details_by_path.clear()
+        self._prim_details_by_path.clear()
         self.expanded_paths = {path for path in self.expanded_paths if stage.GetPrimAtPath(path)}
         self._rebuild_rows()
 
     def forget_details(self) -> None:
         """Read every row's details again when it next draws, after the stage's metadata changed."""
         self._details_by_path.clear()
+        self._prim_details_by_path.clear()
         self.version += 1
+
+    def forget_prim_details(self) -> None:
+        """Read `PrimDetails` again when next asked for, after a property was added or removed; rows don't change."""
+        self._prim_details_by_path.clear()
+
+    def _prim_at(self, path: Sdf.Path) -> Usd.Prim | None:
+        stage = self.stage()
+        prim = stage.GetPrimAtPath(path) if stage is not None and path.IsPrimPath() else None
+        return prim if prim else None
+
+    def _cached_at[Details](
+        self, path: Sdf.Path, cache: dict[Sdf.Path, Details], read: Callable[[Usd.Prim], Details]
+    ) -> Details | None:
+        """A prim's cached details, read into the cache first if they aren't there; None if there's no prim."""
+        if self.is_expired():
+            return None
+        found = cache.get(path)
+        if found is None:
+            prim = self._prim_at(path)  # looked up only on a miss: a cached path had a prim at the last refresh
+            if prim is None:
+                return None
+            found = cache[path] = read(prim)
+        return found
 
     def _rebuild_rows(self) -> None:
         self.rows = self._subtree_rows(self._pseudo_root, -1)
@@ -223,8 +281,9 @@ class PrimTree:
         stack = [(child, depth + 1) for child in reversed(self._children(prim))]
         while stack:
             child, child_depth = stack.pop()
-            rows.append(TreeRow(child, child_depth))
-            if child.GetPath() in self.expanded_paths:
+            child_path = child.GetPath()
+            rows.append(TreeRow(child, child_path, child_depth))
+            if child_path in self.expanded_paths:
                 stack.extend((c, child_depth + 1) for c in reversed(self._children(child)))
         return rows
 
@@ -241,20 +300,21 @@ class PrimTree:
         return [child for child in children if child.GetPath() in result.visible_paths]
 
 
-def is_invalid_model(prim: Usd.Prim) -> bool:
+def _is_invalid_model(model_api: Usd.ModelAPI, model_kind: str) -> bool:
     """Whether a prim's kind is a model kind but USD doesn't count it a model, its ancestors not all being groups."""
-    model_api = Usd.ModelAPI(prim)
-    model_kind = model_api.GetKind()
     return bool(model_kind) and Kind.Registry.IsA(model_kind, Kind.Tokens.model) and not model_api.IsModel()
 
 
 def _read_details(prim: Usd.Prim) -> RowDetails:
+    model_api = Usd.ModelAPI(prim)
+    model_kind = str(model_api.GetKind())
     return RowDetails(
+        path=prim.GetPath(),
         name=prim.GetName(),
         display_name=prim.GetDisplayName(),
         type_name=str(prim.GetTypeName()),
-        model_kind=str(Usd.ModelAPI(prim).GetKind()),
-        is_invalid_model=is_invalid_model(prim),
+        model_kind=model_kind,
+        is_invalid_model=_is_invalid_model(model_api, model_kind),
         has_children=has_children(prim),
         is_active=prim.IsActive(),
         specifier=prim.GetSpecifier(),
@@ -262,5 +322,27 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         has_references=prim.HasAuthoredReferences(),
         is_instance=prim.IsInstance(),
         is_instance_proxy=prim.IsInstanceProxy(),
-        has_variants=bool(prim.GetVariantSets().GetNames()),
+        has_variants=prim.HasVariantSets(),
+    )
+
+
+def _arc_targets(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
+    """The targets a prim's specs author for references or payloads."""
+    arcs = [arc for spec in prim.GetPrimStack() for arc in getattr(spec, list_name).ApplyEditsToList([])]
+    return tuple(f"@{arc.assetPath}@{arc.primPath}" if arc.assetPath else str(arc.primPath) for arc in arcs)
+
+
+def _read_prim_details(prim: Usd.Prim) -> PrimDetails:
+    variant_sets = prim.GetVariantSets()
+    return PrimDetails(
+        is_loaded=prim.IsLoaded(),
+        has_inherits=prim.HasAuthoredInherits(),
+        has_specializes=prim.HasAuthoredSpecializes(),
+        reference_targets=_arc_targets(prim, "referenceList"),
+        payload_targets=_arc_targets(prim, "payloadList"),
+        variant_selections=tuple((name, variant_sets.GetVariantSelection(name)) for name in variant_sets.GetNames()),
+        prototype_path=prim.GetPrototype().GetPath() if prim.IsInstance() else None,
+        prim_in_prototype_path=prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else None,
+        authored_attribute_count=len(prim.GetAuthoredAttributes()),
+        child_count=len(prim.GetFilteredChildren(CHILD_PREDICATE)),
     )

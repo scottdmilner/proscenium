@@ -49,7 +49,7 @@ class SceneGraphToggleRow(bpy.types.Operator):
         row = _row(properties.view_name, properties.row_index)
         if tree is None or row is None:
             return ""
-        return prim_descriptions.disclosure_tooltip(row.prim, tree.is_expanded(row))
+        return prim_descriptions.disclosure_tooltip(tree.details(row), tree.is_expanded(row))
 
     @override
     def invoke(self, context: Any, event: Any) -> set[OperatorReturnItems]:
@@ -97,10 +97,12 @@ class SceneGraphSelectRow(bpy.types.Operator):
     @classmethod
     def description(cls, context: Any, properties: Any) -> str:
         # Labels can't have tooltips, so a badge is this operator's borderless button, and this is its tooltip.
+        tree = _tree(properties.view_name)
         row = _row(properties.view_name, properties.row_index)
-        if row is None or properties.badge not in {badge.value for badge in prim_descriptions.Badge}:
+        prim_details = tree.prim_details(row.path) if tree is not None and row is not None else None
+        if prim_details is None or properties.badge not in {badge.value for badge in prim_descriptions.Badge}:
             return ""
-        return prim_descriptions.badge_tooltip(row.prim, prim_descriptions.Badge(properties.badge))
+        return prim_descriptions.badge_tooltip(prim_details, prim_descriptions.Badge(properties.badge))
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:

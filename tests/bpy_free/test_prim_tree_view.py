@@ -19,6 +19,8 @@ from support.usd import open_stage_without_cache
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from proscenium.ui.scene_graph_widget.prim_tree.prim_tree import RowDetails
+
 INTO = StepDirection.INTO
 OUT_OF = StepDirection.OUT_OF
 
@@ -94,7 +96,7 @@ def test_stage_changes_are_marked_and_read_once_the_edit_is_over(stage: Usd.Stag
     view = _view(stage, changes)
     view.select_path(Sdf.Path("/World/Camera"))
     stage.GetPrimAtPath("/World/Camera").CreateAttribute("focalLength", Sdf.ValueTypeNames.Float).Set(50.0)
-    assert view.pending_change is PendingChange.NONE  # a property value shows in no row
+    assert view.pending_change is PendingChange.PROPERTIES  # an added property shows in no row
     stage.GetPrimAtPath("/World/Camera").SetMetadata("comment", "metadata only")
     assert view.pending_change is PendingChange.DETAILS
     stage.DefinePrim("/World/Added")
@@ -105,6 +107,22 @@ def test_stage_changes_are_marked_and_read_once_the_edit_is_over(stage: Usd.Stag
     assert view.tree is not None
     assert "/World/AddedToo" in [str(row.path) for row in view.tree.rows]
     assert not view.apply_pending_changes()
+
+
+def test_prim_details_are_read_again_after_a_property_is_added_but_not_after_a_value_changes(stage: Usd.Stage) -> None:
+    view = _view(stage)
+    assert view.tree is not None
+    camera = Sdf.Path("/World/Camera")
+    before = view.tree.prim_details(camera)
+    assert before is not None
+    assert view.tree.prim_details(camera) is before  # cached, so a redrawing panel doesn't read the prim again
+    attribute = stage.GetPrimAtPath(camera).CreateAttribute("focalLength", Sdf.ValueTypeNames.Float)
+    view.apply_pending_changes()
+    after = view.tree.prim_details(camera)
+    assert after is not None
+    assert after.authored_attribute_count == before.authored_attribute_count + 1
+    attribute.Set(50.0)
+    assert view.pending_change is PendingChange.NONE  # a property value shows nowhere
 
 
 def test_a_selected_prim_leaving_the_stage_is_deselected(stage: Usd.Stage) -> None:
@@ -159,22 +177,36 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     crate_row = view.tree.rows[view.select_path(Sdf.Path("/World/Geometry/Crates/Crate_01")) or 0]
     badges = prim_descriptions.row_badges(view.tree.details(crate_row))
     assert badges == [prim_descriptions.Badge.REFERENCES, prim_descriptions.Badge.INSTANCE]
-    crate = stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")
-    assert prim_descriptions.row_tooltip(crate) == "/World/Geometry/Crates/Crate_01\nXform, Def\nKind: component"
-    red = stage.GetPrimAtPath("/World/Looks/Red")
-    assert prim_descriptions.row_tooltip(red).endswith(
+    tree = view.tree
+
+    def details(path: str) -> RowDetails:
+        found = tree.details_at(Sdf.Path(path))
+        assert found is not None, path
+        return found
+
+    def badge_tooltip(path: str, badge: prim_descriptions.Badge) -> str:
+        prim_details = tree.prim_details(Sdf.Path(path))
+        assert prim_details is not None, path
+        return prim_descriptions.badge_tooltip(prim_details, badge)
+
+    crate = "/World/Geometry/Crates/Crate_01"
+    assert prim_descriptions.row_tooltip(details(crate)) == f"{crate}\nXform, Def\nKind: component"
+    assert prim_descriptions.row_tooltip(details("/World/Looks/Red")).endswith(
         "Kind: component\nNot a model: an ancestor isn't a group or assembly"
     )
-    assert prim_descriptions.badge_tooltip(crate, prim_descriptions.Badge.REFERENCES) == "References: /_Crate"
-    assert prim_descriptions.badge_tooltip(crate, prim_descriptions.Badge.INSTANCE).startswith("Instance of prototype ")
-    body = stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01/Body")
-    assert prim_descriptions.badge_tooltip(body, prim_descriptions.Badge.INSTANCE).startswith("Inside an instance")
-    payloaded = stage.GetPrimAtPath("/World/Geometry/Prop_Payloaded")
-    assert prim_descriptions.badge_tooltip(payloaded, prim_descriptions.Badge.PAYLOAD) == "Payload (loaded): /_Crate"
-    variants = stage.GetPrimAtPath("/World/Geometry/Prop_Variants")
-    assert prim_descriptions.badge_tooltip(variants, prim_descriptions.Badge.VARIANTS) == "Variants: shape = box"
-    assert prim_descriptions.disclosure_tooltip(crate, is_expanded=False).startswith("Expand Crate_01.")
-    assert prim_descriptions.details_lines(crate)[0] == "/World/Geometry/Crates/Crate_01"
+    assert badge_tooltip(crate, prim_descriptions.Badge.REFERENCES) == "References: /_Crate"
+    assert badge_tooltip(crate, prim_descriptions.Badge.INSTANCE).startswith("Instance of prototype ")
+    assert badge_tooltip(f"{crate}/Body", prim_descriptions.Badge.INSTANCE).startswith("Inside an instance")
+    payload_tooltip = badge_tooltip("/World/Geometry/Prop_Payloaded", prim_descriptions.Badge.PAYLOAD)
+    assert payload_tooltip == "Payload (loaded): /_Crate"
+    variants_tooltip = badge_tooltip("/World/Geometry/Prop_Variants", prim_descriptions.Badge.VARIANTS)
+    assert variants_tooltip == "Variants: shape = box"
+    assert prim_descriptions.disclosure_tooltip(details(crate), is_expanded=False).startswith("Expand Crate_01.")
+    crate_prim_details = tree.prim_details(Sdf.Path(crate))
+    assert crate_prim_details is not None
+    assert prim_descriptions.details_lines(details(crate), crate_prim_details)[0] == crate
+    assert tree.details_at(Sdf.Path("/World/Nowhere")) is None
+    assert tree.prim_details(Sdf.Path("/World/Nowhere")) is None
 
 
 def test_row_names_italicize_classes_and_fall_back_from_display_names(stage: Usd.Stage) -> None:

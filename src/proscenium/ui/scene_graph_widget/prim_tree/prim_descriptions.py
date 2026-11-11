@@ -1,17 +1,15 @@
-"""What a prim tree says about a prim: its row's name and badges, and the text of its tooltips and details."""
+"""What a prim tree says about a prim: its row's name and badges, and the text of its tooltips and details.
+
+It words what the tree has read (`RowDetails`, `PrimDetails`) and makes no USD queries of its own.
+"""
 
 from __future__ import annotations
 
 import enum
 from typing import TYPE_CHECKING
 
-from pxr import Usd
-
-from .prim_children import CHILD_PREDICATE
-from .prim_tree import is_invalid_model
-
 if TYPE_CHECKING:
-    from .prim_tree import RowDetails
+    from .prim_tree import PrimDetails, RowDetails
 
 # What the tree's keys do, for the disclosure triangle's tooltip.
 KEY_HINTS = "Right: expand, or step in    Left: collapse, or step out    Shift: the whole subtree"
@@ -62,67 +60,57 @@ def row_badges(details: RowDetails) -> list[Badge]:
     return [badge for badge, is_shown in shown if is_shown]
 
 
-def row_tooltip(prim: Usd.Prim) -> str:
+def row_tooltip(details: RowDetails) -> str:
     """A row's tooltip: the prim's path, type, specifier, and anything unusual about it."""
-    lines = [str(prim.GetPath()), f"{prim.GetTypeName() or 'No type'}, {prim.GetSpecifier().displayName}"]
-    if not prim.IsActive():
+    lines = [str(details.path), f"{details.type_name or 'No type'}, {details.specifier.displayName}"]
+    if not details.is_active:
         lines.append("Inactive")
-    model_kind = Usd.ModelAPI(prim).GetKind()
-    if model_kind:
-        lines.append(f"Kind: {model_kind}")
-    if is_invalid_model(prim):
+    if details.model_kind:
+        lines.append(f"Kind: {details.model_kind}")
+    if details.is_invalid_model:
         lines.append("Not a model: an ancestor isn't a group or assembly")
     return "\n".join(lines)
 
 
-def disclosure_tooltip(prim: Usd.Prim, is_expanded: bool) -> str:
+def disclosure_tooltip(details: RowDetails, is_expanded: bool) -> str:
     """The disclosure triangle's tooltip: what a click does to the row, and the keys that do the same."""
     action = "Collapse" if is_expanded else "Expand"
-    return f"{action} {prim.GetName()}. Shift-click: the whole subtree.\nKeys: {KEY_HINTS}"
+    return f"{action} {details.name}. Shift-click: the whole subtree.\nKeys: {KEY_HINTS}"
 
 
-def _arc_targets(prim: Usd.Prim, list_name: str) -> list[str]:
-    """The targets a prim's specs author for references or payloads, as asset@prim strings."""
-    arcs = [arc for spec in prim.GetPrimStack() for arc in getattr(spec, list_name).ApplyEditsToList([])]
-    return [f"@{arc.assetPath}@{arc.primPath}" if arc.assetPath else str(arc.primPath) for arc in arcs]
-
-
-def badge_tooltip(prim: Usd.Prim, badge: Badge) -> str:
+def badge_tooltip(prim_details: PrimDetails, badge: Badge) -> str:
     """What a badge says about its prim when hovered."""
     if badge is Badge.PAYLOAD:
-        state = "loaded" if prim.IsLoaded() else "unloaded"
-        return f"Payload ({state}): {', '.join(_arc_targets(prim, 'payloadList'))}"
+        state = "loaded" if prim_details.is_loaded else "unloaded"
+        return f"Payload ({state}): {', '.join(prim_details.payload_targets)}"
     if badge is Badge.REFERENCES:
-        return f"References: {', '.join(_arc_targets(prim, 'referenceList'))}"
+        return f"References: {', '.join(prim_details.reference_targets)}"
     if badge is Badge.VARIANTS:
-        variant_sets = prim.GetVariantSets()
-        names = variant_sets.GetNames()
-        return "Variants: " + ", ".join(f"{n} = {variant_sets.GetVariantSelection(n) or '(none)'}" for n in names)
-    if prim.IsInstanceProxy():
-        return f"Inside an instance; prototype prim {prim.GetPrimInPrototype().GetPath()}"
-    return f"Instance of prototype {prim.GetPrototype().GetPath()}"
+        selections = prim_details.variant_selections
+        return "Variants: " + ", ".join(f"{name} = {selection or '(none)'}" for name, selection in selections)
+    if prim_details.prim_in_prototype_path is not None:
+        return f"Inside an instance; prototype prim {prim_details.prim_in_prototype_path}"
+    return f"Instance of prototype {prim_details.prototype_path}"
 
 
-def details_lines(prim: Usd.Prim) -> list[str]:
+def details_lines(details: RowDetails, prim_details: PrimDetails) -> list[str]:
     """The details panel's lines for a prim."""
     arcs = [
         name
         for name, has in (
-            ("references", prim.HasAuthoredReferences()),
-            ("payload", prim.HasPayload()),
-            ("inherits", prim.HasAuthoredInherits()),
-            ("specializes", prim.HasAuthoredSpecializes()),
+            ("references", details.has_references),
+            ("payload", details.has_payload),
+            ("inherits", prim_details.has_inherits),
+            ("specializes", prim_details.has_specializes),
         )
         if has
     ]
-    variant_sets = prim.GetVariantSets()
-    children = prim.GetFilteredChildren(CHILD_PREDICATE)  # instance proxies count
     return [
-        str(prim.GetPath()),
-        f"Type: {prim.GetTypeName() or '(none)'}   Specifier: {prim.GetSpecifier().displayName}",
-        f"Active: {prim.IsActive()}   Loaded: {prim.IsLoaded()}   Kind: {Usd.ModelAPI(prim).GetKind()}",
-        f"Instance: {prim.IsInstance()}   Instance proxy: {prim.IsInstanceProxy()}",
+        str(details.path),
+        f"Type: {details.type_name or '(none)'}   Specifier: {details.specifier.displayName}",
+        f"Active: {details.is_active}   Loaded: {prim_details.is_loaded}   Kind: {details.model_kind}",
+        f"Instance: {details.is_instance}   Instance proxy: {details.is_instance_proxy}",
         f"Arcs: {', '.join(arcs) or 'none'}",
-        *(f"Variant {name} = {variant_sets.GetVariantSelection(name)}" for name in variant_sets.GetNames()),
-        f"{len(prim.GetAuthoredAttributes())} authored attributes, {len(children)} children",
+        *(f"Variant {name} = {selection}" for name, selection in prim_details.variant_selections),
+        f"{prim_details.authored_attribute_count} authored attributes, {prim_details.child_count} children",
     ]

@@ -34,8 +34,9 @@ class PendingChange(enum.IntEnum):
     """What a view must read again before it next draws, ordered so the larger includes the smaller."""
 
     NONE = 0
-    DETAILS = 1  # a prim's metadata changed: the rows stay, their details are read again
-    HIERARCHY = 2  # prims were added, removed, or recomposed: the rows are rebuilt
+    PROPERTIES = 1  # a property was added or removed: no row changes, only what a prim's details panel counts
+    DETAILS = 2  # a prim's metadata changed: the rows stay, their details are read again
+    HIERARCHY = 3  # prims were added, removed, or recomposed: the rows are rebuilt
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,18 +181,23 @@ class PrimTreeView:
                 self.selected_path = None
             if not self.query.is_empty():
                 self.apply_query()  # the old result's paths may be gone, and new prims may match
-        else:
+        elif pending_change is PendingChange.DETAILS:
             tree.forget_details()
+        else:
+            tree.forget_prim_details()
         return True
 
     def _stage_changed(self, notice: Usd.Notice.ObjectsChanged, _sender: Usd.Stage) -> None:
         # Adding or removing a property resyncs its path, not its prim's, and changes no row.
-        if any(_is_prim_or_root(path) for path in notice.GetResyncedPaths()):
+        resynced_paths = notice.GetResyncedPaths()
+        if any(_is_prim_or_root(path) for path in resynced_paths):
             change = PendingChange.HIERARCHY
         elif any(_is_prim_or_root(path) for path in notice.GetChangedInfoOnlyPaths()):
             change = PendingChange.DETAILS
+        elif resynced_paths:
+            change = PendingChange.PROPERTIES
         else:
-            return  # only properties changed, which no row shows
+            return  # only property values changed, which nothing shows
         was_pending = self.pending_change is not PendingChange.NONE
         self.pending_change = max(self.pending_change, change)
         if not was_pending:
