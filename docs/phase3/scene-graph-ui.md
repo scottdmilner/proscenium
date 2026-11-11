@@ -465,7 +465,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 
 | Column | usdview | Solaris | This widget |
 |---|---|---|---|
-| Name | ✓, or `displayName` if set to show it | ✓ the path and name | ✓ |
+| Name | ✓, or `displayName` if set to show it | ✓ the path and name | ✓, or `displayName` where a prim has one, from a menu in the header |
 | Type | ✓ | ✓ | ✓, and can be hidden |
 | Visibility | ✓ V or I, bold italic when inherited; a click toggles it | ✓ inherited or hidden, and animated; a click toggles it | — |
 | Guide visibility | ✓ | — | — |

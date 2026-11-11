@@ -70,6 +70,8 @@ def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: U
     assert details["/World/Geometry/Crates/Crate_Unique"].has_references
     assert not details["/World/Geometry/Disabled"].is_active
     assert not details["/World/Geometry/Disabled"].is_defined
+    assert details["/World/Sun"].display_name == "Key Light"  # as the fixture authors it
+    assert details["/World/Geometry"].display_name == ""
     tree.toggle(world, recursive=True)
     assert _paths(tree) == TOP_LEVEL
     tree.toggle(world)  # the recursive collapse collapsed the descendants too

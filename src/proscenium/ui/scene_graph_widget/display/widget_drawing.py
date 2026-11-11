@@ -116,7 +116,8 @@ class SceneGraphList(bpy.types.UIList):
         # The icon in a cell of its own, and a separator before the name, set a narrower gap than a label's icon has.
         _fixed_width(content, TYPE_ICON_UNITS).label(text="", icon=_type_icon(details.type_name))
         content.separator(factor=NAME_GAP_FACTOR)
-        content.label(text=details.name)
+        shows_display_name = data.shown_name == "DISPLAY_NAME"
+        content.label(text=(shows_display_name and details.display_name) or details.name)
         columns = split.row(align=True)
         columns.alignment = "RIGHT"
         # The rows draw no badges for now; prim_descriptions.row_badges, badge_icons, and SceneGraphSelectRow
@@ -141,7 +142,14 @@ class SceneGraphList(bpy.types.UIList):
 def _draw_header(layout: Any, properties: Any) -> None:
     # A row above the list, split like the rows; the list's own padding offsets its columns by a few pixels.
     split = layout.split(factor=_name_column_factor(properties))
-    split.label(text="    Prim")
+    name_header = split.row()
+    name_header.alignment = "LEFT"
+    # A menu with an arrow after its text, so the header reads as clickable; an unembossed button shows no hover.
+    # Under PULLDOWN_MENU the menu draws no arrow of its own, which would be dimmer than the text, so the arrow is a
+    # character of the text, in its color.
+    name_header.emboss = "PULLDOWN_MENU"
+    title = "Display Name" if properties.shown_name == "DISPLAY_NAME" else "Prim"
+    name_header.prop_menu_enum(properties, "shown_name", text=f"    {title} ⌄")
     columns = split.row(align=True)
     columns.alignment = "RIGHT"
     if properties.show_type_column:

@@ -39,6 +39,7 @@ class RowDetails:
     """What a row draws, read from its prim."""
 
     name: str
+    display_name: str  # the prim's displayName metadata, or empty
     type_name: str
     has_children: bool
     is_active: bool
@@ -236,6 +237,7 @@ class PrimTree:
 def _read_details(prim: Usd.Prim) -> RowDetails:
     return RowDetails(
         name=prim.GetName(),
+        display_name=prim.GetDisplayName(),
         type_name=str(prim.GetTypeName()),
         has_children=has_children(prim),
         is_active=prim.IsActive(),

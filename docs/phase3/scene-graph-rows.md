@@ -13,7 +13,7 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | ID | Data | Values | Now | Shown by |
 |---|---|---|---|---|
 | D1 | Name | text | label | |
-| D2 | `displayName` | text, or none | — | |
+| D2 | `displayName` | text, or none | in place of the name, chosen from the header's menu | |
 | D3 | Path | text | tooltip | |
 | D4 | Depth | integer | indentation | |
 | D5 | Has children, is expanded | none, collapsed, expanded | triangle | |

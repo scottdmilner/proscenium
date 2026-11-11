@@ -83,6 +83,14 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
     rows: bpy.props.CollectionProperty(type=SceneGraphRow)  # ty: ignore[invalid-type-form]
     active_row_index: bpy.props.IntProperty(default=-1, update=_on_active_row_changed)  # ty: ignore[invalid-type-form]
     show_type_column: bpy.props.BoolProperty(name="Show Type Column", default=True)  # ty: ignore[invalid-type-form]
+    shown_name: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]
+        name="Names",
+        description="Which name each row shows",
+        items=[
+            ("NAME", "Prim", "Each prim's name"),
+            ("DISPLAY_NAME", "Display Name", "Each prim's displayName, or its name where it has none"),
+        ],
+    )
     search_text: bpy.props.StringProperty(name="Search", options={"TEXTEDIT_UPDATE"}, update=_on_search_changed)  # ty: ignore[invalid-type-form]
     search_mode: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]
         name="Match",
