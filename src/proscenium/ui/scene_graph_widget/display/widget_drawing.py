@@ -10,23 +10,26 @@ from __future__ import annotations
 from typing import Any, override
 
 import bpy
+from pxr import Kind
 
 from ..prim_tree import prim_descriptions
 from . import widget_keys, widget_operators, widget_properties, widget_views
 
-NAME_COLUMN_FACTOR = 0.72  # the share of a row the name column takes, in the header and in each row
-NAME_COLUMN_FACTOR_WITHOUT_TYPE = 0.85
+# The columns after the name, in order: each view property that shows one, and its header.
+COLUMNS = (("show_kind_column", "Kind"), ("show_type_column", "Type"))
+# The share of a row the name column takes, in the header and in each row, by how many columns show after it.
+NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56}
 # Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
 LEVEL_UNITS = 0.6
 CHEVRON_UNITS = 0.6  # narrower than an icon button's 1.0, which leaves wide margins around the chevron
 GUIDE_LINE_UNITS = 0.05
-TYPE_ICON_UNITS = 0.8
-NAME_GAP_FACTOR = 1.0  # the separator between the type icon and the name
+ROW_ICON_UNITS = 0.8  # the cell of the row's icon: its kind's, or else its type's
+NAME_GAP_FACTOR = 1.0  # the separator between the icon and the name
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
 
 TYPE_ICONS = {
     "Xform": "EMPTY_AXIS",
-    "Scope": "OUTLINER_COLLECTION",
+    "Scope": "FILE_FOLDER",
     "Mesh": "MESH_DATA",
     "Camera": "CAMERA_DATA",
     "Material": "MATERIAL",
@@ -36,14 +39,49 @@ TYPE_ICONS = {
 }
 
 
+# Each model kind's icon, most derived first: an assembly is also a group. A kind registered as deriving from one of
+# these takes its icon; any other kind takes OTHER_KIND_ICON.
+KIND_ICONS = (
+    (Kind.Tokens.assembly, "OUTLINER_OB_GROUP_INSTANCE"),
+    (Kind.Tokens.group, "GROUP"),
+    (Kind.Tokens.component, "MESH_CUBE"),
+    (Kind.Tokens.subcomponent, "MOD_EXPLODE"),
+)
+OTHER_KIND_ICON = "BOOKMARKS"
+
+
 def _type_icon(type_name: str) -> str:
     if type_name.endswith("Light"):
         return "LIGHT"
     return TYPE_ICONS.get(type_name, "DOT")
 
 
+def _row_icon(details: Any) -> str:
+    """A row's icon: a warning for an invalid model, its prim's kind's where it has a kind, or else its type's."""
+    if details.is_invalid_model:
+        return "ERROR"
+    if not details.model_kind:
+        return _type_icon(details.type_name)
+    return next((icon for kind, icon in KIND_ICONS if Kind.Registry.IsA(details.model_kind, kind)), OTHER_KIND_ICON)
+
+
+def _shown_columns(properties: Any) -> list[tuple[str, str]]:
+    return [column for column in COLUMNS if getattr(properties, column[0])]
+
+
 def _name_column_factor(properties: Any) -> float:
-    return NAME_COLUMN_FACTOR if properties.show_type_column else NAME_COLUMN_FACTOR_WITHOUT_TYPE
+    return NAME_COLUMN_FACTOR_BY_COLUMN_COUNT[len(_shown_columns(properties))]
+
+
+def _column_cells(layout: Any, column_count: int) -> list[Any]:
+    """One right-aligned cell per shown column, sharing a layout's width evenly."""
+    if column_count == 0:
+        return []
+    split = layout.split(factor=1 / column_count, align=True)
+    cells = [split.row(align=True) for _ in range(column_count)]
+    for cell in cells:
+        cell.alignment = "RIGHT"
+    return cells
 
 
 def _fixed_width(layout: Any, width_units: float) -> Any:
@@ -116,15 +154,18 @@ class SceneGraphList(bpy.types.UIList):
         # The icon in a cell of its own, and a separator before the name, set a narrower gap than a label's icon has.
         named = content.row(align=True)
         named.alert = details.is_orphaned_over  # red: nothing defines it, as a typo in an over's path leaves it
-        _fixed_width(named, TYPE_ICON_UNITS).label(text="", icon=_type_icon(details.type_name))
+        icon = _fixed_width(named, ROW_ICON_UNITS)
+        icon.alert = details.is_invalid_model  # red, as the kind column's text is (ERROR keeps its own colors)
+        icon.label(text="", icon=_row_icon(details))
         named.separator(factor=NAME_GAP_FACTOR)
         named.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
-        columns = split.row(align=True)
-        columns.alignment = "RIGHT"
         # The rows draw no badges for now; prim_descriptions.row_badges, badge_icons, and SceneGraphSelectRow
         # stay for when they're drawn again.
-        if data.show_type_column:
-            columns.label(text=details.type_name or "-")
+        column_texts = {"show_kind_column": details.model_kind, "show_type_column": details.type_name or "-"}
+        shown = _shown_columns(data)
+        for cell, (property_name, _) in zip(_column_cells(split.row(align=True), len(shown)), shown, strict=True):
+            cell.alert = property_name == "show_kind_column" and details.is_invalid_model
+            cell.label(text=column_texts[property_name])
 
     @override
     def draw_filter(self, context: bpy.types.Context | None, layout: Any) -> None:
@@ -152,11 +193,18 @@ def _draw_header(layout: Any, properties: Any) -> None:
     title = "Display Name" if properties.shown_name == "DISPLAY_NAME" else "Prim"
     name_header.prop_menu_enum(properties, "shown_name", text=f"    {title} ⌄")
     columns = split.row(align=True)
-    columns.alignment = "RIGHT"
-    if properties.show_type_column:
-        columns.label(text="Type")
-    eye = "HIDE_OFF" if properties.show_type_column else "HIDE_ON"
-    columns.prop(properties, "show_type_column", text="", icon=eye, emboss=False)
+    shown = _shown_columns(properties)
+    cells = _column_cells(columns, len(shown))
+    for cell, (property_name, title) in zip(cells, shown, strict=True):
+        cell.label(text=title)
+        cell.prop(properties, property_name, text="", icon="HIDE_OFF", emboss=False)
+    # A hidden column's eye stays, after the shown ones, to show it again.
+    hidden_eyes = cells[-1] if cells else columns
+    if not cells:
+        hidden_eyes.alignment = "RIGHT"
+    for column in COLUMNS:
+        if column not in shown:
+            hidden_eyes.prop(properties, column[0], text="", icon="HIDE_ON", emboss=False)
 
 
 def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_ROWS) -> None:

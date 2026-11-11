@@ -18,8 +18,8 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D4 | Depth | integer | indentation | |
 | D5 | Has children, is expanded | none, collapsed, expanded | triangle | |
 | D6 | Type | schema name | icon and type column | |
-| D7 | Kind | component, assembly, group, subcomponent, other | tooltip, details | |
-| D8 | Invalid kind or model hierarchy | yes or no | — | |
+| D7 | Kind | component, assembly, group, subcomponent, other | a column, and its icon in place of the type's; tooltip, details | A20, A9 |
+| D8 | Invalid kind or model hierarchy | yes or no | an invalid model's icon is `ERROR`; tooltip | A9 |
 | D9 | Specifier | def, over, class | a class's name italic (A5); an orphaned over red (A2); tooltip | A5, A2 |
 | D10 | Active | active, inactive | dimmed | |
 | D11 | References | yes or no, and their targets | details | |

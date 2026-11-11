@@ -304,7 +304,6 @@ The watcher reads the hovered row only from Blender's hit-testing: tracking the 
 What each of [What the widget lacks](#what-the-widget-lacks) could be drawn with, none of it tried:
 - **Unloaded payloads, what's in them, and instance proxies:** a badge or socket dot each, or Unicode bold and italic names ([Scene Graph Rows](scene-graph-rows.md), A4–A7).
 - **Ancestors of the selection:** an icon or a socket dot, since a row's background can't be set.
-- **Kind:** the kind's icon in place of the type's, and the fixed-color `ERROR` icon for an invalid kind.
 - **Visibility, active, purpose, draw mode, and variants:** `prop` and `prop_enum` columns of fixed `ui_units_x`, with header toggles choosing which show.
 - **Copy prim path, jump to enclosing model, and select bound material:** items appended to the button context menu, or a menu button per row.
 
@@ -455,10 +454,10 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 
 ### Icons and markers
 
-- **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. This widget shows a type icon only. usdview has none.
+- **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. So does this widget, with an icon for each of assembly, group, component, and subcomponent (and the kinds registered as deriving from them), and one for any other kind. usdview has none.
 - **Badges:** neither has badges. This widget has payload, references, variants, and instance badges, each with a tooltip, but its rows don't draw them for now.
 - **Override dots:** Solaris marks a prim red for an override in its viewport-only layer (visibility, draw mode, or active), blue for a post-layer override, and purple for both. The widget edits nothing, so has nothing to mark.
-- **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget marks no problem on a row.
+- **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget draws `ERROR` in place of the kind's icon for an invalid model: a prim whose kind is a model kind but which USD doesn't count a model (`Usd.ModelAPI.IsModel`), because an ancestor isn't a group or an assembly; its tooltip says so.
 - **Animated visibility:** Solaris shows an animated eye for visibility that has time samples.
 
 ### Columns
@@ -470,7 +469,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 | Visibility | ✓ V or I, bold italic when inherited; a click toggles it | ✓ inherited or hidden, and animated; a click toggles it | — |
 | Guide visibility | ✓ | — | — |
 | Draw mode | ✓ computed, italic when inherited | ✓ computed, for prims in a valid model hierarchy; an edit reaches descendants without their own | — |
-| Kind | In the tooltip | ✓ with a warning icon when invalid | In the tooltip and details |
+| Kind | In the tooltip | ✓ with a warning icon when invalid | ✓, and can be hidden; a warning icon for an invalid model |
 | Purpose | — | ✓ | — |
 | Variants | — | ✓ a menu per variant set, which switches its selection | The details only |
 | Material | — | ✓ the bound material's name, its path on hover, an arrow when inherited | — |
@@ -495,7 +494,6 @@ Solaris's gear menu chooses which columns show.
 
 Showing only, from what a row's prim already gives:
 - Distinct looks for an unloaded payload and what's inside it, and an instance proxy.
-- The kind's icon, and a warning for an invalid model hierarchy.
 - Marks for composition arcs, payloads, variants, and instances.
 - Toggles for listing inactive, over, and class prims, and instance proxies.
 - Copy prim path, jump to enclosing model, and select bound material.

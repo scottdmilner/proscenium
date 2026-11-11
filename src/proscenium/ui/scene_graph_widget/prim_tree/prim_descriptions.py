@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from pxr import Usd
 
 from .prim_children import CHILD_PREDICATE
+from .prim_tree import is_invalid_model
 
 if TYPE_CHECKING:
     from .prim_tree import RowDetails
@@ -69,6 +70,8 @@ def row_tooltip(prim: Usd.Prim) -> str:
     model_kind = Usd.ModelAPI(prim).GetKind()
     if model_kind:
         lines.append(f"Kind: {model_kind}")
+    if is_invalid_model(prim):
+        lines.append("Not a model: an ancestor isn't a group or assembly")
     return "\n".join(lines)
 
 

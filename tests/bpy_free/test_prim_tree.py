@@ -71,6 +71,12 @@ def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: U
     assert not details["/World/Geometry/Disabled"].is_active
     assert details["/World/Sun"].display_name == "Key Light"  # as the fixture authors it
     assert details["/World/Geometry"].display_name == ""
+    assert details["/World"].model_kind == "assembly"  # as the fixture authors them
+    assert details["/World/Geometry/Crates/Crate_01"].model_kind == "component"
+    assert details["/World/Geometry/Crates/Crate_01/Lid"].model_kind == "subcomponent"  # from the class
+    assert details["/World/Camera"].model_kind == ""
+    # Red is a component under a Scope with no kind; the Crates' ancestors are groups and an assembly
+    assert [path for path, d in details.items() if d.is_invalid_model] == ["/World/Looks/Red"]
     tree.toggle(world, recursive=True)
     assert _paths(tree) == TOP_LEVEL
     tree.toggle(world)  # the recursive collapse collapsed the descendants too

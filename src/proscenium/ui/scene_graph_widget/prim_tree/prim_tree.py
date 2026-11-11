@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pxr import Sdf, Usd
+from pxr import Kind, Sdf, Usd
 
 from .prim_children import CHILD_PREDICATE, has_children
 
@@ -41,6 +41,8 @@ class RowDetails:
     name: str
     display_name: str  # the prim's displayName metadata, or empty
     type_name: str
+    model_kind: str  # the prim's kind metadata, or empty
+    is_invalid_model: bool  # see is_invalid_model
     has_children: bool
     is_active: bool
     specifier: Sdf.Specifier
@@ -239,11 +241,20 @@ class PrimTree:
         return [child for child in children if child.GetPath() in result.visible_paths]
 
 
+def is_invalid_model(prim: Usd.Prim) -> bool:
+    """Whether a prim's kind is a model kind but USD doesn't count it a model, its ancestors not all being groups."""
+    model_api = Usd.ModelAPI(prim)
+    model_kind = model_api.GetKind()
+    return bool(model_kind) and Kind.Registry.IsA(model_kind, Kind.Tokens.model) and not model_api.IsModel()
+
+
 def _read_details(prim: Usd.Prim) -> RowDetails:
     return RowDetails(
         name=prim.GetName(),
         display_name=prim.GetDisplayName(),
         type_name=str(prim.GetTypeName()),
+        model_kind=str(Usd.ModelAPI(prim).GetKind()),
+        is_invalid_model=is_invalid_model(prim),
         has_children=has_children(prim),
         is_active=prim.IsActive(),
         specifier=prim.GetSpecifier(),

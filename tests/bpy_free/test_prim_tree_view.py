@@ -161,6 +161,10 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert badges == [prim_descriptions.Badge.REFERENCES, prim_descriptions.Badge.INSTANCE]
     crate = stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")
     assert prim_descriptions.row_tooltip(crate) == "/World/Geometry/Crates/Crate_01\nXform, Def\nKind: component"
+    red = stage.GetPrimAtPath("/World/Looks/Red")
+    assert prim_descriptions.row_tooltip(red).endswith(
+        "Kind: component\nNot a model: an ancestor isn't a group or assembly"
+    )
     assert prim_descriptions.badge_tooltip(crate, prim_descriptions.Badge.REFERENCES) == "References: /_Crate"
     assert prim_descriptions.badge_tooltip(crate, prim_descriptions.Badge.INSTANCE).startswith("Instance of prototype ")
     body = stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01/Body")

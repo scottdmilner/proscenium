@@ -82,6 +82,7 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
 
     rows: bpy.props.CollectionProperty(type=SceneGraphRow)  # ty: ignore[invalid-type-form]
     active_row_index: bpy.props.IntProperty(default=-1, update=_on_active_row_changed)  # ty: ignore[invalid-type-form]
+    show_kind_column: bpy.props.BoolProperty(name="Show Kind Column", default=True)  # ty: ignore[invalid-type-form]
     show_type_column: bpy.props.BoolProperty(name="Show Type Column", default=True)  # ty: ignore[invalid-type-form]
     shown_name: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]
         name="Names",
