@@ -1,6 +1,6 @@
 # Scene Graph UI
 
-How Phase 3's stage editor shows a USD stage's prim hierarchy as a tree in Blender: which UI mechanism it's built on, where in Blender's UI it fits, what the keyboard, icons, tooltips, search, and selection can do, and how the widget in [`src/proscenium/ui/`](../../src/proscenium/ui/README.md) is arranged for a host to place it. This is a design note, not a requirement ([Phase 3 notes](README.md)). The widget may exist alongside Phases 1 and 2 because it reads a stage its host gives it, and selects through no source selection model, shows no edits through bindings, and pushes no undo step ([DECISIONS.md](../DECISIONS.md) "Phase 3 ordering").
+How Phase 3's stage editor shows a USD stage's prim hierarchy as a tree in Blender: which UI mechanism it's built on, where in Blender's UI it fits, what the keyboard, icons, tooltips, search, and selection can do, and how the widget in [`src/proscenium/ui/`](../../src/proscenium/ui/README.md) is arranged for a host to place it, and how its rows compare with usdview's and Solaris's. This is a design note, not a requirement ([Phase 3 notes](README.md)). The widget may exist alongside Phases 1 and 2 because it reads a stage its host gives it, and selects through no source selection model, shows no edits through bindings, and pushes no undo step ([DECISIONS.md](../DECISIONS.md) "Phase 3 ordering").
 
 The measurements below were taken on a proof of concept, kept at commit `32b1b86ecc749a772a534a2d1f2d456c5c4f924f` in `tools/feasibility/scene_graph_ui/`. Its README there lists each file, how to run it, and its findings in full. Its row model, search, tooltip text, key watcher, and badge icons became the widget; its benchmarks (`bench.py`, `bench_watcher.py`) and the native tree (`native_tree.py`) stayed behind with it.
 
@@ -132,7 +132,7 @@ What a row can do with the color of its text, background, and icons. **Checked:*
 
 - **Text:** a label has no color argument. Three layout states change it, recoloring the row's text and its icons together:
   - `active = False` dims it grey, and the row still takes clicks. The tree uses it for inactive prims, classes, overs, and rows that only hold search matches.
-  - `enabled = False` dims it the same way, and the row stops taking clicks.
+  - `enabled = False` dims it the same way, and its buttons stop taking clicks, though a click still selects the row ([A row's look](#a-rows-look)).
   - `alert = True` turns it red; with `active = False`, a dim red.
 
   Text has those four looks, and no others. Their colors are the theme's List Item colors (text, selected text, and backgrounds), and an add-on changing the theme would restyle every list in Blender and override the user's choice.
@@ -151,6 +151,156 @@ What a row can do with the color of its text, background, and icons. **Checked:*
 - **Overlays:** the `gpu` module could paint any background or guide line over a list, but a list's rows have no reported positions. **Not checked.**
 
 So a row can show state as dim, red, or highlighted, and color only through its icons: preview icons, Blender's colored icons, or socket dots.
+
+## What a UIList can show
+
+Every control a `UIList` gives over what it tells a user: the list's own, a row's look and contents, hover text, and what sits beside the list. Names and parameters are from the RNA of `UILayout` and `UIList` in the bpy 5.2 wheel. Items marked **Checked** ran in the proof of concept or the [Colors](#colors) probe; the rest are **Not checked**, read from the RNA only. The demos in [`tools/feasibility/uilist_options/`](../../tools/feasibility/uilist_options/README.md) draw them on the test stage, for trying by hand.
+
+### The list
+
+| Control | What it sets |
+|---|---|
+| `template_list(rows, maxrows)` | The list's default and minimum row count, and its default maximum. |
+| `template_list(type)` | `DEFAULT` or `COMPACT`. The enum has no `GRID`, though `columns` remains a parameter. |
+| `template_list(sort_reverse, sort_lock)` | The display order, and whether the user can change it. |
+| `template_list(item_dyntip_propname)` | A string property of each item, used as that row's tooltip. **Checked**; the widget uses it. |
+| `UIList.draw_item(..., index, flt_flag)` | Draws each shown row. `flt_flag` is the row's filter flags, whose lower 16 bits are the list's own, so `filter_items` can hand each row a state for drawing. |
+| `UIList.draw_filter` | Anything under the list's bottom triangle. **Checked**; the widget draws the search's type and flags there. |
+| `UIList.filter_items` → `filter_flags`, `filter_neworder` | Per row, flags and a new position. `bitflag_filter_item` marks a row shown, and `bitflag_item_never_show` leaves it out. |
+| `use_filter_show`, `filter_name`, `use_filter_invert`, `use_filter_sort_alpha`, `use_filter_sort_reverse`, `use_filter_sort_lock` | The built-in filter and sort options. The widget's search stands in for them ([Search](#search)). |
+| The active index | The one row highlighted ([UIList mechanics](#uilist-mechanics)). **Checked.** |
+
+The widget's list is a `DEFAULT` list in the stage's order: a compact list shows one row, and a tree's rows can't be reordered, so `type`, `sort_reverse`, `sort_lock`, and `filter_neworder` stay unset. It defines no `filter_items` and sets no filter flags; a row's state comes from the model ([Filter flags](#filter-flags)). It uses row tooltips, the active index, and the filter drawer, which holds the search's options.
+
+#### Filter flags
+
+`filter_items` runs before the list draws, over every item, and returns one integer of flags per item. Blender reads the upper 16 bits: `bitflag_filter_item` shows a row, and `bitflag_item_never_show` leaves it out. The lower 16 bits are the list's own, and `draw_item` gets them back as `flt_flag`. So `filter_items`, which sees every row at once, can hand a row what its `draw_item`, which sees one, can't work out. **Checked** in the binary with `list_controls_demo.py`, on the test stage:
+- **Bits from other rows:** each drew as expected:
+  - "inside a payload", inherited from an ancestor's row;
+  - "ancestor of the active row", which follows the selection;
+  - "last sibling", from the rows after it, drawn as a `├` or `└` guide glyph;
+  - a name mark, which marks matches and hides nothing.
+- **Guide lines:** a row's own connector takes one bit. Full guide lines would take one bit per ancestor depth, saying whether that ancestor has a later sibling, so the 16 bits would bound how deep the lines go. **Not checked.**
+- **Running on every redraw:** `filter_items` ran again on each redraw of the sidebar. Computing six bits in Python took 0.5 ms for 35 rows, 46 ms for 10,500, and 370–395 ms for 105,000, in two runs. Returning the same list again took 0.1 ms at 105,000.
+- **The widget's whole list, per redraw:** **Checked** with `redraw_benchmark.py`, which redraws the widget's sidebar as fast as Blender's event loop runs, on one group of leaves expanded under `/World`, with 48 rows on screen. The median time of the panel's `draw`, in which `template_list` filters the list and draws its shown rows, over 4 seconds of redraws, in one run per cell:
+
+  | Rows | The widget, no `filter_items` | Flags computed once, returned again | Flags computed each redraw (last sibling only) |
+  |---|---|---|---|
+  | 1,000 | 1.8 ms | 1.8 ms | 1.8 ms |
+  | 10,000 | 1.8 ms | 1.8 ms | 3.5 ms |
+  | 100,000 | 3.3 ms | 4.2 ms | 18.7 ms |
+
+  A panel drawing one label took 0.01 ms, and a redraw tick took at least 8.3 ms, one frame of the display's 120 Hz. So even without `filter_items`, Blender's own filtering costs every row, about 1.5 ms per 100,000; returned flags add about 1 ms per 100,000, and computing even one bit in Python adds about 15 ms.
+- **A label's width:** in an aligned row, a label takes an equal share of the row's width unless its sub-layout has a `ui_units_x`, as the guide glyph's has.
+
+The flags carry a value from `filter_items` to `draw_item`; they hold nothing of their own. A list whose `draw_item` has only its item needs them to know about other rows. The widget's `draw_item` reads the model by the row's index, so it can already reach other rows, the selection, and the stage:
+- **Facts about a prim**, such as being instanceable or time-varying, belong in the row's details, read when the row first draws ([The row model](#the-row-model)). Flags would compute them for every row on each change, and hold 16 bits.
+- **Facts from other rows** come from the model for one row too: an ancestor of the selection is a prefix of the selected path, a last sibling is the last of its parent's listed children, and being inside a payload is a matter of the row's ancestors.
+
+So the widget sets no bits of its own: flags it computed would cost every row on each change, where `draw_item` reading the model costs only the rows on screen.
+
+### A row's look
+
+Each is an attribute of a `UILayout`, so it applies to whatever sub-layout of a row it's set on.
+
+| Attribute | Effect |
+|---|---|
+| `active`, `enabled`, `alert` | Dim; dim with unclickable buttons; red ([Colors](#colors)). **Checked.** The widget dims inactive, over, and class prims and unmatched search ancestors alike. |
+| `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the badges are drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
+| `scale_x`, `scale_y` | Items' size along each axis. |
+| `ui_units_x`, `ui_units_y` | Items' fixed size, so a column can keep one width on every row. |
+| `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget right-aligns its type and badges. |
+| `use_property_split`, `use_property_decorate` | A property's label and value in two columns, and its keyframe decorator. |
+
+**Checked** by hand in the binary with `row_look_demo.py`, on the test stage:
+- **Dim and disabled look the same.** A disabled row can still be selected; only its buttons stop taking clicks. So the two can't mark different states.
+- **Alert** turns a sub-layout's text and icons red.
+- **Emboss:** `NORMAL` and `PIE_MENU` give a button a background; `PULLDOWN_MENU` shows one only while the button is depressed. Neither `PULLDOWN_MENU` nor `PIE_MENU` buttons turn red under `alert`.
+- **`depress`** shows only on a button with a background: under emboss `NONE` it just brightens the text, too faintly to mark anything.
+- **`scale_y`** on a row breaks the list's highlight of the active row, so rows keep their height.
+- **`ui_units_x`** keeps a column one width on every row.
+
+The theme's List Item colors (`outline`, `inner`, `inner_sel`, `item`, `text`, `text_sel`, `roundness`, and shading) can be read from the preferences, and writing them would restyle every list in Blender ([Colors](#colors)).
+
+### A row's contents
+
+| Item | What it can carry |
+|---|---|
+| `split(factor)`, `row`, `column`, `box`, `grid_flow`, `column_flow` | Columns. **Checked:** a split row above the list serves as their header ([UIList mechanics](#uilist-mechanics)). |
+| `separator(factor, type)`, `separator_spacer` | Indentation, a `LINE` at the row's top edge ([Colors](#colors)), and space pushing later items right. |
+| `label(text, icon, icon_value)` | Text and one icon. **Checked:** the UI font draws marker and box-drawing characters such as `◇ ○ × ◌ ▫ ◆ •` and `│ ├ └`. |
+| `icon`, Blender's icons | Type and state icons, in the theme's colors, apart from the fixed colored set ([Colors](#colors)). |
+| `icon_value`, a preview collection | Icons of any color and shape. **Checked**; the badges. |
+| `template_icon(icon_value, scale)` | A larger icon, drawn from a preview's image rather than its icon. **Checked:** above a scale of 1 it overflows its row. |
+| `template_node_socket(color)` | A dot in any color. **Checked.** |
+| `prop(...)` | A property's value, which a click edits: a toggle, an icon, a checkbox (`invert_checkbox`), a slider, an expanded enum, or a text field, aligned with `text_align`. Columns such as visibility or active would be these, each a property with a getter and setter over the prim. |
+| `prop_enum`, `prop_menu_enum`, `prop_with_menu`, `prop_with_popover` | A menu or popover per row, such as a variant set's selection or a draw mode. |
+| `operator(..., depress, emboss, icon, icon_value)` | A button with its own tooltip. **Checked**; the disclosure triangle and the badges. |
+| `operator_menu_hold`, `menu`, `popover` | A menu or popover from a button. |
+| `progress(factor, type)` | A bar or a ring, for a fraction. |
+| A color property drawn without text | A swatch in any color, which opens a picker when clicked ([Colors](#colors)). **Checked.** |
+| `link(url, text)` | A link, such as to an asset's file. |
+
+**Checked** in the binary with `row_contents_demo.py`, on the test stage, by screenshots and by hand:
+- **Fixed-width columns:** a cell with a `ui_units_x` keeps its width only with its contents centered: under a row's `RIGHT` alignment, which a cell inherits, a label shrinks to its text and shifts the columns after it. `separator_spacer` before the columns misaligned the rows.
+- **`LINE` separators** draw only horizontal lines, a little above a row's middle: several in a row merge into one line leading to what follows them, such as a disclosure triangle. None drew vertically, whether in an aligned or unaligned row, at any factor, or in a column, and none drew at all in a narrow cell or below a row's contents.
+- **Guide glyphs** (`│`, `├`, `└`) worked out from the model draw in place of indentation, but break between rows and take a unit of width per level. A `│` in a cell narrower than a unit draws nothing.
+- **Column and row dividers:** characters (`|`, `│`) break between rows, and boxes make rows taller. Collection Manager draws its column separators as a disabled button squeezed to `scale_x = 0.2`, so only its frame shows, which drew faintly and only some of the time here. What drew a grid of continuous lines, keeping each row's height and the active row's highlight:
+  - **Between columns:** an enabled button with no text or icon, in a cell with `ui_units_x = 0.05`, before each column and in the header. A click on it does nothing.
+  - **Between rows:** the row's contents in a column, at `scale_y = 1 - 0.075`, under a full-width button of the same kind at `scale_y = 0.075`, so the two keep one row's height. A row draws only inside itself, so the line sits at its top or bottom edge; at the top it lines up a little better with the columns' lines.
+- **Clicks:** a click on a glyph, an icon, or a preview icon selects its row; a click on a `template_node_socket` dot doesn't.
+- **Worth keeping:** columns of per-row properties, as an icon toggle, a checkbox, or a dropdown, and a menu button per row could each carry a prim's state or an action. A `progress` bar and a color swatch add nothing a stage editor's rows need.
+
+### Hover text and menus
+
+| Source | Per row? |
+|---|---|
+| `item_dyntip_propname`: a string property whose getter writes the row's tooltip | Yes, the whole row. **Checked**; the widget's path, type, specifier, and kind. |
+| An operator's `description(context, properties)` | Yes, per button, from its properties. **Checked**; the badges and the triangle. |
+| An operator's `bl_description`, or a property's `description` | No: fixed at registration. |
+| The descriptions of an enum's items, from an `items` callback | Perhaps, per menu, for an enum drawn in each row. |
+| A label | None: a label has no tooltip. |
+
+Tooltips are text only ([Icons and tooltips](#icons-and-tooltips)). A `UIList` row has no right-click hook of its own, but a draw function appended to `UI_MT_button_context_menu` adds items to the menu a right-click on any button opens, and can read the button through the context.
+
+**Checked** in the binary with `hover_and_menus_demo.py`, on the test stage:
+- **Which row is hovered:** nothing reports it. A row tooltip's getter runs only when its tooltip is about to show, so writing the hovered path to the status bar from it left the status bar on the last path whose tooltip showed, changing only as the list scrolled.
+- **The button context menu knows its row.** A row that sets itself in its layout's context with `context_pointer_set` reaches an appended draw function through that context, from a right-click on any part of it: the indent, a label, an operator button, or a property. A right-click on a label reports the list's own row button (`button_pointer` the list's properties, `button_prop` the active row index), so the menu also holds Blender's items for that property; on an operator or a property it reports that button. Blender opens the menu from its UI code, not a keymap item an add-on could replace. Its `popup_context_menu_for_button` (`interface_context_menu.cc`) lays out its own items first, such as Copy Data Path, keyframes, Add to Quick Favorites, Assign Shortcut, and Online Manual, and only then draws `UI_MT_list_item_context_menu`, when the click is on a list row, and `UI_MT_button_context_menu`. So an add-on's items always come after Blender's, whether added with `append` or `prepend`, which orders them only among add-ons' items; and none can remove Blender's. A draw function appended to `UI_MT_list_item_context_menu` ran, with its row in the context, on a right-click on each part of a row.
+- **A modal operator can take the right-click.** A watcher in each window, as the key watcher is, that returns `RUNNING_MODAL` for a right mouse press over the sidebar stops Blender's menu from opening, and can open its own (`wm.call_menu`) in its place.
+- **It can find the row from the hovered button.** In the watcher, with the context overridden to the sidebar's region, `context.property` names the hovered button's property, as the ID and a data path. Over a property of a row item that isn't text, such as the eye, the path names the row (`uilist_demo_rows.rows[4].is_visible`). Over a label, an unembossed text property such as the item's `name`, or the indent, it names the list's own row button (`active_row_index`), which doesn't say which row. The row's context member isn't there, and `UIList` reports no row positions.
+- **So a row can be drawn as its item's properties.** Drawing the name, and the type, as an unembossed toggle with the prim's name as its text (`prop(item, "is_active_row", text=..., toggle=True, emboss=False, text_align="LEFT")`), whose getter says whether the row is active and whose setter selects it, let the watcher find the row from a right-click anywhere on it but a gap between buttons, and open its own menu for it; a left-click on the name still selected the row. Checked with simulated clicks; whether the list's other clicks (double-click to rename, Ctrl, drag) still work wasn't. A toggle centers its text, whatever its `text_align`; in a sub-row with `alignment = "LEFT"` it shrinks to its icon and text and looked like a label a few pixels to the right, and then a right-click on the indent or the space after the name finds only the list's row button. Empty toggles filling that space made the layout share the row's width unevenly, shortening indents and names.
+- **Between the buttons, the row can be tracked.** The watcher also sees each mouse move, before Blender's UI does, so the hovered button it reads then is the one at the last move it saw; it notes that row and that move's window y. A right-click where nothing names a row takes the last noted row, offset by the mouse's distance from it over a row's height: measured from two noted rows, or else one UI unit, which is 20 / 26 of the editor header's height (Blender's `HEADERY`) whatever the interface scale and pixel size say. Scrolling clears what's noted. With simulated clicks, right-clicks in the space after a name found the row the mouse had passed over and rows two below it, before and after a second row was noted and a menu had opened and closed. Pairing a row with the event's own `mouse_prev_y` didn't work, since simulated moves report the same previous and current position. That scrolling clears it wasn't checked, and nor was any of it with a real mouse.
+- **`context.ui_list` names the hovered list.** In the watcher, with the context overridden to the sidebar's region, it was the demo's `UIList` over every part of a row, so a watcher can take right-clicks over its own list only. But neither there nor in a menu opened from there (`wm.call_menu`) was the row's context member set, so a menu opened that way can act only on the active row.
+- **Blender's own list hit-testing finds the hovered row,** called through `ctypes`. The executable exports, on macOS, the private C++ functions its UI uses (`interface_query.cc`): `listbox_find_mouse_over_ex` and `listrow_find_mouse_over` give the list and the row button under a window position, and `listrow_find_index` gives the row button for an item index, matching the index the row button holds (`hardmax`) that Python can't read. Comparing pointers gives the hovered row. With simulated clicks, on rows drawn as labels, it found the right row from a right-click anywhere on a row, the first right-click included, and after the list scrolled, searching only the 14 rows `draw_item` last drew; nothing crashed. What it costs:
+  - **It isn't an API.** The names are mangled C++ (Itanium on macOS; MSVC's differ), the signatures can change in any release, and a mismatch crashes Blender, so it runs only on a build checked by platform, version, and build hash (here, macOS 5.2.2 `d13f752e3b9c`), and other builds need another way. **Checked**, in the official 5.2.2 downloads, whose checksums matched the published ones: only macOS exports them. The macOS arm64 executable exports about 132,000 symbols, these among them. The Linux x64 executable is stripped, and its 1,696 dynamic symbols are Python's C API and a few of the C++ standard library's, none in Blender's namespace. The Windows x64 `blender.exe` exports 10 names, Python modules' `PyInit_` functions and `NvOptimusEnablement`, and none of the DLLs beside it export these. Neither Windows arm64 nor any other release was looked at.
+  - **Each index costs a scan.** `listrow_find_index` walks the region's buttons for every index it's given, so the candidates are only the rows on screen.
+- **Nothing else names the hovered row** of a row drawn with labels. Blender skips its own items for the list's row button only when the button is disabled, which would stop it selecting, and adds Copy Data Path, Copy Full Data Path, and Online Manual for any property button (`popup_context_menu_for_button`).
+- **Opening a menu from the list item menu's draw function** doesn't replace Blender's: checked by hand, both menus show, Blender's and the new one for the right row.
+
+#### The widget's right-click
+
+A right-click on a row opens a menu for the prim under the mouse, with rows drawn as they are:
+- **On a verified build,** which can only be a macOS one, since only macOS exports the hit-testing functions, a watcher in each window takes a right-click over the widget's own list, which `context.ui_list` names in the region under the mouse, and leaves every other right-click to Blender. It finds the row with Blender's list hit-testing, among the rows on screen, and opens the widget's own menu for it, so Blender's menu doesn't open.
+- **On any other build,** Windows and Linux included, Blender's menu opens, and the widget adds its items to `UI_MT_list_item_context_menu`, after Blender's own, for the row its layout's context names.
+- **Verified builds** are an allowlist of platform, Blender version, and build hash, each checked by hand. A test in the `isolated` layer, on macOS only, checks that the pinned binary exports the three functions under their names, as the known-gap checks for OpenUSD workarounds do, so a release that drops or renames them fails it.
+
+The watcher reads the hovered row only from Blender's hit-testing: tracking the mouse across buttons, or redrawing rows as their items' properties, was too fragile ([Hover text and menus](#hover-text-and-menus)). `right_click_demo.py` shows this design. **Checked** with simulated right-clicks on macOS 5.2.2 `d13f752e3b9c`: with the hit test, a right-click on a row's name, indent, the space after the name, or type opened the demo's menu for that row, and one in the 3D View went to Blender; without it, Blender's list item menu drew the demo's items for the row clicked. The probes of the approaches not taken weren't kept.
+
+### Beside the list
+
+- **The details panel** (`draw_details`): any text and buttons, for the active row.
+- **The status line** above the list: a label, with `ERROR` as its icon for an invalid query.
+- **`area.header_text_set` and `workspace.status_text_set`:** replace an editor's header text or the status bar's, such as with what's under the mouse.
+- **A `gpu` draw handler:** anything over the region, without the rows' positions ([Colors](#colors)).
+
+### For the widget's gaps
+
+What each of [What the widget lacks](#what-the-widget-lacks) could be drawn with, none of it tried:
+- **Unloaded payloads, what's in them, instance proxies, overs, and classes:** a badge or socket dot each. The three layout states can't tell five apart.
+- **Ancestors of the selection:** an icon or a socket dot, since a row's background can't be set.
+- **Kind:** the kind's icon in place of the type's, and the fixed-color `ERROR` icon for an invalid kind.
+- **Visibility, active, purpose, draw mode, and variants:** `prop` and `prop_enum` columns of fixed `ui_units_x`, with header toggles choosing which show.
+- **Copy prim path, jump to enclosing model, and select bound material:** items appended to the button context menu, or a menu button per row.
 
 ## Keyboard
 
@@ -275,6 +425,77 @@ A workspace that arranges editors around the tree can be built at run time or sh
   - Screenshots didn't capture tooltips or popovers.
 - **What tests can cover:** windowed UI tests are out of the project's test scope, so the drawing code stays thin, and the model and search carry the logic tests can reach. Drawing, the key watcher, and the icons are checked by hand with `tools/scene_graph_demo.py`, which hosts two views of one stage, in the 3D View's sidebar and the node editor's, as the add-on will (`Blender --python tools/scene_graph_demo.py [-- stage.usda]`).
 
+## Compared with usdview and Solaris
+
+What two other scene graph trees show for each prim, beside what this widget's rows show. **Not checked:** read from documentation and source, not run. Solaris is from [Houdini's Scene Graph Tree page](https://www.sidefx.com/docs/houdini/ref/panes/scenegraphtree.html). usdview's columns and menu are from [NVIDIA's usdview Tree View page](https://docs.omniverse.nvidia.com/usd/latest/usdview/tree_view.html), which shows its legend only as an image, so its colors and fonts are from its source on OpenUSD's `release` branch (`pxr/usdImaging/usdviewq/primViewItem.py` and `common.py`).
+
+### Name text
+
+| State | usdview | Solaris | This widget |
+|---|---|---|---|
+| Has composition arcs | Dark yellow (222, 158, 46) | A style of its own, for inherits, references, or specializes | A references badge; inherits and specializes only in the details |
+| Loaded payload | The arcs color | Bold, light orange | The payload badge, whose tooltip says loaded |
+| Unloaded payload | The arcs color | Bold italic, dark orange | The same badge, whose tooltip says unloaded |
+| Inside an unloaded payload | — | Italic, in the unloaded color | Nothing |
+| Instance | Light sky blue (135, 206, 250), ahead of the arcs color | Light blue, with the payload styles over it | The instance badge |
+| Instance proxy | — | A style of its own, italic when the instance's payload is unloaded | The instance badge; only its tooltip tells it from an instance |
+| Inside a prototype | Blue-violet (118, 136, 217) | — | Not listed: the tree reaches instances' contents through instance proxies |
+| Inactive | Its color, darkened | A deactivated style | Dimmed |
+| Specifier | The font: a def bold, an over light italic, a class normal weight | — | An over or class dimmed, as an inactive prim is; the specifier in the tooltip |
+| A search match's ancestor that doesn't match | — | — | Dimmed |
+| An ancestor of the selection | A background of the selection color at 20% opacity | — | Nothing |
+
+So usdview tells composition by color, activity by darkening, and the specifier by font, where this widget's one dimmed look stands for inactive, over or class, and an unmatched ancestor. A row's text can't take a color here ([Colors](#colors)), so telling these apart would take icons, badges, or socket dots.
+
+### Icons and markers
+
+- **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. This widget shows a type icon only. usdview has none.
+- **Badges:** neither has badges. This widget's payload, references, variants, and instance badges, each with a tooltip, are its own.
+- **Override dots:** Solaris marks a prim red for an override in its viewport-only layer (visibility, draw mode, or active), blue for a post-layer override, and purple for both. The widget edits nothing, so has nothing to mark.
+- **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget marks no problem on a row.
+- **Animated visibility:** Solaris shows an animated eye for visibility that has time samples.
+
+### Columns
+
+| Column | usdview | Solaris | This widget |
+|---|---|---|---|
+| Name | ✓, or `displayName` if set to show it | ✓ the path and name | ✓ |
+| Type | ✓ | ✓ | ✓, and can be hidden |
+| Visibility | ✓ V or I, bold italic when inherited; a click toggles it | ✓ inherited or hidden, and animated; a click toggles it | — |
+| Guide visibility | ✓ | — | — |
+| Draw mode | ✓ computed, italic when inherited | ✓ computed, for prims in a valid model hierarchy; an edit reaches descendants without their own | — |
+| Kind | In the tooltip | ✓ with a warning icon when invalid | In the tooltip and details |
+| Purpose | — | ✓ | — |
+| Variants | — | ✓ a menu per variant set, which switches its selection | The variants badge, read-only |
+| Material | — | ✓ the bound material's name, its path on hover, an arrow when inherited | — |
+| Proxy path | — | ✓ | — |
+| Populated (P) and Loaded (L) | — | ✓ each in four states: not, a child, from an ancestor, and explicit | Loaded only in the payload badge's tooltip and the details |
+| Active | In the context menu | ✓ a toggle | — |
+| Solo | "Vis Only" in the context menu | ✓ in three states; lights and geometry solo separately | — |
+| Selectable | — | ✓ inherited to descendants | — |
+
+Solaris's gear menu chooses which columns show.
+
+### Listing, search, and state
+
+- **Which prims are listed:** Solaris's toolbar toggles show or hide inactive, invisible, over-only, and class prims, and its `/HoudiniLayerInfo` prim. usdview's Show menu chooses which prim types show; the NVIDIA page doesn't list its items. This widget lists every prim, instance proxies included, with no such toggles.
+- **Which layer:** Solaris can show one sublayer, uncomposed, in place of the composed stage.
+- **Search:** usdview searches names, with a find-next button. Solaris has selection rules: prim patterns that match as typed, show their search time, and can be saved, and a Collections sub-pane. This widget's search, with its text modes, type, and flags, and its matches shown under their ancestors ([Search](#search)), has no counterpart in either.
+- **Kept state:** Solaris saves and restores the expansion, its viewport overrides, and its load masks on the LOP network, in the .hip file, and keeps a Favorites folder of prim shortcuts. This widget's expansion lasts the session.
+- **Info:** Solaris opens a prim's info window on a middle-click. This widget has its tooltips and `draw_details`.
+- **Context menu:** usdview's has jump to enclosing model, select bound preview or full material, make invisible, vis only, remove session visibility, load or unload the subtree's payloads, activate or deactivate, copy prim path, copy enclosing model path, open the asset in a new usdview, and set as active camera. This widget has no context menu.
+
+### What the widget lacks
+
+Showing only, from what a row's prim already gives:
+- Distinct looks for an unloaded payload and what's inside it, an instance proxy, an over, and a class.
+- The kind's icon, and a warning for an invalid model hierarchy.
+- Badges for inherits and specializes.
+- Toggles for listing inactive, over, and class prims, and instance proxies.
+- Copy prim path, jump to enclosing model, and select bound material.
+
+What edits or overrides the stage, so waits on how Phase 3 edits it: visibility, active, draw mode, purpose, solo, and selectable columns; loading and unloading, with populated and loaded states; switching variants; override dots; and saving the expansion and favorites in the .blend file.
+
 ## Open questions
 
 - Do tooltips and the Tool Settings popover show when hovered and clicked by hand?
@@ -283,4 +504,6 @@ A workspace that arranges editors around the tree can be built at run time or sh
 - Can a dedicated pane's sidebar take the area's full width, and does the empty main area bother users?
 - Can `gpu` overlays draw tree guide lines over a `UIList`, given that a list's rows have no reported positions?
 - What should own the search index as the stage changes: the core, or a Python layer that listens to `Tf.Notice`?
+- Where do the tree's own edits, such as visibility or active, go: a session layer, a viewport-only layer as in Solaris, or the edit target ([Compared with usdview and Solaris](#compared-with-usdview-and-solaris))?
+- What does the widget's row menu hold, and should Ctrl+click add a row to a selection?
 - How do multiple selected prims show in a list that highlights only one row: a highlighted button per selected row, which takes the row's clicks, or a marker icon ([Colors](#colors))?
