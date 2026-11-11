@@ -1,4 +1,7 @@
-"""M5's stub application layer: preparing a plan's drawn copies apart from the display (M5 plan, D3 and D4).
+"""The application layer: preparing a plan's drawn copies apart from the display (pipeline.md#blender-application).
+
+Written for M5's stub (M5 plan, D3 and D4; M6 plan, D4) and moved to M7's layer, which makes the same objects and
+bounds meshes of the same plan (M7 plan, B1 and B5).
 
 Plans come from the core on the transaction scenes; expected values come from how the scene is built
 (fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
@@ -123,10 +126,10 @@ def test_its_entries_are_the_plans_resources(bindings: Bindings, tmp_path: Path)
 
 
 def test_world_transforms_cross_in_blenders_layout(bindings: Bindings, tmp_path: Path) -> None:
-    # The plan's copy_world_matrices holds Blender's layout, so foreach_set writes it directly, and the stub's objects
-    # get the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled, mirrored, and sheared
-    # copies. Blender's objects hold no shear, so foreach_set loses it, and the stub's sheared copy shows it through its
-    # unselectable shear parent, as Blender composes them from what each stores.
+    # The plan's copy_world_matrices holds Blender's layout, so foreach_set writes it directly, and the application
+    # layer's objects get the same. Expected values are UsdGeom's, transposed, on F-TRANSFORMS' rotated, scaled,
+    # mirrored, and sheared copies. Blender's objects hold no shear, so foreach_set loses it, and the layer's sheared
+    # copy shows it through its unselectable shear parent, as Blender composes them from what each stores.
     with evaluation.transforms(tmp_path) as scene:
         plan = _plan(scene.stage, 0.0)
         expected = {

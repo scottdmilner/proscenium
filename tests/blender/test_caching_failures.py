@@ -1,4 +1,6 @@
-"""Cache calls that fail, against the stub application layer (pipeline.md#cached-time-codes; M5 plan, E2).
+"""Cache calls that fail, against the application layer's keying (pipeline.md#cached-time-codes; M5 plan, E2).
+
+The keying is still M5's stub's, transforms only, until M7's Phase D keys every variation.
 
 On F-CACHED-TIME-CODES (fixtures/transaction.py): synchronized at 0, with 5, 10, and 20 cached, a call for 15 fails at
 keying, its failure step, or while recording what it cached. Each failure is injected by patching a module function the
