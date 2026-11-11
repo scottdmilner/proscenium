@@ -46,6 +46,7 @@
 - Focused invalid-data and edge-case fixtures, one per support-matrix row and classification case.
 - Sharing assertions against M4's criteria: equivalent geometry and attribute requirements share resources; differing data remains correct where distinct resources are required.
 - The M5 failure-injection tests, rerun with geometry writes.
+- The end-to-end bounds check (`tests/support/bounds_check.py`) on mesh content: a mesh copy's expected bounds become its evaluated points under its world transform, boxed after transforming (ABND-04), where M7, drawing a mesh as a box of its extent, compares its usable bounds' corners ([M7 plan](../plans/M07-application.md), B6).
 - Incremental refresh of geometry changes: points, topology, normals, and primvars, each equal to a clean rebuild, rewriting only the affected meshes.
 - Batches: the interaction checks (`support/interaction_checks.py`) on a batched display; incremental refresh of batched copies, including a copy leaving and joining a batch, each equal to a clean rebuild; cached batches; and a synchronization after reopening replacing batches and shared meshes (ROLE-06).
 - M6's tests of the provisional mesh description, updated for the mesh content that replaces it ([M6 plan](../plans/M06-evaluation.md), C1, C8, D4):

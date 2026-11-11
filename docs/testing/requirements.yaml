@@ -2028,6 +2028,7 @@ requirements:
         quote: "World bounds of each model's display match USD-computed bounds under the bounds comparison contract."
         oracle: "A bounds check in tests/support under the Bounds Comparison Contract passes on each end-to-end case: each model's display bounds in each destination match USD's within its tolerance."
         risk: high
+        note: "In M7, whose display draws each mesh as a box of its extent, a mesh copy is compared as a placeholder is, by its usable bounds' corners: its authored extent, else USD's computed one; the points comparison starts with M8 (with the user, 2026-11-11)."
       - id: ASTD-03
         quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
         oracle: "The end-to-end tests record each case's unique mesh-data count, without asserting a bound on it."
@@ -2109,17 +2110,18 @@ requirements:
         quote: "The bounds check reuses decisions made elsewhere rather than making its own."
         delivery: M7
         qualified_by: M12
-        oracle: "The bounds check takes visibility, purpose, conversion, and correspondence from the plan and from USD's own APIs as the spec decides them, with no rule of its own; its tests on hand-made plans agree with the planner's decisions."
+        oracle: "The bounds check (tests/support/bounds_check.py) takes participation and correspondence from the plan, and transforms, usable bounds, and kinds from USD's own APIs, under the spec's conversion, with no rule of its own: its correction equals F-UNITS-UP-AXIS's, its participation F-VISIBILITY-PURPOSE's, and on displays made from the core's plans it agrees with the planner."
       - id: ABND-03
         quote: "each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too"
         delivery: M7
         qualified_by: M12
-        oracle: "On F-KIND-HIERARCHY, F-NESTED-SELECTION, and the production-like fixture, the check compares every model-kind prim once per drawn copy, inside native instances too, and no other prim."
+        oracle: "On the production-like fixture under each payload policy, the models the check compares are exactly its groups, the assembly included, and its components, by the counts its parameters give, inside native instances too; it runs on F-KIND-HIERARCHY and F-NESTED-SELECTION end to end."
       - id: ABND-04
         quote: "each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed"
-        delivery: M7
+        delivery: M8
         qualified_by: M12
         oracle: "The check's expected box for each model is its displayed prims' points at the time code under USD's local-to-world transform and the conversion, boxed after transforming; a rotated triangle's expected box is its points', not its extent's."
+        note: "M7 draws a mesh as a box of its extent, so its check compares a mesh copy as a placeholder, by its usable bounds' corners, boxed after transforming; comparing points waits for M8's mesh content (with the user, 2026-11-11)."
       - id: ABND-05
         quote: "a subdivision surface is compared as its control cage on both sides"
         delivery: M8
