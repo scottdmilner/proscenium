@@ -379,7 +379,31 @@ FIXTURES: dict[str, Fixture] = {
                 Case("duplicated-object", SYNC, SUCCESS, ("OWN-16",), 1),
             ),
         ),
-        Fixture("F-UNMANAGED-USER", "Unmanaged user of managed data", ("M7",)),
+        Fixture(
+            "F-UNMANAGED-USER",
+            "Unmanaged user of managed data",
+            ("M7", "M11"),
+            incremental.unmanaged_user,
+            (
+                # Synchronized again, a full rebuild: Used's old bounds mesh is released intact for its unmanaged
+                # user and counted apart, and the unmanaged parent and linked object are as they were.
+                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("OWN-07", "OWN-08", "STAB-04"), 1),
+                # After the edit: Used's partition is rebuilt and its old mesh released intact, unchanged, and
+                # Child's copy moves under its unmanaged parent, which is as it was.
+                Case(
+                    "used-mesh-changed",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("OWN-07", "OWN-08", "STAB-04", "CHG-06", "CHG-14", "CHG-17"),
+                    1,
+                ),
+                # A full rebuild whose retirement of Used's old mesh fails, the mesh then given to an unmanaged
+                # object: a cleanup retry releases it intact and resolves its tracking.
+                Case("cleanup-retry", CLEANUP, SUCCESS, ("PEND-02", "STAB-04"), 1),
+                # Removing the binding removes its managed content and leaves the unmanaged users as they were.
+                Case("binding-removed", Operation.REMOVE_BINDING, SUCCESS, ("OWN-07", "OWN-14", "OWN-15"), 1),
+            ),
+        ),
         Fixture("F-DETACH-SHARED", "Detach with shared instance content", ("M11",)),
         Fixture("F-DETACH-AS-IS", "Detach surviving content as-is", ("M11",)),
         Fixture("F-LIFECYCLE-FAILURE", "Lifecycle failure and retry", ("M11",)),

@@ -23,7 +23,7 @@
 **Tests:**
 
 - The M3 index rebuilding stays correct after detach, cleanup, and removal, including their undo/redo.
-- `F-OWNERSHIP-AMBIGUITY`, `F-DETACH-SHARED`, `F-DETACH-AS-IS`, `F-LIFECYCLE-FAILURE`, and `F-UNDO-AFTER-DAMAGE`.
+- `F-OWNERSHIP-AMBIGUITY`, `F-DETACH-SHARED`, `F-DETACH-AS-IS`, `F-LIFECYCLE-FAILURE`, and `F-UNDO-AFTER-DAMAGE`, and `F-UNMANAGED-USER`'s binding removal.
 - `F-BINDING-STATE`: after a binding is removed, every method of a handle to it raises (API-08).
 - Detach with edited or deleted content, an unavailable USD source, shared instances, and binding-specific controls. Assert preservation of surviving ordinary Blender data, removal of binding associations, resolution of this binding's pending disposal tracking, and safe later refresh.
 - Failure injection during incremental mutation and disposal of its newly prepared resources, including persistent cleanup tracking and safe retry.

@@ -3,6 +3,10 @@
 - no_op_refresh (F-NO-OP-REFRESH): one drawn copy of each kind M7's application makes, for refreshes that
   change nothing: a mesh, a sheared mesh, a placeholder box, an empty marker, an invisible mesh, a render-only
   mesh, a guide-only mesh that isn't drawn, and a prototype's mesh drawn through two native instances.
+- same_values (F-SAME-VALUES): a translate and a visibility sampled with equal values at different time codes,
+  and a mesh nothing varies on.
+- unmanaged_user (F-UNMANAGED-USER): drawn copies a test gives unmanaged users in Blender (a user of a bounds
+  mesh, an unmanaged parent, and an unmanaged object beside them in the destination), and an edit to them.
 
 Each copies its layers from Scene.INCREMENTAL, opens them as the caller's live stage, and yields what the scene
 is built to display, written out from the layer by hand. tests/bpy_free/test_incremental_fixtures.py checks these
@@ -14,6 +18,8 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from pxr import Gf, Vt
 
 from support.time_codes import TimeVariation
 from support.usd import open_stage_without_cache
@@ -127,4 +133,47 @@ def same_values(dest: Path) -> Generator[SameValuesScene]:
             start=0.0, end=30.0, authored_sample_time_codes=(0.0, 10.0, 20.0, 30.0), transitions=(10.0, 20.0)
         ),
         equal_time_codes=((10.0, 15.0), (12.5, 17.5), (0.0, None)),
+    )
+
+
+# --- F-UNMANAGED-USER ----------------------------------------------------------------------------------------
+
+USED, CHILD = "/World/Used", "/World/Child"
+
+
+@dataclass
+class UnmanagedUserScene:
+    """What a test builds the unmanaged users from, and what the edit changes.
+
+    A test synchronizes, then gives Used's bounds mesh to an unmanaged object, parents Child's managed object
+    to an unmanaged empty, and links an unmanaged object into the destination, before refreshing or removing.
+    """
+
+    root_layer_path: Path
+    stage: Usd.Stage  # the caller's live stage
+    copies: tuple[str, ...]  # every drawn copy's source path, in source order
+    used_extent: tuple[Gf.Vec3f, Gf.Vec3f]  # Used's local bounds before the edit
+    edited_used_extent: tuple[Gf.Vec3f, Gf.Vec3f]  # and after
+    child_translation: Gf.Vec3d  # Child's world translation before the edit
+    edited_child_translation: Gf.Vec3d  # and after
+
+    def edit(self) -> None:
+        """Grow Used's extent and move Child, in the root layer in memory, as a caller editing it would."""
+        layer = self.stage.GetRootLayer()
+        layer.GetAttributeAtPath(f"{USED}.extent").default = Vt.Vec3fArray(self.edited_used_extent)
+        layer.GetAttributeAtPath(f"{CHILD}.xformOp:translate").default = self.edited_child_translation
+
+
+@contextmanager
+def unmanaged_user(dest: Path) -> Generator[UnmanagedUserScene]:
+    """F-UNMANAGED-USER: see scenes/incremental/unmanaged_user.usda."""
+    root = copy_scene(Scene.INCREMENTAL, dest) / "unmanaged_user.usda"
+    yield UnmanagedUserScene(
+        root_layer_path=root,
+        stage=open_stage_without_cache(root),
+        copies=(USED, CHILD, "/World/Still"),
+        used_extent=(Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 1, 1)),
+        edited_used_extent=(Gf.Vec3f(0, 0, 0), Gf.Vec3f(2, 2, 2)),
+        child_translation=Gf.Vec3d(3, 0, 0),
+        edited_child_translation=Gf.Vec3d(3, 3, 0),
     )

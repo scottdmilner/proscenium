@@ -1303,6 +1303,7 @@ requirements:
         quote: "Local updates are made at publication, and publication undoes them if it fails."
       - id: CHG-06
         quote: "A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact."
+        fixtures: [F-UNMANAGED-USER]
       - id: CHG-07
         quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
         fixtures: [F-NO-OP-REFRESH]
@@ -1325,7 +1326,7 @@ requirements:
         quote: "A gprim's type changed |"
       - id: CHG-14
         quote: "A transform changed, on a prim or an ancestor |"
-        fixtures: [F-SAME-VALUES]
+        fixtures: [F-SAME-VALUES, F-UNMANAGED-USER]
       - id: CHG-15
         quote: "Visibility changed, on a prim or an ancestor |"
         fixtures: [F-SAME-VALUES]
@@ -1333,6 +1334,7 @@ requirements:
         quote: "Purpose changed, on a prim or an ancestor |"
       - id: CHG-17
         quote: "An untranslated gprim's bounds changed, appeared, or vanished |"
+        fixtures: [F-UNMANAGED-USER]
       - id: CHG-18
         quote: "A prim made instanceable, or no longer instanceable |"
       - id: CHG-19

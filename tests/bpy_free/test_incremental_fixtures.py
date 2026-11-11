@@ -123,3 +123,41 @@ def test_same_values_changed_copies(same_values: incremental.SameValuesScene) ->
             before, after = _evaluated(same_values.stage, first), _evaluated(same_values.stage, second)
             differing = frozenset(path for path in before if before[path] != after[path])
             assert same_values.changed_copies(first, second) == differing, (first, second)
+
+
+# --- F-UNMANAGED-USER ----------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def unmanaged_user(tmp_path: Path) -> Iterator[incremental.UnmanagedUserScene]:
+    with incremental.unmanaged_user(tmp_path) as scene:
+        yield scene
+
+
+def _used_extent(stage: Usd.Stage) -> tuple[Gf.Vec3f, ...]:
+    return tuple(UsdGeom.Boundable(stage.GetPrimAtPath(incremental.USED)).GetExtentAttr().Get())
+
+
+def _child_translation(stage: Usd.Stage) -> Gf.Vec3d:
+    prim = stage.GetPrimAtPath(incremental.CHILD)
+    return UsdGeom.XformCache().GetLocalToWorldTransform(prim).ExtractTranslation()
+
+
+def test_unmanaged_user_copies(unmanaged_user: incremental.UnmanagedUserScene) -> None:
+    stage = unmanaged_user.stage
+    gprims = tuple(str(prim.GetPath()) for prim in stage.Traverse() if prim.IsA(GPRIM))
+    assert gprims == unmanaged_user.copies
+    assert not stage.GetPrimAtPath(incremental.USED).IsA(MESH)  # a placeholder box, with a bounds mesh
+    assert stage.GetPrimAtPath(incremental.CHILD).IsA(MESH)
+
+
+def test_unmanaged_user_edit(unmanaged_user: incremental.UnmanagedUserScene) -> None:
+    stage = unmanaged_user.stage
+    still = UsdGeom.XformCache().GetLocalToWorldTransform(stage.GetPrimAtPath("/World/Still"))
+    assert _used_extent(stage) == unmanaged_user.used_extent
+    assert _child_translation(stage) == unmanaged_user.child_translation
+    unmanaged_user.edit()
+    assert _used_extent(stage) == unmanaged_user.edited_used_extent
+    assert _child_translation(stage) == unmanaged_user.edited_child_translation
+    assert UsdGeom.XformCache().GetLocalToWorldTransform(stage.GetPrimAtPath("/World/Still")) == still
+    assert stage.GetRootLayer().dirty  # edited in memory, not on disk
