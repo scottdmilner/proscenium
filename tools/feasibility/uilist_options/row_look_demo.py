@@ -52,7 +52,7 @@ SCOPES = [
     ("BUTTONS", "Buttons", "The type and payload buttons"),
 ]
 EMBOSS_STYLES = [
-    ("NONE", "None", "Bare text and icons, as the widget's badges"),
+    ("NONE", "None", "Bare text and icons, as the widget's disclosure triangle"),
     ("NORMAL", "Normal", "A button's usual box"),
     ("PULLDOWN_MENU", "Pulldown", "A menu item's look"),
     ("PIE_MENU", "Pie", "A pie menu item's dark background"),

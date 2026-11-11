@@ -65,6 +65,23 @@ class SceneGraphToggleRow(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class SceneGraphGuideLine(bpy.types.Operator):
+    """A tree guide line: drawn as a disabled button, which a layout can squeeze to a hairline, so it never runs."""
+
+    bl_idname = "proscenium.scene_graph_guide_line"
+    bl_label = ""
+    bl_options = {"INTERNAL"}
+
+    @override
+    @classmethod
+    def description(cls, context: Any, properties: Any) -> str:
+        return ""  # a line has no tooltip of its own
+
+    @override
+    def execute(self, context: Any) -> set[OperatorReturnItems]:
+        return {"CANCELLED"}
+
+
 class SceneGraphSelectRow(bpy.types.Operator):
     """Select the row a badge is on."""
 
@@ -97,4 +114,4 @@ class SceneGraphSelectRow(bpy.types.Operator):
 
 
 # In registration order.
-CLASSES = (SceneGraphToggleRow, SceneGraphSelectRow)
+CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine, SceneGraphSelectRow)

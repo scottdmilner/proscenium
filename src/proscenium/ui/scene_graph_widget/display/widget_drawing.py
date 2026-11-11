@@ -12,11 +12,16 @@ from typing import Any, override
 import bpy
 
 from ..prim_tree import prim_descriptions
-from . import badge_icons, widget_keys, widget_operators, widget_properties, widget_views
+from . import widget_keys, widget_operators, widget_properties, widget_views
 
 NAME_COLUMN_FACTOR = 0.72  # the share of a row the name column takes, in the header and in each row
 NAME_COLUMN_FACTOR_WITHOUT_TYPE = 0.85
-INDENT_FACTOR = 2.0  # separator factor per level
+# Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
+LEVEL_UNITS = 0.6
+CHEVRON_UNITS = 0.6  # narrower than an icon button's 1.0, which leaves wide margins around the chevron
+GUIDE_LINE_UNITS = 0.05
+TYPE_ICON_UNITS = 0.8
+NAME_GAP_FACTOR = 1.0  # the separator between the type icon and the name
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
 
 TYPE_ICONS = {
@@ -39,6 +44,29 @@ def _type_icon(type_name: str) -> str:
 
 def _name_column_factor(properties: Any) -> float:
     return NAME_COLUMN_FACTOR if properties.show_type_column else NAME_COLUMN_FACTOR_WITHOUT_TYPE
+
+
+def _fixed_width(layout: Any, width_units: float) -> Any:
+    cell = layout.row(align=True)
+    cell.ui_units_x = width_units
+    return cell
+
+
+def _draw_guide_level(layout: Any) -> None:
+    """One indent level, with the vertical line that runs down from its open parent's chevron.
+
+    Every ancestor of a visible row is expanded, so each level of a row's indent holds a line, and the lines join
+    from row to row into one under each open chevron. A layout can't draw a vertical line, so it is a disabled button
+    squeezed to a hairline: disabled, it draws faint, and a click on it selects the row.
+    """
+    level = _fixed_width(layout, LEVEL_UNITS)
+    before_line = (CHEVRON_UNITS - GUIDE_LINE_UNITS) / 2
+    _fixed_width(level, before_line).label(text="")
+    line = _fixed_width(level, GUIDE_LINE_UNITS)
+    line.enabled = False
+    line.operator(widget_operators.SceneGraphGuideLine.bl_idname, text="", icon="BLANK1")
+    # The parts have fixed widths that fill the level, so the line keeps its place whatever the row's alignment.
+    _fixed_width(level, LEVEL_UNITS - before_line - GUIDE_LINE_UNITS).label(text="")
 
 
 class SceneGraphList(bpy.types.UIList):
@@ -70,33 +98,29 @@ class SceneGraphList(bpy.types.UIList):
         details = tree.details(tree_row)  # read once, when the row first comes on screen
         split = layout.split(factor=_name_column_factor(data))
         row = split.row(align=True)
-        # Inactive prims, overs, classes, and rows that only hold search matches draw greyed.
-        row.active = details.is_defined and tree.is_match(tree_row)
-        # One small separator per level: a separator's spacer is square, so one deep one would make the row taller.
         for _ in range(tree_row.depth):
-            row.separator(factor=INDENT_FACTOR)
+            _draw_guide_level(row)
+        content = row.row(align=True)  # dimmed apart from the guide lines, so each line has one look down its length
+        # Inactive prims, overs, classes, and rows that only hold search matches draw greyed.
+        content.active = details.is_defined and tree.is_match(tree_row)
+        chevron = _fixed_width(content, CHEVRON_UNITS)
         if details.has_children:
-            disclosure = "DISCLOSURE_TRI_DOWN" if tree.is_expanded(tree_row) else "DISCLOSURE_TRI_RIGHT"
-            toggle = row.operator(
+            disclosure = "DOWNARROW_HLT" if tree.is_expanded(tree_row) else "RIGHTARROW"  # chevrons, as the Outliner's
+            toggle = chevron.operator(
                 widget_operators.SceneGraphToggleRow.bl_idname, text="", icon=disclosure, emboss=False
             )
             toggle.view_name = data.name
             toggle.row_index = index
         else:
-            row.label(text="", icon="BLANK1")
-        row.label(text=details.name, icon=_type_icon(details.type_name))
+            chevron.label(text="", icon="BLANK1")
+        # The icon in a cell of its own, and a separator before the name, set a narrower gap than a label's icon has.
+        _fixed_width(content, TYPE_ICON_UNITS).label(text="", icon=_type_icon(details.type_name))
+        content.separator(factor=NAME_GAP_FACTOR)
+        content.label(text=details.name)
         columns = split.row(align=True)
         columns.alignment = "RIGHT"
-        for badge in prim_descriptions.row_badges(details):
-            button = columns.operator(
-                widget_operators.SceneGraphSelectRow.bl_idname,
-                text="",
-                icon_value=badge_icons.icon_id(badge),
-                emboss=False,
-            )
-            button.view_name = data.name
-            button.row_index = index
-            button.badge = badge.value
+        # The rows draw no badges for now; prim_descriptions.row_badges, badge_icons, and SceneGraphSelectRow
+        # stay for when they're drawn again.
         if data.show_type_column:
             columns.label(text=details.type_name or "-")
 

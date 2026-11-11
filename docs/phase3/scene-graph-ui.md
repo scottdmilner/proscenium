@@ -69,7 +69,7 @@ The widget registers no panel and draws nowhere by itself. A host:
 1. **Registers it** with `display.register()`, from `proscenium.ui.scene_graph_widget`: its classes, a collection on the window manager, its icons, its key watchers, and a load handler.
 2. **Creates a view** per place it shows a tree, by name: `create_view(name, shows_in_region, on_selection_changed)`.
    - `shows_in_region(area, region)` says whether a region is showing that view now, such as a 3D View sidebar on the host's tab. The key watcher asks it, since only the host knows which panels draw which view.
-   - `on_selection_changed(path)` hears the prim selected from the tree, by a click, the keys, or a badge, and `None` when a new stage or the selected prim leaving the stage clears the selection. `select_prim(name, path)` selects from elsewhere, such as the viewport, and isn't reported back, so the two directions can't loop.
+   - `on_selection_changed(path)` hears the prim selected from the tree, by a click or the keys, and `None` when a new stage or the selected prim leaving the stage clears the selection. `select_prim(name, path)` selects from elsewhere, such as the viewport, and isn't reported back, so the two directions can't loop.
 3. **Gives each view a stage** with `set_stage(name, stage)`, or `None`; giving it the stage it already shows keeps its expansion and selection.
 4. **Draws it** by calling `draw_tree(layout, context, name)` and `draw_details(layout, name)` from its own panels' `draw`, and reads its selection with `selected_path(name)`.
 
@@ -108,6 +108,11 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
 - **Empty items:** the collection holds one empty `PropertyGroup` item per visible row. Only the count changes on expand and collapse, and `draw_item` reads the model by the row's index.
 - **Resizing:** **Checked:** removing items one at a time from the end is quadratic (35 s for 100,000), so shrinking clears the collection and adds items back.
 - **Indentation:** **Checked:** one `separator(factor=2.0)` per level keeps rows even. One deep separator makes the row taller, because a separator's spacer is square. A blank icon per level cut deep names to a letter or two at sidebar width.
+- **Guide lines:** **Checked** in the binary by one-off probes, then in the widget. The widget indents each level by a cell 0.6 units wide, the width `separator(factor=2.0)` took, holding a vertical line under the centre of the parent's chevron, so a line runs down from each open chevron to its last descendant, as in Solaris. Every ancestor of a visible row is expanded, so a row draws a line at every level of its indent, and the model works out nothing for them.
+  - **A line is a disabled button** squeezed to 0.05 units, in fixed-width parts that fill the level. Disabled, it draws faint, and a simulated click on it, or on the indent beside it, selected its row; its operator never ran.
+  - **The lines stay out of the dimming:** a row's contents are dimmed in a sub-layout of their own, so a line has one look down its length past inactive rows.
+  - **The active row's highlight covers its lines.**
+  - **Narrower icons:** the chevron's button is 0.6 units, narrower than an icon button's 1.0, and the type icon sits in a 0.8-unit cell with `separator(factor=1.0)` before the name, a narrower gap than a label's icon has. The list's own padding, about 5 points before the first chevron, has no Python setting, and a negative separator factor does nothing.
 - **Columns:** a 72% name column with the type and badges right-aligned after it read in full at sidebar width.
 - **Updating properties without callbacks:** **Checked:** in Blender 5, `bpy.props` values aren't dict-style ID properties, so `wm["prop"] = v` doesn't set a registered property. Moving the active row without running its update callback needs a guard flag.
 - **No writes while drawing:** a panel's `draw` can't write the window manager's properties, so rows are synced from operators, timers, and handlers, never from drawing. A view drawn before the load handler has made its properties draws "Loading".
@@ -125,6 +130,7 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
 - **Badge tooltips:** labels can't have tooltips, so each badge is a borderless operator button. The operator's `description` classmethod writes each button's tooltip from that button's properties, such as "Payload (loaded): /_Crate". The disclosure triangle's tooltip says what a click does to that row and lists the keys.
 - **Tested:** the tooltip text. **Not checked:** a tooltip appearing on screen. Simulated mouse moves highlighted the hovered row but brought up no tooltip, and screenshots in these runs never captured pop-ups.
 - **Text only:** no Python API for richer tooltips, such as image previews, was found.
+- **The widget's rows draw no badges for now,** so new row information starts from a clean row. The badges, their icons, their tooltips, and their buttons (`prim_descriptions.Badge`, `badge_icons`, `SceneGraphSelectRow`) are kept, unused, for when rows draw them again.
 
 ## Colors
 
@@ -147,7 +153,7 @@ What a row can do with the color of its text, background, and icons. **Checked:*
   - Preview icons, as the badges are ([Icons and Tooltips](#icons-and-tooltips)), take any colors and shapes, and keep them under any theme.
   - `template_node_socket(color=(r, g, b, a))` draws a small dot in any color, with no image: a per-row color marker.
   - A color property (`FloatVectorProperty(subtype="COLOR")`) drawn without text is a swatch in any color, but it opens a color picker when clicked, and disabling it dims it.
-- **Lines:** `separator(type="LINE")` in a row drew a short horizontal line at the row's top edge, not a vertical one, so it can't draw tree guide lines.
+- **Lines:** `separator(type="LINE")` in a row drew a short horizontal line at the row's top edge, not a vertical one, so it can't draw tree guide lines; the widget draws them as thin disabled buttons ([UIList mechanics](#uilist-mechanics)).
 - **Overlays:** the `gpu` module could paint any background or guide line over a list, but a list's rows have no reported positions. **Not checked.**
 
 So a row can show state as dim, red, or highlighted, and color only through its icons: preview icons, Blender's colored icons, or socket dots.
@@ -209,7 +215,7 @@ Each is an attribute of a `UILayout`, so it applies to whatever sub-layout of a 
 | `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the badges are drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
 | `scale_x`, `scale_y` | Items' size along each axis. |
 | `ui_units_x`, `ui_units_y` | Items' fixed size, so a column can keep one width on every row. |
-| `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget right-aligns its type and badges. |
+| `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget right-aligns its type column. |
 | `use_property_split`, `use_property_decorate` | A property's label and value in two columns, and its keyframe decorator. |
 
 **Checked** by hand in the binary with `row_look_demo.py`, on the test stage:
@@ -433,12 +439,12 @@ What two other scene graph trees show for each prim, beside what this widget's r
 
 | State | usdview | Solaris | This widget |
 |---|---|---|---|
-| Has composition arcs | Dark yellow (222, 158, 46) | A style of its own, for inherits, references, or specializes | A references badge; inherits and specializes only in the details |
-| Loaded payload | The arcs color | Bold, light orange | The payload badge, whose tooltip says loaded |
-| Unloaded payload | The arcs color | Bold italic, dark orange | The same badge, whose tooltip says unloaded |
+| Has composition arcs | Dark yellow (222, 158, 46) | A style of its own, for inherits, references, or specializes | The details only |
+| Loaded payload | The arcs color | Bold, light orange | The details only |
+| Unloaded payload | The arcs color | Bold italic, dark orange | The details only |
 | Inside an unloaded payload | — | Italic, in the unloaded color | Nothing |
-| Instance | Light sky blue (135, 206, 250), ahead of the arcs color | Light blue, with the payload styles over it | The instance badge |
-| Instance proxy | — | A style of its own, italic when the instance's payload is unloaded | The instance badge; only its tooltip tells it from an instance |
+| Instance | Light sky blue (135, 206, 250), ahead of the arcs color | Light blue, with the payload styles over it | The details only |
+| Instance proxy | — | A style of its own, italic when the instance's payload is unloaded | The details only |
 | Inside a prototype | Blue-violet (118, 136, 217) | — | Not listed: the tree reaches instances' contents through instance proxies |
 | Inactive | Its color, darkened | A deactivated style | Dimmed |
 | Specifier | The font: a def bold, an over light italic, a class normal weight | — | An over or class dimmed, as an inactive prim is; the specifier in the tooltip |
@@ -450,7 +456,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 ### Icons and markers
 
 - **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. This widget shows a type icon only. usdview has none.
-- **Badges:** neither has badges. This widget's payload, references, variants, and instance badges, each with a tooltip, are its own.
+- **Badges:** neither has badges. This widget has payload, references, variants, and instance badges, each with a tooltip, but its rows don't draw them for now.
 - **Override dots:** Solaris marks a prim red for an override in its viewport-only layer (visibility, draw mode, or active), blue for a post-layer override, and purple for both. The widget edits nothing, so has nothing to mark.
 - **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget marks no problem on a row.
 - **Animated visibility:** Solaris shows an animated eye for visibility that has time samples.
@@ -466,10 +472,10 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 | Draw mode | ✓ computed, italic when inherited | ✓ computed, for prims in a valid model hierarchy; an edit reaches descendants without their own | — |
 | Kind | In the tooltip | ✓ with a warning icon when invalid | In the tooltip and details |
 | Purpose | — | ✓ | — |
-| Variants | — | ✓ a menu per variant set, which switches its selection | The variants badge, read-only |
+| Variants | — | ✓ a menu per variant set, which switches its selection | The details only |
 | Material | — | ✓ the bound material's name, its path on hover, an arrow when inherited | — |
 | Proxy path | — | ✓ | — |
-| Populated (P) and Loaded (L) | — | ✓ each in four states: not, a child, from an ancestor, and explicit | Loaded only in the payload badge's tooltip and the details |
+| Populated (P) and Loaded (L) | — | ✓ each in four states: not, a child, from an ancestor, and explicit | Loaded only in the details |
 | Active | In the context menu | ✓ a toggle | — |
 | Solo | "Vis Only" in the context menu | ✓ in three states; lights and geometry solo separately | — |
 | Selectable | — | ✓ inherited to descendants | — |
@@ -490,7 +496,7 @@ Solaris's gear menu chooses which columns show.
 Showing only, from what a row's prim already gives:
 - Distinct looks for an unloaded payload and what's inside it, an instance proxy, an over, and a class.
 - The kind's icon, and a warning for an invalid model hierarchy.
-- Badges for inherits and specializes.
+- Marks for composition arcs, payloads, variants, and instances.
 - Toggles for listing inactive, over, and class prims, and instance proxies.
 - Copy prim path, jump to enclosing model, and select bound material.
 
@@ -502,7 +508,6 @@ What edits or overrides the stage, so waits on how Phase 3 edits it: visibility,
 - How fast is drawing and scrolling a `UIList` with thousands of rows? Only the model and the collection were timed.
 - Does a hierarchy change in a stage with many visible rows rebuild them fast enough while editing, or should a change rebuild only the subtrees it resyncs?
 - Can a dedicated pane's sidebar take the area's full width, and does the empty main area bother users?
-- Can `gpu` overlays draw tree guide lines over a `UIList`, given that a list's rows have no reported positions?
 - What should own the search index as the stage changes: the core, or a Python layer that listens to `Tf.Notice`?
 - Where do the tree's own edits, such as visibility or active, go: a session layer, a viewport-only layer as in Solaris, or the edit target ([Compared with usdview and Solaris](#compared-with-usdview-and-solaris))?
 - What does the widget's row menu hold, and should Ctrl+click add a row to a selection?
