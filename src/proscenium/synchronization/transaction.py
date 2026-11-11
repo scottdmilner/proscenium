@@ -5,7 +5,9 @@ attempt needs can't be read is refused before its source is read, so nothing the
 failure at any step before publication leaves the published generation as it was and disposes of prepared work, and
 an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
 by recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
-discarded before publication (CONS-03). A failure only application detects aborts the attempt, since the plan
+discarded before publication (CONS-03). A destination also linked into a scene whose unit scale differs from the
+target scene's, which the display is planned for, gets a warning before anything in Blender changes (CONV-07). A
+failure only application detects aborts the attempt, since the plan
 authorizes no fallback: a resource operation failing, as preparation-failed naming the resource, and the destination
 removed during preparation, as destination-invalid, after which no last attempt is recorded, its records gone with
 it (APP-05, APP-06). After publication, a resource retirement can't remove leaves the synchronization completed with
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import bpy
 from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
@@ -26,8 +29,6 @@ from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources, publication, retirement
 
 if TYPE_CHECKING:
-    import bpy
-
     from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
     from ..binding.source_access import BindingId
@@ -87,13 +88,15 @@ def _attempt(
     if (refused := preparation_resources.cleanup_tracking_diagnostic(binding_id)) is not None:
         return (refused,)
     settings, unit_scale = config.requested_settings, scene.unit_settings.scale_length
+    # Found before anything in Blender changes, and the display's, so the generation records them too (CONV-07).
+    mismatches = _unit_scale_mismatches(binding_id, destination, scene)
     stages_ = current.get_or_create_binding_stages(binding_id)
     try:
         evaluation_stage = stages_.acquire_evaluation_stage(settings.payload_policy)
     except stages.SourceUnavailableError as error:
         return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
     revision = stages_.source_revision
-    own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
+    own = (*mismatches, *evaluation.source_state_diagnostics(binding_id, evaluation_stage))
     # Before preparation nothing in Blender has changed, so a failure only reports.
     planned = evaluation.evaluate_display_plans(
         binding_id,
@@ -144,6 +147,30 @@ def _attempt(
         return (*own, failed, *preparation_resources.dispose(work))
     preparation_resources.remove_staging_and_clear_tracking(work)
     return (*own, *retirement.retire(binding_id, obsolete, work.operation))
+
+
+def _unit_scale_mismatches(
+    binding_id: BindingId, destination: bpy.types.Collection, target: bpy.types.Scene
+) -> tuple[Diagnostic, ...]:
+    """A diagnostic for each other scene linking the destination whose unit scale differs from the target scene's.
+
+    The display is planned for the target scene's scale, so in such a scene it shows at the wrong one; it isn't
+    guessed which is meant (transforms.md#coordinate-conversion).
+    """
+    scale = target.unit_settings.scale_length
+    return tuple(
+        Diagnostic(
+            DiagnosticCode.UNIT_SCALE_MISMATCH,
+            binding_id,
+            f"The destination collection {destination.name!r} is also linked into scene {other.name!r}, whose unit "
+            f"scale {other.unit_settings.scale_length:g} differs from the target scene {target.name!r}'s {scale:g}, "
+            "which the display is planned for",
+        )
+        for other in bpy.data.scenes
+        if other != target
+        and other.unit_settings.scale_length != scale
+        and destination in other.collection.children_recursive
+    )
 
 
 def _removed(destination: bpy.types.Collection) -> bool:

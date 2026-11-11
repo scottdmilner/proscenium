@@ -69,6 +69,9 @@ class DiagnosticCode(StrEnum):
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
+    # The destination is also linked into a scene whose unit scale differs from the target scene's, which the display
+    # is planned for (transforms.md#coordinate-conversion).
+    UNIT_SCALE_MISMATCH = "unit-scale-mismatch"
     # Source-side content, which the compiled core reports (core.diagnostics.h).
     PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
     UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
@@ -105,6 +108,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DESTINATION_INVALID: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.UNIT_SCALE_MISMATCH: (DiagnosticCategory.LOSSY_CONVERSION, Severity.WARNING),
     DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
