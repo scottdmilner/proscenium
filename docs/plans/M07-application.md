@@ -96,6 +96,14 @@ If a commit grows past one feature, it splits, and this list is updated in the s
 6. **End-to-end checks on M6's plans** (ASTD-01 to ASTD-03): a bounds check under the [Bounds Comparison Contract](../testing/acceptance.md#bounds-comparison-contract) as a test helper, its expected bounds from USD (ABND-02 to ABND-04, ABND-07 to ABND-09), and unique mesh-data counts recorded.
 7. **Resource stability on full rebuilds** (STAB-01 to STAB-04) on `F-NO-OP-REFRESH`, and `F-UNMANAGED-USER`'s full-rebuild case. The zero-write half of AFF-03 waits for Phase C.
 
+#### Phase B log
+
+- **B1, the real `prepare`.** `application.prepare(plan, copy_indices, published, work)` makes the partitions of the copies it's given, in that order, so Phase C passes only the changed ones; a synchronization passes every copy. A copy's partition is its object, its bounds mesh, and its shear parent, made and tracked together, as the stub made them, with the same names and hide flags set together.
+  - **Reading the plan:** the copy table gains `copy_bounds_mesh_resource_indices` and `copy_shear_parent_resource_indices` (-1 for none), and the plan gains `resources_at` and `geometries_at`, which convert only the elements asked for, as the bridge's `objects_at` did and as the milestone suggests for the resources' integers. Preparing some copies then converts only their resources and geometry descriptions, where the stub converted every resource.
+  - **Not yet changed:** each object's matrix is still set one at a time from the buffer, as the stub did, rather than by `foreach_set("matrix_world", ...)`, since a sheared copy's object takes a basis below its parent; Phase G measures it. `application.py` stays one module until Phase D grows its keying.
+  - **SNAP-13:** every buffer view `prepare` and `key_time_codes` open is released before they return or raise. A test on `F-NO-OP-REFRESH` checks that after each synchronization the plan is gone and no view of a Vt array is open; a probe that leaked one view failed it.
+  - **APP-08:** A8's oracle said the layer imports nothing from `pxr` "directly or through another unit", which no layout meets, since `binding.persistence` and `binding.results` import `pxr` for time-code values. The oracle now names what reaches a stage, `pxr`, the core, and source access, imported other than for types, which a bpy-free check of `application.py`'s imports enforces, and a plan prepared after its chain is released and its stage is gone.
+
 ### Phase C — Incremental refresh
 
 1. **A chain kept per binding,** in the bindings' runtime state, released when the binding detaches, changes payload policy, reloads, gets a new attachment, or is disposed of, so a released stage expires (SRC-02). A release drops the stage scene index without `SetStage(nullptr)` (M6 F1). `synchronize` and `cache` share it.

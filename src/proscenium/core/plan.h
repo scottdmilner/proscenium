@@ -106,7 +106,11 @@ struct Plan {
   // 16 floats per copy: the world matrix in Blender's layout, which is USD's row-major one.
   PXR_NS::VtFloatArray copyWorldMatrices;
   PXR_NS::VtIntArray copyObjectResourceIndices;  // its object, in resources
-  PXR_NS::VtIntArray copyGeometryIndices;        // its geometry description, in geometries; -1 for none
+  // Its partition's other resources, in resources, so application finds them without reading every resource: its
+  // bounds mesh, -1 for an empty marker's, and its shear parent, -1 for none.
+  PXR_NS::VtIntArray copyBoundsMeshResourceIndices;
+  PXR_NS::VtIntArray copyShearParentResourceIndices;
+  PXR_NS::VtIntArray copyGeometryIndices;  // its geometry description, in geometries; -1 for none
   // Its placeholder, in placeholderBounds; -1 for none, and for a copy with neither a geometry nor bounds (C5 makes
   // it a marker).
   PXR_NS::VtIntArray copyPlaceholderBoundsIndices;

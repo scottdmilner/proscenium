@@ -196,7 +196,7 @@ requirements:
       - id: APP-08
         quote: "Application must not query USD to fill in unresolved source semantics."
         fixtures: [F-NO-OP-REFRESH]
-        oracle: "The application layer's modules import nothing from pxr, directly or through another unit, which a bpy-free check of their imports enforces; on F-NO-OP-REFRESH application's inputs are the plan, the destination, and the binding's records."
+        oracle: "The application layer's modules import nothing that reaches a stage (pxr, the compiled core, or the binding's source access) other than for types, which a bpy-free check of their imports enforces; on F-NO-OP-REFRESH, a plan whose chain is released and whose stage is gone still prepares every copy's partition."
 
   - section: spec/pipeline.md#why-the-boundary-is-enforced
     delivery: M5

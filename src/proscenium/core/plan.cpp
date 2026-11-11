@@ -298,30 +298,44 @@ PlanningContext::PlanningContext(double scale, int version) : unitScale(scale), 
 PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const PlanningContext& context) {
   if (context.representationVersion != 1)
     throw std::invalid_argument("The planner plans representation version 1 only");
+  // An empty plan at the snapshot's time code; the loop below fills every other member.
   auto plan = std::make_shared<Plan>(
-      Plan{snapshot.timeCode, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+      Plan{snapshot.timeCode, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+  // The viewport's purposes always include guide, so a guide explicitly made visible can display there (VIS-04).
   TfTokenVector viewport = settings.viewportPurposes;
   if (!Includes(viewport, UsdGeomTokens->guide)) viewport.push_back(UsdGeomTokens->guide);
+
+  // 1. What the snapshot draws: its prims as a table, native instances resolved into each gprim's copies, and a drawn
+  //    copy per gprim per copy, in source order, with its world transform, purpose, and visibility.
   const PrimTable table = ReadPrims(snapshot);
   InstanceResolver instances(table, /*honorResets=*/true);
   const std::vector<DrawnGprim> gprims = DrawnGprims(table, instances);
-  // Capture's first, then the resolver's, which mapping capture's can add to, then planning's own.
+
+  // 2. Diagnostics from before planning: capture's first, then the resolver's, which mapping capture's can add to.
   AddSourceDiagnostics(snapshot, table, instances, plan->diagnostics);
   plan->diagnostics.insert(plan->diagnostics.end(), instances.Diagnostics().begin(), instances.Diagnostics().end());
   // Planning's own problems with a copy, reported once per USD prim.
   DrawnCopyDiagnosticAggregator planned(table, plan->diagnostics);
+  // The matrix taking the stage's units and up axis to the target scene's; the identity with conversion off.
   const GfMatrix4d correction = CoordinateConversionMatrix(snapshot, settings, context);
   plan->copyWorldMatrices.reserve(16 * gprims.size());
   // Each mesh's description, made for its first copy in source order, so its source is deterministic.
   std::unordered_map<const PrimRecord*, int> geometries;
+
+  // 3. Each drawn gprim a destination shows becomes a drawn copy: one element appended to every copy-table buffer,
+  //    its partition and resources, and its correspondence entry, all in the same order.
   for (const DrawnGprim& gprim : gprims) {
+    // 3a. Participation. A copy neither destination's purposes include is left out of the plan; an invisible one
+    //     stays, shown in neither. A guide shows only where it is explicitly visible, so one that isn't is never
+    //     displayed.
     const bool inViewport = Includes(viewport, gprim.purpose);
     const bool inRender = Includes(settings.renderPurposes, gprim.purpose);
-    // A guide shows only where it is explicitly visible, so one that isn't is never displayed.
     if ((!inViewport && !inRender) || (gprim.purpose == UsdGeomTokens->guide && !gprim.explicitGuide)) continue;
     plan->copyVisibleInViewport.push_back(gprim.visible && inViewport);
     plan->copyVisibleInRender.push_back(gprim.visible && inRender);
-    // Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
+
+    // 3b. The world transform, corrected and made affine, and whether it shears, which a Blender object can't hold.
+    //     Bounds and instances inherit the correction through the world transform; local geometry is unchanged.
     const GfMatrix4d corrected = gprim.world * correction;
     if (corrected.GetColumn(3) != AffineColumn())
       planned.Add({DiagnosticCode::kProjectiveTransform,
@@ -335,10 +349,12 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
                   *gprim.prim, *gprim.copy, gprim.source);
     const GfMatrix4d world = WithoutProjectiveComponent(corrected);
     const bool sheared = Sheared(world);
-    // Each behavior is decided on its own (MODEL-03): content the core doesn't translate keeps its transform,
-    // participation, and correspondence. A mesh is a provisional geometry description; a filter's inexact conversion
-    // to one is an approximation. Any other gprim is a placeholder, a bounds box from its usable bounds (MODEL-04), or
-    // with none, an empty marker (MODEL-05), its untranslated-type diagnostic naming which.
+
+    // 3c. What stands for its geometry, with its diagnostics. Each behavior is decided on its own (MODEL-03): content
+    // the core doesn't translate keeps its transform, participation, and correspondence. A mesh is a provisional
+    // geometry description; a filter's inexact conversion to one is an approximation. Any other gprim is a placeholder,
+    // a bounds box from its usable bounds (MODEL-04), or with none, an empty marker (MODEL-05), its untranslated-type
+    // diagnostic naming which.
     const GfRange3d* bounds = gprim.bounds ? &*gprim.bounds : nullptr;  // null when Hydra gives it none
     const bool marker = !gprim.mesh && !bounds;
     if (gprim.mesh && !gprim.usdType.IsEmpty() && !ImplicitMeshConversionIsExact(gprim.usdType))
@@ -365,11 +381,13 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
            0},
           *gprim.prim, *gprim.copy, gprim.source);
     }
-    // Each copy has one object, and its source entity is its source path, an instance-proxy path inside instances. A
-    // marker's object holds no data.
+    // 3d. The copy's partition and its resources, appended to Plan::resources in partition order: its object first,
+    //     then what the object uses, a bounds mesh unless it's a marker, whose object holds no data, and a shear
+    //     parent if it shears. Each resource's source entity is the copy's source path, an instance-proxy path inside
+    //     instances, which with its role gives its identity.
     const std::size_t object = plan->resources.size();
     Partition partition{{object}};
-    std::vector<std::size_t> uses;
+    std::vector<std::size_t> uses;  // the object's dependencies: the owned resources, which follow it
     std::vector<PlannedResource> owned;
     if (!marker) owned.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
     if (sheared) owned.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
@@ -380,7 +398,11 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->partitions.push_back(std::move(partition));
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, std::move(uses)});
     plan->resources.insert(plan->resources.end(), owned.begin(), owned.end());
+    // The display element and the source entity it shows, which interaction maps picks through.
     plan->correspondence.push_back({object, gprim.source, gprim.instanceContext});
+
+    // 3e. The copy table's transforms: the whole world matrix, and for a sheared copy its split, the parent's world
+    //     matrix and the object's basis below it, at the next index of the two split buffers.
     AppendWorld(world, plan->copyWorldMatrices);
     int shear = -1;
     if (sheared) {
@@ -390,7 +412,19 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
       AppendWorld(objectBasis, plan->shearObjectBasisMatrices);
     }
     plan->copyShearSplitIndices.push_back(shear);
+
+    // 3f. The copy table's resource indices, so application finds the copy's partition without reading resources:
+    //     its object, and from the owned resources 3d appended after it, its bounds mesh and shear parent, -1 for none.
     plan->copyObjectResourceIndices.push_back(static_cast<int>(object));
+    int boundsMesh = -1;
+    int shearParent = -1;
+    for (std::size_t i = 0; i < owned.size(); ++i)
+      (owned[i].role == Role::kBoundsMesh ? boundsMesh : shearParent) = static_cast<int>(object + 1 + i);
+    plan->copyBoundsMeshResourceIndices.push_back(boundsMesh);
+    plan->copyShearParentResourceIndices.push_back(shearParent);
+
+    // 3g. Its local bounds: a mesh's copies share the mesh's geometry description, made at its first copy; a
+    //     placeholder's bounds are its own, six floats at the next index; a marker has neither, so both are -1.
     int geometry = -1;
     int placeholder = -1;
     if (gprim.mesh) {
@@ -408,6 +442,9 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     plan->copyGeometryIndices.push_back(geometry);
     plan->copyPlaceholderBoundsIndices.push_back(placeholder);
   }
+
+  // 4. Finishing the diagnostics: each of planning's reports names its first copy and counts its copies, then a problem
+  //    repeated past kListedPerProblem diagnostics keeps its first ones and a count of the rest.
   planned.FinalizeDiagnosticCoverage();
   SummarizeRepeatedDiagnostics(plan->diagnostics);
   return plan;

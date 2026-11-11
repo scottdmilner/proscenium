@@ -55,7 +55,7 @@ def _work(binding_id: BindingId) -> PreparationResources:
 
 def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
-    application.prepare(plan, published or Manifest({}), work)
+    application.prepare(plan, range(plan.copy_count), published or Manifest({}), work)
     return work
 
 
@@ -275,7 +275,7 @@ def test_a_failure_after_a_resource_is_made_finds_it_held(
         before = _datablocks()
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):
-            application.prepare(plan, Manifest({}), work)
+            application.prepare(plan, range(plan.copy_count), Manifest({}), work)
         made = _datablocks() - before - {work.staging_collection}
         assert made == set(work.datablocks.values())
         assert len(made) == 2 * call - (step == "_corners")  # a placeholder's mesh is made before its corners
@@ -342,7 +342,7 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
         before = _datablocks()
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):
-            application.prepare(plan, Manifest({}), work)
+            application.prepare(plan, range(plan.copy_count), Manifest({}), work)
         assert len(work.datablocks) == scene.prepared_before_failure
         failing = _fail_disposal(monkeypatch, work, scene.failed_disposals)
         diagnostics = preparation_resources.dispose(work)

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from pxr import Usd
 
-from fixtures import transaction
+from fixtures import incremental, transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
@@ -156,6 +156,38 @@ def test_snapshot_outlives_edits_and_release(tmp_path: Path) -> None:
         assert copies(_core.plan(before, SETTINGS, CONTEXT))[
             "/World/Sub"
         ].world_matrix.ExtractTranslation() == translation("/World/Sub", 0.0)
+
+
+def test_partitions_by_buffer_and_selective_reads(tmp_path: Path) -> None:
+    # On a copy of each kind M7 draws, the copy table names the bounds mesh and shear parent its object uses, and
+    # resources_at reads the resources asked for, in that order.
+    with incremental.no_op_refresh(tmp_path) as scene:
+        plan = _plan(scene.stage)
+    by_buffer = {
+        name: memoryview(getattr(plan, name))
+        for name in ("copy_bounds_mesh_resource_indices", "copy_shear_parent_resource_indices")
+    }
+    for name, view in by_buffer.items():
+        assert (view.format, view.ndim, view.readonly, len(view)) == ("i", 1, True, plan.copy_count), name
+    meshes, parents = (view.tolist() for view in by_buffer.values())
+    objects = memoryview(plan.copy_object_resource_indices).tolist()
+    built = {c.source_path: c for c in scene.copies}
+    resources = plan.resources
+    for entry, obj, mesh, parent in zip(plan.correspondence, objects, meshes, parents, strict=True):
+        copy = built[entry.source_path]
+        assert (mesh >= 0, parent >= 0) == (copy.has_bounds, copy.sheared), copy.source_path
+        uses = {role: index for role, index in (("bounds mesh", mesh), ("shear parent", parent)) if index >= 0}
+        assert {resources[u].role: u for u in resources[obj].dependency_resource_indices} == uses
+        asked = [obj, *uses.values()]
+        assert [_identity(r) for r in plan.resources_at(asked)] == [_identity(resources[i]) for i in asked]
+    geometries = plan.geometries
+    asked = list(reversed(range(len(geometries))))
+    assert [g.content_key for g in plan.geometries_at(asked)] == [geometries[i].content_key for i in asked]
+    assert plan.resources_at([]) == plan.geometries_at([]) == ()
+    with pytest.raises(IndexError):
+        plan.resources_at([len(resources)])
+    with pytest.raises(IndexError):
+        plan.geometries_at([len(geometries)])
 
 
 def test_released_chain_refuses_capture(tmp_path: Path) -> None:

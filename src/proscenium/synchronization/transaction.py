@@ -107,7 +107,7 @@ def _attempt(
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
     try:
-        application.prepare(plan, published, work)
+        application.prepare(plan, range(plan.copy_count), published, work)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
         return (*own, failed, *preparation_resources.dispose(work))

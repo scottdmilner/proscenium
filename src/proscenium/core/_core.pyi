@@ -144,6 +144,8 @@ class Plan:
     def partitions(self) -> tuple[Partition, ...]: ...
     @property
     def resources(self) -> tuple[PlannedResource, ...]: ...
+    # The resources at those positions in resources, in that order, converting only them. IndexError: past the end.
+    def resources_at(self, resource_indices: Iterable[int]) -> tuple[PlannedResource, ...]: ...
     @property
     def correspondence(self) -> tuple[CorrespondenceEntry, ...]: ...
     @property
@@ -152,6 +154,10 @@ class Plan:
     def copy_world_matrices(self) -> Buffer: ...  # 'f', 16 each: world matrices in Blender's layout (USD row-major)
     @property
     def copy_object_resource_indices(self) -> Buffer: ...  # 'i': its object, in resources
+    @property
+    def copy_bounds_mesh_resource_indices(self) -> Buffer: ...  # 'i': its bounds mesh, in resources; -1 for a marker's
+    @property
+    def copy_shear_parent_resource_indices(self) -> Buffer: ...  # 'i': its shear parent, in resources; -1 for none
     @property
     def copy_geometry_indices(self) -> Buffer: ...  # 'i': its geometry description, in geometries; -1 for none
     @property
@@ -170,6 +176,8 @@ class Plan:
     def shear_object_basis_matrices(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
     @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
+    # The geometry descriptions at those positions in geometries, in that order. IndexError: past the end.
+    def geometries_at(self, geometry_indices: Iterable[int]) -> tuple[GeometryDescription, ...]: ...
     @property
     def diagnostics(self) -> tuple[Diagnostic, ...]: ...
     def batch_groups(

@@ -25,7 +25,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
   - The code is in units, each a package or a single module, in tiers; a unit imports only from itself and from units in lower tiers. [`src/proscenium/README.md`](src/proscenium/README.md#import-rules) has the table and the rules, which `tests/bpy_free/test_import_tiers.py` enforces. From the top:
     - `proscenium/addon.py`: registers the extension and its handlers.
     - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
-    - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M5's a stub, which M7 replaces).
+    - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M7's, replacing M5's stub).
     - `proscenium/binding/runtime/`: disposable in-memory state built from the records.
     - `proscenium/binding/persistence/`: versioned records in ID properties.
     - The lowest tier, which must import without `bpy`, as must `proscenium/__init__.py` and `proscenium/binding/__init__.py`: `proscenium/core/`, the compiled core, its C++ source and built module (see [Compiled core](#compiled-core)); `proscenium/binding/source_access/`, the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers; and `proscenium/binding/results.py`, results and diagnostics.

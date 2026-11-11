@@ -95,6 +95,16 @@ std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const 
   return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes, conversion); });
 }
 
+// The elements at the given positions, in that order, so a caller converts only those it reads. Throws
+// std::out_of_range for a position past the end.
+template <class T>
+bp::tuple ElementsAt(const std::vector<T>& elements, const bp::object& indices) {
+  bp::list items;
+  for (bp::stl_input_iterator<std::size_t> index(indices), end; index != end; ++index)
+    items.append(elements.at(*index));
+  return bp::tuple(items);
+}
+
 // The plan's batch groups, which Python reads as plain values and Vt buffers.
 bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
   const BatchGroups grouped = Guarded([&] {
@@ -192,6 +202,12 @@ void WrapPlan() {
       .add_property("copy_indices", +[](const BatchGroup& g) { return g.copyIndices; });
   bp::class_<PlanView>("Plan", bp::no_init)
       .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))
+      .def(
+          "resources_at", +[](const PlanView& p, const bp::object& i) { return ElementsAt(p.data->resources, i); },
+          bp::arg("resource_indices"))
+      .def(
+          "geometries_at", +[](const PlanView& p, const bp::object& i) { return ElementsAt(p.data->geometries, i); },
+          bp::arg("geometry_indices"))
       .add_property(
           "time_code", +[](const PlanView& p) { return p.data->timeCode; })
       .add_property(
@@ -208,6 +224,11 @@ void WrapPlan() {
           "copy_world_matrices", +[](const PlanView& p) { return p.data->copyWorldMatrices; })
       .add_property(
           "copy_object_resource_indices", +[](const PlanView& p) { return p.data->copyObjectResourceIndices; })
+      .add_property(
+          "copy_bounds_mesh_resource_indices", +[](const PlanView& p) { return p.data->copyBoundsMeshResourceIndices; })
+      .add_property(
+          "copy_shear_parent_resource_indices",
+          +[](const PlanView& p) { return p.data->copyShearParentResourceIndices; })
       .add_property(
           "copy_geometry_indices", +[](const PlanView& p) { return p.data->copyGeometryIndices; })
       .add_property(
