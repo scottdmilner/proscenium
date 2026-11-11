@@ -1278,7 +1278,7 @@ requirements:
         risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
-        fixtures: [F-NO-OP-REFRESH]
+        fixtures: [F-NO-OP-REFRESH, F-SAME-VALUES]
         risk: high
       - id: AFF-04
         quote: "may instead replace every display resource, with the result of a clean full rebuild."
@@ -1325,8 +1325,10 @@ requirements:
         quote: "A gprim's type changed |"
       - id: CHG-14
         quote: "A transform changed, on a prim or an ancestor |"
+        fixtures: [F-SAME-VALUES]
       - id: CHG-15
         quote: "Visibility changed, on a prim or an ancestor |"
+        fixtures: [F-SAME-VALUES]
       - id: CHG-16
         quote: "Purpose changed, on a prim or an ancestor |"
       - id: CHG-17
@@ -1339,6 +1341,7 @@ requirements:
         quote: "A point instancer's points, ids, or prototypes changed |"
       - id: CHG-21
         quote: "The time code synchronized changed |"
+        fixtures: [F-SAME-VALUES]
       - id: CHG-22
         quote: "A generation with cached time codes synchronized again |"
       - id: CHG-23

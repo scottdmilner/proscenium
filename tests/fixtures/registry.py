@@ -428,7 +428,18 @@ FIXTURES: dict[str, Fixture] = {
             appearance.appearance_cases,
         ),
         Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M9",)),
-        Fixture("F-SAME-VALUES", "Same evaluated values at a different time", ("M7", "M12")),
+        Fixture(
+            "F-SAME-VALUES",
+            "Same evaluated values at a different time",
+            ("M7", "M12"),
+            incremental.same_values,
+            (
+                # Synchronized at one time code, then at another where every value is equal: nothing written.
+                Case("equal-values", SYNC, SUCCESS, ("DISC-04", "AFF-03", "CHG-21"), 1),
+                # Then at one where values differ: only the copies whose content differs change, in place.
+                Case("differing-values", SYNC, SUCCESS, ("CHG-14", "CHG-15", "CHG-21"), 1),
+            ),
+        ),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
         Fixture(
             "F-NO-OP-REFRESH",

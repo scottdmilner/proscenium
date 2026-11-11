@@ -8,6 +8,7 @@ import pytest
 from pxr import Gf, Tf, Usd, UsdGeom
 
 from fixtures import incremental
+from support.time_codes import sampled
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -70,3 +71,55 @@ def _ancestors(prim: Usd.Prim) -> list[Usd.Prim]:
     while (prim := prim.GetParent()) and not prim.IsPseudoRoot():
         chain.append(prim)
     return chain[::-1]
+
+
+# --- F-SAME-VALUES -------------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def same_values(tmp_path: Path) -> Iterator[incremental.SameValuesScene]:
+    with incremental.same_values(tmp_path) as scene:
+        yield scene
+
+
+def _usd_time(time_code: float | None) -> Usd.TimeCode:
+    return Usd.TimeCode.Default() if time_code is None else Usd.TimeCode(time_code)
+
+
+def _evaluated(stage: Usd.Stage, time_code: float | None) -> dict[str, tuple[Gf.Matrix4d, bool]]:
+    """Each drawn mesh's world matrix and visibility at the time code, by USD."""
+    cache = UsdGeom.XformCache(_usd_time(time_code))
+    return {
+        path: (
+            cache.GetLocalToWorldTransform(prim := stage.GetPrimAtPath(path)),
+            UsdGeom.Imageable(prim).ComputeVisibility(_usd_time(time_code)) != UsdGeom.Tokens.invisible,
+        )
+        for path in (incremental.HELD, incremental.BLINK, incremental.STILL)
+    }
+
+
+def _sampled(scene: incremental.SameValuesScene) -> tuple[float | None, ...]:
+    return sampled("F-SAME-VALUES", scene.variation).time_codes
+
+
+def test_same_values_held_and_blink(same_values: incremental.SameValuesScene) -> None:
+    for time_code in _sampled(same_values):
+        evaluated = _evaluated(same_values.stage, time_code)
+        assert evaluated[incremental.HELD][0].ExtractTranslation()[0] == same_values.held_x(time_code), time_code
+        assert evaluated[incremental.BLINK][1] == same_values.blink_visible(time_code), time_code
+        assert evaluated[incremental.STILL] == _evaluated(same_values.stage, None)[incremental.STILL], time_code
+
+
+def test_same_values_equal_time_codes(same_values: incremental.SameValuesScene) -> None:
+    for first, second in same_values.equal_time_codes:
+        assert _evaluated(same_values.stage, first) == _evaluated(same_values.stage, second), (first, second)
+        assert not same_values.changed_copies(first, second)
+
+
+def test_same_values_changed_copies(same_values: incremental.SameValuesScene) -> None:
+    time_codes = _sampled(same_values)
+    for first in time_codes:
+        for second in time_codes:
+            before, after = _evaluated(same_values.stage, first), _evaluated(same_values.stage, second)
+            differing = frozenset(path for path in before if before[path] != after[path])
+            assert same_values.changed_copies(first, second) == differing, (first, second)

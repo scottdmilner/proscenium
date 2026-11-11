@@ -301,7 +301,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [DISC-08](../spec/incremental.md#change-discovery) | Editor-provided change descriptions may be hints, but are not the sole correctness mechanism. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-02](../spec/incremental.md#affected-content) | Level 3 is permitted but bounded by churn and performance budgets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
-| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH`, `F-SAME-VALUES` | Set by M7. |
 | [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 ## spec/change-matrix.md
 
@@ -320,14 +320,14 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CHG-11](../spec/change-matrix.md#cases) | A prim renamed or moved under another parent \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-12](../spec/change-matrix.md#cases) | A variant selection switched \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-13](../spec/change-matrix.md#cases) | A gprim's type changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-14](../spec/change-matrix.md#cases) | A transform changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-15](../spec/change-matrix.md#cases) | Visibility changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-14](../spec/change-matrix.md#cases) | A transform changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
+| [CHG-15](../spec/change-matrix.md#cases) | Visibility changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
 | [CHG-16](../spec/change-matrix.md#cases) | Purpose changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-17](../spec/change-matrix.md#cases) | An untranslated gprim's bounds changed, appeared, or vanished \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-18](../spec/change-matrix.md#cases) | A prim made instanceable, or no longer instanceable \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-19](../spec/change-matrix.md#cases) | A prim inside a native instance's shared contents changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-20](../spec/change-matrix.md#cases) | A point instancer's points, ids, or prototypes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-21](../spec/change-matrix.md#cases) | The time code synchronized changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-21](../spec/change-matrix.md#cases) | The time code synchronized changed \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
 | [CHG-22](../spec/change-matrix.md#cases) | A generation with cached time codes synchronized again \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-23](../spec/change-matrix.md#cases) | The payload policy changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-24](../spec/change-matrix.md#cases) | A destination's purposes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |

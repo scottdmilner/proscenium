@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from support.time_codes import TimeVariation
 from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene
@@ -74,4 +75,56 @@ def no_op_refresh(dest: Path) -> Generator[NoOpRefreshScene]:
         ),
         not_drawn=frozenset({"/World/GuideOnly"}),
         placeholder_paths=frozenset({"/World/Curves", "/World/Fog"}),
+    )
+
+
+# --- F-SAME-VALUES -------------------------------------------------------------------------------------------
+
+HELD, BLINK, STILL = "/World/Held", "/World/Blink", "/World/Still"
+
+
+@dataclass
+class SameValuesScene:
+    root_layer_path: Path
+    stage: Usd.Stage  # the caller's live stage
+    variation: TimeVariation
+    # Pairs of time codes at which every drawn copy evaluates the same: a synchronization at one, then the other,
+    # writes nothing.
+    equal_time_codes: tuple[tuple[float | None, float | None], ...]  # None: the default time code
+
+    def held_x(self, time_code: float | None) -> float:
+        """Held's x translation: 0 at the default time code, linear between its samples (0, 5, 5, 0 at 0 to 30)."""
+        if time_code is None or time_code <= 0.0 or time_code >= 30.0:
+            return 0.0
+        if time_code <= 10.0:
+            return 0.5 * time_code
+        if time_code <= 20.0:
+            return 5.0
+        return 0.5 * (30.0 - time_code)
+
+    def blink_visible(self, time_code: float | None) -> bool:
+        """Blink is invisible from 10 until 20; visible at the default time code."""
+        return time_code is None or not 10.0 <= time_code < 20.0
+
+    def changed_copies(self, first: float | None, second: float | None) -> frozenset[str]:
+        """The drawn copies whose content differs between two time codes: never Still."""
+        changed = set()
+        if self.held_x(first) != self.held_x(second):
+            changed.add(HELD)
+        if self.blink_visible(first) != self.blink_visible(second):
+            changed.add(BLINK)
+        return frozenset(changed)
+
+
+@contextmanager
+def same_values(dest: Path) -> Generator[SameValuesScene]:
+    """F-SAME-VALUES: see scenes/incremental/same_values.usda."""
+    root = copy_scene(Scene.INCREMENTAL, dest) / "same_values.usda"
+    yield SameValuesScene(
+        root_layer_path=root,
+        stage=open_stage_without_cache(root),
+        variation=TimeVariation(
+            start=0.0, end=30.0, authored_sample_time_codes=(0.0, 10.0, 20.0, 30.0), transitions=(10.0, 20.0)
+        ),
+        equal_time_codes=((10.0, 15.0), (12.5, 17.5), (0.0, None)),
     )
