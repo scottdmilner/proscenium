@@ -1282,6 +1282,7 @@ requirements:
         risk: high
       - id: AFF-04
         quote: "may instead replace every display resource, with the result of a clean full rebuild."
+        fixtures: [F-NO-OP-REFRESH]
 
   # --- spec/change-matrix.md -------------------------------------------------------------------
 
@@ -1297,12 +1298,14 @@ requirements:
         quote: "Partition rebuild: the drawn copy's partition is prepared anew beside the published generation"
       - id: CHG-04
         quote: "Full rebuild: every partition is prepared anew, as for a first synchronization."
+        fixtures: [F-NO-OP-REFRESH]
       - id: CHG-05
         quote: "Local updates are made at publication, and publication undoes them if it fails."
       - id: CHG-06
         quote: "A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact."
       - id: CHG-07
         quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
+        fixtures: [F-NO-OP-REFRESH]
       - id: CHG-08
         quote: "A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement."
 
@@ -1354,10 +1357,13 @@ requirements:
         quote: "A stage attached in place of another |"
       - id: CHG-30
         quote: "An undo or redo restored another generation |"
+        fixtures: [F-NO-OP-REFRESH]
       - id: CHG-31
         quote: "A .blend reopened |"
+        fixtures: [F-NO-OP-REFRESH]
       - id: CHG-32
         quote: "A full rebuild requested |"
+        fixtures: [F-NO-OP-REFRESH]
 
   # --- spec/support/transforms.md -------------------------------------------------------------
 

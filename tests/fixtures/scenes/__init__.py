@@ -24,6 +24,7 @@ class Scene(Enum):
     APPEARANCE = "appearance"  # F-APPEARANCE-CASES (with its texture), F-NESTED-STRESS, and point instancers
     TRANSACTION = "transaction"  # layers for every generator in fixtures/transaction.py
     EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py, generated ones' base included
+    INCREMENTAL = "incremental"  # layers for every generator in fixtures/incremental.py
 
     @property
     def path(self) -> Path:

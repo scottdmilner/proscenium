@@ -302,7 +302,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-02](../spec/incremental.md#affected-content) | Level 3 is permitted but bounded by churn and performance budgets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
 | [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
-| [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 ## spec/change-matrix.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
@@ -310,10 +310,10 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CHG-01](../spec/change-matrix.md#actions) | Local update: a kept resource is changed in place | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-02](../spec/change-matrix.md#actions) | The resource keeps its identity and its Blender selection. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-03](../spec/change-matrix.md#actions) | Partition rebuild: the drawn copy's partition is prepared anew beside the published generation | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-04](../spec/change-matrix.md#actions) | Full rebuild: every partition is prepared anew, as for a first synchronization. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-04](../spec/change-matrix.md#actions) | Full rebuild: every partition is prepared anew, as for a first synchronization. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 | [CHG-05](../spec/change-matrix.md#actions) | Local updates are made at publication, and publication undoes them if it fails. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-06](../spec/change-matrix.md#actions) | A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-07](../spec/change-matrix.md#actions) | A refresh writes only what its actions name. A resource the comparison finds equal is not written. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-07](../spec/change-matrix.md#actions) | A refresh writes only what its actions name. A resource the comparison finds equal is not written. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 | [CHG-08](../spec/change-matrix.md#actions) | A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-09](../spec/change-matrix.md#cases) | A prim added, activated, or loaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-10](../spec/change-matrix.md#cases) | A prim removed, deactivated, or unloaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
@@ -336,9 +336,9 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [CHG-27](../spec/change-matrix.md#cases) | The representation version changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-28](../spec/change-matrix.md#cases) | A reload reread layers \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CHG-29](../spec/change-matrix.md#cases) | A stage attached in place of another \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-30](../spec/change-matrix.md#cases) | An undo or redo restored another generation \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-31](../spec/change-matrix.md#cases) | A .blend reopened \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-32](../spec/change-matrix.md#cases) | A full rebuild requested \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-30](../spec/change-matrix.md#cases) | An undo or redo restored another generation \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [CHG-31](../spec/change-matrix.md#cases) | A .blend reopened \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [CHG-32](../spec/change-matrix.md#cases) | A full rebuild requested \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 ## spec/support/transforms.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |

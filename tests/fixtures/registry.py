@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, binding_copy_cases, evaluation, interaction, source_access, transaction
+from . import appearance, binding_copy_cases, evaluation, incremental, interaction, source_access, transaction
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -430,7 +430,28 @@ FIXTURES: dict[str, Fixture] = {
         Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M9",)),
         Fixture("F-SAME-VALUES", "Same evaluated values at a different time", ("M7", "M12")),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
-        Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M7", "M12")),
+        Fixture(
+            "F-NO-OP-REFRESH",
+            "No-op refresh",
+            ("M7", "M12"),
+            incremental.no_op_refresh,
+            (
+                # Synchronizing again unchanged writes nothing, and keeps counts and diagnostics.
+                Case("unchanged", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "STAB-01", "CHG-07", "DIAG-07"), 1),
+                # Full rebuilds whose retirement fails: leftovers only as tracked, inactive pending cleanup.
+                Case("disposal-failure", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("STAB-02",), 1),
+                # Once the failures are gone, a cleanup retry restores the clean counts.
+                Case("cleanup-retry", CLEANUP, SUCCESS, ("STAB-03",), 1),
+                # A resource released intact for an unmanaged user is counted apart, never deleted.
+                Case("protected-user", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("STAB-04",), 1),
+                # After an undo or redo restores a held generation, an unchanged refresh writes nothing.
+                Case("after-undo", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "CHG-30"), 1),
+                # After reopening, a refresh may rebuild everything, as a clean full rebuild would.
+                Case("after-reopen", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-04", "CHG-31"), 1),
+                # A requested full rebuild builds every partition, equal to a first synchronization.
+                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-04", "CHG-32"), 1),
+            ),
+        ),
         Fixture(
             "F-KIND-HIERARCHY",
             "Kind hierarchy with organizational prims Hydra does not keep",

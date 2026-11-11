@@ -1,0 +1,122 @@
+#usda 1.0
+# F-NO-OP-REFRESH (tests/fixtures/incremental.py): one drawn copy of each kind M7's application makes, for
+# refreshes that change nothing, so a refresh writes nothing and resource counts stay put:
+# - Plain is a mesh, drawn as a copy with its bounds; Sheared is a mesh whose matrix shears it, so its copy has
+#   a shear parent;
+# - Curves is basis curves with an authored extent, a placeholder box; Fog is a Volume with no extent, an
+#   empty marker;
+# - Hidden is an invisible mesh, kept in the plan and shown in neither destination; RenderOnly is a mesh of
+#   render purpose, shown in the final render only; GuideOnly is a mesh of guide purpose, which neither
+#   destination includes, so it isn't drawn at all;
+# - Instances holds two instanceable references to Prototypes/Crate, whose Box mesh is drawn once through each
+#   instance, two copies with instance contexts.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Mesh "Plain"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    }
+
+    def Mesh "Sheared"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (3, 0, 0, 1) )
+        uniform token[] xformOpOrder = ["xformOp:transform"]
+    }
+
+    def BasisCurves "Curves"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        point3f[] points = [(0, 0, 0), (1, 1, 1)]
+        uniform token type = "linear"
+        double3 xformOp:translate = (6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Volume "Fog"
+    {
+        double3 xformOp:translate = (9, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Hidden"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        token visibility = "invisible"
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "RenderOnly"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        uniform token purpose = "render"
+        double3 xformOp:translate = (3, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "GuideOnly"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        uniform token purpose = "guide"
+        double3 xformOp:translate = (6, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Instances"
+    {
+        def Xform "Left" (
+            instanceable = true
+            prepend references = </Prototypes/Crate>
+        )
+        {
+            double3 xformOp:translate = (0, 6, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "Right" (
+            instanceable = true
+            prepend references = </Prototypes/Crate>
+        )
+        {
+            double3 xformOp:translate = (3, 6, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+}
+
+class "Prototypes"
+{
+    def Xform "Crate"
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 1, 3, 2, 4, 6, 7, 5, 0, 4, 5, 1, 2, 3, 7, 6, 0, 2, 6, 4, 1, 5, 7, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0), (0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)]
+        }
+    }
+}
