@@ -10,6 +10,9 @@ datablock's current users once, before removing anything (lifecycle.md#pending-c
   datablocks itself released.
 - One whose removal fails, or whose user's did, is left pending, with why.
 
+A view layer's base for an object unlinked since an undo step was pushed isn't a use: when the users name a Scene
+user of an object, that Scene's view layers are updated before the users are read again (_current_user_map).
+
 Each call of bpy.data.batch_remove scans the file, so each level is removed in one call, and only when that raises
 is it halved, each half removed the same way, until each datablock that fails is alone: a few failures among n take
 about log n calls each, where one call per datablock would take n. A datablock is never passed to Blender once removed,
@@ -57,7 +60,7 @@ def remove_unused[K: Hashable](
         return outcome
     key_of = {d.session_uid: key for key, d in present.items()}
     ignored = {h.session_uid for h in holders}
-    user_map = bpy.data.user_map(subset=list(present.values()))
+    user_map = _current_user_map(list(present.values()))
     users = {key: {u.session_uid for u in user_map[d]} - ignored for key, d in present.items()}
     undecided = set(present)
     while undecided:
@@ -75,6 +78,30 @@ def remove_unused[K: Hashable](
     for key in undecided:  # only datablocks using each other in a cycle are left
         outcome.pending_reasons_by_key[key] = "it and the resources using it use each other"
     return outcome
+
+
+def _current_user_map(datablocks: list[bpy.types.ID]) -> Mapping[bpy.types.ID, set[bpy.types.ID]]:
+    """Each datablock's users, with no view layer's stale base counted.
+
+    Once an undo step has been pushed, a view layer has a base for each object its scene's collections link, and one
+    unlinked since keeps its base until the depsgraph next updates, through which bpy.data.user_map names the Scene a
+    user (M6 plan, F5). So when it names a Scene user of an object, that Scene's view layers are updated, and the users
+    read again. A Scene that really uses an object, as its camera, stays a user.
+    """
+    user_map = bpy.data.user_map(subset=datablocks)
+    scenes = {
+        user
+        for d in datablocks
+        if isinstance(d, bpy.types.Object)
+        for user in user_map[d]
+        if isinstance(user, bpy.types.Scene)
+    }
+    if not scenes:
+        return user_map
+    for scene in scenes:
+        for view_layer in scene.view_layers:
+            view_layer.update()
+    return bpy.data.user_map(subset=datablocks)
 
 
 def _classify_and_collect_removable[K: Hashable](

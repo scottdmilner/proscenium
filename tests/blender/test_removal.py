@@ -11,6 +11,7 @@ import bpy
 
 from proscenium.binding.persistence import id_property_records
 from proscenium.synchronization import datablock_removal
+from support import undo
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -36,6 +37,26 @@ def _counted(monkeypatch: pytest.MonkeyPatch, fail: Callable[[Sequence[bpy.types
 
     monkeypatch.setattr(datablock_removal, "_batch_remove", counted)
     return calls
+
+
+def test_a_stale_base_is_no_user_but_a_scene_camera_is() -> None:
+    # After an undo step is pushed, a view layer has a base for each linked object, kept for one unlinked until the
+    # depsgraph updates, through which bpy.data.user_map names the Scene a user (M6 plan, F5). Removal doesn't take
+    # that for a use, but a Scene's camera is one, so that object is released intact.
+    undo.require_global_undo()
+    scene = bpy.data.scenes["Scene"]
+    unlinked, camera = _objects(2)
+    for obj in (unlinked, camera):
+        scene.collection.objects.link(obj)
+    scene.camera = camera
+    undo.push("bases for the linked objects")
+    for obj in (unlinked, camera):
+        scene.collection.objects.unlink(obj)
+    assert scene in bpy.data.user_map(subset=[unlinked])[unlinked]  # the stale base
+    outcome = datablock_removal.remove_unused({"unlinked": unlinked, "camera": camera})
+    assert (outcome.removed_keys, outcome.released_keys) == ({"unlinked"}, {"camera"})
+    assert not id_property_records.alive(unlinked)
+    assert scene.camera == camera
 
 
 def test_datablocks_are_removed_in_one_call(monkeypatch: pytest.MonkeyPatch) -> None:

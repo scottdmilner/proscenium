@@ -12,12 +12,14 @@ import bpy
 import pytest
 
 from fixtures import transaction
+from proscenium.api import bindings as api
 from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.synchronization import datablock_removal
+from support import undo
 from support.blend import prim_name
 from support.destinations import destination
 
@@ -206,3 +208,21 @@ def test_a_retirement_the_ledger_cant_record_raises(
             handle.synchronize(second)
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, LoadedRecord) and generation.record.time_code == second
+
+
+def test_retirement_after_an_undo_push_removes_the_obsolete_display(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # M6 F5, on F-RETIREMENT-FAILURE's scene with nothing failing: with the API's undo step pushed after the first
+    # synchronization, as with a window, the view layer holds a base for each published object until the depsgraph
+    # next updates, through which bpy.data.user_map names the Scene a user of each obsolete object once publication
+    # unlinks it. Synchronizing again still removes every obsolete resource, releasing and leaving pending none.
+    undo.require_global_undo()
+    monkeypatch.setattr(api, "_undo_steps_enabled", lambda: True)
+    with transaction.retirement_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        assert handle.synchronize(scene.time_codes[0]).state is ResultState.SUCCESS
+        first = {e.datablock for e in _manifest(handle).entries.values()}
+        assert handle.synchronize(scene.time_codes[1]).state is ResultState.SUCCESS
+        assert all(not id_property_records.alive(d) for d in first if d is not None)
+        assert not _ledger()

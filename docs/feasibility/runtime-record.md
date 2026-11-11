@@ -1733,6 +1733,22 @@ What retiring the obsolete display costs when a synchronization rebuilds it, wit
 - **For M7:** retirement must not take a stale view-layer base for a user ([M7](../milestones/M07-application.md)); a resync costs a depsgraph update, 0.3 to 0.6 s on ALab and 1.9 to 3.8 s at 30,001 objects here. **For M11's cleanup:** the remap and notifier scans are Blender's, per call, so removing less, as incremental refresh does, would lower them (inferred).
 - **Not measured:** a windowed Blender, Linux and Windows, batched displays, and the remap's inlined loop.
 
+### Retirement after an undo push (M7 Phase B)
+
+The two candidate fixes for [the release above](#retiring-a-large-display-m6-phase-f), timed inside the product's second synchronization of each scene, a full rebuild after the API pushed its undo step as with a window, in the binary (Blender 5.2.2) with global undo on, with M7's B1 display (an object and a bounds mesh per drawn copy), three processes per scene, on an Apple M1 Max with 32 GB, on AC power (2026-11-11, load average 4.5 read just after the runs). Reproduce with `measure/retirement_after_undo_push.py --scenes updates alab --exclude updates-100 --repeats 3`. Before retirement ran, the wrapper counted the obsolete datablocks `bpy.data.user_map` named a Scene user of, timed each candidate in turn, the read-only one first, and counted again.
+
+| | Obsolete datablocks | Scene-used, before; after the resync | Scene users' `users_collection` read (s) | Resync (s) | `retire` after (s) |
+|---|---|---|---|---|---|
+| updates-1000 | 6,002 | 3,001; 0 | 0.26 to 0.32 | 0.13 to 0.20 | 0.29 to 0.48 |
+| ALab | 13,358 | 6,679; 0 | 1.74 to 1.80 | 0.27 to 0.30 | 3.3 to 3.5 |
+| updates-10000 | 60,002 | 30,001; 0 | 40 to 43 | 1.7 to 2.4 | 93 to 99 |
+
+**Findings:**
+- **The stale Scene users are exactly the obsolete objects,** each in no collection; the meshes have none. After `ViewLayer.update()` on each scene's view layers, none was left, and retirement removed every obsolete datablock in every run: the file held as many objects, meshes, and actions as the new generation.
+- **Reading `users_collection` costs more than the resync, and grows faster:** 40 to 43 s for 30,001 objects, against 1.7 to 2.4 s, so it grows faster than the objects, from three sizes; why wasn't investigated, and a scan of the file's collections for each object is a guess. It would also count a Scene that really uses an object, as its camera, as no user.
+- **M7 resyncs:** `datablock_removal` updates the view layers of each Scene the users name for an object, then reads the users again, so it costs nothing when no base is stale, as in a background run that pushes no step. That the resync's depsgraph update is work a window does at its next redraw anyway, so the cost moves rather than adds, is an inference, not measured.
+- **Not measured:** a windowed Blender, global undo off, the wheel, Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:
