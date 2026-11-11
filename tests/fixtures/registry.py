@@ -21,7 +21,16 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, binding_copy_cases, evaluation, incremental, interaction, source_access, transaction
+from . import (
+    appearance,
+    binding_copy_cases,
+    edit_sequence,
+    evaluation,
+    incremental,
+    interaction,
+    source_access,
+    transaction,
+)
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -485,6 +494,60 @@ FIXTURES: dict[str, Fixture] = {
                 Case("after-reopen", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-04", "CHG-31"), 1),
                 # A requested full rebuild builds every partition, equal to a first synchronization.
                 Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-04", "CHG-32"), 1),
+            ),
+        ),
+        Fixture(
+            "F-EDIT-SEQUENCE",
+            "Edit sequence",
+            ("M7",),
+            edit_sequence.edit_sequence,
+            (
+                # Each step's refresh, compared with a clean full rebuild of the same state, and its affected
+                # resources the step's: changed in place, rebuilt, retired, or built, the rest not written.
+                # Local updates: inherited, coalesced, and repeated transforms, visibility, purpose, and shared
+                # instance contents; each kept copy keeps its identity and Blender selection.
+                Case(
+                    "local-updates",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-01", "CHG-02", "CHG-14", "CHG-15", "CHG-16", "CHG-19", "AFF-01", "PH2-02"),
+                    1,
+                ),
+                # Rebuilds and replacements: a shear introduced and removed, bounds changed, appearing, and
+                # vanishing, a type changed with its bounds equal, and a variant switch.
+                Case(
+                    "partition-rebuilds",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-03", "CHG-07", "CHG-08", "CHG-12", "CHG-13", "CHG-14", "CHG-17", "AFF-01"),
+                    1,
+                ),
+                # Existence and hierarchy: added, activated, deactivated, removed, renamed, moved, and instanceable
+                # toggled, the prototype's mesh still shared by the instance that keeps it.
+                Case(
+                    "existence",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-09", "CHG-10", "CHG-11", "CHG-18", "DISC-02", "AFF-01", "PH2-03"),
+                    1,
+                ),
+                # Points moved and removed, with authored ids and without.
+                Case("point-instancers", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-20", "AFF-01"), 1),
+                # Publication failing after a step: its local updates are undone with the rest of the attempt.
+                Case("publication-failure", SYNC, FAILURE, ("CHG-05", "TXN-12"), 1),
+                # From the scene as it starts: a change of payload policy builds or retires Leaf's copy, and
+                # purposes including guide build Guide's.
+                Case("payload-policy", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-23",), 1),
+                Case("purposes", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-24",), 1),
+                # Coordinate conversion and unit scale: every world matrix updated in place, or nothing written.
+                Case("unit-scale", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-25", "CHG-26"), 1),
+                Case("representation-version", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-27",), 1),
+                # A reload of the sublayer rewritten on disk, and a stage attached in place of the live one: only
+                # Far's copy updated.
+                Case("reload", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-28", "DISC-01"), 1),
+                Case("attach", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-29",), 1),
+                # Synchronized again after a cache call: Mover's keys removed in place, its animation data retired.
+                Case("cached-again", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-22",), 1),
             ),
         ),
         Fixture(

@@ -81,10 +81,12 @@ requirements:
       - id: PH2-02
         quote: "Preserve source selections where their source identities remain valid."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
         note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh (DECISIONS.md \"Partition unit\"); the ID keeps its prefix, since IDs are never reused."
       - id: PH2-03
         quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
         note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh."
       - id: PH1-02
         quote: "The acceptance suite must pass"
@@ -246,6 +248,7 @@ requirements:
       - id: TXN-12
         quote: "These guarantees apply equally to incremental mutations."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
 
   - section: spec/pipeline.md#cached-time-codes
     delivery: M5
@@ -1245,8 +1248,10 @@ requirements:
     rows:
       - id: DISC-01
         quote: "Manual refresh of an attached source, including after an explicit reload of its contributing layers."
+        fixtures: [F-EDIT-SEQUENCE]
       - id: DISC-02
         quote: "Prim existence, activation, type, hierarchy, and variants."
+        fixtures: [F-EDIT-SEQUENCE]
       - id: DISC-03
         quote: "including external assets changed without any USD edit."
         delivery: M9
@@ -1271,6 +1276,7 @@ requirements:
     rows:
       - id: AFF-01
         quote: "Source-affected entities: source state actually changed."
+        fixtures: [F-EDIT-SEQUENCE]
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
         delivery: M13
@@ -1292,23 +1298,28 @@ requirements:
     rows:
       - id: CHG-01
         quote: "Local update: a kept resource is changed in place"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-02
         quote: "The resource keeps its identity and its Blender selection."
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-03
         quote: "Partition rebuild: the drawn copy's partition is prepared anew beside the published generation"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-04
         quote: "Full rebuild: every partition is prepared anew, as for a first synchronization."
         fixtures: [F-NO-OP-REFRESH]
       - id: CHG-05
         quote: "Local updates are made at publication, and publication undoes them if it fails."
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-06
         quote: "A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact."
         fixtures: [F-UNMANAGED-USER]
       - id: CHG-07
         quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
-        fixtures: [F-NO-OP-REFRESH]
+        fixtures: [F-NO-OP-REFRESH, F-EDIT-SEQUENCE]
       - id: CHG-08
         quote: "A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement."
+        fixtures: [F-EDIT-SEQUENCE]
 
   - section: spec/change-matrix.md#cases
     delivery: M7
@@ -1316,50 +1327,67 @@ requirements:
     rows:
       - id: CHG-09
         quote: "A prim added, activated, or loaded through a payload |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-10
         quote: "A prim removed, deactivated, or unloaded through a payload |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-11
         quote: "A prim renamed or moved under another parent |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-12
         quote: "A variant selection switched |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-13
         quote: "A gprim's type changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-14
         quote: "A transform changed, on a prim or an ancestor |"
-        fixtures: [F-SAME-VALUES, F-UNMANAGED-USER]
+        fixtures: [F-SAME-VALUES, F-UNMANAGED-USER, F-EDIT-SEQUENCE]
       - id: CHG-15
         quote: "Visibility changed, on a prim or an ancestor |"
-        fixtures: [F-SAME-VALUES]
+        fixtures: [F-SAME-VALUES, F-EDIT-SEQUENCE]
       - id: CHG-16
         quote: "Purpose changed, on a prim or an ancestor |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-17
         quote: "An untranslated gprim's bounds changed, appeared, or vanished |"
-        fixtures: [F-UNMANAGED-USER]
+        fixtures: [F-UNMANAGED-USER, F-EDIT-SEQUENCE]
       - id: CHG-18
         quote: "A prim made instanceable, or no longer instanceable |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-19
         quote: "A prim inside a native instance's shared contents changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-20
         quote: "A point instancer's points, ids, or prototypes changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-21
         quote: "The time code synchronized changed |"
         fixtures: [F-SAME-VALUES]
       - id: CHG-22
         quote: "A generation with cached time codes synchronized again |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-23
         quote: "The payload policy changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-24
         quote: "A destination's purposes changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-25
         quote: "Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-26
         quote: "The target scene's unit scale changed while coordinate conversion is off |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-27
         quote: "The representation version changed |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-28
         quote: "A reload reread layers |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-29
         quote: "A stage attached in place of another |"
+        fixtures: [F-EDIT-SEQUENCE]
       - id: CHG-30
         quote: "An undo or redo restored another generation |"
         fixtures: [F-NO-OP-REFRESH]

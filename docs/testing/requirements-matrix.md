@@ -19,8 +19,8 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [ARCH-06](../PROJECT.md#core-architecture) | Tools address USD entities through the source selection model. | contract |  | M2 | 1 / M4 | — | The M2 decision record: the interaction contract (spec/interaction-contract.md), whose headless functions are how tools address source entities, and the M2 plan's Phase A log; M4 finalized it (M4 plan, F2). |
 | [ARCH-08](../PROJECT.md#core-architecture) | Keep the performance tests around for later | process |  | M4 | 1 / M13 | — | The measurement harness M4 builds (M4 plan, Phase C) stays in the repository and runs on the display representation in use; M12 records its Phase 1 baselines with it and M13 its Phase 2 targets. |
 | [PH1-01](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Manual refresh is required. | behavior |  | M12 | 1 / M12 | — | Set by M12. |
-| [PH2-02](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Preserve source selections where their source identities remain valid. | behavior |  | M7 | 1 / M12 | — | Set by M7. *Moved from Phase 2 with the user, 2026-11-07, with incremental refresh (DECISIONS.md "Partition unit"); the ID keeps its prefix, since IDs are never reused.* |
-| [PH2-03](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners. | behavior |  | M7 | 1 / M12 | — | Set by M7. *Moved from Phase 2 with the user, 2026-11-07, with incremental refresh.* |
+| [PH2-02](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Preserve source selections where their source identities remain valid. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. *Moved from Phase 2 with the user, 2026-11-07, with incremental refresh (DECISIONS.md "Partition unit"); the ID keeps its prefix, since IDs are never reused.* |
+| [PH2-03](../PROJECT.md#phase-1--correct-snapshot-synchronization) | Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. *Moved from Phase 2 with the user, 2026-11-07, with incremental refresh.* |
 | [PH1-02](../PROJECT.md#phase-1--correct-snapshot-synchronization) | The acceptance suite must pass | process |  | M12 | 1 / M12 | — | Set by M12. |
 | [PH2-04](../PROJECT.md#phase-2--performance-qualification) | Establish and meet representative performance targets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
 | [COMP-01](../PROJECT.md#compatibility-and-development) | Minimum Blender version: 5.2 LTS. | process |  | M1 | 1 / M12 | — | The manifest's blender_version_min is 5.2.0 and the built zip validates (tools/build_extension.py). |
@@ -55,7 +55,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [TXN-08](../spec/pipeline.md#synchronization-transaction) | The attempt tracks each newly created prepared resource before subsequent fallible work | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | On F-PREPARATION-CLEANUP-FAILURE, a failure injected at each fallible step after a resource is created leaves every resource created so far either removed or, where its disposal fails, in the ledger; a failed attempt whose disposal succeeds, and a synchronization whose retirement succeeds, leave the ledger as it was. |
 | [TXN-09](../spec/pipeline.md#synchronization-transaction) | Reused published resources remain protected by the existing manifest and are never disposal candidates. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | In F-PREPARATION-CLEANUP-FAILURE's replace case, no resource the published manifest names is in the ledger or disposed of. |
 | [TXN-10](../spec/pipeline.md#synchronization-transaction) | Deferred disposal does not permit failed preparation to become visible or substitute for restoring any mutated published state. | behavior |  | M5 | 1 / M12 | `F-PREPARATION-CLEANUP-FAILURE` | After F-PREPARATION-CLEANUP-FAILURE's failures, no leftover is linked in a scene or named by correspondence, and the published display's datablocks keep their values. |
-| [TXN-12](../spec/pipeline.md#synchronization-transaction) | These guarantees apply equally to incremental mutations. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [TXN-12](../spec/pipeline.md#synchronization-transaction) | These guarantees apply equally to incremental mutations. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [CACHE-01](../spec/pipeline.md#cached-time-codes) | evaluates the source at each given time code not yet cached, under the generation's settings, and adds the values that vary | behavior |  | M7 | 1 / M12 | — | Synchronized at one sampled time code and cached at the others, in more than one order, the display at each sampled time code's frame passes the standard end-to-end checks against a clean synchronization there, content that appears or vanishes included; a frame between cached time codes shows the latest one before it. |
 | [CACHE-09](../spec/pipeline.md#cached-time-codes) | One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [CACHE-02](../spec/pipeline.md#cached-time-codes) | Caching publishes no new generation. | behavior |  | M5 | 1 / M12 | `F-CACHED-TIME-CODES` | After F-CACHED-TIME-CODES' cache call, the generation's settings, time code, manifest resources, and correspondence are as before, its cached time codes gain exactly the call's, and no undo step is added. |
@@ -291,15 +291,15 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
-| [DISC-01](../spec/incremental.md#change-discovery) | Manual refresh of an attached source, including after an explicit reload of its contributing layers. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [DISC-02](../spec/incremental.md#change-discovery) | Prim existence, activation, type, hierarchy, and variants. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [DISC-01](../spec/incremental.md#change-discovery) | Manual refresh of an attached source, including after an explicit reload of its contributing layers. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [DISC-02](../spec/incremental.md#change-discovery) | Prim existence, activation, type, hierarchy, and variants. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [DISC-03](../spec/incremental.md#change-discovery) | including external assets changed without any USD edit. | behavior |  | M9 | 1 / M12 | `F-TEXTURE-IN-PLACE` | Set by M9. |
 | [DISC-04](../spec/incremental.md#change-discovery) | including time changes that do not alter evaluated values. | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
 | [DISC-05](../spec/incremental.md#change-discovery) | Managed Blender content requiring repair, distinguished from legitimate external users of managed resources. | behavior |  | M11 | 1 / M12 | `F-UNMANAGED-USER` | Set by M11. |
 | [DISC-06](../spec/incremental.md#change-discovery) | Separate change discovery from dependency invalidation. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [DISC-07](../spec/incremental.md#change-discovery) | Recover correctly from missed or coalesced change notifications. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [DISC-08](../spec/incremental.md#change-discovery) | Editor-provided change descriptions may be hints, but are not the sole correctness mechanism. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [AFF-02](../spec/incremental.md#affected-content) | Level 3 is permitted but bounded by churn and performance budgets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
 | [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH`, `F-SAME-VALUES` | Set by M7. |
 | [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
@@ -307,35 +307,35 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
 |---|---|---|---|---|---|---|---|
-| [CHG-01](../spec/change-matrix.md#actions) | Local update: a kept resource is changed in place | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-02](../spec/change-matrix.md#actions) | The resource keeps its identity and its Blender selection. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-03](../spec/change-matrix.md#actions) | Partition rebuild: the drawn copy's partition is prepared anew beside the published generation | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-01](../spec/change-matrix.md#actions) | Local update: a kept resource is changed in place | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-02](../spec/change-matrix.md#actions) | The resource keeps its identity and its Blender selection. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-03](../spec/change-matrix.md#actions) | Partition rebuild: the drawn copy's partition is prepared anew beside the published generation | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [CHG-04](../spec/change-matrix.md#actions) | Full rebuild: every partition is prepared anew, as for a first synchronization. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
-| [CHG-05](../spec/change-matrix.md#actions) | Local updates are made at publication, and publication undoes them if it fails. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-05](../spec/change-matrix.md#actions) | Local updates are made at publication, and publication undoes them if it fails. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [CHG-06](../spec/change-matrix.md#actions) | A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact. | behavior |  | M7 | 1 / M12 | `F-UNMANAGED-USER` | Set by M7. |
-| [CHG-07](../spec/change-matrix.md#actions) | A refresh writes only what its actions name. A resource the comparison finds equal is not written. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
-| [CHG-08](../spec/change-matrix.md#actions) | A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-09](../spec/change-matrix.md#cases) | A prim added, activated, or loaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-10](../spec/change-matrix.md#cases) | A prim removed, deactivated, or unloaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-11](../spec/change-matrix.md#cases) | A prim renamed or moved under another parent \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-12](../spec/change-matrix.md#cases) | A variant selection switched \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-13](../spec/change-matrix.md#cases) | A gprim's type changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-14](../spec/change-matrix.md#cases) | A transform changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES`, `F-UNMANAGED-USER` | Set by M7. |
-| [CHG-15](../spec/change-matrix.md#cases) | Visibility changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
-| [CHG-16](../spec/change-matrix.md#cases) | Purpose changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-17](../spec/change-matrix.md#cases) | An untranslated gprim's bounds changed, appeared, or vanished \| | behavior |  | M7 | 1 / M12 | `F-UNMANAGED-USER` | Set by M7. |
-| [CHG-18](../spec/change-matrix.md#cases) | A prim made instanceable, or no longer instanceable \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-19](../spec/change-matrix.md#cases) | A prim inside a native instance's shared contents changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-20](../spec/change-matrix.md#cases) | A point instancer's points, ids, or prototypes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-07](../spec/change-matrix.md#actions) | A refresh writes only what its actions name. A resource the comparison finds equal is not written. | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH`, `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-08](../spec/change-matrix.md#actions) | A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement. | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-09](../spec/change-matrix.md#cases) | A prim added, activated, or loaded through a payload \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-10](../spec/change-matrix.md#cases) | A prim removed, deactivated, or unloaded through a payload \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-11](../spec/change-matrix.md#cases) | A prim renamed or moved under another parent \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-12](../spec/change-matrix.md#cases) | A variant selection switched \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-13](../spec/change-matrix.md#cases) | A gprim's type changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-14](../spec/change-matrix.md#cases) | A transform changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES`, `F-UNMANAGED-USER`, `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-15](../spec/change-matrix.md#cases) | Visibility changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES`, `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-16](../spec/change-matrix.md#cases) | Purpose changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-17](../spec/change-matrix.md#cases) | An untranslated gprim's bounds changed, appeared, or vanished \| | behavior |  | M7 | 1 / M12 | `F-UNMANAGED-USER`, `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-18](../spec/change-matrix.md#cases) | A prim made instanceable, or no longer instanceable \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-19](../spec/change-matrix.md#cases) | A prim inside a native instance's shared contents changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-20](../spec/change-matrix.md#cases) | A point instancer's points, ids, or prototypes changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [CHG-21](../spec/change-matrix.md#cases) | The time code synchronized changed \| | behavior |  | M7 | 1 / M12 | `F-SAME-VALUES` | Set by M7. |
-| [CHG-22](../spec/change-matrix.md#cases) | A generation with cached time codes synchronized again \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-23](../spec/change-matrix.md#cases) | The payload policy changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-24](../spec/change-matrix.md#cases) | A destination's purposes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-25](../spec/change-matrix.md#cases) | Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-26](../spec/change-matrix.md#cases) | The target scene's unit scale changed while coordinate conversion is off \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-27](../spec/change-matrix.md#cases) | The representation version changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-28](../spec/change-matrix.md#cases) | A reload reread layers \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [CHG-29](../spec/change-matrix.md#cases) | A stage attached in place of another \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-22](../spec/change-matrix.md#cases) | A generation with cached time codes synchronized again \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-23](../spec/change-matrix.md#cases) | The payload policy changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-24](../spec/change-matrix.md#cases) | A destination's purposes changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-25](../spec/change-matrix.md#cases) | Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-26](../spec/change-matrix.md#cases) | The target scene's unit scale changed while coordinate conversion is off \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-27](../spec/change-matrix.md#cases) | The representation version changed \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-28](../spec/change-matrix.md#cases) | A reload reread layers \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
+| [CHG-29](../spec/change-matrix.md#cases) | A stage attached in place of another \| | behavior |  | M7 | 1 / M12 | `F-EDIT-SEQUENCE` | Set by M7. |
 | [CHG-30](../spec/change-matrix.md#cases) | An undo or redo restored another generation \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 | [CHG-31](../spec/change-matrix.md#cases) | A .blend reopened \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
 | [CHG-32](../spec/change-matrix.md#cases) | A full rebuild requested \| | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |

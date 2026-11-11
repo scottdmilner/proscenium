@@ -1,0 +1,217 @@
+#usda 1.0
+# F-EDIT-SEQUENCE (tests/fixtures/edit_sequence.py): a scene the change matrix's cases are made on, one edit
+# per step, each refresh then checked against a clean full rebuild (docs/spec/change-matrix.md):
+# - Group holds A and B, so an edit to Group is inherited by both; A is edited repeatedly, and carries an
+#   unused sheared xformOp:transform that a step adds to its op order and a later step takes out;
+# - Odd is basis curves with an authored extent, a placeholder box, whose bounds and type steps change;
+# - Fog is a Volume with no extent, an empty marker, whose bounds a step authors and a later step blocks;
+# - Shape's form variant holds Body as basis curves with an extent (box) or a Volume without one (marker);
+# - Dormant is an inactive mesh a step activates;
+# - Payloaded's payload holds Leaf, drawn only while its payload is loaded;
+# - Instances holds two instanceable references to Prototypes/Crate, whose Box is drawn through each;
+# - Tagged is a point instancer with authored ids 1, 2, and 3, and Numbered one with none, each point a copy of
+#   its Pebble prototype;
+# - Mover's translate is sampled at 0 and 10, for cached time codes; Guide is a mesh of guide purpose, drawn
+#   only when a destination's purposes include guide;
+# - Far comes from edit_sequence_sub.usda, for a reload of that layer rewritten on disk.
+(
+    defaultPrim = "World"
+    endTimeCode = 10
+    metersPerUnit = 1
+    startTimeCode = 0
+    subLayers = [
+        @./edit_sequence_sub.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "Group"
+    {
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Mesh "A"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0.5, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Mesh "B"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 0)]
+            int[] faceVertexCounts = [4]
+            int[] faceVertexIndices = [0, 1, 2, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            double3 xformOp:translate = (3, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def BasisCurves "Odd"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        point3f[] points = [(0, 0, 0), (1, 1, 1)]
+        uniform token type = "linear"
+        double3 xformOp:translate = (6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Volume "Fog"
+    {
+        double3 xformOp:translate = (9, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Shape" (
+        variants = {
+            string form = "box"
+        }
+        prepend variantSets = "form"
+    )
+    {
+        double3 xformOp:translate = (12, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        variantSet "form" = {
+            "box" {
+                def BasisCurves "Body"
+                {
+                    int[] curveVertexCounts = [2]
+                    float3[] extent = [(0, 0, 0), (1, 1, 1)]
+                    point3f[] points = [(0, 0, 0), (1, 1, 1)]
+                    uniform token type = "linear"
+                }
+            }
+            "marker" {
+                def Volume "Body"
+                {
+                }
+            }
+        }
+    }
+
+    def Mesh "Dormant" (
+        active = false
+    )
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Payloaded" (
+        prepend payload = @./edit_sequence_payload.usda@
+    )
+    {
+        double3 xformOp:translate = (3, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Instances"
+    {
+        def Xform "Left" (
+            instanceable = true
+            prepend references = </Prototypes/Crate>
+        )
+        {
+            double3 xformOp:translate = (0, 6, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+
+        def Xform "Right" (
+            instanceable = true
+            prepend references = </Prototypes/Crate>
+        )
+        {
+            double3 xformOp:translate = (3, 6, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def PointInstancer "Tagged"
+    {
+        int64[] ids = [1, 2, 3]
+        point3f[] positions = [(0, 9, 0), (2, 9, 0), (4, 9, 0)]
+        int[] protoIndices = [0, 0, 0]
+        rel prototypes = </World/Tagged/Protos/Pebble>
+
+        def Scope "Protos"
+        {
+            def Mesh "Pebble"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            }
+        }
+    }
+
+    def PointInstancer "Numbered"
+    {
+        point3f[] positions = [(0, 12, 0), (2, 12, 0), (4, 12, 0)]
+        int[] protoIndices = [0, 0, 0]
+        rel prototypes = </World/Numbered/Protos/Pebble>
+
+        def Scope "Protos"
+        {
+            def Mesh "Pebble"
+            {
+                float3[] extent = [(0, 0, 0), (1, 1, 0)]
+                int[] faceVertexCounts = [4]
+                int[] faceVertexIndices = [0, 1, 2, 3]
+                point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+            }
+        }
+    }
+
+    def Mesh "Mover"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 15, 0)
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 15, 0),
+            10: (5, 15, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Guide"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        uniform token purpose = "guide"
+        double3 xformOp:translate = (3, 15, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}
+
+class "Prototypes"
+{
+    def Xform "Crate"
+    {
+        def Mesh "Box"
+        {
+            float3[] extent = [(0, 0, 0), (1, 1, 1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0, 1, 3, 2, 4, 6, 7, 5, 0, 4, 5, 1, 2, 3, 7, 6, 0, 2, 6, 4, 1, 5, 7, 3]
+            point3f[] points = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 0), (0, 0, 1), (1, 0, 1), (0, 1, 1), (1, 1, 1)]
+        }
+    }
+}

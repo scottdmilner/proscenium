@@ -1,0 +1,19 @@
+#usda 1.0
+# F-EDIT-SEQUENCE's payload (see edit_sequence.usda): Leaf, drawn under Payloaded only while the payload is
+# loaded, so a change of payload policy builds or retires its copy.
+(
+    defaultPrim = "Root"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "Root"
+{
+    def Mesh "Leaf"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+    }
+}
