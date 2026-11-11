@@ -1,0 +1,78 @@
+"""The scene graph views by name: each a `PrimTreeView`, and what its host said about where and how it shows.
+
+The registry knows nothing of the properties a view is drawn from; `widget_properties` keeps those. Hosts never see
+a view, only its name (`widget_hosting`).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from pxr import Sdf
+
+    from ..prim_tree import PrimTreeView
+
+
+class ViewNotFoundError(KeyError):
+    """No scene graph view has the name given."""
+
+
+@dataclass(frozen=True, slots=True)
+class SceneGraphView:
+    """One tree a host shows, and what its host said about where and how."""
+
+    name: str
+    prim_tree_view: PrimTreeView
+    # (area, region) -> whether the region is drawing this view now; the key watcher asks it.
+    shows_in_region: Callable[[Any, Any], bool]
+    # Called with the selected prim's path, or None, when the selection changes other than through select_prim.
+    on_selection_changed: Callable[[Sdf.Path | None], None]
+    run_pending: Callable[[], None]  # the timer that reads the view's pending search and stage changes
+
+
+class _SceneGraphViewsState:
+    """The process's views, by name, in the order they were added."""
+
+    views: dict[str, SceneGraphView] = {}
+
+
+def add_view(view: SceneGraphView) -> None:
+    """Add a view under its name, which no other view may have."""
+    if view.name in _SceneGraphViewsState.views:
+        raise ValueError(f"a scene graph view named {view.name!r} exists")
+    _SceneGraphViewsState.views[view.name] = view
+
+
+def discard_view(name: str) -> SceneGraphView:
+    """Take a view out of the registry, and return it."""
+    view = scene_graph_view(name)
+    del _SceneGraphViewsState.views[name]
+    return view
+
+
+def find_view(name: str) -> SceneGraphView | None:
+    """The view with a name, or None."""
+    return _SceneGraphViewsState.views.get(name)
+
+
+def scene_graph_view(name: str) -> SceneGraphView:
+    """The view with a name."""
+    try:
+        return _SceneGraphViewsState.views[name]
+    except KeyError:
+        raise ViewNotFoundError(name) from None
+
+
+def all_views() -> list[SceneGraphView]:
+    """Every view, in the order they were added."""
+    return list(_SceneGraphViewsState.views.values())
+
+
+def notify_selection(view: SceneGraphView, before: Sdf.Path | None) -> None:
+    """Tell the host the view's selection, if it changed from before."""
+    if view.prim_tree_view.selected_path != before:
+        view.on_selection_changed(view.prim_tree_view.selected_path)

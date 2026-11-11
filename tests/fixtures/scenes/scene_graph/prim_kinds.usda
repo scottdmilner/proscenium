@@ -1,9 +1,9 @@
 #usda 1.0
+# The scene graph's prim tree tests (tests/bpy_free/test_prim_tree*.py, tests/blender/test_scene_graph.py): one
+# prim of each kind a tree row marks or a search finds. Internal references and payloads keep it a single file: a
+# class, an over, an inactive prim, a payload, a variant set, native instances (whose contents show as instance
+# proxies), curves, and a camera, a light, and a material with a shader.
 (
-    doc = """Scene graph UI PoC demo: one prim of each kind the tree's rows mark.
-    Internal references and payloads keep it a single file: a class, an over, an inactive prim,
-    a payload, a variant set, native instances (whose contents show as instance proxies),
-    and a camera, a light, and a material with a shader."""
     defaultPrim = "World"
     upAxis = "Z"
 )

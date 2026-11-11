@@ -1,7 +1,7 @@
-"""Searching a stage for the tree's filter: which prims match a query, and which prims show because of them.
+"""Searching a stage for a prim tree's filter: which prims match a query, and which prims show because of them.
 
-Unlike the UIList's own filter, which hides every row that doesn't match, a search keeps each match's ancestors, so
-the matches show in place in the hierarchy. Nothing here imports bpy.
+Unlike a UIList's own filter, which hides every row that doesn't match, a search keeps each match's ancestors, so
+the matches show in place in the hierarchy. It runs over the whole stage, not only the rows already expanded.
 """
 
 from __future__ import annotations
@@ -12,8 +12,9 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from pxr import Usd
-from tree_model import CHILD_PREDICATE
+from pxr import Sdf, Usd
+
+from .prim_children import CHILD_PREDICATE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -56,13 +57,13 @@ class SearchQuery:
 class SearchResult:
     """The prims a search found, and those that show because they hold one."""
 
-    matching_prims: frozenset[Usd.Prim]
-    visible_prims: frozenset[Usd.Prim]  # the matches and all their ancestors
-    is_truncated: bool  # whether the search stopped at its match cap
+    matching_paths: frozenset[Sdf.Path]
+    visible_paths: frozenset[Sdf.Path]  # the matches and all their ancestors, not the pseudo-root
+    is_truncated: bool  # whether the search stopped at its match limit
 
 
 class SearchError(ValueError):
-    """A query that can't be matched, such as an invalid regular expression."""
+    """A query that can't be matched, such as an invalid regular expression or an unknown schema type."""
 
 
 def _text_matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool] | None:
@@ -85,6 +86,14 @@ def _text_matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool] | None:
     return lambda prim: needle in fold(prim.GetName())
 
 
+_FLAG_TESTS: dict[SearchFlag, Callable[[Usd.Prim], bool]] = {
+    SearchFlag.PAYLOAD: lambda prim: prim.HasPayload(),
+    SearchFlag.VARIANTS: lambda prim: bool(prim.GetVariantSets().GetNames()),
+    SearchFlag.INSTANCE: lambda prim: prim.IsInstance(),
+    SearchFlag.INACTIVE: lambda prim: not prim.IsActive(),
+}
+
+
 def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
     """A test for one prim that a query matches, combining its text, type, and flags."""
     tests: list[Callable[[Usd.Prim], bool]] = []
@@ -96,32 +105,26 @@ def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
         if schema.isUnknown:
             raise SearchError(f"no schema type named {query.type_name!r}")
         tests.append(lambda prim: prim.IsA(schema))
-    flag_tests = {
-        SearchFlag.PAYLOAD: lambda prim: prim.HasPayload(),
-        SearchFlag.VARIANTS: lambda prim: bool(prim.GetVariantSets().GetNames()),
-        SearchFlag.INSTANCE: lambda prim: prim.IsInstance(),
-        SearchFlag.INACTIVE: lambda prim: not prim.IsActive(),
-    }
-    tests.extend(flag_tests[flag] for flag in query.flags)
+    tests.extend(_FLAG_TESTS[flag] for flag in query.flags)
     return lambda prim: all(test(prim) for test in tests)
 
 
-def search(stage: Usd.Stage, query: SearchQuery, cap: int) -> SearchResult:
-    """Every prim a query matches, up to cap matches, and the ancestors that show them in place."""
+def search(stage: Usd.Stage, query: SearchQuery, match_limit: int) -> SearchResult:
+    """Every prim a query matches, up to match_limit matches, and the ancestors that show them in place."""
     test = matcher(query)
-    matches: set[Usd.Prim] = set()
-    shown: set[Usd.Prim] = set()
-    truncated = False
+    matching_paths: set[Sdf.Path] = set()
+    visible_paths: set[Sdf.Path] = set()
+    is_truncated = False
     for prim in Usd.PrimRange(stage.GetPseudoRoot(), CHILD_PREDICATE):
         if prim.IsPseudoRoot() or not test(prim):
             continue
-        if len(matches) >= cap:
-            truncated = True
+        if len(matching_paths) >= match_limit:
+            is_truncated = True
             break
-        matches.add(prim)
+        path = prim.GetPath()
+        matching_paths.add(path)
         # Walk up until an ancestor already shows: everything above it was added with it.
-        ancestor = prim
-        while ancestor and not ancestor.IsPseudoRoot() and ancestor not in shown:
-            shown.add(ancestor)
-            ancestor = ancestor.GetParent()
-    return SearchResult(frozenset(matches), frozenset(shown), truncated)
+        while path != Sdf.Path.absoluteRootPath and path not in visible_paths:
+            visible_paths.add(path)
+            path = path.GetParentPath()
+    return SearchResult(frozenset(matching_paths), frozenset(visible_paths), is_truncated)

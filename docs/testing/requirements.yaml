@@ -2008,7 +2008,7 @@ excluded:
     quotes: ["Tools author USD changes and use the synchronizer", "Following the timeline, a layer above the display that requests each frame's time code as Blender reaches it, is a stretch goal."]
     reason: "Phase 3, outside Phases 1 and 2."
   - section: PROJECT.md#phase-3--usd-stage-editor
-    quotes: ["Phase 3 work that depends on the synchronizer begins after Phase 2 is complete", "Prototypes and design notes in phase3/", "Authoring code that reads and writes USD without `bpy`", "Phase 3 work never adds to or changes the requirements of Phases 1 and 2."]
+    quotes: ["Phase 3 work that depends on the synchronizer begins after Phase 2 is complete", "Prototypes and design notes in phase3/", "Authoring code that reads and writes USD without `bpy`", "UI widgets that read a stage their host gives them", "Phase 3 work never adds to or changes the requirements of Phases 1 and 2."]
     reason: "Phase 3 ordering, outside Phases 1 and 2."
   - section: PROJECT.md#compatibility-and-development
     quotes: ["If additional compiled components become necessary, all three platforms remain required."]

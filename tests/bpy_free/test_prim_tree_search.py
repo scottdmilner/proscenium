@@ -1,0 +1,110 @@
+"""The prim tree's search and its filter (proscenium.ui.scene_graph_widget.prim_tree.prim_search).
+
+On scenes/scene_graph/prim_kinds.usda, expected matches are written from how the scene is built: five prims
+named Lid (the class's, three crates', and the payloaded prop's), meshes and one BasisCurves as Gprims, and one
+payload.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+from pxr import Sdf, Usd
+
+from fixtures.scenes import Scene, copy_scene
+from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_search
+from support.usd import open_stage_without_cache
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+LIDS = [
+    "/_Crate/Lid",
+    "/World/Geometry/Crates/Crate_01/Lid",
+    "/World/Geometry/Crates/Crate_02/Lid",
+    "/World/Geometry/Crates/Crate_Unique/Lid",
+    "/World/Geometry/Prop_Payloaded/Lid",
+]
+
+
+@pytest.fixture
+def stage(tmp_path: Path) -> Usd.Stage:
+    return open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "prim_kinds.usda")
+
+
+def _search(stage: Usd.Stage, match_limit: int = 100, **query: object) -> prim_search.SearchResult:
+    return prim_search.search(stage, prim_search.SearchQuery(**query), match_limit)  # ty: ignore[invalid-argument-type]
+
+
+def _matches(result: prim_search.SearchResult) -> list[str]:
+    return sorted(str(path) for path in result.matching_paths)
+
+
+def test_name_matches_ignore_case_unless_asked(stage: Usd.Stage) -> None:
+    assert _matches(_search(stage, text="LID")) == sorted(LIDS)
+    assert _matches(_search(stage, text="LID", case_sensitive=True)) == []
+
+
+def test_glob_path_and_regex_modes(stage: Usd.Stage) -> None:
+    assert _matches(_search(stage, text="Crate_0?", mode=prim_search.SearchMode.GLOB)) == [
+        "/World/Geometry/Crates/Crate_01",
+        "/World/Geometry/Crates/Crate_02",
+    ]
+    assert _matches(_search(stage, text="looks/red", mode=prim_search.SearchMode.PATH)) == [
+        "/World/Looks/Red",
+        "/World/Looks/Red/Surface",
+    ]
+    assert _matches(_search(stage, text=r"^/World/Looks$", mode=prim_search.SearchMode.REGEX)) == ["/World/Looks"]
+
+
+def test_type_matches_with_isa_and_flags_combine(stage: Usd.Stage) -> None:
+    gprims = _search(stage, type_name="Gprim")
+    assert {str(stage.GetPrimAtPath(path).GetTypeName()) for path in gprims.matching_paths} == {"Mesh", "BasisCurves"}
+    flags = frozenset({prim_search.SearchFlag.PAYLOAD})
+    assert _matches(_search(stage, flags=flags)) == ["/World/Geometry/Prop_Payloaded"]
+    assert _matches(_search(stage, flags=frozenset({prim_search.SearchFlag.INACTIVE}))) == ["/World/Geometry/Disabled"]
+    assert _matches(_search(stage, text="crate", flags=frozenset({prim_search.SearchFlag.INSTANCE}))) == [
+        "/World/Geometry/Crates/Crate_01",
+        "/World/Geometry/Crates/Crate_02",
+    ]
+
+
+def test_invalid_queries_raise(stage: Usd.Stage) -> None:
+    with pytest.raises(prim_search.SearchError):
+        _search(stage, text="(", mode=prim_search.SearchMode.REGEX)
+    with pytest.raises(prim_search.SearchError):
+        _search(stage, type_name="NoSuchType")
+
+
+def test_a_search_stops_at_its_limit(stage: Usd.Stage) -> None:
+    result = _search(stage, match_limit=2, text="lid")
+    assert len(result.matching_paths) == 2
+    assert result.is_truncated
+    assert not _search(stage, match_limit=5, text="lid").is_truncated
+
+
+def test_matches_show_in_place_under_their_ancestors(stage: Usd.Stage) -> None:
+    tree = PrimTree(stage)
+    tree.set_search(_search(stage, text="lid"))
+    paths = [str(row.path) for row in tree.rows]
+    assert [p for p in paths if p.endswith("/Lid")] == LIDS
+    assert "/World/Looks" not in paths  # holds no match
+    assert "/_Crate/Body" not in paths  # a sibling of a match
+    crate_rows = [row for row in tree.rows if str(row.path) in ("/_Crate", "/_Crate/Lid")]
+    assert [tree.is_match(row) for row in crate_rows] == [False, True]
+    # A match can be expanded to explore what's under it, unfiltered.
+    lid = tree.row_index(Sdf.Path("/_Crate/Lid"))
+    assert lid is not None
+    tree.toggle(lid)
+    assert str(tree.rows[lid + 1].path) == "/_Crate/Lid/Panel"
+
+
+def test_clearing_the_search_restores_the_expansion_from_before_it(stage: Usd.Stage) -> None:
+    tree = PrimTree(stage)
+    tree.reveal(Sdf.Path("/World/Looks/Red"))
+    before = [row.path for row in tree.rows]
+    tree.set_search(_search(stage, text="lid"))
+    tree.set_search(_search(stage, text="panel"))  # a second search still returns to the first's starting point
+    tree.set_search(None)
+    assert [row.path for row in tree.rows] == before
