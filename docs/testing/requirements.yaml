@@ -939,7 +939,7 @@ requirements:
         quote: "The saved display remains usable without its USD source"
         fixtures: [F-OFFLINE]
         oracle: "Reopening F-OFFLINE with its source moved away or nothing attached keeps the saved display's geometry, transforms, and materials unchanged."
-        note: "M7 adds the correspondence records to F-OFFLINE when it defines them."
+        note: "M7 adds correspondence after reopening to F-OFFLINE, built from the manifest and the display (DECISIONS.md \"Persisted correspondence\")."
       - id: REOPEN-08
         quote: "Image textures remain references to external files"
         delivery: M9
