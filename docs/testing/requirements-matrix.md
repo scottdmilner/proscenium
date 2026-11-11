@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-407 rows: 330 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
+439 rows: 362 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6.
 
 ## PROJECT.md
 
@@ -301,8 +301,44 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [DISC-08](../spec/incremental.md#change-discovery) | Editor-provided change descriptions may be hints, but are not the sole correctness mechanism. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-01](../spec/incremental.md#affected-content) | Source-affected entities: source state actually changed. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 | [AFF-02](../spec/incremental.md#affected-content) | Level 3 is permitted but bounded by churn and performance budgets | behavior | **high** | M13 | 2 / M13 | — | Set by M13. |
-| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
-| [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [AFF-03](../spec/incremental.md#affected-content) | Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes. | behavior | **high** | M7 | 1 / M12 | `F-NO-OP-REFRESH` | Set by M7. |
+| [AFF-04](../spec/incremental.md#affected-content) | may instead replace every display resource, with the result of a clean full rebuild. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+## spec/change-matrix.md
+
+| ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |
+|---|---|---|---|---|---|---|---|
+| [CHG-01](../spec/change-matrix.md#actions) | Local update: a kept resource is changed in place | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-02](../spec/change-matrix.md#actions) | The resource keeps its identity and its Blender selection. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-03](../spec/change-matrix.md#actions) | Partition rebuild: the drawn copy's partition is prepared anew beside the published generation | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-04](../spec/change-matrix.md#actions) | Full rebuild: every partition is prepared anew, as for a first synchronization. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-05](../spec/change-matrix.md#actions) | Local updates are made at publication, and publication undoes them if it fails. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-06](../spec/change-matrix.md#actions) | A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-07](../spec/change-matrix.md#actions) | A refresh writes only what its actions name. A resource the comparison finds equal is not written. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-08](../spec/change-matrix.md#actions) | A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement. | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-09](../spec/change-matrix.md#cases) | A prim added, activated, or loaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-10](../spec/change-matrix.md#cases) | A prim removed, deactivated, or unloaded through a payload \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-11](../spec/change-matrix.md#cases) | A prim renamed or moved under another parent \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-12](../spec/change-matrix.md#cases) | A variant selection switched \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-13](../spec/change-matrix.md#cases) | A gprim's type changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-14](../spec/change-matrix.md#cases) | A transform changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-15](../spec/change-matrix.md#cases) | Visibility changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-16](../spec/change-matrix.md#cases) | Purpose changed, on a prim or an ancestor \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-17](../spec/change-matrix.md#cases) | An untranslated gprim's bounds changed, appeared, or vanished \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-18](../spec/change-matrix.md#cases) | A prim made instanceable, or no longer instanceable \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-19](../spec/change-matrix.md#cases) | A prim inside a native instance's shared contents changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-20](../spec/change-matrix.md#cases) | A point instancer's points, ids, or prototypes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-21](../spec/change-matrix.md#cases) | The time code synchronized changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-22](../spec/change-matrix.md#cases) | A generation with cached time codes synchronized again \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-23](../spec/change-matrix.md#cases) | The payload policy changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-24](../spec/change-matrix.md#cases) | A destination's purposes changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-25](../spec/change-matrix.md#cases) | Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-26](../spec/change-matrix.md#cases) | The target scene's unit scale changed while coordinate conversion is off \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-27](../spec/change-matrix.md#cases) | The representation version changed \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-28](../spec/change-matrix.md#cases) | A reload reread layers \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-29](../spec/change-matrix.md#cases) | A stage attached in place of another \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-30](../spec/change-matrix.md#cases) | An undo or redo restored another generation \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-31](../spec/change-matrix.md#cases) | A .blend reopened \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
+| [CHG-32](../spec/change-matrix.md#cases) | A full rebuild requested \| | behavior |  | M7 | 1 / M12 | — | Set by M7. |
 ## spec/support/transforms.md
 
 | ID | Requirement | Kind | Risk | Delivery | Phase / qualified by | Fixtures | Test or oracle |

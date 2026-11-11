@@ -1278,10 +1278,86 @@ requirements:
         risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
-      - id: AFF-04
-        quote: "may instead replace every display resource, with the result of a clean full rebuild."
         fixtures: [F-NO-OP-REFRESH]
         risk: high
+      - id: AFF-04
+        quote: "may instead replace every display resource, with the result of a clean full rebuild."
+
+  # --- spec/change-matrix.md -------------------------------------------------------------------
+
+  - section: spec/change-matrix.md#actions
+    delivery: M7
+    phase: 1
+    rows:
+      - id: CHG-01
+        quote: "Local update: a kept resource is changed in place"
+      - id: CHG-02
+        quote: "The resource keeps its identity and its Blender selection."
+      - id: CHG-03
+        quote: "Partition rebuild: the drawn copy's partition is prepared anew beside the published generation"
+      - id: CHG-04
+        quote: "Full rebuild: every partition is prepared anew, as for a first synchronization."
+      - id: CHG-05
+        quote: "Local updates are made at publication, and publication undoes them if it fails."
+      - id: CHG-06
+        quote: "A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact."
+      - id: CHG-07
+        quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
+      - id: CHG-08
+        quote: "A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement."
+
+  - section: spec/change-matrix.md#cases
+    delivery: M7
+    phase: 1
+    rows:
+      - id: CHG-09
+        quote: "A prim added, activated, or loaded through a payload |"
+      - id: CHG-10
+        quote: "A prim removed, deactivated, or unloaded through a payload |"
+      - id: CHG-11
+        quote: "A prim renamed or moved under another parent |"
+      - id: CHG-12
+        quote: "A variant selection switched |"
+      - id: CHG-13
+        quote: "A gprim's type changed |"
+      - id: CHG-14
+        quote: "A transform changed, on a prim or an ancestor |"
+      - id: CHG-15
+        quote: "Visibility changed, on a prim or an ancestor |"
+      - id: CHG-16
+        quote: "Purpose changed, on a prim or an ancestor |"
+      - id: CHG-17
+        quote: "An untranslated gprim's bounds changed, appeared, or vanished |"
+      - id: CHG-18
+        quote: "A prim made instanceable, or no longer instanceable |"
+      - id: CHG-19
+        quote: "A prim inside a native instance's shared contents changed |"
+      - id: CHG-20
+        quote: "A point instancer's points, ids, or prototypes changed |"
+      - id: CHG-21
+        quote: "The time code synchronized changed |"
+      - id: CHG-22
+        quote: "A generation with cached time codes synchronized again |"
+      - id: CHG-23
+        quote: "The payload policy changed |"
+      - id: CHG-24
+        quote: "A destination's purposes changed |"
+      - id: CHG-25
+        quote: "Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on |"
+      - id: CHG-26
+        quote: "The target scene's unit scale changed while coordinate conversion is off |"
+      - id: CHG-27
+        quote: "The representation version changed |"
+      - id: CHG-28
+        quote: "A reload reread layers |"
+      - id: CHG-29
+        quote: "A stage attached in place of another |"
+      - id: CHG-30
+        quote: "An undo or redo restored another generation |"
+      - id: CHG-31
+        quote: "A .blend reopened |"
+      - id: CHG-32
+        quote: "A full rebuild requested |"
 
   # --- spec/support/transforms.md -------------------------------------------------------------
 
@@ -1963,6 +2039,22 @@ requirements:
         oracle: "alab-marked tests are skipped without PROSCENIUM_ALAB_ROOT; the ALab workflow is manual or scheduled."
 
 excluded:
+  - section: spec/change-matrix.md
+    quotes: ["What each change to a binding's source, settings, or state affects, and what a refresh does about it"]
+    reason: "File introduction."
+  - section: spec/change-matrix.md#actions
+    quotes: ["A refresh compares the new plan with the plan of the generation the destination shows"]
+    reason: "Lead-in: the comparison base is DECISIONS.md \"Incremental refresh comparison\", which AFF-03 and AFF-04 test; the actions below are rows."
+  - section: spec/change-matrix.md#discovery
+    quotes: ["Design note (suggested; M7's Phase C settles it)"]
+    reason: "Design note; DISC-06 to DISC-08 test discovery, and the CHG rows what it leads to."
+  - section: spec/change-matrix.md#owned-by-later-milestones
+    quotes:
+      - "Geometry, topology, normals, and primvars, and a drawn copy moving between a batch and an object of its own: M8."
+      - "Materials, networks, bindings, and their dependencies, including external assets changed without a USD edit: M9."
+      - "Changes to shared instance contents' representation, and point instancers nested in point instancers: M10."
+      - "Managed Blender content requiring repair: M11."
+    reason: "Scope: the milestones that add these cases to the matrix."
   - section: PROJECT.md#project-overview
     quotes:
       - "This project is a Blender extension"
