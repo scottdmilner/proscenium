@@ -60,7 +60,11 @@ class DiagnosticCode(StrEnum):
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
     PLANNING_FAILED = "planning-failed"
-    PREPARATION_FAILED = "preparation-failed"  # making or keying the display's resources failed, so it was undone
+    # Application's runtime failure: a Blender operation making or keying the display's resources failed, so the
+    # attempt was undone; it names the resource when one was being made.
+    PREPARATION_FAILED = "preparation-failed"
+    # Application's state-change failure: the destination became invalid, as by being removed, during preparation.
+    DESTINATION_INVALID = "destination-invalid"
     PUBLICATION_FAILED = "publication-failed"  # publishing, or recording cached time codes, failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
@@ -100,6 +104,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.NEEDS_SYNCHRONIZATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.DESTINATION_INVALID: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
@@ -130,7 +135,7 @@ class Diagnostic:
     fallback_description: str = ""  # what is displayed in its place
     layer_identifiers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
     pending_resource_key: str = ""  # for pending cleanup, the ledger key of the pending resource it concerns
-    role: str = ""  # that resource's representation role
+    role: str = ""  # the representation role of the resource it concerns: a pending one, or one that failed
 
     def __post_init__(self) -> None:
         # A stored diagnostic's code is a plain string and its layers a list; an unknown code raises ValueError.

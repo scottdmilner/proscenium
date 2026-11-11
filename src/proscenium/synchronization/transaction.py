@@ -5,9 +5,12 @@ attempt needs can't be read is refused before its source is read, so nothing the
 failure at any step before publication leaves the published generation as it was and disposes of prepared work, and
 an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
 by recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
-discarded before publication (CONS-03). After publication, a resource retirement can't remove leaves the
-synchronization completed with issues (TXN-07). A ledger write that fails as disposal or retirement records its
-leftovers is a defect, and raises (pipeline.md#synchronization-transaction).
+discarded before publication (CONS-03). A failure only application detects aborts the attempt, since the plan
+authorizes no fallback: a resource operation failing, as preparation-failed naming the resource, and the destination
+removed during preparation, as destination-invalid, after which no last attempt is recorded, its records gone with
+it (APP-05, APP-06). After publication, a resource retirement can't remove leaves the synchronization completed with
+issues (TXN-07). A ledger write that fails as disposal or retirement records its leftovers is a defect, and raises
+(pipeline.md#synchronization-transaction).
 """
 
 from __future__ import annotations
@@ -56,6 +59,8 @@ def synchronize(
     # giving the ledger a Text to be on.
     binding_operations.restore_missing_binding_index_entry(binding_id, record)
     result = Result(*_attempt(binding_id, config, destination, current, time_code), attempted_time_codes=(time_code,))
+    if _removed(destination):  # removed during the attempt, with its records, so there's nothing to record on
+        return result
     encoded_time_code = binding_state.encode_time_code(time_code)
     attempt = binding_state.LastSynchronizationAttempt(config.requested_settings, encoded_time_code, result.diagnostics)
     binding_state.write_last_attempt(destination, attempt)
@@ -106,10 +111,26 @@ def _attempt(
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
+    destination_name = destination.name  # for a diagnostic if it's removed meanwhile
+    # A failure only application detects aborts the attempt, since the plan authorizes no fallback (APP-05, APP-06).
     try:
         application.prepare(plan, range(plan.copy_count), published, work)
+    except application.ResourceOperationError as error:  # a runtime failure, naming its resource
+        message = f"Preparing the display failed: {error}"
+        failed = Diagnostic(
+            DiagnosticCode.PREPARATION_FAILED,
+            binding_id,
+            message,
+            source_path=error.source_entity_path,
+            role=str(error.role),
+        )
+        return (*own, failed, *preparation_resources.dispose(work))
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
+        return (*own, failed, *preparation_resources.dispose(work))
+    if _removed(destination):  # a state change
+        message = f"The destination collection {destination_name!r} was removed while the display was prepared"
+        failed = Diagnostic(DiagnosticCode.DESTINATION_INVALID, binding_id, message)
         return (*own, failed, *preparation_resources.dispose(work))
     described = binding_state.GenerationMetadata(
         binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, Result(*own).diagnostics
@@ -123,3 +144,12 @@ def _attempt(
         return (*own, failed, *preparation_resources.dispose(work))
     preparation_resources.remove_staging_and_clear_tracking(work)
     return (*own, *retirement.retire(binding_id, obsolete, work.operation))
+
+
+def _removed(destination: bpy.types.Collection) -> bool:
+    """Whether the destination collection has been removed from the file, so it's no longer valid."""
+    try:
+        destination.name  # noqa: B018 - reading a removed ID's property raises
+    except ReferenceError:
+        return True
+    return False

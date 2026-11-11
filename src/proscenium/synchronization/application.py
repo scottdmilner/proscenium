@@ -14,6 +14,11 @@ descriptions of the copies it prepares (Plan.resources_at, Plan.geometries_at), 
 they hold. Each buffer view is released before prepare returns or raises, so nothing it borrowed outlives the
 synchronization (SNAP-13). It reads nothing from USD: the plan has already decided what it shows (APP-08).
 
+A Blender operation making or setting a resource that fails, a runtime failure, raises ResourceOperationError naming
+the resource, so the transaction's diagnostic can (APP-05); the transaction itself finds a destination removed during
+preparation, a state change. The plan authorizes no fallback yet, so each aborts the attempt (APP-06). Failures to
+consume a resource, such as a texture that disappeared, come with M9's content.
+
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.existing_or_new_entry_keys), and the entries preparation makes are the manifest a publication writes.
 
@@ -52,14 +57,27 @@ REPRESENTATION_VERSION = 1  # the representation this layer applies, which the p
 _NO_RESOURCE = -1  # in a copy-table buffer of resource indices: the copy has no such resource
 
 
+class ResourceOperationError(RuntimeError):
+    """Making or setting a planned resource failed in Blender: a runtime failure (pipeline.md#blender-application)."""
+
+    role: manifests.RepresentationRole  # the resource's
+    source_entity_path: str  # its copy's source entity
+
+    def __init__(self, role: manifests.RepresentationRole, source_entity_path: str, cause: BaseException) -> None:
+        super().__init__(f"Making the {role} of {source_entity_path} failed: {cause}")
+        self.role = role
+        self.source_entity_path = source_entity_path
+
+
 def prepare(
     plan: _core.Plan, copy_indices: Iterable[int], published: manifests.Manifest, work: PreparationResources
 ) -> None:
     """Make the partitions of plan's drawn copies at copy_indices in work's staging collection, in that order.
 
     Each datablock is held in work as it's made (TXN-08). published is the binding's published manifest, whose
-    entries' keys the prepared resources with their identities take. Raises whatever Blender raises; what was made
-    before stays in work, held.
+    entries' keys the prepared resources with their identities take. Raises ResourceOperationError, naming the
+    resource, when making or setting one fails, and otherwise whatever Blender raises; what was made before stays in
+    work, held.
     """
     copies = list(copy_indices)
     # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
@@ -99,33 +117,42 @@ def prepare(
             made: list[tuple[int, bpy.types.ID]] = []  # resource index, datablock
             object_name = f"{prefix}{next(ordinals):07d} {name}"
             mesh = None
-            if mesh_index != _NO_RESOURCE:
-                mesh = bpy.data.meshes.new(object_name)
-                work.track(keys[mesh_index], identities[mesh_index].role, mesh)
-                made.append((mesh_index, mesh))
-                mesh.from_pydata(_corners(bounds[copy]), [], [])
-            obj = bpy.data.objects.new(object_name, mesh)
-            work.track(keys[object_index], identities[object_index].role, obj)
-            made.append((object_index, obj))
-            work.staging_collection.objects.link(obj)
-            obj.display_type = "BOUNDS"
-            hidden["hide_viewport"].append(not viewport[copy])
-            hidden["hide_render"].append(not render[copy])
-            if parent_index == _NO_RESOURCE:
-                obj.matrix_world = _matrix_from_buffer(worlds, copy)
-            else:
-                # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
-                parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
-                work.track(keys[parent_index], identities[parent_index].role, parent)
-                made.append((parent_index, parent))
-                work.staging_collection.objects.link(parent)
-                hidden["hide_viewport"].append(False)
-                hidden["hide_render"].append(False)
-                parent.hide_select = True  # so a pick lands on the object
-                shear = shears[copy]
-                parent.matrix_world = _matrix_from_buffer(parent_worlds, shear)
-                obj.parent = parent
-                obj.matrix_basis = _matrix_from_buffer(bases, shear)
+            making = object_index  # the resource being made or set, which a failure names
+            try:
+                if mesh_index != _NO_RESOURCE:
+                    making = mesh_index
+                    mesh = bpy.data.meshes.new(object_name)
+                    work.track(keys[mesh_index], identities[mesh_index].role, mesh)
+                    made.append((mesh_index, mesh))
+                    mesh.from_pydata(_corners(bounds[copy]), [], [])
+                making = object_index
+                obj = bpy.data.objects.new(object_name, mesh)
+                work.track(keys[object_index], identities[object_index].role, obj)
+                made.append((object_index, obj))
+                work.staging_collection.objects.link(obj)
+                obj.display_type = "BOUNDS"
+                hidden["hide_viewport"].append(not viewport[copy])
+                hidden["hide_render"].append(not render[copy])
+                if parent_index == _NO_RESOURCE:
+                    obj.matrix_world = _matrix_from_buffer(worlds, copy)
+                else:
+                    # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
+                    making = parent_index
+                    parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
+                    work.track(keys[parent_index], identities[parent_index].role, parent)
+                    made.append((parent_index, parent))
+                    work.staging_collection.objects.link(parent)
+                    hidden["hide_viewport"].append(False)
+                    hidden["hide_render"].append(False)
+                    parent.hide_select = True  # so a pick lands on the object
+                    shear = shears[copy]
+                    parent.matrix_world = _matrix_from_buffer(parent_worlds, shear)
+                    making = object_index
+                    obj.parent = parent
+                    obj.matrix_basis = _matrix_from_buffer(bases, shear)
+            except Exception as error:
+                identity = identities[making]
+                raise ResourceOperationError(identity.role, identity.entity, error) from error
             for index, datablock in made:
                 resource = resources[index]
                 uses = [keys[used] for used in resource.dependency_resource_indices]
