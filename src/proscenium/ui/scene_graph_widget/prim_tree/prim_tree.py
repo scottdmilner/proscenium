@@ -51,9 +51,14 @@ class RowDetails:
     has_variants: bool
 
     @property
-    def is_defined(self) -> bool:
-        """Whether the prim is an active def: not inactive, a class, or an over."""
-        return self.is_active and self.specifier == Sdf.SpecifierDef
+    def is_class(self) -> bool:
+        """Whether the prim is a class: its strongest defining opinion is a class, not a def."""
+        return self.specifier == Sdf.SpecifierClass
+
+    @property
+    def is_orphaned_over(self) -> bool:
+        """Whether nothing defines the prim: a composed prim is an over only when every opinion on it is one."""
+        return self.specifier == Sdf.SpecifierOver
 
 
 class PrimTree:

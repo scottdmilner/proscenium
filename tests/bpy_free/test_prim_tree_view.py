@@ -171,3 +171,15 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert prim_descriptions.badge_tooltip(variants, prim_descriptions.Badge.VARIANTS) == "Variants: shape = box"
     assert prim_descriptions.disclosure_tooltip(crate, is_expanded=False).startswith("Expand Crate_01.")
     assert prim_descriptions.details_lines(crate)[0] == "/World/Geometry/Crates/Crate_01"
+
+
+def test_row_names_italicize_classes_and_fall_back_from_display_names(stage: Usd.Stage) -> None:
+    view = _view(stage)
+    assert view.tree is not None
+    crate_class, world = (view.tree.details(row) for row in view.tree.rows[:2])
+    assert prim_descriptions.row_name(crate_class, shows_display_name=False) == "_𝘊𝘳𝘢𝘵𝘦"  # sans-serif italic
+    assert prim_descriptions.row_name(world, shows_display_name=True) == "World"  # no displayName: its name
+    sun_row = view.tree.rows[view.select_path(Sdf.Path("/World/Sun")) or 0]
+    sun = view.tree.details(sun_row)
+    assert prim_descriptions.row_name(sun, shows_display_name=True) == "Key Light"
+    assert prim_descriptions.row_name(sun, shows_display_name=False) == "Sun"

@@ -20,7 +20,7 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D6 | Type | schema name | icon and type column | |
 | D7 | Kind | component, assembly, group, subcomponent, other | tooltip, details | |
 | D8 | Invalid kind or model hierarchy | yes or no | — | |
-| D9 | Specifier | def, over, class | over and class dimmed; tooltip | |
+| D9 | Specifier | def, over, class | a class's name italic (A5); an orphaned over red (A2); tooltip | A5, A2 |
 | D10 | Active | active, inactive | dimmed | |
 | D11 | References | yes or no, and their targets | details | |
 | D12 | Inherits | yes or no, and their targets | details | |

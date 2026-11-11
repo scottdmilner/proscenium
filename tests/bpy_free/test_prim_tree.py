@@ -69,7 +69,6 @@ def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: U
     assert details["/World/Geometry/Prop_Variants"].has_variants
     assert details["/World/Geometry/Crates/Crate_Unique"].has_references
     assert not details["/World/Geometry/Disabled"].is_active
-    assert not details["/World/Geometry/Disabled"].is_defined
     assert details["/World/Sun"].display_name == "Key Light"  # as the fixture authors it
     assert details["/World/Geometry"].display_name == ""
     tree.toggle(world, recursive=True)
@@ -78,10 +77,11 @@ def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: U
     assert _paths(tree) == ["/_Crate", "/World", *WORLD_CHILDREN, "/World_Override_Only"]
 
 
-def test_classes_and_overs_are_rows_but_not_defined(stage: Usd.Stage) -> None:
+def test_classes_and_orphaned_overs_are_rows(stage: Usd.Stage) -> None:
     tree = PrimTree(stage)
-    details = [tree.details(row) for row in tree.rows]
-    assert [d.is_defined for d in details] == [False, True, False]
+    details = [tree.details(row) for row in tree.rows]  # /_Crate, /World, /World_Override_Only
+    assert [d.is_class for d in details] == [True, False, False]
+    assert [d.is_orphaned_over for d in details] == [False, False, True]
     assert [d.has_children for d in details] == [True, True, True]
 
 

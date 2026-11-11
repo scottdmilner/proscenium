@@ -1,4 +1,4 @@
-"""What a prim tree says about a prim: its row's badges, and the text of its tooltips and details."""
+"""What a prim tree says about a prim: its row's name and badges, and the text of its tooltips and details."""
 
 from __future__ import annotations
 
@@ -14,6 +14,31 @@ if TYPE_CHECKING:
 
 # What the tree's keys do, for the disclosure triangle's tooltip.
 KEY_HINTS = "Right: expand, or step in    Left: collapse, or step out    Shift: the whole subtree"
+# Unicode's mathematical sans-serif italic letters, the closest to Blender's UI font. A label can't set a font, so
+# these stand in for italics; the block has no italic digits, so digits and other characters stay upright.
+_SANS_ITALIC_CAPITAL_A = 0x1D608
+_SANS_ITALIC_SMALL_A = 0x1D622
+
+
+def _sans_italic(text: str) -> str:
+    """Text with its ASCII letters as Unicode sans-serif italics, for display only."""
+    return "".join(
+        chr(_SANS_ITALIC_CAPITAL_A + ord(c) - ord("A"))
+        if "A" <= c <= "Z"
+        else chr(_SANS_ITALIC_SMALL_A + ord(c) - ord("a"))
+        if "a" <= c <= "z"
+        else c
+        for c in text
+    )
+
+
+def row_name(details: RowDetails, shows_display_name: bool) -> str:
+    """The name a row draws: its displayName where shown and authored, else its name, in italics for a class.
+
+    Only drawn: copying, search, and tooltips use the prim's own name and path.
+    """
+    name = (shows_display_name and details.display_name) or details.name
+    return _sans_italic(name) if details.is_class else name
 
 
 class Badge(enum.Enum):

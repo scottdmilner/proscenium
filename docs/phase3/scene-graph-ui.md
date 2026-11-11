@@ -137,7 +137,7 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
 What a row can do with the color of its text, background, and icons. **Checked:** a probe drew one `UIList` row per option in the binary's 3D View sidebar, under the default theme, and was screenshotted.
 
 - **Text:** a label has no color argument. Three layout states change it, recoloring the row's text and its icons together:
-  - `active = False` dims it grey, and the row still takes clicks. The tree uses it for inactive prims, classes, overs, and rows that only hold search matches.
+  - `active = False` dims it grey, and the row still takes clicks. The tree uses it for inactive prims and rows that only hold search matches.
   - `enabled = False` dims it the same way, and its buttons stop taking clicks, though a click still selects the row ([A row's look](#a-rows-look)).
   - `alert = True` turns it red; with `active = False`, a dim red.
 
@@ -211,7 +211,7 @@ Each is an attribute of a `UILayout`, so it applies to whatever sub-layout of a 
 
 | Attribute | Effect |
 |---|---|
-| `active`, `enabled`, `alert` | Dim; dim with unclickable buttons; red ([Colors](#colors)). **Checked.** The widget dims inactive, over, and class prims and unmatched search ancestors alike. |
+| `active`, `enabled`, `alert` | Dim; dim with unclickable buttons; red ([Colors](#colors)). **Checked.** The widget dims inactive prims and unmatched search ancestors alike, and turns an orphaned over (a prim nothing defines) red. |
 | `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the badges are drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
 | `scale_x`, `scale_y` | Items' size along each axis. |
 | `ui_units_x`, `ui_units_y` | Items' fixed size, so a column can keep one width on every row. |
@@ -302,7 +302,7 @@ The watcher reads the hovered row only from Blender's hit-testing: tracking the 
 ### For the widget's gaps
 
 What each of [What the widget lacks](#what-the-widget-lacks) could be drawn with, none of it tried:
-- **Unloaded payloads, what's in them, instance proxies, overs, and classes:** a badge or socket dot each. The three layout states can't tell five apart.
+- **Unloaded payloads, what's in them, and instance proxies:** a badge or socket dot each, or Unicode bold and italic names ([Scene Graph Rows](scene-graph-rows.md), A4–A7).
 - **Ancestors of the selection:** an icon or a socket dot, since a row's background can't be set.
 - **Kind:** the kind's icon in place of the type's, and the fixed-color `ERROR` icon for an invalid kind.
 - **Visibility, active, purpose, draw mode, and variants:** `prop` and `prop_enum` columns of fixed `ui_units_x`, with header toggles choosing which show.
@@ -447,11 +447,11 @@ What two other scene graph trees show for each prim, beside what this widget's r
 | Instance proxy | — | A style of its own, italic when the instance's payload is unloaded | The details only |
 | Inside a prototype | Blue-violet (118, 136, 217) | — | Not listed: the tree reaches instances' contents through instance proxies |
 | Inactive | Its color, darkened | A deactivated style | Dimmed |
-| Specifier | The font: a def bold, an over light italic, a class normal weight | — | An over or class dimmed, as an inactive prim is; the specifier in the tooltip |
+| Specifier | The font: a def bold, an over light italic, a class normal weight | — | A class's name in Unicode italics, not its children's; an orphaned over, which nothing defines, red; the specifier in the tooltip |
 | A search match's ancestor that doesn't match | — | — | Dimmed |
 | An ancestor of the selection | A background of the selection color at 20% opacity | — | Nothing |
 
-So usdview tells composition by color, activity by darkening, and the specifier by font, where this widget's one dimmed look stands for inactive, over or class, and an unmatched ancestor. A row's text can't take a color here ([Colors](#colors)), so telling these apart would take icons, badges, or socket dots.
+So usdview tells composition by color, activity by darkening, and the specifier by font, where this widget dims inactive prims and unmatched ancestors, turns orphaned overs red, and sets a class's name in Unicode italics. A row's text can't take a color here, beyond dim and red ([Colors](#colors)), so telling more states apart takes icons, badges, socket dots, or Unicode text styles.
 
 ### Icons and markers
 
@@ -494,7 +494,7 @@ Solaris's gear menu chooses which columns show.
 ### What the widget lacks
 
 Showing only, from what a row's prim already gives:
-- Distinct looks for an unloaded payload and what's inside it, an instance proxy, an over, and a class.
+- Distinct looks for an unloaded payload and what's inside it, and an instance proxy.
 - The kind's icon, and a warning for an invalid model hierarchy.
 - Marks for composition arcs, payloads, variants, and instances.
 - Toggles for listing inactive, over, and class prims, and instance proxies.

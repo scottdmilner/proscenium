@@ -101,8 +101,8 @@ class SceneGraphList(bpy.types.UIList):
         for _ in range(tree_row.depth):
             _draw_guide_level(row)
         content = row.row(align=True)  # dimmed apart from the guide lines, so each line has one look down its length
-        # Inactive prims, overs, classes, and rows that only hold search matches draw greyed.
-        content.active = details.is_defined and tree.is_match(tree_row)
+        # Inactive prims and rows that only hold search matches draw greyed.
+        content.active = details.is_active and tree.is_match(tree_row)
         chevron = _fixed_width(content, CHEVRON_UNITS)
         if details.has_children:
             disclosure = "DOWNARROW_HLT" if tree.is_expanded(tree_row) else "RIGHTARROW"  # chevrons, as the Outliner's
@@ -114,10 +114,11 @@ class SceneGraphList(bpy.types.UIList):
         else:
             chevron.label(text="", icon="BLANK1")
         # The icon in a cell of its own, and a separator before the name, set a narrower gap than a label's icon has.
-        _fixed_width(content, TYPE_ICON_UNITS).label(text="", icon=_type_icon(details.type_name))
-        content.separator(factor=NAME_GAP_FACTOR)
-        shows_display_name = data.shown_name == "DISPLAY_NAME"
-        content.label(text=(shows_display_name and details.display_name) or details.name)
+        named = content.row(align=True)
+        named.alert = details.is_orphaned_over  # red: nothing defines it, as a typo in an over's path leaves it
+        _fixed_width(named, TYPE_ICON_UNITS).label(text="", icon=_type_icon(details.type_name))
+        named.separator(factor=NAME_GAP_FACTOR)
+        named.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
         columns = split.row(align=True)
         columns.alignment = "RIGHT"
         # The rows draw no badges for now; prim_descriptions.row_badges, badge_icons, and SceneGraphSelectRow
