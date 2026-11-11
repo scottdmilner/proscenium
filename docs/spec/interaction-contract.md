@@ -82,7 +82,7 @@ Blender's transform tools are not USD authoring tools. Edits to managed content 
 
 ## Headless Functions
 
-Design note (names and signatures are settled by M3 and M7): the contract is checked through these functions, which take and return plain values so that they run without a window. Everything else a caller needs, it reads from the live stage.
+Design note (signatures settled by M7; see DECISIONS.md "Headless interaction functions"): the contract is checked through these functions, which take and return plain values so that they run without a window. Everything else a caller needs, it reads from the live stage.
 
 Core bindings, which route to the correspondence and inspection layers internally:
 

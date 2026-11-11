@@ -2200,7 +2200,7 @@ excluded:
     reason: "Scope limit; the lifecycle permission that generated content is USD-authoritative covers edits."
   - section: spec/interaction-contract.md#headless-functions
     quotes:
-      - "Design note (names and signatures are settled by M3 and M7)"
+      - "Design note (signatures settled by M7; see DECISIONS.md \"Headless interaction functions\")"
       - "resolve_pick | what a viewport pick supplies"
       - "displayed | source paths"
       - "highlight_targets | selection targets"
