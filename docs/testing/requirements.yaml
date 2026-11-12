@@ -156,7 +156,7 @@ requirements:
         quote: "Application does not retain borrowed buffers beyond the synchronization that supplied them."
         delivery: M7
         fixtures: [F-NO-OP-REFRESH]
-        oracle: "Once each synchronization of F-NO-OP-REFRESH returns, the application layer and the binding's state hold no reference to the plan or to any buffer it lent: the plan is released, and every buffer's export is closed."
+        oracle: "Once each synchronization of F-NO-OP-REFRESH returns, every buffer the plan lent has its export closed, and only the held plans (DECISIONS.md \"Incremental refresh comparison\") reference the plan, which releasing them releases."
       - id: SNAP-16
         quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
         fixtures: [F-UNSUPPORTED-CONTENT]

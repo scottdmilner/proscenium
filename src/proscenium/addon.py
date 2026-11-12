@@ -25,7 +25,7 @@ _registered = False
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    bindings.BINDINGS.drop_all_stages()  # loading a .blend releases every attachment (source-access.md)
+    bindings.BINDINGS.drop_all_stages()  # loading a .blend releases every attachment (source-access.md) and plan
 
 
 @persistent

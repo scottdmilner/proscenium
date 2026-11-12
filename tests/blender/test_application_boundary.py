@@ -14,11 +14,13 @@ import bpy
 from pxr import Usd
 
 from fixtures import evaluation, incremental
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import Manifest, RepresentationRole
 from proscenium.binding.results import ResultState
 from proscenium.core import _core
 from proscenium.synchronization import application, preparation_resources
+from support.destinations import destination
 from support.usd import binding_on_file, open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -49,7 +51,8 @@ def _open_plan_views() -> set[int]:
 def test_nothing_borrowed_outlives_a_synchronization(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # SNAP-13: once each synchronization returns, nothing holds its plan, and every view of its buffers is released.
+    # SNAP-13: once each synchronization returns, every view of its plan's buffers is released, and only the held plans
+    # hold the plan, as the shown generation's, so releasing them releases it.
     plans: list[weakref.ref[_core.Plan]] = []
     prepare = application.prepare
 
@@ -65,8 +68,13 @@ def test_nothing_borrowed_outlives_a_synchronization(
             assert handle.synchronize(0).state is ResultState.COMPLETED_WITH_ISSUES  # its placeholders warn
             gc.collect()
             assert len(plans) == attempt + 1
-            assert all(plan() is None for plan in plans)
             assert _open_plan_views() <= before
+            shown = binding_state.read_generation(destination(handle))
+            assert isinstance(shown, id_property_records.LoadedRecord)
+            assert bindings.published_plans.plan_for(shown.record) is plans[-1]()
+        bindings.release(handle.binding_id)
+        gc.collect()
+        assert all(plan() is None for plan in plans)
 
 
 def test_a_plan_is_prepared_without_its_stage(bindings: Bindings, tmp_path: Path) -> None:

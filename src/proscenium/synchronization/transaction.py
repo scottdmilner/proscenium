@@ -30,7 +30,7 @@ from . import application, evaluation, preparation_resources, publication, retir
 
 if TYPE_CHECKING:
     from ..binding.persistence import binding_records
-    from ..binding.runtime import stage_tracking
+    from ..binding.runtime import held_plans, stage_tracking
     from ..binding.source_access import BindingId
 
 
@@ -38,6 +38,7 @@ def synchronize(
     binding_id: BindingId,
     config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
+    published_plans: held_plans.HeldPlans,
     time_code: Usd.TimeCode | None,
     *,
     full_rebuild: bool = False,
@@ -46,9 +47,10 @@ def synchronize(
 
     Without a time code, the attempt is at the target scene's current frame's, its subframe included, since time code
     t is frame t (transforms.md#transforms-and-time-codes). The binding's stages are current's, made only once the
-    source is accessed, so a binding failing before that gets none. A full rebuild captures through a new chain and
-    prepares every partition (source-access.md#synchronization-api), as every synchronization does until incremental
-    refresh replaces only what changed.
+    source is accessed, so a binding failing before that gets none. A published generation's plan is held in
+    published_plans, as many per binding as Blender's undo steps allow and the generation shown. A full rebuild captures
+    through a new chain and prepares every partition (source-access.md#synchronization-api), as every synchronization
+    does until incremental refresh replaces only what changed.
     """
     record = binding_operations.require_canonical_binding_record(binding_id)
     scene, destination = config.scene, record.collection
@@ -64,7 +66,7 @@ def synchronize(
     # giving the ledger a Text to be on.
     binding_operations.restore_missing_binding_index_entry(binding_id, record)
     report = DiagnosticCollector()
-    _attempt(binding_id, config, destination, current, time_code, report, full_rebuild=full_rebuild)
+    _attempt(binding_id, config, destination, current, published_plans, time_code, report, full_rebuild=full_rebuild)
     result = report.result(attempted_time_codes=(time_code,))
     if _removed(destination):  # removed during the attempt, with its records, so there's nothing to record on
         return result
@@ -79,6 +81,7 @@ def _attempt(
     config: binding_records.BindingConfig,
     destination: bpy.types.Collection,
     current: stage_tracking.BindingStageTracker,
+    published_plans: held_plans.HeldPlans,
     time_code: Usd.TimeCode,
     report: DiagnosticCollector,
     *,
@@ -164,8 +167,16 @@ def _attempt(
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
         preparation_resources.abort(report, failed, work)
         return
+    published_plans.hold(described, plan, _held_plan_bound())
     preparation_resources.remove_staging_and_clear_tracking(work)
     report.extend(retirement.retire(binding_id, obsolete, work.operation))
+
+
+def _held_plan_bound() -> int:
+    """How many plans a binding holds: the generation shown, and one for each undo step Blender keeps."""
+    preferences = bpy.context.preferences
+    assert preferences is not None  # Blender's, which a running Blender, and the bpy module, always has
+    return preferences.edit.undo_steps + 1
 
 
 def _unit_scale_mismatches(

@@ -48,7 +48,7 @@ from pxr import Usd
 from .. import synchronization
 from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
-from ..binding.runtime import binding_operations, pending_cleanup, stage_tracking
+from ..binding.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
 
 if TYPE_CHECKING:
@@ -185,11 +185,13 @@ class Bindings:
     """The process's bindings: their records in Blender data, and their runtime stages."""
 
     stages: stage_tracking.BindingStageTracker  # never saved; cleared when a file is loaded (proscenium.addon)
+    published_plans: held_plans.HeldPlans  # published generations' plans; never saved, and cleared with the stages
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
     published: dict[BindingId, binding_state.GenerationMetadata]  # each binding's last this session (UNDO-05)
 
     def __init__(self) -> None:
         self.stages = stage_tracking.BindingStageTracker()
+        self.published_plans = held_plans.HeldPlans()
         self.running = False
         self.published = {}
 
@@ -237,8 +239,9 @@ class Bindings:
 
     @_not_while_exclusive
     def release(self, binding_id: BindingId) -> None:
-        """Release one binding's runtime stages; its persistent record need not exist."""
+        """Release one binding's runtime stages and held plans; its persistent record need not exist."""
         self.stages.release(binding_id)
+        self.published_plans.release(binding_id)
 
     def requested_settings(self, binding_id: BindingId) -> RequestedSettings:
         """The settings the binding's next synchronization uses.
@@ -294,7 +297,9 @@ class Bindings:
                 *_unusable_binding_result(found).diagnostics, attempted_time_codes=() if given is None else (given,)
             )
         config = found.usable_config()
-        result = synchronization.synchronize(binding_id, config, self.stages, given, full_rebuild=full_rebuild)
+        result = synchronization.synchronize(
+            binding_id, config, self.stages, self.published_plans, given, full_rebuild=full_rebuild
+        )
         # Every failure before publication is fatal, and none after it (synchronization.synchronize), so it published.
         if result.state is not ResultState.FATAL_FAILURE:
             assert found.destination is not None  # a usable binding's
@@ -372,9 +377,9 @@ class Bindings:
         if published is None or current is None or found.destination is None:
             return True
         shown = binding_state.read_generation(found.destination)
-        showing_it = isinstance(shown, id_property_records.LoadedRecord) and _without_cached_time_codes(
+        showing_it = isinstance(shown, id_property_records.LoadedRecord) and held_plans.generation_key(
             shown.record
-        ) == _without_cached_time_codes(published)
+        ) == held_plans.generation_key(published)
         return not showing_it or published.source_revision != current.source_revision
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
@@ -384,8 +389,12 @@ class Bindings:
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
 
     def drop_all_stages(self) -> None:
-        """Drop every binding's stages, leaving each with no source stage or attachment (BindingStageTracker.clear)."""
+        """Drop every binding's stages and held plans, leaving each with no source stage or attachment.
+
+        BindingStageTracker.clear and HeldPlans.clear.
+        """
         self.stages.clear()
+        self.published_plans.clear()
 
     def prune_stages(self) -> None:
         """Drop evaluation stages of bindings that no longer exist (BindingStageTracker.prune)."""
@@ -415,11 +424,6 @@ def _push_undo(message: str) -> None:
     """
     if _undo_steps_enabled():
         bpy.ops.ed.undo_push(message=message)
-
-
-def _without_cached_time_codes(generation: binding_state.GenerationMetadata) -> binding_state.GenerationMetadata:
-    """Copy the generation metadata with its cached time codes cleared."""
-    return dataclasses.replace(generation, cached_time_codes=())
 
 
 def _source_unavailable_result(binding_id: BindingId, error: stages.SourceUnavailableError) -> Result:
