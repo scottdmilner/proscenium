@@ -99,8 +99,12 @@ def _draw_guide_level(layout: bpy.types.UILayout) -> None:
 
 
 def _find_row_instance(details: RowDetails) -> Sdf.Path | None:
-    """Find the instance a row marks: its own prim, if that's an instance, or the one above an instance proxy."""
-    return details.path if details.is_instance else details.instance_path
+    """Find the instance whose proxies' lines a row's indent draws.
+
+    The outermost instance above an instance proxy, even a proxy that's an instance itself; else the row's own prim,
+    if it's an instance.
+    """
+    return details.outermost_instance_path or (details.path if details.is_instance else None)
 
 
 def _draw_dashed_guide_level(layout: bpy.types.UILayout, color: tuple[float, float, float]) -> None:
@@ -146,9 +150,12 @@ def _draw_chevron(
 
 
 def _draw_row_icon(layout: bpy.types.UILayout, details: RowDetails) -> None:
-    """The row's icon, an instance's in its color and a proxy's fainter, where it's one of Blender's."""
+    """The row's icon, an instance's in its color and a proxy's fainter, where it's one of Blender's.
+
+    An invalid model's stays Blender's, so the layout's alert draws it red: the warning comes before the instancing.
+    """
     icon = _row_icon(details)
-    if details.is_instance or details.is_instance_proxy:
+    if (details.is_instance or details.is_instance_proxy) and not details.is_invalid_model:
         if details.is_instance_proxy:
             color = widget_colors.instance_proxy_color()
         else:

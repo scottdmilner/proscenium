@@ -121,8 +121,22 @@ def _badge_line(details: RowDetails, prim_details: PrimDetails, badge: Badge) ->
     if badge is Badge.INSTANCE:
         if details.is_instance:
             return f"Instance of {prim_details.prototype_path}"
-        return "Instanceable, but not an instance: it has no composition arcs"
+        if not details.is_active:
+            return "Instanceable, but not an instance: it's inactive"
+        if not _has_composition_arcs(details):
+            return "Instanceable, but not an instance: it has no composition arcs"
+        return "Instanceable, but not an instance"
     return f"Specializes: {', '.join(prim_details.specialize_paths)}"
+
+
+def _has_composition_arcs(details: RowDetails) -> bool:
+    return (
+        details.has_inherits
+        or details.has_variants
+        or details.has_references
+        or details.has_payload
+        or details.has_specializes
+    )
 
 
 def details_lines(details: RowDetails, prim_details: PrimDetails) -> list[str]:

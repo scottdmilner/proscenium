@@ -63,6 +63,8 @@ class RowDetails:
     is_instanceable: bool  # instanceable metadata is set; without composition arcs, the prim isn't an instance
     is_instance_proxy: bool
     instance_path: Sdf.Path | None  # the instance an instance proxy is under
+    # The outermost instance an instance proxy is under: the same, unless that one is inside another instance.
+    outermost_instance_path: Sdf.Path | None
 
     @property
     def has_children(self) -> bool:
@@ -339,6 +341,7 @@ def _is_invalid_model(model_api: Usd.ModelAPI, model_kind: str) -> bool:
 def _read_details(prim: Usd.Prim) -> RowDetails:
     model_api = Usd.ModelAPI(prim)
     model_kind = str(model_api.GetKind())
+    instance_path, outermost_instance_path = _instance_paths(prim)
     return RowDetails(
         path=prim.GetPath(),
         name=prim.GetName(),
@@ -359,18 +362,24 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         is_instance=prim.IsInstance(),
         is_instanceable=prim.IsInstanceable(),
         is_instance_proxy=prim.IsInstanceProxy(),
-        instance_path=_instance_path(prim),
+        instance_path=instance_path,
+        outermost_instance_path=outermost_instance_path,
     )
 
 
-def _instance_path(prim: Usd.Prim) -> Sdf.Path | None:
-    """The nearest instance above an instance proxy, or None for a prim that isn't one."""
+def _instance_paths(prim: Usd.Prim) -> tuple[Sdf.Path | None, Sdf.Path | None]:
+    """The nearest and the outermost instance above an instance proxy, or Nones for a prim that isn't one."""
     if not prim.IsInstanceProxy():
-        return None
+        return None, None
+    nearest_path: Sdf.Path | None = None
+    outermost_path: Sdf.Path | None = None
     ancestor = prim.GetParent()
-    while not ancestor.IsInstance():  # an instance proxy is always under one
+    while ancestor.IsInstanceProxy() or ancestor.IsInstance():  # an instance proxy is always under one
+        if ancestor.IsInstance():
+            nearest_path = nearest_path or ancestor.GetPath()
+            outermost_path = ancestor.GetPath()
         ancestor = ancestor.GetParent()
-    return ancestor.GetPath()
+    return nearest_path, outermost_path
 
 
 def _has_variant_selection(prim: Usd.Prim) -> bool:

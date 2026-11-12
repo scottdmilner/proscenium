@@ -68,7 +68,7 @@ tests/
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
         ├── __init__.py       the Scene index and copy_scene
-        └── scene_graph/      prim_kinds.usda, for the scene graph's prim tree; not a contract fixture
+        └── scene_graph/      prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree; not contract fixtures
 ```
 
 ### `conftest.py` (root)

@@ -26,6 +26,7 @@ from proscenium.ui.scene_graph_widget.display import (
     widget_views,
 )
 from proscenium.ui.scene_graph_widget.display.list_columns import name_column
+from proscenium.ui.scene_graph_widget.prim_tree import PrimTree
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -280,6 +281,40 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
     tree = view.prim_tree_view.tree
     assert tree is not None
     assert [str(row.path) for row in tree.rows] == ["/World", "/World/Sun", "/World/Sundial"]
+
+
+class _LabelLayout:
+    """Records the labels drawn into it, in place of a UILayout, which only a panel's draw has."""
+
+    labels: list[dict[str, object]]
+
+    def __init__(self) -> None:
+        self.labels = []
+
+    def label(self, **options: object) -> None:
+        self.labels.append(options)
+
+
+def test_a_nested_instances_rows_keep_the_outer_instances_dashed_lines(registered: None, tmp_path: Path) -> None:
+    nested = open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "nested_instances.usda")
+    tree = PrimTree(nested)
+    tree.reveal(Sdf.Path("/World/Pallet/Crate/Lid"))
+    for path in ("/World/Pallet/Crate", "/World/Pallet/Crate/Lid"):
+        details = tree.details_at(Sdf.Path(path))
+        assert details is not None
+        assert name_column._find_row_instance(details) == Sdf.Path("/World/Pallet")  # noqa: SLF001
+
+
+def test_an_invalid_models_instance_icon_stays_one_the_alert_draws_red(registered: None, stage: Usd.Stage) -> None:
+    # A tinted icon is a preview in its own colors, which the layout's alert can't turn red.
+    tree = PrimTree(stage)
+    tree.reveal(Sdf.Path("/World/Geometry/Crates/Crate_01/Body"))
+    instance = tree.details_at(Sdf.Path("/World/Geometry/Crates/Crate_01"))
+    assert instance is not None
+    for details, is_tinted in ((instance, True), (dataclasses.replace(instance, is_invalid_model=True), False)):
+        layout = _LabelLayout()
+        name_column._draw_row_icon(layout, details)  # noqa: SLF001  # ty: ignore[invalid-argument-type]
+        assert ("icon_value" in layout.labels[0]) is is_tinted
 
 
 def test_badge_shapes_are_kept_for_one_roundness(registered: None) -> None:

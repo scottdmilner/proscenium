@@ -305,6 +305,21 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert tree.prim_details(Sdf.Path("/World/Nowhere")) is None
 
 
+def test_an_inactive_instanceable_prim_says_why_it_isnt_an_instance(stage: Usd.Stage) -> None:
+    # Deactivating an instance leaves its arcs, so its tooltip mustn't say it has none.
+    view = _view(stage)
+    crate = Sdf.Path("/World/Geometry/Crates/Crate_01")  # instanceable, and references /_Crate
+    stage.GetPrimAtPath(crate).SetActive(False)
+    view.apply_pending_changes()
+    assert view.tree is not None
+    details, prim_details = view.tree.details_at(crate), view.tree.prim_details(crate)
+    assert details is not None
+    assert prim_details is not None
+    tooltip = prim_descriptions.row_tooltip(details, prim_details)
+    assert "\nInstanceable, but not an instance: it's inactive" in tooltip
+    assert "\nReferences: /_Crate" in tooltip
+
+
 def test_arc_targets_are_the_composed_lists(stage: Usd.Stage) -> None:
     # A stronger layer's deletion or explicit list overrides a weaker one's, as composition does; a referenced
     # prim's own arcs are its layer stack's, which the referencing prim's layers can't edit.

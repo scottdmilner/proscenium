@@ -57,6 +57,19 @@ def test_expanding_splices_children_in_one_level_deeper(stage: Usd.Stage) -> Non
     assert _paths(tree) == TOP_LEVEL
 
 
+def test_a_nested_instance_is_a_proxy_of_the_outer_one(tmp_path: Path) -> None:
+    nested = open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "nested_instances.usda")
+    tree = PrimTree(nested)
+    tree.reveal(Sdf.Path("/World/Pallet/Crate/Lid"))
+    details = {str(row.path): tree.details(row) for row in tree.rows}
+    crate, lid = details["/World/Pallet/Crate"], details["/World/Pallet/Crate/Lid"]
+    assert crate.is_instance and crate.is_instance_proxy
+    assert (crate.instance_path, crate.outermost_instance_path) == (Sdf.Path("/World/Pallet"),) * 2
+    assert lid.instance_path == Sdf.Path("/World/Pallet/Crate")  # the nearest, which the tooltip names
+    assert lid.outermost_instance_path == Sdf.Path("/World/Pallet")  # where the guide lines' dashes start
+    assert details["/World/Pallet"].outermost_instance_path is None
+
+
 def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: Usd.Stage) -> None:
     tree = PrimTree(stage)
     world = _index(tree, "/World")
