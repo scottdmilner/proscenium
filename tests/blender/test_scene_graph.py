@@ -101,6 +101,15 @@ def test_a_recursive_toggle_and_the_triangle_tooltip(registered: None, stage: Us
     assert toggle.description(bpy.context, _ButtonProperties("nowhere", 0)) == ""
 
 
+def test_the_copy_path_button_names_its_prim(registered: None) -> None:
+    # The background wheel has no clipboard to read back, so this checks the button's tooltip and that it runs.
+    class _CopyButtonProperties:
+        prim_path = "/World/Camera"
+
+    assert widget_operators.SceneGraphCopyPath.description(bpy.context, _CopyButtonProperties()) == "Copy /World/Camera"
+    assert bpy.ops.proscenium.scene_graph_copy_path(prim_path="/World/Camera") == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+
+
 def test_the_active_row_selects_and_tells_the_host(registered: None, stage: Usd.Stage) -> None:
     selections: list[Sdf.Path | None] = []
     display.create_view("viewport", _never, selections.append)

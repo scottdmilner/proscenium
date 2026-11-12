@@ -1,6 +1,7 @@
-"""The buttons a scene graph row draws: its disclosure triangle, and the never-enabled button of its guide lines.
+"""The buttons a scene graph row draws: its disclosure triangle, its copy-path button, and its guide lines' button.
 
-Both are internal operators: expansion in a tree is view state, so they push no undo step.
+All are internal operators: expansion in a tree is view state, and copying a path changes no data, so none pushes an
+undo step.
 """
 
 from __future__ import annotations
@@ -66,6 +67,27 @@ class SceneGraphToggleRow(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class SceneGraphCopyPath(bpy.types.Operator):
+    """Copy a prim's path to the clipboard."""
+
+    bl_idname = "proscenium.scene_graph_copy_path"
+    bl_label = "Copy Prim Path"
+    bl_options = {"INTERNAL"}
+
+    prim_path: bpy.props.StringProperty()  # ty: ignore[invalid-type-form]
+
+    @override
+    @classmethod
+    def description(cls, context: Any, properties: Any) -> str:
+        return f"Copy {properties.prim_path}"
+
+    @override
+    def execute(self, context: Any) -> set[OperatorReturnItems]:
+        context.window_manager.clipboard = self.prim_path
+        self.report({"INFO"}, f"Copied {self.prim_path}")
+        return {"FINISHED"}
+
+
 class SceneGraphGuideLine(bpy.types.Operator):
     """A tree guide line: drawn as a disabled button, which a layout can squeeze to a hairline, so it never runs."""
 
@@ -84,4 +106,4 @@ class SceneGraphGuideLine(bpy.types.Operator):
 
 
 # In registration order.
-CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine)
+CLASSES = (SceneGraphToggleRow, SceneGraphCopyPath, SceneGraphGuideLine)

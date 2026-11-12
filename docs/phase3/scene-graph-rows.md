@@ -131,6 +131,7 @@ A label's or a button's icon draws 16 points tall in a 20-point row, whatever it
 |---|---|---|
 | A25 | The row's tooltip (`item_dyntip_propname`) | **Checked.** Text only. |
 | A26 | A button's tooltip (an operator's `description`) | **Checked.** |
+| A31 | A button in a column, running an action on the row's prim | **Checked**, as the Copy Path column's copy button. |
 | A27 | Items in the row's right-click menu | **Checked** ([The widget's right-click](scene-graph-ui.md#the-widgets-right-click)). |
 
 ### Beside the list

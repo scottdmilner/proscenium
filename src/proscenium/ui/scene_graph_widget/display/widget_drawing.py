@@ -30,7 +30,8 @@ class Column(NamedTuple):
 
     title: str
     show_property: str
-    units_property: str
+    units_property: str = ""  # its width's property, or empty for a column of fixed_units
+    fixed_units: float = 0.0  # the width of a column the settings can't resize
     header_icon: str = ""  # in place of the title in the header, for a column too narrow for it
     alignment: str = "LEFT"  # its cells', in the header and the rows: RIGHT for numbers
 
@@ -41,10 +42,19 @@ CHILDREN_COLUMN = Column(
 )
 KIND_COLUMN = Column("Kind", "show_kind_column", "kind_column_units")
 TYPE_COLUMN = Column("Type", "show_type_column", "type_column_units")
-COLUMNS = (CHILDREN_COLUMN, KIND_COLUMN, TYPE_COLUMN)
+# Its header blank, as each row's button shows what the column holds; a button's width, so not resizable.
+COPY_BUTTON_WIDTH_SCALE = 1.3  # wider than its icon, so the icon's sides stay clear of the button's edges
+COPY_PATH_COLUMN = Column(
+    "Copy Path",
+    "show_copy_path_column",
+    fixed_units=COPY_BUTTON_WIDTH_SCALE,
+    header_icon="BLANK1",
+    alignment="CENTER",
+)
+COLUMNS = (CHILDREN_COLUMN, KIND_COLUMN, TYPE_COLUMN, COPY_PATH_COLUMN)
 # The least share of a row the name column takes, in the header and in each row, by how many columns show after it:
 # its share in a narrow region, where the columns are narrower than their widths.
-NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56, 3: 0.45}
+NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56, 3: 0.45, 4: 0.4}
 REGION_MARGIN_UNITS = 2.0  # what a region's width leaves out of a list row's: the panel's margins and the list's
 # Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
 LEVEL_UNITS = 0.6
@@ -124,6 +134,11 @@ def _row_icon(details: Any) -> str:
     return next((icon for kind, icon in KIND_ICONS if Kind.Registry.IsA(details.model_kind, kind)), OTHER_KIND_ICON)
 
 
+def _column_units(properties: Any, column: Column) -> float:
+    """A column's width in UI units: its setting's, or its fixed width."""
+    return getattr(properties, column.units_property) if column.units_property else column.fixed_units
+
+
 def _shown_columns(properties: Any) -> list[Column]:
     return [column for column in COLUMNS if getattr(properties, column.show_property)]
 
@@ -137,7 +152,7 @@ def _unit_pixels(context: Any) -> float:
 def _name_column_factor(context: Any, properties: Any) -> float:
     """The name column's share of a row: all but the shown columns' widths, or its least share if more."""
     shown = _shown_columns(properties)
-    columns_units = sum(getattr(properties, column.units_property) for column in shown)
+    columns_units = sum(_column_units(properties, column) for column in shown)
     return _split_factor_leaving(context, columns_units, NAME_COLUMN_FACTOR_BY_COLUMN_COUNT[len(shown)])
 
 
@@ -157,9 +172,9 @@ def _split_factor_leaving(context: Any, right_units: float, least_factor: float)
 def _column_cells(layout: Any, properties: Any, shown: list[Column]) -> list[Any]:
     """One cell per shown column, aligned as it says, sharing a layout's width in proportion to the columns' widths."""
     cells = []
-    remaining_units = sum(getattr(properties, column.units_property) for column in shown)
+    remaining_units = sum(_column_units(properties, column) for column in shown)
     for column in shown[:-1]:
-        units = getattr(properties, column.units_property)
+        units = _column_units(properties, column)
         split = layout.split(factor=units / remaining_units, align=True)  # this column, then the rest
         cells.append(split.row(align=True))
         layout = split.row(align=True)
@@ -262,6 +277,27 @@ def _draw_dashed_guide_level(layout: Any, color: tuple[float, float, float]) -> 
     _fixed_width(layout, LEVEL_UNITS).label(text="", icon_value=icon_value)
 
 
+def _draw_row_columns(layout: Any, properties: Any, details: Any) -> None:
+    """A row's cells in the shown columns after its name: its texts, and the button copying its path."""
+    column_texts = {
+        CHILDREN_COLUMN: str(details.child_count) if details.has_children else "",  # a leaf's blank, as its chevron
+        KIND_COLUMN: details.model_kind,
+        TYPE_COLUMN: details.type_name or "-",
+    }
+    shown = _shown_columns(properties)
+    for cell, column in zip(_column_cells(layout, properties, shown), shown, strict=True):
+        if column == COPY_PATH_COLUMN:
+            # Embossed, so it reads as a button. Scaling a button scales its frame, not its icon, and an icon-only
+            # button keeps its own width in a wider cell, so a scale is what gives the icon room inside.
+            button = cell.row(align=True)
+            button.scale_x = COPY_BUTTON_WIDTH_SCALE
+            copy = button.operator(widget_operators.SceneGraphCopyPath.bl_idname, text="", icon="DUPLICATE")
+            copy.prim_path = str(details.path)
+        else:
+            cell.alert = column == KIND_COLUMN and details.is_invalid_model
+            cell.label(text=column_texts[column])
+
+
 def _draw_row_icon(layout: Any, details: Any) -> None:
     """The row's icon, an instance's in its color and a proxy's fainter, where it's one of Blender's."""
     icon = _row_icon(details)
@@ -361,15 +397,7 @@ class SceneGraphList(bpy.types.UIList):
                 is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
                 icon_value = badge_icons.icon_id(badge, place, is_greyed)
                 _fixed_width(name_and_badges, BADGE_UNITS).label(text="", icon_value=icon_value)
-        column_texts = {
-            CHILDREN_COLUMN: str(details.child_count) if details.has_children else "",  # a leaf's blank, as its chevron
-            KIND_COLUMN: details.model_kind,
-            TYPE_COLUMN: details.type_name or "-",
-        }
-        shown = _shown_columns(data)
-        for cell, column in zip(_column_cells(split.row(align=True), data, shown), shown, strict=True):
-            cell.alert = column == KIND_COLUMN and details.is_invalid_model
-            cell.label(text=column_texts[column])
+        _draw_row_columns(split.row(align=True), data, details)
 
     @override
     def draw_filter(self, context: bpy.types.Context | None, layout: Any) -> None:
@@ -396,7 +424,8 @@ class SceneGraphSettings(bpy.types.Panel):
         for column in COLUMNS:
             row = layout.row()
             is_shown = getattr(properties, column.show_property)
-            # The eye, open or closed, as the Outliner's; then the title, and the width, dimmed while hidden.
+            # The eye, open or closed, as the Outliner's; then the title, and the width, dimmed while hidden, for a
+            # column that has one.
             eye_and_title = row.row(align=True)
             eye_and_title.prop(
                 properties, column.show_property, text="", icon="HIDE_OFF" if is_shown else "HIDE_ON", emboss=False
@@ -404,7 +433,10 @@ class SceneGraphSettings(bpy.types.Panel):
             eye_and_title.label(text=column.title)
             width = row.row()
             width.active = is_shown
-            width.prop(properties, column.units_property)
+            if column.units_property:
+                width.prop(properties, column.units_property)
+            else:
+                width.label(text="")
 
 
 def _draw_search(layout: Any, context: Any, properties: Any) -> None:

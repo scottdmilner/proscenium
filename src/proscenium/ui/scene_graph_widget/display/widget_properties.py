@@ -106,6 +106,7 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
     show_children_column: bpy.props.BoolProperty(name="Show Children Column", default=True)  # ty: ignore[invalid-type-form]
     show_kind_column: bpy.props.BoolProperty(name="Show Kind Column", default=True)  # ty: ignore[invalid-type-form]
     show_type_column: bpy.props.BoolProperty(name="Show Type Column", default=True)  # ty: ignore[invalid-type-form]
+    show_copy_path_column: bpy.props.BoolProperty(name="Show Copy Path Column", default=True)  # ty: ignore[invalid-type-form]
     children_column_units: _column_units_property("Children", default_units=1.7)  # ty: ignore[invalid-type-form]
     kind_column_units: _column_units_property("Kind")  # ty: ignore[invalid-type-form]
     type_column_units: _column_units_property("Type")  # ty: ignore[invalid-type-form]
