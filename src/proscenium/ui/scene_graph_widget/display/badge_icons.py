@@ -1,12 +1,13 @@
 """Badge icons for scene graph rows, drawn into a preview collection from pixels made here, so they need no files.
 
-Each badge is its arc's LIVRPS letter, in bold strokes, on its piece of a dark rounded block: a row's badges are
-labels side by side, so the block is drawn into their icons, each badge drawing the piece for its place in the row
-(`BadgePlace`). The colors are the theme's: each letter takes one of its collection colors, and the block its pie
-menu's color and roundness, the dark of a PIE_MENU button. A badge whose arc isn't in effect, an unloaded payload or
-variant sets with nothing selected, is greyed out: its letter is the pie menu's text color, half blended into the
-block. Preview icons keep the colors they're drawn in, so the
-icons are drawn again when the theme's colors change (`redraw_icons_if_theme_changed`). A layout takes the icons by
+Each badge is its arc's LIVRPS letter, in bold strokes, or for an instance two overlapping squares
+(`INSTANCE_GLYPH`), on its piece of a dark rounded block: a row's badges are labels side by side, so the block is
+drawn into their icons, each badge drawing the piece for its place in the row (`BadgePlace`). The colors are the
+theme's: each letter takes one of its collection colors, and the block its pie menu's color and roundness, the dark of
+a PIE_MENU button. A badge that isn't in effect, an unloaded payload, variant sets with nothing selected, or
+instanceable metadata on a prim that isn't an instance, is greyed out: its letter is the pie menu's text color, half
+blended into the block. Preview icons keep the colors they're drawn in, so the icons are drawn again when the theme's
+colors change (`redraw_icons_if_theme_changed`). A layout takes the icons by
 number (`icon_value=icon_id(...)`), not by Blender's icon names. In background mode, previews get number 0.
 """
 
@@ -40,6 +41,18 @@ _P_BOWL: tuple[Segment | Arc, ...] = (
     ((0.05, 0.35), 0.4, -90.0, 90.0),
 )
 _S_MIDDLE = 0.06  # where the S's two arcs meet, a little above center, so its lower one is the wider
+INSTANCE_GLYPH = "⧉"  # the instance badge's: two overlapping squares, for the copies sharing one prototype
+
+
+def _square_outlines(*squares: tuple[Point, Point]) -> tuple[Segment, ...]:
+    """The four sides of each square, given by its lower left and upper right corners."""
+    sides: list[Segment] = []
+    for (left, bottom), (right, top) in squares:
+        sides += [((left, bottom), (right, bottom)), ((right, bottom), (right, top))]
+        sides += [((right, top), (left, top)), ((left, top), (left, bottom))]
+    return tuple(sides)
+
+
 LETTER_STROKES: dict[str, tuple[Segment | Arc, ...]] = {
     "I": (((0.0, -0.75), (0.0, 0.75)), ((-0.3, 0.75), (0.3, 0.75)), ((-0.3, -0.75), (0.3, -0.75))),
     "V": (((-0.57, 0.75), (0.0, -0.75)), ((0.0, -0.75), (0.57, 0.75))),  # wider than the others, as a V is
@@ -49,17 +62,25 @@ LETTER_STROKES: dict[str, tuple[Segment | Arc, ...]] = {
         ((0.0, (0.75 + _S_MIDDLE) / 2), (0.75 - _S_MIDDLE) / 2, 20.0, 270.0),
         ((0.0, (_S_MIDDLE - 0.75) / 2), (0.75 + _S_MIDDLE) / 2, -160.0, 90.0),
     ),
+    INSTANCE_GLYPH: _square_outlines(((-0.55, -0.05), (0.2, 0.7)), ((-0.2, -0.7), (0.55, 0.05))),
 }
+# A glyph's stroke half width where it isn't STROKE_HALF_WIDTH: the instance glyph's squares are finer, so the
+# space inside them stays open.
+STROKE_HALF_WIDTHS = {INSTANCE_GLYPH: 0.11}
 
 GREYED_LETTER_WEIGHT = 0.5  # how much of a greyed-out letter's color is the pie menu's text color, the rest the block's
 # Each badge's color, as an index into the theme's eight collection colors (COLLECTION_COLOR_01 is index 0: red,
 # orange, yellow, green, blue, violet, pink, brown), and its letter.
 BADGE_LOOKS: dict[Badge, tuple[int, str]] = {
-    Badge.INHERITS: (5, "I"),  # violet
-    Badge.VARIANTS: (3, "V"),  # green
-    Badge.REFERENCES: (4, "R"),  # blue
-    Badge.PAYLOAD: (1, "P"),  # orange
-    Badge.SPECIALIZES: (2, "S"),  # yellow
+    # Green, the instancing color: mixed toward the list's text color, it reads on rows in light and dark themes
+    # alike, as instances' and proxies' rows draw it.
+    Badge.INSTANCE: (3, INSTANCE_GLYPH),
+    # The arcs take five of the others. Red and brown go unused: brown is too dark on the block.
+    Badge.INHERITS: (6, "I"),  # pink
+    Badge.VARIANTS: (5, "V"),  # violet
+    Badge.REFERENCES: (1, "R"),  # orange
+    Badge.PAYLOAD: (2, "P"),  # yellow
+    Badge.SPECIALIZES: (4, "S"),  # blue
 }
 
 
@@ -67,10 +88,18 @@ BADGE_LOOKS: dict[Badge, tuple[int, str]] = {
 class BadgeThemeColors:
     """The theme's colors the badges are drawn in, compared to tell when the icons need drawing again."""
 
-    block_color: tuple[float, ...]  # RGBA, the pie menu's inner color
+    block_color: tuple[float, float, float, float]  # RGBA, the pie menu's inner color
     block_roundness: float  # the pie menu's: 1 rounds an end into a half circle
-    text_color: tuple[float, ...]  # RGB, the pie menu's text color, which a greyed-out letter is drawn in
-    collection_colors: tuple[tuple[float, ...], ...]  # RGB, the eight collection colors in order
+    text_color: tuple[float, float, float]  # RGB, the pie menu's text color, which a greyed-out letter is drawn in
+    list_text_color: tuple[float, float, float]  # RGB, a list row's text color, which reads on the rows in any theme
+    collection_colors: tuple[tuple[float, float, float], ...]  # RGB, the eight collection colors in order
+
+    @property
+    def greyed_color(self) -> tuple[float, float, float]:
+        """RGB, a greyed-out badge's letter: the text color, half blended into the block."""
+        text, block, weight = self.text_color, self.block_color, GREYED_LETTER_WEIGHT
+        red, green, blue = (weight * text[i] + (1 - weight) * block[i] for i in range(3))
+        return red, green, blue
 
 
 # Without preferences to read the theme from: the default theme's colors.
@@ -78,6 +107,7 @@ DEFAULT_THEME_COLORS = BadgeThemeColors(
     block_color=(0.094, 0.094, 0.094, 1.0),
     block_roundness=0.4,
     text_color=(0.851, 0.851, 0.851),
+    list_text_color=(0.8, 0.8, 0.8),
     collection_colors=(
         (0.886, 0.376, 0.357),
         (0.945, 0.639, 0.333),
@@ -175,14 +205,17 @@ def _coverages(letter: str, place: BadgePlace, block_roundness: float) -> tuple[
             x = (column + 0.5) * pixel_width - 1
             y = (row + 0.5) * pixel_width - 1
             letter_distance = _letter_distance(letter, x / LETTER_SCALE, y / LETTER_SCALE) * LETTER_SCALE
-            letter_coverage = _coverage(letter_distance - STROKE_HALF_WIDTH * LETTER_SCALE, pixel_width)
+            half_width = STROKE_HALF_WIDTHS.get(letter, STROKE_HALF_WIDTH)
+            letter_coverage = _coverage(letter_distance - half_width * LETTER_SCALE, pixel_width)
             block_coverage = _coverage(_block_distance(x, y, place, block_roundness), pixel_width)
             coverages.append((letter_coverage, block_coverage))
     return tuple(coverages)
 
 
 def _pixels(
-    coverages: tuple[tuple[float, float], ...], letter_color: tuple[float, ...], block_color: tuple[float, ...]
+    coverages: tuple[tuple[float, float], ...],
+    letter_color: tuple[float, float, float],
+    block_color: tuple[float, float, float, float],
 ) -> list[float]:
     """A badge's pixels: its letter over its piece of the block, premultiplied, as previews take them."""
     pixels: list[float] = []
@@ -200,20 +233,19 @@ def _read_theme_colors() -> BadgeThemeColors:
         return DEFAULT_THEME_COLORS
     theme = preferences.themes[0]
     pie_menu = theme.user_interface.wcol_pie_menu
+    list_text = theme.user_interface.wcol_list_item.text
     return BadgeThemeColors(
-        block_color=tuple(pie_menu.inner),
+        block_color=(pie_menu.inner[0], pie_menu.inner[1], pie_menu.inner[2], pie_menu.inner[3]),
         block_roundness=pie_menu.roundness,
         text_color=(pie_menu.text.r, pie_menu.text.g, pie_menu.text.b),
+        list_text_color=(list_text.r, list_text.g, list_text.b),
         collection_colors=tuple((item.color.r, item.color.g, item.color.b) for item in theme.collection_color),
     )
 
 
 def _draw_icons(theme_colors: BadgeThemeColors) -> None:
     block_color = theme_colors.block_color
-    greyed_color = tuple(
-        GREYED_LETTER_WEIGHT * text + (1 - GREYED_LETTER_WEIGHT) * block
-        for text, block in zip(theme_colors.text_color, block_color, strict=False)
-    )
+    greyed_color = theme_colors.greyed_color
     for badge, (collection_color_index, letter) in BADGE_LOOKS.items():
         for is_greyed in (False, True):
             letter_color = greyed_color if is_greyed else theme_colors.collection_colors[collection_color_index]
@@ -255,6 +287,11 @@ def remove_icons() -> None:
         bpy.utils.previews.remove(_BadgeIconsState.previews)
         _BadgeIconsState.previews = None
         _BadgeIconsState.drawn_theme_colors = None
+
+
+def drawn_theme_colors() -> BadgeThemeColors:
+    """The theme's colors the badges were last drawn in, as of the last view's draw; the defaults before any."""
+    return _BadgeIconsState.drawn_theme_colors or DEFAULT_THEME_COLORS
 
 
 def icon_id(badge: Badge, place: BadgePlace, is_greyed: bool) -> int:

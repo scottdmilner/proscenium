@@ -41,9 +41,9 @@ def row_name(details: RowDetails, shows_display_name: bool) -> str:
 
 
 class Badge(enum.Enum):
-    """A composition arc authored on a prim, which its row marks with its letter after its name.
+    """A mark after a prim's name: instancing, then each composition arc authored on it, by its letter.
 
-    In LIVRPS strength order, strongest first (local opinions, the L, have none), as a row draws them.
+    The arcs in LIVRPS strength order, strongest first (local opinions, the L, have none), as a row draws them.
     """
 
     INHERITS = "inherits"
@@ -51,11 +51,13 @@ class Badge(enum.Enum):
     REFERENCES = "references"
     PAYLOAD = "payload"
     SPECIALIZES = "specializes"
+    INSTANCE = "instance"  # an instance, or a prim marked instanceable that isn't one
 
 
 def row_badges(details: RowDetails) -> list[Badge]:
     """The badges a row shows, in drawing order."""
     shown = (
+        (Badge.INSTANCE, details.is_instance or details.is_instanceable),
         (Badge.INHERITS, details.has_inherits),
         (Badge.VARIANTS, details.has_variants),
         (Badge.REFERENCES, details.has_references),
@@ -68,8 +70,11 @@ def row_badges(details: RowDetails) -> list[Badge]:
 def is_badge_in_effect(details: RowDetails, badge: Badge) -> bool:
     """Whether a badge's arc contributes to the prim now; a row greys out a badge that doesn't.
 
-    A payload left unloaded doesn't, nor do variant sets none of which has a variant selected.
+    A payload left unloaded doesn't, nor do variant sets none of which has a variant selected, nor instanceable
+    metadata on a prim without composition arcs, which leaves it no instance.
     """
+    if badge is Badge.INSTANCE:
+        return details.is_instance
     if badge is Badge.PAYLOAD:
         return details.is_loaded
     if badge is Badge.VARIANTS:
@@ -90,6 +95,8 @@ def row_tooltip(details: RowDetails, prim_details: PrimDetails) -> str:
     if details.is_invalid_model:
         lines.append("Not a model: an ancestor isn't a group or assembly")
     lines.extend(_badge_line(details, prim_details, badge) for badge in row_badges(details))
+    if details.is_instance_proxy:
+        lines.append(f"Instance proxy, read-only: inside instance {details.instance_path}")
     return "\n".join(lines)
 
 
@@ -111,6 +118,10 @@ def _badge_line(details: RowDetails, prim_details: PrimDetails, badge: Badge) ->
     if badge is Badge.PAYLOAD:
         state = "loaded" if details.is_loaded else "unloaded"
         return f"Payload ({state}): {', '.join(prim_details.payload_targets)}"
+    if badge is Badge.INSTANCE:
+        if details.is_instance:
+            return f"Instance of {prim_details.prototype_path}"
+        return "Instanceable, but not an instance: it has no composition arcs"
     return f"Specializes: {', '.join(prim_details.specialize_paths)}"
 
 

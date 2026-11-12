@@ -3,7 +3,8 @@
 # prim of each kind a tree row marks or a search finds. Internal arcs keep it a single file: a class, an over, an
 # inactive prim, every composition arc (Crate_Unique also inherits the class it references, and Prop_Payloaded also
 # specializes it, adding no prims), a second payload of the class, Prop_Unloaded, which a file can't leave
-# unloaded but tools/scene_graph_demo.py and the tests that need it unload, native instances (whose contents show as instance proxies), curves, a camera,
+# unloaded but tools/scene_graph_demo.py and the tests that need it unload, native instances (whose contents show as instance proxies), a prim marked instanceable
+# with no arcs, which isn't an instance, curves, a camera,
 # a light with a displayName, and a material with a shader. Its model kinds are an assembly, groups, components,
 # and a subcomponent (each crate's lid). Red is a component under a Scope with no kind, so it isn't a model: its
 # kind breaks the model hierarchy.
@@ -55,6 +56,12 @@ def Xform "World" (
                 instanceable = true
                 kind = "component"
                 references = </_Crate>
+            )
+            {
+            }
+
+            def Xform "Crate_Instanceable" (
+                instanceable = true
             )
             {
             }

@@ -28,8 +28,8 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D14 | Payload | none, loaded, unloaded | a badge after the name, greyed out when unloaded; its targets and state in the row's tooltip; details | A11 |
 | D15 | Inside an unloaded payload | yes or no | — | |
 | D16 | Variants | which sets it has, and each set's selection | a badge after the name, greyed out when no set has a selection; the selections in the row's tooltip; details | A11 |
-| D17 | Instance | yes or no | details | |
-| D18 | Instance proxy | yes or no | details | |
+| D17 | Instance | yes or no, and its prototype | a green badge after the name; its icon green; the prototype in the row's tooltip; details | A11, A9 |
+| D18 | Instance proxy | yes or no, and its instance | its icon and chevron a fainter green; the guide lines from its instance's level dashed, the instance's own green and those below fainter; its instance in the row's tooltip; details | A9, A17 |
 | D19 | Search role | a match, an unmatched ancestor, or no search | unmatched ancestors dimmed | |
 | D20 | Selected | yes or no | the active row | |
 | D21 | In a selection of several prims | yes or no | — | |
@@ -46,6 +46,7 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D32 | Bound material | name and path; inherited or its own | — | |
 | D33 | Proxy prim | path, or none | — | |
 | D34 | Override | none, viewport-only, post-layer, both | — **Editor state** | |
+| D35 | Instanceable without composition arcs, so not an instance | yes or no | the instance badge, greyed out; the row's tooltip | A11 |
 
 ## Controls
 
@@ -97,7 +98,9 @@ A9's preview icons, **Checked** on labels with icons drawn from pixels in four c
 - **Under `alert`,** it keeps its colors, while the text and Blender's icons turn red.
 - **Pixels are premultiplied:** a transparent pixel must be (0, 0, 0, 0). A pixel with color and zero alpha drew its color.
 
-Blender's own icons in other colors, such as type icons colored by state, would be preview icons drawn from Blender's source SVGs for those icons, recolored. **Not checked:** no SVG was found or drawn.
+Blender's own icons in other colors, such as type icons colored by state, are preview icons drawn from masks of Blender's source SVGs, recolored. **Checked**, as instances' and proxies' row icons ([Instancing](scene-graph-ui.md#icons-and-tooltips)). Blender doesn't ship the SVGs, so the masks are made from its source and ship with the extension, under the icons' CC BY-SA 4.0 license.
+
+A label's or a button's icon draws 16 points tall in a 20-point row, whatever its pixels, so nothing drawn into an icon reaches a row's top and bottom. **Checked** for labels and unembossed operator buttons; `template_icon` drew nothing for a preview made from pixels.
 
 ### Background
 

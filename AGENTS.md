@@ -38,6 +38,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
   - `native_build.py`, `blender_deps.py`: build compiled modules against the locked Blender release's USD, and audit their linkage.
   - `clang_tidy.py`: runs clang-tidy on the compiled core and the Hydra bridge, each with its build's compile commands (a pre-commit hook).
   - `matrix.py`: checks and renders the requirement-to-test matrix.
+  - `row_icon_masks.py`: makes the scene graph widget's masks of Blender's row icons from its icon SVGs, which the widget recolors for instances (`uv run --group icons python tools/row_icon_masks.py`: the `icons` group holds its SVG renderer and PNG decoder, apart from `dev`).
   - `scene_graph_demo.py`: hosts the scene graph widget in the 3D View's and node editor's sidebars, for trying it by hand in the Blender binary (`Blender --python tools/scene_graph_demo.py`).
   - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
   - `feasibility/`: M1 runtime probes, M1b's Hydra bridge (`hydra_bridge/`), and demos of what a UIList can show, for the scene graph widget (`uilist_options/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.

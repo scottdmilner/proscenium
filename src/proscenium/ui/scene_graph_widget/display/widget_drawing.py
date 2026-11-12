@@ -7,13 +7,22 @@ by its index, so only the row count crosses into RNA.
 
 from __future__ import annotations
 
+import colorsys
 from typing import Any, NamedTuple, override
 
 import bpy
-from pxr import Kind
+from pxr import Kind, Sdf
 
 from ..prim_tree import prim_descriptions
-from . import badge_icons, widget_keys, widget_operators, widget_properties, widget_views
+from . import (
+    badge_icons,
+    guide_line_icons,
+    tinted_icons,
+    widget_keys,
+    widget_operators,
+    widget_properties,
+    widget_views,
+)
 
 
 class Column(NamedTuple):
@@ -39,6 +48,14 @@ GUIDE_LINE_UNITS = 0.05
 ROW_ICON_UNITS = 0.8  # the cell of the row's icon: its kind's, or else its type's
 NAME_GAP_FACTOR = 1.0  # the separator between the icon and the name
 BADGE_UNITS = 0.8  # each badge's cell, after the name
+BADGE_GAP_UNITS = 0.2  # between the instance badge and the arcs' block of badges
+# How much of a row mark's color is the list's text color, the rest the instance badge's: the collection colors
+# don't read on a light theme's grey rows, and the text color does in any theme, so a mix with it reads in both.
+# An instance proxy's is closer to the text, fainter than its instance's, since it's shared from the prototype. An
+# instance's then takes the badge's saturation back at the mix's luminance, so it reads as green as it contrasts.
+INSTANCE_TEXT_WEIGHT = 0.6
+INSTANCE_PROXY_TEXT_WEIGHT = 0.75
+LUMINANCE_SEARCH_STEPS = 30  # bisections finding an instance's color, far finer than a color channel's 1/255
 # The name cell's natural width, wider than any row, so each row is too narrow for what it holds. A row with width to
 # spare grows every item in proportion to its natural width, which differs from row to row, so the guide lines would
 # drift apart; a row short of width keeps each item narrower than a unit at its width and shrinks the rest, here only
@@ -71,12 +88,22 @@ KIND_ICONS = (
     (Kind.Tokens.subcomponent, "MOD_EXPLODE"),
 )
 OTHER_KIND_ICON = "BOOKMARKS"
+# The disclosure triangle's icons, collapsed and expanded: chevrons, as the Outliner's.
+COLLAPSED_ICON = "RIGHTARROW"
+EXPANDED_ICON = "DOWNARROW_HLT"
 
 
 def _type_icon(type_name: str) -> str:
     if type_name.endswith("Light"):
         return "LIGHT"
     return TYPE_ICONS.get(type_name, "DOT")
+
+
+def row_icon_names() -> list[str]:
+    """Every icon a row can show: each type's, the lights', the fallback type icon, each kind's, and the chevrons."""
+    names = {*TYPE_ICONS.values(), "LIGHT", "DOT", OTHER_KIND_ICON, COLLAPSED_ICON, EXPANDED_ICON}
+    names.update(icon for _, icon in KIND_ICONS)
+    return sorted(names)
 
 
 def _row_icon(details: Any) -> str:
@@ -156,6 +183,86 @@ def _draw_guide_level(layout: Any) -> None:
     _fixed_width(level, LEVEL_UNITS - before_line - GUIDE_LINE_UNITS).label(text="")
 
 
+def _instance_badge_color() -> tuple[float, float, float]:
+    """The instance badge's collection color."""
+    theme_colors = badge_icons.drawn_theme_colors()
+    return theme_colors.collection_colors[badge_icons.BADGE_LOOKS[prim_descriptions.Badge.INSTANCE][0]]
+
+
+def _instancing_color(text_weight: float) -> tuple[float, float, float]:
+    """The instance badge's color mixed toward the list's text color, so it reads on the rows."""
+    badge_color = _instance_badge_color()
+    text_color = badge_icons.drawn_theme_colors().list_text_color
+    red, green, blue = ((1 - text_weight) * badge_color[i] + text_weight * text_color[i] for i in range(3))
+    return red, green, blue
+
+
+def _relative_luminance(color: tuple[float, float, float]) -> float:
+    """A display color's relative luminance, as WCAG's contrast ratio weighs it."""
+
+    def linear(channel: float) -> float:
+        return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+    red, green, blue = color
+    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+
+
+def _saturated_at_luminance(color: tuple[float, float, float], luminance: float) -> tuple[float, float, float]:
+    """The color's hue and saturation, made as light as the luminance, or mixed toward white where full value isn't."""
+    hue, saturation, _ = colorsys.rgb_to_hsv(*color)
+    brightest = colorsys.hsv_to_rgb(hue, saturation, 1.0)
+
+    def shade(amount: float) -> tuple[float, float, float]:  # 0 to 1: black to the brightest, then on to white
+        if amount <= 1.0:
+            return colorsys.hsv_to_rgb(hue, saturation, amount)
+        white_weight = amount - 1.0
+        red, green, blue = ((1 - white_weight) * channel + white_weight for channel in brightest)
+        return red, green, blue
+
+    low, high = 0.0, 2.0
+    for _ in range(LUMINANCE_SEARCH_STEPS):  # luminance rises with the amount, so bisect for it
+        middle = (low + high) / 2
+        if _relative_luminance(shade(middle)) < luminance:
+            low = middle
+        else:
+            high = middle
+    return shade((low + high) / 2)
+
+
+def _instance_color() -> tuple[float, float, float]:
+    """The color an instance's row marks it in: as light as the text mix, as saturated as the badge."""
+    mixed_color = _instancing_color(INSTANCE_TEXT_WEIGHT)
+    return _saturated_at_luminance(_instance_badge_color(), _relative_luminance(mixed_color))
+
+
+def _instance_proxy_color() -> tuple[float, float, float]:
+    """The color an instance proxy's row marks it in: fainter, for what it shares from its prototype."""
+    return _instancing_color(INSTANCE_PROXY_TEXT_WEIGHT)
+
+
+def _find_row_instance(details: Any) -> Sdf.Path | None:
+    """Find the instance a row marks: its own prim, if that's an instance, or the one above an instance proxy."""
+    return details.path if details.is_instance else details.instance_path
+
+
+def _draw_dashed_guide_level(layout: Any, color: tuple[float, float, float]) -> None:
+    # A label, so a click on it selects its row, as on the plain line, whose disabled button does nothing.
+    icon_value = guide_line_icons.dashed_line_icon_id(color)
+    _fixed_width(layout, LEVEL_UNITS).label(text="", icon_value=icon_value)
+
+
+def _draw_row_icon(layout: Any, details: Any) -> None:
+    """The row's icon, an instance's in its color and a proxy's fainter, where it's one of Blender's."""
+    icon = _row_icon(details)
+    if details.is_instance or details.is_instance_proxy:
+        color = _instance_proxy_color() if details.is_instance_proxy else _instance_color()
+        icon_value = tinted_icons.icon_id(icon, color)
+        if icon_value is not None:
+            layout.label(text="", icon_value=icon_value)
+            return
+    layout.label(text="", icon=icon)
+
+
 class SceneGraphList(bpy.types.UIList):
     """Draws a view's rows as an indented tree with disclosure triangles, in the header's columns.
 
@@ -185,17 +292,31 @@ class SceneGraphList(bpy.types.UIList):
         details = tree.details(tree_row)  # read once, when the row first comes on screen
         split = layout.split(factor=_name_column_factor(context, data))
         row = split.row(align=True)
-        for _ in range(tree_row.depth):
-            _draw_guide_level(row)
+        # The levels from an instance's own down hold its proxies' lines, dashed: the instance's own in its color,
+        # and those under the proxies below it fainter, as their icons. An instance's own row has none.
+        instance_path = _find_row_instance(details)
+        instance_depth = tree_row.depth - (
+            details.path.pathElementCount - instance_path.pathElementCount if instance_path else 0
+        )
+        for level_depth in range(tree_row.depth):
+            if instance_path is not None and level_depth >= instance_depth:
+                color = _instance_color() if level_depth == instance_depth else _instance_proxy_color()
+                _draw_dashed_guide_level(row, color)
+            else:
+                _draw_guide_level(row)
         content = row.row(align=True)  # dimmed apart from the guide lines, so each line has one look down its length
         # Inactive prims and rows that only hold search matches draw greyed.
         content.active = details.is_active and tree.is_match(tree_row)
         chevron = _fixed_width(content, CHEVRON_UNITS)
         if details.has_children:
-            disclosure = "DOWNARROW_HLT" if tree.is_expanded(tree_row) else "RIGHTARROW"  # chevrons, as the Outliner's
-            toggle = chevron.operator(
-                widget_operators.SceneGraphToggleRow.bl_idname, text="", icon=disclosure, emboss=False
-            )
+            disclosure = EXPANDED_ICON if tree.is_expanded(tree_row) else COLLAPSED_ICON
+            # Inside an instance, the chevron is a proxy's, in the color of its icon and the lines beside it.
+            tinted = tinted_icons.icon_id(disclosure, _instance_proxy_color()) if details.is_instance_proxy else None
+            toggle_idname = widget_operators.SceneGraphToggleRow.bl_idname
+            if tinted is None:
+                toggle = chevron.operator(toggle_idname, text="", icon=disclosure, emboss=False)
+            else:
+                toggle = chevron.operator(toggle_idname, text="", icon_value=tinted, emboss=False)
             toggle.view_name = data.name
             toggle.row_index = index
         else:
@@ -205,7 +326,7 @@ class SceneGraphList(bpy.types.UIList):
         named.alert = details.is_orphaned_over  # red: nothing defines it, as a typo in an over's path leaves it
         icon = _fixed_width(named, ROW_ICON_UNITS)
         icon.alert = details.is_invalid_model  # the kind's icon red, as the kind column's text is
-        icon.label(text="", icon=_row_icon(details))
+        _draw_row_icon(icon, details)
         named.separator(factor=NAME_GAP_FACTOR)
         # The name fills what its badges leave (NAME_CELL_UNITS). Left-aligned, so the badges hugged its text, a name
         # too long for its column would squeeze every cell in the row, indent and icon too.
@@ -213,14 +334,21 @@ class SceneGraphList(bpy.types.UIList):
         name_cell = _fixed_width(name_and_badges, NAME_CELL_UNITS)
         name_cell.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
         # Labels, so a click on one selects the row and the row's tooltip covers them; each icon draws its piece of
-        # the block they sit on, so side by side they make one.
+        # the block they sit on, so side by side they make one. The instance badge, which marks no arc, stands on
+        # its own, and the arcs' badges share a block after a gap.
         row_badges = prim_descriptions.row_badges(details)
-        badges = name_and_badges.row(align=True)
-        for badge_index, badge in enumerate(row_badges):
-            place = badge_icons.BadgePlace.at(badge_index, len(row_badges))
-            is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
-            icon_value = badge_icons.icon_id(badge, place, is_greyed)
-            _fixed_width(badges, BADGE_UNITS).label(text="", icon_value=icon_value)
+        arc_badges = [badge for badge in row_badges if badge is not prim_descriptions.Badge.INSTANCE]
+        instance_badges = [badge for badge in row_badges if badge is prim_descriptions.Badge.INSTANCE]
+        # Each cell sits in the name's row itself: the row is short of width, so it keeps each cell narrower than a
+        # unit at its width, where a row of the cells, wider than a unit, would shrink with the name.
+        for block_index, block in enumerate(block for block in (instance_badges, arc_badges) if block):
+            if block_index:
+                _fixed_width(name_and_badges, BADGE_GAP_UNITS).label(text="")
+            for badge_index, badge in enumerate(block):
+                place = badge_icons.BadgePlace.at(badge_index, len(block))
+                is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
+                icon_value = badge_icons.icon_id(badge, place, is_greyed)
+                _fixed_width(name_and_badges, BADGE_UNITS).label(text="", icon_value=icon_value)
         column_texts = {KIND_COLUMN: details.model_kind, TYPE_COLUMN: details.type_name or "-"}
         shown = _shown_columns(data)
         for cell, column in zip(_column_cells(split.row(align=True), data, shown), shown, strict=True):

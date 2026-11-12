@@ -58,7 +58,9 @@ class RowDetails:
     is_loaded: bool  # false only under an unloaded payload, its own or an ancestor's
     has_specializes: bool
     is_instance: bool
+    is_instanceable: bool  # instanceable metadata is set; without composition arcs, the prim isn't an instance
     is_instance_proxy: bool
+    instance_path: Sdf.Path | None  # the instance an instance proxy is under
 
     @property
     def is_class(self) -> bool:
@@ -345,8 +347,20 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         is_loaded=prim.IsLoaded(),
         has_specializes=prim.HasAuthoredSpecializes(),
         is_instance=prim.IsInstance(),
+        is_instanceable=prim.IsInstanceable(),
         is_instance_proxy=prim.IsInstanceProxy(),
+        instance_path=_instance_path(prim),
     )
+
+
+def _instance_path(prim: Usd.Prim) -> Sdf.Path | None:
+    """The nearest instance above an instance proxy, or None for a prim that isn't one."""
+    if not prim.IsInstanceProxy():
+        return None
+    ancestor = prim.GetParent()
+    while not ancestor.IsInstance():  # an instance proxy is always under one
+        ancestor = ancestor.GetParent()
+    return ancestor.GetPath()
 
 
 def _has_variant_selection(prim: Usd.Prim) -> bool:

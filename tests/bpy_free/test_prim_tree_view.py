@@ -52,7 +52,7 @@ def test_steps_move_the_selection(stage: Usd.Stage) -> None:
     view.step(INTO, recursive=True)  # Shift+Right expands the whole subtree, staying on the row
     assert _selected(view) == "/World"
     assert view.tree is not None
-    assert len(view.tree.rows) == 35
+    assert len(view.tree.rows) == 36
 
 
 def test_a_step_with_nothing_selected_starts_at_the_first_row(stage: Usd.Stage) -> None:
@@ -207,9 +207,11 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
 
     badge = prim_descriptions.Badge
     crate = "/World/Geometry/Crates/Crate_01"
-    # One badge per arc authored on the prim, strongest first; an instance proxy's arcs are on its prototype's prims.
+    # The instance badge, then one badge per arc authored on the prim, strongest first; an instance proxy's arcs are
+    # on its prototype's prims.
     badges_by_path = {
-        crate: [badge.REFERENCES],
+        crate: [badge.INSTANCE, badge.REFERENCES],
+        "/World/Geometry/Crates/Crate_Instanceable": [badge.INSTANCE],
         "/World/Geometry/Crates/Crate_Unique": [badge.INHERITS, badge.REFERENCES],
         "/World/Geometry/Prop_Payloaded": [badge.PAYLOAD, badge.SPECIALIZES],
         "/World/Geometry/Prop_Variants": [badge.VARIANTS],
@@ -217,7 +219,18 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
         "/World/Camera": [],
     }
     assert {path: prim_descriptions.row_badges(details(path)) for path in badges_by_path} == badges_by_path
-    assert row_tooltip(crate) == f"{crate}\nXform, Def\nKind: component\nReferences: /_Crate"
+    crate_prim_details = tree.prim_details(Sdf.Path(crate))
+    assert crate_prim_details is not None
+    prototype = crate_prim_details.prototype_path
+    assert row_tooltip(crate) == f"{crate}\nXform, Def\nKind: component\nInstance of {prototype}\nReferences: /_Crate"
+    # Greyed out where the metadata does nothing; a proxy's tooltip names its instance.
+    instanceable = details("/World/Geometry/Crates/Crate_Instanceable")
+    assert not prim_descriptions.is_badge_in_effect(instanceable, badge.INSTANCE)
+    assert prim_descriptions.is_badge_in_effect(details(crate), badge.INSTANCE)
+    assert row_tooltip("/World/Geometry/Crates/Crate_Instanceable").endswith(
+        "\nInstanceable, but not an instance: it has no composition arcs"
+    )
+    assert row_tooltip(f"{crate}/Body").endswith(f"\nInstance proxy, read-only: inside instance {crate}")
     assert row_tooltip("/World/Looks/Red").endswith(
         "Kind: component\nNot a model: an ancestor isn't a group or assembly"
     )
@@ -227,8 +240,6 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert payloaded.endswith("\nPayload (loaded): /_Crate\nSpecializes: /_Crate")
     assert row_tooltip("/World/Geometry/Prop_Variants").endswith("\nVariants: shape = box")
     assert prim_descriptions.disclosure_tooltip(details(crate), is_expanded=False).startswith("Expand Crate_01.")
-    crate_prim_details = tree.prim_details(Sdf.Path(crate))
-    assert crate_prim_details is not None
     assert prim_descriptions.details_lines(details(crate), crate_prim_details)[0] == crate
     assert tree.details_at(Sdf.Path("/World/Nowhere")) is None
     assert tree.prim_details(Sdf.Path("/World/Nowhere")) is None

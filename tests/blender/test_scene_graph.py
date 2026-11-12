@@ -15,6 +15,8 @@ from pxr import Sdf, Usd
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import (
+    tinted_icons,
+    widget_drawing,
     widget_operators,
     widget_properties,
     widget_registration,
@@ -94,7 +96,7 @@ def test_a_recursive_toggle_and_the_triangle_tooltip(registered: None, stage: Us
     toggle = widget_operators.SceneGraphToggleRow
     assert toggle.description(bpy.context, _ButtonProperties("viewport", WORLD_ROW)).startswith("Expand World.")
     bpy.ops.proscenium.scene_graph_toggle_row(view_name="viewport", row_index=WORLD_ROW, recursive=True)  # ty: ignore[unresolved-attribute]
-    assert len(_properties("viewport").rows) == 35
+    assert len(_properties("viewport").rows) == 36
     assert toggle.description(bpy.context, _ButtonProperties("viewport", WORLD_ROW)).startswith("Collapse World.")
     assert toggle.description(bpy.context, _ButtonProperties("nowhere", 0)) == ""
 
@@ -213,3 +215,10 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
     tree = view.prim_tree_view.tree
     assert tree is not None
     assert [str(row.path) for row in tree.rows] == ["/World", "/World/Sun", "/World/Sundial"]
+
+
+def test_every_row_icon_has_a_mask_to_recolor(registered: None) -> None:
+    # tools/row_icon_masks.py makes a mask for each icon a row can show; one missing would draw in the theme's color.
+    for icon in widget_drawing.row_icon_names():
+        assert tinted_icons.icon_id(icon, (1.0, 0.5, 0.0)) is not None, icon
+    assert tinted_icons.icon_id("NOT_A_ROW_ICON", (1.0, 0.5, 0.0)) is None

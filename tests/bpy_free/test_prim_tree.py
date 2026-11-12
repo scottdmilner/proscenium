@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 TOP_LEVEL = ["/_Crate", "/World", "/World_Override_Only"]
 WORLD_CHILDREN = ["/World/Geometry", "/World/Looks", "/World/Camera", "/World/Sun", "/World/Scatter"]
-PRIMS_UNDER_WORLD = 33  # /World and everything under it
+PRIMS_UNDER_WORLD = 34  # /World and everything under it
 
 
 @pytest.fixture
@@ -65,6 +65,15 @@ def test_a_recursive_expand_reaches_instance_proxies_and_collapses_back(stage: U
     details = {str(row.path): tree.details(row) for row in tree.rows}
     assert details["/World/Geometry/Crates/Crate_01"].is_instance
     assert details["/World/Geometry/Crates/Crate_01/Body"].is_instance_proxy
+    # A proxy's instance is the nearest instance above it, however deep the proxy is.
+    assert details["/World/Geometry/Crates/Crate_01/Lid/Panel"].instance_path == Sdf.Path(
+        "/World/Geometry/Crates/Crate_01"
+    )
+    assert details["/World/Geometry/Crates/Crate_01"].instance_path is None
+    # Instanceable metadata without composition arcs leaves a prim no instance.
+    instanceable = details["/World/Geometry/Crates/Crate_Instanceable"]
+    assert instanceable.is_instanceable
+    assert not instanceable.is_instance
     assert details["/World/Geometry/Prop_Payloaded"].has_payload
     assert details["/World/Geometry/Prop_Variants"].has_variants
     assert details["/World/Geometry/Crates/Crate_Unique"].has_references
