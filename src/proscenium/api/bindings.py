@@ -135,9 +135,9 @@ class BindingHandle:
         """Release this binding's source and evaluation stages, including after removal or undo."""
         BINDINGS.release(self.binding_id)
 
-    def synchronize(self, time_code: Usd.TimeCode | float | None = None) -> Result:
+    def synchronize(self, time_code: Usd.TimeCode | float | None = None, *, full_rebuild: bool = False) -> Result:
         """Synchronize at time_code, or at the target scene's current frame's (Bindings.synchronize)."""
-        return BINDINGS.synchronize(self.binding_id, time_code)
+        return BINDINGS.synchronize(self.binding_id, time_code, full_rebuild=full_rebuild)
 
     def cache(self, time_codes: Iterable[Usd.TimeCode | float]) -> Result:
         """Cache the published generation at each of time_codes without synchronizing (Bindings.cache)."""
@@ -279,10 +279,13 @@ class Bindings:
 
     @_exclusive
     @_reporting_cleanup
-    def synchronize(self, binding_id: BindingId, time_code: Usd.TimeCode | float | None = None) -> Result:
+    def synchronize(
+        self, binding_id: BindingId, time_code: Usd.TimeCode | float | None = None, *, full_rebuild: bool = False
+    ) -> Result:
         """Synchronize through the transaction (proscenium.synchronization), at time_code if given.
 
-        The result names the time code attempted; a refusal before the attempt names only one given.
+        The result names the time code attempted; a refusal before the attempt names only one given. With full_rebuild,
+        the attempt rereads the source through a new scene-index chain and prepares every partition anew.
         """
         given = None if time_code is None else Usd.TimeCode(time_code)  # one evaluation can use, or a TypeError now
         found = self._require_binding(binding_id)
@@ -291,7 +294,7 @@ class Bindings:
                 *_unusable_binding_result(found).diagnostics, attempted_time_codes=() if given is None else (given,)
             )
         config = found.usable_config()
-        result = synchronization.synchronize(binding_id, config, self.stages, given)
+        result = synchronization.synchronize(binding_id, config, self.stages, given, full_rebuild=full_rebuild)
         # Every failure before publication is fatal, and none after it (synchronization.synchronize), so it published.
         if result.state is not ResultState.FATAL_FAILURE:
             assert found.destination is not None  # a usable binding's

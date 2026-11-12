@@ -64,13 +64,17 @@ def evaluate_display_plans(
     time_codes: Sequence[Usd.TimeCode],
     *,
     representation_version: int,
+    new_chain: bool = False,
 ) -> list[_core.Plan] | Diagnostic:
     """Evaluate snapshots and build display plans in time-code order, or return a fatal diagnostic.
 
     evaluation_stage is binding_stages' evaluation stage, acquired under settings' payload policy; the plans apply
     settings' conversion and purposes, and unit_scale, the target scene's. The caller supplies the representation
-    version its application layer consumes.
+    version its application layer consumes. With new_chain, the kept chain is released first, so the capture is from
+    a new one, which copies every prim.
     """
+    if new_chain:
+        binding_stages.release_kept_chain()
     try:
         with binding_stages.monitor_evaluation_layer_changes() as changed:
             try:

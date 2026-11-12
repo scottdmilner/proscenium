@@ -24,6 +24,7 @@ class SceneIndexChain:
     def release(self) -> None: ...  # drop the chain and its stage reference; idempotent
     @property
     def released(self) -> bool: ...
+    def _drop_next_capture_notices(self) -> None: ...  # the next capture misses its notices; for tests only
 
 class Snapshot:
     """An immutable capture at one time code, which only planning reads."""

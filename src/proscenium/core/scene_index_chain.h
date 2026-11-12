@@ -39,6 +39,10 @@ class SceneIndexChain {
   // released.
   SnapshotPtr Capture(PXR_NS::UsdTimeCode time);
 
+  // Makes the next capture drop the notices it takes, as if the chain had missed them, so it shares what they named.
+  // For tests of missed notices only (DISC-07).
+  void DropNextCaptureNotices() { dropNextCaptureNotices_ = true; }
+
   // Drops the chain and the handle's reference, so the core keeps no released stage alive. Idempotent.
   void Release();
   bool Released() const { return handle_.Released(); }
@@ -53,6 +57,7 @@ class SceneIndexChain {
   Diagnostics pending_;      // warnings posted while building the chain, until the first capture takes them
   NoticeRecorder recorder_;  // observes terminal_
   SnapshotPtr previous_;     // the last capture, which the next shares from; null before the first and after a throw
+  bool dropNextCaptureNotices_ = false;
 };
 
 }  // namespace proscenium

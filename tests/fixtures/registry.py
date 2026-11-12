@@ -533,7 +533,7 @@ FIXTURES: dict[str, Fixture] = {
                 # After reopening, a refresh may rebuild everything, as a clean full rebuild would.
                 Case("after-reopen", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-04", "CHG-31"), 1),
                 # A requested full rebuild builds every partition, equal to a first synchronization.
-                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-04", "CHG-32"), 1),
+                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-04", "CHG-32", "API-15"), 1),
                 # Application keeps no buffer the plan lent and queries no USD.
                 Case("application-boundary", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-13", "APP-08"), 1),
             ),
@@ -575,7 +575,7 @@ FIXTURES: dict[str, Fixture] = {
                 ),
                 # Discovery: each step's source-affected entities found apart from what depends on them, edits
                 # coalesced or their notices lost, and notices treated as hints.
-                Case("discovery", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DISC-06", "DISC-07", "DISC-08"), 1),
+                Case("discovery", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DISC-06", "DISC-07", "DISC-08", "API-15"), 1),
                 # Between a step's edit and its refresh, the binding reports it may be out of date.
                 Case("out-of-date", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("INSP-09",), 1),
                 # Points moved and removed, with authored ids and without.

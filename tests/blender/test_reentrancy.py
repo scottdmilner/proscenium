@@ -166,7 +166,7 @@ def test_an_exception_escaping_a_synchronization_ends_it(
     with transaction.source_change(tmp_path) as scene:
         handle = _binding(bindings, scene, "Shot")
 
-        def failing(*_args: object) -> None:
+        def failing(*_args: object, **_kwargs: object) -> None:
             raise RuntimeError("injected bug")
 
         monkeypatch.setattr(synchronization, "synchronize", failing)

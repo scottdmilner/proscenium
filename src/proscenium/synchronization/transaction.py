@@ -39,12 +39,16 @@ def synchronize(
     config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode | None,
+    *,
+    full_rebuild: bool = False,
 ) -> Result:
     """Synchronize a usable binding with config at time_code; the result names the time code.
 
     Without a time code, the attempt is at the target scene's current frame's, its subframe included, since time code
     t is frame t (transforms.md#transforms-and-time-codes). The binding's stages are current's, made only once the
-    source is accessed, so a binding failing before that gets none.
+    source is accessed, so a binding failing before that gets none. A full rebuild captures through a new chain and
+    prepares every partition (source-access.md#synchronization-api), as every synchronization does until incremental
+    refresh replaces only what changed.
     """
     record = binding_operations.require_canonical_binding_record(binding_id)
     scene, destination = config.scene, record.collection
@@ -59,7 +63,8 @@ def synchronize(
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
     binding_operations.restore_missing_binding_index_entry(binding_id, record)
-    result = Result(*_attempt(binding_id, config, destination, current, time_code), attempted_time_codes=(time_code,))
+    attempted = _attempt(binding_id, config, destination, current, time_code, full_rebuild=full_rebuild)
+    result = Result(*attempted, attempted_time_codes=(time_code,))
     if _removed(destination):  # removed during the attempt, with its records, so there's nothing to record on
         return result
     encoded_time_code = binding_state.encode_time_code(time_code)
@@ -74,6 +79,8 @@ def _attempt(
     destination: bpy.types.Collection,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode,
+    *,
+    full_rebuild: bool,
 ) -> tuple[Diagnostic, ...]:
     """The attempt's diagnostics, its steps run as far as they succeed."""
     scene = config.scene
@@ -106,6 +113,7 @@ def _attempt(
         unit_scale,
         (time_code,),
         representation_version=application.REPRESENTATION_VERSION,
+        new_chain=full_rebuild,  # whatever the kept chain missed, a new one reads (incremental.md#change-discovery)
     )
     if isinstance(planned, Diagnostic):
         return (*own, planned)

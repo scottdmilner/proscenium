@@ -269,6 +269,7 @@ PXR_BOOST_PYTHON_MODULE(_core) {
       .def(
           "stage", +[](const SceneIndexChain& c) { return StageOrNone(c.Stage()); })
       .def("capture", &Capture, bp::arg("time_code"))
+      .def("_drop_next_capture_notices", &SceneIndexChain::DropNextCaptureNotices)  // for tests of missed notices
       .def("release", &SceneIndexChain::Release)
       .add_property("released", &SceneIndexChain::Released);
   // Opaque: only planning reads a snapshot. How many prims a capture copied is for tests and measurements of
