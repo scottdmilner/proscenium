@@ -55,9 +55,12 @@ def display_state(binding_id: BindingId) -> DisplayState:
 
 
 def clean_rebuild(
-    bindings: Bindings, stage: Usd.Stage, settings: binding_settings.RequestedSettings | None = None
+    bindings: Bindings,
+    stage: Usd.Stage,
+    settings: binding_settings.RequestedSettings | None = None,
+    time_code: Usd.TimeCode | float = 0.0,
 ) -> DisplayState:
-    """What a clean binding's first synchronization of stage displays, with settings, else the defaults.
+    """What a clean binding's first synchronization of stage at time_code displays, with settings, else the defaults.
 
     The binding is released after.
     """
@@ -71,7 +74,7 @@ def clean_rebuild(
         )
         assert changed.state is not ResultState.FATAL_FAILURE
     assert clean.attach(stage).state is not ResultState.FATAL_FAILURE
-    assert clean.synchronize(0).state is not ResultState.FATAL_FAILURE
+    assert clean.synchronize(time_code).state is not ResultState.FATAL_FAILURE
     try:
         return display_state(clean.binding_id)
     finally:
