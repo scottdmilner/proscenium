@@ -15,7 +15,7 @@ import pytest
 
 from fixtures import edit_sequence, incremental, time_variations
 from proscenium.binding.results import ResultState
-from proscenium.synchronization import time_code_keying
+from proscenium.synchronization import attribute_samples, time_code_keying
 from support.clean_rebuild import clean_rebuild
 from support.displayed_copies import displayed_copies
 from support.refresh_checks import copy_object, entries_by_source
@@ -86,9 +86,16 @@ def test_without_the_generations_plan_every_copy_is_keyed(bindings: Bindings, tm
         assert _animated(handle) == set(entries_by_source(handle.binding_id))
 
 
-# F-TIME-VARIATIONS' copies whose transform, visibility, or shear varies, and Still, which doesn't (M7 plan, D2).
-_TRANSFORMED = (time_variations.MOVER, time_variations.BLINK, time_variations.SKEW, time_variations.SHEARING)
-_SHOWN = (*_TRANSFORMED, time_variations.STILL)
+# F-TIME-VARIATIONS' copies whose transform, visibility, shear, or bounds vary, and Still, which doesn't (M7 plan,
+# D2, D3).
+_SHOWN = (
+    time_variations.MOVER,
+    time_variations.BLINK,
+    time_variations.SKEW,
+    time_variations.SHEARING,
+    time_variations.GROWS,
+    time_variations.STILL,
+)
 type _Shown = tuple[bool, bool, tuple[tuple[float, ...], ...]]  # a copy's hide flags shown, and rounded vertices
 
 
@@ -119,9 +126,9 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
     bindings: Bindings, tmp_path: Path, grouping: int
 ) -> None:
     # CACHE-01, CACHE-09, XFORM-09 to XFORM-11 on F-TIME-VARIATIONS, cached by each grouping: at each cached time
-    # code, and at a frame between two, Mover's and Skew's transforms, Blink's hide flags, and Shearing's shear, which
-    # appears after 10, show what a clean synchronization at that time code, or the latest cached before, does; Still
-    # is never keyed.
+    # code, and at a frame between two, Mover's and Skew's transforms, Blink's hide flags, Shearing's shear, which
+    # appears after 10, and Grows' bounds, through its frames modifier, show what a clean synchronization at that time
+    # code, or the latest cached before, does; Still is never keyed.
     with time_variations.time_variations(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage, scene.synchronized)
         for call in scene.cache_groupings[grouping]:
@@ -132,13 +139,14 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
         for frame, time_code in frames:
             expected = _clean_at(bindings, scene.stage, time_code)
             _set_frame(frame)
-            assert _displayed(displayed_copies(handle.binding_id)) == expected, frame
+            assert _displayed(displayed_copies(handle.binding_id, evaluated=True)) == expected, frame
 
 
-def test_synchronizing_again_removes_shear_and_visibility_keys(bindings: Bindings, tmp_path: Path) -> None:
+def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings, tmp_path: Path) -> None:
     # CHG-22 on F-TIME-VARIATIONS: cached, then synchronized at 0 again while showing 15, every copy shows 0's display,
-    # no object holds an action, Mover, Blink, and Skew keep their objects, and Shearing, given a shear parent only
-    # for its cached time codes, is rebuilt without one.
+    # no object holds an action, Mover, Blink, and Skew keep their objects, Shearing, given a shear parent only for its
+    # cached time codes, is rebuilt without one, and Grows, whose bounds were sampled, is rebuilt, the frames group
+    # gone with its old object.
     with time_variations.time_variations(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage, scene.synchronized)
         [call] = scene.cache_groupings[0]
@@ -152,7 +160,9 @@ def test_synchronizing_again_removes_shear_and_visibility_keys(bindings: Binding
         assert all(after[s] == before[s] for s in (time_variations.MOVER, time_variations.BLINK, time_variations.SKEW))
         assert after[time_variations.SHEARING] != before[time_variations.SHEARING]
         assert after[time_variations.SHEARING].parent is None
-        assert _displayed(displayed_copies(handle.binding_id)) == _clean_at(bindings, scene.stage, scene.synchronized)
+        assert after[time_variations.GROWS] != before[time_variations.GROWS] and not bpy.data.node_groups
+        shown = displayed_copies(handle.binding_id, evaluated=True)
+        assert _displayed(shown) == _clean_at(bindings, scene.stage, scene.synchronized)
 
 
 def test_a_failing_call_takes_back_the_shear_parent_it_made(
@@ -175,3 +185,29 @@ def test_a_failing_call_takes_back_the_shear_parent_it_made(
         assert published_generation(handle.binding_id, destination) == published
         assert datablocks() == before
         assert copy_object(entries_by_source(handle.binding_id)[time_variations.SHEARING]).parent is None
+
+
+def test_a_failing_call_takes_back_its_samples(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CACHE-03 on F-TIME-VARIATIONS: a first call failing once it sampled Grows' bounds removes the sample and the
+    # frames modifier and disposes of the frames group, leaving the published generation and the file's datablocks as
+    # they were.
+    add_sample = attribute_samples.add_sample
+
+    def failing(*args: Any) -> str:
+        add_sample(*args)
+        raise RuntimeError("injected keying failure")
+
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        destination = bpy.data.collections["Shot"]
+        published, before = published_generation(handle.binding_id, destination), datablocks()
+        monkeypatch.setattr(attribute_samples, "add_sample", failing)
+        assert handle.cache([5.0]).state is ResultState.FATAL_FAILURE
+        assert published_generation(handle.binding_id, destination) == published
+        assert datablocks() == before
+        grows = copy_object(entries_by_source(handle.binding_id)[time_variations.GROWS])
+        assert not grows.modifiers
+        assert isinstance(grows.data, bpy.types.Mesh)
+        assert not any("@" in attribute.name for attribute in grows.data.attributes)

@@ -14,9 +14,11 @@ A kept copy is rebuilt instead of updated in place when unmanaged content uses a
 (CHG-06, OWN-08): anything but the destination collection, whose manifest names them, a scene linking it, whose view
 layers hold a base for each of its objects, and the partition's own resources. So a resource someone else uses is
 released intact, and a local update never changes what it uses. A kept copy whose published resources are
-incomplete, as when the user deleted its object, is rebuilt too, as is one whose published shear parent the plan
-doesn't have, or the reverse, as when a cache call gave a copy one for a shear only a cached time code has. A copy's
-published entries are those whose source entity is its source path: an action's with its object's.
+incomplete, as when the user deleted its object, is rebuilt too, as is one whose published partition isn't the
+plan's: a shear parent the plan doesn't have, or the reverse, as when a cache call gave a copy one for a shear only a
+cached time code has, and a bounds mesh a cache call sampled, which a frames modifier shows. A copy's published entries
+are those whose source entity is its source path: an action's with its object's. A shared datablock's entry, the
+frames group's, is replaced once every entry using it is.
 """
 
 from __future__ import annotations
@@ -84,12 +86,7 @@ def changed_partitions(
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))
     participation = set(_indices(diff.participation_changed_copy_indices))
     found = _PublishedPartitions.of(published)
-    keys_by_source, action_keys, incomplete, parented = (
-        found.keys_by_source,
-        found.action_keys,
-        found.incomplete,
-        found.parented,
-    )
+    keys_by_source, action_keys, incomplete = found.keys_by_source, found.action_keys, found.incomplete
     sources = [entry.source_path for entry in plan.correspondence]
     previous_sources = [entry.source_path for entry in previous.correspondence]
     sheared = [parent >= 0 for parent in _indices(plan.copy_shear_parent_resource_indices)]
@@ -97,7 +94,7 @@ def changed_partitions(
     updated: dict[int, CopyUpdate] = {}
     for copy, old in enumerate(matched):
         source = sources[copy]
-        unmatched = (source in parented) != sheared[copy]  # the published partition isn't the plan's
+        unmatched = (source in found.parented) != sheared[copy] or source in found.sampled  # not the plan's
         if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source or unmatched:
             prepared.append(copy)
         elif copy in moved | bounds | participation or source in action_keys:
@@ -111,7 +108,13 @@ def changed_partitions(
     replaced |= {action_keys[sources[c]] for c, change in updated.items() if change.cached_keys_removed}
     for old in _indices(diff.removed_previous_copy_indices):
         replaced |= keys_by_source.get(previous_sources[old], set())
-    return PartitionReplacement(tuple(prepared), frozenset(replaced), updated)
+    return PartitionReplacement(tuple(prepared), frozenset(replaced | _unused_shared(published, replaced)), updated)
+
+
+def _unused_shared(published: manifests.Manifest, replaced: Collection[str]) -> set[str]:
+    """The keys of published's shared datablocks' entries that only replaced entries use."""
+    used = {used for key, e in published.entries.items() if key not in replaced for used in e.dependency_entry_keys}
+    return {key for key, e in published.entries.items() if e.identity is None and key not in used}
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,11 +125,13 @@ class _PublishedPartitions:
     action_keys: dict[str, str]  # the entry key of the action holding a copy's cached keys
     incomplete: set[str]  # the copies with a published resource gone
     parented: set[str]  # the copies with a published shear parent
+    sampled: set[str]  # the copies whose entries use a shared datablock, the frames group a cache call sampled for
 
     @staticmethod
     def of(published: manifests.Manifest) -> _PublishedPartitions:
         """The partitions of published's copies."""
-        found = _PublishedPartitions({}, {}, set(), set())
+        found = _PublishedPartitions({}, {}, set(), set(), set())
+        shared = {k for k, e in published.entries.items() if e.identity is None}
         for entry_key, entry in published.entries.items():
             if (identity := entry.identity) is None:
                 continue
@@ -137,6 +142,8 @@ class _PublishedPartitions:
                 found.parented.add(identity.entity)
             if entry.datablock is None:
                 found.incomplete.add(identity.entity)
+            if not shared.isdisjoint(entry.dependency_entry_keys):
+                found.sampled.add(identity.entity)
         return found
 
 

@@ -2,7 +2,8 @@
 
 A copy is its object's manifest entry: its source entity, its hide flags, and its mesh's vertices in world space. A
 world matrix is composed from each object's basis and its parents', as Blender composes them, rather than read from
-matrix_world, which Blender updates only with the depsgraph.
+matrix_world, which Blender updates only with the depsgraph. Evaluated, a mesh's vertices are its modifiers' output,
+as the depsgraph last evaluated it, such as a frames modifier's sample.
 """
 
 from __future__ import annotations
@@ -40,12 +41,13 @@ def _world(obj: bpy.types.Object) -> Matrix:
     return basis if obj.parent is None else _world(obj.parent) @ obj.matrix_parent_inverse @ basis
 
 
-def displayed_copies(binding_id: BindingId) -> list[DisplayedCopy]:
-    """What the binding's published display shows of each drawn copy."""
+def displayed_copies(binding_id: BindingId, *, evaluated: bool = False) -> list[DisplayedCopy]:
+    """What the binding's published display shows of each drawn copy, its meshes evaluated if asked."""
+    depsgraph = bpy.context.evaluated_depsgraph_get() if evaluated else None
     found = []
     for source, obj in _objects(binding_id):
         world = _world(obj)
-        mesh = obj.data
+        mesh = obj.data if depsgraph is None else obj.evaluated_get(depsgraph).data
         vertices = tuple(tuple((world @ v.co)[:]) for v in mesh.vertices) if isinstance(mesh, bpy.types.Mesh) else ()
         found.append(DisplayedCopy(source, not obj.hide_viewport, not obj.hide_render, vertices))  # ty: ignore[invalid-argument-type]
     return found

@@ -107,7 +107,8 @@ def cache(
     before = _published_manifest(manifest)
     plans_by_time_code = dict(zip(new, plans, strict=True))
     own = published_plans.plan_for(published)
-    varying = None if own is None else _varying_sources(own, plans_by_time_code.values(), before)
+    unknown = time_code_keying.VaryingCopies(None, None)  # without the generation's plan, every copy
+    varying = unknown if own is None else _varying_copies(own, plans_by_time_code.values(), before)
     try:
         changes = time_code_keying.key_time_codes(
             plans_by_time_code, varying, before, destination, published.time_code, published.cached_time_codes, work
@@ -132,20 +133,32 @@ def cache(
     return report.result(attempted_time_codes=attempted)
 
 
-def _varying_sources(own: _core.Plan, plans: Collection[_core.Plan], published: manifests.Manifest) -> set[str]:
-    """The source entities of the copies that vary: keyed in published, or moved, rebuilt, or shown otherwise."""
-    varying = {
-        identity.entity
-        for entry in published.entries.values()
-        if (identity := entry.identity) is not None and identity.role is manifests.RepresentationRole.ACTION
-    }
+def _varying_copies(
+    own: _core.Plan, plans: Collection[_core.Plan], published: manifests.Manifest
+) -> time_code_keying.VaryingCopies:
+    """The copies that vary from own in plans, or that published keys already, by source entity.
+
+    Each varies in transform and hide flags when keyed already, or when a plan moves it, rebuilds it, or shows it
+    otherwise; and in bounds when its bounds are sampled already, or when a plan changes them.
+    """
+    groups = {k for k, e in published.entries.items() if e.role is manifests.RepresentationRole.NODE_GROUP}
+    varying, bounds = set(), set()
+    for entry in published.entries.values():
+        if (identity := entry.identity) is None:
+            continue
+        if identity.role is manifests.RepresentationRole.ACTION:
+            varying.add(identity.entity)
+        if not groups.isdisjoint(entry.dependency_entry_keys):  # its object shows the frames group
+            bounds.add(identity.entity)
     for plan in plans:
         diff = _core.diff_plans(own, plan)
         sources = [entry.source_path for entry in plan.correspondence]
         for buffer in (diff.moved_copy_indices, diff.rebuilt_copy_indices, diff.participation_changed_copy_indices):
             with memoryview(buffer) as copies:  # released before returning (SNAP-13)
                 varying.update(sources[copy] for copy in copies.tolist())
-    return varying
+        with memoryview(diff.bounds_changed_copy_indices) as copies:
+            bounds.update(sources[copy] for copy in copies.tolist())
+    return time_code_keying.VaryingCopies(varying | bounds, bounds)
 
 
 def _unusable_state_diagnostic(
