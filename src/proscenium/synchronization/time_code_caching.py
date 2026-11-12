@@ -26,14 +26,13 @@ from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Collection
 
     import bpy
 
     from ..binding.persistence import binding_records
     from ..binding.runtime import stage_tracking
     from ..binding.source_access import BindingId
-    from ..core import _core
 
 
 def cache(
@@ -84,32 +83,27 @@ def cache(
     if not new:
         return Result()
     report = DiagnosticCollector()
-    report.extend(evaluation.source_state_diagnostics(binding_id, evaluation_stage))
-    planned = evaluation.evaluate_display_plans(
+    plans = evaluation.evaluate_display_plans(
         binding_id,
         binding_stages,
         evaluation_stage,
         published.applied_settings,
         published.unit_scale,
         attempted,
+        report,
         representation_version=application.REPRESENTATION_VERSION,
     )
-    if isinstance(planned, Diagnostic):
-        report.add(planned)
+    if plans is None:
         return report.result(attempted_time_codes=attempted)
-    report.extend(planned.verification_diagnostics)
-    report.extend(_plans_diagnostics(binding_id, planned.plans))
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.CACHE)
     before = _published_manifest(manifest)
     try:
-        changes = application.key_time_codes(
-            dict(zip(new, planned.plans, strict=True)), before, published.time_code, work
-        )
+        changes = application.key_time_codes(dict(zip(new, plans, strict=True)), before, published.time_code, work)
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return report.result(attempted_time_codes=attempted)
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
@@ -120,7 +114,7 @@ def cache(
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return report.result(attempted_time_codes=attempted)
     preparation_resources.remove_staging_and_clear_tracking(work)
     return report.result(attempted_time_codes=attempted)
@@ -154,11 +148,6 @@ def _published_manifest(stored: id_property_records.LoadedRecord[manifests.Manif
     return manifests.Manifest({}) if stored is None else stored.record
 
 
-def _plans_diagnostics(binding_id: BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
-    """The source-side diagnostics of each of the plans, in order."""
-    return tuple(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan))
-
-
 def _stale_message(
     binding_stages: stages.BindingStages, published: binding_state.GenerationMetadata, scene: bpy.types.Scene
 ) -> str | None:
@@ -169,16 +158,3 @@ def _stale_message(
     if scene.unit_settings.scale_length != published.unit_scale:
         return "The target scene's unit scale changed since the binding was synchronized; synchronize it first"
     return None
-
-
-def _abort(report: DiagnosticCollector, failed: Diagnostic, work: preparation_resources.PreparationResources) -> None:
-    """Report failed, undo work's changes to the published generation, and dispose of what it made.
-
-    Each disposal that failed is reported. Raises, as defects, what reverting or writing the ledger raises, having
-    disposed of the work either way.
-    """
-    report.add(failed)
-    try:
-        preparation_resources.revert_published_resource_changes(work)
-    finally:
-        report.extend(preparation_resources.dispose(work))

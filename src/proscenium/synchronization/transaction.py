@@ -110,25 +110,22 @@ def _attempt(
         return
     revision = stages_.source_revision
     report.extend(mismatches)
-    report.extend(evaluation.source_state_diagnostics(binding_id, evaluation_stage))
-    # Before preparation nothing in Blender has changed, so a failure only reports.
-    planned = evaluation.evaluate_display_plans(
+    # Before preparation nothing in Blender has changed, so a failure only reports. Evaluation's diagnostics are the
+    # content's, the source state's, and the verification mode's, so the generation records them too.
+    plans = evaluation.evaluate_display_plans(
         binding_id,
         stages_,
         evaluation_stage,
         settings,
         unit_scale,
         (time_code,),
+        report,
         representation_version=application.REPRESENTATION_VERSION,
         new_chain=full_rebuild,  # whatever the kept chain missed, a new one reads (incremental.md#change-discovery)
     )
-    if isinstance(planned, Diagnostic):
-        report.add(planned)
+    if plans is None:
         return
-    [plan] = planned.plans
-    # Content's, so they join the generation's too, with the verification mode's.
-    report.extend(planned.verification_diagnostics)
-    report.extend(evaluation.plan_diagnostics(binding_id, plan))
+    [plan] = plans
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
@@ -145,16 +142,16 @@ def _attempt(
             source_path=error.source_entity_path,
             role=str(error.role),
         )
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return
     if _removed(destination):  # a state change
         message = f"The destination collection {destination_name!r} was removed while the display was prepared"
         failed = Diagnostic(DiagnosticCode.DESTINATION_INVALID, binding_id, message)
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return
     described = binding_state.GenerationMetadata(
         binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, report.diagnostics
@@ -165,16 +162,10 @@ def _attempt(
         obsolete = publication.publish(destination, work, described, before, previous)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
-        _abort(report, failed, work)
+        preparation_resources.abort(report, failed, work)
         return
     preparation_resources.remove_staging_and_clear_tracking(work)
     report.extend(retirement.retire(binding_id, obsolete, work.operation))
-
-
-def _abort(report: DiagnosticCollector, failed: Diagnostic, work: preparation_resources.PreparationResources) -> None:
-    """Report failed, and dispose of work, reporting each disposal that failed."""
-    report.add(failed)
-    report.extend(preparation_resources.dispose(work))
 
 
 def _unit_scale_mismatches(

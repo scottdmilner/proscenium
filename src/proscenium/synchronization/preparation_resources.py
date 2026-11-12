@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ..binding.persistence import manifests
+    from ..binding.results import DiagnosticCollector
     from ..binding.source_access import BindingId
 
 
@@ -101,6 +102,18 @@ def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
     finally:
         remove_staging_and_clear_tracking(work)  # whatever the ledger records, the staging collection isn't a resource
     return tuple(e.diagnostic for e in pending.values())
+
+
+def abort(report: DiagnosticCollector, failed: Diagnostic, work: PreparationResources) -> None:
+    """Report failed, undo work's changes to published resources, and dispose of it, reporting each removal that failed.
+
+    Raises, as defects, what undoing or writing the ledger raises, having disposed of the work either way.
+    """
+    report.add(failed)
+    try:
+        revert_published_resource_changes(work)
+    finally:
+        report.extend(dispose(work))
 
 
 def revert_published_resource_changes(work: PreparationResources) -> None:
