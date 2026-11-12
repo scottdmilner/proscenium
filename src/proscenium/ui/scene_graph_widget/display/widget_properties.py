@@ -30,6 +30,8 @@ VIEWS_PROPERTY = "proscenium_scene_graph_views"  # the WindowManager's collectio
 SEARCH_DELAY_SECONDS = 0.25  # after the last keystroke, before a search runs
 # A row item's RNA path: "proscenium_scene_graph_views[<view index>].rows[<row index>]".
 _ROW_ITEM_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.rows\[(\d+)\]$")
+# A property of a view's item, from the window manager: "proscenium_scene_graph_views[<view index>].<property>".
+_VIEW_PROPERTY_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.")
 
 
 class _SceneGraphPropertiesState:
@@ -70,7 +72,7 @@ def _on_search_changed(properties: Any, _context: Any) -> None:
         return
     view = widget_views.find_view(properties.name)
     if view is not None:
-        schedule(view.run_pending, SEARCH_DELAY_SECONDS)
+        schedule(view.run_search, SEARCH_DELAY_SECONDS)
 
 
 def _on_search_text_changed(properties: Any, context: Any) -> None:
@@ -151,6 +153,22 @@ def view_properties(wm: Any, name: str) -> Any | None:
     return getattr(wm, VIEWS_PROPERTY).get(name)
 
 
+def view_name_holding(hovered_property: Any) -> str | None:
+    """The name of the view whose properties hold a property, as `context.property` gives one, or None.
+
+    Over a list, the hovered property is its row's active index, so this names the list under the cursor.
+    """
+    if not hovered_property:
+        return None
+    owner, data_path, _array_index = hovered_property
+    found = _VIEW_PROPERTY_PATH.match(data_path) if isinstance(owner, bpy.types.WindowManager) else None
+    if found is None:
+        return None
+    items = getattr(owner, VIEWS_PROPERTY)
+    view_index = int(found[1])
+    return items[view_index].name if view_index < len(items) else None
+
+
 def create_missing_view_properties(wm: Any) -> None:
     """Make the properties of every view that has none, with its applied search, and sync every view's rows."""
     items = getattr(wm, VIEWS_PROPERTY)
@@ -220,6 +238,15 @@ def _writing_from_view() -> Iterator[None]:
         yield
     finally:
         _SceneGraphPropertiesState.is_writing_from_view = False
+
+
+def apply_stage_changes(name: str) -> None:
+    """Read a view's pending stage changes, then sync and redraw; the search fields wait for their own timer."""
+    view = widget_views.scene_graph_view(name)
+    before = view.prim_tree_view.selected_path
+    view.prim_tree_view.apply_pending_changes()
+    sync_and_notify(view, before)
+    _tag_redraw_all()
 
 
 def apply_pending(name: str) -> None:

@@ -179,6 +179,33 @@ def test_stage_edits_reach_the_rows(registered: None, stage: Usd.Stage) -> None:
     assert len(_properties("viewport").rows) == 4
 
 
+def test_a_hovered_list_row_names_its_view(registered: None) -> None:
+    # The key watcher reads context.property, over a row its list's active index, to pick among a region's views.
+    display.create_view("first", _never)
+    display.create_view("second", _never)
+    wm = bpy.context.window_manager
+    second_index = list(getattr(wm, widget_properties.VIEWS_PROPERTY).keys()).index("second")
+    hovered = (wm, f"{widget_properties.VIEWS_PROPERTY}[{second_index}].active_row_index", -1)
+    assert widget_properties.view_name_holding(hovered) == "second"
+    assert widget_properties.view_name_holding(None) is None  # between the lists
+    assert widget_properties.view_name_holding((wm, "clipboard", -1)) is None
+    assert widget_properties.view_name_holding((bpy.context.scene, "frame_current", -1)) is None
+
+
+def test_typing_a_search_doesnt_put_off_reading_a_stage_change(registered: None, stage: Usd.Stage) -> None:
+    display.create_view("viewport", _never)
+    display.set_stage("viewport", stage)
+    view = widget_views.scene_graph_view("viewport")
+    stage.DefinePrim("/Added")
+    assert bpy.app.timers.is_registered(view.run_stage_changes)
+    _properties("viewport").search_text = "sun"  # schedules the search, a pause later
+    assert bpy.app.timers.is_registered(view.run_search)
+    assert bpy.app.timers.is_registered(view.run_stage_changes)  # still due at once
+    view.run_stage_changes()  # as its timer would
+    assert len(_properties("viewport").rows) == 4  # the change is read; the search hasn't run
+    assert view.prim_tree_view.query.is_empty()
+
+
 def test_the_host_hears_its_selected_prim_leave_the_stage(registered: None, stage: Usd.Stage) -> None:
     selections: list[Sdf.Path | None] = []
     display.create_view("viewport", _never, selections.append)
@@ -218,7 +245,7 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
     bpy.ops.wm.open_mainfile(filepath=str(blend))
     properties = _properties("viewport")
     assert (properties.search_text, properties.search_mode) == ("sun*", "GLOB")  # the fields show what's applied
-    assert bpy.app.timers.is_registered(view.run_pending)
+    assert bpy.app.timers.is_registered(view.run_stage_changes)
     display.apply_pending("viewport")  # as the timer would
     assert view.prim_tree_view.query.text == "sun*"  # not cleared by the new, empty fields
     tree = view.prim_tree_view.tree

@@ -33,11 +33,11 @@ class _SceneGraphRegistrationState:
 
 @persistent
 def _file_loaded(*_args: object) -> None:
-    # Loading a file replaces the window manager, whose properties aren't saved, and ends every modal operator.
+    # Loading a file replaces the window manager, whose properties aren't saved, and ends every modal operator; each
+    # window's key watcher starts again when it next draws a view.
     wm = bpy.context.window_manager
     if wm is not None:
         widget_properties.create_missing_view_properties(wm)
-    widget_keys.forget_watchers()  # each window's watcher starts again when it next draws a view
 
 
 def register() -> None:

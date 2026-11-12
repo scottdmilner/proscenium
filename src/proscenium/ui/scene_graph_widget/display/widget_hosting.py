@@ -31,18 +31,22 @@ def create_view(
     selecting nothing, and the selected prim leaving the stage (None).
     """
 
-    def run_pending() -> None:
+    def run_stage_changes() -> None:
+        widget_properties.apply_stage_changes(name)
+
+    def run_search() -> None:
         widget_properties.apply_pending(name)
 
     def schedule_stage_change() -> None:
-        widget_properties.schedule(run_pending, 0.0)  # the notice comes mid-edit; read it once the edit is over
+        widget_properties.schedule(run_stage_changes, 0.0)  # the notice comes mid-edit; read it once the edit is over
 
     view = widget_views.SceneGraphView(
         name=name,
         prim_tree_view=PrimTreeView(schedule_stage_change),
         shows_in_region=shows_in_region,
         on_selection_changed=on_selection_changed or (lambda _path: None),
-        run_pending=run_pending,
+        run_stage_changes=run_stage_changes,
+        run_search=run_search,
     )
     widget_views.add_view(view)
     wm = bpy.context.window_manager
@@ -53,7 +57,8 @@ def create_view(
 def remove_view(name: str) -> None:
     """Stop showing a view's stage, and remove the view and its properties."""
     view = widget_views.discard_view(name)
-    widget_properties.unschedule(view.run_pending)
+    widget_properties.unschedule(view.run_stage_changes)
+    widget_properties.unschedule(view.run_search)
     view.prim_tree_view.close()
     wm = bpy.context.window_manager
     if wm is not None:

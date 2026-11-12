@@ -31,7 +31,10 @@ class SceneGraphView:
     shows_in_region: Callable[[Any, Any], bool]
     # Called with the selected prim's path, or None, when the selection changes other than through select_prim.
     on_selection_changed: Callable[[Sdf.Path | None], None]
-    run_pending: Callable[[], None]  # the timer that reads the view's pending search and stage changes
+    # The view's timers: one reads its stage's changes once an edit is over, the other runs its search a pause
+    # after the fields last change. Apart, so typing doesn't put off reading a change.
+    run_stage_changes: Callable[[], None]
+    run_search: Callable[[], None]
 
 
 class _SceneGraphViewsState:

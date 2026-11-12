@@ -3,16 +3,18 @@
 Over a list, the UIList's own handler takes all four arrow keys to move its active row, ahead of every keymap, and
 its update callback can't tell which key moved it. A modal operator's handler runs before the regions' handlers, so
 it sees each event first: it takes Left and Right (and Shift with them) while the cursor is over a region a view's
-host says is showing that view, and passes every other event on. Up and Down stay with the list.
+host says is showing that view, and in a region showing several, over a row of that view's list; it passes every
+other event on. Up and Down stay with the list.
 
 It runs before a text field being edited, too, and Blender doesn't tell Python when one is. So once a view's search
 text changes, it leaves Left and Right to the text box until a key that ends a text edit (ENDING_EDIT_KEYS) or a
 click on one of the view's rows.
 
-A modal operator is per window, so each window gets its own watcher, tracked by the window it runs in: one starts in
-every window at registration, and drawing a view starts one in any window that has none, such as a window opened
-since, or every window after a file load ends them all. Every event reaches every modal operator, so the watcher
-returns at once from any it doesn't take.
+A modal operator is per window, so each window gets its own watcher: one starts in every window at registration, and
+drawing a view starts one in any window whose running modal operators don't include one, such as a window opened
+since, every window after a file load ends them all, or every window after the widget is registered again, since
+unregistering its operator ends each watcher. Every event reaches every modal operator, so the watcher returns at
+once from any it doesn't take.
 """
 
 from __future__ import annotations
@@ -30,21 +32,31 @@ if TYPE_CHECKING:
 KEY_DIRECTIONS = {"RIGHT_ARROW": StepDirection.INTO, "LEFT_ARROW": StepDirection.OUT_OF}
 ENDING_EDIT_KEYS = frozenset({"RET", "NUMPAD_ENTER", "ESC", "TAB"})
 START_DELAY_SECONDS = 0.1  # after registration, once the windows exist
+WATCHER_RUNNING_IDNAME = "PROSCENIUM_OT_scene_graph_watch_keys"  # how a window's modal operators name a watcher
 
 
 class _SceneGraphKeysState:
-    """Whether the watchers should keep running, and which windows have one."""
+    """Whether the watchers should keep running."""
 
     is_watching = False  # cleared to end every watcher at its next event
-    watched_window_pointers: set[int] = set()  # Window.as_pointer() of each window with a running watcher
 
 
 def _contains(rect: Any, event: Any) -> bool:
     return rect.x <= event.mouse_x < rect.x + rect.width and rect.y <= event.mouse_y < rect.y + rect.height
 
 
+def _hovered_view_name(window: Any, area: Any, region: Any) -> str | None:
+    # The watcher's own context has no region, so it reads the region's hovered button through an override.
+    override: Any = bpy.context.temp_override(window=window, area=area, region=region)
+    with override:
+        return widget_properties.view_name_holding(getattr(bpy.context, "property", None))
+
+
 def _view_under_cursor(window: Any, event: Any) -> tuple[widget_views.SceneGraphView, Any] | None:
-    """The view whose host draws it in the region under the cursor, and that region."""
+    """The view whose host draws it under the cursor, and the region it's in.
+
+    In a region showing several views, it's the one whose list is under the cursor, or None between them.
+    """
     area = next((area for area in window.screen.areas if _contains(area, event)), None)
     if area is None:
         return None
@@ -52,10 +64,23 @@ def _view_under_cursor(window: Any, event: Any) -> tuple[widget_views.SceneGraph
     for region in area.regions:
         if not _contains(region, event):
             continue
-        for view in widget_views.all_views():
-            if view.shows_in_region(area, region):
-                return view, region
+        shown = [view for view in widget_views.all_views() if view.shows_in_region(area, region)]
+        if len(shown) == 1:
+            return shown[0], region
+        if shown:
+            # Over a row, the hovered property is its list's active row; over a button in it, none is, so the key
+            # passes on rather than step a view that may not be the one under the cursor.
+            hovered_name = _hovered_view_name(window, area, region)
+            view = next((view for view in shown if view.name == hovered_name), None)
+            return (view, region) if view is not None else None
     return None
+
+
+def _has_watcher(window: Any) -> bool:
+    # A window lists its running modal operators by their C-style idnames; an ended one's entry reads None.
+    return any(
+        operator is not None and operator.bl_idname == WATCHER_RUNNING_IDNAME for operator in window.modal_operators
+    )
 
 
 class SceneGraphWatchKeys(bpy.types.Operator):
@@ -67,17 +92,14 @@ class SceneGraphWatchKeys(bpy.types.Operator):
 
     @override
     def invoke(self, context: Any, event: Any) -> set[OperatorReturnItems]:
-        window_pointer = context.window.as_pointer()
-        if window_pointer in _SceneGraphKeysState.watched_window_pointers:
-            return {"CANCELLED"}  # the window has one
-        _SceneGraphKeysState.watched_window_pointers.add(window_pointer)
+        if _has_watcher(context.window):
+            return {"CANCELLED"}
         context.window_manager.modal_handler_add(self)
         return {"RUNNING_MODAL"}
 
     @override
     def modal(self, context: Any, event: Any) -> set[OperatorReturnItems]:
         if not _SceneGraphKeysState.is_watching:
-            _SceneGraphKeysState.watched_window_pointers.discard(context.window.as_pointer())
             return {"CANCELLED", "PASS_THROUGH"}  # without PASS_THROUGH, ending would consume the event
         if event.type in ENDING_EDIT_KEYS and event.value == "PRESS":
             widget_views.stop_entering_search_text()
@@ -97,12 +119,6 @@ class SceneGraphWatchKeys(bpy.types.Operator):
         region.tag_redraw()
         return {"RUNNING_MODAL"}  # consumed: neither the list nor the Frames keymap sees it
 
-    @override
-    def cancel(self, context: Any) -> None:
-        # Blender cancels a running modal operator when its window closes.
-        if context.window is not None:
-            _SceneGraphKeysState.watched_window_pointers.discard(context.window.as_pointer())
-
 
 def _start_missing_watchers() -> None:
     # A timer, so it returns None: a draw can't invoke an operator, so it schedules this.
@@ -110,7 +126,7 @@ def _start_missing_watchers() -> None:
     if not _SceneGraphKeysState.is_watching or wm is None:
         return
     for window in wm.windows:
-        if window.as_pointer() in _SceneGraphKeysState.watched_window_pointers:
+        if _has_watcher(window):
             continue
         override: Any = bpy.context.temp_override(window=window)  # the stubs miss its context manager methods
         with override:
@@ -131,17 +147,8 @@ def start_watching() -> None:
 
 def ensure_watcher(window: Any) -> None:
     """Start a watcher in a window that draws a view, if the watchers are running and it has none."""
-    if (
-        _SceneGraphKeysState.is_watching
-        and window is not None
-        and window.as_pointer() not in _SceneGraphKeysState.watched_window_pointers
-    ):
+    if _SceneGraphKeysState.is_watching and window is not None and not _has_watcher(window):
         _schedule_start(0.0)
-
-
-def forget_watchers() -> None:
-    """Untrack every window's watcher, once a file load has ended them all."""
-    _SceneGraphKeysState.watched_window_pointers.clear()
 
 
 def stop_watching() -> None:
