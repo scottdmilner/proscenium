@@ -49,11 +49,16 @@ class RowDetails:
     has_children: bool
     is_active: bool
     specifier: Sdf.Specifier
-    has_payload: bool
+    # The composition arcs authored on the prim, as its badges show them.
+    has_inherits: bool
+    has_variants: bool
+    has_variant_selection: bool  # whether any of its variant sets has a variant selected
     has_references: bool
+    has_payload: bool
+    is_loaded: bool  # false only under an unloaded payload, its own or an ancestor's
+    has_specializes: bool
     is_instance: bool
     is_instance_proxy: bool
-    has_variants: bool
 
     @property
     def is_class(self) -> bool:
@@ -68,13 +73,12 @@ class RowDetails:
 
 @dataclass(frozen=True, slots=True)
 class PrimDetails:
-    """What the details panel and badge tooltips say about one prim beyond its `RowDetails`, read when asked for."""
+    """What the details panel and row tooltip say about one prim beyond its `RowDetails`, read when asked for."""
 
-    is_loaded: bool
-    has_inherits: bool
-    has_specializes: bool
+    inherit_paths: tuple[str, ...]
     reference_targets: tuple[str, ...]  # each as @asset@prim, or a bare prim path for an internal reference
     payload_targets: tuple[str, ...]
+    specialize_paths: tuple[str, ...]
     variant_selections: tuple[tuple[str, str], ...]  # (variant set name, selection), the selection empty if unset
     prototype_path: Sdf.Path | None  # an instance's prototype
     prim_in_prototype_path: Sdf.Path | None  # an instance proxy's prim in its prototype
@@ -318,12 +322,23 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         has_children=has_children(prim),
         is_active=prim.IsActive(),
         specifier=prim.GetSpecifier(),
-        has_payload=prim.HasPayload(),
+        has_inherits=prim.HasAuthoredInherits(),
+        has_variants=prim.HasVariantSets(),
+        has_variant_selection=_has_variant_selection(prim),
         has_references=prim.HasAuthoredReferences(),
+        has_payload=prim.HasPayload(),
+        is_loaded=prim.IsLoaded(),
+        has_specializes=prim.HasAuthoredSpecializes(),
         is_instance=prim.IsInstance(),
         is_instance_proxy=prim.IsInstanceProxy(),
-        has_variants=prim.HasVariantSets(),
     )
+
+
+def _has_variant_selection(prim: Usd.Prim) -> bool:
+    if not prim.HasVariantSets():
+        return False
+    variant_sets = prim.GetVariantSets()
+    return any(variant_sets.GetVariantSelection(name) for name in variant_sets.GetNames())
 
 
 def _arc_targets(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
@@ -332,14 +347,18 @@ def _arc_targets(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
     return tuple(f"@{arc.assetPath}@{arc.primPath}" if arc.assetPath else str(arc.primPath) for arc in arcs)
 
 
+def _arc_paths(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
+    """The prim paths a prim's specs author for inherits or specializes."""
+    return tuple(str(path) for spec in prim.GetPrimStack() for path in getattr(spec, list_name).ApplyEditsToList([]))
+
+
 def _read_prim_details(prim: Usd.Prim) -> PrimDetails:
     variant_sets = prim.GetVariantSets()
     return PrimDetails(
-        is_loaded=prim.IsLoaded(),
-        has_inherits=prim.HasAuthoredInherits(),
-        has_specializes=prim.HasAuthoredSpecializes(),
+        inherit_paths=_arc_paths(prim, "inheritPathList"),
         reference_targets=_arc_targets(prim, "referenceList"),
         payload_targets=_arc_targets(prim, "payloadList"),
+        specialize_paths=_arc_paths(prim, "specializesList"),
         variant_selections=tuple((name, variant_sets.GetVariantSelection(name)) for name in variant_sets.GetNames()),
         prototype_path=prim.GetPrototype().GetPath() if prim.IsInstance() else None,
         prim_in_prototype_path=prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else None,

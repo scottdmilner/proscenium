@@ -32,10 +32,9 @@ WORLD_ROW = 1
 class _ButtonProperties:
     """Stands in for an operator button's properties, which Blender passes to its description."""
 
-    def __init__(self, view_name: str, row_index: int, badge: str = "") -> None:
+    def __init__(self, view_name: str, row_index: int) -> None:
         self.view_name = view_name
         self.row_index = row_index
-        self.badge = badge
 
 
 @pytest.fixture
@@ -112,16 +111,13 @@ def test_the_active_row_selects_and_tells_the_host(registered: None, stage: Usd.
     assert properties.rows[properties.active_row_index].tooltip == "/World/Looks/Red/Surface\nShader, Def"
 
 
-def test_a_badge_selects_its_row_and_has_a_tooltip(registered: None, stage: Usd.Stage) -> None:
+def test_a_rows_tooltip_says_what_its_badges_mark(registered: None, stage: Usd.Stage) -> None:
     display.create_view("viewport", _never)
     display.set_stage("viewport", stage)
     display.select_prim("viewport", Sdf.Path("/World/Geometry/Prop_Payloaded"))
-    row_index = _properties("viewport").active_row_index
-    select = widget_operators.SceneGraphSelectRow
-    tooltip = select.description(bpy.context, _ButtonProperties("viewport", row_index, "payload"))
-    assert tooltip == "Payload (loaded): /_Crate"
-    bpy.ops.proscenium.scene_graph_select_row(view_name="viewport", row_index=0, badge="payload")  # ty: ignore[unresolved-attribute]
-    assert display.selected_path("viewport") == Sdf.Path("/_Crate")
+    properties = _properties("viewport")
+    tooltip = properties.rows[properties.active_row_index].tooltip
+    assert tooltip.endswith("\nPayload (loaded): /_Crate\nSpecializes: /_Crate")
 
 
 def test_search_fields_filter_the_rows(registered: None, stage: Usd.Stage) -> None:

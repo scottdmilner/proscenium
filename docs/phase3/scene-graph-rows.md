@@ -22,12 +22,12 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D8 | Invalid kind or model hierarchy | yes or no | an invalid model's icon is `ERROR`; tooltip | A9 |
 | D9 | Specifier | def, over, class | a class's name italic (A5); an orphaned over red (A2); tooltip | A5, A2 |
 | D10 | Active | active, inactive | dimmed | |
-| D11 | References | yes or no, and their targets | details | |
-| D12 | Inherits | yes or no, and their targets | details | |
-| D13 | Specializes | yes or no, and their targets | details | |
-| D14 | Payload | none, loaded, unloaded | details | |
+| D11 | References | yes or no, and their targets | a badge after the name; its targets in the row's tooltip; details | A11 |
+| D12 | Inherits | yes or no, and their targets | a badge after the name; its targets in the row's tooltip; details | A11 |
+| D13 | Specializes | yes or no, and their targets | a badge after the name; its targets in the row's tooltip; details | A11 |
+| D14 | Payload | none, loaded, unloaded | a badge after the name, greyed out when unloaded; its targets and state in the row's tooltip; details | A11 |
 | D15 | Inside an unloaded payload | yes or no | — | |
-| D16 | Variants | which sets it has, and each set's selection | details | |
+| D16 | Variants | which sets it has, and each set's selection | a badge after the name, greyed out when no set has a selection; the selections in the row's tooltip; details | A11 |
 | D17 | Instance | yes or no | details | |
 | D18 | Instance proxy | yes or no | details | |
 | D19 | Search role | a match, an unmatched ancestor, or no search | unmatched ancestors dimmed | |

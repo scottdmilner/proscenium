@@ -13,7 +13,7 @@ import bpy
 from pxr import Kind
 
 from ..prim_tree import prim_descriptions
-from . import widget_keys, widget_operators, widget_properties, widget_views
+from . import badge_icons, widget_keys, widget_operators, widget_properties, widget_views
 
 # The columns after the name, in order: each view property that shows one, and its header.
 COLUMNS = (("show_kind_column", "Kind"), ("show_type_column", "Type"))
@@ -25,6 +25,7 @@ CHEVRON_UNITS = 0.6  # narrower than an icon button's 1.0, which leaves wide mar
 GUIDE_LINE_UNITS = 0.05
 ROW_ICON_UNITS = 0.8  # the cell of the row's icon: its kind's, or else its type's
 NAME_GAP_FACTOR = 1.0  # the separator between the icon and the name
+BADGE_UNITS = 0.8  # each badge's cell, after the name
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
 
 TYPE_ICONS = {
@@ -158,9 +159,19 @@ class SceneGraphList(bpy.types.UIList):
         icon.alert = details.is_invalid_model  # red, as the kind column's text is (ERROR keeps its own colors)
         icon.label(text="", icon=_row_icon(details))
         named.separator(factor=NAME_GAP_FACTOR)
-        named.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
-        # The rows draw no badges for now; prim_descriptions.row_badges, badge_icons, and SceneGraphSelectRow
-        # stay for when they're drawn again.
+        # The name fills what its badges leave. Left-aligned, so the badges hugged its text, a name too long for its
+        # column would squeeze every cell in the row, indent and icon too.
+        name_and_badges = named.row(align=True)
+        name_and_badges.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
+        # Labels, so a click on one selects the row and the row's tooltip covers them; each icon draws its piece of
+        # the block they sit on, so side by side they make one.
+        row_badges = prim_descriptions.row_badges(details)
+        badges = name_and_badges.row(align=True)
+        for badge_index, badge in enumerate(row_badges):
+            place = badge_icons.BadgePlace.at(badge_index, len(row_badges))
+            is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
+            icon_value = badge_icons.icon_id(badge, place, is_greyed)
+            _fixed_width(badges, BADGE_UNITS).label(text="", icon_value=icon_value)
         column_texts = {"show_kind_column": details.model_kind, "show_type_column": details.type_name or "-"}
         shown = _shown_columns(data)
         for cell, (property_name, _) in zip(_column_cells(split.row(align=True), len(shown)), shown, strict=True):
@@ -227,6 +238,7 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
     status = prim_tree_view.search_status
     layout.label(text=status.text or f"{len(tree.rows):,} visible rows", icon="ERROR" if status.is_error else "NONE")
     _draw_header(layout, properties)
+    badge_icons.redraw_icons_if_theme_changed()  # once per view drawn, not per row
     layout.template_list(
         SceneGraphList.bl_idname,
         view_name,

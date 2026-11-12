@@ -1,10 +1,11 @@
 #usda 1.0
 # The scene graph's prim tree tests (tests/bpy_free/test_prim_tree*.py, tests/blender/test_scene_graph.py): one
-# prim of each kind a tree row marks or a search finds. Internal references and payloads keep it a single file: a
-# class, an over, an inactive prim, a payload, a variant set, native instances (whose contents show as instance
-# proxies), curves, and a camera, a light with a displayName, and a material with a shader. Its model kinds are an
-# assembly, groups, components, and a subcomponent (each crate's lid). Red is a component under a Scope with no
-# kind, so it isn't a model: its kind breaks the model hierarchy.
+# prim of each kind a tree row marks or a search finds. Internal arcs keep it a single file: a class, an over, an
+# inactive prim, every composition arc (Crate_Unique also inherits the class it references, and Prop_Payloaded also
+# specializes it, adding no prims), native instances (whose contents show as instance proxies), curves, a camera,
+# a light with a displayName, and a material with a shader. Its model kinds are an assembly, groups, components,
+# and a subcomponent (each crate's lid). Red is a component under a Scope with no kind, so it isn't a model: its
+# kind breaks the model hierarchy.
 (
     defaultPrim = "World"
     upAxis = "Z"
@@ -58,6 +59,7 @@ def Xform "World" (
             }
 
             def Xform "Crate_Unique" (
+                inherits = </_Crate>
                 kind = "component"
                 references = </_Crate>
             )
@@ -67,6 +69,7 @@ def Xform "World" (
 
         def Xform "Prop_Payloaded" (
             payload = </_Crate>
+            specializes = </_Crate>
         )
         {
         }

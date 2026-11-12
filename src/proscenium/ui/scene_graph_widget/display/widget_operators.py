@@ -1,6 +1,6 @@
-"""The buttons a scene graph row draws: its disclosure triangle and its badges.
+"""The buttons a scene graph row draws: its disclosure triangle, and the never-enabled button of its guide lines.
 
-Both are internal operators: expansion and selection in a tree are view state, so they push no undo step.
+Both are internal operators: expansion in a tree is view state, so they push no undo step.
 """
 
 from __future__ import annotations
@@ -82,38 +82,5 @@ class SceneGraphGuideLine(bpy.types.Operator):
         return {"CANCELLED"}
 
 
-class SceneGraphSelectRow(bpy.types.Operator):
-    """Select the row a badge is on."""
-
-    bl_idname = "proscenium.scene_graph_select_row"
-    bl_label = "Select Prim"
-    bl_options = {"INTERNAL"}
-
-    view_name: bpy.props.StringProperty()  # ty: ignore[invalid-type-form]
-    row_index: bpy.props.IntProperty()  # ty: ignore[invalid-type-form]
-    badge: bpy.props.StringProperty()  # ty: ignore[invalid-type-form]  # a prim_descriptions.Badge value
-
-    @override
-    @classmethod
-    def description(cls, context: Any, properties: Any) -> str:
-        # Labels can't have tooltips, so a badge is this operator's borderless button, and this is its tooltip.
-        tree = _tree(properties.view_name)
-        row = _row(properties.view_name, properties.row_index)
-        prim_details = tree.prim_details(row.path) if tree is not None and row is not None else None
-        if prim_details is None or properties.badge not in {badge.value for badge in prim_descriptions.Badge}:
-            return ""
-        return prim_descriptions.badge_tooltip(prim_details, prim_descriptions.Badge(properties.badge))
-
-    @override
-    def execute(self, context: Any) -> set[OperatorReturnItems]:
-        if _row(self.view_name, self.row_index) is None:
-            return {"CANCELLED"}
-        view = widget_views.scene_graph_view(self.view_name)
-        before = view.prim_tree_view.selected_path
-        view.prim_tree_view.select_row(self.row_index)
-        widget_properties.sync_and_notify(view, before)
-        return {"FINISHED"}
-
-
 # In registration order.
-CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine, SceneGraphSelectRow)
+CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine)

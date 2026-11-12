@@ -127,10 +127,21 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
   - They keep their own colors, while Blender's icons follow the theme.
   - Preview icons get `icon_id` 0 in the headless wheel, so they can only be seen in the binary.
 - **Row tooltips:** `template_list`'s `item_dyntip_propname` names a string property on each item to use as that row's tooltip. A getter computes it on hover from the model, finding the view and row from the item's RNA path (`proscenium_scene_graph_views[0].rows[12]`). It shows the prim's path, type, specifier, and kind.
-- **Badge tooltips:** labels can't have tooltips, so each badge is a borderless operator button. The operator's `description` classmethod writes each button's tooltip from that button's properties, such as "Payload (loaded): /_Crate". The disclosure triangle's tooltip says what a click does to that row and lists the keys.
+- **Button tooltips:** labels can't have tooltips, so a control with its own is an operator button. The operator's `description` classmethod writes each button's tooltip from that button's properties: the disclosure triangle's says what a click does to that row and lists the keys. The badges are labels, so the row's tooltip says what they mark ([Arc badges](#icons-and-tooltips)).
 - **Tested:** the tooltip text. **Not checked:** a tooltip appearing on screen. Simulated mouse moves highlighted the hovered row but brought up no tooltip, and screenshots in these runs never captured pop-ups.
 - **Text only:** no Python API for richer tooltips, such as image previews, was found.
-- **The widget's rows draw no badges for now,** so new row information starts from a clean row. The badges, their icons, their tooltips, and their buttons (`prim_descriptions.Badge`, `badge_icons`, `SceneGraphSelectRow`) are kept, unused, for when rows draw them again.
+- **Arc badges:** a row draws a badge after its name for each composition arc authored on its prim, in LIVRPS strength order, as its bold letter in one of the theme's collection colors: a violet I (inherits), a green V (variants), a blue R (references), an orange P (payload), and a yellow S (specializes). An instance proxy's arcs are authored on its prototype's prims, so it has none of its own.
+  - **Greyed out when not in effect:** an unloaded payload's P, and the V of a prim none of whose variant sets has a variant selected, draw in the pie menu's text color, half blended into the block. **Checked** in the binary by a probe that unloaded a payload and cleared a selection.
+  - **Labels on one dark block:** each badge is a label in a 0.8-unit cell, whose preview icon draws its letter on its piece of a rounded block: a left end, a middle, a right end, or the whole block for a badge alone. Side by side, the pieces make one block. Its color and roundness are the theme's pie menu widget's (`wcol_pie_menu.inner` and `.roundness`), the dark of a `PIE_MENU` button. Preview icons keep the colors they're drawn in, so each time a view draws, it compares the theme's colors with those the icons were drawn in, and draws the icons again if they changed. **Checked:** a probe changed a collection color and the pie menu's color and roundness while the widget showed, and the badges took them at the next redraw.
+  - **No tooltips of their own:** labels have none, so the row's tooltip ends with a line per badge, such as "Payload (loaded): /_Crate". A click on a badge selects its row, as a click anywhere on the row's labels does.
+  - **Checked** in the binary by one-off probes, screenshotted at sidebar width:
+    - **The pieces meet with no seam** at the default UI scale. **Not checked** at other UI scales, where Blender scales the 32-pixel icons.
+    - **The name fills the space before its badges.** A long name truncates, and the badges stay beside it.
+    - **A left-aligned name doesn't fit:** with the name's row left-aligned, so the badges would hug the name's text, a name longer than its column squeezed every cell in the row, the guide lines, chevron, and icon included, to nothing.
+    - With both the Kind and Type columns shown, names truncate to two or three letters, and the badges' cells squeeze until the letters crowd each other.
+    - **Buttons can't make a dark block:** aligned embossed buttons join into one block, but in the theme's regular grey. `PIE_MENU` emboss draws each button on a dark rounded tile of its own, aligned or not, at 0.6 or 0.8 units, in the widget's nesting or out of it. A `box()` around the badges draws one dark block but makes the row taller.
+    - **A disabled button dims:** `enabled = False`, or an operator whose `poll` fails, dims a button's block and its icon alike, so a button can't be both unclickable and full color.
+    - **Unicode bold letters as button text don't fit:** they take no color, and in a 0.6-unit cell a row with a single badge drew no letter at all, though rows with two or three drew theirs.
 
 ## Colors
 
@@ -212,7 +223,7 @@ Each is an attribute of a `UILayout`, so it applies to whatever sub-layout of a 
 | Attribute | Effect |
 |---|---|
 | `active`, `enabled`, `alert` | Dim; dim with unclickable buttons; red ([Colors](#colors)). **Checked.** The widget dims inactive prims and unmatched search ancestors alike, and turns an orphaned over (a prim nothing defines) red. |
-| `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the badges are drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
+| `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the disclosure triangle is drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
 | `scale_x`, `scale_y` | Items' size along each axis. |
 | `ui_units_x`, `ui_units_y` | Items' fixed size, so a column can keep one width on every row. |
 | `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget right-aligns its type column. |
@@ -241,7 +252,7 @@ The theme's List Item colors (`outline`, `inner`, `inner_sel`, `item`, `text`, `
 | `template_node_socket(color)` | A dot in any color. **Checked.** |
 | `prop(...)` | A property's value, which a click edits: a toggle, an icon, a checkbox (`invert_checkbox`), a slider, an expanded enum, or a text field, aligned with `text_align`. Columns such as visibility or active would be these, each a property with a getter and setter over the prim. |
 | `prop_enum`, `prop_menu_enum`, `prop_with_menu`, `prop_with_popover` | A menu or popover per row, such as a variant set's selection or a draw mode. |
-| `operator(..., depress, emboss, icon, icon_value)` | A button with its own tooltip. **Checked**; the disclosure triangle and the badges. |
+| `operator(..., depress, emboss, icon, icon_value)` | A button with its own tooltip. **Checked**; the disclosure triangle. |
 | `operator_menu_hold`, `menu`, `popover` | A menu or popover from a button. |
 | `progress(factor, type)` | A bar or a ring, for a fraction. |
 | A color property drawn without text | A swatch in any color, which opens a picker when clicked ([Colors](#colors)). **Checked.** |
@@ -262,7 +273,7 @@ The theme's List Item colors (`outline`, `inner`, `inner_sel`, `item`, `text`, `
 | Source | Per row? |
 |---|---|
 | `item_dyntip_propname`: a string property whose getter writes the row's tooltip | Yes, the whole row. **Checked**; the widget's path, type, specifier, and kind. |
-| An operator's `description(context, properties)` | Yes, per button, from its properties. **Checked**; the badges and the triangle. |
+| An operator's `description(context, properties)` | Yes, per button, from its properties. **Checked**; the triangle. |
 | An operator's `bl_description`, or a property's `description` | No: fixed at registration. |
 | The descriptions of an enum's items, from an `items` callback | Perhaps, per menu, for an enum drawn in each row. |
 | A label | None: a label has no tooltip. |
@@ -455,7 +466,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 ### Icons and markers
 
 - **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. So does this widget, with an icon for each of assembly, group, component, and subcomponent (and the kinds registered as deriving from them), and one for any other kind. usdview has none.
-- **Badges:** neither has badges. This widget has payload, references, variants, and instance badges, each with a tooltip, but its rows don't draw them for now.
+- **Badges:** neither has badges. This widget draws a badge for each composition arc on a prim, which the row's tooltip lists.
 - **Override dots:** Solaris marks a prim red for an override in its viewport-only layer (visibility, draw mode, or active), blue for a post-layer override, and purple for both. The widget edits nothing, so has nothing to mark.
 - **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget draws `ERROR` in place of the kind's icon for an invalid model: a prim whose kind is a model kind but which USD doesn't count a model (`Usd.ModelAPI.IsModel`), because an ancestor isn't a group or an assembly; its tooltip says so.
 - **Animated visibility:** Solaris shows an animated eye for visibility that has time samples.

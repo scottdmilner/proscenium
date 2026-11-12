@@ -46,7 +46,9 @@ def _row_tooltip(row_item: Any) -> str:
     tree = view.prim_tree_view.live_tree() if view is not None else None
     if tree is None or row_index >= len(tree.rows):
         return ""
-    return prim_descriptions.row_tooltip(tree.details(tree.rows[row_index]))
+    row = tree.rows[row_index]
+    prim_details = tree.prim_details(row.path)
+    return prim_descriptions.row_tooltip(tree.details(row), prim_details) if prim_details is not None else ""
 
 
 def _on_active_row_changed(properties: Any, _context: Any) -> None:
