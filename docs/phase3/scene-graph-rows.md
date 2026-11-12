@@ -56,13 +56,31 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | A1 | Dim (`active = False`) | **Checked.** `enabled = False` looks the same, so the two can't mark different states. |
 | A2 | Red (`alert`) | **Checked.** |
 | A3 | Dim red (`alert` with `active = False`) | **Checked.** |
-| A4 | Unicode bold (Mathematical Alphanumeric Symbols) | **Checked.** Serif or sans; the sans looks closest to Blender's Inter. |
+| A4 | Unicode bold (Mathematical Alphanumeric Symbols) | **Checked.** Serif or sans; the sans looks closest to Blender's Inter. Slow the first time each letter draws ([below](#first-draw-cost)). |
 | A5 | Unicode italic | **Checked.** The block has no italic digits, so digits stay upright. |
 | A6 | Unicode bold italic | **Checked.** No italic digits. |
 | A7 | Unicode monospace, or serif in place of sans | **Checked.** A further style, if more are needed. |
 | A8 | Marker characters beside the name (`◇ ○ × • ◆`) | **Checked:** the UI font draws them. |
 
 A1–A3 combine with A4–A7. A4–A7 are drawn by Blender's bundled `NotoSansMath`, and their widths were within about 10% of the plain text's. They style only the ASCII letters A–Z, a–z, and, except in the italic styles, digits: an underscore or a non-ASCII letter in a name (USD allows UTF-8 names) stays plain. The styled text is only drawn; the path a menu copies, the search, and the tooltip use the prim's own name and path.
+
+#### First-draw cost
+
+Each styled letter costs about 200 ms the first time the UI draws it in a Blender session, and nothing after. **Checked** in the binary (Blender 5.2.2, macOS), each style in a fresh process, by timing `blf.dimensions` on font 0, the UI's, whose lookups go through the fallback fonts as a label's do:
+
+| Style (A4–A7) | Each of the first three capitals, alone | The other 23 capitals at once | All 26 again |
+|---|---|---|---|
+| Sans-serif bold, two runs | 343, 399, 232 ms; 215, 193, 202 ms | 4.6 s; 4.7 s | 0 ms |
+| Serif bold | 203, 188, 198 ms | 4.7 s | 0 ms |
+| Sans-serif italic | 178, 208, 200 ms | 4.8 s | 0 ms |
+| Sans-serif bold italic | 188, 194, 181 ms | 4.7 s | 0 ms |
+| Monospace, two runs | 247, 194, 220 ms; 218, 216, 204 ms | 4.7 s; 4.7 s | 0 ms |
+| Double-struck, two runs; its C is ℂ, from Letterlike Symbols, as are H, N, P, Q, R, and Z | 339, 266, 237 ms; 205, 194, 179 ms | 4.9 s; 4.7 s | 0 ms |
+
+- **In the widget:** the test stage's one class, `_Crate`, in sans-serif italic, made the panel's first draw take 1.66 s and 1.72 s in two runs, from the panel's `draw` to the sidebar's `POST_PIXEL` handler. Without the italics it took 21 ms; a sidebar with one plain label, 3 ms. Later draws took about 1 ms. The header's `⌄` and the arc badges added no more than a few milliseconds.
+- **Not the font itself:** `NotoSansMath-Regular.woff2`, loaded with `blf.load`, measured all 52 italic letters in 7.4 ms. The time is in the UI's lookup through its fallback fonts, which Python can't reorder; what that lookup spends it on wasn't checked. A font loaded with `blf.load` is its own font id, which the UI doesn't use: the panel's first draw still took 1.16 s.
+- **Warming up the letters:** measuring all 52 italic letters with font 0 took 10.8 s, after which the panel's first draw took 11.5 ms.
+- **To investigate:** Blender 5.3 has `UILayout.label_markdown(text=...)`, which may set bold and italic text natively, without these letters. **Not checked:** the widget targets Blender 5.2, and nothing here has tried it.
 
 ### Icons and markers
 

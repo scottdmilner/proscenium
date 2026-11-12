@@ -510,6 +510,7 @@ What edits or overrides the stage, so waits on how Phase 3 edits it: visibility,
 
 ## Open questions
 
+- What should mark a class, given that each Unicode-styled letter costs about 200 ms the first time it draws ([Scene Graph Rows](scene-graph-rows.md#first-draw-cost)), so a class's italic name slows the panel's first draw by a second or more? Blender 5.3's `UILayout.label_markdown` may style text natively; it hasn't been tried.
 - Do tooltips and the Tool Settings popover show when hovered and clicked by hand?
 - How fast is drawing and scrolling a `UIList` with thousands of rows? Only the model and the collection were timed.
 - Does a hierarchy change in a stage with many visible rows rebuild them fast enough while editing, or should a change rebuild only the subtrees it resyncs?
