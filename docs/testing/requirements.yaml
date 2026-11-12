@@ -440,6 +440,11 @@ requirements:
         quote: "attach(stage, confirm=False) attaches the caller's stage to this binding and returns an immutable result."
         fixtures: [F-REATTACH]
         oracle: "Attachment returns success, a source-confirmation-required failure, or a refusal for an unreadable or disabled binding. Refusals leave the source and persistent records unchanged."
+      - id: API-15
+        quote: "With `full_rebuild=True`, the attempt rereads the source through a new imaging pipeline and prepares every display partition anew"
+        delivery: M7
+        fixtures: [F-NO-OP-REFRESH, F-EDIT-SEQUENCE]
+        oracle: "synchronize(full_rebuild=True) builds a new chain, whose capture copies every prim, and prepares every partition anew: on F-NO-OP-REFRESH its display, manifest, and correspondence equal a clean first synchronization's, with no kept datablock; on F-EDIT-SEQUENCE, after an edit the kept chain is made to miss, it displays the edit."
       - id: API-12
         quote: "release() drops this binding's source and evaluation stages and returns None."
         fixtures: [F-REATTACH]
@@ -1331,11 +1336,11 @@ requirements:
       - id: DISC-07
         quote: "Recover correctly from missed or coalesced change notifications."
         fixtures: [F-EDIT-SEQUENCE]
-        oracle: "On F-EDIT-SEQUENCE, two edits before one refresh display the last, and a refresh after the binding's notices are lost (its kept chain released, or an edit Hydra doesn't notice) equals a clean full rebuild."
+        oracle: "On F-EDIT-SEQUENCE, two edits before one refresh display the last, and an edit undone before a refresh displays as before it; a refresh after the binding's kept chain is released equals a clean full rebuild; and after an edit its kept chain is made to miss, its recorded notices dropped, a requested full rebuild equals a clean one."
       - id: DISC-08
         quote: "Editor-provided change descriptions may be hints, but are not the sole correctness mechanism."
         fixtures: [F-EDIT-SEQUENCE]
-        oracle: "On F-EDIT-SEQUENCE, a refresh given no change notices, or notices naming unrelated prims, displays what a clean full rebuild does: comparing plans decides what is written."
+        oracle: "On F-EDIT-SEQUENCE, notices only name what a refresh re-reads, and comparing plans decides what is written: a refresh whose notices also name unrelated prims displays what a clean full rebuild does and writes only what the comparison finds changed, and a miss, its notices dropped, is recovered by a requested full rebuild (DISC-07)."
 
   - section: spec/incremental.md#affected-content
     delivery: M7
@@ -2303,7 +2308,7 @@ excluded:
       - "Target-scene unit scale and representation version."
     restates: [DISC-02]
   - section: spec/incremental.md#change-discovery
-    quotes: ["Design note (suggested, not settled; M1b adopted Hydra, and M7 decides)"]
+    quotes: ["Design note (settled by M7; see DECISIONS.md \"Change discovery\")"]
     reason: "Design note."
   - section: spec/incremental.md#affected-content
     quotes:
