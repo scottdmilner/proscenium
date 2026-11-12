@@ -6,6 +6,7 @@ scenes/scene_graph/prim_kinds.usda, whose top level is _Crate, World, and World_
 
 from __future__ import annotations
 
+import dataclasses
 import gc
 from typing import TYPE_CHECKING, Any
 
@@ -16,7 +17,9 @@ from pxr import Sdf, Usd
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import (
+    badge_icons,
     tinted_icons,
+    widget_colors,
     widget_operators,
     widget_properties,
     widget_registration,
@@ -277,6 +280,19 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
     tree = view.prim_tree_view.tree
     assert tree is not None
     assert [str(row.path) for row in tree.rows] == ["/World", "/World/Sun", "/World/Sundial"]
+
+
+def test_badge_shapes_are_kept_for_one_roundness(registered: None) -> None:
+    # Dragging the theme's roundness draws the badges at many; only the last one's shapes are kept.
+    shape_count = len(badge_icons.BADGE_LOOKS) * len(badge_icons.BadgePlace)
+    for roundness in (0.1, 0.2, 0.3):
+        theme_colors = dataclasses.replace(widget_colors.DEFAULT_THEME_COLORS, pie_menu_roundness=roundness)
+        badge_icons._draw_icons(theme_colors)  # noqa: SLF001
+    state = badge_icons._BadgeIconsState  # noqa: SLF001
+    assert state.coverages_roundness == 0.3
+    assert len(state.coverages_by_shape) <= shape_count
+    badge_icons.remove_icons()
+    assert not state.coverages_by_shape
 
 
 def test_every_row_icon_has_a_mask_to_recolor(registered: None) -> None:

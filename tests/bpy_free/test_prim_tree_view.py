@@ -305,6 +305,30 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert tree.prim_details(Sdf.Path("/World/Nowhere")) is None
 
 
+def test_arc_targets_are_the_composed_lists(stage: Usd.Stage) -> None:
+    # A stronger layer's deletion or explicit list overrides a weaker one's, as composition does; a referenced
+    # prim's own arcs are its layer stack's, which the referencing prim's layers can't edit.
+    view = _view(stage)
+    crate = Sdf.Path("/World/Geometry/Crates/Crate_Unique")  # references /_Crate in the root layer
+
+    def references() -> tuple[str, ...]:
+        view.apply_pending_changes()
+        found = view.tree.prim_details(crate) if view.tree is not None else None
+        assert found is not None
+        return found.reference_targets
+
+    with Usd.EditContext(stage, stage.GetSessionLayer()):
+        stage.GetPrimAtPath(crate).GetReferences().AddInternalReference("/World/Looks")
+        assert references() == ("/World/Looks", "/_Crate")  # prepended, in the stronger layer
+        stage.GetPrimAtPath(crate).GetReferences().RemoveReference(Sdf.Reference(primPath="/_Crate"))
+        assert references() == ("/World/Looks",)
+        stage.GetPrimAtPath("/World/Looks").GetReferences().AddInternalReference("/World/Sun")
+        stage.GetPrimAtPath(crate).GetReferences().RemoveReference(Sdf.Reference(primPath="/World/Sun"))
+        assert references() == ("/World/Looks", "/World/Sun")  # /World/Looks's own reference stays
+        stage.GetPrimAtPath(crate).GetReferences().SetReferences([])
+        assert references() == ()
+
+
 def test_an_unloaded_payload_and_an_unselected_variant_set_are_not_in_effect(stage: Usd.Stage) -> None:
     badge = prim_descriptions.Badge
     payloaded, variants = Sdf.Path("/World/Geometry/Prop_Payloaded"), Sdf.Path("/World/Geometry/Prop_Variants")

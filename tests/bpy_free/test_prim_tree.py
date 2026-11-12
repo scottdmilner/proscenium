@@ -169,6 +169,18 @@ def test_refresh_reads_added_and_removed_prims_and_keeps_expansion(stage: Usd.St
     assert Sdf.Path("/World/Looks/Red") not in tree.expanded_paths
 
 
+def test_a_refresh_under_a_search_drops_removed_prims_from_the_expansion_it_restores(stage: Usd.Stage) -> None:
+    tree = PrimTree(stage)
+    tree.reveal(Sdf.Path("/World/Looks/Red"))  # expands /World and /World/Looks
+    tree.set_search(prim_search.search(stage, prim_search.SearchQuery(text="sun"), match_limit=100))
+    stage.RemovePrim("/World/Looks")
+    tree.refresh()
+    tree.set_search(None)  # restores the expansion from before the search
+    stage.DefinePrim("/World/Looks/Red")  # the same paths again, new prims
+    tree.refresh()
+    assert not tree.is_expanded(tree.rows[_index(tree, "/World/Looks")])
+
+
 def test_a_tree_never_keeps_its_stage_alive(tmp_path: Path) -> None:
     # Opened here, not by the fixture, which pytest holds until the test ends.
     stage = open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "prim_kinds.usda")

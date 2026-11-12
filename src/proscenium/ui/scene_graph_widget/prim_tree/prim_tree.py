@@ -15,14 +15,16 @@ releases it, the tree is expired. Expansion and details are kept by path, so the
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pxr import Kind, Sdf, Usd
 
 from .prim_search import CHILD_PREDICATE, child_count
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator, Sequence
+
+    from pxr import Pcp
 
     from .prim_search import SearchResult
 
@@ -250,7 +252,8 @@ class PrimTree:
     def refresh(self) -> None:
         """Read the stage again after it changed: every row's details, and the rows of what is expanded.
 
-        Expanded paths whose prims are gone are dropped. A search result isn't rerun here; whoever set it does.
+        Expanded paths whose prims are gone are dropped, from the expansion a search keeps to restore too. A search
+        result isn't rerun here; whoever set it does.
         """
         stage = self.stage()
         if stage is None:
@@ -258,6 +261,9 @@ class PrimTree:
         self._details_by_path.clear()
         self._prim_details_by_path.clear()
         self.expanded_paths = {path for path in self.expanded_paths if stage.GetPrimAtPath(path)}
+        self._expanded_paths_before_search = {
+            path for path in self._expanded_paths_before_search if stage.GetPrimAtPath(path)
+        }
         self._rebuild_rows()
 
     def forget_details(self) -> None:
@@ -374,24 +380,67 @@ def _has_variant_selection(prim: Usd.Prim) -> bool:
     return any(variant_sets.GetVariantSelection(name) for name in variant_sets.GetNames())
 
 
-def _arc_targets(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
-    """The targets a prim's specs author for references or payloads."""
-    arcs = [arc for spec in prim.GetPrimStack() for arc in getattr(spec, list_name).ApplyEditsToList([])]
+def _composition_nodes(node: Pcp.NodeRef) -> Iterator[Pcp.NodeRef]:
+    """A prim index's nodes from a node down, in strength order."""
+    yield node
+    for child in node.children:
+        yield from _composition_nodes(child)
+
+
+@dataclass(frozen=True, slots=True)
+class _ComposedArcs:
+    """The arcs a prim's specs compose, a list per arc type, which a row's tooltip names."""
+
+    inherit_paths: list[Sdf.Path]
+    references: list[Sdf.Reference]
+    payloads: list[Sdf.Payload]
+    specialize_paths: list[Sdf.Path]
+
+
+def _node_arcs(specs: list[Sdf.PrimSpec], field_key: str) -> list[Any]:
+    """One composition node's items for an arc's list field (`Sdf.PrimSpec`'s key), from its specs, weakest first."""
+    node_arcs: list[Any] = []
+    for spec in specs:
+        if spec.HasInfo(field_key):
+            node_arcs = spec.GetInfo(field_key).ApplyOperations(node_arcs)
+    return node_arcs
+
+
+def _composed_arcs(prim: Usd.Prim) -> _ComposedArcs:
+    """A prim's arcs, as Pcp composes them.
+
+    Each composition node composes its own layer stack's list edits, weakest layer first, so a stronger layer's
+    deletion or explicit list overrides a weaker one's; a node a reference brings in keeps its own arcs, which the
+    referencing layers can't edit. One walk of the nodes and their specs serves every arc type.
+    """
+    arcs = _ComposedArcs(inherit_paths=[], references=[], payloads=[], specialize_paths=[])
+    for node in _composition_nodes(prim.GetPrimIndex().rootNode):
+        specs = [spec for layer in reversed(node.layerStack.layers) if (spec := layer.GetPrimAtPath(node.path))]
+        arcs.inherit_paths.extend(_node_arcs(specs, Sdf.PrimSpec.InheritPathsKey))
+        arcs.references.extend(_node_arcs(specs, Sdf.PrimSpec.ReferencesKey))
+        arcs.payloads.extend(_node_arcs(specs, Sdf.PrimSpec.PayloadKey))
+        arcs.specialize_paths.extend(_node_arcs(specs, Sdf.PrimSpec.SpecializesKey))
+    return arcs
+
+
+def _arc_targets(arcs: Sequence[Sdf.Reference | Sdf.Payload]) -> tuple[str, ...]:
+    """The targets composed references or payloads name."""
     return tuple(f"@{arc.assetPath}@{arc.primPath}" if arc.assetPath else str(arc.primPath) for arc in arcs)
 
 
-def _arc_paths(prim: Usd.Prim, list_name: str) -> tuple[str, ...]:
-    """The prim paths a prim's specs author for inherits or specializes."""
-    return tuple(str(path) for spec in prim.GetPrimStack() for path in getattr(spec, list_name).ApplyEditsToList([]))
+def _arc_paths(paths: list[Sdf.Path]) -> tuple[str, ...]:
+    """The prim paths composed inherits or specializes name."""
+    return tuple(str(path) for path in paths)
 
 
 def _read_prim_details(prim: Usd.Prim) -> PrimDetails:
+    arcs = _composed_arcs(prim)
     variant_sets = prim.GetVariantSets()
     return PrimDetails(
-        inherit_paths=_arc_paths(prim, "inheritPathList"),
-        reference_targets=_arc_targets(prim, "referenceList"),
-        payload_targets=_arc_targets(prim, "payloadList"),
-        specialize_paths=_arc_paths(prim, "specializesList"),
+        inherit_paths=_arc_paths(arcs.inherit_paths),
+        reference_targets=_arc_targets(arcs.references),
+        payload_targets=_arc_targets(arcs.payloads),
+        specialize_paths=_arc_paths(arcs.specialize_paths),
         variant_selections=tuple((name, variant_sets.GetVariantSelection(name)) for name in variant_sets.GetNames()),
         prototype_path=prim.GetPrototype().GetPath() if prim.IsInstance() else None,
         prim_in_prototype_path=prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else None,

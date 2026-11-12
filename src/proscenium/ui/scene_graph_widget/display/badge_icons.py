@@ -14,7 +14,6 @@ number (`icon_value=icon_id(...)`), not by Blender's icon names. In background m
 from __future__ import annotations
 
 import enum
-import functools
 import math
 from typing import Any
 
@@ -102,11 +101,18 @@ class BadgePlace(enum.Enum):
         return cls.LAST if badge_index == badge_count - 1 else cls.MIDDLE
 
 
+Coverages = tuple[tuple[float, float], ...]  # each pixel's letter and block coverage, bottom row first
+
+
 class _BadgeIconsState:
-    """The preview collection, while registered, and the theme colors its icons were last drawn in."""
+    """The preview collection, while registered, the theme colors its icons were last drawn in, and their shapes."""
 
     previews: Any = None
     drawn_theme_colors: ThemeColors | None = None
+    # Each badge's coverages at one block roundness, the theme's last: the shapes don't change with the colors, so
+    # drawing the icons in new ones needn't work them out again; a new roundness replaces them all.
+    coverages_roundness: float | None = None
+    coverages_by_shape: dict[tuple[str, BadgePlace], Coverages] = {}
 
 
 def _segment_distance(x: float, y: float, segment: Segment) -> float:
@@ -155,12 +161,18 @@ def _coverage(distance: float, pixel_width: float) -> float:
     return max(0.0, min(1.0, 0.5 - distance / pixel_width))
 
 
-@functools.cache
-def _coverages(letter: str, place: BadgePlace, block_roundness: float) -> tuple[tuple[float, float], ...]:
-    """How much of each pixel a badge's letter and its piece of the block cover, bottom row first.
+def _coverages(letter: str, place: BadgePlace, block_roundness: float) -> Coverages:
+    """How much of each pixel a badge's letter and its piece of the block cover, kept for the last roundness."""
+    if block_roundness != _BadgeIconsState.coverages_roundness:
+        _BadgeIconsState.coverages_by_shape = {}
+        _BadgeIconsState.coverages_roundness = block_roundness
+    found = _BadgeIconsState.coverages_by_shape.get((letter, place))
+    if found is None:
+        found = _BadgeIconsState.coverages_by_shape[letter, place] = _shape_coverages(letter, place, block_roundness)
+    return found
 
-    Kept, so drawing the icons again in new colors needn't work out their shapes again.
-    """
+
+def _shape_coverages(letter: str, place: BadgePlace, block_roundness: float) -> Coverages:
     pixel_width = 2 / ICON_SIZE_PIXELS
     coverages: list[tuple[float, float]] = []
     for row in range(ICON_SIZE_PIXELS):
@@ -176,7 +188,7 @@ def _coverages(letter: str, place: BadgePlace, block_roundness: float) -> tuple[
 
 
 def _pixels(
-    coverages: tuple[tuple[float, float], ...],
+    coverages: Coverages,
     letter_color: RGB,
     block_color: RGBA,
 ) -> list[float]:
@@ -241,6 +253,8 @@ def remove_icons() -> None:
         bpy.utils.previews.remove(_BadgeIconsState.previews)
         _BadgeIconsState.previews = None
         _BadgeIconsState.drawn_theme_colors = None
+    _BadgeIconsState.coverages_roundness = None
+    _BadgeIconsState.coverages_by_shape = {}
 
 
 def icon_id(badge: Badge, place: BadgePlace, is_greyed: bool) -> int:
