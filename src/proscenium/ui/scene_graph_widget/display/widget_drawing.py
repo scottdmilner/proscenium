@@ -26,6 +26,11 @@ GUIDE_LINE_UNITS = 0.05
 ROW_ICON_UNITS = 0.8  # the cell of the row's icon: its kind's, or else its type's
 NAME_GAP_FACTOR = 1.0  # the separator between the icon and the name
 BADGE_UNITS = 0.8  # each badge's cell, after the name
+# The name cell's natural width, wider than any row, so each row is too narrow for what it holds. A row with width to
+# spare grows every item in proportion to its natural width, which differs from row to row, so the guide lines would
+# drift apart; a row short of width keeps each item narrower than a unit at its width and shrinks the rest, here only
+# the name.
+NAME_CELL_UNITS = 1000.0
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
 
 TYPE_ICONS = {
@@ -75,13 +80,13 @@ def _name_column_factor(properties: Any) -> float:
 
 
 def _column_cells(layout: Any, column_count: int) -> list[Any]:
-    """One right-aligned cell per shown column, sharing a layout's width evenly."""
+    """One left-aligned cell per shown column, sharing a layout's width evenly."""
     if column_count == 0:
         return []
     split = layout.split(factor=1 / column_count, align=True)
     cells = [split.row(align=True) for _ in range(column_count)]
     for cell in cells:
-        cell.alignment = "RIGHT"
+        cell.alignment = "LEFT"
     return cells
 
 
@@ -159,10 +164,11 @@ class SceneGraphList(bpy.types.UIList):
         icon.alert = details.is_invalid_model  # red, as the kind column's text is (ERROR keeps its own colors)
         icon.label(text="", icon=_row_icon(details))
         named.separator(factor=NAME_GAP_FACTOR)
-        # The name fills what its badges leave. Left-aligned, so the badges hugged its text, a name too long for its
-        # column would squeeze every cell in the row, indent and icon too.
+        # The name fills what its badges leave (NAME_CELL_UNITS). Left-aligned, so the badges hugged its text, a name
+        # too long for its column would squeeze every cell in the row, indent and icon too.
         name_and_badges = named.row(align=True)
-        name_and_badges.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
+        name_cell = _fixed_width(name_and_badges, NAME_CELL_UNITS)
+        name_cell.label(text=prim_descriptions.row_name(details, data.shown_name == "DISPLAY_NAME"))
         # Labels, so a click on one selects the row and the row's tooltip covers them; each icon draws its piece of
         # the block they sit on, so side by side they make one.
         row_badges = prim_descriptions.row_badges(details)

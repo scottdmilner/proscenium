@@ -110,6 +110,7 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
 - **Indentation:** **Checked:** one `separator(factor=2.0)` per level keeps rows even. One deep separator makes the row taller, because a separator's spacer is square. A blank icon per level cut deep names to a letter or two at sidebar width.
 - **Guide lines:** **Checked** in the binary by one-off probes, then in the widget. The widget indents each level by a cell 0.6 units wide, the width `separator(factor=2.0)` took, holding a vertical line under the centre of the parent's chevron, so a line runs down from each open chevron to its last descendant, as in Solaris. Every ancestor of a visible row is expanded, so a row draws a line at every level of its indent, and the model works out nothing for them.
   - **A line is a disabled button** squeezed to 0.05 units, in fixed-width parts that fill the level. Disabled, it draws faint, and a simulated click on it, or on the indent beside it, selected its row; its operator never ran.
+  - **The lines stay aligned at any width.** A row with width to spare grows every item in proportion to its natural width, the fixed-width levels too, and each row's natural width differs with its name and badges, so the lines drifted apart from row to row in a wide editor. A row short of width keeps each item narrower than a unit at its width and shrinks the rest, so the name's cell is given a natural width wider than any row (`NAME_CELL_UNITS`), and only it takes up a change of width. **Checked** in the binary: the tree drawn across a Properties editor the width of the 3D View, and in the sidebar.
   - **The lines stay out of the dimming:** a row's contents are dimmed in a sub-layout of their own, so a line has one look down its length past inactive rows.
   - **The active row's highlight covers its lines.**
   - **Narrower icons:** the chevron's button is 0.6 units, narrower than an icon button's 1.0, and the type icon sits in a 0.8-unit cell with `separator(factor=1.0)` before the name, a narrower gap than a label's icon has. The list's own padding, about 5 points before the first chevron, has no Python setting, and a negative separator factor does nothing.
@@ -136,7 +137,7 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
   - **No tooltips of their own:** labels have none, so the row's tooltip ends with a line per badge, such as "Payload (loaded): /_Crate". A click on a badge selects its row, as a click anywhere on the row's labels does.
   - **Checked** in the binary by one-off probes, screenshotted at sidebar width:
     - **The pieces meet with no seam** at the default UI scale. **Not checked** at other UI scales, where Blender scales the 32-pixel icons.
-    - **The name fills the space before its badges.** A long name truncates, and the badges stay beside it.
+    - **The name fills the space before its badges,** so the badges end at the name column's right edge, and a long name truncates before them.
     - **A left-aligned name doesn't fit:** with the name's row left-aligned, so the badges would hug the name's text, a name longer than its column squeezed every cell in the row, the guide lines, chevron, and icon included, to nothing.
     - With both the Kind and Type columns shown, names truncate to two or three letters, and the badges' cells squeeze until the letters crowd each other.
     - **Buttons can't make a dark block:** aligned embossed buttons join into one block, but in the theme's regular grey. `PIE_MENU` emboss draws each button on a dark rounded tile of its own, aligned or not, at 0.6 or 0.8 units, in the widget's nesting or out of it. A `box()` around the badges draws one dark block but makes the row taller.
@@ -226,7 +227,7 @@ Each is an attribute of a `UILayout`, so it applies to whatever sub-layout of a 
 | `emboss` | `NORMAL`, `NONE`, `PULLDOWN_MENU`, `PIE_MENU`, or `NONE_OR_STATUS`. `NONE` draws a button as its bare icon, as the disclosure triangle is drawn. `NONE_OR_STATUS` colors a property by Blender's animated, keyed, and driven states, so only for properties that are. |
 | `scale_x`, `scale_y` | Items' size along each axis. |
 | `ui_units_x`, `ui_units_y` | Items' fixed size, so a column can keep one width on every row. |
-| `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget right-aligns its type column. |
+| `alignment` | `EXPAND`, `LEFT`, `CENTER`, or `RIGHT`. **Checked**; the widget left-aligns its kind and type columns. |
 | `use_property_split`, `use_property_decorate` | A property's label and value in two columns, and its keyframe decorator. |
 
 **Checked** by hand in the binary with `row_look_demo.py`, on the test stage:
