@@ -60,8 +60,10 @@ def _never(_area: object, _region: object) -> bool:
     return False
 
 
-def test_registration_adds_no_panel_and_unregistration_removes_everything(registered: None) -> None:
-    assert not any(issubclass(cls, bpy.types.Panel) for cls in widget_registration.CLASSES)
+def test_registration_adds_only_a_popover_panel_and_unregistration_removes_everything(registered: None) -> None:
+    # A header panel shows only where a popover opens it, so the widget shows nowhere by itself.
+    panels = [cls for cls in widget_registration.CLASSES if issubclass(cls, bpy.types.Panel)]
+    assert [(panel.bl_space_type, panel.bl_region_type) for panel in panels] == [("TOPBAR", "HEADER")]
     assert hasattr(bpy.types.WindowManager, widget_properties.VIEWS_PROPERTY)
     display.create_view("viewport", _never)
     display.unregister()

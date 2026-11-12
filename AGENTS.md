@@ -24,7 +24,7 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
   - `proscenium/api/`, `proscenium/binding/`, `proscenium/core/`, and `proscenium/ui/`: what callers use, the bindings' code, the compiled core, and UI widgets an add-on places in Blender's editors. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently.
   - The code is in units, each a package or a single module, in tiers; a unit imports only from itself and from units in lower tiers. [`src/proscenium/README.md`](src/proscenium/README.md#import-rules) has the table and the rules, which `tests/bpy_free/test_import_tiers.py` enforces. From the top:
     - `proscenium/addon.py`: registers the extension and its handlers. It registers no UI widget yet.
-    - `proscenium/ui/scene_graph_widget/display/`: the scene graph widget's prim tree drawn as a virtualized UIList, which registers no panel; a host places it.
+    - `proscenium/ui/scene_graph_widget/display/`: the scene graph widget's prim tree drawn as a virtualized UIList, which registers no panel that shows by itself (only its settings popover); a host places it.
     - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
     - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M5's a stub, which M7 replaces).
     - `proscenium/binding/runtime/`: disposable in-memory state built from the records.

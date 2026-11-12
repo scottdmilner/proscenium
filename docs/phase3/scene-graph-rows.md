@@ -135,7 +135,7 @@ Blender's own icons in other colors, such as type icons colored by state, would 
 |---|---|---|
 | A28 | The details panel, for the active row | **Checked.** |
 | A29 | The status line above the list, an editor's header text, the status bar | **Checked** for the status line. |
-| A30 | Header toggles choosing which columns show | **Checked** for the type column. |
+| A30 | Settings choosing which columns show, and their widths | **Checked** for the kind and type columns, in the view's settings popover. |
 
 ### Not available
 

@@ -7,7 +7,7 @@ by its index, so only the row count crosses into RNA.
 
 from __future__ import annotations
 
-from typing import Any, override
+from typing import Any, NamedTuple, override
 
 import bpy
 from pxr import Kind
@@ -15,10 +15,23 @@ from pxr import Kind
 from ..prim_tree import prim_descriptions
 from . import badge_icons, widget_keys, widget_operators, widget_properties, widget_views
 
-# The columns after the name, in order: each view property that shows one, and its header.
-COLUMNS = (("show_kind_column", "Kind"), ("show_type_column", "Type"))
-# The share of a row the name column takes, in the header and in each row, by how many columns show after it.
+
+class Column(NamedTuple):
+    """A column after the name: its header, and the view properties that show it and set its width."""
+
+    title: str
+    show_property: str
+    units_property: str
+
+
+# The columns after the name, in order.
+KIND_COLUMN = Column("Kind", "show_kind_column", "kind_column_units")
+TYPE_COLUMN = Column("Type", "show_type_column", "type_column_units")
+COLUMNS = (KIND_COLUMN, TYPE_COLUMN)
+# The least share of a row the name column takes, in the header and in each row, by how many columns show after it:
+# its share in a narrow region, where the columns are narrower than their widths.
 NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56}
+REGION_MARGIN_UNITS = 2.0  # what a region's width leaves out of a list row's: the panel's margins and the list's
 # Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
 LEVEL_UNITS = 0.6
 CHEVRON_UNITS = 0.6  # narrower than an icon button's 1.0, which leaves wide margins around the chevron
@@ -32,6 +45,10 @@ BADGE_UNITS = 0.8  # each badge's cell, after the name
 # the name.
 NAME_CELL_UNITS = 1000.0
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
+SEARCH_MODE_UNITS = 6.0  # the search's match dropdown, wide enough for its longest mode, "Path contains"
+SEARCH_TOGGLE_UNITS = 1.0  # each toggle after it, an icon button's width
+SEARCH_TEXT_LEAST_FACTOR = 0.4  # the text field's share of the search row in a region too narrow for the rest
+SETTINGS_CONTEXT_MEMBER = "proscenium_scene_graph_view"  # the view's properties, for the settings popover
 
 TYPE_ICONS = {
     "Xform": "EMPTY_AXIS",
@@ -69,20 +86,48 @@ def _row_icon(details: Any) -> str:
     return next((icon for kind, icon in KIND_ICONS if Kind.Registry.IsA(details.model_kind, kind)), OTHER_KIND_ICON)
 
 
-def _shown_columns(properties: Any) -> list[tuple[str, str]]:
-    return [column for column in COLUMNS if getattr(properties, column[0])]
+def _shown_columns(properties: Any) -> list[Column]:
+    return [column for column in COLUMNS if getattr(properties, column.show_property)]
 
 
-def _name_column_factor(properties: Any) -> float:
-    return NAME_COLUMN_FACTOR_BY_COLUMN_COUNT[len(_shown_columns(properties))]
+def _unit_pixels(context: Any) -> float:
+    # Blender's widget unit: 18 pixels at a scale of 1, and a pixel's line on each side.
+    system = context.preferences.system
+    return round(18 * system.ui_scale) + 2 * system.pixel_size
 
 
-def _column_cells(layout: Any, column_count: int) -> list[Any]:
-    """One left-aligned cell per shown column, sharing a layout's width evenly."""
-    if column_count == 0:
-        return []
-    split = layout.split(factor=1 / column_count, align=True)
-    cells = [split.row(align=True) for _ in range(column_count)]
+def _name_column_factor(context: Any, properties: Any) -> float:
+    """The name column's share of a row: all but the shown columns' widths, or its least share if more."""
+    shown = _shown_columns(properties)
+    columns_units = sum(getattr(properties, column.units_property) for column in shown)
+    return _split_factor_leaving(context, columns_units, NAME_COLUMN_FACTOR_BY_COLUMN_COUNT[len(shown)])
+
+
+def _split_factor_leaving(context: Any, right_units: float, least_factor: float) -> float:
+    """A split's factor that leaves its right side right_units wide, or least_factor where the region is too narrow.
+
+    A split takes a share of its width, not a width, so the share is worked out from the region's.
+    """
+    region = getattr(context, "region", None)
+    if region is None or right_units == 0:
+        return least_factor
+    unit_pixels = _unit_pixels(context)
+    row_pixels = region.width - REGION_MARGIN_UNITS * unit_pixels
+    return max(least_factor, 1 - right_units * unit_pixels / row_pixels) if row_pixels > 0 else least_factor
+
+
+def _column_cells(layout: Any, properties: Any, shown: list[Column]) -> list[Any]:
+    """One left-aligned cell per shown column, sharing a layout's width in proportion to the columns' widths."""
+    cells = []
+    remaining_units = sum(getattr(properties, column.units_property) for column in shown)
+    for column in shown[:-1]:
+        units = getattr(properties, column.units_property)
+        split = layout.split(factor=units / remaining_units, align=True)  # this column, then the rest
+        cells.append(split.row(align=True))
+        layout = split.row(align=True)
+        remaining_units -= units
+    if shown:
+        cells.append(layout.row(align=True))
     for cell in cells:
         cell.alignment = "LEFT"
     return cells
@@ -138,7 +183,7 @@ class SceneGraphList(bpy.types.UIList):
             return
         tree_row = tree.rows[index]
         details = tree.details(tree_row)  # read once, when the row first comes on screen
-        split = layout.split(factor=_name_column_factor(data))
+        split = layout.split(factor=_name_column_factor(context, data))
         row = split.row(align=True)
         for _ in range(tree_row.depth):
             _draw_guide_level(row)
@@ -176,11 +221,11 @@ class SceneGraphList(bpy.types.UIList):
             is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
             icon_value = badge_icons.icon_id(badge, place, is_greyed)
             _fixed_width(badges, BADGE_UNITS).label(text="", icon_value=icon_value)
-        column_texts = {"show_kind_column": details.model_kind, "show_type_column": details.type_name or "-"}
+        column_texts = {KIND_COLUMN: details.model_kind, TYPE_COLUMN: details.type_name or "-"}
         shown = _shown_columns(data)
-        for cell, (property_name, _) in zip(_column_cells(split.row(align=True), len(shown)), shown, strict=True):
-            cell.alert = property_name == "show_kind_column" and details.is_invalid_model
-            cell.label(text=column_texts[property_name])
+        for cell, column in zip(_column_cells(split.row(align=True), data, shown), shown, strict=True):
+            cell.alert = column == KIND_COLUMN and details.is_invalid_model
+            cell.label(text=column_texts[column])
 
     @override
     def draw_filter(self, context: bpy.types.Context | None, layout: Any) -> None:
@@ -189,18 +234,52 @@ class SceneGraphList(bpy.types.UIList):
         return
 
 
-def _draw_search(layout: Any, properties: Any) -> None:
-    search = layout.row(align=True)
-    search.prop(properties, "search_text", text="", icon="VIEWZOOM", placeholder="Search prims")
-    search.prop(properties, "search_mode", text="")
-    # As wide as the icon-only toggle after it, which takes one unit.
-    _fixed_width(search, 1.0).prop(properties, "search_case_sensitive", text="Aa", toggle=True)
-    search.prop(properties, "search_shown_rows_only", text="", icon="FILTER", toggle=True)
+class SceneGraphSettings(bpy.types.Panel):
+    """A view's settings, in a popover from the gear at its status line's end; drawn nowhere else."""
+
+    bl_idname = "PROSCENIUM_PT_scene_graph_settings"
+    bl_label = "Scene Graph Settings"
+    bl_space_type = "TOPBAR"  # a header panel shows only where a popover opens it
+    bl_region_type = "HEADER"
+
+    @override
+    def draw(self, context: bpy.types.Context | None) -> None:
+        properties = getattr(context, SETTINGS_CONTEXT_MEMBER, None)
+        layout = self.layout
+        if properties is None or layout is None:
+            return
+        layout.label(text="Columns")
+        for column in COLUMNS:
+            row = layout.row()
+            is_shown = getattr(properties, column.show_property)
+            # The eye, open or closed, as the Outliner's; then the title, and the width, dimmed while hidden.
+            eye_and_title = row.row(align=True)
+            eye_and_title.prop(
+                properties, column.show_property, text="", icon="HIDE_OFF" if is_shown else "HIDE_ON", emboss=False
+            )
+            eye_and_title.label(text=column.title)
+            width = row.row()
+            width.active = is_shown
+            width.prop(properties, column.units_property)
 
 
-def _draw_header(layout: Any, properties: Any) -> None:
+def _draw_search(layout: Any, context: Any, properties: Any) -> None:
+    # The text field takes what the mode and toggles leave; in a row, every item would grow with the width.
+    options_units = SEARCH_MODE_UNITS + 2 * SEARCH_TOGGLE_UNITS
+    split = layout.split(factor=_split_factor_leaving(context, options_units, SEARCH_TEXT_LEAST_FACTOR), align=True)
+    split.row(align=True).prop(properties, "search_text", text="", icon="VIEWZOOM", placeholder="Search prims")
+    options = split.row(align=True)
+    options.prop(properties, "search_mode", text="")
+    # As wide as the icon-only toggle after it.
+    _fixed_width(options, SEARCH_TOGGLE_UNITS).prop(properties, "search_case_sensitive", text="Aa", toggle=True)
+    _fixed_width(options, SEARCH_TOGGLE_UNITS).prop(
+        properties, "search_shown_rows_only", text="", icon="FILTER", toggle=True
+    )
+
+
+def _draw_header(layout: Any, context: Any, properties: Any) -> None:
     # A row above the list, split like the rows; the list's own padding offsets its columns by a few pixels.
-    split = layout.split(factor=_name_column_factor(properties))
+    split = layout.split(factor=_name_column_factor(context, properties))
     name_header = split.row()
     name_header.alignment = "LEFT"
     # A menu with an arrow after its text, so the header reads as clickable; an unembossed button shows no hover.
@@ -209,19 +288,9 @@ def _draw_header(layout: Any, properties: Any) -> None:
     name_header.emboss = "PULLDOWN_MENU"
     title = "Display Name" if properties.shown_name == "DISPLAY_NAME" else "Prim"
     name_header.prop_menu_enum(properties, "shown_name", text=f"    {title} ⌄")
-    columns = split.row(align=True)
-    shown = _shown_columns(properties)
-    cells = _column_cells(columns, len(shown))
-    for cell, (property_name, title) in zip(cells, shown, strict=True):
-        cell.label(text=title)
-        cell.prop(properties, property_name, text="", icon="HIDE_OFF", emboss=False)
-    # A hidden column's eye stays, after the shown ones, to show it again.
-    hidden_eyes = cells[-1] if cells else columns
-    if not cells:
-        hidden_eyes.alignment = "RIGHT"
-    for column in COLUMNS:
-        if column not in shown:
-            hidden_eyes.prop(properties, column[0], text="", icon="HIDE_ON", emboss=False)
+    shown = _shown_columns(properties)  # chosen in the settings popover
+    for cell, column in zip(_column_cells(split.row(align=True), properties, shown), shown, strict=True):
+        cell.label(text=column.title)
 
 
 def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_ROWS) -> None:
@@ -238,8 +307,17 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
         layout.label(text="No stage" if prim_tree_view.tree is None else "Stage closed")
         return
     status = prim_tree_view.search_status
-    layout.label(text=status.text or f"{len(tree.rows):,} visible rows", icon="ERROR" if status.is_error else "NONE")
-    _draw_header(layout, properties)
+    status_row = layout.row()
+    status_row.label(
+        text=status.text or f"{len(tree.rows):,} visible rows", icon="ERROR" if status.is_error else "NONE"
+    )
+    # The view's settings at the status line's end; the popover reads the view's properties from the context set here.
+    settings = status_row.row()
+    settings.alignment = "RIGHT"
+    settings.emboss = "NONE"
+    settings.context_pointer_set(SETTINGS_CONTEXT_MEMBER, properties)
+    settings.popover(SceneGraphSettings.bl_idname, text="", icon="PREFERENCES")
+    _draw_header(layout, context, properties)
     badge_icons.redraw_icons_if_theme_changed()  # once per view drawn, not per row
     layout.template_list(
         SceneGraphList.bl_idname,
@@ -252,7 +330,7 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
         rows=list_rows,
         maxrows=list_rows * 3,
     )
-    _draw_search(layout, properties)
+    _draw_search(layout, context, properties)
 
 
 def draw_details(layout: Any, view_name: str) -> None:
@@ -271,4 +349,4 @@ def draw_details(layout: Any, view_name: str) -> None:
 
 
 # In registration order.
-CLASSES = (SceneGraphList,)
+CLASSES = (SceneGraphList, SceneGraphSettings)

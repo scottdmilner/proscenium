@@ -1,6 +1,7 @@
 """The scene graph widget's display: prim trees drawn in Blender as virtualized UILists, for a host to place.
 
-It registers no panel and places nothing in Blender's editors; a host does:
+It registers no panel that shows by itself (its one panel is its settings popover) and places nothing in Blender's
+editors; a host does:
 
     from proscenium.ui.scene_graph_widget import display
 

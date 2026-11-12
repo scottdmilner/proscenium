@@ -14,7 +14,7 @@ Timings are single runs unless stated, and varied by about 2× between runs. Win
 ## Recommendation
 
 - **Build the tree as a virtualized `UIList`** over a model kept apart from drawing. Each visible row is an empty collection item, and `draw_item` reads that row from the model, so only the row count enters Blender's data. It got Blender's theme, scrolling, tooltips, and DPI scaling with nothing extra, and kept up at 100,000 rows in a group.
-- **Register no panel in the widget.** The widget registers its classes and properties; a host, the add-on, registers the panels that place it and calls the widget's drawing from them ([The Widget](#the-widget)). The same widget can then show in several places at once, each place a view of its own.
+- **Register no panel in the widget** that shows by itself. The widget registers its classes and properties, and the popover its settings open in; a host, the add-on, registers the panels that place it and calls the widget's drawing from them ([The Widget](#the-widget)). The same widget can then show in several places at once, each place a view of its own.
 - **Host it in two places, over one model and drawing:**
   - **The 3D View sidebar,** showing a binding's stage and selecting with the viewport ([Selection with the Viewport](#selection-with-the-viewport)). That's where the tree was checked.
   - **The node editor's sidebar,** beside the stage editor's node tree, showing its active Viewer's stage ([Node Tree](node-tree.md#viewer)). No binding displays that stage, so selecting a row there selects no Blender objects.
@@ -65,7 +65,7 @@ Each package's modules import each other in that order, each only from those bef
 
 ### What a host does
 
-The widget registers no panel and draws nowhere by itself. A host:
+The widget draws nowhere by itself: its one panel is its settings popover, which shows only where its gear opens it. A host:
 1. **Registers it** with `display.register()`, from `proscenium.ui.scene_graph_widget`: its classes, a collection on the window manager, its icons, its key watchers, and a load handler.
 2. **Creates a view** per place it shows a tree, by name: `create_view(name, shows_in_region, on_selection_changed)`.
    - `shows_in_region(area, region)` says whether a region is showing that view now, such as a 3D View sidebar on the host's tab. The key watcher asks it, since only the host knows which panels draw which view.
@@ -115,11 +115,13 @@ At a million leaves, expanding took about 1.3 s in the model plus 0.45 s adding 
   - **The active row's highlight covers its lines.**
   - **Narrower icons:** the chevron's button is 0.6 units, narrower than an icon button's 1.0, and the type icon sits in a 0.8-unit cell with `separator(factor=1.0)` before the name, a narrower gap than a label's icon has. The list's own padding, about 5 points before the first chevron, has no Python setting, and a negative separator factor does nothing.
 - **Columns:** a 72% name column with the type and badges right-aligned after it read in full at sidebar width.
+  - **Spare width goes to the name.** A split takes a share, not a width, so each column takes its width from the view's settings, 5 units unless changed, and the name column the rest: the split's factor is worked out from the region's width, less 2 units for the panel's and the list's margins, which Python can't read. In a region too narrow for that, the name column keeps its least share (56% with two columns, 72% with one), and the columns shrink, sharing what's left in proportion to their widths. **Checked** in the binary: in a Properties editor the width of the 3D View the Kind and Type columns took about 5 units each and the name the rest, and at 3 and 9 units each drew at its own width, with the header's columns over the rows'; in the sidebar the columns shrank.
+  - **Settings popover:** a gear at the status line's end opens a popover (`SceneGraphSettings`, a `TOPBAR` header panel, which shows only where a popover opens it) holding the view's settings: for each column an eye, open or closed as the Outliner's, that shows or hides it, and its width, dimmed while it's hidden. It reads the view's properties from a context member the gear's layout sets. **Checked** in the binary: a simulated click on the gear in the 3D View's sidebar opened the popover, showing each column's open eye and its width of 5.0.
 - **Updating properties without callbacks:** **Checked:** in Blender 5, `bpy.props` values aren't dict-style ID properties, so `wm["prop"] = v` doesn't set a registered property. Moving the active row without running its update callback needs a guard flag.
 - **No writes while drawing:** a panel's `draw` can't write the window manager's properties, so rows are synced from operators, timers, and handlers, never from drawing. A view drawn before the load handler has made its properties draws "Loading".
 - **Header row:** a `UIList` has no column headers. **Checked:**
   - A row above the list, split at the same factor as each row, serves as one. The list's padding offsets its columns from the header's by a few pixels.
-  - The header can hold controls, such as the eye that hides the type column.
+  - The header can hold controls, such as the name column's menu choosing which name shows. Which columns show is chosen in the settings popover.
 - **No highlight beyond the active row:** a `UIList` highlights only its active row. Selecting several prims at once would need a mark per row, such as an icon or a highlighted button ([Colors](#colors)).
 
 ## Icons and tooltips
@@ -368,7 +370,7 @@ The `UIList`'s own filter hides every row that doesn't match, and sees only the 
 - **Clearing:** clearing the search restores the expansion from before it, and reveals the selected prim.
 - **Query:** text, matched by name, path, glob, or regular expression, with a case toggle.
 - **Typing:** the text box updates on every keystroke (`options={"TEXTEDIT_UPDATE"}`), and a timer runs the search a quarter second after the last one.
-- **Where the options go:** the search box sits directly below the list, with its mode, case, and shown-rows toggles beside it, and the status line above the list. The list's `draw_filter`, the options under its bottom triangle, can draw anything, and the search box was there for a while, but it draws nothing now, which also hides Blender's own name filter, which would hide rows without their ancestors.
+- **Where the options go:** the search box sits directly below the list, with its mode, case, and shown-rows toggles beside it, and the status line above the list. The mode's dropdown is 6 units wide and each toggle one, and the box takes the rest, by the split worked out from the region's width that the columns use ([Spare width goes to the name](#uilist-mechanics)); in a region too narrow for that, the box keeps 40% of the row. **Checked** in the binary for a Properties editor the width of the 3D View: the dropdown stayed narrow and the box took the rest. **Not checked:** the sidebar's search row. The list's `draw_filter`, the options under its bottom triangle, can draw anything, and the search box was there for a while, but it draws nothing now, which also hides Blender's own name filter, which would hide rows without their ancestors.
 - **Several toggles as booleans:** an expanded `ENUM_FLAG` property sets one item per click (Shift-click adds or removes one), so once an item was set, no click could clear them all; a set of toggles is one boolean property each.
 
 Cost, **Checked** headless:
