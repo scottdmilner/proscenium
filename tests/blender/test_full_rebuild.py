@@ -2,7 +2,7 @@
 
 It rereads the source through a new scene-index chain, whose capture copies every prim, and prepares every partition
 anew. Its display is compared by value with a clean binding's on the same stage, synchronized once
-(support/displayed_copies.py). A miss is made by the core's test hook, which makes the kept chain's next capture drop
+(support/clean_rebuild.py). A miss is made by the core's test hook, which makes the kept chain's next capture drop
 the notices it takes, so it shares what they named.
 """
 
@@ -18,7 +18,7 @@ from proscenium.binding.persistence import id_property_records
 from proscenium.binding.results import ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.core import _core
-from support.displayed_copies import displayed_copies
+from support.clean_rebuild import clean_rebuild, display_state
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from proscenium.api.bindings import BindingHandle, Bindings
-    from support.bounds_check import DisplayedCopy
 
 
 def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:
@@ -44,21 +43,10 @@ def _kept(bindings: Bindings, handle: BindingHandle) -> _core.SceneIndexChain:
     return chain
 
 
-def _shown(handle: BindingHandle) -> list[DisplayedCopy]:
-    return sorted(displayed_copies(handle.binding_id), key=lambda copy: (copy.source_path, copy.world_vertices))
-
-
 def _managed(handle: BindingHandle) -> set[int]:
     manifest = ownership.manifest(handle.binding_id)
     assert isinstance(manifest, id_property_records.LoadedRecord)
     return {e.datablock.session_uid for e in manifest.record.entries.values() if e.datablock is not None}
-
-
-def _clean(bindings: Bindings, stage: Usd.Stage) -> list[DisplayedCopy]:
-    """What a clean first synchronization of stage displays."""
-    clean = _binding(bindings, stage, "Clean")
-    assert clean.synchronize(0).state is not ResultState.FATAL_FAILURE
-    return _shown(clean)
 
 
 def test_a_full_rebuild_rereads_and_rebuilds_everything(
@@ -87,7 +75,7 @@ def test_a_full_rebuild_rereads_and_rebuilds_everything(
         assert first.released
         assert _kept(bindings, handle) is not first
         assert before.isdisjoint(_managed(handle))
-        assert _shown(handle) == _clean(bindings, scene.stage)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def test_a_full_rebuild_recovers_from_a_missed_edit(bindings: Bindings, tmp_path: Path) -> None:
@@ -96,12 +84,12 @@ def test_a_full_rebuild_recovers_from_a_missed_edit(bindings: Bindings, tmp_path
     with edit_sequence.edit_sequence(tmp_path) as scene:
         handle = _binding(bindings, scene.stage, "Shot")
         assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
-        before = _shown(handle)
+        before = display_state(handle.binding_id)
         scene.stage.GetAttributeAtPath(f"{edit_sequence.A}.xformOp:translate").Set(Gf.Vec3d(1, 0, 0))
         _kept(bindings, handle)._drop_next_capture_notices()  # noqa: SLF001 - the core's test hook for a miss
         assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
-        assert _shown(handle) == before  # missed
+        assert display_state(handle.binding_id) == before  # missed
         assert handle.synchronize(0, full_rebuild=True).state is not ResultState.FATAL_FAILURE
-        shown = _shown(handle)
+        shown = display_state(handle.binding_id)
         assert shown != before
-        assert shown == _clean(bindings, scene.stage)
+        assert shown == clean_rebuild(bindings, scene.stage)

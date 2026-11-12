@@ -1342,7 +1342,7 @@ requirements:
       - id: DISC-06
         quote: "Separate change discovery from dependency invalidation."
         fixtures: [F-EDIT-SEQUENCE]
-        oracle: "On each F-EDIT-SEQUENCE step, the source-affected entities the refresh finds are the step's, and the copies it acts on are those that depend on them, beneath an edited ancestor and through edited shared contents included, as the step lists them."
+        oracle: "On each F-EDIT-SEQUENCE step, the copies a refresh acts on are those that depend on the step's source-affected prims, as the step lists them: an edit to a prim with no copy of its own, Group's, acts on the copies beneath it, and an edit to shared instance contents acts on every instance's copy."
       - id: DISC-07
         quote: "Recover correctly from missed or coalesced change notifications."
         fixtures: [F-EDIT-SEQUENCE]
@@ -1359,7 +1359,7 @@ requirements:
       - id: AFF-01
         quote: "Source-affected entities: source state actually changed."
         fixtures: [F-EDIT-SEQUENCE]
-        oracle: "On each F-EDIT-SEQUENCE step, the source-affected entities the refresh reports are exactly the step's source-affected prims."
+        oracle: "On each F-EDIT-SEQUENCE step, the copies a refresh acts on (updated, rebuilt, retired, built) are exactly those depending on the step's source-affected prims, as the step lists them, and every other managed resource keeps its identity and isn't written."
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
         delivery: M13
@@ -1408,7 +1408,7 @@ requirements:
       - id: CHG-07
         quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
         fixtures: [F-NO-OP-REFRESH, F-EDIT-SEQUENCE]
-        oracle: "On each F-EDIT-SEQUENCE step, as on F-NO-OP-REFRESH, no copy the step doesn't name is written, and the type-changed step writes nothing."
+        oracle: "On each F-EDIT-SEQUENCE step, as on F-NO-OP-REFRESH, no copy the step doesn't name is written, and the type-changed step writes no display resource, only the generation record and last attempt, for the source revision it shows."
       - id: CHG-08
         quote: "A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement."
         fixtures: [F-EDIT-SEQUENCE]

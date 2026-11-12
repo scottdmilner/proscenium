@@ -31,6 +31,9 @@ class ObservedWrites:
     """What the observed operation wrote; filled in as the observation ends."""
 
     updated_ids: list[str] = field(default_factory=list)  # the depsgraph's updated IDs, as "<type>:<name>"
+    # Those of them whose transform or geometry the depsgraph updated, as "<type>:<name>". Linking or unlinking an
+    # object updates every object its collections hold, their bases resynced, with neither.
+    changed_ids: list[str] = field(default_factory=list)
     record_writes: list[str] = field(default_factory=list)  # the schema names of the records written, in order
     created_id_count: int = 0  # IDs made meanwhile, removed ones included
 
@@ -52,9 +55,11 @@ def observed_writes(monkeypatch: pytest.MonkeyPatch) -> Iterator[ObservedWrites]
         return record
 
     def updated(_scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph) -> None:
-        observed.updated_ids.extend(
-            f"{type(i).__name__}:{i.name}" for u in depsgraph.updates if (i := u.id) is not None
-        )
+        for update in depsgraph.updates:
+            if (i := update.id) is not None:
+                observed.updated_ids.append(name := f"{type(i).__name__}:{i.name}")
+                if update.is_updated_transform or update.is_updated_geometry:
+                    observed.changed_ids.append(name)
 
     view_layer = bpy.context.view_layer
     assert view_layer is not None

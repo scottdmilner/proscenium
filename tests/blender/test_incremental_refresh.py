@@ -2,11 +2,10 @@
 
 Against the plan of the generation the destination shows, held since this session published it: on F-NO-OP-REFRESH, a
 refresh with nothing changed writes nothing, and so does one after an undo or redo restores a held generation (AFF-03);
-after reopening, or an undo past the held plans, a refresh rebuilds every partition, as a clean one does (AFF-04). On
-F-EDIT-SEQUENCE, each step's refresh displays what a clean binding's first synchronization of the same stage does
-(TINC-01), the copies the step doesn't touch or updates in place keep their objects, and a box whose bounds changed
-keeps its object, pointed at a new mesh of a later generation. A sheared copy moves in place, a keyed copy synchronized
-again loses its keys in place, and a publication failing after local updates leaves every kept copy as it was. What a
+after reopening, or an undo past the held plans, a refresh rebuilds every partition, as a clean one does (AFF-04),
+compared with a clean binding's (TINC-01, support/clean_rebuild.py). On F-EDIT-SEQUENCE, a sheared copy moves in place,
+a keyed copy synchronized again loses its keys in place, a deleted object's partition is rebuilt, and a publication
+failing after local updates leaves every kept copy as it was; test_edit_sequence_refresh.py takes each step. What a
 refresh writes is observed through the depsgraph, the record writes, and the IDs made (support/blender_writes.py).
 """
 
@@ -29,7 +28,7 @@ from proscenium.synchronization import transaction
 from support import undo
 from support.blend import save_and_reopen
 from support.blender_writes import observed_writes
-from support.displayed_copies import displayed_copies
+from support.clean_rebuild import clean_rebuild, display_state
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,7 +36,6 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from proscenium.api.bindings import BindingHandle, Bindings
-    from support.bounds_check import DisplayedCopy
 
 _GENERATION = re.compile(r"~(\d{6})\.")  # a managed object name's generation (DECISIONS.md "Managed object names")
 
@@ -50,19 +48,6 @@ def _binding(bindings: Bindings, stage: Usd.Stage, name: str = "Shot") -> Bindin
 
 def _synchronize(handle: BindingHandle) -> None:
     assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
-
-
-def _shown(handle: BindingHandle) -> list[DisplayedCopy]:
-    return sorted(displayed_copies(handle.binding_id), key=lambda copy: (copy.source_path, copy.world_vertices))
-
-
-def _clean(bindings: Bindings, stage: Usd.Stage) -> list[DisplayedCopy]:
-    """What a clean binding's first synchronization of stage displays; the binding is released after."""
-    clean = _binding(bindings, stage, "Clean")
-    _synchronize(clean)
-    shown = _shown(clean)
-    bindings.release(clean.binding_id)
-    return shown
 
 
 def _objects_by_source(handle: BindingHandle) -> dict[str, bpy.types.ID]:
@@ -122,17 +107,17 @@ def test_a_refresh_after_an_undo_or_redo_writes_nothing(
         handle = _binding(bindings, scene.stage)
         undo.push("base")
         _synchronize(handle)
-        first = _shown(handle)
+        first = display_state(handle.binding_id)
         assert handle.set_settings(render_purposes=["default"]).state is ResultState.SUCCESS
         _synchronize(handle)
-        second = _shown(handle)
+        second = display_state(handle.binding_id)
         assert second != first
         for restore, shown in ((undo.undo, first), (undo.redo, second)):
             restore()
             with observed_writes(monkeypatch) as observed:
                 _synchronize(handle)
             assert observed.wrote_nothing, (restore.__name__, observed)
-            assert _shown(handle) == shown
+            assert display_state(handle.binding_id) == shown
 
 
 def test_a_refresh_after_reopening_rebuilds_everything(bindings: Bindings, tmp_path: Path) -> None:
@@ -147,7 +132,7 @@ def test_a_refresh_after_reopening_rebuilds_everything(bindings: Bindings, tmp_p
         assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
         _synchronize(handle)
         assert len(_generations(handle)) == 1 and _generations(handle).isdisjoint(published)
-        assert _shown(handle) == _clean(bindings, scene.stage)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def test_a_refresh_past_the_held_plans_rebuilds_everything(
@@ -166,38 +151,7 @@ def test_a_refresh_past_the_held_plans_rebuilds_everything(
         shown = _generations(handle)
         _synchronize(handle)
         assert len(_generations(handle)) == 1 and _generations(handle).isdisjoint(shown)
-        assert _shown(handle) == _clean(bindings, scene.stage)
-
-
-def test_each_step_replaces_only_what_it_changes(bindings: Bindings, tmp_path: Path) -> None:
-    # TINC-01, DISC-01, AFF-01, CHG-08 on F-EDIT-SEQUENCE: after each step's refresh, the display is a clean
-    # binding's, and each copy the step neither rebuilds, retires, nor builds keeps its object, the updated ones
-    # included; a box whose bounds changed has a new mesh named for its prim in a later generation than its object's,
-    # the old one retired.
-    with edit_sequence.edit_sequence(tmp_path) as scene:
-        handle = _binding(bindings, scene.stage)
-        _synchronize(handle)
-        for step in scene.steps:
-            before = _objects_by_source(handle)
-            before_uids = {source: obj.session_uid for source, obj in before.items()}
-            meshes = {source: obj.data for source, obj in before.items() if isinstance(obj, bpy.types.Object)}
-            step.edit(scene.stage)
-            _synchronize(handle)
-            assert _shown(handle) == _clean(bindings, scene.stage), step.name
-            replaced = {source for source, _ in step.rebuilt | step.retired | step.built}
-            after = _objects_by_source(handle)
-            after_uids = {source: obj.session_uid for source, obj in after.items()}
-            kept = (before_uids.keys() & after_uids.keys()) - replaced
-            assert {s: after_uids[s] for s in kept} == {s: before_uids[s] for s in kept}, step.name
-            if step.name == "bounds-changed":
-                [(odd, _)] = step.updated
-                obj, old = after[odd], meshes[odd]
-                assert isinstance(obj, bpy.types.Object) and obj.data is not None
-                assert obj.data != old
-                generation, mesh_generation = (_GENERATION.match(n) for n in (obj.name, obj.data.name))
-                assert generation and mesh_generation and mesh_generation.group(1) > generation.group(1)
-                assert obj.data.name.endswith(" Odd")
-                assert old is not None and not id_property_records.alive(old)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def test_a_sheared_copy_moves_in_place(bindings: Bindings, tmp_path: Path) -> None:
@@ -214,7 +168,7 @@ def test_a_sheared_copy_moves_in_place(bindings: Bindings, tmp_path: Path) -> No
         scene.stage.GetAttributeAtPath(f"{edit_sequence.A}.xformOp:translate").Set(Gf.Vec3d(0, 0, 3))
         _synchronize(handle)
         assert _objects_by_source(handle)[edit_sequence.A] == obj and obj.parent == parent
-        assert _shown(handle) == _clean(bindings, scene.stage)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def _state(obj: bpy.types.Object) -> tuple[object, ...]:
@@ -282,7 +236,7 @@ def test_synchronizing_a_cached_generation_again_removes_its_keys(bindings: Bind
         manifest = ownership.manifest(handle.binding_id)
         assert isinstance(manifest, id_property_records.LoadedRecord)
         assert all(e.role is not RepresentationRole.ACTION for e in manifest.record.entries.values())
-        assert _shown(handle) == _clean(bindings, scene.stage)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def test_a_failed_publication_keeps_the_cached_keys(
@@ -318,7 +272,7 @@ def test_a_deleted_object_is_rebuilt(bindings: Bindings, tmp_path: Path) -> None
         bpy.data.batch_remove([_objects_by_source(handle)[edit_sequence.A]])
         _synchronize(handle)
         assert edit_sequence.A in _objects_by_source(handle)
-        assert _shown(handle) == _clean(bindings, scene.stage)
+        assert display_state(handle.binding_id) == clean_rebuild(bindings, scene.stage)
 
 
 def test_replacement_meshes_take_names_of_their_own(bindings: Bindings, tmp_path: Path) -> None:
