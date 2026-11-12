@@ -31,7 +31,7 @@ def failing_preparation(
     failing: set[bpy.types.ID] = set()
     hold, world, remove = (
         preparation_resources.PreparationResources.track,
-        application._matrix_from_buffer,
+        application.matrix_from_buffer,
         datablock_removal._batch_remove,
     )  # noqa: SLF001
     worlds: list[object] = []
@@ -56,7 +56,7 @@ def failing_preparation(
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(preparation_resources.PreparationResources, "track", recording)
-        patch.setattr(application, "_matrix_from_buffer", failing_world)
+        patch.setattr(application, "matrix_from_buffer", failing_world)
         patch.setattr(datablock_removal, "_batch_remove", failing_remove)
         result = handle.synchronize(time_code, full_rebuild=True)  # every partition prepared, as on a first one
     assert len(held) == scene.prepared_before_failure

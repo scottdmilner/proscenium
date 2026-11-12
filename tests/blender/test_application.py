@@ -266,7 +266,7 @@ def test_each_prepared_resource_is_held(bindings: Bindings, tmp_path: Path) -> N
 
 
 # Preparation's fallible steps after a resource is made, by the function each runs: its call-th call fails.
-_STEPS = [("_corners", call) for call in range(1, 5)] + [("_matrix_from_buffer", call) for call in range(1, 5)]
+_STEPS = [("corners", call) for call in range(1, 5)] + [("matrix_from_buffer", call) for call in range(1, 5)]
 
 
 @pytest.mark.parametrize(("step", "call"), _STEPS)
@@ -287,7 +287,7 @@ def test_a_failure_after_a_resource_is_made_finds_it_held(
             _datablocks() - before - ({work.staging_collection} if work.staging_collection else set())
         )  # made once needed
         assert made == set(work.datablocks.values())
-        assert len(made) == 2 * call - (step == "_corners")  # a placeholder's mesh is made before its corners
+        assert len(made) == 2 * call - (step == "corners")  # a placeholder's mesh is made before its corners
         assert preparation_resources.dispose(work) == ()
         assert _datablocks() == before
         assert _ledger() == {}
@@ -347,7 +347,7 @@ def test_a_failed_disposal_leaves_tracked_inactive_leftovers(
     with transaction.preparation_cleanup_failure(tmp_path) as scene:
         binding_id = _binding(bindings)
         plan = _plan(scene.caller, 0.0)
-        _fail_on_call(monkeypatch, "_matrix_from_buffer", 2)
+        _fail_on_call(monkeypatch, "matrix_from_buffer", 2)
         before = _datablocks()
         work = _work(binding_id)
         with pytest.raises(RuntimeError, match="injected"):

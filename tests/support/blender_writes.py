@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     import pytest
 
 
-@dataclass
+@dataclass(slots=True)
 class ObservedWrites:
     """What the observed operation wrote; filled in as the observation ends."""
 

@@ -42,7 +42,7 @@ from mathutils import Matrix
 from ..binding.persistence import manifests
 
 if TYPE_CHECKING:
-    from collections.abc import Buffer, Callable, Iterable, Mapping, Sequence
+    from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping, Sequence
 
     from ..core import _core
     from .preparation_resources import PreparationResources
@@ -69,13 +69,38 @@ class ResourceOperationError(RuntimeError):
         self.source_entity_path = source_entity_path
 
 
+class ManagedNames:
+    """The names one synchronization gives what it makes: `~<generation>.<ordinal> <prim name>`.
+
+    DECISIONS.md "Managed object names": the generation is one more than the one in the last managed name among
+    Blender's objects and meshes, each list sorted by name, so every name sorts after those before and no two collide;
+    the ordinal counts the names given, in the order asked for.
+    """
+
+    _prefix: str
+    _ordinals: Iterator[int]
+
+    def __init__(self) -> None:
+        self._prefix = f"~{_next_generation_number():06d}."
+        self._ordinals = itertools.count()
+
+    def next_name(self, prim_name: str) -> str:
+        """The next name, for a datablock of the prim named prim_name."""
+        return f"{self._prefix}{next(self._ordinals):07d} {prim_name}"
+
+
 def prepare(
-    plan: _core.Plan, copy_indices: Iterable[int], published: manifests.Manifest, work: PreparationResources
+    plan: _core.Plan,
+    copy_indices: Iterable[int],
+    published: manifests.Manifest,
+    work: PreparationResources,
+    names: ManagedNames | None = None,
 ) -> None:
     """Make the partitions of plan's drawn copies at copy_indices in work's staging collection, in that order.
 
     Each datablock is held in work as it's made (TXN-08). published is the binding's published manifest, whose
-    entries' keys the prepared resources with their identities take. Raises ResourceOperationError, naming the
+    entries' keys the prepared resources with their identities take. names are the synchronization's, new ones if
+    not given. Raises ResourceOperationError, naming the
     resource, when making or setting one fails, and otherwise whatever Blender raises; what was made before stays in
     work, held.
     """
@@ -104,18 +129,17 @@ def prepare(
             for i, r in resources.items()
         }
         keys = dict(zip(identities, manifests.existing_or_new_entry_keys(published, identities.values()), strict=True))
-        bounds = _local_bounds(plan, copies, view)
+        bounds = local_bounds(plan, copies, view)
         worlds = view(plan.copy_world_matrices)
         viewport, render = view(plan.copy_visible_in_viewport), view(plan.copy_visible_in_render)
         shears = view(plan.copy_shear_split_indices)
         parent_worlds, bases = view(plan.shear_parent_world_matrices), view(plan.shear_object_basis_matrices)
-        # Objects, and their bounds meshes, are named in the plan's order after a new generation (DECISIONS.md
-        # "Managed object names").
-        prefix, ordinals = f"~{_next_object_generation_number():06d}.", itertools.count()
+        # Objects, and their bounds meshes, are named in the plan's order (DECISIONS.md "Managed object names").
+        names = ManagedNames() if names is None else names
         for copy, (object_index, mesh_index, parent_index) in zip(copies, partitions, strict=True):
             name = resources[object_index].source_entity_path.rsplit("/", 1)[-1]
             made: list[tuple[int, bpy.types.ID]] = []  # resource index, datablock
-            object_name = f"{prefix}{next(ordinals):07d} {name}"
+            object_name = names.next_name(name)
             mesh = None
             making = object_index  # the resource being made or set, which a failure names
             try:
@@ -124,7 +148,7 @@ def prepare(
                     mesh = bpy.data.meshes.new(object_name)
                     work.track(keys[mesh_index], identities[mesh_index].role, mesh)
                     made.append((mesh_index, mesh))
-                    mesh.from_pydata(_corners(bounds[copy]), [], [])
+                    mesh.from_pydata(corners(bounds[copy]), [], [])
                 making = object_index
                 obj = bpy.data.objects.new(object_name, mesh)
                 work.track(keys[object_index], identities[object_index].role, obj)
@@ -134,11 +158,11 @@ def prepare(
                 hidden["hide_viewport"].append(not viewport[copy])
                 hidden["hide_render"].append(not render[copy])
                 if parent_index == _NO_RESOURCE:
-                    obj.matrix_world = _matrix_from_buffer(worlds, copy)
+                    obj.matrix_world = matrix_from_buffer(worlds, copy)
                 else:
                     # Blender objects hold no shear, so the parent and the object each hold part, as the plan splits it.
                     making = parent_index
-                    parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
+                    parent = bpy.data.objects.new(names.next_name(f"{name} shear"), None)
                     work.track(keys[parent_index], identities[parent_index].role, parent)
                     made.append((parent_index, parent))
                     work.ensure_staging_collection().objects.link(parent)
@@ -146,10 +170,10 @@ def prepare(
                     hidden["hide_render"].append(False)
                     parent.hide_select = True  # so a pick lands on the object
                     shear = shears[copy]
-                    parent.matrix_world = _matrix_from_buffer(parent_worlds, shear)
+                    parent.matrix_world = matrix_from_buffer(parent_worlds, shear)
                     making = object_index
                     obj.parent = parent
-                    obj.matrix_basis = _matrix_from_buffer(bases, shear)
+                    obj.matrix_basis = matrix_from_buffer(bases, shear)
             except Exception as error:
                 identity = identities[making]
                 raise ResourceOperationError(identity.role, identity.entity, error) from error
@@ -211,7 +235,7 @@ def key_time_codes(
             action = None if obj.animation_data is None else obj.animation_data.action
             assert action is not None  # made for it now, or when a time code was first cached
             with memoryview(plan.copy_world_matrices) as worlds:
-                world = _matrix_from_buffer(worlds, copy)
+                world = matrix_from_buffer(worlds, copy)
             # Below a shear parent, the basis that shows world while the parent keeps its transform; a copy whose
             # shear changes over time is Phase D's.
             basis = world if obj.parent is None else obj.parent.matrix_world.inverted() @ world
@@ -253,19 +277,23 @@ def _remove_key(fcurve: bpy.types.FCurve, time_code: float) -> None:
         points.remove(point)
 
 
-def _next_object_generation_number() -> int:
-    """One more than the generation in the last managed object name, or 0 for none.
+def _next_generation_number() -> int:
+    """One more than the generation in the last managed object or mesh name, or 0 for none.
 
-    Blender keeps its objects sorted by name, so the last is usually managed and found at once; a user object sorting
-    after the managed ones is passed over.
+    Blender keeps its objects and meshes sorted by name, so the last of each is usually managed and found at once; a
+    user datablock sorting after the managed ones is passed over. A replacement bounds mesh can be of a newer
+    generation than any object.
     """
-    for obj in reversed(bpy.data.objects):
-        if match := _MANAGED_NAME.match(obj.name):
-            return int(match.group(1)) + 1
-    return 0
+    generations = [-1]
+    for datablocks in (bpy.data.objects, bpy.data.meshes):
+        for datablock in reversed(datablocks):
+            if match := _MANAGED_NAME.match(datablock.name):
+                generations.append(int(match.group(1)))
+                break
+    return max(generations) + 1
 
 
-def _local_bounds(
+def local_bounds(
     plan: _core.Plan, copy_indices: Sequence[int], view: Callable[[Buffer], memoryview]
 ) -> dict[int, Sequence[float]]:
     """By copy index, each copy's local bounds as (min x, y, z, max x, y, z), or empty for none.
@@ -290,7 +318,7 @@ def _local_bounds(
     return found
 
 
-def _corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
+def corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
     """The eight corners of (min x, y, z, max x, y, z), or none for no bounds."""
     if not bounds:
         return []
@@ -298,7 +326,7 @@ def _corners(bounds: Sequence[float]) -> list[tuple[float, float, float]]:
     return [(x, y, z) for x in (low[0], high[0]) for y in (low[1], high[1]) for z in (low[2], high[2])]
 
 
-def _matrix_from_buffer(matrices: memoryview, index: int) -> Matrix:
+def matrix_from_buffer(matrices: memoryview, index: int) -> Matrix:
     """Matrix `index` of a plan's buffer of them, whose 16 floats each are Blender's column-major layout."""
     columns = matrices[16 * index : 16 * index + 16].tolist()
     return Matrix([columns[i : i + 4] for i in range(0, 16, 4)]).transposed()

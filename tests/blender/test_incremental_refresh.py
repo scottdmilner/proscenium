@@ -1,13 +1,13 @@
 """Incremental refresh: a synchronization replaces only the partitions whose plan changed (M7 plan, C6).
 
 Against the plan of the generation the destination shows, held since this session published it: on F-NO-OP-REFRESH, a
-refresh with nothing changed writes nothing, and so does one after an undo or redo restores a held generation
-(AFF-03); after reopening, or an undo past the held plans, a refresh rebuilds every partition, as a clean one does
-(AFF-04). On F-EDIT-SEQUENCE, each step's refresh displays what a clean binding's first synchronization of the same
-stage does (TINC-01), and the copies the step doesn't touch keep their objects. What a refresh writes is observed
-through the depsgraph, the record writes, and the IDs made (support/blender_writes.py).
-
-C6a (provisional): a kept copy the step changes is rebuilt, until local updates keep it (C6b).
+refresh with nothing changed writes nothing, and so does one after an undo or redo restores a held generation (AFF-03);
+after reopening, or an undo past the held plans, a refresh rebuilds every partition, as a clean one does (AFF-04). On
+F-EDIT-SEQUENCE, each step's refresh displays what a clean binding's first synchronization of the same stage does
+(TINC-01), the copies the step doesn't touch or updates in place keep their objects, and a box whose bounds changed
+keeps its object, pointed at a new mesh of a later generation. A sheared copy moves in place, and a publication failing
+after local updates leaves every kept copy as it was. What a refresh writes is observed through the depsgraph, the
+record writes, and the IDs made (support/blender_writes.py).
 """
 
 from __future__ import annotations
@@ -17,12 +17,13 @@ from typing import TYPE_CHECKING
 
 import bpy
 import pytest
+from pxr import Gf, UsdGeom
 
 from fixtures import edit_sequence, incremental
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import id_property_records
+from proscenium.binding.persistence import id_property_records, manifests
 from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
+from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
 from proscenium.synchronization import transaction
 from support import undo
@@ -169,20 +170,86 @@ def test_a_refresh_past_the_held_plans_rebuilds_everything(
 
 
 def test_each_step_replaces_only_what_it_changes(bindings: Bindings, tmp_path: Path) -> None:
-    # TINC-01, DISC-01, AFF-01 on F-EDIT-SEQUENCE: after each step's refresh, the display is a clean binding's, and
-    # each copy the step neither updates, rebuilds, retires, nor builds keeps its object.
+    # TINC-01, DISC-01, AFF-01, CHG-08 on F-EDIT-SEQUENCE: after each step's refresh, the display is a clean
+    # binding's, and each copy the step neither rebuilds, retires, nor builds keeps its object, the updated ones
+    # included; a box whose bounds changed has a new mesh named for its prim in a later generation than its object's,
+    # the old one retired.
     with edit_sequence.edit_sequence(tmp_path) as scene:
         handle = _binding(bindings, scene.stage)
         _synchronize(handle)
         for step in scene.steps:
-            before = {source: obj.session_uid for source, obj in _objects_by_source(handle).items()}
+            before = _objects_by_source(handle)
+            before_uids = {source: obj.session_uid for source, obj in before.items()}
+            meshes = {source: obj.data for source, obj in before.items() if isinstance(obj, bpy.types.Object)}
             step.edit(scene.stage)
             _synchronize(handle)
             assert _shown(handle) == _clean(bindings, scene.stage), step.name
-            touched = {source for source, _ in step.updated | step.rebuilt | step.retired | step.built}
-            after = {source: obj.session_uid for source, obj in _objects_by_source(handle).items()}
-            untouched = (before.keys() & after.keys()) - touched
-            assert {s: after[s] for s in untouched} == {s: before[s] for s in untouched}, step.name
+            replaced = {source for source, _ in step.rebuilt | step.retired | step.built}
+            after = _objects_by_source(handle)
+            after_uids = {source: obj.session_uid for source, obj in after.items()}
+            kept = (before_uids.keys() & after_uids.keys()) - replaced
+            assert {s: after_uids[s] for s in kept} == {s: before_uids[s] for s in kept}, step.name
+            if step.name == "bounds-changed":
+                [(odd, _)] = step.updated
+                obj, old = after[odd], meshes[odd]
+                assert isinstance(obj, bpy.types.Object) and obj.data is not None
+                assert obj.data != old
+                generation, mesh_generation = (_GENERATION.match(n) for n in (obj.name, obj.data.name))
+                assert generation and mesh_generation and mesh_generation.group(1) > generation.group(1)
+                assert obj.data.name.endswith(" Odd")
+                assert old is not None and not id_property_records.alive(old)
+
+
+def test_a_sheared_copy_moves_in_place(bindings: Bindings, tmp_path: Path) -> None:
+    # CHG-14: A, sheared by the fixture's step, then translated, keeps its object and shear parent, and the display
+    # is a clean binding's.
+    with edit_sequence.edit_sequence(tmp_path) as scene:
+        shear = next(step for step in scene.steps if step.name == "shear-introduced")
+        shear.edit(scene.stage)
+        handle = _binding(bindings, scene.stage)
+        _synchronize(handle)
+        obj = _objects_by_source(handle)[edit_sequence.A]
+        assert isinstance(obj, bpy.types.Object) and obj.parent is not None
+        parent = obj.parent
+        scene.stage.GetAttributeAtPath(f"{edit_sequence.A}.xformOp:translate").Set(Gf.Vec3d(0, 0, 3))
+        _synchronize(handle)
+        assert _objects_by_source(handle)[edit_sequence.A] == obj and obj.parent == parent
+        assert _shown(handle) == _clean(bindings, scene.stage)
+
+
+def _state(obj: bpy.types.Object) -> tuple[object, ...]:
+    """What a local update sets on a kept object: its transform's components, hide flags, and data."""
+    return (obj.location[:], obj.rotation_euler[:], obj.scale[:], obj.hide_viewport, obj.hide_render, obj.data)
+
+
+def test_a_failed_publication_undoes_its_local_updates(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CHG-05 on F-EDIT-SEQUENCE: Odd moved, its bounds grown, and made invisible, then the manifest's write failing:
+    # Odd's object has its transform, hide flags, and mesh as before, the replacement mesh is disposed of, and the
+    # published records are as they were.
+    with edit_sequence.edit_sequence(tmp_path) as scene:
+        handle = _binding(bindings, scene.stage)
+        _synchronize(handle)
+        obj = _objects_by_source(handle)[edit_sequence.ODD]
+        assert isinstance(obj, bpy.types.Object)
+        before, meshes = _state(obj), set(bpy.data.meshes)
+        manifest = ownership.manifest(handle.binding_id)
+        odd = scene.stage.GetPrimAtPath(edit_sequence.ODD)
+        scene.stage.GetAttributeAtPath(f"{edit_sequence.ODD}.xformOp:translate").Set(Gf.Vec3d(7, 0, 0))
+        UsdGeom.Boundable(odd).GetExtentAttr().Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(2, 2, 2)])
+        UsdGeom.Imageable(odd).MakeInvisible()
+
+        def failing(*_args: object) -> None:
+            raise RuntimeError("injected manifest failure")
+
+        monkeypatch.setattr(manifests, "write_manifest_entries", failing)
+        result = handle.synchronize(0)
+        assert result.state is ResultState.FATAL_FAILURE
+        assert DiagnosticCode.PUBLICATION_FAILED in [d.code for d in result.diagnostics]
+        assert _state(obj) == before
+        assert set(bpy.data.meshes) == meshes
+        assert ownership.manifest(handle.binding_id) == manifest
 
 
 def test_synchronizing_a_cached_generation_again_removes_its_keys(bindings: Bindings, tmp_path: Path) -> None:
@@ -213,3 +280,22 @@ def test_a_deleted_object_is_rebuilt(bindings: Bindings, tmp_path: Path) -> None
         _synchronize(handle)
         assert edit_sequence.A in _objects_by_source(handle)
         assert _shown(handle) == _clean(bindings, scene.stage)
+
+
+def test_replacement_meshes_take_names_of_their_own(bindings: Bindings, tmp_path: Path) -> None:
+    # DECISIONS.md "Managed object names": Odd's bounds grown twice, a refresh after each replacing only its mesh, gives
+    # each replacement a managed name of a later generation, which no other mesh had, so Blender added no suffix.
+    with edit_sequence.edit_sequence(tmp_path) as scene:
+        handle = _binding(bindings, scene.stage)
+        _synchronize(handle)
+        obj = _objects_by_source(handle)[edit_sequence.ODD]
+        assert isinstance(obj, bpy.types.Object)
+        extent = UsdGeom.Boundable(scene.stage.GetPrimAtPath(edit_sequence.ODD)).GetExtentAttr()
+        names = []
+        for size in (2, 3):
+            extent.Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(size, size, size)])
+            _synchronize(handle)
+            assert _objects_by_source(handle)[edit_sequence.ODD] == obj and obj.data is not None
+            names.append(obj.data.name)
+        assert all(re.fullmatch(r"~\d{6}\.\d{7} Odd", name) for name in names), names
+        assert names[0] < names[1]

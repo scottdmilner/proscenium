@@ -2,10 +2,10 @@
 
 On F-NO-OP-REFRESH, one drawn copy of each kind M7 draws, synchronized again unchanged, each time a requested full
 rebuild, so every partition is replaced, and on F-UNMANAGED-USER, whose managed content a test gives unmanaged users
-before rebuilding (lifecycle.md#ownership-and-lifecycle). Counts are by kind of managed resource: active ones are in
-the binding's manifest, with each object linked into the destination; pending ones are the ledger's; one released
-intact is in neither. Failures are injected by patching the removal module's function, so src/ has no hooks. An
-unchanged refresh, which replaces nothing, is test_incremental_refresh.py's.
+before rebuilding, or before its edit and a refresh (lifecycle.md#ownership-and-lifecycle). Counts are by kind of
+managed resource: active ones are in the binding's manifest, with each object linked into the destination; pending ones
+are the ledger's; one released intact is in neither. Failures are injected by patching the removal module's function, so
+src/ has no hooks. An unchanged refresh, which replaces nothing, is test_incremental_refresh.py's.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import bpy
+from pxr import Gf
 
 from fixtures import incremental
 from proscenium.binding.persistence import id_property_records
@@ -266,6 +267,36 @@ def test_a_full_rebuild_leaves_unmanaged_users_as_they_were(bindings: Bindings, 
         assert {key: UnmanagedState.of(obj) for key, obj in users.items()} == before
         assert (mesh.name, [v.co[:] for v in mesh.vertices]) == (name, vertices)
         assert _managed(handle, incremental.USED, RepresentationRole.BOUNDS_MESH) != mesh
+        assert _counts(handle) == clean
+        assert _ledger(handle) == {}
+
+
+def test_an_edit_rebuilds_a_partition_unmanaged_content_uses(bindings: Bindings, tmp_path: Path) -> None:
+    # OWN-07, OWN-08, STAB-04, CHG-06, CHG-14, CHG-17 on F-UNMANAGED-USER "used-mesh-changed": after the edit, a
+    # refresh rebuilds Used's partition as a new object and bounds mesh, since an unmanaged object uses its old mesh,
+    # which keeps its name and vertices, released intact; Child's object, which nothing else uses, is kept and moved
+    # under its unmanaged parent; the unmanaged objects are as they were.
+    with incremental.unmanaged_user(tmp_path) as scene:
+        handle = bindings.create_binding(_scene(), name="Shot")
+        assert handle.attach(scene.stage).state is ResultState.SUCCESS  # the stage the edit changes
+        assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
+        clean = _counts(handle)
+        users = _unmanaged_users(handle)
+        before = {key: UnmanagedState.of(obj) for key, obj in users.items()}
+        used = _managed(handle, incremental.USED, RepresentationRole.OBJECT)
+        child = _managed(handle, incremental.CHILD, RepresentationRole.OBJECT)
+        mesh = users["mine"].data
+        assert isinstance(mesh, bpy.types.Mesh) and isinstance(child, bpy.types.Object)
+        name, vertices = mesh.name, [v.co[:] for v in mesh.vertices]
+        scene.edit()
+        assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
+        assert {key: UnmanagedState.of(obj) for key, obj in users.items()} == before
+        assert (mesh.name, [v.co[:] for v in mesh.vertices]) == (name, vertices)
+        assert _managed(handle, incremental.USED, RepresentationRole.OBJECT) != used
+        assert _managed(handle, incremental.USED, RepresentationRole.BOUNDS_MESH) != mesh
+        assert _managed(handle, incremental.CHILD, RepresentationRole.OBJECT) == child
+        assert child.parent == users["rig"]
+        assert Gf.IsClose(Gf.Vec3d(*child.matrix_world.translation[:]), scene.edited_child_translation, 1e-6)
         assert _counts(handle) == clean
         assert _ledger(handle) == {}
 

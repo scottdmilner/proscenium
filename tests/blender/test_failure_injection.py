@@ -160,7 +160,8 @@ def test_nothing_changes_before_preparation(
 
         monkeypatch.setattr(preparation_resources, "new_preparation_resources", noting)
         _failing_after(monkeypatch, 1)
-        assert handle.synchronize(scene.attempted[1]).state is ResultState.FATAL_FAILURE
+        result = handle.synchronize(scene.attempted[1], full_rebuild=True)  # every partition prepared
+        assert result.state is ResultState.FATAL_FAILURE
         assert at_preparation == [(published, before)]
 
 

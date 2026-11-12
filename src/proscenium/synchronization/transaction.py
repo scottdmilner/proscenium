@@ -1,21 +1,20 @@
 """The synchronization transaction: one attempt to display a binding's source (pipeline.md#synchronization-transaction).
 
 Its steps are acquisition, evaluation, planning, preparation, publication, and retirement. With the plan of the
-generation the destination shows held, preparation makes only the partitions that differ from it, and publication
-replaces only those (partition_replacement); without one, or on a requested full rebuild, every partition. A binding
-whose records an
-attempt needs can't be read is refused before its source is read, so nothing they name is replaced or retired. A
-failure at any step before publication leaves the published generation as it was and disposes of prepared work, and
-an expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends
-by recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
-discarded before publication (CONS-03). A destination also linked into a scene whose unit scale differs from the
-target scene's, which the display is planned for, gets a warning before anything in Blender changes (CONV-07). A
-failure only application detects aborts the attempt, since the plan
-authorizes no fallback: a resource operation failing, as preparation-failed naming the resource, and the destination
-removed during preparation, as destination-invalid, after which no last attempt is recorded, its records gone with
-it (APP-05, APP-06). After publication, a resource retirement can't remove leaves the synchronization completed with
-issues (TXN-07). A ledger write that fails as disposal or retirement records its leftovers is a defect, and raises
-(pipeline.md#synchronization-transaction).
+generation the destination shows held, preparation makes only the partitions that differ from it, publication replaces
+only those (partition_replacement), and a kept copy that only moved, changed its bounds, or changed its participation is
+updated in place (local_updates); without one, or on a requested full rebuild, every partition. A binding whose records
+an attempt needs can't be read is refused before its source is read, so nothing they name is replaced or retired. A
+failure at any step before publication leaves the published generation as it was and disposes of prepared work, and an
+expected failure is a fatal diagnostic, never an exception (API-04). Every attempt the last attempt can record ends by
+recording it, whatever its outcome (STATE-03). An attempt during whose evaluation a contributing layer changed is
+discarded before publication (CONS-03). A destination also linked into a scene whose unit scale differs from the target
+scene's, which the display is planned for, gets a warning before anything in Blender changes (CONV-07). A failure only
+application detects aborts the attempt, since the plan authorizes no fallback: a resource operation failing, as
+preparation-failed naming the resource, and the destination removed during preparation, as destination-invalid, after
+which no last attempt is recorded, its records gone with it (APP-05, APP-06). After publication, a resource retirement
+can't remove leaves the synchronization completed with issues (TXN-07). A ledger write that fails as disposal or
+retirement records its leftovers is a defect, and raises (pipeline.md#synchronization-transaction).
 """
 
 from __future__ import annotations
@@ -30,7 +29,15 @@ from ..binding.persistence import binding_state, cleanup_ledgers, id_property_re
 from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
 from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
-from . import application, evaluation, partition_replacement, preparation_resources, publication, retirement
+from . import (
+    application,
+    evaluation,
+    local_updates,
+    partition_replacement,
+    preparation_resources,
+    publication,
+    retirement,
+)
 
 if TYPE_CHECKING:
     from ..binding.persistence import binding_records
@@ -38,7 +45,7 @@ if TYPE_CHECKING:
     from ..binding.source_access import BindingId
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class SynchronizationOutcome:
     """A synchronization's result, and whether it committed: changed the published generation, so it's an undo step."""
 
@@ -148,11 +155,13 @@ def _attempt(
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
     shown = None if full_rebuild or generation is None else published_plans.plan_for(generation.record)
-    replacement = partition_replacement.partitions_to_replace(shown, plan, published)
+    replacement = partition_replacement.partitions_to_replace(shown, plan, published, destination)
     destination_name = destination.name  # for a diagnostic if it's removed meanwhile
     # A failure only application detects aborts the attempt, since the plan authorizes no fallback (APP-05, APP-06).
     try:
-        application.prepare(plan, replacement.prepared_copy_indices, published, work)
+        names = application.ManagedNames()  # one generation for everything this synchronization makes
+        application.prepare(plan, replacement.prepared_copy_indices, published, work, names)
+        updates = local_updates.prepare_updates(plan, replacement.updated_copies, published, work, names)
     except application.ResourceOperationError as error:  # a runtime failure, naming its resource
         message = f"Preparing the display failed: {error}"
         failed = Diagnostic(
@@ -180,7 +189,7 @@ def _attempt(
         before = None if manifest is None else published
         previous = None if generation is None else generation.record
         published_now = publication.publish(
-            destination, work, replacement.replaced_entry_keys, described, before, previous
+            destination, plan, work, replacement.replaced_entry_keys, updates, described, before, previous
         )
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")

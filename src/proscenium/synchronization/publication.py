@@ -1,11 +1,12 @@
 """Publication: the whole generation switched together, or not at all (pipeline.md#synchronization-transaction).
 
 A publication links the prepared objects into the destination and unlinks the published ones whose partitions they
-replace or that the plan no longer has, writes the manifest by entry, only the entries the synchronization changed or
-removed, and writes the generation record. A failure at any of these undoes those before it, in reverse, so the
-generation record, the manifest, and the destination's links are all as before, or all absent on a first
-synchronization (TXN-06); the transaction then disposes of the prepared work. What it would write unchanged it doesn't
-write, so a refresh that changes nothing writes nothing (AFF-03).
+replace or that the plan no longer has, updates the kept copies that change in place (local_updates), writes the
+manifest by entry, only the entries the synchronization changed or removed, and writes the generation record. A failure
+at any of these undoes those before it, in reverse, so the generation record, the manifest, the destination's links, and
+every kept copy are all as before, or all absent on a first synchronization (TXN-06); the transaction then disposes of
+the prepared work. What it would write unchanged it doesn't write, so a refresh that changes nothing writes nothing
+(AFF-03).
 
 It hands retirement the obsolete resources, those the old manifest names and the new one doesn't, which the attempt
 holds until retirement removes them: the ledger records only those it can't.
@@ -18,27 +19,31 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..binding.persistence import binding_state, manifests
+from . import local_updates
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping
+    from collections.abc import Callable, Collection, Mapping, Sequence
 
     import bpy
 
+    from ..core import _core
     from .preparation_resources import PreparationResources
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Publication:
     """What a publication did."""
 
     obsolete_entries: Mapping[str, manifests.ManifestEntry]  # by entry key: the resources retirement removes
-    changed: bool  # whether it wrote anything: a link, the manifest, or the generation record
+    changed: bool  # whether it wrote anything: a link, a kept copy, the manifest, or the generation record
 
 
 def publish(
     destination: bpy.types.Collection,
+    plan: _core.Plan,
     work: PreparationResources,
     replaced_entry_keys: Collection[str],
+    updates: Sequence[local_updates.KeptCopyUpdate],
     generation: binding_state.GenerationMetadata,
     before: manifests.Manifest | None,
     previous: binding_state.GenerationMetadata | None,
@@ -46,7 +51,8 @@ def publish(
     """Make work, complete, the binding's published generation, described by generation.
 
     The new manifest is before's entries but those under replaced_entry_keys, with work's prepared entries, which keep
-    the key of the published entry with their identity. before and previous are the destination's manifest and
+    the key of the published entry with their identity, replacement bounds meshes included; updates are set on the
+    kept copies, from plan, the generation's. before and previous are the destination's manifest and
     generation record as the transaction read them, or None where it has none. The obsolete resources are before's
     entries, by entry key, naming a datablock the new manifest doesn't. Raises what the failing step raised, having
     undone the steps before it.
@@ -71,6 +77,7 @@ def publish(
         for obj in old:
             destination.objects.unlink(obj)
             undo.append(functools.partial(destination.objects.link, obj))
+        local_updates.apply_updates(plan, updates, undo)
         if before is None or changed or removed:
             manifests.write_manifest_entries(destination, manifests.Manifest(entries), changed, removed)
             if before is None:
