@@ -63,9 +63,7 @@ def _type_icon(type_name: str) -> str:
 
 
 def _row_icon(details: Any) -> str:
-    """A row's icon: a warning for an invalid model, its prim's kind's where it has a kind, or else its type's."""
-    if details.is_invalid_model:
-        return "ERROR"
+    """A row's icon: its prim's kind's where it has a kind, or else its type's."""
     if not details.model_kind:
         return _type_icon(details.type_name)
     return next((icon for kind, icon in KIND_ICONS if Kind.Registry.IsA(details.model_kind, kind)), OTHER_KIND_ICON)
@@ -161,7 +159,7 @@ class SceneGraphList(bpy.types.UIList):
         named = content.row(align=True)
         named.alert = details.is_orphaned_over  # red: nothing defines it, as a typo in an over's path leaves it
         icon = _fixed_width(named, ROW_ICON_UNITS)
-        icon.alert = details.is_invalid_model  # red, as the kind column's text is (ERROR keeps its own colors)
+        icon.alert = details.is_invalid_model  # the kind's icon red, as the kind column's text is
         icon.label(text="", icon=_row_icon(details))
         named.separator(factor=NAME_GAP_FACTOR)
         # The name fills what its badges leave (NAME_CELL_UNITS). Left-aligned, so the badges hugged its text, a name

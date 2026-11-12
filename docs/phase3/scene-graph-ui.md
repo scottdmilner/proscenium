@@ -469,7 +469,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 - **Type icon:** Solaris shows the prim's kind's icon if it has a kind, and its type's otherwise. So does this widget, with an icon for each of assembly, group, component, and subcomponent (and the kinds registered as deriving from them), and one for any other kind. usdview has none.
 - **Badges:** neither has badges. This widget draws a badge for each composition arc on a prim, which the row's tooltip lists.
 - **Override dots:** Solaris marks a prim red for an override in its viewport-only layer (visibility, draw mode, or active), blue for a post-layer override, and purple for both. The widget edits nothing, so has nothing to mark.
-- **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget draws `ERROR` in place of the kind's icon for an invalid model: a prim whose kind is a model kind but which USD doesn't count a model (`Usd.ModelAPI.IsModel`), because an ancestor isn't a group or an assembly; its tooltip says so.
+- **Warnings:** Solaris's Kind column marks an invalid kind with a warning icon. This widget draws an invalid model's kind icon, and its kind in the Kind column, in red: a prim whose kind is a model kind but which USD doesn't count a model (`Usd.ModelAPI.IsModel`), because an ancestor isn't a group or an assembly. Its tooltip says so.
 - **Animated visibility:** Solaris shows an animated eye for visibility that has time samples.
 
 ### Columns
@@ -481,7 +481,7 @@ So usdview tells composition by color, activity by darkening, and the specifier 
 | Visibility | ✓ V or I, bold italic when inherited; a click toggles it | ✓ inherited or hidden, and animated; a click toggles it | — |
 | Guide visibility | ✓ | — | — |
 | Draw mode | ✓ computed, italic when inherited | ✓ computed, for prims in a valid model hierarchy; an edit reaches descendants without their own | — |
-| Kind | In the tooltip | ✓ with a warning icon when invalid | ✓, and can be hidden; a warning icon for an invalid model |
+| Kind | In the tooltip | ✓ with a warning icon when invalid | ✓, and can be hidden; an invalid model's kind and icon in red |
 | Purpose | — | ✓ | — |
 | Variants | — | ✓ a menu per variant set, which switches its selection | The details only |
 | Material | — | ✓ the bound material's name, its path on hover, an arrow when inherited | — |
