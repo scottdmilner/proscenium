@@ -86,12 +86,12 @@ class SceneGraphRow(bpy.types.PropertyGroup):
     tooltip: bpy.props.StringProperty(get=_row_tooltip)  # ty: ignore[invalid-type-form]
 
 
-def _column_units_property(title: str) -> Any:
+def _column_units_property(title: str, default_units: float = 5.0) -> Any:
     return bpy.props.FloatProperty(
         name="Width",
         description=f"The {title} column's width in UI units, where the list has room; the name takes the rest",
-        default=5.0,
-        min=2.0,
+        default=default_units,
+        min=1.0,
         soft_max=12.0,
         step=50,
         precision=1,
@@ -103,8 +103,10 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
 
     rows: bpy.props.CollectionProperty(type=SceneGraphRow)  # ty: ignore[invalid-type-form]
     active_row_index: bpy.props.IntProperty(default=-1, update=_on_active_row_changed)  # ty: ignore[invalid-type-form]
+    show_children_column: bpy.props.BoolProperty(name="Show Children Column", default=True)  # ty: ignore[invalid-type-form]
     show_kind_column: bpy.props.BoolProperty(name="Show Kind Column", default=True)  # ty: ignore[invalid-type-form]
     show_type_column: bpy.props.BoolProperty(name="Show Type Column", default=True)  # ty: ignore[invalid-type-form]
+    children_column_units: _column_units_property("Children", default_units=1.7)  # ty: ignore[invalid-type-form]
     kind_column_units: _column_units_property("Kind")  # ty: ignore[invalid-type-form]
     type_column_units: _column_units_property("Type")  # ty: ignore[invalid-type-form]
     shown_name: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]

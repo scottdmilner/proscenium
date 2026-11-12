@@ -47,6 +47,7 @@ The data comes from [Compared with usdview and Solaris](scene-graph-ui.md#compar
 | D33 | Proxy prim | path, or none | — | |
 | D34 | Override | none, viewport-only, post-layer, both | — **Editor state** | |
 | D35 | Instanceable without composition arcs, so not an instance | yes or no | the instance badge, greyed out; the row's tooltip | A11 |
+| D36 | Child count | how many children the tree lists under it, instance proxies included, whatever a search shows | a column after the name, blank for a leaf; details | A20 |
 
 ## Controls
 
@@ -118,7 +119,7 @@ A label's or a button's icon draws 16 points tall in a 20-point row, whatever it
 | A17 | Indentation | **Checked.** One `separator(factor=2.0)` per level. |
 | A18 | Disclosure triangle | **Checked.** An operator button with its own tooltip. |
 | A19 | Grid lines between columns and rows | **Checked.** Drawn with empty buttons squeezed thin. |
-| A20 | A text column (label) | **Checked**, as the type column. |
+| A20 | A text column (label) | **Checked**, as the children, kind, and type columns. |
 | A21 | A property column: an icon toggle or a checkbox | **Checked.** Editable through a getter and setter over the prim. |
 | A22 | An enum column: a dropdown, an expanded enum, a menu button, or a popover | **Not checked.** |
 | A23 | A progress bar or ring | **Not checked.** |
@@ -138,7 +139,7 @@ A label's or a button's icon draws 16 points tall in a 20-point row, whatever it
 |---|---|---|
 | A28 | The details panel, for the active row | **Checked.** |
 | A29 | The status line above the list, an editor's header text, the status bar | **Checked** for the status line. |
-| A30 | Settings choosing which columns show, and their widths | **Checked** for the kind and type columns, in the view's settings popover. |
+| A30 | Settings choosing which columns show, and their widths | **Checked** for the kind and type columns, in the view's settings popover; the children column is in it too. |
 
 ### Not available
 

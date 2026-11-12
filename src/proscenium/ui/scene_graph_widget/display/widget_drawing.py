@@ -26,20 +26,25 @@ from . import (
 
 
 class Column(NamedTuple):
-    """A column after the name: its header, and the view properties that show it and set its width."""
+    """A column after the name: its title, and the view properties that show it and set its width."""
 
     title: str
     show_property: str
     units_property: str
+    header_icon: str = ""  # in place of the title in the header, for a column too narrow for it
+    alignment: str = "LEFT"  # its cells', in the header and the rows: RIGHT for numbers
 
 
 # The columns after the name, in order.
+CHILDREN_COLUMN = Column(
+    "Children", "show_children_column", "children_column_units", header_icon="CON_CHILDOF", alignment="RIGHT"
+)
 KIND_COLUMN = Column("Kind", "show_kind_column", "kind_column_units")
 TYPE_COLUMN = Column("Type", "show_type_column", "type_column_units")
-COLUMNS = (KIND_COLUMN, TYPE_COLUMN)
+COLUMNS = (CHILDREN_COLUMN, KIND_COLUMN, TYPE_COLUMN)
 # The least share of a row the name column takes, in the header and in each row, by how many columns show after it:
 # its share in a narrow region, where the columns are narrower than their widths.
-NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56}
+NAME_COLUMN_FACTOR_BY_COLUMN_COUNT = {0: 0.85, 1: 0.72, 2: 0.56, 3: 0.45}
 REGION_MARGIN_UNITS = 2.0  # what a region's width leaves out of a list row's: the panel's margins and the list's
 # Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
 LEVEL_UNITS = 0.6
@@ -61,7 +66,13 @@ LUMINANCE_SEARCH_STEPS = 30  # bisections finding an instance's color, far finer
 # drift apart; a row short of width keeps each item narrower than a unit at its width and shrinks the rest, here only
 # the name.
 NAME_CELL_UNITS = 1000.0
+# Each view's rows drawn in the current draw of its list: the list draws only the rows on screen, so fewer than the
+# tree's means it scrolls, which Python can't otherwise read.
+_drawn_row_counts: dict[str, int] = {}
 LIST_ROWS = 16  # the list's starting height; it can be dragged taller
+# What a scrolling list's scrollbar takes from its rows' width, the gap before it included: the header leaves it
+# blank, so its columns stay over the rows'.
+SCROLLBAR_UNITS = 0.5
 SEARCH_MODE_UNITS = 6.0  # the search's match dropdown, wide enough for its longest mode, "Path contains"
 SEARCH_TOGGLE_UNITS = 1.0  # each toggle after it, an icon button's width
 SEARCH_TEXT_LEAST_FACTOR = 0.4  # the text field's share of the search row in a region too narrow for the rest
@@ -144,7 +155,7 @@ def _split_factor_leaving(context: Any, right_units: float, least_factor: float)
 
 
 def _column_cells(layout: Any, properties: Any, shown: list[Column]) -> list[Any]:
-    """One left-aligned cell per shown column, sharing a layout's width in proportion to the columns' widths."""
+    """One cell per shown column, aligned as it says, sharing a layout's width in proportion to the columns' widths."""
     cells = []
     remaining_units = sum(getattr(properties, column.units_property) for column in shown)
     for column in shown[:-1]:
@@ -155,8 +166,8 @@ def _column_cells(layout: Any, properties: Any, shown: list[Column]) -> list[Any
         remaining_units -= units
     if shown:
         cells.append(layout.row(align=True))
-    for cell in cells:
-        cell.alignment = "LEFT"
+    for cell, column in zip(cells, shown, strict=True):
+        cell.alignment = column.alignment
     return cells
 
 
@@ -284,6 +295,7 @@ class SceneGraphList(bpy.types.UIList):
         index: int | None,
         flt_flag: int | None,
     ) -> None:
+        _drawn_row_counts[data.name] = _drawn_row_counts.get(data.name, 0) + 1
         view = widget_views.find_view(data.name)
         tree = view.prim_tree_view.live_tree() if view is not None else None
         if tree is None or index is None or index >= len(tree.rows):
@@ -349,7 +361,11 @@ class SceneGraphList(bpy.types.UIList):
                 is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
                 icon_value = badge_icons.icon_id(badge, place, is_greyed)
                 _fixed_width(name_and_badges, BADGE_UNITS).label(text="", icon_value=icon_value)
-        column_texts = {KIND_COLUMN: details.model_kind, TYPE_COLUMN: details.type_name or "-"}
+        column_texts = {
+            CHILDREN_COLUMN: str(details.child_count) if details.has_children else "",  # a leaf's blank, as its chevron
+            KIND_COLUMN: details.model_kind,
+            TYPE_COLUMN: details.type_name or "-",
+        }
         shown = _shown_columns(data)
         for cell, column in zip(_column_cells(split.row(align=True), data, shown), shown, strict=True):
             cell.alert = column == KIND_COLUMN and details.is_invalid_model
@@ -405,8 +421,14 @@ def _draw_search(layout: Any, context: Any, properties: Any) -> None:
     )
 
 
-def _draw_header(layout: Any, context: Any, properties: Any) -> None:
-    # A row above the list, split like the rows; the list's own padding offsets its columns by a few pixels.
+def _draw_header(layout: Any, context: Any, properties: Any, is_list_scrolling: bool) -> None:
+    # A row above the list, split like the rows; the list's own padding offsets its columns by a few pixels. A
+    # scrolling list's rows are narrower by its scrollbar, so the header leaves the scrollbar's width blank and splits
+    # the rest as they split theirs.
+    if is_list_scrolling:
+        scrollbar_split = layout.split(factor=_split_factor_leaving(context, SCROLLBAR_UNITS, 0.0))
+        layout = scrollbar_split.row()
+        scrollbar_split.label(text="")
     split = layout.split(factor=_name_column_factor(context, properties))
     name_header = split.row()
     name_header.alignment = "LEFT"
@@ -418,7 +440,10 @@ def _draw_header(layout: Any, context: Any, properties: Any) -> None:
     name_header.prop_menu_enum(properties, "shown_name", text=f"    {title} ⌄")
     shown = _shown_columns(properties)  # chosen in the settings popover
     for cell, column in zip(_column_cells(split.row(align=True), properties, shown), shown, strict=True):
-        cell.label(text=column.title)
+        if column.header_icon:
+            cell.label(text="", icon=column.header_icon)
+        else:
+            cell.label(text=column.title)
 
 
 def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_ROWS) -> None:
@@ -445,8 +470,9 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
     settings.emboss = "NONE"
     settings.context_pointer_set(SETTINGS_CONTEXT_MEMBER, properties)
     settings.popover(SceneGraphSettings.bl_idname, text="", icon="PREFERENCES")
-    _draw_header(layout, context, properties)
+    header = layout.column()  # filled once the list has drawn, when its drawn rows tell whether it scrolls
     badge_icons.redraw_icons_if_theme_changed()  # once per view drawn, not per row
+    _drawn_row_counts[view_name] = 0
     layout.template_list(
         SceneGraphList.bl_idname,
         view_name,
@@ -458,6 +484,7 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
         rows=list_rows,
         maxrows=list_rows * 3,
     )
+    _draw_header(header, context, properties, _drawn_row_counts.pop(view_name, 0) < len(tree.rows))
     _draw_search(layout, context, properties)
 
 

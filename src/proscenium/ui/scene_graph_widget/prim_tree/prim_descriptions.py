@@ -144,5 +144,5 @@ def details_lines(details: RowDetails, prim_details: PrimDetails) -> list[str]:
         f"Instance: {details.is_instance}   Instance proxy: {details.is_instance_proxy}",
         f"Arcs: {', '.join(arcs) or 'none'}",
         *(f"Variant {name} = {selection}" for name, selection in prim_details.variant_selections),
-        f"{prim_details.authored_attribute_count} authored attributes, {prim_details.child_count} children",
+        f"{prim_details.authored_attribute_count} authored attributes, {details.child_count} children",
     ]

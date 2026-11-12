@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Kind, Sdf, Usd
 
-from .prim_children import CHILD_PREDICATE, has_children
+from .prim_children import CHILD_PREDICATE, child_count
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,7 +46,7 @@ class RowDetails:
     type_name: str
     model_kind: str  # the prim's kind metadata, or empty
     is_invalid_model: bool  # see _is_invalid_model
-    has_children: bool
+    child_count: int  # its children as the tree lists them, instance proxies included
     is_active: bool
     specifier: Sdf.Specifier
     # The composition arcs authored on the prim, as its badges show them.
@@ -61,6 +61,11 @@ class RowDetails:
     is_instanceable: bool  # instanceable metadata is set; without composition arcs, the prim isn't an instance
     is_instance_proxy: bool
     instance_path: Sdf.Path | None  # the instance an instance proxy is under
+
+    @property
+    def has_children(self) -> bool:
+        """Whether the prim has any child the tree lists."""
+        return self.child_count > 0
 
     @property
     def is_class(self) -> bool:
@@ -85,7 +90,6 @@ class PrimDetails:
     prototype_path: Sdf.Path | None  # an instance's prototype
     prim_in_prototype_path: Sdf.Path | None  # an instance proxy's prim in its prototype
     authored_attribute_count: int
-    child_count: int  # instance proxies included
 
 
 class PrimTree:
@@ -336,7 +340,7 @@ def _read_details(prim: Usd.Prim) -> RowDetails:
         type_name=str(prim.GetTypeName()),
         model_kind=model_kind,
         is_invalid_model=_is_invalid_model(model_api, model_kind),
-        has_children=has_children(prim),
+        child_count=child_count(prim),
         is_active=prim.IsActive(),
         specifier=prim.GetSpecifier(),
         has_inherits=prim.HasAuthoredInherits(),
@@ -392,5 +396,4 @@ def _read_prim_details(prim: Usd.Prim) -> PrimDetails:
         prototype_path=prim.GetPrototype().GetPath() if prim.IsInstance() else None,
         prim_in_prototype_path=prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else None,
         authored_attribute_count=len(prim.GetAuthoredAttributes()),
-        child_count=len(prim.GetFilteredChildren(CHILD_PREDICATE)),
     )

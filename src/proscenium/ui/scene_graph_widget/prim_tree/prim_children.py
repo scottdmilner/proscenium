@@ -1,4 +1,4 @@
-"""Which children a prim tree lists, and whether a prim has any."""
+"""Which children a prim tree lists, and how many a prim has."""
 
 from __future__ import annotations
 
@@ -9,8 +9,6 @@ from pxr import Usd
 CHILD_PREDICATE = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
 
 
-def has_children(prim: Usd.Prim) -> bool:
-    """Whether a prim has any child, without listing them all (a list of names costs the size of the group)."""
-    descendants = iter(Usd.PrimRange(prim, CHILD_PREDICATE))
-    next(descendants)  # the prim itself
-    return next(descendants, None) is not None
+def child_count(prim: Usd.Prim) -> int:
+    """How many children a prim tree lists under a prim: its children as `CHILD_PREDICATE` filters them."""
+    return len(prim.GetFilteredChildren(CHILD_PREDICATE))

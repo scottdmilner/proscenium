@@ -120,9 +120,15 @@ def test_an_unloaded_payloads_contents_are_neither_rows_nor_search_matches(stage
     assert Sdf.Path("/World/Geometry/Prop_Payloaded/Lid") in lids  # still loaded
 
 
-def test_has_children_doesnt_count_leaves(stage: Usd.Stage) -> None:
-    assert prim_children.has_children(stage.GetPrimAtPath("/World/Looks/Red"))
-    assert not prim_children.has_children(stage.GetPrimAtPath("/World/Camera"))
+def test_child_count_counts_what_the_tree_lists(stage: Usd.Stage) -> None:
+    assert prim_children.child_count(stage.GetPrimAtPath("/World")) == len(WORLD_CHILDREN)
+    assert prim_children.child_count(stage.GetPrimAtPath("/World/Camera")) == 0
+    # An instance's children are instance proxies, Body and Lid from the prototype, as its expanded row lists them.
+    assert prim_children.child_count(stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")) == 2
+    tree = PrimTree(stage)
+    world = tree.details(tree.rows[_index(tree, "/World")])
+    assert world.child_count == len(WORLD_CHILDREN)
+    assert world.has_children
 
 
 def test_keys_expand_then_step_in_and_collapse_then_step_out(stage: Usd.Stage) -> None:
