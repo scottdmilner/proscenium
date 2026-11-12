@@ -183,12 +183,12 @@ Every control a `UIList` gives over what it tells a user: the list's own, a row'
 | `template_list(sort_reverse, sort_lock)` | The display order, and whether the user can change it. |
 | `template_list(item_dyntip_propname)` | A string property of each item, used as that row's tooltip. **Checked**; the widget uses it. |
 | `UIList.draw_item(..., index, flt_flag)` | Draws each shown row. `flt_flag` is the row's filter flags, whose lower 16 bits are the list's own, so `filter_items` can hand each row a state for drawing. |
-| `UIList.draw_filter` | Anything under the list's bottom triangle. **Checked**; the widget draws the search's type and flags there. |
+| `UIList.draw_filter` | Anything under the list's bottom triangle. **Checked**; the widget draws nothing there, hiding Blender's name filter. |
 | `UIList.filter_items` → `filter_flags`, `filter_neworder` | Per row, flags and a new position. `bitflag_filter_item` marks a row shown, and `bitflag_item_never_show` leaves it out. |
 | `use_filter_show`, `filter_name`, `use_filter_invert`, `use_filter_sort_alpha`, `use_filter_sort_reverse`, `use_filter_sort_lock` | The built-in filter and sort options. The widget's search stands in for them ([Search](#search)). |
 | The active index | The one row highlighted ([UIList mechanics](#uilist-mechanics)). **Checked.** |
 
-The widget's list is a `DEFAULT` list in the stage's order: a compact list shows one row, and a tree's rows can't be reordered, so `type`, `sort_reverse`, `sort_lock`, and `filter_neworder` stay unset. It defines no `filter_items` and sets no filter flags; a row's state comes from the model ([Filter flags](#filter-flags)). It uses row tooltips, the active index, and the filter drawer, which holds the search's options.
+The widget's list is a `DEFAULT` list in the stage's order: a compact list shows one row, and a tree's rows can't be reordered, so `type`, `sort_reverse`, `sort_lock`, and `filter_neworder` stay unset. It defines no `filter_items` and sets no filter flags; a row's state comes from the model ([Filter flags](#filter-flags)). It uses row tooltips and the active index; its filter drawer is empty ([Search](#search)).
 
 #### Filter flags
 
@@ -332,7 +332,7 @@ The tree's keys: Right expands the active row, or steps into it if it's already 
   - passes every other event on.
 
   With it, the tree expanded, stepped, and collapsed as expected. Up and Down stayed the list's, the frame didn't change over the sidebar, and Right over the viewport still stepped a frame. That was the proof of concept's watcher, which asked one fixed test for the tree's tab; the widget's asks each view's host instead.
-- **Text fields keep their keys.** While a text field is being edited, the field gets keys before the watcher: typing `a`, Left, `b` in the search box gave `ba`, and the tree didn't move.
+- **A text field being edited doesn't keep Left and Right.** By hand, with the search box below the list: while it was being edited, Left and Right moved its text cursor with the mouse outside the sidebar, and stepped the tree with the mouse anywhere over the sidebar, so the watcher saw them first. Python can't tell that a text field is being edited: no RNA property says so, and the watcher's context holds no button or list. So once a view's search text changes, the watcher leaves Left and Right alone over that view until Enter, Esc, or Tab, or a click on one of its rows or chevrons (`widget_views.set_entering_search_text`). Clicking into the box and pressing an arrow before typing still steps the tree. **Tested:** the marking, in the bpy wheel. **Not checked:** the keys, by hand, since the change; simulated clicks in a probe didn't start editing the box.
 
 ### Rules for modal operators
 
@@ -364,16 +364,12 @@ Phase 3 will likely have more than one modal operator, so these apply to all of 
 The `UIList`'s own filter hides every row that doesn't match, and sees only the rows already expanded. A stage editor needs to find prims anywhere and see where they are. `prim_search.search` does that, and `PrimTree.set_search` shows the result. **Checked** in the binary, and **Tested**:
 - **Matches in place:** the search runs over the whole stage. Each match shows under all its ancestors, expanded to reach it. Ancestors that don't match draw greyed, and their other children are hidden.
 - **Exploring from a match:** a match's own children all show when it is expanded.
+- **Shown rows only:** a toggle after the case toggle (`FILTER`) limits the search to the rows the tree shows without the filter, by the expansion from before the search (`PrimTree.unfiltered_prims`), so the filter only hides rows and expands nothing to reach a match. Off, the default, it searches the whole stage. The status line says "in shown rows" while it's on. **Tested** in `bpy_free` and through the view's properties in the bpy wheel, and **checked** in the binary: with it on, "lid" found no match while every Lid's crate was collapsed.
 - **Clearing:** clearing the search restores the expansion from before it, and reveals the selected prim.
-- **Query:**
-  - text, matched by name, path, glob, or regular expression, with a case toggle;
-  - a schema type, matched with `IsA`, so `Gprim` finds meshes and curves;
-  - flags: has a payload, has variants, is an instance, inactive.
-
-  The flags combine.
+- **Query:** text, matched by name, path, glob, or regular expression, with a case toggle.
 - **Typing:** the text box updates on every keystroke (`options={"TEXTEDIT_UPDATE"}`), and a timer runs the search a quarter second after the last one.
-- **Where the options go:** the list's `draw_filter`, the options under its bottom triangle, can draw anything, so it holds the type and flags. The text options sit beside the box.
-- **Flags as toggles:** each flag is its own boolean toggle. An expanded `ENUM_FLAG` property sets one item per click (Shift-click adds or removes one), so once a flag was set, no click could clear them all.
+- **Where the options go:** the search box sits directly below the list, with its mode, case, and shown-rows toggles beside it, and the status line above the list. The list's `draw_filter`, the options under its bottom triangle, can draw anything, and the search box was there for a while, but it draws nothing now, which also hides Blender's own name filter, which would hide rows without their ancestors.
+- **Several toggles as booleans:** an expanded `ENUM_FLAG` property sets one item per click (Shift-click adds or removes one), so once an item was set, no click could clear them all; a set of toggles is one boolean property each.
 
 Cost, **Checked** headless:
 - **Python traversal:** about 5 µs per prim. That's 90–230 ms for 37,000 prims, and 3.1–5.3 s for a million with no match. A search stops at 10,000 matches, which bounds what it lays out but not its time: a query with few matches still traverses the whole stage, on Blender's main thread.
@@ -497,7 +493,7 @@ Solaris's gear menu chooses which columns show.
 
 - **Which prims are listed:** Solaris's toolbar toggles show or hide inactive, invisible, over-only, and class prims, and its `/HoudiniLayerInfo` prim. usdview's Show menu chooses which prim types show; the NVIDIA page doesn't list its items. This widget lists every prim, instance proxies included, with no such toggles.
 - **Which layer:** Solaris can show one sublayer, uncomposed, in place of the composed stage.
-- **Search:** usdview searches names, with a find-next button. Solaris has selection rules: prim patterns that match as typed, show their search time, and can be saved, and a Collections sub-pane. This widget's search, with its text modes, type, and flags, and its matches shown under their ancestors ([Search](#search)), has no counterpart in either.
+- **Search:** usdview searches names, with a find-next button. Solaris has selection rules: prim patterns that match as typed, show their search time, and can be saved, and a Collections sub-pane. This widget's search, with its text modes, and its matches shown under their ancestors ([Search](#search)), has no counterpart in either.
 - **Kept state:** Solaris saves and restores the expansion, its viewport overrides, and its load masks on the LOP network, in the .hip file, and keeps a Favorites folder of prim shortcuts. This widget's expansion lasts the session.
 - **Info:** Solaris opens a prim's info window on a middle-click. This widget has its tooltips and `draw_details`.
 - **Context menu:** usdview's has jump to enclosing model, select bound preview or full material, make invisible, vis only, remove session visibility, load or unload the subtree's payloads, activate or deactivate, copy prim path, copy enclosing model path, open the asset in a new usdview, and set as active camera. This widget has no context menu.

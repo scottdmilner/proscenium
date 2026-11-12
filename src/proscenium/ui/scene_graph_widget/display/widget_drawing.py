@@ -184,16 +184,18 @@ class SceneGraphList(bpy.types.UIList):
 
     @override
     def draw_filter(self, context: bpy.types.Context | None, layout: Any) -> None:
-        # The list's own filter options (under its bottom triangle) hold the search's type and flags instead.
-        wm: Any = context.window_manager if context is not None else None
-        properties = widget_properties.view_properties(wm, self.list_id) if wm is not None else None
-        if properties is None:
-            return
-        column = layout.column(align=True)
-        column.prop(properties, "search_type_name", text="Type", icon="OUTLINER_DATA_EMPTY")
-        flags = column.row(align=True)
-        for property_name in widget_properties.FLAG_PROPERTY_NAMES.values():
-            flags.prop(properties, property_name, toggle=True)
+        # Nothing: the list's own name filter would hide rows without keeping their ancestors, and the search,
+        # drawn below the list, does that. A text field drawn here lost its arrow keys to the key watcher.
+        return
+
+
+def _draw_search(layout: Any, properties: Any) -> None:
+    search = layout.row(align=True)
+    search.prop(properties, "search_text", text="", icon="VIEWZOOM", placeholder="Search prims")
+    search.prop(properties, "search_mode", text="")
+    # As wide as the icon-only toggle after it, which takes one unit.
+    _fixed_width(search, 1.0).prop(properties, "search_case_sensitive", text="Aa", toggle=True)
+    search.prop(properties, "search_shown_rows_only", text="", icon="FILTER", toggle=True)
 
 
 def _draw_header(layout: Any, properties: Any) -> None:
@@ -223,7 +225,7 @@ def _draw_header(layout: Any, properties: Any) -> None:
 
 
 def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_ROWS) -> None:
-    """Draw a view's search box, status, header, and tree into a layout, and watch its window's keys."""
+    """Draw a view's status, header, tree, and search box below it, and watch its window's keys."""
     view = widget_views.scene_graph_view(view_name)
     widget_keys.ensure_watcher(context.window)
     properties = widget_properties.view_properties(context.window_manager, view_name)
@@ -235,10 +237,6 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
     if tree is None:
         layout.label(text="No stage" if prim_tree_view.tree is None else "Stage closed")
         return
-    search = layout.row(align=True)
-    search.prop(properties, "search_text", text="", icon="VIEWZOOM", placeholder="Search prims")
-    search.prop(properties, "search_mode", text="")
-    search.prop(properties, "search_case_sensitive", text="Aa", toggle=True)
     status = prim_tree_view.search_status
     layout.label(text=status.text or f"{len(tree.rows):,} visible rows", icon="ERROR" if status.is_error else "NONE")
     _draw_header(layout, properties)
@@ -254,6 +252,7 @@ def draw_tree(layout: Any, context: Any, view_name: str, list_rows: int = LIST_R
         rows=list_rows,
         maxrows=list_rows * 3,
     )
+    _draw_search(layout, properties)
 
 
 def draw_details(layout: Any, view_name: str) -> None:

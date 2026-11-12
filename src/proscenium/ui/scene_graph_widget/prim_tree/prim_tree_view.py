@@ -146,7 +146,10 @@ class PrimTreeView:
         self.apply_query()
 
     def apply_query(self) -> None:
-        """Run the query over the whole stage and filter the tree by it; clearing it reveals the selected prim."""
+        """Run the query and filter the tree by it; clearing it reveals the selected prim.
+
+        It searches the whole stage, or with shown_rows_only, the rows the tree shows without its filter.
+        """
         tree = self.live_tree()
         if tree is None:
             return
@@ -159,14 +162,17 @@ class PrimTreeView:
             return
         start = time.perf_counter()
         try:
-            result = prim_search.search(stage, self.query, MATCH_LIMIT)
+            candidate_prims = tree.unfiltered_prims() if self.query.shown_rows_only else None
+            result = prim_search.search(stage, self.query, MATCH_LIMIT, candidate_prims)
         except prim_search.SearchError as error:
             self.search_status = SearchStatus(f"Search: {error}", is_error=True)
             return
         elapsed_ms = (time.perf_counter() - start) * 1000
         tree.set_search(result)
         first = f"first {MATCH_LIMIT:,} " if result.is_truncated else ""
-        self.search_status = SearchStatus(f"{first}{len(result.matching_paths):,} matches in {elapsed_ms:.0f} ms")
+        scope = " in shown rows" if self.query.shown_rows_only else ""
+        matches = f"{first}{len(result.matching_paths):,} matches{scope}"
+        self.search_status = SearchStatus(f"{matches} in {elapsed_ms:.0f} ms")
 
     def apply_pending_changes(self) -> bool:
         """Read the stage changes the notices marked; returns whether there were any."""

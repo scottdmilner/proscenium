@@ -1,8 +1,7 @@
 """The prim tree's search and its filter (proscenium.ui.scene_graph_widget.prim_tree.prim_search).
 
 On scenes/scene_graph/prim_kinds.usda, expected matches are written from how the scene is built: six prims
-named Lid (the class's, three crates', and the two payloaded props'), meshes and one BasisCurves as Gprims, and two
-payloads.
+named Lid (the class's, three crates', and the two payloaded props').
 """
 
 from __future__ import annotations
@@ -59,23 +58,9 @@ def test_glob_path_and_regex_modes(stage: Usd.Stage) -> None:
     assert _matches(_search(stage, text=r"^/World/Looks$", mode=prim_search.SearchMode.REGEX)) == ["/World/Looks"]
 
 
-def test_type_matches_with_isa_and_flags_combine(stage: Usd.Stage) -> None:
-    gprims = _search(stage, type_name="Gprim")
-    assert {str(stage.GetPrimAtPath(path).GetTypeName()) for path in gprims.matching_paths} == {"Mesh", "BasisCurves"}
-    flags = frozenset({prim_search.SearchFlag.PAYLOAD})
-    assert _matches(_search(stage, flags=flags)) == ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded"]
-    assert _matches(_search(stage, flags=frozenset({prim_search.SearchFlag.INACTIVE}))) == ["/World/Geometry/Disabled"]
-    assert _matches(_search(stage, text="crate", flags=frozenset({prim_search.SearchFlag.INSTANCE}))) == [
-        "/World/Geometry/Crates/Crate_01",
-        "/World/Geometry/Crates/Crate_02",
-    ]
-
-
 def test_invalid_queries_raise(stage: Usd.Stage) -> None:
     with pytest.raises(prim_search.SearchError):
         _search(stage, text="(", mode=prim_search.SearchMode.REGEX)
-    with pytest.raises(prim_search.SearchError):
-        _search(stage, type_name="NoSuchType")
 
 
 def test_a_search_stops_at_its_limit(stage: Usd.Stage) -> None:

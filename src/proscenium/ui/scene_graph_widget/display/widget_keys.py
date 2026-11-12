@@ -5,6 +5,10 @@ its update callback can't tell which key moved it. A modal operator's handler ru
 it sees each event first: it takes Left and Right (and Shift with them) while the cursor is over a region a view's
 host says is showing that view, and passes every other event on. Up and Down stay with the list.
 
+It runs before a text field being edited, too, and Blender doesn't tell Python when one is. So once a view's search
+text changes, it leaves Left and Right to the text box until a key that ends a text edit (ENDING_EDIT_KEYS) or a
+click on one of the view's rows.
+
 A modal operator is per window, so each window gets its own watcher, tracked by the window it runs in: one starts in
 every window at registration, and drawing a view starts one in any window that has none, such as a window opened
 since, or every window after a file load ends them all. Every event reaches every modal operator, so the watcher
@@ -24,6 +28,7 @@ if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
 KEY_DIRECTIONS = {"RIGHT_ARROW": StepDirection.INTO, "LEFT_ARROW": StepDirection.OUT_OF}
+ENDING_EDIT_KEYS = frozenset({"RET", "NUMPAD_ENTER", "ESC", "TAB"})
 START_DELAY_SECONDS = 0.1  # after registration, once the windows exist
 
 
@@ -74,6 +79,9 @@ class SceneGraphWatchKeys(bpy.types.Operator):
         if not _SceneGraphKeysState.is_watching:
             _SceneGraphKeysState.watched_window_pointers.discard(context.window.as_pointer())
             return {"CANCELLED", "PASS_THROUGH"}  # without PASS_THROUGH, ending would consume the event
+        if event.type in ENDING_EDIT_KEYS and event.value == "PRESS":
+            widget_views.stop_entering_search_text()
+            return {"PASS_THROUGH"}
         direction = KEY_DIRECTIONS.get(event.type)
         if direction is None or event.value != "PRESS" or event.ctrl or event.alt or event.oskey:
             return {"PASS_THROUGH"}
@@ -81,6 +89,8 @@ class SceneGraphWatchKeys(bpy.types.Operator):
         if found is None or found[0].prim_tree_view.live_tree() is None:
             return {"PASS_THROUGH"}
         view, region = found
+        if widget_views.is_entering_search_text(view.name):
+            return {"PASS_THROUGH"}  # for the search's text box
         before = view.prim_tree_view.selected_path
         view.prim_tree_view.step(direction, recursive=event.shift)
         widget_properties.sync_and_notify(view, before)

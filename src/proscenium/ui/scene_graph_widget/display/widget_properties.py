@@ -58,6 +58,7 @@ def _on_active_row_changed(properties: Any, _context: Any) -> None:
     view = widget_views.find_view(properties.name)
     if view is None:
         return
+    widget_views.set_entering_search_text(view.name, is_entering=False)  # a click on a row ends typing
     before = view.prim_tree_view.selected_path
     view.prim_tree_view.select_row(properties.active_row_index)
     widget_views.notify_selection(view, before)
@@ -70,6 +71,12 @@ def _on_search_changed(properties: Any, _context: Any) -> None:
     view = widget_views.find_view(properties.name)
     if view is not None:
         schedule(view.run_pending, SEARCH_DELAY_SECONDS)
+
+
+def _on_search_text_changed(properties: Any, context: Any) -> None:
+    if not _SceneGraphPropertiesState.is_writing_from_view:
+        widget_views.set_entering_search_text(properties.name, is_entering=True)
+    _on_search_changed(properties, context)
 
 
 class SceneGraphRow(bpy.types.PropertyGroup):
@@ -94,30 +101,19 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
             ("DISPLAY_NAME", "Display Name", "Each prim's displayName, or its name where it has none"),
         ],
     )
-    search_text: bpy.props.StringProperty(name="Search", options={"TEXTEDIT_UPDATE"}, update=_on_search_changed)  # ty: ignore[invalid-type-form]
+    search_text: bpy.props.StringProperty(name="Search", options={"TEXTEDIT_UPDATE"}, update=_on_search_text_changed)  # ty: ignore[invalid-type-form]
     search_mode: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]
         name="Match",
         items=[(mode.name, mode.value.capitalize(), "") for mode in prim_search.SearchMode],
         update=_on_search_changed,
     )
     search_case_sensitive: bpy.props.BoolProperty(name="Match Case", update=_on_search_changed)  # ty: ignore[invalid-type-form]
-    search_type_name: bpy.props.StringProperty(  # ty: ignore[invalid-type-form]
-        name="Type", description="A schema type the prim must be, such as Mesh or Gprim", update=_on_search_changed
+    search_shown_rows_only: bpy.props.BoolProperty(  # ty: ignore[invalid-type-form]
+        name="Shown Rows Only",
+        description="Search only the rows shown now, expanding nothing to show a match. Off, search the whole stage",
+        update=_on_search_changed,
     )
-    # One toggle per flag: an expanded ENUM_FLAG sets one item per click, and no click clears them all.
-    search_payload: bpy.props.BoolProperty(name="Payload", update=_on_search_changed)  # ty: ignore[invalid-type-form]
-    search_variants: bpy.props.BoolProperty(name="Variants", update=_on_search_changed)  # ty: ignore[invalid-type-form]
-    search_instance: bpy.props.BoolProperty(name="Instance", update=_on_search_changed)  # ty: ignore[invalid-type-form]
-    search_inactive: bpy.props.BoolProperty(name="Inactive", update=_on_search_changed)  # ty: ignore[invalid-type-form]
 
-
-# The property each search flag is toggled by, above.
-FLAG_PROPERTY_NAMES = {
-    prim_search.SearchFlag.PAYLOAD: "search_payload",
-    prim_search.SearchFlag.VARIANTS: "search_variants",
-    prim_search.SearchFlag.INSTANCE: "search_instance",
-    prim_search.SearchFlag.INACTIVE: "search_inactive",
-}
 
 # In registration order.
 CLASSES = (SceneGraphRow, SceneGraphViewProperties)
@@ -187,8 +183,7 @@ def query_from_properties(properties: Any) -> prim_search.SearchQuery:
         text=properties.search_text,
         mode=prim_search.SearchMode[properties.search_mode],
         case_sensitive=properties.search_case_sensitive,
-        type_name=properties.search_type_name.strip(),
-        flags=frozenset(flag for flag, name in FLAG_PROPERTY_NAMES.items() if getattr(properties, name)),
+        shown_rows_only=properties.search_shown_rows_only,
     )
 
 
@@ -197,9 +192,7 @@ def _write_query(properties: Any, query: prim_search.SearchQuery) -> None:
         properties.search_text = query.text
         properties.search_mode = query.mode.name
         properties.search_case_sensitive = query.case_sensitive
-        properties.search_type_name = query.type_name
-        for flag, property_name in FLAG_PROPERTY_NAMES.items():
-            setattr(properties, property_name, flag in query.flags)
+        properties.search_shown_rows_only = query.shown_rows_only
 
 
 @contextmanager

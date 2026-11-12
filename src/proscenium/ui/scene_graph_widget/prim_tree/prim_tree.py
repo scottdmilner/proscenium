@@ -211,6 +211,21 @@ class PrimTree:
             self.set_expanded(ancestor_index, True)
         return self.row_index(path)
 
+    def unfiltered_prims(self) -> list[Usd.Prim]:
+        """The prims of the rows the tree shows without its search filter, in row order.
+
+        Under a filter, that's by the expansion from before the search, which clearing the filter restores.
+        """
+        expanded_paths = self._expanded_paths_before_search if self.search_result is not None else self.expanded_paths
+        prims: list[Usd.Prim] = []
+        stack = list(reversed(self._pseudo_root.GetFilteredChildren(CHILD_PREDICATE)))
+        while stack:
+            prim = stack.pop()
+            prims.append(prim)
+            if prim.GetPath() in expanded_paths:
+                stack.extend(reversed(prim.GetFilteredChildren(CHILD_PREDICATE)))
+        return prims
+
     def set_search(self, result: SearchResult | None) -> None:
         """Show only a search's matches and their ancestors, expanded to reach them; None shows everything again.
 

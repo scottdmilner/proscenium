@@ -83,6 +83,25 @@ def test_a_query_filters_and_clearing_it_reveals_the_selection(stage: Usd.Stage)
     assert view.search_status.is_error
 
 
+def test_a_shown_rows_query_searches_only_the_rows_shown_and_expands_nothing(stage: Usd.Stage) -> None:
+    view = _view(stage)
+    assert view.tree is not None
+    tree = view.tree
+    view.select_path(Sdf.Path("/World/Geometry/Crates/Crate_01/Lid"))  # expands its ancestors, not the Lid
+    shown_before = [str(row.path) for row in tree.rows]
+    view.set_query(prim_search.SearchQuery(text="lid", shown_rows_only=True))
+    assert view.search_status.text.startswith("1 matches in shown rows")
+    # Crate_01's Lid is the one Lid shown: the class, the other crates, and the props are collapsed.
+    assert [str(row.path) for row in tree.rows if tree.is_match(row)] == ["/World/Geometry/Crates/Crate_01/Lid"]
+    assert set(str(row.path) for row in tree.rows) <= set(shown_before)  # nothing expanded to reach a match
+    view.set_query(prim_search.SearchQuery(text="panel", shown_rows_only=True))
+    assert view.search_status.text.startswith("0 matches")  # the Lid is collapsed, so its Panel isn't shown
+    view.set_query(prim_search.SearchQuery(text="panel"))
+    assert view.search_status.text.startswith("6 matches")  # the whole stage
+    view.set_query(prim_search.SearchQuery())
+    assert [str(row.path) for row in tree.rows] == shown_before  # the expansion from before the search
+
+
 def test_a_query_set_before_a_stage_applies_to_it(stage: Usd.Stage) -> None:
     view = PrimTreeView()
     view.set_query(prim_search.SearchQuery(text="sun"))

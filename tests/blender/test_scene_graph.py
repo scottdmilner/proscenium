@@ -127,13 +127,34 @@ def test_search_fields_filter_the_rows(registered: None, stage: Usd.Stage) -> No
     properties.search_text = "sun"
     display.apply_pending("viewport")  # as the search timer would, which needs an event loop
     assert len(properties.rows) == 2  # /World and /World/Sun
-    properties.search_text = ""
-    properties.search_payload = True
+    properties.search_text = "prop_"
     display.apply_pending("viewport")
     view = widget_views.scene_graph_view("viewport").prim_tree_view
     assert view.tree is not None
     matching_paths = [str(row.path) for row in view.tree.rows if view.tree.is_match(row)]
-    assert matching_paths == ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded"]
+    props = ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded", "/World/Geometry/Prop_Variants"]
+    assert matching_paths == props
+    properties.search_shown_rows_only = True  # the props are under /World, which isn't expanded
+    display.apply_pending("viewport")
+    assert view.search_status.text.startswith("0 matches in shown rows")
+
+
+def test_typing_a_search_leaves_the_arrow_keys_to_it_until_a_row_is_clicked(registered: None, stage: Usd.Stage) -> None:
+    # The key watcher reads this, as it can't tell a text field is being edited.
+    display.create_view("viewport", _never)
+    display.set_stage("viewport", stage)
+    properties = _properties("viewport")
+    assert not widget_views.is_entering_search_text("viewport")
+    properties.search_text = "w"  # as a keystroke in the box does
+    assert widget_views.is_entering_search_text("viewport")
+    properties.active_row_index = WORLD_ROW  # a click on a row
+    assert not widget_views.is_entering_search_text("viewport")
+    properties.search_text = "wo"
+    bpy.ops.proscenium.scene_graph_toggle_row(view_name="viewport", row_index=WORLD_ROW)  # ty: ignore[unresolved-attribute]
+    assert not widget_views.is_entering_search_text("viewport")  # a chevron is a click on a row too
+    properties.search_text = "wor"
+    widget_views.stop_entering_search_text()  # as Enter, Esc, or Tab does
+    assert not widget_views.is_entering_search_text("viewport")
 
 
 def test_stage_edits_reach_the_rows(registered: None, stage: Usd.Stage) -> None:

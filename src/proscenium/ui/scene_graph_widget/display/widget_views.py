@@ -35,9 +35,10 @@ class SceneGraphView:
 
 
 class _SceneGraphViewsState:
-    """The process's views, by name, in the order they were added."""
+    """The process's views, by name, in the order they were added, and those whose search text is being typed."""
 
     views: dict[str, SceneGraphView] = {}
+    names_entering_search_text: set[str] = set()
 
 
 def add_view(view: SceneGraphView) -> None:
@@ -51,6 +52,7 @@ def discard_view(name: str) -> SceneGraphView:
     """Take a view out of the registry, and return it."""
     view = scene_graph_view(name)
     del _SceneGraphViewsState.views[name]
+    _SceneGraphViewsState.names_entering_search_text.discard(name)
     return view
 
 
@@ -65,6 +67,28 @@ def scene_graph_view(name: str) -> SceneGraphView:
         return _SceneGraphViewsState.views[name]
     except KeyError:
         raise ViewNotFoundError(name) from None
+
+
+def set_entering_search_text(name: str, is_entering: bool) -> None:
+    """Mark whether a view's search text is being typed, so the key watcher leaves Left and Right to its text box.
+
+    Blender doesn't tell Python when a text field is being edited, so this starts when the text changes and ends at
+    a key that ends an edit or a click on a row.
+    """
+    if is_entering:
+        _SceneGraphViewsState.names_entering_search_text.add(name)
+    else:
+        _SceneGraphViewsState.names_entering_search_text.discard(name)
+
+
+def is_entering_search_text(name: str) -> bool:
+    """Whether a view's search text is being typed (set_entering_search_text)."""
+    return name in _SceneGraphViewsState.names_entering_search_text
+
+
+def stop_entering_search_text() -> None:
+    """Mark no view's search text as being typed, after a key that ends a text edit."""
+    _SceneGraphViewsState.names_entering_search_text.clear()
 
 
 def all_views() -> list[SceneGraphView]:

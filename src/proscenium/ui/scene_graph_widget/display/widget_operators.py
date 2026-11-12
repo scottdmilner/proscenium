@@ -60,6 +60,7 @@ class SceneGraphToggleRow(bpy.types.Operator):
     def execute(self, context: Any) -> set[OperatorReturnItems]:
         if _row(self.view_name, self.row_index) is None:
             return {"CANCELLED"}
+        widget_views.set_entering_search_text(self.view_name, is_entering=False)  # a click on a row ends typing
         widget_views.scene_graph_view(self.view_name).prim_tree_view.toggle_row(self.row_index, self.recursive)
         widget_properties.sync_rows(self.view_name)
         return {"FINISHED"}

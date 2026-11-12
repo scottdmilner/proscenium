@@ -1,7 +1,8 @@
 """Searching a stage for a prim tree's filter: which prims match a query, and which prims show because of them.
 
 Unlike a UIList's own filter, which hides every row that doesn't match, a search keeps each match's ancestors, so
-the matches show in place in the hierarchy. It runs over the whole stage, not only the rows already expanded.
+the matches show in place in the hierarchy. It runs over the whole stage, not only the rows already expanded, or
+over only the prims it's given, such as the rows a tree shows.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 import enum
 import fnmatch
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd
@@ -17,7 +18,7 @@ from pxr import Sdf, Usd
 from .prim_children import CHILD_PREDICATE
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
 
 class SearchMode(enum.Enum):
@@ -29,28 +30,20 @@ class SearchMode(enum.Enum):
     REGEX = "path regex"  # re.search on the full path
 
 
-class SearchFlag(enum.Enum):
-    """A fact a prim must have, beyond matching the text."""
-
-    PAYLOAD = "payload"
-    VARIANTS = "variants"
-    INSTANCE = "instance"
-    INACTIVE = "inactive"
-
-
 @dataclass(frozen=True, slots=True)
 class SearchQuery:
-    """Everything a search matches on; empty fields match every prim."""
+    """Everything a search matches on; empty text matches every prim."""
 
     text: str = ""
     mode: SearchMode = SearchMode.NAME
     case_sensitive: bool = False
-    type_name: str = ""  # a schema type name, matched with IsA, so "Gprim" finds meshes and curves
-    flags: frozenset[SearchFlag] = field(default_factory=frozenset)
+    # Whether to search only the rows a tree shows without its filter, so the filter expands nothing to show a match;
+    # otherwise the whole stage. The tree's view gives the search those rows' prims.
+    shown_rows_only: bool = False
 
     def is_empty(self) -> bool:
         """Whether the query would match every prim, so there's nothing to filter."""
-        return not self.text and not self.type_name and not self.flags
+        return not self.text
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,12 +56,13 @@ class SearchResult:
 
 
 class SearchError(ValueError):
-    """A query that can't be matched, such as an invalid regular expression or an unknown schema type."""
+    """A query that can't be matched: an invalid regular expression."""
 
 
-def _text_matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool] | None:
+def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
+    """A test for one prim that a query's text matches; empty text matches every prim."""
     if not query.text:
-        return None
+        return lambda _prim: True
     flags = 0 if query.case_sensitive else re.IGNORECASE
     if query.mode is SearchMode.REGEX:
         try:
@@ -86,36 +80,19 @@ def _text_matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool] | None:
     return lambda prim: needle in fold(prim.GetName())
 
 
-_FLAG_TESTS: dict[SearchFlag, Callable[[Usd.Prim], bool]] = {
-    SearchFlag.PAYLOAD: lambda prim: prim.HasPayload(),
-    SearchFlag.VARIANTS: lambda prim: bool(prim.GetVariantSets().GetNames()),
-    SearchFlag.INSTANCE: lambda prim: prim.IsInstance(),
-    SearchFlag.INACTIVE: lambda prim: not prim.IsActive(),
-}
+def search(
+    stage: Usd.Stage, query: SearchQuery, match_limit: int, candidate_prims: Iterable[Usd.Prim] | None = None
+) -> SearchResult:
+    """Every prim a query matches, up to match_limit matches, and the ancestors that show them in place.
 
-
-def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
-    """A test for one prim that a query matches, combining its text, type, and flags."""
-    tests: list[Callable[[Usd.Prim], bool]] = []
-    text = _text_matcher(query)
-    if text is not None:
-        tests.append(text)
-    if query.type_name:
-        schema = Usd.SchemaRegistry.GetTypeFromName(query.type_name)
-        if schema.isUnknown:
-            raise SearchError(f"no schema type named {query.type_name!r}")
-        tests.append(lambda prim: prim.IsA(schema))
-    tests.extend(_FLAG_TESTS[flag] for flag in query.flags)
-    return lambda prim: all(test(prim) for test in tests)
-
-
-def search(stage: Usd.Stage, query: SearchQuery, match_limit: int) -> SearchResult:
-    """Every prim a query matches, up to match_limit matches, and the ancestors that show them in place."""
+    It searches candidate_prims if given, in their order, and otherwise every prim on the stage.
+    """
     test = matcher(query)
     matching_paths: set[Sdf.Path] = set()
     visible_paths: set[Sdf.Path] = set()
     is_truncated = False
-    for prim in Usd.PrimRange(stage.GetPseudoRoot(), CHILD_PREDICATE):
+    prims = Usd.PrimRange(stage.GetPseudoRoot(), CHILD_PREDICATE) if candidate_prims is None else candidate_prims
+    for prim in prims:
         if prim.IsPseudoRoot() or not test(prim):
             continue
         if len(matching_paths) >= match_limit:
