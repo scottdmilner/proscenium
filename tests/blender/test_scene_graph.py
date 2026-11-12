@@ -92,7 +92,7 @@ def test_a_recursive_toggle_and_the_triangle_tooltip(registered: None, stage: Us
     toggle = widget_operators.SceneGraphToggleRow
     assert toggle.description(bpy.context, _ButtonProperties("viewport", WORLD_ROW)).startswith("Expand World.")
     bpy.ops.proscenium.scene_graph_toggle_row(view_name="viewport", row_index=WORLD_ROW, recursive=True)  # ty: ignore[unresolved-attribute]
-    assert len(_properties("viewport").rows) == 31
+    assert len(_properties("viewport").rows) == 35
     assert toggle.description(bpy.context, _ButtonProperties("viewport", WORLD_ROW)).startswith("Collapse World.")
     assert toggle.description(bpy.context, _ButtonProperties("nowhere", 0)) == ""
 
@@ -132,7 +132,8 @@ def test_search_fields_filter_the_rows(registered: None, stage: Usd.Stage) -> No
     display.apply_pending("viewport")
     view = widget_views.scene_graph_view("viewport").prim_tree_view
     assert view.tree is not None
-    assert [str(row.path) for row in view.tree.rows if view.tree.is_match(row)] == ["/World/Geometry/Prop_Payloaded"]
+    matching_paths = [str(row.path) for row in view.tree.rows if view.tree.is_match(row)]
+    assert matching_paths == ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded"]
 
 
 def test_stage_edits_reach_the_rows(registered: None, stage: Usd.Stage) -> None:

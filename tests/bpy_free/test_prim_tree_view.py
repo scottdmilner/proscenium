@@ -52,7 +52,7 @@ def test_steps_move_the_selection(stage: Usd.Stage) -> None:
     view.step(INTO, recursive=True)  # Shift+Right expands the whole subtree, staying on the row
     assert _selected(view) == "/World"
     assert view.tree is not None
-    assert len(view.tree.rows) == 31
+    assert len(view.tree.rows) == 35
 
 
 def test_a_step_with_nothing_selected_starts_at_the_first_row(stage: Usd.Stage) -> None:
@@ -74,7 +74,7 @@ def test_showing_the_same_stage_again_keeps_its_state(stage: Usd.Stage) -> None:
 def test_a_query_filters_and_clearing_it_reveals_the_selection(stage: Usd.Stage) -> None:
     view = _view(stage)
     view.set_query(prim_search.SearchQuery(text="panel"))
-    assert view.search_status.text.startswith("5 matches")
+    assert view.search_status.text.startswith("6 matches")  # each Lid's Panel
     view.select_path(Sdf.Path("/World/Geometry/Crates/Crate_02/Lid/Panel"))
     view.set_query(prim_search.SearchQuery())
     assert view.search_status == SearchStatus()

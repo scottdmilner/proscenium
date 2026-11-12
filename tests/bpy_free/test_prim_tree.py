@@ -3,7 +3,7 @@
 The scene is scenes/scene_graph/prim_kinds.usda.
 
 Expected rows are written from how the scene is built: its top level is _Crate (a class), World, and
-World_Override_Only (an over), and /World holds 29 prims, instance proxies included.
+World_Override_Only (an over), and /World holds 33 prims, instance proxies included.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_children
+from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_children, prim_search
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 TOP_LEVEL = ["/_Crate", "/World", "/World_Override_Only"]
 WORLD_CHILDREN = ["/World/Geometry", "/World/Looks", "/World/Camera", "/World/Sun", "/World/Scatter"]
-PRIMS_UNDER_WORLD = 29  # /World and everything under it
+PRIMS_UNDER_WORLD = 33  # /World and everything under it
 
 
 @pytest.fixture
@@ -89,6 +89,26 @@ def test_classes_and_orphaned_overs_are_rows(stage: Usd.Stage) -> None:
     assert [d.is_class for d in details] == [True, False, False]
     assert [d.is_orphaned_over for d in details] == [False, False, True]
     assert [d.has_children for d in details] == [True, True, True]
+
+
+def test_an_unloaded_payloads_contents_are_neither_rows_nor_search_matches(stage: Usd.Stage) -> None:
+    unloaded = Sdf.Path("/World/Geometry/Prop_Unloaded")
+    contents = ["/World/Geometry/Prop_Unloaded/Body", "/World/Geometry/Prop_Unloaded/Lid"]  # the class's children
+    tree = PrimTree(stage)
+    row_index = tree.reveal(unloaded)
+    assert row_index is not None
+    tree.toggle(row_index)
+    assert [path for path in _paths(tree) if path.startswith(f"{unloaded}/")] == contents  # loaded, as it opens
+    stage.Unload(unloaded)
+    tree.refresh()
+    assert not any(path.startswith(f"{unloaded}/") for path in _paths(tree))
+    details = tree.details(tree.rows[_index(tree, str(unloaded))])
+    assert details.has_payload
+    assert not details.is_loaded
+    assert not details.has_children  # so the row draws no disclosure triangle
+    lids = prim_search.search(stage, prim_search.SearchQuery(text="lid"), match_limit=100).matching_paths
+    assert Sdf.Path(f"{unloaded}/Lid") not in lids
+    assert Sdf.Path("/World/Geometry/Prop_Payloaded/Lid") in lids  # still loaded
 
 
 def test_has_children_doesnt_count_leaves(stage: Usd.Stage) -> None:

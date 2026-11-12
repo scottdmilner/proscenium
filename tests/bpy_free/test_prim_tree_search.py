@@ -1,8 +1,8 @@
 """The prim tree's search and its filter (proscenium.ui.scene_graph_widget.prim_tree.prim_search).
 
-On scenes/scene_graph/prim_kinds.usda, expected matches are written from how the scene is built: five prims
-named Lid (the class's, three crates', and the payloaded prop's), meshes and one BasisCurves as Gprims, and one
-payload.
+On scenes/scene_graph/prim_kinds.usda, expected matches are written from how the scene is built: six prims
+named Lid (the class's, three crates', and the two payloaded props'), meshes and one BasisCurves as Gprims, and two
+payloads.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ LIDS = [
     "/World/Geometry/Crates/Crate_02/Lid",
     "/World/Geometry/Crates/Crate_Unique/Lid",
     "/World/Geometry/Prop_Payloaded/Lid",
+    "/World/Geometry/Prop_Unloaded/Lid",  # loaded, as the stage opens
 ]
 
 
@@ -62,7 +63,7 @@ def test_type_matches_with_isa_and_flags_combine(stage: Usd.Stage) -> None:
     gprims = _search(stage, type_name="Gprim")
     assert {str(stage.GetPrimAtPath(path).GetTypeName()) for path in gprims.matching_paths} == {"Mesh", "BasisCurves"}
     flags = frozenset({prim_search.SearchFlag.PAYLOAD})
-    assert _matches(_search(stage, flags=flags)) == ["/World/Geometry/Prop_Payloaded"]
+    assert _matches(_search(stage, flags=flags)) == ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded"]
     assert _matches(_search(stage, flags=frozenset({prim_search.SearchFlag.INACTIVE}))) == ["/World/Geometry/Disabled"]
     assert _matches(_search(stage, text="crate", flags=frozenset({prim_search.SearchFlag.INSTANCE}))) == [
         "/World/Geometry/Crates/Crate_01",
@@ -81,7 +82,7 @@ def test_a_search_stops_at_its_limit(stage: Usd.Stage) -> None:
     result = _search(stage, match_limit=2, text="lid")
     assert len(result.matching_paths) == 2
     assert result.is_truncated
-    assert not _search(stage, match_limit=5, text="lid").is_truncated
+    assert not _search(stage, match_limit=len(LIDS), text="lid").is_truncated
 
 
 def test_matches_show_in_place_under_their_ancestors(stage: Usd.Stage) -> None:

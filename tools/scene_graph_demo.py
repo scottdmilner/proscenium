@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
 TEST_STAGE = ROOT / "tests" / "fixtures" / "scenes" / "scene_graph" / "prim_kinds.usda"
+UNLOADED_PRIM_PATH = Sdf.Path("/World/Geometry/Prop_Unloaded")  # the test stage's payload the demo leaves unloaded
 CATEGORY = "Scene Graph"
 # Each view's name, by the editor whose sidebar shows it.
 VIEW_NAMES_BY_EDITOR = {"VIEW_3D": "demo_viewport", "NODE_EDITOR": "demo_node_editor"}
@@ -101,7 +102,7 @@ class DemoOpenTestStage(bpy.types.Operator):
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        _show(Usd.Stage.Open(str(TEST_STAGE)))
+        _show(open_test_stage())
         return {"FINISHED"}
 
 
@@ -284,14 +285,23 @@ def unregister() -> None:
     _DemoState.stage = None
 
 
+def open_test_stage() -> Usd.Stage:
+    """Open the test stage with its Prop_Unloaded payload unloaded, as a file can't leave it."""
+    stage = Usd.Stage.Open(str(TEST_STAGE))
+    stage.Unload(UNLOADED_PRIM_PATH)
+    return stage
+
+
 def main() -> None:
     """Register, then show the stage named after `--`, or the test stage."""
     register()
     arguments = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
-    stage_path = Path(arguments[0]) if arguments else TEST_STAGE
-    stage = Usd.Stage.Open(str(stage_path))
+    if not arguments:
+        _show(open_test_stage())
+        return
+    stage = Usd.Stage.Open(arguments[0])
     if stage is None:
-        raise SystemExit(f"could not open {stage_path}")
+        raise SystemExit(f"could not open {arguments[0]}")
     _show(stage)
 
 
