@@ -3,11 +3,11 @@
 A cache call evaluates and plans the source at each time code the generation hasn't cached, under the generation's
 settings, before changing any Blender data, so its source-state diagnostics exist before then, as a synchronization's
 do. What varies is what differs: each plan is compared with the generation's own, held since it was published
-(binding.runtime.held_plans), through the core's plan diff, and a copy a cached time code moves or rebuilds, or one
-keyed already, varies (DECISIONS.md "What a cache call keys"). The application layer then keys those copies at every
-time code the generation holds, and the generation record gains the call's. Without the generation's plan held, as
-after an undo past the held plans, every copy is keyed. It
-publishes no new generation, records no last attempt, and pushes no undo step, as Bindings pushes none for it.
+(binding.runtime.held_plans), through the core's plan diff, and a copy a cached time code moves, rebuilds, or shows
+otherwise, or one keyed already, varies (DECISIONS.md "What a cache call keys"). time_code_keying then keys those copies
+at every time code the generation holds, and the generation record gains the call's. Without the generation's plan held,
+as after an undo past the held plans, every copy is keyed. It publishes no new generation, records no last attempt, and
+pushes no undo step, as Bindings pushes none for it.
 
 A call that fails caches none of its time codes (CACHE-03): before then a failure only reports, and after it the keys
 the call added are removed, the manifest restored, and the actions it made disposed of under the transaction's rules,
@@ -28,7 +28,7 @@ from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, R
 from ..binding.runtime import binding_operations, ownership
 from ..binding.source_access import stages
 from ..core import _core
-from . import application, evaluation, preparation_resources
+from . import application, evaluation, preparation_resources, time_code_keying
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -109,8 +109,8 @@ def cache(
     own = published_plans.plan_for(published)
     varying = None if own is None else _varying_sources(own, plans_by_time_code.values(), before)
     try:
-        changes = application.key_time_codes(
-            plans_by_time_code, varying, before, published.time_code, published.cached_time_codes, work
+        changes = time_code_keying.key_time_codes(
+            plans_by_time_code, varying, before, destination, published.time_code, published.cached_time_codes, work
         )
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
@@ -133,7 +133,7 @@ def cache(
 
 
 def _varying_sources(own: _core.Plan, plans: Collection[_core.Plan], published: manifests.Manifest) -> set[str]:
-    """The source entities of the copies that vary: keyed in published, or moved or rebuilt by a plan from own."""
+    """The source entities of the copies that vary: keyed in published, or moved, rebuilt, or shown otherwise."""
     varying = {
         identity.entity
         for entry in published.entries.values()
@@ -142,7 +142,7 @@ def _varying_sources(own: _core.Plan, plans: Collection[_core.Plan], published: 
     for plan in plans:
         diff = _core.diff_plans(own, plan)
         sources = [entry.source_path for entry in plan.correspondence]
-        for buffer in (diff.moved_copy_indices, diff.rebuilt_copy_indices):
+        for buffer in (diff.moved_copy_indices, diff.rebuilt_copy_indices, diff.participation_changed_copy_indices):
             with memoryview(buffer) as copies:  # released before returning (SNAP-13)
                 varying.update(sources[copy] for copy in copies.tolist())
     return varying

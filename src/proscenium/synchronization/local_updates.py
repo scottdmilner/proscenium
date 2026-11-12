@@ -1,9 +1,10 @@
 """Local updates: kept copies changed in place at publication (change-matrix.md "Actions"), as the bridge's updates did.
 
 A kept copy that moved, or whose cached keys are removed, has its world matrix set, or a sheared copy its shear parent's
-world matrix and its object's basis below it; one holding a cached generation's keys has its object's animation data
-cleared first, as a copy's object has none when built, so its action, no longer in the manifest, is retired, and the
-transform it shows is the plan's; one whose participation changed has its hide flags set, all such copies' together,
+world matrix and its object's basis below it; one holding a cached generation's keys has its object's and shear
+parent's animation data cleared first, as a copy's objects have none when built, so its action, no longer in the
+manifest, is retired, and the transform and hide flags it shows are the plan's; one whose participation changed, or
+whose keys are removed, has its hide flags set, all such copies' together,
 through a collection no scene links, since assigning one runs Blender's update, which resyncs every collection
 (application.prepare); and one whose bounds changed has its object pointed at a replacement bounds mesh. Each keeps its
 identity and its Blender selection.
@@ -137,23 +138,29 @@ def prepare_updates(
                 name = names.next_name(resources[objects[copy]].source_entity_path.rsplit("/", 1)[-1])
                 mesh = _replacement_mesh(name, published_key(meshes[copy]), bounds[copy], published, work)
             if change.cached_keys_removed:
-                _drop_action_use(object_key, keys, published, work)
+                users = [object_key] if parent is None else [object_key, published_key(parents[copy])]
+                _drop_action_use(users, keys, published, work)
             updates.append(KeptCopyUpdate(copy, change, obj, parent, mesh))
     return updates
 
 
 def _drop_action_use(
-    object_key: str,
+    user_keys: Sequence[str],
     keys: Mapping[manifests.CopyResourceIdentity, str],
     published: manifests.Manifest,
     work: PreparationResources,
 ) -> None:
-    """Give work the published object entry under object_key, with the object's action removed from its dependencies."""
-    entry = published.entries[object_key]
-    assert entry.identity is not None  # a copy's object's
-    action_key = keys[entry.identity._replace(role=manifests.RepresentationRole.ACTION)]
-    uses = [key for key in entry.dependency_entry_keys if key != action_key]
-    work.manifest_entries[object_key] = dataclasses.replace(entry, dependency_entry_keys=uses)
+    """Give work the published entries under user_keys, with their copy's action dropped from their uses.
+
+    The first is the copy's object's; the other, if any, its shear parent's, which shares the object's action.
+    """
+    identity = published.entries[user_keys[0]].identity
+    assert identity is not None  # a copy's object's
+    action_key = keys[identity._replace(role=manifests.RepresentationRole.ACTION)]
+    for user_key in user_keys:
+        entry = published.entries[user_key]
+        uses = [key for key in entry.dependency_entry_keys if key != action_key]
+        work.manifest_entries[user_key] = dataclasses.replace(entry, dependency_entry_keys=uses)
 
 
 def _replacement_mesh(
@@ -194,9 +201,8 @@ def apply_updates(plan: _core.Plan, updates: Sequence[KeptCopyUpdate], undo: lis
             if update.bounds_mesh is not None:
                 undo.append(functools.partial(setattr, obj, "data", obj.data))
                 obj.data = update.bounds_mesh
-            if update.change.cached_keys_removed and (animation := obj.animation_data) is not None:
-                undo.append(functools.partial(_restore_action, obj, animation.action))
-                obj.animation_data_clear()
+            if update.change.cached_keys_removed:
+                _clear_animation(update, undo)
             if not (update.change.moved or update.change.cached_keys_removed):
                 continue
             if (shear := shears[copy]) < 0:
@@ -209,7 +215,7 @@ def apply_updates(plan: _core.Plan, updates: Sequence[KeptCopyUpdate], undo: lis
                 undo.append(functools.partial(Transform.of(obj).restore, obj))
                 parent.matrix_world = application.matrix_from_buffer(parent_worlds, shear)
                 obj.matrix_basis = application.matrix_from_buffer(bases, shear)
-        hiding = [update for update in updates if update.change.participation_changed]
+        hiding = [u for u in updates if u.change.participation_changed or u.change.cached_keys_removed]
         if hiding:
             visible = view(plan.copy_visible_in_viewport), view(plan.copy_visible_in_render)
             _set_hide_flags(hiding, visible, undo)
@@ -234,6 +240,14 @@ def _set_hide_flags(
             together.objects.foreach_set(flag, [not shown[update.copy_index] for update in updates])
     finally:
         bpy.data.batch_remove([together])
+
+
+def _clear_animation(update: KeptCopyUpdate, undo: list[Callable[[], object]]) -> None:
+    """Clear the animation data of update's object and shear parent, adding how to undo each first."""
+    for owner in (update.obj, update.shear_parent):
+        if owner is not None and (animation := owner.animation_data) is not None:
+            undo.append(functools.partial(_restore_action, owner, animation.action))
+            owner.animation_data_clear()
 
 
 def _restore_action(obj: bpy.types.Object, action: bpy.types.Action | None) -> None:

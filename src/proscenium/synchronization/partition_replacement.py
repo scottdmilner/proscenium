@@ -14,8 +14,9 @@ A kept copy is rebuilt instead of updated in place when unmanaged content uses a
 (CHG-06, OWN-08): anything but the destination collection, whose manifest names them, a scene linking it, whose view
 layers hold a base for each of its objects, and the partition's own resources. So a resource someone else uses is
 released intact, and a local update never changes what it uses. A kept copy whose published resources are
-incomplete, as when the user deleted its object, is rebuilt too. A copy's published entries are those whose source
-entity is its source path: an action's with its object's.
+incomplete, as when the user deleted its object, is rebuilt too, as is one whose published shear parent the plan
+doesn't have, or the reverse, as when a cache call gave a copy one for a shear only a cached time code has. A copy's
+published entries are those whose source entity is its source path: an action's with its object's.
 """
 
 from __future__ import annotations
@@ -82,24 +83,22 @@ def changed_partitions(
     rebuilt = set(_indices(diff.rebuilt_copy_indices))
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))
     participation = set(_indices(diff.participation_changed_copy_indices))
-    keys_by_source: dict[str, set[str]] = {}
-    action_keys: dict[str, str] = {}  # by source: the entry key of the action holding a copy's cached keys
-    incomplete: set[str] = set()  # the sources of copies with a published resource gone
-    for entry_key, entry in published.entries.items():
-        if (identity := entry.identity) is None:
-            continue
-        keys_by_source.setdefault(identity.entity, set()).add(entry_key)
-        if identity.role is manifests.RepresentationRole.ACTION:
-            action_keys[identity.entity] = entry_key
-        if entry.datablock is None:
-            incomplete.add(identity.entity)
+    found = _PublishedPartitions.of(published)
+    keys_by_source, action_keys, incomplete, parented = (
+        found.keys_by_source,
+        found.action_keys,
+        found.incomplete,
+        found.parented,
+    )
     sources = [entry.source_path for entry in plan.correspondence]
     previous_sources = [entry.source_path for entry in previous.correspondence]
+    sheared = [parent >= 0 for parent in _indices(plan.copy_shear_parent_resource_indices)]
     prepared: list[int] = []
     updated: dict[int, CopyUpdate] = {}
     for copy, old in enumerate(matched):
         source = sources[copy]
-        if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source:
+        unmatched = (source in parented) != sheared[copy]  # the published partition isn't the plan's
+        if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source or unmatched:
             prepared.append(copy)
         elif copy in moved | bounds | participation or source in action_keys:
             updated[copy] = CopyUpdate(copy in moved, copy in bounds, copy in participation, source in action_keys)
@@ -113,6 +112,32 @@ def changed_partitions(
     for old in _indices(diff.removed_previous_copy_indices):
         replaced |= keys_by_source.get(previous_sources[old], set())
     return PartitionReplacement(tuple(prepared), frozenset(replaced), updated)
+
+
+@dataclass(frozen=True, slots=True)
+class _PublishedPartitions:
+    """The published copies' partitions, by source entity."""
+
+    keys_by_source: dict[str, set[str]]  # each copy's entries' keys
+    action_keys: dict[str, str]  # the entry key of the action holding a copy's cached keys
+    incomplete: set[str]  # the copies with a published resource gone
+    parented: set[str]  # the copies with a published shear parent
+
+    @staticmethod
+    def of(published: manifests.Manifest) -> _PublishedPartitions:
+        """The partitions of published's copies."""
+        found = _PublishedPartitions({}, {}, set(), set())
+        for entry_key, entry in published.entries.items():
+            if (identity := entry.identity) is None:
+                continue
+            found.keys_by_source.setdefault(identity.entity, set()).add(entry_key)
+            if identity.role is manifests.RepresentationRole.ACTION:
+                found.action_keys[identity.entity] = entry_key
+            if identity.role is manifests.RepresentationRole.SHEAR_PARENT:
+                found.parented.add(identity.entity)
+            if entry.datablock is None:
+                found.incomplete.add(identity.entity)
+        return found
 
 
 def _used_elsewhere(

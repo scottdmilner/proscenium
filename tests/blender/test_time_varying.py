@@ -4,8 +4,8 @@ At each of a time-varying fixture's sampled time codes (support/time_codes.py), 
 the one a cache call builds hold each drawn copy's world transform and participation as the fixture gives them there:
 F-TRANSFORMS' Animated's translate under both payload policies, and F-VISIBILITY-PURPOSE's Blinking's visibility.
 The plans are read as the transaction gets them, through a spy on synchronization.evaluation.evaluate_display_plans; a
-synchronization's published objects show its plan, and a cache call's keys its transforms. Cached visibility is
-M7 Phase D's, so a cache call's participation is checked on its plans alone until then.
+synchronization's published objects show its plan, and a cache call's keys its transforms. A cache call's
+participation is checked on its plans here; test_cached_variation.py checks its keyed hide flags.
 """
 
 from __future__ import annotations
