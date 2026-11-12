@@ -192,6 +192,28 @@ class Plan:
 
 def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version
 
+class PlanDiff:
+    """What a new plan changes from a previous one: 'i' buffers of copy indices, each in the order of its plan.
+
+    Copies match by identity, their source path and instance context. A kept copy is rebuilt when its partition holds
+    another bounds mesh or shear parent; otherwise it is in each list of what differs, which may be more than one.
+    """
+
+    @property
+    def previous_copy_indices(self) -> Buffer: ...  # per new copy: the previous plan's with its identity, or -1
+    @property
+    def rebuilt_copy_indices(self) -> Buffer: ...  # new copies whose partition is prepared anew
+    @property
+    def moved_copy_indices(self) -> Buffer: ...  # new copies whose world matrix or shear split differs
+    @property
+    def bounds_changed_copy_indices(self) -> Buffer: ...  # new copies whose bounds mesh is replaced
+    @property
+    def participation_changed_copy_indices(self) -> Buffer: ...  # new copies whose hide flags change
+    @property
+    def removed_previous_copy_indices(self) -> Buffer: ...  # previous copies with no new counterpart
+
+def diff_plans(previous: Plan, plan: Plan) -> PlanDiff: ...
+
 # EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform, by source,
 # as Hydra's own values compose it, ignoring a reset transform stack inside an instance. Only the known-gap check for
 # OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes.

@@ -270,8 +270,9 @@ def _steps() -> tuple[EditStep, ...]:
             frozenset({CRATE_BOX}),
             frozenset({_instanced(LEFT), _instanced(RIGHT)}),
         ),
-        # Point instancers: with authored ids the other points' copies are kept; without them, removing a
-        # point renumbers every later one, whose copies are retired and built anew.
+        # Point instancers: with authored ids the other points' copies are kept; without them, a point's index is
+        # its identity, so removing a point renumbers every later one, and each index's copy shows the next point's,
+        # updated in place, while the last index's is retired.
         EditStep("point-moved", ("CHG-20",), _move_point, frozenset({TAGGED}), frozenset({_point(TAGGED, "__id_2")})),
         EditStep(
             "point-removed-by-id",
@@ -285,7 +286,7 @@ def _steps() -> tuple[EditStep, ...]:
             ("CHG-20",),
             _remove_first_point(NUMBERED),
             frozenset({NUMBERED}),
-            rebuilt=frozenset({_point(NUMBERED, "__index_0"), _point(NUMBERED, "__index_1")}),
+            frozenset({_point(NUMBERED, "__index_0"), _point(NUMBERED, "__index_1")}),
             retired=frozenset({_point(NUMBERED, "__index_2")}),
         ),
     )

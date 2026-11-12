@@ -1460,7 +1460,7 @@ requirements:
       - id: CHG-20
         quote: "A point instancer's points, ids, or prototypes changed |"
         fixtures: [F-EDIT-SEQUENCE]
-        oracle: "On F-EDIT-SEQUENCE's point steps, the moved point's copy is updated in place; removing id 1 retires only its copy; removing Numbered's first point retires the last index's copy and rebuilds the others'."
+        oracle: "On F-EDIT-SEQUENCE's point steps, the moved point's copy is updated in place; removing id 1 retires only its copy; removing Numbered's first point retires the last index's copy and updates the others' in place."
       - id: CHG-21
         quote: "The time code synchronized changed |"
         fixtures: [F-SAME-VALUES]

@@ -38,6 +38,7 @@ Python_add_library(_core MODULE WITH_SOABI
   instancing.cpp
   python_bindings.cpp
   plan.cpp
+  plan_diff.cpp
   snapshot_prim_reader.cpp
   prim_record.cpp
   revision_cached_container.cpp

@@ -15,6 +15,7 @@
 
 #include "batch_groups.h"
 #include "plan.h"
+#include "plan_diff.h"
 #include "python_error_translation.h"
 #include "scene_index_chain.h"
 #include "snapshot.h"
@@ -112,6 +113,13 @@ bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
     return GroupForBatches(*plan.data, minimum);
   });
   return bp::make_tuple(ToTuple(grouped.groups), grouped.unbatchedCopyIndices);
+}
+
+PlanDiff DiffPlanViews(const PlanView& previous, const PlanView& plan) {
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return DiffPlans(*previous.data, *plan.data);
+  });
 }
 
 PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
@@ -249,6 +257,19 @@ void WrapPlan() {
           "geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); })
       .add_property("diagnostics", +[](const PlanView& p) { return ToTuple(p.data->diagnostics); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
+  bp::class_<PlanDiff>("PlanDiff", bp::no_init)
+      .add_property(
+          "previous_copy_indices", +[](const PlanDiff& d) { return d.previousCopyIndices; })
+      .add_property(
+          "rebuilt_copy_indices", +[](const PlanDiff& d) { return d.rebuiltCopyIndices; })
+      .add_property(
+          "moved_copy_indices", +[](const PlanDiff& d) { return d.movedCopyIndices; })
+      .add_property(
+          "bounds_changed_copy_indices", +[](const PlanDiff& d) { return d.boundsChangedCopyIndices; })
+      .add_property(
+          "participation_changed_copy_indices", +[](const PlanDiff& d) { return d.participationChangedCopyIndices; })
+      .add_property("removed_previous_copy_indices", +[](const PlanDiff& d) { return d.removedPreviousCopyIndices; });
+  bp::def("diff_plans", &DiffPlanViews, (bp::arg("previous"), bp::arg("plan")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }
 
