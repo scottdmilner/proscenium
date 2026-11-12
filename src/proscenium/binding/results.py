@@ -252,3 +252,29 @@ class Result:
     def is_success(self) -> bool:
         """Whether the operation succeeded."""
         return self.state == ResultState.SUCCESS
+
+
+class DiagnosticCollector:
+    """The diagnostics an operation reports as its steps run, in order, for its result."""
+
+    _reported: list[Diagnostic]
+
+    def __init__(self) -> None:
+        self._reported = []
+
+    def add(self, diagnostic: Diagnostic) -> None:
+        """Report diagnostic."""
+        self._reported.append(diagnostic)
+
+    def extend(self, diagnostics: Iterable[Diagnostic]) -> None:
+        """Report each of diagnostics, in order."""
+        self._reported.extend(diagnostics)
+
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]:
+        """Those reported so far, aggregated as a result's are (DIAG-03)."""
+        return deduplicated_diagnostics(self._reported)
+
+    def result(self, *, attempted_time_codes: Iterable[Usd.TimeCode] = ()) -> Result:
+        """A result holding those reported so far."""
+        return Result(*self._reported, attempted_time_codes=attempted_time_codes)

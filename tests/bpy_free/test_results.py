@@ -5,9 +5,17 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from pxr import Usd
 
 from proscenium.binding import results
-from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Result, ResultState
+from proscenium.binding.results import (
+    Diagnostic,
+    DiagnosticCategory,
+    DiagnosticCode,
+    DiagnosticCollector,
+    Result,
+    ResultState,
+)
 
 DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layer_identifiers=("/a.usda",))
 UNATTACHED = Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, "binding", "No stage is attached")
@@ -52,7 +60,7 @@ def test_each_category_gives_the_state_the_spec_names() -> None:
 
 
 def test_a_repeated_problem_is_one_diagnostic() -> None:
-    # DIAG-03: within one result, in the order first reported, with the first report's message.
+    # DIAG-03: within one result, in the order first report, with the first report's message.
     reworded = Diagnostic(DiagnosticCode.EVALUATION_FAILED, "binding", "The source couldn't be evaluated")
     assert Result(FAILED, DIRTY, FAILED, reworded).diagnostics == (FAILED, DIRTY)
 
@@ -90,3 +98,13 @@ def test_the_cleanup_status_never_changes_the_state() -> None:
 def test_a_cleanup_status_holds_only_pending_cleanup() -> None:
     with pytest.raises(ValueError, match="only pending-cleanup"):
         Result(pending_cleanup_diagnostics=(DIRTY,))
+
+
+def test_a_collector_reports_in_order_and_aggregates_as_a_result_does() -> None:
+    # DIAG-03, for what a generation records before the operation's result exists.
+    report = DiagnosticCollector()
+    report.add(FAILED)
+    report.extend((DIRTY, FAILED))
+    assert report.diagnostics == (FAILED, DIRTY)
+    result = report.result(attempted_time_codes=(Usd.TimeCode(1),))
+    assert (result.diagnostics, result.attempted_time_codes) == ((FAILED, DIRTY), (Usd.TimeCode(1),))

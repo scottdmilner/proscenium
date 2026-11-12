@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
-from ..binding.results import Diagnostic, DiagnosticCode, Result
+from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
 from ..binding.runtime import binding_operations, ownership
 from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources
@@ -83,7 +83,8 @@ def cache(
         )
     if not new:
         return Result()
-    own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
+    report = DiagnosticCollector()
+    report.extend(evaluation.source_state_diagnostics(binding_id, evaluation_stage))
     planned = evaluation.evaluate_display_plans(
         binding_id,
         binding_stages,
@@ -94,8 +95,10 @@ def cache(
         representation_version=application.REPRESENTATION_VERSION,
     )
     if isinstance(planned, Diagnostic):
-        return Result(*own, planned, attempted_time_codes=attempted)
-    own = (*own, *planned.verification_diagnostics, *_plans_diagnostics(binding_id, planned.plans))
+        report.add(planned)
+        return report.result(attempted_time_codes=attempted)
+    report.extend(planned.verification_diagnostics)
+    report.extend(_plans_diagnostics(binding_id, planned.plans))
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.CACHE)
     before = _published_manifest(manifest)
@@ -106,7 +109,8 @@ def cache(
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
+        _abort(report, failed, work)
+        return report.result(attempted_time_codes=attempted)
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
@@ -116,9 +120,10 @@ def cache(
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
+        _abort(report, failed, work)
+        return report.result(attempted_time_codes=attempted)
     preparation_resources.remove_staging_and_clear_tracking(work)
-    return Result(*own, attempted_time_codes=attempted)
+    return report.result(attempted_time_codes=attempted)
 
 
 def _unusable_state_diagnostic(
@@ -166,13 +171,14 @@ def _stale_message(
     return None
 
 
-def _discarded(work: preparation_resources.PreparationResources) -> tuple[Diagnostic, ...]:
-    """Undo work's changes to the published generation, and dispose of what it made; each disposal that failed.
+def _abort(report: DiagnosticCollector, failed: Diagnostic, work: preparation_resources.PreparationResources) -> None:
+    """Report failed, undo work's changes to the published generation, and dispose of what it made.
 
-    Raises, as defects, what reverting or writing the ledger raises, having disposed of the work either way.
+    Each disposal that failed is reported. Raises, as defects, what reverting or writing the ledger raises, having
+    disposed of the work either way.
     """
+    report.add(failed)
     try:
         preparation_resources.revert_published_resource_changes(work)
     finally:
-        disposed = preparation_resources.dispose(work)
-    return disposed
+        report.extend(preparation_resources.dispose(work))

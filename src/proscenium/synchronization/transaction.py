@@ -23,7 +23,7 @@ import bpy
 from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
-from ..binding.results import Diagnostic, DiagnosticCode, Result
+from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
 from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
 from . import application, evaluation, preparation_resources, publication, retirement
@@ -63,8 +63,9 @@ def synchronize(
     # A synchronization writes the binding's records, so it restores a lost index entry first, as every write does,
     # giving the ledger a Text to be on.
     binding_operations.restore_missing_binding_index_entry(binding_id, record)
-    attempted = _attempt(binding_id, config, destination, current, time_code, full_rebuild=full_rebuild)
-    result = Result(*attempted, attempted_time_codes=(time_code,))
+    report = DiagnosticCollector()
+    _attempt(binding_id, config, destination, current, time_code, report, full_rebuild=full_rebuild)
+    result = report.result(attempted_time_codes=(time_code,))
     if _removed(destination):  # removed during the attempt, with its records, so there's nothing to record on
         return result
     encoded_time_code = binding_state.encode_time_code(time_code)
@@ -79,21 +80,25 @@ def _attempt(
     destination: bpy.types.Collection,
     current: stage_tracking.BindingStageTracker,
     time_code: Usd.TimeCode,
+    report: DiagnosticCollector,
     *,
     full_rebuild: bool,
-) -> tuple[Diagnostic, ...]:
-    """The attempt's diagnostics, its steps run as far as they succeed."""
+) -> None:
+    """Run the attempt's steps as far as they succeed, reporting its diagnostics to report."""
     scene = config.scene
     assert scene is not None
     # A manifest naming an unknown role is one that can't be read (ROLE-01).
     manifest = manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if isinstance(manifest, id_property_records.RefusedRecord):
-        return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message),)
+        report.add(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message))
+        return
     if isinstance(generation, id_property_records.RefusedRecord):
-        return (Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message),)
+        report.add(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, generation.message))
+        return
     if (refused := preparation_resources.cleanup_tracking_diagnostic(binding_id)) is not None:
-        return (refused,)
+        report.add(refused)
+        return
     settings, unit_scale = config.requested_settings, scene.unit_settings.scale_length
     # Found before anything in Blender changes, and the display's, so the generation records them too (CONV-07).
     mismatches = _unit_scale_mismatches(binding_id, destination, scene)
@@ -101,9 +106,11 @@ def _attempt(
     try:
         evaluation_stage = stages_.acquire_evaluation_stage(settings.payload_policy)
     except stages.SourceUnavailableError as error:
-        return (Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)),)
+        report.add(Diagnostic(DiagnosticCode.NO_ATTACHED_STAGE, binding_id, str(error)))
+        return
     revision = stages_.source_revision
-    own = (*mismatches, *evaluation.source_state_diagnostics(binding_id, evaluation_stage))
+    report.extend(mismatches)
+    report.extend(evaluation.source_state_diagnostics(binding_id, evaluation_stage))
     # Before preparation nothing in Blender has changed, so a failure only reports.
     planned = evaluation.evaluate_display_plans(
         binding_id,
@@ -116,10 +123,12 @@ def _attempt(
         new_chain=full_rebuild,  # whatever the kept chain missed, a new one reads (incremental.md#change-discovery)
     )
     if isinstance(planned, Diagnostic):
-        return (*own, planned)
+        report.add(planned)
+        return
     [plan] = planned.plans
     # Content's, so they join the generation's too, with the verification mode's.
-    own = (*own, *planned.verification_diagnostics, *evaluation.plan_diagnostics(binding_id, plan))
+    report.extend(planned.verification_diagnostics)
+    report.extend(evaluation.plan_diagnostics(binding_id, plan))
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record
@@ -136,16 +145,19 @@ def _attempt(
             source_path=error.source_entity_path,
             role=str(error.role),
         )
-        return (*own, failed, *preparation_resources.dispose(work))
+        _abort(report, failed, work)
+        return
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, f"Preparing the display failed: {error}")
-        return (*own, failed, *preparation_resources.dispose(work))
+        _abort(report, failed, work)
+        return
     if _removed(destination):  # a state change
         message = f"The destination collection {destination_name!r} was removed while the display was prepared"
         failed = Diagnostic(DiagnosticCode.DESTINATION_INVALID, binding_id, message)
-        return (*own, failed, *preparation_resources.dispose(work))
+        _abort(report, failed, work)
+        return
     described = binding_state.GenerationMetadata(
-        binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, Result(*own).diagnostics
+        binding_id, settings, unit_scale, binding_state.encode_time_code(time_code), revision, report.diagnostics
     )
     try:
         before = None if manifest is None else published
@@ -153,9 +165,16 @@ def _attempt(
         obsolete = publication.publish(destination, work, described, before, previous)
     except Exception as error:  # noqa: BLE001
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, f"Publishing the display failed: {error}")
-        return (*own, failed, *preparation_resources.dispose(work))
+        _abort(report, failed, work)
+        return
     preparation_resources.remove_staging_and_clear_tracking(work)
-    return (*own, *retirement.retire(binding_id, obsolete, work.operation))
+    report.extend(retirement.retire(binding_id, obsolete, work.operation))
+
+
+def _abort(report: DiagnosticCollector, failed: Diagnostic, work: preparation_resources.PreparationResources) -> None:
+    """Report failed, and dispose of work, reporting each disposal that failed."""
+    report.add(failed)
+    report.extend(preparation_resources.dispose(work))
 
 
 def _unit_scale_mismatches(
