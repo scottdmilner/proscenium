@@ -75,8 +75,10 @@ def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
     if query.mode is SearchMode.REGEX:
         try:
             pattern = re.compile(query.text, flags)
-        except re.error as error:
-            raise SearchError(str(error)) from error
+        # A repetition count past the engine's limit overflows, and groups nested too deep exceed the compiler's
+        # recursion, rather than raising re.error.
+        except (re.error, OverflowError, RecursionError) as error:
+            raise SearchError(str(error) or type(error).__name__) from error
         return lambda prim: pattern.search(str(prim.GetPath())) is not None
     if query.mode is SearchMode.GLOB:
         pattern = re.compile(fnmatch.translate(query.text), flags)

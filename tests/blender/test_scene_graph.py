@@ -6,6 +6,7 @@ scenes/scene_graph/prim_kinds.usda, whose top level is _Crate, World, and World_
 
 from __future__ import annotations
 
+import gc
 from typing import TYPE_CHECKING, Any
 
 import bpy
@@ -216,6 +217,31 @@ def test_the_host_hears_its_selected_prim_leave_the_stage(registered: None, stag
     assert display.selected_path("viewport") is None
     assert selections == [None]
     assert _properties("viewport").active_row_index == -1
+
+
+def test_the_host_hears_its_selection_go_when_the_stage_is_released(registered: None, tmp_path: Path) -> None:
+    # Opened here, not by the fixture, which pytest holds until the test ends.
+    released = open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "prim_kinds.usda")
+    selections: list[Sdf.Path | None] = []
+    display.create_view("viewport", _never, selections.append)
+    display.set_stage("viewport", released)
+    display.select_prim("viewport", Sdf.Path("/World/Sun"))
+    del released
+    gc.collect()
+    assert display.selected_path("viewport") is None
+    display.apply_pending("viewport")  # as the stage timer a draw of the closed stage schedules would
+    assert selections == [None]
+
+
+def test_a_file_load_ends_typing_a_search(registered: None, stage: Usd.Stage, tmp_path: Path) -> None:
+    display.create_view("viewport", _never)
+    display.set_stage("viewport", stage)
+    _properties("viewport").search_text = "w"  # as a keystroke in the box does
+    assert widget_views.is_entering_search_text("viewport")
+    blend = tmp_path / "saved.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(blend))
+    bpy.ops.wm.open_mainfile(filepath=str(blend))
+    assert not widget_views.is_entering_search_text("viewport")  # so the arrow keys step the tree again
 
 
 def test_a_file_load_makes_the_properties_again(registered: None, stage: Usd.Stage, tmp_path: Path) -> None:

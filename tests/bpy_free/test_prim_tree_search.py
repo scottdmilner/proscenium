@@ -58,9 +58,18 @@ def test_glob_path_and_regex_modes(stage: Usd.Stage) -> None:
     assert _matches(_search(stage, text=r"^/World/Looks$", mode=prim_search.SearchMode.REGEX)) == ["/World/Looks"]
 
 
-def test_invalid_queries_raise(stage: Usd.Stage) -> None:
+@pytest.mark.parametrize(
+    "text",
+    [
+        "(",
+        "a{9999999999999999999}",  # a repetition count the engine overflows on
+        "(" * 1000 + "a" + ")" * 1000,  # nested past the compiler's recursion limit
+    ],
+    ids=["unclosed group", "overflowing repetition", "deep nesting"],
+)
+def test_invalid_queries_raise(stage: Usd.Stage, text: str) -> None:
     with pytest.raises(prim_search.SearchError):
-        _search(stage, text="(", mode=prim_search.SearchMode.REGEX)
+        _search(stage, text=text, mode=prim_search.SearchMode.REGEX)
 
 
 def test_a_search_stops_at_its_limit(stage: Usd.Stage) -> None:

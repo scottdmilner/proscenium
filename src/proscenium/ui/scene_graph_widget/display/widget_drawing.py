@@ -177,6 +177,10 @@ def draw_tree(
     tree = prim_tree_view.live_tree()
     if tree is None:
         layout.label(text="No stage" if prim_tree_view.tree is None else "Stage closed")
+        if prim_tree_view.selected_path is not None:
+            # A released stage sends no notice; the stage timer drops its selection and tells the host, as a draw
+            # can't write the properties.
+            widget_properties.schedule(view.run_stage_changes, 0.0)
         return
     status = prim_tree_view.search_status
     status_row = layout.row()

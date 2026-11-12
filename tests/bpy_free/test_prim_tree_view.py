@@ -240,9 +240,13 @@ def test_a_released_stage_leaves_an_expired_view(tmp_path: Path) -> None:
     # Opened here, not by the fixture, which pytest holds until the test ends; the listener doesn't hold it either.
     stage = open_stage_without_cache(copy_scene(Scene.SCENE_GRAPH, tmp_path) / "prim_kinds.usda")
     view = _view(stage)
+    view.select_path(Sdf.Path("/World/Sun"))
     del stage
     gc.collect()
     assert view.live_tree() is None
+    assert view.apply_pending_changes()  # no notice came; reading the changes drops the selection
+    assert view.selected_path is None
+    assert not view.apply_pending_changes()
     assert view.step(INTO, recursive=False) is None
 
 

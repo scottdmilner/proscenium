@@ -16,6 +16,7 @@ from . import (
     widget_keys,
     widget_operators,
     widget_properties,
+    widget_views,
 )
 
 # In registration order: property groups before what refers to them.
@@ -34,10 +35,11 @@ class _SceneGraphRegistrationState:
 @persistent
 def _file_loaded(*_args: object) -> None:
     # Loading a file replaces the window manager, whose properties aren't saved, and ends every modal operator; each
-    # window's key watcher starts again when it next draws a view.
+    # window's key watcher starts again when it next draws a view. It ends any text edit too.
     wm = bpy.context.window_manager
     if wm is not None:
         widget_properties.create_missing_view_properties(wm)
+    widget_views.stop_entering_search_text()
 
 
 def register() -> None:

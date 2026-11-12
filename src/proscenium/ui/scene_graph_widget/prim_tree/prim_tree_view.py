@@ -178,8 +178,14 @@ class PrimTreeView:
         self.search_status = SearchStatus(f"{matches} in {elapsed_ms:.0f} ms")
 
     def apply_pending_changes(self) -> bool:
-        """Read the stage changes the notices marked; returns whether there were any."""
+        """Read the stage changes the notices marked; returns whether there were any.
+
+        A released stage sends no notice, so this is also where a selection on it is dropped, as a change.
+        """
         pending_change, self.pending_change = self.pending_change, PendingChange.NONE
+        if self.tree is not None and self.tree.is_expired() and self.selected_path is not None:
+            self.selected_path = None
+            return True
         tree = self.live_tree()
         if tree is None or pending_change is PendingChange.NONE:
             return False

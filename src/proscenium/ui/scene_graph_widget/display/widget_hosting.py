@@ -80,8 +80,9 @@ def set_stage(name: str, stage: Usd.Stage | None) -> None:
 
 
 def selected_path(name: str) -> Sdf.Path | None:
-    """The path of the prim selected in a view, or None."""
-    return widget_views.scene_graph_view(name).prim_tree_view.selected_path
+    """The path of the prim selected in a view, or None, as when its stage has been released."""
+    prim_tree_view = widget_views.scene_graph_view(name).prim_tree_view
+    return prim_tree_view.selected_path if prim_tree_view.live_tree() is not None else None
 
 
 def select_prim(name: str, path: Sdf.Path | None) -> None:
