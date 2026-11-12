@@ -5,17 +5,17 @@ incremental.md "Affected Content".
 A refresh compares its plan with the plan of the generation the destination shows, held since this session published
 it (binding.runtime.held_plans), through the core's plan diff (change-matrix.md "Actions"). It prepares the partitions
 of the copies the diff builds, and of the kept copies whose partitions hold other resources; a kept copy that only
-moved, changed its bounds, or changed its participation is updated in place (local_updates). Without a held plan, as
+moved, changed its bounds, changed its participation, or holds a cached generation's keys is updated in place
+(local_updates), its action's entry replaced, so retirement removes the action. Without a held plan, as
 on a first synchronization, after reopening, or after an undo past the held plans, and on a requested full rebuild,
 every partition is prepared (AFF-04).
 
 A kept copy is rebuilt instead of updated in place when unmanaged content uses any of its partition's resources
 (CHG-06, OWN-08): anything but the destination collection, whose manifest names them, a scene linking it, whose view
 layers hold a base for each of its objects, and the partition's own resources. So a resource someone else uses is
-released intact, and a local update never changes what it uses. Provisional (M7 plan, C6b): a kept copy with cached
-keys is rebuilt, until synchronizing again removes them in place (C6c); so is one whose published resources are
-incomplete, as when the user deleted its object. A copy's published entries are those whose source entity is its
-source path: an action's with its object's.
+released intact, and a local update never changes what it uses. A kept copy whose published resources are
+incomplete, as when the user deleted its object, is rebuilt too. A copy's published entries are those whose source
+entity is its source path: an action's with its object's.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ class CopyUpdate:
     moved: bool  # its world matrix, and a sheared copy's split, differ
     bounds_changed: bool  # its bounds mesh is replaced, and its object pointed at the replacement
     participation_changed: bool  # its hide flags change
+    cached_keys_removed: bool  # its object's action, which keys cached time codes, is unassigned and retired
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +48,8 @@ class PartitionReplacement:
     """What a synchronization prepares, what it updates in place, and the published entries it replaces."""
 
     prepared_copy_indices: tuple[int, ...]  # in plan order
-    # The published entries of the partitions prepared anew and of the copies the plan no longer has, by entry key.
+    # The published entries of the partitions prepared anew, of the copies the plan no longer has, and of the
+    # actions of the copies whose cached keys are removed, by entry key.
     replaced_entry_keys: frozenset[str]
     # By copy index, in plan order: the kept copies updated in place, and what changes.
     updated_copies: Mapping[int, CopyUpdate] = field(default_factory=dict)
@@ -81,14 +83,14 @@ def changed_partitions(
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))
     participation = set(_indices(diff.participation_changed_copy_indices))
     keys_by_source: dict[str, set[str]] = {}
-    keyed: set[str] = set()  # the sources of copies with cached keys
+    action_keys: dict[str, str] = {}  # by source: the entry key of the action holding a copy's cached keys
     incomplete: set[str] = set()  # the sources of copies with a published resource gone
     for entry_key, entry in published.entries.items():
         if (identity := entry.identity) is None:
             continue
         keys_by_source.setdefault(identity.entity, set()).add(entry_key)
         if identity.role is manifests.RepresentationRole.ACTION:
-            keyed.add(identity.entity)
+            action_keys[identity.entity] = entry_key
         if entry.datablock is None:
             incomplete.add(identity.entity)
     sources = [entry.source_path for entry in plan.correspondence]
@@ -97,16 +99,17 @@ def changed_partitions(
     updated: dict[int, CopyUpdate] = {}
     for copy, old in enumerate(matched):
         source = sources[copy]
-        if old < 0 or copy in rebuilt or source in keyed | incomplete or source not in keys_by_source:
+        if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source:
             prepared.append(copy)
-        elif copy in moved | bounds | participation:
-            updated[copy] = CopyUpdate(copy in moved, copy in bounds, copy in participation)
+        elif copy in moved | bounds | participation or source in action_keys:
+            updated[copy] = CopyUpdate(copy in moved, copy in bounds, copy in participation, source in action_keys)
     shared = _used_elsewhere({sources[c] for c in updated}, keys_by_source, published, destination)
     for copy in [c for c in updated if sources[c] in shared]:
         del updated[copy]
         prepared.append(copy)
     prepared.sort()
     replaced = {key for copy in prepared for key in keys_by_source.get(sources[copy], ())}
+    replaced |= {action_keys[sources[c]] for c, change in updated.items() if change.cached_keys_removed}
     for old in _indices(diff.removed_previous_copy_indices):
         replaced |= keys_by_source.get(previous_sources[old], set())
     return PartitionReplacement(tuple(prepared), frozenset(replaced), updated)

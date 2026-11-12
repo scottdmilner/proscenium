@@ -5,9 +5,9 @@ refresh with nothing changed writes nothing, and so does one after an undo or re
 after reopening, or an undo past the held plans, a refresh rebuilds every partition, as a clean one does (AFF-04). On
 F-EDIT-SEQUENCE, each step's refresh displays what a clean binding's first synchronization of the same stage does
 (TINC-01), the copies the step doesn't touch or updates in place keep their objects, and a box whose bounds changed
-keeps its object, pointed at a new mesh of a later generation. A sheared copy moves in place, and a publication failing
-after local updates leaves every kept copy as it was. What a refresh writes is observed through the depsgraph, the
-record writes, and the IDs made (support/blender_writes.py).
+keeps its object, pointed at a new mesh of a later generation. A sheared copy moves in place, a keyed copy synchronized
+again loses its keys in place, and a publication failing after local updates leaves every kept copy as it was. What a
+refresh writes is observed through the depsgraph, the record writes, and the IDs made (support/blender_writes.py).
 """
 
 from __future__ import annotations
@@ -252,23 +252,62 @@ def test_a_failed_publication_undoes_its_local_updates(
         assert ownership.manifest(handle.binding_id) == manifest
 
 
+def _cached_at_last_time_code(handle: BindingHandle, scene: edit_sequence.EditSequenceScene) -> None:
+    """Synchronize handle at 0, cache scene's time codes, and show the last, whose keys aren't the plan's at 0."""
+    _synchronize(handle)
+    assert handle.cache(scene.cached_time_codes).state is not ResultState.FATAL_FAILURE
+    bpy.data.scenes["Scene"].frame_set(int(scene.cached_time_codes[-1]))
+
+
 def test_synchronizing_a_cached_generation_again_removes_its_keys(bindings: Bindings, tmp_path: Path) -> None:
-    # CHG-22 on F-EDIT-SEQUENCE "cached-again": the keyed copies' objects hold no animation once synchronized
-    # again at 0, the display a clean binding's, and the actions gone from the manifest.
+    # CHG-22 on F-EDIT-SEQUENCE "cached-again": synchronized again at 0 while showing a cached time code, each keyed
+    # copy keeps its object, which holds no animation and shows the plan's transform, so the display is a clean
+    # binding's; its action is gone from the manifest and from Blender, and every other copy keeps its object.
     with edit_sequence.edit_sequence(tmp_path) as scene:
         handle = _binding(bindings, scene.stage)
+        _cached_at_last_time_code(handle, scene)
+        before = _objects_by_source(handle)
+        keyed = {source for source, _ in scene.keyed_copies}
+        actions = []
+        for source in keyed:
+            obj = before[source]
+            assert isinstance(obj, bpy.types.Object) and obj.animation_data and obj.animation_data.action
+            actions.append(obj.animation_data.action)
         _synchronize(handle)
-        assert handle.cache(scene.cached_time_codes).state is not ResultState.FATAL_FAILURE
-        _synchronize(handle)
-        objects = _objects_by_source(handle)
-        for source, _ in scene.keyed_copies:
-            obj = objects[source]
-            assert isinstance(obj, bpy.types.Object)
-            assert obj.animation_data is None or obj.animation_data.action is None
+        assert _objects_by_source(handle) == before
+        for source in keyed:
+            obj = before[source]
+            assert isinstance(obj, bpy.types.Object) and obj.animation_data is None
+        assert not any(id_property_records.alive(action) for action in actions)
         manifest = ownership.manifest(handle.binding_id)
         assert isinstance(manifest, id_property_records.LoadedRecord)
         assert all(e.role is not RepresentationRole.ACTION for e in manifest.record.entries.values())
         assert _shown(handle) == _clean(bindings, scene.stage)
+
+
+def test_a_failed_publication_keeps_the_cached_keys(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CHG-05 for CHG-22's update: the manifest's write failing after Mover's keys were removed leaves its action and
+    # slot assigned, its transform as before, and the published records as they were.
+    with edit_sequence.edit_sequence(tmp_path) as scene:
+        handle = _binding(bindings, scene.stage)
+        _cached_at_last_time_code(handle, scene)
+        obj = _objects_by_source(handle)[edit_sequence.MOVER]
+        assert isinstance(obj, bpy.types.Object) and obj.animation_data is not None
+        action, slot, before = obj.animation_data.action, obj.animation_data.action_slot, _state(obj)
+        manifest = ownership.manifest(handle.binding_id)
+
+        def failing(*_args: object) -> None:
+            raise RuntimeError("injected manifest failure")
+
+        monkeypatch.setattr(manifests, "write_manifest_entries", failing)
+        result = handle.synchronize(0)
+        assert result.state is ResultState.FATAL_FAILURE
+        assert obj.animation_data is not None
+        assert (obj.animation_data.action, obj.animation_data.action_slot) == (action, slot)
+        assert _state(obj) == before
+        assert ownership.manifest(handle.binding_id) == manifest
 
 
 def test_a_deleted_object_is_rebuilt(bindings: Bindings, tmp_path: Path) -> None:

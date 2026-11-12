@@ -1,8 +1,10 @@
 """Local updates: kept copies changed in place at publication (change-matrix.md "Actions"), as the bridge's updates did.
 
-A kept copy that moved has its world matrix set, or a sheared copy its shear parent's world matrix and its object's
-basis below it; one whose participation changed has its hide flags set, all such copies' together, through a
-collection no scene links, since assigning one runs Blender's update, which resyncs every collection
+A kept copy that moved, or whose cached keys are removed, has its world matrix set, or a sheared copy its shear parent's
+world matrix and its object's basis below it; one holding a cached generation's keys has its object's animation data
+cleared first, as a copy's object has none when built, so its action, no longer in the manifest, is retired, and the
+transform it shows is the plan's; one whose participation changed has its hide flags set, all such copies' together,
+through a collection no scene links, since assigning one runs Blender's update, which resyncs every collection
 (application.prepare); and one whose bounds changed has its object pointed at a replacement bounds mesh. Each keeps its
 identity and its Blender selection.
 
@@ -12,7 +14,8 @@ replaces, so the new manifest names it there and the old one is retired, or rele
 it (OWN-08). It changes nothing published. apply_updates, at publication, reads the matrices and participation it sets
 from the plan's buffers, each value converted once where it's set and each view released before it returns (SNAP-13),
 and changes the kept copies, adding how to undo each change to the publication's undo, so
-a failure restores every kept object as it was: its data, its hide flags, and its transform, from its stored location,
+a failure restores every kept object as it was: its data, its action, its hide flags, and its transform,
+from its stored location,
 rotation, and scale, which setting a matrix again needn't give back ([M4 plan](M04-prototypes.md), E2). A
 replacement mesh takes the synchronization's next managed name (application.ManagedNames), which no other datablock
 has, so it needs no renaming once the old one is gone (DECISIONS.md "Managed object names").
@@ -93,7 +96,8 @@ def prepare_updates(
     """Each of updated's kept copies, by its index in plan, with its published objects; their replacement meshes made.
 
     Each replacement mesh is held in work under the published mesh's key, with that entry naming it, and named from
-    names, the synchronization's. Raises application.ResourceOperationError, naming the mesh, when making one fails;
+    names, the synchronization's. A copy whose cached keys are removed has its object's entry, in work, no longer
+    use its action's. Raises application.ResourceOperationError, naming the mesh, when making one fails;
     what was made before stays in work.
     """
     copies = sorted(updated)
@@ -124,15 +128,32 @@ def prepare_updates(
         bounds = application.local_bounds(plan, [c for c in copies if updated[c].bounds_changed], view)
         for copy in copies:
             change = updated[copy]
-            obj = published.entries[published_key(objects[copy])].datablock
+            object_key = published_key(objects[copy])
+            obj = published.entries[object_key].datablock
             parent = None if parents[copy] < 0 else published.entries[published_key(parents[copy])].datablock
             assert isinstance(obj, bpy.types.Object) and (parent is None or isinstance(parent, bpy.types.Object))
             mesh = None
             if change.bounds_changed:
                 name = names.next_name(resources[objects[copy]].source_entity_path.rsplit("/", 1)[-1])
                 mesh = _replacement_mesh(name, published_key(meshes[copy]), bounds[copy], published, work)
+            if change.cached_keys_removed:
+                _drop_action_use(object_key, keys, published, work)
             updates.append(KeptCopyUpdate(copy, change, obj, parent, mesh))
     return updates
+
+
+def _drop_action_use(
+    object_key: str,
+    keys: Mapping[manifests.CopyResourceIdentity, str],
+    published: manifests.Manifest,
+    work: PreparationResources,
+) -> None:
+    """Give work the published object entry under object_key, with the object's action removed from its dependencies."""
+    entry = published.entries[object_key]
+    assert entry.identity is not None  # a copy's object's
+    action_key = keys[entry.identity._replace(role=manifests.RepresentationRole.ACTION)]
+    uses = [key for key in entry.dependency_entry_keys if key != action_key]
+    work.manifest_entries[object_key] = dataclasses.replace(entry, dependency_entry_keys=uses)
 
 
 def _replacement_mesh(
@@ -173,7 +194,10 @@ def apply_updates(plan: _core.Plan, updates: Sequence[KeptCopyUpdate], undo: lis
             if update.bounds_mesh is not None:
                 undo.append(functools.partial(setattr, obj, "data", obj.data))
                 obj.data = update.bounds_mesh
-            if not update.change.moved:
+            if update.change.cached_keys_removed and (animation := obj.animation_data) is not None:
+                undo.append(functools.partial(_restore_action, obj, animation.action))
+                obj.animation_data_clear()
+            if not (update.change.moved or update.change.cached_keys_removed):
                 continue
             if (shear := shears[copy]) < 0:
                 undo.append(functools.partial(Transform.of(obj).restore, obj))
@@ -210,6 +234,10 @@ def _set_hide_flags(
             together.objects.foreach_set(flag, [not shown[update.copy_index] for update in updates])
     finally:
         bpy.data.batch_remove([together])
+
+
+def _restore_action(obj: bpy.types.Object, action: bpy.types.Action | None) -> None:
+    obj.animation_data_create().action = action  # its slot assigned again, as when key_time_codes assigned it
 
 
 def _restore_hide_flags(obj: bpy.types.Object, hide_viewport: bool, hide_render: bool) -> None:
