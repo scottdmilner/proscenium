@@ -67,11 +67,6 @@ def remove_icons() -> None:
         _TintedIconsState.previews = None
 
 
-def icon_names() -> list[str]:
-    """Every one of Blender's icons there's a mask for, by its icon name."""
-    return sorted(_masks())
-
-
 def _mask_icon_id(name: str, coverages: np.ndarray, color: widget_colors.RGB) -> int:
     """The number of a mask's icon in a color, its preview named for both and drawn the first time it's asked for."""
     rounded = widget_colors.rounded_color(color)

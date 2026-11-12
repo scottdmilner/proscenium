@@ -92,7 +92,6 @@ class PrimDetails:
     specialize_paths: tuple[str, ...]
     variant_selections: tuple[tuple[str, str], ...]  # (variant set name, selection), the selection empty if unset
     prototype_path: Sdf.Path | None  # an instance's prototype
-    prim_in_prototype_path: Sdf.Path | None  # an instance proxy's prim in its prototype
     authored_attribute_count: int
 
 
@@ -452,6 +451,5 @@ def _read_prim_details(prim: Usd.Prim) -> PrimDetails:
         specialize_paths=_arc_paths(arcs.specialize_paths),
         variant_selections=tuple((name, variant_sets.GetVariantSelection(name)) for name in variant_sets.GetNames()),
         prototype_path=prim.GetPrototype().GetPath() if prim.IsInstance() else None,
-        prim_in_prototype_path=prim.GetPrimInPrototype().GetPath() if prim.IsInstanceProxy() else None,
         authored_attribute_count=len(prim.GetAuthoredAttributes()),
     )
