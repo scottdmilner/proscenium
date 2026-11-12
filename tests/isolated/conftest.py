@@ -8,6 +8,8 @@ Fixtures:
 - `binary`: the Blender binary alone, for what the wheel already shows in another layer.
 - `runtime`: parametrized over the wheel and the Blender binary, for smoke tests
   that should also pass in the runtime users run.
+- `windowed_binary`: the Blender binary with a window, for what needs drawing and input events. Linux needs a
+  display for it: CI runs the tests under Xvfb.
 - `hydra_bridge`: the directory of M1b's compiled Hydra bridge, which M4's prototypes run. Built from its
   sources once per run, unless PROSCENIUM_HYDRA_BRIDGE names a directory holding a prebuilt one (CI on Linux).
 Without a binary, binary runs are skipped, unless PROSCENIUM_REQUIRE_BLENDER is set (CI).
@@ -19,6 +21,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from filelock import FileLock
@@ -44,19 +47,29 @@ def binary() -> Runtime:
     return _binary()
 
 
-@pytest.fixture(params=list(RuntimeKind))
+@pytest.fixture(params=[RuntimeKind.WHEEL, RuntimeKind.BINARY])
 def runtime(request: pytest.FixtureRequest) -> Runtime:
     return WHEEL if request.param is RuntimeKind.WHEEL else _binary()
+
+
+@pytest.fixture
+def windowed_binary() -> Runtime:
+    if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        _skip_or_fail("no display for Blender's window; run under xvfb-run")
+    return Runtime(RuntimeKind.WINDOWED_BINARY, _binary().blender_executable)
 
 
 def _binary() -> Runtime:
     blender = find_blender()
     if blender is None:
-        message = "Blender binary not found; set BLENDER"
-        if os.environ.get("PROSCENIUM_REQUIRE_BLENDER"):
-            pytest.fail(message)
-        pytest.skip(message)
+        _skip_or_fail("Blender binary not found; set BLENDER")
     return Runtime(RuntimeKind.BINARY, blender)
+
+
+def _skip_or_fail(message: str) -> NoReturn:
+    if os.environ.get("PROSCENIUM_REQUIRE_BLENDER"):
+        pytest.fail(message)
+    pytest.skip(message)
 
 
 @pytest.fixture(scope="session")
