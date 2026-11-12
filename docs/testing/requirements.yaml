@@ -852,6 +852,11 @@ requirements:
         fixtures: [F-FAILED-SETTINGS]
         delivery: M5
         oracle: "A publishing synchronization adds exactly one undo step, through the API and through an operator calling it, and undoing it restores the previous generation."
+      - id: UNDO-10
+        quote: "A synchronization that writes nothing, as a refresh with nothing changed, publishes nothing new and pushes no undo step"
+        delivery: M7
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH with undo steps pushed, after an undo restores a held generation, a refresh that writes nothing pushes no undo step, so a redo then restores the later generation."
       - id: UNDO-03
         quote: "A failed synchronization pushes no undo step."
         delivery: M5

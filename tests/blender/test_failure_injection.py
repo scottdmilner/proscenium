@@ -94,7 +94,7 @@ def test_a_failure_at_each_preparation_step_disposes_of_its_work(
         handle = _attempting(bindings, scene)
         published, before = _published(handle), datablocks()
         _failing_after(monkeypatch, held)
-        result = handle.synchronize(scene.attempted[1])
+        result = handle.synchronize(scene.attempted[1], full_rebuild=True)  # so every resource is prepared
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PREPARATION_FAILED]
         assert _published(handle) == published
         assert datablocks() == before

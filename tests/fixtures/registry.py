@@ -529,7 +529,7 @@ FIXTURES: dict[str, Fixture] = {
                 # A resource released intact for an unmanaged user is counted apart, never deleted.
                 Case("protected-user", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("STAB-04",), 1),
                 # After an undo or redo restores a held generation, an unchanged refresh writes nothing.
-                Case("after-undo", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "CHG-30"), 1),
+                Case("after-undo", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "CHG-30", "UNDO-10"), 1),
                 # After reopening, a refresh may rebuild everything, as a clean full rebuild would.
                 Case("after-reopen", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-04", "CHG-31"), 1),
                 # A requested full rebuild builds every partition, equal to a first synchronization.

@@ -122,7 +122,7 @@ def test_an_application_failure_aborts_the_attempt(
         removed = ("Collection", destination.session_uid)
         pushed.clear()
         INJECT[kind](monkeypatch, scene.prepared_before_failure, destination)
-        result = handle.synchronize(10)
+        result = handle.synchronize(10, full_rebuild=True)  # every partition prepared, as on a first one
         assert result.state is scene.outcome
         [diagnostic] = result.diagnostics
         assert not pushed

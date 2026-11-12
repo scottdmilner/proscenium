@@ -129,7 +129,7 @@ def prepare(
                 obj = bpy.data.objects.new(object_name, mesh)
                 work.track(keys[object_index], identities[object_index].role, obj)
                 made.append((object_index, obj))
-                work.staging_collection.objects.link(obj)
+                work.ensure_staging_collection().objects.link(obj)
                 obj.display_type = "BOUNDS"
                 hidden["hide_viewport"].append(not viewport[copy])
                 hidden["hide_render"].append(not render[copy])
@@ -141,7 +141,7 @@ def prepare(
                     parent = bpy.data.objects.new(f"{prefix}{next(ordinals):07d} {name} shear", None)
                     work.track(keys[parent_index], identities[parent_index].role, parent)
                     made.append((parent_index, parent))
-                    work.staging_collection.objects.link(parent)
+                    work.ensure_staging_collection().objects.link(parent)
                     hidden["hide_viewport"].append(False)
                     hidden["hide_render"].append(False)
                     parent.hide_select = True  # so a pick lands on the object
@@ -163,8 +163,9 @@ def prepare(
                     uses,
                     resource.object_index_in_copy,
                 )
-    for flag, values in hidden.items():
-        work.staging_collection.objects.foreach_set(flag, values)
+    if work.staging_collection is not None:  # none for no copies
+        for flag, values in hidden.items():
+            work.staging_collection.objects.foreach_set(flag, values)
 
 
 def key_time_codes(

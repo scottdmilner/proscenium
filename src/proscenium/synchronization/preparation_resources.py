@@ -12,7 +12,9 @@ retryable, with a cleanup diagnostic naming its ledger key, which no later attem
 everything writes nothing. One something else uses, as nothing should, is released intact.
 
 The staging collection isn't a resource: nothing uses it, so it isn't saved, and disposal or publication removes it.
-A leftover stays alive through the ledger's pointer to it, which is a user, linked in no collection.
+It's made only when the first prepared object needs it, since making a collection is a Blender write, and a refresh
+with nothing to prepare writes nothing (AFF-03). A leftover stays alive through the ledger's pointer to it, which is a
+user, linked in no collection.
 """
 
 from __future__ import annotations
@@ -41,7 +43,8 @@ class PreparationResources:
 
     binding_id: BindingId  # the binding preparing it, which owns it
     operation: cleanup_ledgers.OriginatingOperation
-    staging_collection: bpy.types.Collection  # holds the prepared objects; no scene links it
+    # Holds the prepared objects, and no scene links it; None until the first one (ensure_staging_collection).
+    staging_collection: bpy.types.Collection | None = None
     datablocks: dict[str, bpy.types.ID] = field(default_factory=dict)  # entry key -> datablock, in creation order
     roles: dict[str, manifests.RepresentationRole] = field(default_factory=dict)  # entry key -> its datablock's role
     manifest_entries: dict[str, manifests.ManifestEntry] = field(
@@ -50,6 +53,12 @@ class PreparationResources:
     rollback_actions: list[Callable[[], object]] = field(
         default_factory=list
     )  # undoes each change to a published resource
+
+    def ensure_staging_collection(self) -> bpy.types.Collection:
+        """The staging collection, made unlinked if there is none yet."""
+        if self.staging_collection is None:
+            self.staging_collection = bpy.data.collections.new("Proscenium prepared")
+        return self.staging_collection
 
     def track(self, entry_key: str, role: manifests.RepresentationRole, datablock: bpy.types.ID) -> None:
         """Hold a resource just created, before anything else can fail."""
@@ -71,13 +80,13 @@ def cleanup_tracking_diagnostic(binding_id: BindingId) -> Diagnostic | None:
 def new_preparation_resources(
     binding_id: BindingId, operation: cleanup_ledgers.OriginatingOperation
 ) -> PreparationResources:
-    """Create resource tracking for binding_id and its unlinked staging collection.
+    """Create resource tracking for binding_id, with no staging collection yet.
 
-    Raises as pending_cleanup.check_trackable does, having made nothing: work whose failed disposal the ledger couldn't
-    record is never prepared.
+    Raises as pending_cleanup.check_trackable does: work whose failed disposal the ledger couldn't record is never
+    prepared.
     """
     pending_cleanup.check_trackable()
-    return PreparationResources(binding_id, operation, bpy.data.collections.new("Proscenium prepared"))
+    return PreparationResources(binding_id, operation)
 
 
 def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
@@ -85,7 +94,8 @@ def dispose(work: PreparationResources) -> tuple[Diagnostic, ...]:
 
     Each that failed enters the ledger, retryable, with its diagnostic. Raises what writing the ledger raises.
     """
-    outcome = datablock_removal.remove_unused(work.datablocks, holders=[work.staging_collection])
+    staging = [] if work.staging_collection is None else [work.staging_collection]
+    outcome = datablock_removal.remove_unused(work.datablocks, holders=staging)
     pending: dict[str, cleanup_ledgers.LedgerEntry] = {}
     for entry_key, problem in outcome.pending_reasons_by_key.items():
         datablock, role = work.datablocks[entry_key], work.roles[entry_key]
@@ -135,8 +145,10 @@ def revert_published_resource_changes(work: PreparationResources) -> None:
 
 
 def remove_staging_and_clear_tracking(work: PreparationResources) -> None:
-    """Remove the staging collection and clear resource tracking and rollback callbacks."""
-    bpy.data.batch_remove([work.staging_collection])
+    """Remove the staging collection, if there is one, and clear resource tracking and rollback callbacks."""
+    if work.staging_collection is not None:
+        bpy.data.batch_remove([work.staging_collection])
+        work.staging_collection = None
     work.datablocks.clear()
     work.roles.clear()
     work.manifest_entries.clear()

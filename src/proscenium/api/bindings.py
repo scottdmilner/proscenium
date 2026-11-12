@@ -297,16 +297,18 @@ class Bindings:
                 *_unusable_binding_result(found).diagnostics, attempted_time_codes=() if given is None else (given,)
             )
         config = found.usable_config()
-        result = synchronization.synchronize(
+        outcome = synchronization.synchronize(
             binding_id, config, self.stages, self.published_plans, given, full_rebuild=full_rebuild
         )
+        result = outcome.result
         # Every failure before publication is fatal, and none after it (synchronization.synchronize), so it published.
         if result.state is not ResultState.FATAL_FAILURE:
             assert found.destination is not None  # a usable binding's
             generation = binding_state.read_generation(found.destination)
             assert isinstance(generation, id_property_records.LoadedRecord)  # the one just published
             self.published[binding_id] = generation.record
-            _push_undo("Synchronize USD Display")
+            if outcome.committed:  # one that wrote nothing is no undo step, so redo survives it (UNDO-10)
+                _push_undo("Synchronize USD Display")
         return result
 
     @_exclusive

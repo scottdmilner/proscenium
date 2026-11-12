@@ -7,6 +7,6 @@ theirs.
 
 from .cleanup_retry import retry_cleanup
 from .time_code_caching import cache
-from .transaction import synchronize
+from .transaction import SynchronizationOutcome, synchronize
 
-__all__ = ["cache", "retry_cleanup", "synchronize"]
+__all__ = ["SynchronizationOutcome", "cache", "retry_cleanup", "synchronize"]

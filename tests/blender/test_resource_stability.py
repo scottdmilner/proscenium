@@ -1,11 +1,11 @@
 """Resource stability on full rebuilds (lifecycle.md#resource-stability), and unmanaged users of managed content.
 
-On F-NO-OP-REFRESH, one drawn copy of each kind M7 draws, synchronized again unchanged, each time a full rebuild until
-Phase C's incremental refresh, and on F-UNMANAGED-USER, whose managed content a test gives unmanaged users before
-synchronizing again (lifecycle.md#ownership-and-lifecycle). Counts are by kind of managed resource: active ones are in
+On F-NO-OP-REFRESH, one drawn copy of each kind M7 draws, synchronized again unchanged, each time a requested full
+rebuild, so every partition is replaced, and on F-UNMANAGED-USER, whose managed content a test gives unmanaged users
+before rebuilding (lifecycle.md#ownership-and-lifecycle). Counts are by kind of managed resource: active ones are in
 the binding's manifest, with each object linked into the destination; pending ones are the ledger's; one released
-intact is in neither. Failures are injected by patching the removal module's function, so src/ has no hooks. Zero
-writes on an unchanged refresh (AFF-03) is Phase C's.
+intact is in neither. Failures are injected by patching the removal module's function, so src/ has no hooks. An
+unchanged refresh, which replaces nothing, is test_incremental_refresh.py's.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def test_unchanged_synchronizations_keep_their_counts(bindings: Bindings, tmp_pa
         assert clean.active[RepresentationRole.OBJECT] == len(scene.copies)
         assert clean.pending == Counter()
         for _ in range(SYNCHRONIZATIONS - 1):
-            result = handle.synchronize(0)
+            result = handle.synchronize(0, full_rebuild=True)
             assert (_counts(handle), _datablocks()) == (clean, datablocks)
             assert _content(result.diagnostics) == _content(first.diagnostics)
             assert result.pending_cleanup_diagnostics == ()
@@ -140,7 +140,7 @@ def test_failed_retirement_adds_only_tracked_inactive_leftovers(
         clean, datablocks = _counts(handle), _datablocks()
         _failing_removal(monkeypatch, lambda d: prim_name(d) == FAILING)
         for rebuild in range(1, SYNCHRONIZATIONS):
-            result = handle.synchronize(0)
+            result = handle.synchronize(0, full_rebuild=True)
             counts = _counts(handle)
             assert counts.active == clean.active
             assert counts.pending == Counter(
@@ -166,7 +166,7 @@ def test_a_retry_restores_the_clean_counts(bindings: Bindings, tmp_path: Path, m
         with monkeypatch.context() as failing:
             _failing_removal(failing, lambda d: prim_name(d) == FAILING)
             for _ in range(2):
-                handle.synchronize(0)
+                handle.synchronize(0, full_rebuild=True)
         assert _ledger(handle)
         result = handle.retry_cleanup()
         assert (result.state, result.diagnostics, result.pending_cleanup_diagnostics) == (ResultState.SUCCESS, (), ())
@@ -190,7 +190,7 @@ def test_a_resource_with_an_unmanaged_user_is_released_and_counted_apart(binding
         vertices = [v.co[:] for v in mesh.vertices]
         user = bpy.data.objects.new("Mine", mesh)
         _scene().collection.objects.link(user)
-        handle.synchronize(0)
+        handle.synchronize(0, full_rebuild=True)
         assert _counts(handle) == clean
         assert mesh not in {e.datablock for e in _manifest(handle).entries.values()}
         assert handle.retry_cleanup().state is ResultState.SUCCESS
@@ -262,7 +262,7 @@ def test_a_full_rebuild_leaves_unmanaged_users_as_they_were(bindings: Bindings, 
         mesh = users["mine"].data
         assert isinstance(mesh, bpy.types.Mesh)
         name, vertices = mesh.name, [v.co[:] for v in mesh.vertices]
-        assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
+        assert handle.synchronize(0, full_rebuild=True).state is not ResultState.FATAL_FAILURE
         assert {key: UnmanagedState.of(obj) for key, obj in users.items()} == before
         assert (mesh.name, [v.co[:] for v in mesh.vertices]) == (name, vertices)
         assert _managed(handle, incremental.USED, RepresentationRole.BOUNDS_MESH) != mesh
@@ -280,7 +280,7 @@ def test_a_retry_releases_a_leftover_given_an_unmanaged_user(
         mesh = _managed(handle, incremental.USED, RepresentationRole.BOUNDS_MESH)
         with monkeypatch.context() as failing:
             _failing_removal(failing, lambda d: d == mesh)
-            handle.synchronize(0)
+            handle.synchronize(0, full_rebuild=True)
         [entry] = _ledger(handle).values()
         assert entry.datablock == mesh
         user = bpy.data.objects.new("Mine", mesh)

@@ -7,7 +7,7 @@ of the milestone that settles them; **process** rows by tooling or CI. A row wit
 is filled in by its delivering milestone before implementation. **High** risk marks the rows M4's
 [risk matrix](../plans/M04-prototypes.md#risk-matrix) names.
 
-441 rows: 364 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6, M7.
+442 rows: 365 behavior, 17 contract, 60 process; 37 high risk; milestones started: M1, M1b, M2, M3, M4, M5, M6, M7.
 
 ## PROJECT.md
 
@@ -194,6 +194,7 @@ is filled in by its delivering milestone before implementation. **High** risk ma
 | [LFS-05](../spec/lifecycle.md#lifecycle-failure-safety) | M11 settles staging and rollback mechanisms, commit points | contract |  | M11 | 1 / M11 | `F-LIFECYCLE-FAILURE` | Set by M11. |
 | [UNDO-01](../spec/lifecycle.md#undo-and-runtime-state) | All persistent state (see Binding State) lives in Blender data | behavior |  | M5 | 1 / M12 | `F-FAILED-SETTINGS`, `F-PREPARATION-CLEANUP-FAILURE` | After save and reopen, the configuration, generation, last attempt, manifest, and ledger read as before; nothing they hold lives outside the .blend. |
 | [UNDO-02](../spec/lifecycle.md#undo-and-runtime-state) | Each synchronization that publishes is exactly one undo step. | behavior |  | M5 | 1 / M12 | `F-FAILED-SETTINGS` | A publishing synchronization adds exactly one undo step, through the API and through an operator calling it, and undoing it restores the previous generation. |
+| [UNDO-10](../spec/lifecycle.md#undo-and-runtime-state) | A synchronization that writes nothing, as a refresh with nothing changed, publishes nothing new and pushes no undo step | behavior |  | M7 | 1 / M12 | `F-NO-OP-REFRESH` | On F-NO-OP-REFRESH with undo steps pushed, after an undo restores a held generation, a refresh that writes nothing pushes no undo step, so a redo then restores the later generation. |
 | [UNDO-03](../spec/lifecycle.md#undo-and-runtime-state) | A failed synchronization pushes no undo step. | behavior |  | M5 | 1 / M12 | `F-FAILED-SETTINGS`, `F-PREPARATION-CLEANUP-FAILURE` | A failed attempt adds no undo step: undo afterwards restores the state before the last publication. |
 | [UNDO-04](../spec/lifecycle.md#undo-and-runtime-state) | With global undo disabled or in background mode, synchronization behaves the same but pushes no step. | behavior |  | M5 | 1 / M12 | `F-FAILED-SETTINGS` | With global undo off, and in background mode, the same synchronizations publish the same generations and add no undo step. |
 | [UNDO-09](../spec/lifecycle.md#undo-and-runtime-state) | pushes no undo step. Undo and redo restore a generation's cached time codes with the rest of it. | behavior |  | M5 | 1 / M12 | `F-CACHED-TIME-CODES` | cache adds no undo step; undoing the synchronization restores the earlier generation with its cached time codes and keys, and redo the later one with its own. |
