@@ -14,12 +14,16 @@
 // dirtied: downstream scene indices keep input containers between notices, so values fixed for good would go stale.
 // The UsdImaging data sources it hands out run on the filter's own stage globals (Globals), which give them the
 // chain's time and record what they flag as time-varying, so SetTime dirties exactly that, as
-// UsdImagingStageSceneIndex::SetTime does.
+// UsdImagingStageSceneIndex::SetTime does. Hydra doesn't notice edits to most of what it adds, so the filter listens
+// to the stage itself and dirties the prims concerned when the chain applies the stage's edits (ApplyPendingUpdates),
+// as the Hydra bridge's filter does.
 #pragma once
 
+#include <pxr/base/tf/notice.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/imaging/hd/filteringSceneIndex.h>
 #include <pxr/pxr.h>
+#include <pxr/usd/usd/notice.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/timeCode.h>
 #include <pxr/usdImaging/usdImaging/dataSourceStageGlobals.h>
@@ -29,6 +33,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace proscenium {
 
@@ -41,7 +46,7 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
   // The stage is held weakly: the stage scene index holds it until the chain is released.
   static SourceInfoSceneIndexRefPtr New(const PXR_NS::HdSceneIndexBaseRefPtr& input, const PXR_NS::UsdStagePtr& stage);
 
-  ~SourceInfoSceneIndex() override = default;
+  ~SourceInfoSceneIndex() override;
   SourceInfoSceneIndex(const SourceInfoSceneIndex&) = delete;
   SourceInfoSceneIndex& operator=(const SourceInfoSceneIndex&) = delete;
   SourceInfoSceneIndex(SourceInfoSceneIndex&&) = delete;
@@ -49,8 +54,11 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
 
   // Call before the stage scene index's SetTime, never alongside reads.
   void SetTime(PXR_NS::UsdTimeCode time);
-  // Stops adding anything and drops every container, so prims Hydra re-reads while the chain drops the stage aren't
-  // built again from USD. Call before the stage scene index's SetStage(nullptr), never alongside reads.
+  // Dirties the prims whose added values the stage's edits since the last call may have changed. Call after the stage
+  // scene index's ApplyPendingUpdates, never alongside reads.
+  void ApplyPendingUpdates();
+  // Stops listening and adding anything, and drops every container, so prims Hydra re-reads while the chain drops the
+  // stage aren't built again from USD. Call before the stage scene index's SetStage(nullptr), never alongside reads.
   void Detach();
 
   PXR_NS::HdSceneIndexPrim GetPrim(const PXR_NS::SdfPath& primPath) const override;
@@ -73,6 +81,8 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
   // Makes the cached container of `path` rebuild on its next access, including copies downstream scene indices
   // hold. Call with mutex_ held.
   void Invalidate(const PXR_NS::SdfPath& path) const;
+  // Queues the prims of the properties an edit changed whose added values may read them, until ApplyPendingUpdates.
+  void OnObjectsChanged(const PXR_NS::UsdNotice::ObjectsChanged& notice, const PXR_NS::UsdStageWeakPtr& sender);
 
   // The stage globals for the UsdImaging data sources the filter hands out: the chain's time, and a record of what
   // they flag as time-varying. Asset-path dependencies aren't tracked.
@@ -92,6 +102,7 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
 
   PXR_NS::UsdStagePtr stage_;
   PXR_NS::UsdTimeCode time_{0.0};  // the stage scene index's starting time
+  PXR_NS::TfNotice::Key noticeKey_;
   // Set once by New, so const members can hand containers a weak pointer to the filter.
   SourceInfoSceneIndexPtr self_;
   // One container per prim, built when first read and rebuilt only when its revision changes.
@@ -104,6 +115,10 @@ class SourceInfoSceneIndex final : public PXR_NS::HdSingleInputFilteringSceneInd
   mutable std::mutex mutex_;
   // Locators flagged as time-varying, per prim, dirtied on every time change.
   mutable PathMap<PXR_NS::HdDataSourceLocatorSet> timeVarying_;
+  // Prims given UsdImaging's prim data, since Hydra doesn't image them, whose every property it reads.
+  mutable std::unordered_set<PXR_NS::SdfPath, PXR_NS::SdfPath::Hash> supplied_;
+  // Properties the stage's edits changed since the last ApplyPendingUpdates, per prim.
+  PathMap<PXR_NS::TfTokenVector> pendingProperties_;
 };
 
 }  // namespace proscenium

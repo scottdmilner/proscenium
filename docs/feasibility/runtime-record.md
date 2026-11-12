@@ -1749,6 +1749,26 @@ The two candidate fixes for [the release above](#retiring-a-large-display-m6-pha
 - **M7 resyncs:** `datablock_removal` updates the view layers of each Scene the users name for an object, then reads the users again, so it costs nothing when no base is stale, as in a background run that pushes no step. That the resync's depsgraph update is work a window does at its next redraw anyway, so the cost moves rather than adds, is an inference, not measured.
 - **Not measured:** a windowed Blender, global undo off, the wheel, Linux and Windows.
 
+### Incremental capture (M7 Phase C)
+
+Captures from a kept scene-index chain, each against a full re-read (a new chain built and captured at the same time code), on ALab (10,151 prims in the chain) under load-all, in the binary (Blender 5.2.2), three processes per build, on an Apple M1 Max with 32 GB, on AC power (2026-11-11; load averages 34 to 50 read before each run, with Safari, its web content processes, and the window server the busiest, about three and a half cores between them in one reading). Two builds of the core were measured, one after the other: as built, and a temporary build whose chain ends in notice batching, Hydra's `HdsiPrimTypeNoticeBatchingSceneIndex`, which holds the notices passing through it until each `Flush()`, merging repeats and ordering them by prim type; it had one priority and was flushed on each capture, as the bridge's chain is. Notice batching is unrelated to the display's batches. Reproduce with `measure/incremental_capture_cost.py --repeats 3`. From the chain's first capture, in order: nothing changed; a translate op added, in the session layer, to the first mesh outside native instances; the time code one later; and that mesh's parent deactivated.
+
+| | Prims copied | Incremental (s, min to max): as built | with notice batching | Full re-read (s): as built | with notice batching |
+|---|---|---|---|---|---|
+| Nothing changed | 0 | 0.020 to 0.022 | 0.018 to 0.022 | 0.39 to 0.41 | 0.44 to 0.45 |
+| One transform | 1 | 0.018 to 0.021 | 0.018 to 0.022 | 0.40 to 0.41 | 0.44 to 0.46 |
+| Time change | 485 | 0.024 to 0.029 | 0.025 to 0.026 | 0.39 to 0.45 | 0.44 to 0.49 |
+| Resync | 0 | 0.018 to 0.025 | 0.020 to 0.022 | 0.39 to 0.43 | 0.44 to 0.47 |
+
+Building the chain took 0.31 to 0.35 s as built and 0.36 to 0.38 s with notice batching; the first capture 0.08 to 0.11 s and 0.09 to 0.10 s.
+
+**Findings:**
+- **An incremental capture costs about a twentieth of a full re-read,** 0.02 s against 0.4 s, since it builds no chain. With nothing changed it still lists every prim, which is most of its 0.02 s (inferred: it copies none).
+- **Every capture's plan equaled its full re-read's,** by copy count and world-matrix bytes, in every run of both builds. That is one scene and four edits; the bpy-free tests compare whole plans on more.
+- **Notice batching changed nothing measured:** both builds copied the same prims, and the incremental captures' ranges overlap. Its full re-reads were 0.04 to 0.05 s slower, which may be its build cost or the load. Capture turns the notices into a set of prims, so merging and ordering them saves nothing there (inferred).
+- **The resync copied nothing:** deactivating the parent removed its prims, and every other prim was shared.
+- **Not measured:** a quiet machine, edits inside native instances, larger time-varying content, global undo, the wheel, Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

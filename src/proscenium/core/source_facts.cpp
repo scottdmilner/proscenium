@@ -100,6 +100,15 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
 // prototypes or reading field files merely for a placeholder.
 bool ComputesExtent(const UsdPrim& prim) { return prim.IsA<UsdGeomGprim>() && !prim.IsA<UsdGeomMesh>(); }
 
+bool FactReadsProperty(const UsdPrim& prim, const TfToken& property) {
+  if (!prim) return false;
+  if (property == UsdGeomTokens->guideVisibility || property == UsdGeomTokens->proxyVisibility ||
+      property == UsdGeomTokens->renderVisibility || property == UsdGeomTokens->xformOpOrder)
+    return true;
+  if (property == UsdGeomTokens->ids && prim.IsA<UsdGeomPointInstancer>()) return true;
+  return ComputesExtent(prim);
+}
+
 HdContainerDataSourceHandle ComputedExtent(const UsdPrim& prim, UsdTimeCode time) {
   if (!ComputesExtent(prim)) return nullptr;
   VtVec3fArray extent;

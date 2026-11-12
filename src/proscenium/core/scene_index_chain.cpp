@@ -91,11 +91,15 @@ void SceneIndexChain::Build() {
   scene = HdsiNurbsApproximatingSceneIndex::New(scene);
   // Propagates PrimsDirtied along each prim's __dependencies, so a value computed from another is dirty with it.
   terminal_ = HdDependencyForwardingSceneIndex::New(scene);
+  // Only notices after the chain is built: the first capture copies every prim anyway.
+  terminal_->AddObserver(HdSceneIndexObserverPtr(&recorder_));
 }
 
 SceneIndexChain::~SceneIndexChain() { Release(); }
 
 void SceneIndexChain::Release() {
+  if (terminal_) terminal_->RemoveObserver(HdSceneIndexObserverPtr(&recorder_));
+  previous_.reset();
   if (sourceInfo_) sourceInfo_->Detach();
   // Destroying the stage scene index drops its stage reference.
   terminal_.Reset();
@@ -110,6 +114,9 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   // The chain's own: those posted while it was built, then while it moves to `time` and applies the stage's edits.
   Diagnostics chain;
   chain.swap(pending_);
+  // Taken now, so a capture that throws leaves none to share from: the notices it took would be lost.
+  const SnapshotPtr previous = std::move(previous_);
+  previous_.reset();
   // Depth-first, parents before children, so the retained scene index gets each parent first.
   SdfPathVector paths;
   {
@@ -117,6 +124,7 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
     sourceInfo_->SetTime(time);
     indices_.stageSceneIndex->SetTime(time);
     indices_.stageSceneIndex->ApplyPendingUpdates();
+    sourceInfo_->ApplyPendingUpdates();
     // As HdSceneIndexPrimView, with each prim's children listed under its source, since listing them can make
     // UsdImaging post about that prim.
     std::vector<SdfPath> stack{SdfPath::AbsoluteRootPath()};
@@ -130,14 +138,23 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
     }
     HarvestErrors(mark, SdfPath(), chain);
   }
+  const NoticedPrims noticed(recorder_.Take());
   // One parallel pass, as the bridge's capture copies: Hydra's reads are threadsafe, and nothing changes the chain
   // until the pass ends. Each prim's read opens its own mark, so an error is the prim's, and the collector attributes
   // the thread's warnings to it; one posted on a thread Hydra hands part of a read to names that thread's prim, or
   // none.
   std::vector<HdRetainedSceneIndex::AddedPrimEntry> entries(paths.size());
   std::vector<Diagnostics> errors(paths.size());
+  std::vector<char> copied(paths.size(), 0);  // char, since vector<bool>'s packed bits would race
   WorkParallelForN(paths.size(), [&](std::size_t begin, std::size_t end) {
     for (std::size_t i = begin; i < end; ++i) {
+      if (previous && !noticed.Contains(paths[i])) {
+        if (const HdSceneIndexPrim kept = previous->sceneIndex->GetPrim(paths[i]); kept.dataSource) {
+          entries[i] = {paths[i], kept.primType, kept.dataSource};
+          continue;
+        }
+      }
+      copied[i] = 1;
       const TfDiagnosticCollector::ScopedSource source(paths[i]);
       const TfErrorMark mark;
       const HdSceneIndexPrim prim = terminal_->GetPrim(paths[i]);
@@ -151,15 +168,25 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> warned;
   for (Diagnostic& warning : warnings.TakeDiagnostics())
     (warning.sourcePath.IsEmpty() ? chain : warned[warning.sourcePath]).push_back(std::move(warning));
-  // A prim's diagnostics name its path, so they never repeat another's.
+  // A prim's diagnostics name its path, so they never repeat another's. A shared prim keeps the ones its copy was
+  // made with, and gains any listing its children posts again.
   Diagnostics prims;
+  std::unordered_map<SdfPath, Diagnostics, SdfPath::Hash> primDiagnostics;
+  std::size_t copiedPrimCount = 0;
   std::set<std::pair<DiagnosticCode, std::string>> attributed;
   for (std::size_t i = 0; i < paths.size(); ++i) {
     Diagnostics own;
-    AppendUniqueDiagnostics(errors[i], own);
+    if (copied[i] != 0) {
+      ++copiedPrimCount;
+      AppendUniqueDiagnostics(errors[i], own);
+    } else if (const auto kept = previous->primDiagnostics.find(paths[i]); kept != previous->primDiagnostics.end()) {
+      own = kept->second;
+    }
     if (const auto found = warned.find(paths[i]); found != warned.end()) AppendUniqueDiagnostics(found->second, own);
+    if (own.empty()) continue;
     for (const Diagnostic& diagnostic : own) attributed.emplace(diagnostic.code, diagnostic.message);
     prims.insert(prims.end(), own.begin(), own.end());
+    primDiagnostics.emplace(paths[i], std::move(own));
   }
   // A chain diagnostic a prim's repeats is the same problem, reported with less: UsdImaging posts while the chain is
   // built what it posts again while a capture lists that prim's children.
@@ -170,8 +197,10 @@ SnapshotPtr SceneIndexChain::Capture(UsdTimeCode time) {
   AppendUniqueDiagnostics(chain, diagnostics);
   diagnostics.insert(diagnostics.end(), prims.begin(), prims.end());
   const UsdStagePtr stage = handle_.Stage();
-  return std::make_shared<Snapshot>(
-      Snapshot{time, scene, UsdGeomGetStageMetersPerUnit(stage), UsdGeomGetStageUpAxis(stage), std::move(diagnostics)});
+  previous_ = std::make_shared<Snapshot>(Snapshot{time, scene, UsdGeomGetStageMetersPerUnit(stage),
+                                                  UsdGeomGetStageUpAxis(stage), std::move(diagnostics),
+                                                  std::move(primDiagnostics), copiedPrimCount});
+  return previous_;
 }
 
 }  // namespace proscenium

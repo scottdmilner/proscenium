@@ -42,6 +42,7 @@ Python_add_library(_core MODULE WITH_SOABI
   prim_record.cpp
   revision_cached_container.cpp
   scene_index_chain.cpp
+  scene_index_notices.cpp
   snapshot.cpp
   source_facts.cpp
   source_info_scene_index.cpp

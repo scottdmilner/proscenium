@@ -39,6 +39,12 @@ struct SourceInfoTokens {
 PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged,
                                                const PXR_NS::UsdImagingDataSourceStageGlobals& globals);
 
+// Whether a fact the filter adds for `prim` reads its `property`, which Hydra doesn't dirty an edit to: its authored
+// purpose visibility, the op order a transform-stack reset is read from, a point instancer's ids, or any property of a
+// prim whose extent USD computes for the filter (ComputesExtent), which may read it. A prim's type and an instance
+// root's prototype change only with a resync, which Hydra reports.
+bool FactReadsProperty(const PXR_NS::UsdPrim& prim, const PXR_NS::TfToken& property);
+
 // Whether USD computes the extent of `prim` for the filter when none is authored: gprims other than meshes, so the
 // curves and points Hydra doesn't draw as meshes, and the implicit shapes and NURBS patches its filters turn into
 // meshes that carry no extent of their own. USD computes none for a volume.

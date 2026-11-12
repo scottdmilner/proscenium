@@ -10,7 +10,9 @@
 #include <pxr/pxr.h>
 #include <pxr/usd/usd/timeCode.h>
 
+#include <cstddef>
 #include <memory>
+#include <unordered_map>
 
 #include "diagnostics.h"
 
@@ -24,7 +26,9 @@ const PXR_NS::TfTokenVector& PlannedPrimvars();
 
 struct Snapshot {
   PXR_NS::UsdTimeCode timeCode;
-  PXR_NS::HdRetainedSceneIndexRefPtr sceneIndex;  // every prim of the chain's terminal; never modified after capture
+  // Every prim of the chain's terminal; never modified after capture. A capture shares the containers of the prims no
+  // notice named since the chain's capture before it.
+  PXR_NS::HdRetainedSceneIndexRefPtr sceneIndex;
   // The stage's metadata as UsdGeom reads it, its fallbacks included, which coordinate conversion reads (transforms.md
   // "Coordinate Conversion").
   double metersPerUnit;
@@ -32,6 +36,9 @@ struct Snapshot {
   // The Tf errors and warnings posted while capturing, each exact repeat once: first the chain's own, with no source
   // (those posted while building it join its first capture), then each prim's, about its Hydra path, in prim order.
   Diagnostics diagnostics;
+  // Each prim's own diagnostics, by Hydra path, so a later capture that shares the prim's copy shares them too.
+  std::unordered_map<PXR_NS::SdfPath, Diagnostics, PXR_NS::SdfPath::Hash> primDiagnostics;
+  std::size_t copiedPrimCount;  // prims this capture copied, rather than shared with the chain's capture before it
 };
 
 using SnapshotPtr = std::shared_ptr<const Snapshot>;

@@ -271,7 +271,9 @@ PXR_BOOST_PYTHON_MODULE(_core) {
       .def("capture", &Capture, bp::arg("time_code"))
       .def("release", &SceneIndexChain::Release)
       .add_property("released", &SceneIndexChain::Released);
-  // Opaque: only planning reads a snapshot.
-  const bp::class_<SnapshotView> snapshot("Snapshot", bp::no_init);
+  // Opaque: only planning reads a snapshot. How many prims a capture copied is for tests and measurements of
+  // incremental capture only.
+  bp::class_<SnapshotView>("Snapshot", bp::no_init)
+      .add_property("_copied_prim_count", +[](const SnapshotView& s) { return s.data->copiedPrimCount; });
   WrapPlan();
 }

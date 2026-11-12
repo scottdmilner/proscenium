@@ -3,11 +3,13 @@
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/overlayContainerDataSource.h>
 #include <pxr/imaging/hd/retainedDataSource.h>
+#include <pxr/imaging/hd/sceneIndexObserver.h>
 #include <pxr/usd/usdGeom/boundable.h>
 #include <pxr/usd/usdGeom/curves.h>
 #include <pxr/usd/usdGeom/pointBased.h>
 #include <pxr/usd/usdGeom/points.h>
 #include <pxr/usdImaging/usdImaging/dataSourcePrim.h>
+#include <pxr/usdImaging/usdImaging/types.h>
 #include <pxr/usdImaging/usdImaging/usdPrimInfoSchema.h>
 
 #include <cstdint>
@@ -55,8 +57,13 @@ SourceInfoSceneIndexRefPtr SourceInfoSceneIndex::New(const HdSceneIndexBaseRefPt
   SourceInfoSceneIndexRefPtr index =
       TfCreateRefPtr(new SourceInfoSceneIndex(input, stage));  // NOLINT(cppcoreguidelines-owning-memory)
   index->self_ = SourceInfoSceneIndexPtr(index);
+  if (stage)
+    index->noticeKey_ =
+        TfNotice::Register(index->self_, &SourceInfoSceneIndex::OnObjectsChanged, UsdStageWeakPtr(stage));
   return index;
 }
+
+SourceInfoSceneIndex::~SourceInfoSceneIndex() { TfNotice::Revoke(noticeKey_); }
 
 SourceInfoSceneIndex::SourceInfoSceneIndex(const HdSceneIndexBaseRefPtr& input, UsdStagePtr stage)
     : HdSingleInputFilteringSceneIndexBase(input),
@@ -68,7 +75,9 @@ void SourceInfoSceneIndex::Invalidate(const SdfPath& path) const {
 }
 
 void SourceInfoSceneIndex::Detach() {
+  TfNotice::Revoke(noticeKey_);
   const std::scoped_lock lock(mutex_);
+  pendingProperties_.clear();
   for (auto& [path, cached] : cache_) *cached.revisionCounter = kForgotten;
   cache_.clear();
   stage_ = nullptr;
@@ -90,10 +99,48 @@ void SourceInfoSceneIndex::SetTime(UsdTimeCode time) {
   if (!dirtied.empty()) _SendPrimsDirtied(dirtied);
 }
 
+// Queued, as the stage scene index queues its own, and sent when the chain applies the stage's edits. Edits inside a
+// prototype are reported at its path (/__Prototype_N/...), which prototype propagation forwards to its copies.
+void SourceInfoSceneIndex::OnObjectsChanged(const UsdNotice::ObjectsChanged& notice, const UsdStageWeakPtr&) {
+  const std::scoped_lock lock(mutex_);
+  if (!stage_) return;
+  auto consider = [&](const SdfPath& path) {
+    if (!path.IsPropertyPath()) return;
+    const SdfPath primPath = path.GetPrimPath();
+    if (supplied_.count(primPath) != 0 || FactReadsProperty(stage_->GetPrimAtPath(primPath), path.GetNameToken()))
+      pendingProperties_[primPath].push_back(path.GetNameToken());
+  };
+  for (const SdfPath& path : notice.GetChangedInfoOnlyPaths()) consider(path);
+  for (const SdfPath& path : notice.GetResyncedPaths()) consider(path);
+}
+
+void SourceInfoSceneIndex::ApplyPendingUpdates() {
+  HdSceneIndexObserver::DirtiedPrimEntries dirtied;
+  {
+    const std::scoped_lock lock(mutex_);
+    const HdDataSourceLocatorSet facts{HdDataSourceLocator(SourceInfoTokens::Schema())};
+    for (const auto& [primPath, properties] : pendingProperties_) {
+      HdDataSourceLocatorSet locators = facts;
+      const UsdPrim prim = stage_ ? stage_->GetPrimAtPath(primPath) : UsdPrim();
+      // A computed extent may follow any of them.
+      if (prim && ComputesExtent(prim)) locators.insert(HdExtentSchema::GetDefaultLocator());
+      // What UsdImaging itself would dirty for them on a prim it has no adapter for.
+      if (prim && supplied_.count(primPath) != 0)
+        locators.insert(UsdImagingDataSourcePrim::Invalidate(prim, TfToken(), properties,
+                                                             UsdImagingPropertyInvalidationType::Update));
+      dirtied.emplace_back(primPath, locators);
+      Invalidate(primPath);
+    }
+    pendingProperties_.clear();
+  }
+  if (!dirtied.empty()) _SendPrimsDirtied(dirtied);
+}
+
 // The prim's source facts; for a prim Hydra doesn't image, UsdImaging's prim data; for curves and points without an
 // authored extent, USD's computed one. One container per prim, built from USD when first read after it is dirtied.
 HdContainerDataSourceHandle SourceInfoSceneIndex::Added(const UsdPrim& prim, bool imaged) const {
   const std::scoped_lock lock(mutex_);
+  if (!imaged) supplied_.insert(prim.GetPath());
   if (auto found = cache_.find(prim.GetPath()); found != cache_.end()) return found->second.container;
   const SourceInfoSceneIndexPtr self = self_;
   auto revisionCounter = std::make_shared<std::atomic<uint64_t>>(0);
@@ -161,6 +208,8 @@ void SourceInfoSceneIndex::_PrimsRemoved(const HdSceneIndexBase&,
     for (const auto& entry : entries) {
       for (auto it = timeVarying_.begin(); it != timeVarying_.end();)
         it = it->first.HasPrefix(entry.primPath) ? timeVarying_.erase(it) : std::next(it);
+      for (auto it = supplied_.begin(); it != supplied_.end();)
+        it = it->HasPrefix(entry.primPath) ? supplied_.erase(it) : std::next(it);
       // A removed prim's container may still be read downstream; it then builds nothing.
       for (auto it = cache_.begin(); it != cache_.end();) {
         if (!it->first.HasPrefix(entry.primPath)) {

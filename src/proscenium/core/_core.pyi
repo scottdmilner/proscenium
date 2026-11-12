@@ -28,6 +28,9 @@ class SceneIndexChain:
 class Snapshot:
     """An immutable capture at one time code, which only planning reads."""
 
+    @property
+    def _copied_prim_count(self) -> int: ...  # prims it copied rather than shared, for tests and measurements only
+
 class Diagnostic:
     """A source-side problem the core reports; Python builds the binding's Diagnostic from it.
 
