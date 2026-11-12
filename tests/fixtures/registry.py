@@ -574,8 +574,14 @@ FIXTURES: dict[str, Fixture] = {
                     1,
                 ),
                 # Discovery: each step's source-affected entities found apart from what depends on them, edits
-                # coalesced or their notices lost, and notices treated as hints.
-                Case("discovery", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("DISC-06", "DISC-07", "DISC-08", "API-15"), 1),
+                # coalesced or their notices lost, notices treated as hints, and a lost one found by verification.
+                Case(
+                    "discovery",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("DISC-06", "DISC-07", "DISC-08", "API-15", "DIAG-17"),
+                    1,
+                ),
                 # Between a step's edit and its refresh, the binding reports it may be out of date.
                 Case("out-of-date", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("INSP-09",), 1),
                 # Points moved and removed, with authored ids and without.

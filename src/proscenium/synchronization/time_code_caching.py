@@ -95,12 +95,14 @@ def cache(
     )
     if isinstance(planned, Diagnostic):
         return Result(*own, planned, attempted_time_codes=attempted)
-    own = (*own, *_plans_diagnostics(binding_id, planned))
+    own = (*own, *planned.verification_diagnostics, *_plans_diagnostics(binding_id, planned.plans))
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.CACHE)
     before = _published_manifest(manifest)
     try:
-        changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
+        changes = application.key_time_codes(
+            dict(zip(new, planned.plans, strict=True)), before, published.time_code, work
+        )
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)

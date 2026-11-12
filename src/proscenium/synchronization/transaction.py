@@ -117,8 +117,9 @@ def _attempt(
     )
     if isinstance(planned, Diagnostic):
         return (*own, planned)
-    [plan] = planned
-    own = (*own, *evaluation.plan_diagnostics(binding_id, plan))  # content's, so they join the generation's too
+    [plan] = planned.plans
+    # Content's, so they join the generation's too, with the verification mode's.
+    own = (*own, *planned.verification_diagnostics, *evaluation.plan_diagnostics(binding_id, plan))
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.SYNCHRONIZE)
     published = manifests.Manifest({}) if manifest is None else manifest.record

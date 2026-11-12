@@ -148,6 +148,7 @@ Distinguish:
 - Invalid data.
 - Unavailable source.
 - Source state (informational): layers displayed with unsaved in-process edits ([Layer State and Reloading](source-access.md#layer-state-and-reloading)).
+- Verification (informational): an incremental capture that differed from a full re-read, reported only under the opt-in verification mode ([Change Discovery](incremental.md#change-discovery)).
 - Pending cleanup (retryable disposal of prepared or obsolete resources).
 - Fatal failure.
 
@@ -157,7 +158,7 @@ Aggregate repeated problems. A problem repeated across many source entities is r
 
 Each synchronization reports one result state, derived from its own diagnostics. Cleanup an earlier attempt left pending is reported in its cleanup status and doesn't change it.
 
-- **Success:** no diagnostics in any category other than source state.
+- **Success:** no diagnostics in any category other than source state and verification.
 - **Completed with issues:** at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure.
 - **Fatal failure,** including an unavailable source.
 

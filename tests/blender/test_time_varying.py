@@ -64,8 +64,8 @@ def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
 
     def spy(*args: object, **kwargs: object) -> object:
         planned = original(*args, **kwargs)  # ty: ignore[invalid-argument-type] - passed through as given
-        assert isinstance(planned, list), planned  # no fatal diagnostic
-        got.extend(planned)
+        assert isinstance(planned, planning.DisplayPlans), planned  # no fatal diagnostic
+        got.extend(planned.plans)
         return planned
 
     monkeypatch.setattr(planning, "evaluate_display_plans", spy)

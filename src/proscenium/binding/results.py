@@ -33,6 +33,7 @@ class DiagnosticCategory(StrEnum):
     INVALID_DATA = "invalid data"
     UNAVAILABLE_SOURCE = "unavailable source"  # fatal
     SOURCE_STATE = "source state"  # informational: it doesn't change the result state
+    VERIFICATION = "verification"  # informational: a capture that differed from a full re-read, under the opt-in mode
     PENDING_CLEANUP = "pending cleanup"  # retryable disposal of prepared or obsolete resources
     FATAL_FAILURE = "fatal failure"
 
@@ -71,6 +72,7 @@ class DiagnosticCode(StrEnum):
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
     # The destination is also linked into a scene whose unit scale differs from the target scene's, which the display
     # is planned for (transforms.md#coordinate-conversion).
+    CAPTURE_MISMATCH = "capture-mismatch"  # an incremental capture differed from a full re-read (verification mode)
     UNIT_SCALE_MISMATCH = "unit-scale-mismatch"
     # Source-side content, which the compiled core reports (core.diagnostics.h).
     PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
@@ -108,6 +110,7 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DESTINATION_INVALID: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.CAPTURE_MISMATCH: (DiagnosticCategory.VERIFICATION, Severity.INFO),
     DiagnosticCode.UNIT_SCALE_MISMATCH: (DiagnosticCategory.LOSSY_CONVERSION, Severity.WARNING),
     DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
@@ -184,6 +187,7 @@ class Diagnostic:
 # The state each category gives a result on its own (pipeline.md#diagnostics); a result's is its worst diagnostic's.
 _STATE_OF: dict[DiagnosticCategory, ResultState] = {
     DiagnosticCategory.SOURCE_STATE: ResultState.SUCCESS,
+    DiagnosticCategory.VERIFICATION: ResultState.SUCCESS,
     DiagnosticCategory.UNSUPPORTED: ResultState.COMPLETED_WITH_ISSUES,
     DiagnosticCategory.APPROXIMATION: ResultState.COMPLETED_WITH_ISSUES,
     DiagnosticCategory.LOSSY_CONVERSION: ResultState.COMPLETED_WITH_ISSUES,

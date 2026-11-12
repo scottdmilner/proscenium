@@ -47,6 +47,7 @@
 - Repeated application: several unchanged synchronizations follow [Resource Stability](../spec/lifecycle.md#resource-stability), with stable active counts, stable total managed counts when disposal succeeds, separately tracked leftovers during disposal failure, and count recovery after explicit cleanup.
 - Incremental refresh, for each change-matrix case M7's content covers: the display then holds what a clean full rebuild does, the affected-resource sets are the expected ones, unaffected content keeps its identities and isn't rewritten, and selections whose identities remain valid survive; repeated edits, inherited changes, and repartitioning; old and new dependencies when structure changes; missed or coalesced notices; on `F-EDIT-SEQUENCE`; `F-NO-OP-REFRESH` with zero unnecessary writes, and `F-SAME-VALUES`.
 - A requested full rebuild, `synchronize(full_rebuild=True)`: it equals a first synchronization, and recovers from a change the kept chain was made to miss (API-15, DISC-07, DISC-08).
+- The opt-in verification mode, `PROSCENIUM_VERIFY_CAPTURE`: a missed change reported as a verification diagnostic, with the full re-read displayed (DIAG-17).
 - Retirement after an undo push: synchronizing again after the API pushed its undo step, as with a window, removes the obsolete display; tests in background mode push none unless they patch it on.
 - The M5 failure-injection tests, rerun unchanged against the real application layer.
 - Application-time resource failures abort the transaction unless the plan authorized a fallback: `F-APPLICATION-FAILURE`.

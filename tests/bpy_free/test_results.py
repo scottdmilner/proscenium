@@ -45,7 +45,7 @@ def test_each_category_gives_the_state_the_spec_names() -> None:
     expected = (
         {c: ResultState.COMPLETED_WITH_ISSUES for c in issues}
         | {c: ResultState.FATAL_FAILURE for c in fatal}
-        | {DiagnosticCategory.SOURCE_STATE: ResultState.SUCCESS}
+        | {c: ResultState.SUCCESS for c in (DiagnosticCategory.SOURCE_STATE, DiagnosticCategory.VERIFICATION)}
     )
     assert results._STATE_OF == expected  # noqa: SLF001
     assert expected.keys() == set(DiagnosticCategory)

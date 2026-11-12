@@ -369,9 +369,14 @@ requirements:
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "On F-PREPARATION-CLEANUP-FAILURE, a later synchronization that succeeds reports success, with the earlier leftovers in its cleanup status and not among its own diagnostics."
       - id: DIAG-09
-        quote: "Success: no diagnostics in any category other than source state."
+        quote: "Success: no diagnostics in any category other than source state and verification."
         fixtures: [F-DIRTY-LAYER]
         oracle: "F-DIRTY-LAYER's synchronization reports success, holding only source-state diagnostics."
+      - id: DIAG-17
+        quote: "Verification (informational): an incremental capture that differed from a full re-read, reported only under the opt-in verification mode"
+        delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, with PROSCENIUM_VERIFY_CAPTURE set, a synchronization whose kept chain was made to miss an edit reports a capture-mismatch verification diagnostic naming each drawn copy that differs, which leaves its result state as its other diagnostics give it, and displays what a clean full rebuild does; with no miss it reports none, and without the variable it captures once."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
         fixtures: [F-RETIREMENT-FAILURE, F-UNSUPPORTED-CONTENT]
