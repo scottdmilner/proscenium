@@ -52,6 +52,12 @@ class StageRegistry:
         if (stages := self._stages.get(binding_id)) is not None:
             stages.release()
 
+    def release_all(self) -> None:
+        """Release every binding's stages and forget them, as after a file is loaded."""
+        for stages in self._stages.values():
+            stages.release()
+        self._stages.clear()
+
     def prune(self, existing: Collection[BindingId]) -> None:
         """Drop evaluation stages of bindings that are gone, keeping attachments until release(binding_id).
 

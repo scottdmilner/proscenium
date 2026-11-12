@@ -16,4 +16,4 @@ Code in other units reaches it through the modules `__init__.py` exports ([impor
 ## Records read when called
 
 - **Every lookup reads the records** as they are when it's called, and every write writes them; nothing is held between calls, so a file load, undo, redo, or removal needs nothing done, and no lookup can return a removed datablock: Blender clears a removed datablock's pointers in the records.
-- **Only the stages are runtime state.** `addon.py`'s handlers drop them all when a file is loaded and prune them after undo and redo.
+- **Only the stages are runtime state,** with the chain each keeps over its evaluation stage. `addon.py`'s handlers release them all when a file is loaded and prune them after undo and redo.

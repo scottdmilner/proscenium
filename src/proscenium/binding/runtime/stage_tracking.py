@@ -47,5 +47,8 @@ class BindingStageTracker:
             self._registry.prune(copy_detection.candidates_by_binding().keys())
 
     def clear(self) -> None:
-        """Drop every binding's stages, leaving each binding with no source stage or attachment."""
-        self._registry = stage_registry.StageRegistry()
+        """Drop every binding's stages, leaving each binding with no source stage or attachment.
+
+        Each is released, so its kept chain holds no stage.
+        """
+        self._registry.release_all()

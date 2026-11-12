@@ -3,6 +3,9 @@
 A synchronization plans its one time code, and a cache call each it caches. Nothing here changes Blender data, so a
 failure only reports: an expected one is a fatal diagnostic, never an exception (API-04). The source's layers are
 watched while it's captured, and one that changes meanwhile discards what was captured (CONS-03).
+
+Each capture is from the binding's kept chain (BindingStages.keep_chain), which synchronizations and cache calls share,
+built when there is none. A capture that fails or is discarded releases it, so the next is from a new chain.
 """
 
 from __future__ import annotations
@@ -70,12 +73,14 @@ def evaluate_display_plans(
     """
     try:
         with binding_stages.monitor_evaluation_layer_changes() as changed:
-            chain = _core.SceneIndexChain(evaluation_stage)
             try:
+                chain = _kept_chain(binding_stages, evaluation_stage)
                 snapshots = [chain.capture(time_code) for time_code in time_codes]
-            finally:
-                chain.release()  # the core never keeps the stage alive
+            except BaseException:
+                binding_stages.release_kept_chain()  # it may have applied only some of the stage's edits
+                raise
             if changed:  # what was captured may mix the source before and after the change (CONS-03)
+                binding_stages.release_kept_chain()
                 message = "A contributing layer changed during evaluation, so the attempt was discarded"
                 return Diagnostic(
                     DiagnosticCode.SOURCE_CHANGED, binding_id, message, layer_identifiers=tuple(sorted(changed))
@@ -90,3 +95,13 @@ def evaluate_display_plans(
         return [_core.plan(snapshot, planned, context) for snapshot in snapshots]
     except Exception as error:  # noqa: BLE001
         return Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}")
+
+
+def _kept_chain(binding_stages: stages.BindingStages, evaluation_stage: Usd.Stage) -> _core.SceneIndexChain:
+    """The binding's kept chain over evaluation_stage, built and kept when there is none."""
+    chain = binding_stages.kept_chain
+    if isinstance(chain, _core.SceneIndexChain) and not chain.released:
+        return chain
+    chain = _core.SceneIndexChain(evaluation_stage)
+    binding_stages.keep_chain(chain)
+    return chain

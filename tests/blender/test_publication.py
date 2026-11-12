@@ -89,7 +89,7 @@ def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Syn
         handle.release()  # a source reason: the caller's stage is no longer attached
         return
     module, name = {
-        SynchronizationFailureStep.EVALUATE: (_core, "SceneIndexChain"),
+        SynchronizationFailureStep.EVALUATE: (_core.SceneIndexChain, "capture"),
         SynchronizationFailureStep.PLAN: (_core, "plan"),
         SynchronizationFailureStep.PREPARE: (application, "prepare"),
         SynchronizationFailureStep.PUBLISH: (publication, "publish"),
