@@ -22,10 +22,10 @@ consume a resource, such as a texture that disappeared, come with M9's content.
 The roles are a copy's, so each prepared resource takes the key of the published entry with its identity, or a new one
 (manifests.existing_or_new_entry_keys), and the entries preparation makes are the manifest a publication writes.
 
-A cache call has it key the published copies' transforms at the time codes it caches, in an action per object
-(key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the keys it
-added and unassigns the actions it made. A shear that changes over time, cached bounds, visibility, and content
-appearing at a cached time code are Phase D's of M7.
+A cache call has it key the transforms of the published copies that vary at the time codes it caches, in an action
+per object (key_time_codes), holding how to undo each change in the prepared work first, so a failing call removes the
+keys it added and unassigns the actions it made. A shear that changes over time, cached bounds, visibility, and
+content appearing at a cached time code are Phase D's of M7.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ from mathutils import Matrix
 from ..binding.persistence import manifests
 
 if TYPE_CHECKING:
-    from collections.abc import Buffer, Callable, Iterable, Iterator, Mapping, Sequence
+    from collections.abc import Buffer, Callable, Collection, Iterable, Iterator, Mapping, Sequence
 
     from ..core import _core
     from .preparation_resources import PreparationResources
@@ -192,16 +192,23 @@ def prepare(
             work.staging_collection.objects.foreach_set(flag, values)
 
 
-def key_time_codes(
-    plans: Mapping[float, _core.Plan], published: manifests.Manifest, own: float, work: PreparationResources
+def key_time_codes(  # noqa: PLR0913 - the plans, what they key, and the generation they key
+    plans: Mapping[float, _core.Plan],
+    varying_sources: Collection[str] | None,
+    published: manifests.Manifest,
+    own: float,
+    cached_before: Sequence[float],
+    work: PreparationResources,
 ) -> dict[str, manifests.ManifestEntryChange]:
-    """Key each published copy's transform at each of plans' time codes; the manifest changes it makes.
+    """Key the transform of each published copy of varying_sources at each of plans' time codes; the manifest changes.
 
-    Each change to a published object is undoable through work.rollback_actions. A copy's object first keyed gets an
-    action, made and held in work, and is keyed at own, the generation's time code, as it shows it, too. Keys are
-    constant, so a frame shows the latest key at or before it. The changes are each new action's entry, with its
-    object's identity, and its object's, using it. A copy the published generation lacks, as one appearing only at a
-    cached time code, is Phase D's. Raises whatever Blender raises.
+    varying_sources names copies by source entity, or is None for every copy. Each change to a published object is
+    undoable through work.rollback_actions. A copy's object first keyed gets an action, made and held in work, and is
+    keyed as it shows itself at own, the generation's time code, and at cached_before, the time codes cached before,
+    where it showed the same, since it wasn't keyed. Keys are constant, so a frame shows the latest key at or before
+    it. The changes are each new action's entry, with its object's identity, and its object's, using it. A copy the
+    published generation lacks, as one appearing only at a cached time code, is Phase D's. Raises whatever Blender
+    raises.
     """
     keys = {identity: key for key, e in published.entries.items() if (identity := e.identity) is not None}
     changes: dict[str, manifests.ManifestEntryChange] = {}
@@ -211,6 +218,8 @@ def key_time_codes(
             object_indices = objects.tolist()
         for copy, object_index in enumerate(object_indices):
             resource = resources[object_index]
+            if varying_sources is not None and resource.source_entity_path not in varying_sources:
+                continue
             object_identity = manifests.CopyResourceIdentity(
                 manifests.RepresentationRole(resource.role), resource.source_entity_path, resource.object_index_in_copy
             )
@@ -223,7 +232,7 @@ def key_time_codes(
             action_identity = object_identity._replace(role=manifests.RepresentationRole.ACTION)
             if action_identity not in keys:
                 action_key = keys[action_identity] = manifests.new_entry_key()
-                _new_action(obj, action_key, own, work)
+                _new_action(obj, action_key, (own, *cached_before), work)
                 entry = published.entries[object_key]
                 changes[action_key] = manifests.ManifestEntryChange(
                     entry.source_entity_paths, action_identity.role, [], entry.object_index_in_copy
@@ -243,15 +252,17 @@ def key_time_codes(
     return changes
 
 
-def _new_action(obj: bpy.types.Object, action_key: str, own: float, work: PreparationResources) -> None:
-    """Give obj an action, held in work under action_key, keyed at own with the transform obj shows."""
+def _new_action(obj: bpy.types.Object, action_key: str, shown_at: Iterable[float], work: PreparationResources) -> None:
+    """Give obj an action, held in work under action_key, keyed at each of shown_at with the transform obj shows."""
     action = bpy.data.actions.new(obj.name)
     work.track(action_key, manifests.RepresentationRole.ACTION, action)
     work.rollback_actions.append(
         obj.animation_data_clear
     )  # a copy's object has no animation data before its first action
     obj.animation_data_create().action = action
-    _insert_keys(action, obj, own, obj.matrix_basis, work)
+    basis = obj.matrix_basis.copy()
+    for time_code in shown_at:
+        _insert_keys(action, obj, time_code, basis, work)
 
 
 def _insert_keys(

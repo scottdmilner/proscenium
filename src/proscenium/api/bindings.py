@@ -328,7 +328,7 @@ class Bindings:
         found = self._require_binding(binding_id)
         if not found.usable:
             return _unusable_binding_result(found)
-        return synchronization.cache(binding_id, found.usable_config(), self.stages, given)
+        return synchronization.cache(binding_id, found.usable_config(), self.stages, self.published_plans, given)
 
     @_not_while_exclusive
     @_reporting_cleanup
