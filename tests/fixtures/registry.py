@@ -588,8 +588,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("point-instancers", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-20", "AFF-01"), 1),
                 # Publication failing after a step: its local updates are undone with the rest of the attempt.
                 Case("publication-failure", SYNC, FAILURE, ("CHG-05", "TXN-12"), 1),
-                # From the scene as it starts: a change of payload policy builds or retires Leaf's copy, and
-                # purposes including guide build Guide's.
+                # From the scene as it starts: a change of payload policy builds or retires Leaf's copy, and the
+                # viewport's purposes without proxy retire Proxy's.
                 Case("payload-policy", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-23",), 1),
                 Case("purposes", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-24",), 1),
                 # Coordinate conversion and unit scale: every world matrix updated in place, or nothing written.

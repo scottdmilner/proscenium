@@ -11,8 +11,8 @@
 # - Instances holds two instanceable references to Prototypes/Crate, whose Box is drawn through each;
 # - Tagged is a point instancer with authored ids 1, 2, and 3, and Numbered one with none, each point a copy of
 #   its Pebble prototype;
-# - Mover's translate is sampled at 0 and 10, for cached time codes; Guide is a mesh of guide purpose, drawn
-#   only when a destination's purposes include guide;
+# - Mover's translate is sampled at 0 and 10, for cached time codes; Proxy is a mesh of proxy purpose, drawn
+#   in the viewport only while its purposes include proxy, as the defaults' do, and never in the default render;
 # - Far comes from edit_sequence_sub.usda, for a reload of that layer rewritten on disk.
 (
     defaultPrim = "World"
@@ -190,13 +190,13 @@ def Xform "World"
         uniform token[] xformOpOrder = ["xformOp:translate"]
     }
 
-    def Mesh "Guide"
+    def Mesh "Proxy"
     {
         float3[] extent = [(0, 0, 0), (1, 1, 0)]
         int[] faceVertexCounts = [4]
         int[] faceVertexIndices = [0, 1, 2, 3]
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
-        uniform token purpose = "guide"
+        uniform token purpose = "proxy"
         double3 xformOp:translate = (3, 15, 0)
         uniform token[] xformOpOrder = ["xformOp:translate"]
     }

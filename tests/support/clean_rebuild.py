@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access import BindingId
+    from proscenium.binding.source_access import BindingId, binding_settings
 
     from .bounds_check import DisplayedCopy
 
@@ -54,9 +54,22 @@ def display_state(binding_id: BindingId) -> DisplayState:
     )
 
 
-def clean_rebuild(bindings: Bindings, stage: Usd.Stage) -> DisplayState:
-    """What a clean binding's first synchronization of stage displays; the binding is released after."""
+def clean_rebuild(
+    bindings: Bindings, stage: Usd.Stage, settings: binding_settings.RequestedSettings | None = None
+) -> DisplayState:
+    """What a clean binding's first synchronization of stage displays, with settings, else the defaults.
+
+    The binding is released after.
+    """
     clean = bindings.create_binding(bpy.data.scenes["Scene"], name="Clean")
+    if settings is not None:
+        changed = clean.set_settings(
+            payload_policy=settings.payload_policy,
+            coordinate_conversion=settings.coordinate_conversion,
+            viewport_purposes=settings.viewport_purposes,
+            render_purposes=settings.render_purposes,
+        )
+        assert changed.state is not ResultState.FATAL_FAILURE
     assert clean.attach(stage).state is not ResultState.FATAL_FAILURE
     assert clean.synchronize(0).state is not ResultState.FATAL_FAILURE
     try:

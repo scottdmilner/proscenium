@@ -36,7 +36,7 @@ type StageEdit = Callable[[Usd.Stage], object]
 GROUP, A, B = "/World/Group", "/World/Group/A", "/World/Group/B"
 ODD, FOG, SHAPE, BODY = "/World/Odd", "/World/Fog", "/World/Shape", "/World/Shape/Body"
 DORMANT, ADDED, RENAMED, MOVED_ODD = "/World/Dormant", "/World/Group/Added", "/World/Group/Renamed", "/World/Group/Odd"
-LEAF, MOVER, GUIDE, FAR = "/World/Payloaded/Leaf", "/World/Mover", "/World/Guide", "/World/Far"
+LEAF, MOVER, PROXY, FAR = "/World/Payloaded/Leaf", "/World/Mover", "/World/Proxy", "/World/Far"
 LEFT, RIGHT, CRATE_BOX = "/World/Instances/Left", "/World/Instances/Right", "/Prototypes/Crate/Box"
 TAGGED, NUMBERED = "/World/Tagged", "/World/Numbered"
 
@@ -60,7 +60,7 @@ def _point(instancer: str, element: str) -> CopyIdentity:
 
 INITIAL_COPIES = frozenset(
     {
-        *map(_plain, (A, B, ODD, FOG, BODY, LEAF, MOVER, FAR)),
+        *map(_plain, (A, B, ODD, FOG, BODY, LEAF, MOVER, PROXY, FAR)),
         _instanced(LEFT),
         _instanced(RIGHT),
         *(_point(TAGGED, f"__id_{point_id}") for point_id in (1, 2, 3)),
@@ -299,7 +299,7 @@ class EditSequenceScene:
     initial_copies: frozenset[CopyIdentity]  # under the default settings, before any step
     steps: tuple[EditStep, ...]  # applied in order, each after the one before
     payloaded_copies: frozenset[CopyIdentity]  # drawn only while payloads load
-    guide_copies: frozenset[CopyIdentity]  # drawn only when a destination's purposes include guide
+    proxy_copies: frozenset[CopyIdentity]  # drawn only while a destination's purposes include proxy
     cached_time_codes: tuple[float, ...]  # cached after synchronizing at 0, then synchronized at 0 again
     keyed_copies: frozenset[CopyIdentity]  # the copies the cache keys: their keys go when synchronized again
     sub_layer_path: Path  # edit_sequence_sub.usda, which holds Far
@@ -347,7 +347,7 @@ def edit_sequence(dest: Path) -> Generator[EditSequenceScene]:
         initial_copies=INITIAL_COPIES,
         steps=_steps(),
         payloaded_copies=frozenset({_plain(LEAF)}),
-        guide_copies=frozenset({_plain(GUIDE)}),
+        proxy_copies=frozenset({_plain(PROXY)}),
         cached_time_codes=(5.0, 10.0),
         keyed_copies=frozenset({_plain(MOVER)}),
         sub_layer_path=root.parent / "edit_sequence_sub.usda",

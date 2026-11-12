@@ -11,7 +11,7 @@ A refresh compares the new plan with the plan of the generation the destination 
 - **Full rebuild:** every partition is prepared anew, as for a first synchronization.
 - Local updates are made at publication, and publication undoes them if it fails.
 - A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact.
-- A refresh writes only what its actions name. A resource the comparison finds equal is not written.
+- A refresh writes only what its actions name. A resource the comparison finds equal is not written. The generation record and the last attempt are written when what they record changes (the applied settings, the unit scale, the time code, or the source revision), even when no resource is.
 - A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement.
 
 ## Cases
@@ -30,12 +30,12 @@ A refresh compares the new plan with the plan of the generation the destination 
 | A prim made instanceable, or no longer instanceable | The instance root | The drawn copies beneath it, whose instance contexts change | Their partitions retired and new ones built, since a copy's identity includes its instance context |
 | A prim inside a native instance's shared contents changed | The prim in its source | Its drawn copies in every instance | Each copy acted on by the cases above |
 | A point instancer's points, ids, or prototypes changed | The instancer | The drawn copies of the points that changed | Each copy acted on by the cases above; with authored ids, the other points' copies are kept; without them, a point's index is its identity, so a point added or removed renumbers every later point, and each index's copy is compared with the one published at that index; one whose point now draws another prototype has another source path, so it is retired and another built |
-| The time code synchronized changed | The prims whose values differ at it | The drawn copies whose planned content differs | Each copy acted on by the cases above; when no values differ, nothing is written |
+| The time code synchronized changed | The prims whose values differ at it | The drawn copies whose planned content differs | Each copy acted on by the cases above; when no values differ, no resource is written |
 | A generation with cached time codes synchronized again | None | Every kept drawn copy with cached keys | A local update removing its keys, and its animation data retired |
 | The payload policy changed | The payloads loaded or unloaded | Their contents' drawn copies | As a prim loaded or unloaded through a payload |
 | A destination's purposes changed | None | Every drawn copy whose participation changed | As a change of purpose |
 | Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on | None | Every drawn copy | A local update of every world matrix |
-| The target scene's unit scale changed while coordinate conversion is off | None | None | Nothing written |
+| The target scene's unit scale changed while coordinate conversion is off | None | None | No resource written |
 | The representation version changed | None | Every managed resource | A full rebuild |
 | A reload reread layers | The prims whose composed state the reread opinions changed | Their drawn copies | Each copy acted on by the cases above |
 | A stage attached in place of another | The prims whose composed state differs | Their drawn copies | Each copy acted on by the cases above |

@@ -126,14 +126,14 @@ def test_payloaded_copies(scene: edit_sequence.EditSequenceScene) -> None:
     assert set(_drawn(unloaded)) == scene.initial_copies - scene.payloaded_copies
 
 
-def test_guide_copies(scene: edit_sequence.EditSequenceScene) -> None:
-    guides = {
+def test_proxy_copies(scene: edit_sequence.EditSequenceScene) -> None:
+    proxies = {
         identity
-        for identity in scene.guide_copies
-        if UsdGeom.Imageable(scene.stage.GetPrimAtPath(identity[0])).ComputePurpose() == UsdGeom.Tokens.guide
+        for identity in scene.proxy_copies
+        if UsdGeom.Imageable(scene.stage.GetPrimAtPath(identity[0])).ComputePurpose() == UsdGeom.Tokens.proxy
     }
-    assert guides == scene.guide_copies
-    assert not scene.guide_copies & set(_drawn(scene.stage))
+    assert proxies == scene.proxy_copies
+    assert scene.proxy_copies <= set(_drawn(scene.stage))
 
 
 def test_keyed_copies(scene: edit_sequence.EditSequenceScene) -> None:

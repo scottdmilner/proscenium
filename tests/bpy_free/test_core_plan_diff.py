@@ -134,9 +134,10 @@ def _replanned(
     ids=["viewport", "render"],
 )
 def test_a_destinations_purposes_change_participation(scene: EditSequenceScene, settings: _core.PlanSettings) -> None:
-    # A destination without default: every copy, each of default purpose and visible, leaves that destination only.
+    # A destination without default: every visible copy of default purpose, all but Proxy's, leaves that destination
+    # only. Proxy's is shown in the viewport through proxy, and in neither render.
     previous, plan = _replanned(scene.stage, settings, CONTEXT)
-    assert _changes(previous, plan) == _expected(participation_changed=scene.initial_copies)
+    assert _changes(previous, plan) == _expected(participation_changed=scene.initial_copies - scene.proxy_copies)
 
 
 def test_coordinate_conversion_moves_every_copy(scene: EditSequenceScene) -> None:
@@ -147,10 +148,12 @@ def test_coordinate_conversion_moves_every_copy(scene: EditSequenceScene) -> Non
 
 
 def test_a_copy_can_change_in_several_ways_at_once(scene: EditSequenceScene) -> None:
-    # Conversion at a unit scale of 2 and a viewport without default: every copy moved and its participation changed.
+    # Conversion at a unit scale of 2 and a viewport without default: every copy moved, and the participation of each
+    # but Proxy's, which the viewport shows through proxy, changed.
     settings = _core.PlanSettings(["proxy"], evaluation.RENDER_PURPOSES, coordinate_conversion=True)
     previous, plan = _replanned(scene.stage, settings, _core.PlanningContext(2.0, 1))
-    assert _changes(previous, plan) == _expected(moved=scene.initial_copies, participation_changed=scene.initial_copies)
+    changed = scene.initial_copies - scene.proxy_copies
+    assert _changes(previous, plan) == _expected(moved=scene.initial_copies, participation_changed=changed)
 
 
 def test_one_copys_three_local_updates_are_each_listed(scene: EditSequenceScene) -> None:
