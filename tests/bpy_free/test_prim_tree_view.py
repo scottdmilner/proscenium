@@ -36,6 +36,12 @@ def _view(stage: Usd.Stage, changes: list[None] | None = None) -> PrimTreeView:
     return view
 
 
+def _row_index(view: PrimTreeView, path: str) -> int:
+    row_index = view.tree.row_index(Sdf.Path(path)) if view.tree is not None else None
+    assert row_index is not None
+    return row_index
+
+
 def _selected(view: PrimTreeView) -> str:
     return str(view.selected_path)
 
@@ -156,6 +162,56 @@ def test_a_selected_prim_leaving_the_stage_is_deselected(stage: Usd.Stage) -> No
     assert view.selected_path is None
     view.select_path(Sdf.Path("/World/NoSuchPrim"))
     assert view.selected_path is None
+
+
+def test_selecting_a_prim_reads_the_pending_changes_first(stage: Usd.Stage) -> None:
+    # Before the owner reads the changes: /World's row holds an expired prim, and /World/New's parent had no row.
+    view = _view(stage)
+    stage.RemovePrim("/World")
+    stage.DefinePrim("/World/New/Child")
+    assert view.pending_change is PendingChange.HIERARCHY
+    row_index = view.select_path(Sdf.Path("/World/New/Child"))
+    assert view.pending_change is PendingChange.NONE
+    assert view.tree is not None
+    assert row_index is not None
+    assert str(view.tree.rows[row_index].path) == "/World/New/Child"
+    assert not view.apply_pending_changes()  # the owner's read finds nothing left
+    assert view.active_row_index() == row_index
+
+
+def test_input_on_a_row_drawn_before_a_pending_change_finds_its_prim_after_it(stage: Usd.Stage) -> None:
+    view = _view(stage)
+    assert view.tree is not None
+    view.toggle_row(_row_index(view, "/World"))
+    drawn_paths = [str(row.path) for row in view.tree.rows]
+    looks_row = drawn_paths.index("/World/Looks")
+    stage.RemovePrim("/World/Geometry")  # before Looks, so its row moves up
+    view.toggle_row(looks_row)
+    assert view.tree.expanded_paths >= {Sdf.Path("/World"), Sdf.Path("/World/Looks")}
+    assert view.pending_change is PendingChange.NONE
+    stage.RemovePrim("/World/Camera")
+    view.select_row(drawn_paths.index("/World/Sun"))
+    assert _selected(view) == "/World/Sun"
+
+
+def test_input_on_a_removed_prims_row_does_nothing(stage: Usd.Stage) -> None:
+    view = _view(stage)
+    world_row = view.select_path(Sdf.Path("/World"))
+    assert world_row is not None
+    stage.RemovePrim("/World")
+    view.toggle_row(world_row)  # its row held an expired prim
+    assert view.selected_path is None
+    assert view.tree is not None
+    assert "/World" not in [str(row.path) for row in view.tree.rows]
+    assert not view.tree.expanded_paths
+    view.select_path(Sdf.Path("/World_Override_Only"))
+    stage.RemovePrim("/World_Override_Only")
+    view.select_row(len(view.tree.rows) - 1)  # the last row drawn, now gone
+    assert view.selected_path is None
+    view.select_path(Sdf.Path("/_Crate/Lid"))
+    stage.RemovePrim("/_Crate")
+    view.step(INTO, recursive=False)  # from the first row, the selected one gone
+    assert view.selected_path is None or view.tree.has_prim(view.selected_path)
 
 
 def test_a_hidden_selection_stays(stage: Usd.Stage) -> None:

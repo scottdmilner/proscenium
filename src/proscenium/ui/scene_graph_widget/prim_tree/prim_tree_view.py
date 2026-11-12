@@ -99,18 +99,19 @@ class PrimTreeView:
         return None if tree is None or self.selected_path is None else tree.row_index(self.selected_path)
 
     def select_row(self, row_index: int | None) -> None:
-        """Select the prim of a row, or nothing."""
+        """Select the prim of a row drawn before any pending changes, or nothing."""
+        row_index = self._row_index_after_pending_changes(row_index)
         tree = self.live_tree()
-        if tree is None or row_index is None or not 0 <= row_index < len(tree.rows):
-            self.selected_path = None
-        else:
-            self.selected_path = tree.rows[row_index].path
+        self.selected_path = tree.rows[row_index].path if tree is not None and row_index is not None else None
 
     def select_path(self, path: Sdf.Path) -> int | None:
         """Select a prim, revealing its row; returns the row, or None if a search hides it.
 
-        A path the stage has no prim at selects nothing.
+        A path the stage has no prim at selects nothing. It reads the pending stage changes first, since the path
+        may name a prim added since: revealing it in the rows from before could expand a removed prim, or miss
+        a new parent.
         """
+        self.apply_pending_changes()
         tree = self.live_tree()
         if tree is None or not tree.has_prim(path):
             self.selected_path = None
@@ -119,13 +120,15 @@ class PrimTreeView:
         return tree.reveal(path)
 
     def toggle_row(self, row_index: int, recursive: bool = False) -> None:
-        """Expand or collapse a row, keeping the selection."""
+        """Expand or collapse a row drawn before any pending changes, keeping the selection."""
+        current_row_index = self._row_index_after_pending_changes(row_index)
         tree = self.live_tree()
-        if tree is not None and 0 <= row_index < len(tree.rows):
-            tree.toggle(row_index, recursive)
+        if tree is not None and current_row_index is not None:
+            tree.toggle(current_row_index, recursive)
 
     def step(self, direction: StepDirection, recursive: bool) -> int | None:
         """Move through the tree from the keys, from the selected row (or the first), and select where it lands."""
+        self.apply_pending_changes()  # the selected row is found by its path, in the rows after them
         tree = self.live_tree()
         if tree is None or not tree.rows:
             return None
@@ -192,6 +195,22 @@ class PrimTreeView:
         else:
             tree.forget_prim_details()
         return True
+
+    def _row_index_after_pending_changes(self, row_index: int | None) -> int | None:
+        """A row drawn before the pending changes, as its prim's row after they're read; None if it has none.
+
+        Input names a row by its index in the rows last drawn, which a hierarchy change pending since then makes
+        stale: the row may hold a removed prim, and the same index another prim after the refresh.
+        """
+        tree = self.live_tree()
+        if tree is None or row_index is None or not 0 <= row_index < len(tree.rows):
+            return None
+        if self.pending_change is not PendingChange.HIERARCHY:
+            self.apply_pending_changes()  # the rows stay
+            return row_index
+        path = tree.rows[row_index].path
+        self.apply_pending_changes()
+        return tree.row_index(path) if tree.has_prim(path) else None
 
     def _stage_changed(self, notice: Usd.Notice.ObjectsChanged, _sender: Usd.Stage) -> None:
         # Adding or removing a property resyncs its path, not its prim's, and changes no row.

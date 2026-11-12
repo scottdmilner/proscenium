@@ -61,7 +61,7 @@ def _on_active_row_changed(properties: Any, _context: Any) -> None:
     widget_views.set_entering_search_text(view.name, is_entering=False)  # a click on a row ends typing
     before = view.prim_tree_view.selected_path
     view.prim_tree_view.select_row(properties.active_row_index)
-    widget_views.notify_selection(view, before)
+    sync_and_notify(view, before)  # selecting reads any pending stage changes, which may change the rows
 
 
 def _on_search_changed(properties: Any, _context: Any) -> None:
