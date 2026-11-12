@@ -79,10 +79,10 @@ class BindingStages:
     The source is held until explicit release so its layers and unsaved edits have a clear lifetime.
     Layers are evaluated as loaded; only reload() rereads them.
 
-    The chain kept over the evaluation stage (keep_chain) lives until a change it isn't vouched to follow: the
-    evaluation stage dropped, as on release, replacement by another stage's layers, or pruning; another payload policy,
-    mask, muting, or interpolation applied to it; or a reload. Each releases it, so a released stage expires (SRC-02),
-    and the next capture is from a new chain.
+    The chain kept over the evaluation stage (keep_chain) follows what the stage's notices carry: edits, reloads, and
+    another payload policy, mask, muting, or interpolation applied to it. It lives until the evaluation stage is
+    dropped, as on release, replacement by another stage's layers, or pruning, which releases it, so a released stage
+    expires (SRC-02), and the next capture is from a new chain.
 
     The source revision changes with anything the evaluation stage evaluates: an edit to one of its layers, a
     reload that rereads one, a caller's setting or a payload policy that an acquisition matches, and every
@@ -199,8 +199,8 @@ class BindingStages:
         """
         stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if self._payload_policy != payload_policy:
-            # A reused stage: never reopened, so the session layer's opinions stay.
-            self.release_kept_chain()
+            # A reused stage: never reopened, so the session layer's opinions stay, and the kept chain hears the
+            # payloads load or unload.
             if payload_policy is binding_settings.PayloadPolicy.LOAD_ALL:
                 stage.Load()
             else:
@@ -224,10 +224,8 @@ class BindingStages:
             unknown = sorted(set(layers) - by_identifier.keys())
             if unknown:
                 raise ValueError(f"Not contributing layers of the binding: {', '.join(unknown)}")
-            self.release_kept_chain()
             Sdf.Layer.ReloadLayers({by_identifier[identifier] for identifier in layers})
             return
-        self.release_kept_chain()
         # A reload that changes composition can bring in a stale layer another tool holds.
         reloaded: set[Sdf.Layer] = set()
         while pending := set(contributing_layers(stage)) - reloaded:
@@ -256,15 +254,12 @@ class BindingStages:
             self._listener = Tf.Notice.Register(Usd.Notice.ObjectsChanged, lambda *_: revisions.advance(), stage)
         elif stage.GetPopulationMask() != attached.GetPopulationMask():
             # Reused: the caller may have changed its mask since the last acquisition.
-            self.release_kept_chain()
             stage.SetPopulationMask(attached.GetPopulationMask())
         # Settings stored in no layer, matched at every acquisition. The mask is set above, since
         # OpenMasked takes it; muting and interpolation are matched here for new and reused stages.
         muted, wanted = set(stage.GetMutedLayers()), set(attached.GetMutedLayers())
         if muted != wanted:
-            self.release_kept_chain()
             stage.MuteAndUnmuteLayers(sorted(wanted - muted), sorted(muted - wanted))
         if stage.GetInterpolationType() != attached.GetInterpolationType():
-            self.release_kept_chain()
             stage.SetInterpolationType(attached.GetInterpolationType())
         return stage

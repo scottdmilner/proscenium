@@ -314,6 +314,17 @@ class EditSequenceScene:
         copy.Export(str(self.sub_layer_path))
         os.utime(self.sub_layer_path, ns=(mtime_ns + 2_000_000_000, mtime_ns + 2_000_000_000))
 
+    def drop_sub_layer_on_disk(self) -> None:
+        """Take edit_sequence_sub.usda out of the root layer's file only, so a reload drops Far from composition.
+
+        The modification time moves forward by 2 s, as in rewrite_far_on_disk.
+        """
+        mtime_ns = self.root_layer_path.stat().st_mtime_ns
+        copy = Sdf.Layer.OpenAsAnonymous(str(self.root_layer_path))
+        copy.subLayerPaths.clear()
+        copy.Export(str(self.root_layer_path))
+        os.utime(self.root_layer_path, ns=(mtime_ns + 2_000_000_000, mtime_ns + 2_000_000_000))
+
     def open_attached_stage(self) -> Usd.Stage:
         """Open a new stage over the same layers, moving Far to FAR_ATTACHED in its session layer.
 

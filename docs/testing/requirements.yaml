@@ -2226,7 +2226,7 @@ excluded:
     quotes: ["A refresh compares the new plan with the plan of the generation the destination shows"]
     reason: "Lead-in: the comparison base is DECISIONS.md \"Incremental refresh comparison\", which AFF-03 and AFF-04 test; the actions below are rows."
   - section: spec/change-matrix.md#discovery
-    quotes: ["Design note (suggested; M7's Phase C settles it)"]
+    quotes: ["Design note (settled by M7; see DECISIONS.md \"Change discovery\")"]
     reason: "Design note; DISC-06 to DISC-08 test discovery, and the CHG rows what it leads to."
   - section: spec/change-matrix.md#owned-by-later-milestones
     quotes:
