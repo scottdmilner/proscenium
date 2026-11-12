@@ -93,6 +93,7 @@ Phase 3 work that depends on the synchronizer begins after Phase 2 is complete: 
 
 - Prototypes and design notes in [phase3/](phase3/README.md), which are not requirements.
 - Authoring code that reads and writes USD without `bpy`, checked through the USD API and viewed with other USD tooling.
+- UI widgets that read a stage their host gives them, without selecting through the source selection model, showing edits through bindings, or pushing undo steps.
 
 Phase 3 work never adds to or changes the requirements of Phases 1 and 2. A contract change it suggests is decided like any other, in [DECISIONS.md](DECISIONS.md).
 

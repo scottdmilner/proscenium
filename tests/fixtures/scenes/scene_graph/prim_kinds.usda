@@ -1,9 +1,14 @@
 #usda 1.0
+# The scene graph's prim tree tests (tests/bpy_free/test_prim_tree*.py, tests/blender/test_scene_graph.py): one
+# prim of each kind a tree row marks or a search finds. Internal arcs keep it a single file: a class, an over, an
+# inactive prim, every composition arc (Crate_Unique also inherits the class it references, and Prop_Payloaded also
+# specializes it, adding no prims), a second payload of the class, Prop_Unloaded, which a file can't leave
+# unloaded but tools/scene_graph_demo.py and the tests that need it unload, native instances (whose contents show as instance proxies), a prim marked instanceable
+# with no arcs, which isn't an instance, curves, a camera,
+# a light with a displayName, and a material with a shader. Its model kinds are an assembly, groups, components,
+# and a subcomponent (each crate's lid). Red is a component under a Scope with no kind, so it isn't a model: its
+# kind breaks the model hierarchy.
 (
-    doc = """Scene graph UI PoC demo: one prim of each kind the tree's rows mark.
-    Internal references and payloads keep it a single file: a class, an over, an inactive prim,
-    a payload, a variant set, native instances (whose contents show as instance proxies),
-    and a camera, a light, and a material with a shader."""
     defaultPrim = "World"
     upAxis = "Z"
 )
@@ -17,7 +22,9 @@ class "_Crate"
         point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
     }
 
-    def Xform "Lid"
+    def Xform "Lid" (
+        kind = "subcomponent"
+    )
     {
         def Mesh "Panel"
         {
@@ -29,7 +36,9 @@ def Xform "World" (
     kind = "assembly"
 )
 {
-    def Scope "Geometry"
+    def Scope "Geometry" (
+        kind = "group"
+    )
     {
         def Xform "Crates" (
             kind = "group"
@@ -51,7 +60,14 @@ def Xform "World" (
             {
             }
 
+            def Xform "Crate_Instanceable" (
+                instanceable = true
+            )
+            {
+            }
+
             def Xform "Crate_Unique" (
+                inherits = </_Crate>
                 kind = "component"
                 references = </_Crate>
             )
@@ -60,6 +76,13 @@ def Xform "World" (
         }
 
         def Xform "Prop_Payloaded" (
+            payload = </_Crate>
+            specializes = </_Crate>
+        )
+        {
+        }
+
+        def Xform "Prop_Unloaded" (
             payload = </_Crate>
         )
         {
@@ -99,7 +122,9 @@ def Xform "World" (
 
     def Scope "Looks"
     {
-        def Material "Red"
+        def Material "Red" (
+            kind = "component"
+        )
         {
             def Shader "Surface"
             {
@@ -112,7 +137,9 @@ def Xform "World" (
     {
     }
 
-    def DistantLight "Sun"
+    def DistantLight "Sun" (
+        displayName = "Key Light"
+    )
     {
     }
 

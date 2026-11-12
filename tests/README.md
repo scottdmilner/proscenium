@@ -28,7 +28,7 @@ Layers are named for what a test runs in, not for how much it covers: unit and i
 |---|---|---|---|
 | `bpy_free/` | Plain Python that reads and writes no Blender data, so it needs no reset. The wheel's bundled packages (e.g. `pxr`, `MaterialX`) are used freely. | Anything that doesn't need Blender: USD evaluation and planning, fixture generators, docs consistency. Prefer this layer. | ms |
 | `blender/` | The bpy wheel, in a process each worker reuses, reset before every test | Code that reads or writes Blender data: registration, save/reopen, undo, datablocks | ~30 ms reset |
-| `isolated/` | A fresh process per test: the bpy wheel, or also the Blender binary | Behavior that needs a fresh process: real startup and file loads with handlers, extension install, process-wide state that a reset can't undo; and smoke tests that must also pass in the binary users run | ~0.85 s (wheel), ~1.2 s (binary) |
+| `isolated/` | A fresh process per test: the bpy wheel, or also the Blender binary, in the background or with a window | Behavior that needs a fresh process: real startup and file loads with handlers, extension install, process-wide state that a reset can't undo; smoke tests that must also pass in the binary users run; and drawing and input events, in a window | ~0.85 s (wheel), ~1.2 s (binary), ~10 s (window) |
 
 Start in the cheapest layer that can express the test. Move a test to `isolated/` only when the blender layer's reset can't give it a clean, honest starting point.
 
@@ -67,7 +67,8 @@ tests/
     │                         F-UNSUPPORTED-CONTENT, F-POINT-INSTANCERS, and seeded transform hierarchies
     ├── production_like.py    the smaller generated CI fixture
     └── scenes/               static layers the generators copy
-        └── __init__.py       the Scene index and copy_scene
+        ├── __init__.py       the Scene index and copy_scene
+        └── scene_graph/      prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree; not contract fixtures
 ```
 
 ### `conftest.py` (root)
@@ -82,7 +83,7 @@ Tests here read and write no Blender data, so they skip the blender layer's rese
 
 What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). Two tests prove it, and neither depends on what a worker has already imported:
 
-- `test_no_blender_imports.py`: `proscenium`, `proscenium.binding`, `proscenium.binding.results`, and every `proscenium.core` and `proscenium.binding.source_access` module import in a fresh interpreter with Blender blocked.
+- `test_no_blender_imports.py`: `proscenium`, `proscenium.binding`, `proscenium.binding.results`, `proscenium.ui`, `proscenium.ui.scene_graph_widget`, and every `proscenium.core`, `proscenium.binding.source_access`, and `proscenium.ui.scene_graph_widget.prim_tree` module import in a fresh interpreter with Blender blocked.
 - `test_import_tiers.py`: the same modules' source has no import of a Blender module anywhere, including type-only imports and imports inside functions, which importing a module doesn't run.
 
 Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything that can't be found without `bpy`, such as `mathutils`, which bpy's C code creates (see `bpy_blocker.py`).
@@ -108,8 +109,8 @@ meshes from previous points meshes and state whether their prototype or element 
 
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/blender_state.py`, does the following:
 
-1. Before the test, it resets to Blender's empty factory state and asserts a clean baseline: the extension isn't registered, handlers match Blender's own, there is no data beyond the factory UI and one empty scene, `UsdUtils.StageCache` is empty, and no file-backed layer with unsaved edits is still loaded.
-2. After the test, `clear_test_registrations_and_stage_cache()` unregisters the extension, removes handlers the test added, and clears the stage cache.
+1. Before the test, it resets to Blender's empty factory state and asserts a clean baseline: neither the extension nor the scene graph widget (`proscenium.ui.scene_graph_widget.display`) is registered, handlers match Blender's own, there is no data beyond the factory UI and one empty scene, `UsdUtils.StageCache` is empty, and no file-backed layer with unsaved edits is still loaded.
+2. After the test, `clear_test_registrations_and_stage_cache()` unregisters the extension and the scene graph, removes handlers the test added, and clears the stage cache.
 
 A test therefore always starts clean, even after a failing test. If the baseline assertion fires, something escaped the reset; fix the reset rather than the test. `test_state_reset.py` shows that each kind of leftover is detected and removed.
 
@@ -122,6 +123,7 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 - A **body** module runs inside Blender's Python, with no pytest. It can import `bpy`, `pxr`, `support`, `fixtures`, `proscenium` (from `src/`), and `tools/` modules. Its arguments and return value must be JSON-compatible. If it raises, the test fails with the traceback from the fresh process; if the process exits nonzero, even after returning, it fails with the process output.
 - The **`wheel`** fixture is a fresh bpy-wheel process. Use it by default.
 - The **`runtime`** fixture is parametrized over the wheel and the Blender binary. Use it for cross-platform smoke tests that should also pass in the runtime users run. The **`binary`** fixture is the binary alone, for a check another layer already makes with the wheel. Binary runs are skipped without a binary, unless `PROSCENIUM_REQUIRE_BLENDER` is set.
+- The **`windowed_binary`** fixture is the Blender binary with a window that takes only simulated input (`--enable-event-simulate`), for what needs drawing and input events, such as the scene graph widget's arrow keys (`test_scene_graph_keys.py`). Its body is a generator: each step simulates events with `Window.event_simulate`, and the seconds it yields let the window handle them before the next step; its return value is the result. The window starts from `--factory-startup`'s scene, with the splash turned off. On Linux it needs a display, so CI runs the tests under `xvfb-run`; Windows runners get Mesa's software OpenGL (the `window` input of `.github/actions/setup-blender`). Without a display, or a binary, it skips unless `PROSCENIUM_REQUIRE_BLENDER` is set.
 - Each call gets its own Blender user dir under the test's `tmp_path`.
 - The **`hydra_bridge`** fixture is the directory of M1b's compiled Hydra bridge (`tools/feasibility/hydra_bridge/`), which M4's prototype tests pass to their bodies. It builds the bridge from its sources once per run, into `build/hydra-bridge/` as `build.py` does; when nothing changed, the build only checks. `PROSCENIUM_HYDRA_BRIDGE` names a prebuilt one instead, as CI does on Linux, where the build must run on Blender's glibc floor.
 

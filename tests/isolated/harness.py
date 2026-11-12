@@ -6,9 +6,11 @@ and returns a JSON-compatible value; the test asserts on that value.
 
     result = run_isolated(runtime, BODIES / "roundtrip.py", "save_and_reopen_with_handlers", tmp_path, path=str(blend))
 
-Two runtimes, chosen by the `runtime` fixtures in tests/isolated/conftest.py:
+Three runtimes, chosen by the fixtures in tests/isolated/conftest.py:
 - wheel: a new uv-environment Python process that imports the bpy wheel (~0.85 s).
 - binary: the Blender executable in background mode (~1.2 s), what users run.
+- windowed binary: the Blender executable with a window, taking only simulated input, for what needs drawing and
+  events: its body steps through the window's event loop (runner.py).
 
 Each call gets its own Blender user dir under tmp_path, so parallel workers
 never share Blender configuration.
@@ -31,24 +33,27 @@ RUNNER = Path(__file__).with_name("runner.py")
 class RuntimeKind(StrEnum):
     WHEEL = "wheel"  # a fresh uv-environment Python process importing the bpy wheel
     BINARY = "binary"  # the Blender executable in background mode
+    WINDOWED_BINARY = "windowed-binary"  # the Blender executable with a window, its input only simulated events
 
 
 @dataclass(frozen=True)
 class Runtime:
     kind: RuntimeKind
-    blender_executable: str | None = None  # the executable; set exactly for RuntimeKind.BINARY
+    blender_executable: str | None = None  # the executable; set exactly for the binary runtimes
 
     def __post_init__(self) -> None:
-        if (self.kind is RuntimeKind.BINARY) != (self.blender_executable is not None):
-            raise ValueError(f"the Blender executable is required for, and only for, the binary runtime: {self}")
+        if (self.kind is RuntimeKind.WHEEL) != (self.blender_executable is None):
+            raise ValueError(f"the Blender executable is required for, and only for, the binary runtimes: {self}")
 
     def command(self, *args: str) -> list[str]:
         """Command line that runs runner.py with `args`."""
         if self.blender_executable is None:
             return [sys.executable, str(RUNNER), *args]
+        # A window ignores the real mouse and keyboard, so only the body's simulated events reach it.
+        mode = ["-b"] if self.kind is RuntimeKind.BINARY else ["--enable-event-simulate"]
         return [
             self.blender_executable,
-            "-b",
+            *mode,
             "--factory-startup",
             "--python-exit-code",
             "1",

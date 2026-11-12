@@ -20,6 +20,7 @@ from pxr import Sdf, UsdUtils
 
 import proscenium
 from proscenium import addon
+from proscenium.ui.scene_graph_widget import display
 
 HandlerLists = dict[str, list[Callable[..., object]]]
 
@@ -57,6 +58,8 @@ def clear_test_registrations_and_stage_cache(before: HandlerLists) -> None:
     """Remove what a test left behind: the registered extension, added handlers, cached stages."""
     if addon.is_registered():
         proscenium.unregister()
+    if display.is_registered():
+        display.unregister()
     for event, fns in handler_lists().items():
         for fn in [fn for fn in fns if fn not in before.get(event, [])]:
             fns.remove(fn)
@@ -82,6 +85,8 @@ def baseline_problems(baseline_handlers: dict[str, Counter[str]]) -> list[str]:
     # Registered in-process, so a factory reset does not unregister it.
     if addon.is_registered():
         problems.append("the extension is still registered")
+    if display.is_registered():
+        problems.append("the scene graph is still registered")
     # A leftover @persistent handler would fire on the next test's loads and undo steps.
     names = handler_names(snapshot_handlers())
     if names != baseline_handlers:
