@@ -10,7 +10,6 @@ from bpy.app.handlers import persistent
 
 from . import (
     badge_icons,
-    guide_line_icons,
     tinted_icons,
     widget_drawing,
     widget_hosting,
@@ -47,7 +46,6 @@ def register() -> None:
         raise RuntimeError("the scene graph is registered")
     badge_icons.create_icons()
     tinted_icons.create_icons()
-    guide_line_icons.create_icons()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     widget_properties.install_views_property()
@@ -64,7 +62,6 @@ def unregister() -> None:
     widget_properties.remove_views_property()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
-    guide_line_icons.remove_icons()
     tinted_icons.remove_icons()
     badge_icons.remove_icons()
     _SceneGraphRegistrationState.is_registered = False

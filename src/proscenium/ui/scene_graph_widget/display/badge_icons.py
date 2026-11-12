@@ -7,7 +7,7 @@ theme's: each letter takes one of its collection colors, and the block its pie m
 a PIE_MENU button. A badge that isn't in effect, an unloaded payload, variant sets with nothing selected, or
 instanceable metadata on a prim that isn't an instance, is greyed out: its letter is the pie menu's text color, half
 blended into the block. Preview icons keep the colors they're drawn in, so the icons are drawn again when the theme's
-colors change (`redraw_icons_if_theme_changed`). A layout takes the icons by
+colors change (`redraw_icons_if_theme_changed`); they're read in `widget_colors`. A layout takes the icons by
 number (`icon_value=icon_id(...)`), not by Blender's icon names. In background mode, previews get number 0.
 """
 
@@ -16,13 +16,14 @@ from __future__ import annotations
 import enum
 import functools
 import math
-from dataclasses import dataclass
 from typing import Any
 
 import bpy
 import bpy.utils.previews
 
 from ..prim_tree.prim_descriptions import Badge
+from . import widget_colors
+from .widget_colors import RGB, RGBA, CollectionColor, ThemeColors
 
 ICON_SIZE_PIXELS = 32  # Blender scales a preview to the row's icon size
 STROKE_HALF_WIDTH = 0.19  # in the letters' coordinates below: bold
@@ -69,56 +70,18 @@ LETTER_STROKES: dict[str, tuple[Segment | Arc, ...]] = {
 STROKE_HALF_WIDTHS = {INSTANCE_GLYPH: 0.11}
 
 GREYED_LETTER_WEIGHT = 0.5  # how much of a greyed-out letter's color is the pie menu's text color, the rest the block's
-# Each badge's color, as an index into the theme's eight collection colors (COLLECTION_COLOR_01 is index 0: red,
-# orange, yellow, green, blue, violet, pink, brown), and its letter.
-BADGE_LOOKS: dict[Badge, tuple[int, str]] = {
-    # Green, the instancing color: mixed toward the list's text color, it reads on rows in light and dark themes
-    # alike, as instances' and proxies' rows draw it.
-    Badge.INSTANCE: (3, INSTANCE_GLYPH),
+# Each badge's collection color and its letter.
+BADGE_LOOKS: dict[Badge, tuple[CollectionColor, str]] = {
+    # The instancing color: mixed toward the list's text color, it reads on rows in light and dark themes alike, as
+    # instances' and proxies' rows draw it.
+    Badge.INSTANCE: (widget_colors.INSTANCING_COLOR, INSTANCE_GLYPH),
     # The arcs take five of the others. Red and brown go unused: brown is too dark on the block.
-    Badge.INHERITS: (6, "I"),  # pink
-    Badge.VARIANTS: (5, "V"),  # violet
-    Badge.REFERENCES: (1, "R"),  # orange
-    Badge.PAYLOAD: (2, "P"),  # yellow
-    Badge.SPECIALIZES: (4, "S"),  # blue
+    Badge.INHERITS: (CollectionColor.PINK, "I"),
+    Badge.VARIANTS: (CollectionColor.VIOLET, "V"),
+    Badge.REFERENCES: (CollectionColor.ORANGE, "R"),
+    Badge.PAYLOAD: (CollectionColor.YELLOW, "P"),
+    Badge.SPECIALIZES: (CollectionColor.BLUE, "S"),
 }
-
-
-@dataclass(frozen=True, slots=True)
-class BadgeThemeColors:
-    """The theme's colors the badges are drawn in, compared to tell when the icons need drawing again."""
-
-    block_color: tuple[float, float, float, float]  # RGBA, the pie menu's inner color
-    block_roundness: float  # the pie menu's: 1 rounds an end into a half circle
-    text_color: tuple[float, float, float]  # RGB, the pie menu's text color, which a greyed-out letter is drawn in
-    list_text_color: tuple[float, float, float]  # RGB, a list row's text color, which reads on the rows in any theme
-    collection_colors: tuple[tuple[float, float, float], ...]  # RGB, the eight collection colors in order
-
-    @property
-    def greyed_color(self) -> tuple[float, float, float]:
-        """RGB, a greyed-out badge's letter: the text color, half blended into the block."""
-        text, block, weight = self.text_color, self.block_color, GREYED_LETTER_WEIGHT
-        red, green, blue = (weight * text[i] + (1 - weight) * block[i] for i in range(3))
-        return red, green, blue
-
-
-# Without preferences to read the theme from: the default theme's colors.
-DEFAULT_THEME_COLORS = BadgeThemeColors(
-    block_color=(0.094, 0.094, 0.094, 1.0),
-    block_roundness=0.4,
-    text_color=(0.851, 0.851, 0.851),
-    list_text_color=(0.8, 0.8, 0.8),
-    collection_colors=(
-        (0.886, 0.376, 0.357),
-        (0.945, 0.639, 0.333),
-        (0.945, 0.863, 0.333),
-        (0.482, 0.8, 0.482),
-        (0.365, 0.714, 0.918),
-        (0.553, 0.349, 0.855),
-        (0.776, 0.451, 0.722),
-        (0.478, 0.329, 0.255),
-    ),
-)
 
 
 class BadgePlace(enum.Enum):
@@ -143,7 +106,7 @@ class _BadgeIconsState:
     """The preview collection, while registered, and the theme colors its icons were last drawn in."""
 
     previews: Any = None
-    drawn_theme_colors: BadgeThemeColors | None = None
+    drawn_theme_colors: ThemeColors | None = None
 
 
 def _segment_distance(x: float, y: float, segment: Segment) -> float:
@@ -214,8 +177,8 @@ def _coverages(letter: str, place: BadgePlace, block_roundness: float) -> tuple[
 
 def _pixels(
     coverages: tuple[tuple[float, float], ...],
-    letter_color: tuple[float, float, float],
-    block_color: tuple[float, float, float, float],
+    letter_color: RGB,
+    block_color: RGBA,
 ) -> list[float]:
     """A badge's pixels: its letter over its piece of the block, premultiplied, as previews take them."""
     pixels: list[float] = []
@@ -227,30 +190,21 @@ def _pixels(
     return pixels
 
 
-def _read_theme_colors() -> BadgeThemeColors:
-    preferences = bpy.context.preferences
-    if preferences is None:  # the context has none to read
-        return DEFAULT_THEME_COLORS
-    theme = preferences.themes[0]
-    pie_menu = theme.user_interface.wcol_pie_menu
-    list_text = theme.user_interface.wcol_list_item.text
-    return BadgeThemeColors(
-        block_color=(pie_menu.inner[0], pie_menu.inner[1], pie_menu.inner[2], pie_menu.inner[3]),
-        block_roundness=pie_menu.roundness,
-        text_color=(pie_menu.text.r, pie_menu.text.g, pie_menu.text.b),
-        list_text_color=(list_text.r, list_text.g, list_text.b),
-        collection_colors=tuple((item.color.r, item.color.g, item.color.b) for item in theme.collection_color),
-    )
+def _greyed_color(theme_colors: ThemeColors) -> RGB:
+    """A greyed-out badge's letter: the pie menu's text color, half blended into the block."""
+    text, block, weight = theme_colors.pie_menu_text_color, theme_colors.pie_menu_inner_color, GREYED_LETTER_WEIGHT
+    red, green, blue = (weight * text[i] + (1 - weight) * block[i] for i in range(3))
+    return red, green, blue
 
 
-def _draw_icons(theme_colors: BadgeThemeColors) -> None:
-    block_color = theme_colors.block_color
-    greyed_color = theme_colors.greyed_color
-    for badge, (collection_color_index, letter) in BADGE_LOOKS.items():
+def _draw_icons(theme_colors: ThemeColors) -> None:
+    block_color = theme_colors.pie_menu_inner_color
+    greyed_color = _greyed_color(theme_colors)
+    for badge, (collection_color, letter) in BADGE_LOOKS.items():
         for is_greyed in (False, True):
-            letter_color = greyed_color if is_greyed else theme_colors.collection_colors[collection_color_index]
+            letter_color = greyed_color if is_greyed else theme_colors.collection_color(collection_color)
             for place in BadgePlace:
-                coverages = _coverages(letter, place, theme_colors.block_roundness)
+                coverages = _coverages(letter, place, theme_colors.pie_menu_roundness)
                 preview = _BadgeIconsState.previews[_preview_name(badge, place, is_greyed)]
                 preview.icon_pixels_float = _pixels(coverages, letter_color, block_color)
     _BadgeIconsState.drawn_theme_colors = theme_colors
@@ -269,14 +223,14 @@ def create_icons() -> None:
                 preview = previews.new(_preview_name(badge, place, is_greyed))
                 preview.icon_size = (ICON_SIZE_PIXELS, ICON_SIZE_PIXELS)
     _BadgeIconsState.previews = previews
-    _draw_icons(_read_theme_colors())
+    _draw_icons(widget_colors.read_theme_colors())
 
 
 def redraw_icons_if_theme_changed() -> None:
-    """Draw the icons again if the theme's colors changed since they were drawn; a view calls it as it draws."""
+    """Draw the icons again if the theme's colors, as last read, changed since they were drawn."""
     if _BadgeIconsState.previews is None:
         return
-    theme_colors = _read_theme_colors()
+    theme_colors = widget_colors.last_read_theme_colors()
     if theme_colors != _BadgeIconsState.drawn_theme_colors:
         _draw_icons(theme_colors)
 
@@ -287,11 +241,6 @@ def remove_icons() -> None:
         bpy.utils.previews.remove(_BadgeIconsState.previews)
         _BadgeIconsState.previews = None
         _BadgeIconsState.drawn_theme_colors = None
-
-
-def drawn_theme_colors() -> BadgeThemeColors:
-    """The theme's colors the badges were last drawn in, as of the last view's draw; the defaults before any."""
-    return _BadgeIconsState.drawn_theme_colors or DEFAULT_THEME_COLORS
 
 
 def icon_id(badge: Badge, place: BadgePlace, is_greyed: bool) -> int:

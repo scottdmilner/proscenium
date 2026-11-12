@@ -16,12 +16,12 @@ from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import (
     tinted_icons,
-    widget_drawing,
     widget_operators,
     widget_properties,
     widget_registration,
     widget_views,
 )
+from proscenium.ui.scene_graph_widget.display.list_columns import name_column
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -228,6 +228,6 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
 
 def test_every_row_icon_has_a_mask_to_recolor(registered: None) -> None:
     # tools/row_icon_masks.py makes a mask for each icon a row can show; one missing would draw in the theme's color.
-    for icon in widget_drawing.row_icon_names():
+    for icon in name_column.row_icon_names():
         assert tinted_icons.icon_id(icon, (1.0, 0.5, 0.0)) is not None, icon
     assert tinted_icons.icon_id("NOT_A_ROW_ICON", (1.0, 0.5, 0.0)) is None

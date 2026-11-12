@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Kind, Sdf, Usd
 
-from .prim_children import CHILD_PREDICATE, child_count
+from .prim_search import CHILD_PREDICATE, child_count
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -24,7 +24,7 @@ try:  # only in the `icons` dependency group
 except ImportError as error:
     sys.exit(f"{error}: run with `uv run --group icons`")
 
-from proscenium.ui.scene_graph_widget.display import widget_drawing
+from proscenium.ui.scene_graph_widget.display.list_columns import name_column
 
 ROOT = Path(__file__).resolve().parents[1]
 MASKS_PATH = (
@@ -73,7 +73,7 @@ def coverage_mask(svg: str) -> np.ndarray:
 def main() -> None:
     """Fetch, rasterize, and write every row icon's mask."""
     masks: dict[str, np.ndarray] = {}
-    for name in widget_drawing.row_icon_names():
+    for name in name_column.row_icon_names():
         with urllib.request.urlopen(SVG_URL.format(name.lower())) as response:
             svg = response.read().decode()
         masks[name] = coverage_mask(svg)

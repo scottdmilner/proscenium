@@ -1,8 +1,9 @@
-"""Searching a stage for a prim tree's filter: which prims match a query, and which prims show because of them.
+"""Which children a prim tree lists, and searching a stage for its filter: which prims match, and which show for them.
 
-Unlike a UIList's own filter, which hides every row that doesn't match, a search keeps each match's ancestors, so
-the matches show in place in the hierarchy. It runs over the whole stage, not only the rows already expanded, or
-over only the prims it's given, such as the rows a tree shows.
+A tree lists the children `CHILD_PREDICATE` filters, and a search walks the stage by it, so a search finds only prims a
+tree can show. Unlike a UIList's own filter, which hides every row that doesn't match, a search keeps each match's
+ancestors, so the matches show in place in the hierarchy. It runs over the whole stage, not only the rows already
+expanded, or over only the prims it's given, such as the rows a tree shows.
 """
 
 from __future__ import annotations
@@ -15,10 +16,17 @@ from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd
 
-from .prim_children import CHILD_PREDICATE
-
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
+
+# Every child a stage editor shows: inactive, unloaded, abstract (class), and undefined (over) prims, and the
+# contents of native instances reached through instance proxies.
+CHILD_PREDICATE = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
+
+
+def child_count(prim: Usd.Prim) -> int:
+    """How many children a prim tree lists under a prim: its children as `CHILD_PREDICATE` filters them."""
+    return len(prim.GetFilteredChildren(CHILD_PREDICATE))
 
 
 class SearchMode(enum.Enum):
