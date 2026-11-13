@@ -50,10 +50,13 @@ from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
+from . import binding_interaction
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Concatenate
+
+    from pxr import Gf
 
     from ..binding.runtime import copy_detection
     from ..binding.source_access import BindingId
@@ -62,6 +65,9 @@ if TYPE_CHECKING:
 # The types callers pass and receive, so callers outside proscenium import only this module: these, and Result,
 # imported above.
 RequestedSettings = binding_settings.RequestedSettings
+PickedEntity = binding_interaction.PickedEntity
+TargetSelection = binding_interaction.TargetSelection
+SourceUnavailableError = stages.SourceUnavailableError  # an interaction function's, without a live stage
 
 
 def _reporting_cleanup[**P](
@@ -179,6 +185,36 @@ class BindingHandle:
     def live_stage(self) -> Usd.Stage | None:
         """The binding's live stage, which callers inspect (Bindings.live_stage)."""
         return BINDINGS.live_stage(self.binding_id)
+
+    # The interaction functions (binding_interaction): each raises SourceUnavailableError without a live stage.
+
+    def resolve_pick(self, obj: bpy.types.Object, world_matrix: Gf.Matrix4d) -> PickedEntity | None:
+        """The source entity a pick of obj, at world_matrix, resolves to; None for an object not displayed."""
+        return binding_interaction.resolve_pick(BINDINGS, self.binding_id, obj, world_matrix)
+
+    def select_targets(self, entity_paths: Iterable[str], level: str | None) -> list[str]:
+        """Each entity's selection target at level, None for the prim level or a registered kind's name."""
+        return binding_interaction.select_targets(BINDINGS, self.binding_id, entity_paths, level)
+
+    def displayed(self, paths: Iterable[str]) -> list[bool]:
+        """Whether each source path is in the browsing universe at the time code the display shows."""
+        return binding_interaction.displayed(BINDINGS, self.binding_id, paths)
+
+    def highlight_targets(self, target_paths: Iterable[str]) -> list[bpy.types.Object]:
+        """The display's objects covering exactly the viewport elements of the targets' expanded entities."""
+        return binding_interaction.highlight_targets(BINDINGS, self.binding_id, target_paths)
+
+    def selection_from_blender(self, level: str | None, view_layer: bpy.types.ViewLayer) -> TargetSelection:
+        """The targets at level of the display's objects selected in view_layer, and the active one's."""
+        return binding_interaction.selection_from_blender(BINDINGS, self.binding_id, level, view_layer)
+
+    def shown_time_code(self) -> Usd.TimeCode | None:
+        """The time code the display shows at its target scene's frame; None while nothing is published."""
+        return binding_interaction.shown_time_code(self.binding_id)
+
+    def applied_settings(self) -> RequestedSettings | None:
+        """The settings the published generation was synchronized with; None while nothing is published."""
+        return binding_interaction.applied_settings(self.binding_id)
 
 
 class Bindings:
