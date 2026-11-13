@@ -29,6 +29,10 @@ struct SourceInfoTokens {
   // int64 array, on a point instancer that authors ids: each point's id, which names its copies (DECISIONS.md "Point
   // instancers"). Hydra keeps none. A UsdImaging attribute data source, so animated ids read at the chain's time.
   static const PXR_NS::TfToken& PointIds();
+  // float3 array, on a gprim other than a mesh with an authored extent: that extent, a UsdImaging attribute data
+  // source, so it reads at the chain's time. Hydra's extent reads a value block there as zeros, a box with no size;
+  // this reads it as no value, so the planner draws the empty marker it calls for (MODEL-05).
+  static const PXR_NS::TfToken& AuthoredExtent();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };

@@ -12,8 +12,9 @@ from typing import TYPE_CHECKING
 import pytest
 from pxr import Gf, Usd, UsdGeom, Vt
 
-from fixtures import evaluation
+from fixtures import evaluation, time_variations
 from proscenium.core import _core
+from support.time_codes import sampled
 
 from .plan_checks import CONTEXT, SETTINGS, assert_box, copies, plan_at
 
@@ -130,3 +131,25 @@ def test_edits_and_time_reach_an_implicit_shapes_bounds(unsupported: evaluation.
         for path in SHAPES[:2]:
             assert_box(at[path], *_usd_box(stage, path, time))
     assert list(shown[0.0][SHAPES[1]].local_bounds) != list(shown[10.0][SHAPES[1]].local_bounds)
+
+
+def test_a_blocked_extent_sample_draws_a_marker(tmp_path: Path) -> None:
+    # MODEL-04, MODEL-05 on F-TIME-VARIATIONS: Flicker's extent is a value block until 10 and from 20, so it has no
+    # usable bounds there and is a marker, and a box between, at each sampled time code, planned from a new chain and
+    # from one kept across the time changes.
+    with time_variations.time_variations(tmp_path) as scene:
+        kept = _core.SceneIndexChain(scene.stage)
+        try:
+            for time_code in sampled("F-TIME-VARIATIONS", scene.variation).time_codes:
+                if time_code is None:
+                    continue
+                planned = {
+                    "new chain": plan_at(scene.stage, time_code),
+                    "kept chain": _core.plan(kept.capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT),
+                }
+                expected = {source for source, _ in scene.boxes(time_code)}
+                for chain, plan in planned.items():
+                    boxes = {source for source, copy in copies(plan).items() if copy.placeholder_bounds_index >= 0}
+                    assert boxes == expected, (chain, time_code)
+        finally:
+            kept.release()

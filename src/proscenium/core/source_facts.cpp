@@ -51,6 +51,11 @@ const TfToken& SourceInfoTokens::PointIds() {
   return token;
 }
 
+const TfToken& SourceInfoTokens::AuthoredExtent() {
+  static const TfToken token("authoredExtent");
+  return token;
+}
+
 HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
                                        const UsdImagingDataSourceStageGlobals& globals) {
   TfTokenVector names;
@@ -76,6 +81,14 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
       names.push_back(SourceInfoTokens::PointIds());
       values.push_back(UsdImagingDataSourceAttributeNew(
           ids, globals, prim.GetPath(), HdDataSourceLocator(SourceInfoTokens::Schema(), SourceInfoTokens::PointIds())));
+    }
+  }
+  if (ComputesExtent(prim)) {
+    if (const UsdAttribute extent = UsdGeomBoundable(prim).GetExtentAttr(); extent && extent.HasAuthoredValue()) {
+      names.push_back(SourceInfoTokens::AuthoredExtent());
+      values.push_back(UsdImagingDataSourceAttributeNew(
+          extent, globals, prim.GetPath(),
+          HdDataSourceLocator(SourceInfoTokens::Schema(), SourceInfoTokens::AuthoredExtent())));
     }
   }
   if (prim.IsInstance()) {

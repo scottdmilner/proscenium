@@ -1,5 +1,6 @@
 #include "snapshot_prim_reader.h"
 
+#include <pxr/base/vt/types.h>
 #include <pxr/base/work/loops.h>
 #include <pxr/imaging/hd/extentSchema.h>
 #include <pxr/imaging/hd/instancedBySchema.h>
@@ -73,6 +74,9 @@ void ReadSourceInfo(const HdContainerDataSourceHandle& source, PrimRecord& recor
   for (const TfToken& purpose : {HdRenderTagTokens->guide, HdRenderTagTokens->proxy, HdRenderTagTokens->render})
     if (const auto visibility = HdTokenDataSource::Cast(info->Get(purpose)))
       record.purposeVisibility.emplace_back(purpose, visibility->GetTypedValue(kNow));
+  // An authored extent with no value now, a value block, is no extent, whatever Hydra's extent reads.
+  if (const auto authored = HdTypedSampledDataSource<VtVec3fArray>::Cast(info->Get(SourceInfoTokens::AuthoredExtent())))
+    if (authored->GetTypedValue(kNow).size() != 2) record.extent.reset();
 }
 
 // Everything planning reads of the prim at `path`; false for a path with no prim.
