@@ -5,7 +5,7 @@ the one a cache call builds hold each drawn copy's world transform and participa
 F-TRANSFORMS' Animated's translate under both payload policies, and F-VISIBILITY-PURPOSE's Blinking's visibility.
 The plans are read as the transaction gets them, through a spy on synchronization.evaluation.evaluate_display_plans; a
 synchronization's published objects show its plan, and a cache call's keys its transforms. A cache call's
-participation is checked on its plans here; test_cached_variation.py checks its keyed hide flags.
+participation is checked on its plans and in Blender, through its keyed hide flags.
 """
 
 from __future__ import annotations
@@ -198,7 +198,7 @@ def test_each_sampled_time_code_synchronized(
 def test_each_sampled_time_code_cached(bindings: Bindings, tmp_path: Path, plans: list[_core.Plan], case: str) -> None:
     # XFORM-06 on F-TRANSFORMS "cached-time-codes" and F-VISIBILITY-PURPOSE "time-varying": synchronized at the
     # start, one cache call's plans, one per other sampled time code but the default, which isn't one to cache, hold
-    # the fixture's values at each, and each object shows its world transform there.
+    # the fixture's values at each, and each object shows its world transform and hide flags there, Blinking's keyed.
     build, policy = CASES[case]
     for expected in build(tmp_path, policy):
         handle = binding_on_file(
@@ -212,10 +212,10 @@ def test_each_sampled_time_code_cached(bindings: Bindings, tmp_path: Path, plans
         assert [_value(p.time_code) for p in plans] == cached
         for plan in plans:
             _check(plan, expected)
-        if (world := expected.world) is None:
-            return
         objects = _objects(handle)
         for time_code in [synchronized, *cached]:
             _frame_set(time_code)
             for path, obj in objects.items():
-                assert _close(_usd(_composed(obj)), world(path, time_code)), (path, time_code)
+                if expected.world is not None:
+                    assert _close(_usd(_composed(obj)), expected.world(path, time_code)), (path, time_code)
+                assert (not obj.hide_viewport, not obj.hide_render) == expected.shown(path, time_code), path

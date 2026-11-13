@@ -8,26 +8,30 @@ where it didn't differ. A copy equal everywhere has no keys. Without the generat
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 import bpy
 import pytest
+from pxr import Gf, Usd
 
 from fixtures import edit_sequence, incremental, time_variations
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import ResultState
+from proscenium.binding.runtime import ownership
 from proscenium.synchronization import attribute_samples, time_code_keying
+from support.blend import save_and_reopen
 from support.clean_rebuild import clean_rebuild
 from support.displayed_copies import displayed_copies
 from support.refresh_checks import copy_object, entries_by_source
+from support.time_codes import sampled
 
 from .published_state import datablocks, published_generation
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
-
-    from pxr import Usd
 
     from proscenium.api.bindings import BindingHandle, Bindings
     from support.bounds_check import DisplayedCopy
@@ -87,16 +91,17 @@ def test_without_the_generations_plan_every_copy_is_keyed(bindings: Bindings, tm
         assert _animated(handle) == set(entries_by_source(handle.binding_id))
 
 
-type _Shown = tuple[bool, bool, tuple[tuple[float, ...], ...]]  # a copy's hide flags shown, and rounded vertices
+type _Shown = tuple[bool, bool, tuple[tuple[float, ...], ...]]  # a copy's hide flags shown, and world vertices
 
 
 def _set_frame(time_code: float) -> None:
-    frame = int(time_code)
+    """Show time_code's frame, its fraction the subframe (XFORM-11)."""
+    frame = math.floor(time_code)
     bpy.data.scenes["Scene"].frame_set(frame, subframe=time_code - frame)
 
 
 def _displayed(copies: Iterable[DisplayedCopy]) -> dict[str, _Shown]:
-    """Each copy shown in a destination, by source entity, its vertices rounded past keying's float error.
+    """Each copy shown in a destination, by source entity, its flags and world vertices.
 
     One hidden in both shows nothing, as a copy that isn't drawn doesn't: a copy absent at a time code, or the other
     form's object of a placeholder that is a box at some and a marker at others.
@@ -105,9 +110,19 @@ def _displayed(copies: Iterable[DisplayedCopy]) -> dict[str, _Shown]:
     for c in copies:
         if c.visible_in_viewport or c.visible_in_render:
             assert c.source_path not in found, c.source_path  # one object of a copy shows
-            vertices = tuple(tuple(round(x, 4) for x in v) for v in c.world_vertices)
+            vertices = tuple(tuple(v) for v in c.world_vertices)
             found[c.source_path] = (c.visible_in_viewport, c.visible_in_render, vertices)
     return found
+
+
+def _assert_shown(copies: Iterable[DisplayedCopy], expected: dict[str, _Shown], label: object) -> None:
+    """Assert copies show what expected does, their vertices within keying's float error."""
+    shown = _displayed(copies)
+    assert shown.keys() == expected.keys(), label
+    for source, (viewport, render, vertices) in shown.items():
+        assert (viewport, render) == expected[source][:2], (label, source)
+        flat = [x for v in vertices for x in v]
+        assert flat == pytest.approx([x for v in expected[source][2] for x in v], abs=1e-5), (label, source)
 
 
 def _clean_at(bindings: Bindings, stage: Usd.Stage, time_code: float) -> dict[str, _Shown]:
@@ -129,11 +144,11 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
             assert handle.cache(call).state is not ResultState.FATAL_FAILURE, call
         assert time_variations.STILL not in _animated(handle)
         cached = sorted({scene.synchronized, *(t for call in scene.cache_groupings[grouping] for t in call)})
-        frames = [*((t, t) for t in cached), (11.0, 10.0), (17.0, 15.0)]
+        frames = [*((t, t) for t in cached), (11.0, 10.0), (17.0, 15.0), (-3.0, 0.0)]  # before 0, 0's (XFORM-13)
         for frame, time_code in frames:
             expected = _clean_at(bindings, scene.stage, time_code)
             _set_frame(frame)
-            assert _displayed(displayed_copies(handle.binding_id, evaluated=True)) == expected, frame
+            _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, frame)
 
 
 def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings, tmp_path: Path) -> None:
@@ -161,7 +176,7 @@ def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings,
         assert after[time_variations.FLICKER] != before[time_variations.FLICKER]
         assert [e.role for e in flicker] == [RepresentationRole.OBJECT]  # its marker alone
         shown = displayed_copies(handle.binding_id, evaluated=True)
-        assert _displayed(shown) == _clean_at(bindings, scene.stage, scene.synchronized)
+        _assert_shown(shown, _clean_at(bindings, scene.stage, scene.synchronized), scene.synchronized)
 
 
 def test_a_failing_call_takes_back_the_shear_parent_it_made(
@@ -255,3 +270,99 @@ def test_a_failing_call_takes_back_the_copies_it_built(
         assert handle.cache([15.0]).state is ResultState.FATAL_FAILURE
         assert published_generation(handle.binding_id, destination) == published
         assert datablocks() == before
+
+
+@pytest.mark.parametrize("order", ["increasing", "decreasing"])
+def test_each_sampled_time_code_cached_one_at_a_time(bindings: Bindings, tmp_path: Path, order: str) -> None:
+    # CACHE-01, CACHE-10 on F-TIME-VARIATIONS: synchronized at a sampled time code between its samples, then each other
+    # sampled time code cached by a call of its own, in increasing and in decreasing order, every call succeeds and
+    # each one's frame shows what a clean synchronization there does, those before the range and between frames
+    # included.
+    with time_variations.time_variations(tmp_path) as scene:
+        sampled_codes = sampled("F-TIME-VARIATIONS", scene.variation)
+        synchronized = sampled_codes.interior
+        handle = _synchronized(bindings, scene.stage, synchronized)
+        cached = sorted(t for t in sampled_codes.time_codes if t is not None and t != synchronized)
+        for time_code in cached if order == "increasing" else reversed(cached):
+            assert handle.cache([time_code]).state is not ResultState.FATAL_FAILURE, time_code
+        for time_code in [synchronized, *cached]:
+            expected = _clean_at(bindings, scene.stage, time_code)
+            _set_frame(time_code)
+            _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, time_code)
+
+
+def _records(destination: bpy.types.Collection) -> tuple[object, object]:
+    """The destination's generation record, its cached time codes included, and its last attempt, as stored."""
+    return (
+        id_property_records.stored(destination, binding_state.GENERATION_KEY),
+        id_property_records.stored(destination, binding_state.ATTEMPT_KEY),
+    )
+
+
+def test_the_display_never_synchronizes_or_caches_on_its_own(bindings: Bindings, tmp_path: Path) -> None:
+    # CACHE-08 on F-TIME-VARIATIONS: synchronized and cached, changing the frame, editing the live stage, and saving
+    # and reopening leave the generation record, its cached time codes, and the last attempt as they were.
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        [call] = scene.cache_groupings[0]
+        assert handle.cache(call).state is not ResultState.FATAL_FAILURE
+        records = _records(bpy.data.collections["Shot"])
+        _set_frame(15.0)
+        assert _records(bpy.data.collections["Shot"]) == records
+        scene.stage.GetAttributeAtPath(f"{time_variations.STILL}.xformOp:translate").Set(Gf.Vec3d(1, 2, 3))
+        assert _records(bpy.data.collections["Shot"]) == records
+        save_and_reopen(tmp_path / "cached.blend")
+        assert _records(bpy.data.collections["Shot"]) == records
+
+
+def test_what_a_call_makes_is_managed(bindings: Bindings, tmp_path: Path) -> None:
+    # XFORM-09 on F-TIME-VARIATIONS: every action, node group, and sampled mesh a cache call makes or samples is named
+    # in the binding's manifest, and synchronizing again retires them, leaving none.
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        [call] = scene.cache_groupings[0]
+        assert handle.cache(call).state is not ResultState.FATAL_FAILURE
+        named = {e.datablock for entries in entries_by_source(handle.binding_id).values() for e in entries.values()}
+        manifest = ownership.manifest(handle.binding_id)
+        assert isinstance(manifest, id_property_records.LoadedRecord)
+        named |= {e.datablock for e in manifest.record.entries.values()}
+        sampled_meshes = [m for m in bpy.data.meshes if any("@" in a.name for a in m.attributes)]
+        assert bpy.data.actions and bpy.data.node_groups and sampled_meshes
+        assert {*bpy.data.actions, *bpy.data.node_groups, *sampled_meshes} <= named
+        assert handle.synchronize(scene.synchronized).state is not ResultState.FATAL_FAILURE
+        assert not bpy.data.actions and not bpy.data.node_groups
+        assert not any("@" in a.name for m in bpy.data.meshes for a in m.attributes)
+
+
+def test_synchronizing_and_caching_leave_the_scenes_time_as_it_was(bindings: Bindings, tmp_path: Path) -> None:
+    # XFORM-10 on F-TIME-VARIATIONS: the target scene's frame rate, frame range, and current frame are as before.
+    target = bpy.data.scenes["Scene"]
+
+    def scene_time() -> tuple[object, ...]:
+        render = target.render
+        return render.fps, render.fps_base, target.frame_start, target.frame_end, target.frame_current
+
+    with time_variations.time_variations(tmp_path) as scene:
+        before = scene_time()
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        for call in scene.cache_groupings[2]:
+            assert handle.cache(call).state is not ResultState.FATAL_FAILURE
+        assert scene_time() == before
+
+
+@pytest.mark.parametrize("fps", [24, 30])
+def test_a_subframe_shows_its_time_code(bindings: Bindings, tmp_path: Path, fps: int) -> None:
+    # XFORM-11 on F-TIME-VARIATIONS at 24 and 30 frames per second: the time code cached at 12.5 shows at frame 12,
+    # subframe 0.5, what a synchronization at 12.5 does, and a synchronization without a time code there is at 12.5.
+    target = bpy.data.scenes["Scene"]
+    target.render.fps = fps
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        assert handle.cache([12.5]).state is not ResultState.FATAL_FAILURE
+        expected = _clean_at(bindings, scene.stage, 12.5)
+        target.frame_set(12, subframe=0.5)
+        _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, 12.5)
+        result = handle.synchronize()
+        assert result.attempted_time_codes == (Usd.TimeCode(12.5),)
+        target.frame_set(12, subframe=0.5)
+        _assert_shown(displayed_copies(handle.binding_id, evaluated=True), expected, 12.5)
