@@ -14,6 +14,7 @@ import bpy
 import pytest
 
 from fixtures import edit_sequence, incremental, time_variations
+from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import ResultState
 from proscenium.synchronization import attribute_samples, time_code_keying
 from support.clean_rebuild import clean_rebuild
@@ -94,6 +95,7 @@ _SHOWN = (
     time_variations.SKEW,
     time_variations.SHEARING,
     time_variations.GROWS,
+    time_variations.FLICKER,
     time_variations.STILL,
 )
 type _Shown = tuple[bool, bool, tuple[tuple[float, ...], ...]]  # a copy's hide flags shown, and rounded vertices
@@ -105,16 +107,22 @@ def _set_frame(time_code: float) -> None:
 
 
 def _displayed(copies: Iterable[DisplayedCopy]) -> dict[str, _Shown]:
-    """_SHOWN's copies as displayed, by source entity, their vertices rounded past keying's float error."""
-    return {
-        c.source_path: (
-            c.visible_in_viewport,
-            c.visible_in_render,
-            tuple(tuple(round(x, 4) for x in v) for v in c.world_vertices),
-        )
-        for c in copies
-        if c.source_path in _SHOWN
-    }
+    """_SHOWN's copies as displayed, by source entity, their vertices rounded past keying's float error.
+
+    Of a copy with two objects, a box and a marker, the one hidden in both destinations shows nothing, so the other is
+    the copy's.
+    """
+    by_source: dict[str, list[_Shown]] = {}
+    for c in copies:
+        if c.source_path in _SHOWN:
+            vertices = tuple(tuple(round(x, 4) for x in v) for v in c.world_vertices)
+            by_source.setdefault(c.source_path, []).append((c.visible_in_viewport, c.visible_in_render, vertices))
+    found = {}
+    for source, shown in by_source.items():
+        if len(shown) > 1:
+            shown = [s for s in shown if s[0] or s[1]] or shown[:1]
+        [found[source]] = shown
+    return found
 
 
 def _clean_at(bindings: Bindings, stage: Usd.Stage, time_code: float) -> dict[str, _Shown]:
@@ -127,8 +135,8 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
 ) -> None:
     # CACHE-01, CACHE-09, XFORM-09 to XFORM-11 on F-TIME-VARIATIONS, cached by each grouping: at each cached time
     # code, and at a frame between two, Mover's and Skew's transforms, Blink's hide flags, Shearing's shear, which
-    # appears after 10, and Grows' bounds, through its frames modifier, show what a clean synchronization at that time
-    # code, or the latest cached before, does; Still is never keyed.
+    # appears after 10, Grows' bounds, through its frames modifier, and Flicker, a marker given a box for [10, 20),
+    # show what a clean synchronization at that time code, or the latest cached before, does; Still is never keyed.
     with time_variations.time_variations(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage, scene.synchronized)
         for call in scene.cache_groupings[grouping]:
@@ -145,8 +153,8 @@ def test_each_cached_frame_shows_its_transforms_visibility_and_shear(
 def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings, tmp_path: Path) -> None:
     # CHG-22 on F-TIME-VARIATIONS: cached, then synchronized at 0 again while showing 15, every copy shows 0's display,
     # no object holds an action, Mover, Blink, and Skew keep their objects, Shearing, given a shear parent only for its
-    # cached time codes, is rebuilt without one, and Grows, whose bounds were sampled, is rebuilt, the frames group
-    # gone with its old object.
+    # cached time codes, is rebuilt without one, Grows, whose bounds were sampled, is rebuilt, the frames group gone
+    # with its old object, and Flicker, given a box, is rebuilt as its marker alone.
     with time_variations.time_variations(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage, scene.synchronized)
         [call] = scene.cache_groupings[0]
@@ -161,6 +169,9 @@ def test_synchronizing_again_removes_what_a_cache_call_added(bindings: Bindings,
         assert after[time_variations.SHEARING] != before[time_variations.SHEARING]
         assert after[time_variations.SHEARING].parent is None
         assert after[time_variations.GROWS] != before[time_variations.GROWS] and not bpy.data.node_groups
+        flicker = entries_by_source(handle.binding_id)[time_variations.FLICKER].values()
+        assert after[time_variations.FLICKER] != before[time_variations.FLICKER]
+        assert [e.role for e in flicker] == [RepresentationRole.OBJECT]  # its marker alone
         shown = displayed_copies(handle.binding_id, evaluated=True)
         assert _displayed(shown) == _clean_at(bindings, scene.stage, scene.synchronized)
 
@@ -211,3 +222,24 @@ def test_a_failing_call_takes_back_its_samples(
         assert not grows.modifiers
         assert isinstance(grows.data, bpy.types.Mesh)
         assert not any("@" in attribute.name for attribute in grows.data.attributes)
+
+
+def test_a_failing_call_takes_back_the_box_it_made(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CACHE-03 on F-TIME-VARIATIONS: a call caching 15, failing once it made Flicker's box, unlinks and disposes of it
+    # and its mesh, leaving the published generation and the file's datablocks as they were.
+    new_other_form = time_code_keying._new_other_form  # noqa: SLF001 - the step's module function
+
+    def failing(*args: Any) -> bpy.types.Object:
+        new_other_form(*args)
+        raise RuntimeError("injected keying failure")
+
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        destination = bpy.data.collections["Shot"]
+        published, before = published_generation(handle.binding_id, destination), datablocks()
+        monkeypatch.setattr(time_code_keying, "_new_other_form", failing)
+        assert handle.cache([15.0]).state is ResultState.FATAL_FAILURE
+        assert published_generation(handle.binding_id, destination) == published
+        assert datablocks() == before

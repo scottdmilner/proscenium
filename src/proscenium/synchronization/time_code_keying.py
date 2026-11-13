@@ -137,10 +137,10 @@ class _CallKeying:
             for copy, resource in enumerate(plan.resources_at(objects.tolist()))
             if varying.sources is None or resource.source_entity_path in varying.sources
         ]
-        sampled = [
+        sampled = {
             c for c, r in copies if varying.bounds_sources is None or r.source_entity_path in varying.bounds_sources
-        ]
-        bounds = application.local_bounds(plan, sampled, view)
+        }
+        bounds = application.local_bounds(plan, [c for c, _ in copies], view)
         for copy, resource in copies:
             identity = manifests.CopyResourceIdentity(
                 manifests.RepresentationRole(resource.role), resource.source_entity_path, resource.object_index_in_copy
@@ -152,20 +152,58 @@ class _CallKeying:
                 continue
             assert isinstance(obj, bpy.types.Object)
             action = self._ensure_action(obj, identity, object_key)
-            self._key_copy(time_code, views, copy, (obj, identity, object_key), action)
-            if copy in bounds and bounds[copy] and isinstance(obj.data, bpy.types.Mesh):
-                self._sample_bounds(time_code, obj, object_key, action, bounds[copy])
+            # The copy's object of the form the plan draws it in at time_code, a box or a marker, and the other's.
+            shown, other = self._forms(obj, identity, object_key, action, bounds[copy])
+            self._key_copy(time_code, views, copy, (obj, identity, object_key), action, (shown, other))
+            if bounds[copy] and (copy in sampled or shown is not obj):  # a box, whose bounds may differ from its mesh's
+                shown_key = object_key if shown is obj else self.keys[identity._replace(object_index_in_copy=1)]
+                if shown is obj or _corners(shown) != application.corners(bounds[copy]):
+                    self._sample_bounds(time_code, shown, shown_key, action, bounds[copy])
 
-    def _key_copy(
+    def _forms(
+        self,
+        obj: bpy.types.Object,
+        identity: manifests.CopyResourceIdentity,
+        object_key: str,
+        action: bpy.types.Action,
+        bounds: Sequence[float],
+    ) -> tuple[bpy.types.Object, bpy.types.Object | None]:
+        """The copy's object of the form bounds draw it in, and its other form's object, or None for none.
+
+        A placeholder is a box with bounds and a marker without; obj is the form the generation drew. The other form's
+        object is made the first time bounds call for it, with bounds' corners if a box.
+        """
+        other_identity = identity._replace(object_index_in_copy=1)
+        other_key = self.keys.get(other_identity)
+        other = None if other_key is None else self.datablock(other_key)
+        assert other is None or isinstance(other, bpy.types.Object)  # a copy's object
+        if isinstance(obj.data, bpy.types.Mesh) == bool(bounds):
+            return obj, other
+        if other is None:
+            other = _new_other_form(self, obj, (identity, object_key), action, bounds)
+        return other, obj
+
+    def datablock(self, entry_key: str) -> bpy.types.ID | None:
+        """The datablock under entry_key, made by this call or published."""
+        made = self.work.datablocks.get(entry_key)
+        return made if made is not None else self.published.entries[entry_key].datablock
+
+    def _key_copy(  # noqa: PLR0913 - the plan's copy, its published object, and its forms' objects
         self,
         time_code: float,
         views: _PlanViews,
         copy: int,
         published_object: tuple[bpy.types.Object, manifests.CopyResourceIdentity, str],
         action: bpy.types.Action,
+        forms: tuple[bpy.types.Object, bpy.types.Object | None],
     ) -> None:
-        """Key copy's transform and hide flags at time_code as views' plan shows them, with a shear parent if needed."""
+        """Key copy's transform and hide flags at time_code as views' plan shows them, with a shear parent if needed.
+
+        forms are the object of the form the plan draws, which shows the plan's hide flags, and the other form's, which
+        is hidden, or None; both take the copy's transform.
+        """
         obj, identity, object_key = published_object
+        shown, other = forms
         shear, parent = views.shears[copy], obj.parent
         if shear != _NO_SHEAR and parent is None:
             [parent_resource] = views.plan.resources_at([views.shear_parents[copy]])
@@ -181,11 +219,14 @@ class _CallKeying:
             basis = application.matrix_from_buffer(views.bases, shear)
         else:
             parent_world, basis = Matrix.Identity(4), application.matrix_from_buffer(views.worlds, copy)
-        _key_transform(action, obj, (time_code,), basis, self.work)
+        for form in (shown, other):
+            if form is not None:
+                _key_transform(action, form, (time_code,), basis, self.work)
         if parent is not None:
             _key_transform(action, parent, (time_code,), parent_world, self.work)
-        hidden = (not views.viewport[copy], not views.render[copy])
-        _key_hide_flags(action, obj, (time_code,), hidden, self.work)
+        _key_hide_flags(action, shown, (time_code,), (not views.viewport[copy], not views.render[copy]), self.work)
+        if other is not None:
+            _key_hide_flags(action, other, (time_code,), (True, True), self.work)
 
     def _ensure_action(
         self, obj: bpy.types.Object, object_identity: manifests.CopyResourceIdentity, object_key: str
@@ -298,6 +339,59 @@ def _new_shear_parent(
     )
     call.use(object_key, parent_key)
     return parent
+
+
+def _new_other_form(
+    call: _CallKeying,
+    obj: bpy.types.Object,
+    published_object: tuple[manifests.CopyResourceIdentity, str],
+    action: bpy.types.Action,
+    bounds: Sequence[float],
+) -> bpy.types.Object:
+    """The copy's object of the form obj isn't, made, held, linked, and keyed hidden where obj showed itself.
+
+    A box, with bounds' corners in its bounds mesh, if obj is a marker, else a marker. It takes obj's parent, place 1
+    among the copy's objects, and the copy's action.
+    """
+    identity, object_key = published_object
+    name = call.names.next_name(identity.entity.rsplit("/", 1)[-1])
+    other_identity = identity._replace(object_index_in_copy=1)
+    other_key = call.keys[other_identity] = manifests.new_entry_key()
+    entry = call.published.entries[object_key]
+    uses = [call.keys[identity._replace(role=manifests.RepresentationRole.ACTION)]]
+    mesh = None
+    if bounds:  # a box
+        mesh_identity = other_identity._replace(role=manifests.RepresentationRole.BOUNDS_MESH)
+        mesh_key = call.keys[mesh_identity] = manifests.new_entry_key()
+        mesh = bpy.data.meshes.new(name)
+        call.work.track(mesh_key, mesh_identity.role, mesh)
+        mesh.from_pydata(application.corners(bounds), [], [])
+        call.changes[mesh_key] = manifests.ManifestEntryChange(entry.source_entity_paths, mesh_identity.role, [], 1)
+        uses.append(mesh_key)
+    other = bpy.data.objects.new(name, mesh)
+    call.work.track(other_key, other_identity.role, other)
+    other.display_type = "BOUNDS"
+    call.work.rollback_actions.append(functools.partial(call.destination.objects.unlink, other))
+    call.destination.objects.link(other)
+    if (parent := obj.parent) is not None:
+        other.parent = parent
+        [parent_key] = [k for k, e in call.published.entries.items() if e.datablock == parent] or [
+            k for k, d in call.work.datablocks.items() if d == parent
+        ]
+        uses.append(parent_key)
+    other.matrix_basis = obj.matrix_basis.copy()
+    other.animation_data_create().action = action
+    _key_transform(action, other, call.shown_before, other.matrix_basis.copy(), call.work)
+    _key_hide_flags(action, other, call.shown_before, (True, True), call.work)
+    call.changes[other_key] = manifests.ManifestEntryChange(entry.source_entity_paths, other_identity.role, uses, 1)
+    return other
+
+
+def _corners(obj: bpy.types.Object) -> list[tuple[float, float, float]]:
+    """The corners obj's bounds mesh holds, as application.corners orders them."""
+    mesh = obj.data
+    assert isinstance(mesh, bpy.types.Mesh)
+    return [tuple(v.co[:]) for v in mesh.vertices]  # ty: ignore[invalid-return-type] - three floats each
 
 
 def _unparent(obj: bpy.types.Object, basis: Matrix) -> None:

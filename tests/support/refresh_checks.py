@@ -50,8 +50,10 @@ def entries_by_source(binding_id: BindingId) -> EntriesBySource:
 
 
 def copy_object(entries: dict[str, manifests.ManifestEntry]) -> bpy.types.Object:
-    """The object among one copy's entries."""
-    [obj] = [e.datablock for e in entries.values() if e.role is RepresentationRole.OBJECT]
+    """The first object among one copy's entries, which preparation makes; a cache call can add a second."""
+    [obj] = [
+        e.datablock for e in entries.values() if e.role is RepresentationRole.OBJECT and e.object_index_in_copy == 0
+    ]
     assert isinstance(obj, bpy.types.Object)
     return obj
 

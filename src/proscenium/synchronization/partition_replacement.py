@@ -16,7 +16,8 @@ layers hold a base for each of its objects, and the partition's own resources. S
 released intact, and a local update never changes what it uses. A kept copy whose published resources are
 incomplete, as when the user deleted its object, is rebuilt too, as is one whose published partition isn't the
 plan's: a shear parent the plan doesn't have, or the reverse, as when a cache call gave a copy one for a shear only a
-cached time code has, and a bounds mesh a cache call sampled, which a frames modifier shows. A copy's published entries
+cached time code has, a bounds mesh a cache call sampled, which a frames modifier shows, and a second object a cache
+call made for the form, box or marker, a placeholder takes only at cached time codes. A copy's published entries
 are those whose source entity is its source path: an action's with its object's. A shared datablock's entry, the
 frames group's, is replaced once every entry using it is.
 """
@@ -94,7 +95,7 @@ def changed_partitions(
     updated: dict[int, CopyUpdate] = {}
     for copy, old in enumerate(matched):
         source = sources[copy]
-        unmatched = (source in found.parented) != sheared[copy] or source in found.sampled  # not the plan's
+        unmatched = (source in found.parented) != sheared[copy] or source in found.sampled | found.doubled
         if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source or unmatched:
             prepared.append(copy)
         elif copy in moved | bounds | participation or source in action_keys:
@@ -126,11 +127,12 @@ class _PublishedPartitions:
     incomplete: set[str]  # the copies with a published resource gone
     parented: set[str]  # the copies with a published shear parent
     sampled: set[str]  # the copies whose entries use a shared datablock, the frames group a cache call sampled for
+    doubled: set[str]  # the copies with a second object, a cache call's for the form their plan didn't draw
 
     @staticmethod
     def of(published: manifests.Manifest) -> _PublishedPartitions:
         """The partitions of published's copies."""
-        found = _PublishedPartitions({}, {}, set(), set(), set())
+        found = _PublishedPartitions({}, {}, set(), set(), set(), set())
         shared = {k for k, e in published.entries.items() if e.identity is None}
         for entry_key, entry in published.entries.items():
             if (identity := entry.identity) is None:
@@ -144,6 +146,8 @@ class _PublishedPartitions:
                 found.incomplete.add(identity.entity)
             if not shared.isdisjoint(entry.dependency_entry_keys):
                 found.sampled.add(identity.entity)
+            if identity.role is manifests.RepresentationRole.OBJECT and identity.object_index_in_copy > 0:
+                found.doubled.add(identity.entity)
         return found
 
 
