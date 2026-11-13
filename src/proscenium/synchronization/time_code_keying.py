@@ -8,14 +8,16 @@ key at or before it. A copy whose bounds vary has its bounds mesh's corners at e
 which a frames modifier first in its object's stack shows for the sample its keyed Sample input names
 (attribute_samples); every such modifier shows the display's one frames group, a shared node group.
 
-A copy keyed for the first time gets its action, made and held in the prepared work, keyed at the generation's own
-time code and at the time codes cached before with what its object and shear parent show, which they showed there,
-since they weren't keyed; one whose bounds are first sampled shows its mesh's own positions there. A copy sheared at a
-cached time code but not at the generation's own gets a shear parent, made, held, and linked into the destination,
-identity at the time codes it isn't sheared at; a copy sheared at its own but not at a cached time code keeps its
-parent, identity there. Each change to a published resource has its undo in the prepared work before it's made, so a
-failing call removes the keys and samples it added and the modifiers it made, unparents and unlinks what it parented,
-and its prepared work is disposed of (CACHE-03).
+A copy keyed for the first time gets its action, made and held in the prepared work, keyed at the generation's own time
+code and at the time codes cached before with what its object and shear parent show, which they showed there, since they
+weren't keyed; one whose bounds are first sampled shows its mesh's own positions there. A copy the plan draws only at a
+cached time code has its partition made, as preparation makes one, and linked into the destination, keyed hidden where
+the generation showed itself; a copy a plan lacks is keyed hidden at that time code. A copy sheared at a cached time
+code but not at the generation's own gets a shear parent, made, held, and linked into the destination, identity at the
+time codes it isn't sheared at; a copy sheared at its own but not at a cached time code keeps its parent, identity
+there. Each change to a published resource has its undo in the prepared work before it's made, so a failing call removes
+the keys and samples it added and the modifiers it made, unparents and unlinks what it parented, and its prepared work
+is disposed of (CACHE-03).
 """
 
 from __future__ import annotations
@@ -46,8 +48,7 @@ _POSITION, _POSITION_TYPE, _POSITION_DOMAIN = attribute_samples.POSITIONS[0]
 class VaryingCopies:
     """The copies a cache call keys, by source entity; None for every copy."""
 
-    sources: Collection[str] | None  # keyed for their transforms and hide flags
-    bounds_sources: Collection[str] | None  # and for their bounds, among them
+    sources: Collection[str] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,33 +133,68 @@ class _CallKeying:
             view(plan.copy_visible_in_render),
         )
         objects = view(plan.copy_object_resource_indices)
+        resources = plan.resources_at(objects.tolist())
+        present = {resource.source_entity_path for resource in resources}
         copies = [
             (copy, resource)
-            for copy, resource in enumerate(plan.resources_at(objects.tolist()))
+            for copy, resource in enumerate(resources)
             if varying.sources is None or resource.source_entity_path in varying.sources
         ]
-        sampled = {
-            c for c, r in copies if varying.bounds_sources is None or r.source_entity_path in varying.bounds_sources
-        }
         bounds = application.local_bounds(plan, [c for c, _ in copies], view)
         for copy, resource in copies:
             identity = manifests.CopyResourceIdentity(
                 manifests.RepresentationRole(resource.role), resource.source_entity_path, resource.object_index_in_copy
             )
-            if (object_key := self.keys.get(identity)) is None:
-                continue  # one the generation lacks
-            obj = self.published.entries[object_key].datablock
+            appeared = identity not in self.keys
+            if appeared:  # a copy the generation lacks, which appears here: its partition, made
+                self._build_copy(plan, copy)
+            object_key = self.keys[identity]
+            obj = self.datablock(object_key)
             if obj is None:  # the user deleted it; the next synchronization replaces it
                 continue
             assert isinstance(obj, bpy.types.Object)
             action = self._ensure_action(obj, identity, object_key)
+            if appeared:  # it didn't exist where the generation showed itself
+                _key_hide_flags(action, obj, self.shown_before, (True, True), self.work)
             # The copy's object of the form the plan draws it in at time_code, a box or a marker, and the other's.
             shown, other = self._forms(obj, identity, object_key, action, bounds[copy])
             self._key_copy(time_code, views, copy, (obj, identity, object_key), action, (shown, other))
-            if bounds[copy] and (copy in sampled or shown is not obj):  # a box, whose bounds may differ from its mesh's
+            if bounds[copy]:  # a box, whose bounds may differ from its mesh's
                 shown_key = object_key if shown is obj else self.keys[identity._replace(object_index_in_copy=1)]
-                if shown is obj or _corners(shown) != application.corners(bounds[copy]):
-                    self._sample_bounds(time_code, shown, shown_key, action, bounds[copy])
+                self._key_bounds(time_code, shown, shown_key, action, bounds[copy])
+        self._hide_absent(time_code, present, varying)
+
+    def _build_copy(self, plan: _core.Plan, copy: int) -> None:
+        """Make plan's copy's partition as preparation does, held in the prepared work, linked into the destination."""
+        made_before = set(self.work.manifest_entries)
+        application.prepare(plan, [copy], self.published, self.work, self.names)
+        for key, entry in self.work.manifest_entries.items():
+            if key in made_before:
+                continue
+            assert entry.identity is not None  # a copy's resource
+            self.keys[entry.identity] = key
+            self.changes[key] = manifests.ManifestEntryChange(
+                entry.source_entity_paths, entry.role, entry.dependency_entry_keys, entry.object_index_in_copy
+            )
+            if isinstance(made := entry.datablock, bpy.types.Object):
+                self.work.rollback_actions.append(functools.partial(self.destination.objects.unlink, made))
+                self.destination.objects.link(made)
+
+    def _hide_absent(self, time_code: float, present: Collection[str], varying: VaryingCopies) -> None:
+        """Key hidden at time_code each varying copy's objects whose copy the plan there lacks."""
+        for identity, key in list(self.keys.items()):
+            if identity.role is not manifests.RepresentationRole.OBJECT or identity.object_index_in_copy != 0:
+                continue
+            if identity.entity in present or (varying.sources is not None and identity.entity not in varying.sources):
+                continue
+            obj = self.datablock(key)
+            if not isinstance(obj, bpy.types.Object):  # the user deleted it
+                continue
+            action = self._ensure_action(obj, identity, key)
+            other_key = self.keys.get(identity._replace(object_index_in_copy=1))
+            for form in (obj, None if other_key is None else self.datablock(other_key)):
+                if isinstance(form, bpy.types.Object):
+                    _key_hide_flags(action, form, (time_code,), (True, True), self.work)
 
     def _forms(
         self,
@@ -182,6 +218,17 @@ class _CallKeying:
         if other is None:
             other = _new_other_form(self, obj, (identity, object_key), action, bounds)
         return other, obj
+
+    def entry(self, entry_key: str) -> manifests.ManifestEntry | manifests.ManifestEntryChange:
+        """The entry under entry_key, as this call changed or made it, else as published."""
+        return self.changes.get(entry_key) or self.published.entries[entry_key]
+
+    def key_of(self, datablock: bpy.types.ID) -> str:
+        """The entry key of datablock, made by this call or published."""
+        [key] = [k for k, d in self.work.datablocks.items() if d == datablock] or [
+            k for k, e in self.published.entries.items() if e.datablock == datablock
+        ]
+        return key
 
     def datablock(self, entry_key: str) -> bpy.types.ID | None:
         """The datablock under entry_key, made by this call or published."""
@@ -240,7 +287,7 @@ class _CallKeying:
         action_key = self.keys[action_identity] = manifests.new_entry_key()
         action = bpy.data.actions.new(obj.name)
         self.work.track(action_key, manifests.RepresentationRole.ACTION, action)
-        entry = self.published.entries[object_key]
+        entry = self.entry(object_key)
         self.changes[action_key] = manifests.ManifestEntryChange(
             entry.source_entity_paths, manifests.RepresentationRole.ACTION, [], entry.object_index_in_copy
         )
@@ -257,11 +304,11 @@ class _CallKeying:
         """Obj and its published shear parent, if it has one, each with its entry key."""
         found = [(obj, object_key)]
         if (parent := obj.parent) is not None:
-            [parent_key] = [k for k, e in self.published.entries.items() if e.datablock == parent]
+            parent_key = self.key_of(parent)
             found.append((parent, parent_key))
         return found
 
-    def _sample_bounds(  # noqa: PLR0913 - the copy's object and its bounds at the time code
+    def _key_bounds(  # noqa: PLR0913 - the copy's object and its bounds at the time code
         self,
         time_code: float,
         obj: bpy.types.Object,
@@ -269,11 +316,21 @@ class _CallKeying:
         action: bpy.types.Action,
         bounds: Sequence[float],
     ) -> None:
-        """Add bounds' corners at time_code as a sample of obj's bounds mesh, keyed shown there, undoably."""
+        """Key obj's bounds mesh to show bounds' corners at time_code, undoably.
+
+        Bounds equal to the mesh's own need nothing until it has samples, and are its own sample, BASE, after; others
+        are added as a sample.
+        """
         mesh = obj.data
         assert isinstance(mesh, bpy.types.Mesh)
         path = attribute_samples.sample_input_path()
-        if obj.modifiers.get(attribute_samples.MODIFIER) is None:
+        own = _corners(obj) == application.corners(bounds)
+        sampled = obj.modifiers.get(attribute_samples.MODIFIER) is not None
+        if own:
+            if sampled:
+                _insert_key(action, obj, path, 0, time_code, attribute_samples.BASE, self.work)
+            return
+        if not sampled:
             group = self._ensure_frames_group()
             self.work.rollback_actions.append(functools.partial(_remove_frames_modifier, obj))
             attribute_samples.new_frames_modifier(obj, group)
@@ -303,7 +360,7 @@ class _CallKeying:
 
     def use(self, user_key: str, used_key: str) -> None:
         """Make the entry under user_key, as changes or published hold it, use the entry under used_key too."""
-        entry = self.changes.get(user_key) or self.published.entries[user_key]
+        entry = self.entry(user_key)
         self.changes[user_key] = manifests.ManifestEntryChange(
             entry.source_entity_paths, entry.role, [*entry.dependency_entry_keys, used_key], entry.object_index_in_copy
         )
@@ -333,7 +390,7 @@ def _new_shear_parent(
     action = obj.animation_data.action if obj.animation_data is not None else None
     assert action is not None  # the copy's, made first
     parent.animation_data_create().action = action
-    entry = call.published.entries[object_key]
+    entry = call.entry(object_key)
     call.changes[parent_key] = manifests.ManifestEntryChange(
         entry.source_entity_paths, parent_identity.role, [action_key], parent_identity.object_index_in_copy
     )
@@ -357,7 +414,7 @@ def _new_other_form(
     name = call.names.next_name(identity.entity.rsplit("/", 1)[-1])
     other_identity = identity._replace(object_index_in_copy=1)
     other_key = call.keys[other_identity] = manifests.new_entry_key()
-    entry = call.published.entries[object_key]
+    entry = call.entry(object_key)
     uses = [call.keys[identity._replace(role=manifests.RepresentationRole.ACTION)]]
     mesh = None
     if bounds:  # a box
@@ -375,9 +432,7 @@ def _new_other_form(
     call.destination.objects.link(other)
     if (parent := obj.parent) is not None:
         other.parent = parent
-        [parent_key] = [k for k, e in call.published.entries.items() if e.datablock == parent] or [
-            k for k, d in call.work.datablocks.items() if d == parent
-        ]
+        parent_key = call.key_of(parent)
         uses.append(parent_key)
     other.matrix_basis = obj.matrix_basis.copy()
     other.animation_data_create().action = action

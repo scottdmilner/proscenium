@@ -109,6 +109,9 @@ def changed_partitions(
     replaced |= {action_keys[sources[c]] for c, change in updated.items() if change.cached_keys_removed}
     for old in _indices(diff.removed_previous_copy_indices):
         replaced |= keys_by_source.get(previous_sources[old], set())
+    # And the copies a cache call built for its time codes alone, which neither plan has.
+    planned = set(sources) | set(previous_sources)
+    replaced |= {key for source, keys in keys_by_source.items() if source not in planned for key in keys}
     return PartitionReplacement(tuple(prepared), frozenset(replaced | _unused_shared(published, replaced)), updated)
 
 

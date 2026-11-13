@@ -107,7 +107,7 @@ def cache(
     before = _published_manifest(manifest)
     plans_by_time_code = dict(zip(new, plans, strict=True))
     own = published_plans.plan_for(published)
-    unknown = time_code_keying.VaryingCopies(None, None)  # without the generation's plan, every copy
+    unknown = time_code_keying.VaryingCopies(None)  # without the generation's plan, every copy
     varying = unknown if own is None else _varying_copies(own, plans_by_time_code.values(), before)
     try:
         changes = time_code_keying.key_time_codes(
@@ -138,27 +138,32 @@ def _varying_copies(
 ) -> time_code_keying.VaryingCopies:
     """The copies that vary from own in plans, or that published keys already, by source entity.
 
-    Each varies in transform and hide flags when keyed already, or when a plan moves it, rebuilds it, or shows it
-    otherwise; and in bounds when its bounds are sampled already, or when a plan changes them.
+    A copy varies when keyed already, or when a plan moves it, rebuilds it, shows it otherwise, changes its bounds,
+    lacks it, or has it where own doesn't.
     """
-    groups = {k for k, e in published.entries.items() if e.role is manifests.RepresentationRole.NODE_GROUP}
-    varying, bounds = set(), set()
-    for entry in published.entries.values():
-        if (identity := entry.identity) is None:
-            continue
-        if identity.role is manifests.RepresentationRole.ACTION:
-            varying.add(identity.entity)
-        if not groups.isdisjoint(entry.dependency_entry_keys):  # its object shows the frames group
-            bounds.add(identity.entity)
+    varying = {
+        identity.entity
+        for entry in published.entries.values()
+        if (identity := entry.identity) is not None and identity.role is manifests.RepresentationRole.ACTION
+    }
+    own_sources = [entry.source_path for entry in own.correspondence]
     for plan in plans:
         diff = _core.diff_plans(own, plan)
         sources = [entry.source_path for entry in plan.correspondence]
-        for buffer in (diff.moved_copy_indices, diff.rebuilt_copy_indices, diff.participation_changed_copy_indices):
+        changed = (
+            diff.moved_copy_indices,
+            diff.rebuilt_copy_indices,
+            diff.participation_changed_copy_indices,
+            diff.bounds_changed_copy_indices,
+        )
+        for buffer in changed:
             with memoryview(buffer) as copies:  # released before returning (SNAP-13)
                 varying.update(sources[copy] for copy in copies.tolist())
-        with memoryview(diff.bounds_changed_copy_indices) as copies:
-            bounds.update(sources[copy] for copy in copies.tolist())
-    return time_code_keying.VaryingCopies(varying | bounds, bounds)
+        with memoryview(diff.previous_copy_indices) as previous:
+            varying.update(sources[copy] for copy, old in enumerate(previous.tolist()) if old < 0)
+        with memoryview(diff.removed_previous_copy_indices) as removed:
+            varying.update(own_sources[old] for old in removed.tolist())
+    return time_code_keying.VaryingCopies(varying)
 
 
 def _unusable_state_diagnostic(

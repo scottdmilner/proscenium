@@ -103,8 +103,8 @@ def prepare(
     copies = list(copy_indices)
     # Each staged object's hide flags, in the order linked, set together after the loop: assigning one runs Blender's
     # update, which resyncs every collection, at a cost that grows with the scene (34.7 s for 30,000 objects beside a
-    # published display of as many, ad hoc).
-    hidden: dict[str, list[bool]] = {"hide_viewport": [], "hide_render": []}
+    # published display of as many, ad hoc). Objects an earlier call staged in work keep theirs, read first.
+    hidden = _staged_hide_flags(work)
     with contextlib.ExitStack() as views:  # each view released on return or raise (SNAP-13)
 
         def view(buffer: Buffer) -> memoryview:
@@ -202,6 +202,16 @@ def _next_generation_number() -> int:
                 generations.append(int(match.group(1)))
                 break
     return max(generations) + 1
+
+
+def _staged_hide_flags(work: PreparationResources) -> dict[str, list[bool]]:
+    """The hide flags of the objects work's staging collection holds, in the order linked, by flag."""
+    hidden: dict[str, list[bool]] = {"hide_viewport": [], "hide_render": []}
+    if (staged := work.staging_collection) is not None and len(staged.objects):
+        for flag, values in hidden.items():
+            values.extend([False] * len(staged.objects))
+            staged.objects.foreach_get(flag, values)
+    return hidden
 
 
 def local_bounds(
