@@ -9,6 +9,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `addon.py` | Registration: the record namespace's property group, and the handlers for file load, undo, and redo that drop or prune the bindings' stages. |
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
+| `interaction/` | The display component of the interaction contract: a binding's correspondence from Blender data, and Blender's selection. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |
 | `core/` | The compiled core: its C++ source and the built module. |
 
@@ -20,7 +21,7 @@ The code is in units, each a package or a single module, in tiers. A unit import
 |---|---|
 | 6 | `addon.py` |
 | 5 | `api/` |
-| 4 | `synchronization/` |
+| 4 | `synchronization/`, `interaction/` |
 | 3 | `binding/runtime/` |
 | 2 | `binding/persistence/` |
 | 1 | `core/`, `binding/source_access/`, `binding/results.py` |

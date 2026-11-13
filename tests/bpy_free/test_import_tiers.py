@@ -28,7 +28,7 @@ TIERS = (
     ("core", "binding.source_access", "binding.results"),  # bpy-free, each importing only itself
     ("binding.persistence",),
     ("binding.runtime",),
-    ("synchronization",),
+    ("synchronization", "interaction"),
     ("api",),
     ("addon",),
 )

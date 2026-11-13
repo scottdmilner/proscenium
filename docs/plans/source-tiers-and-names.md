@@ -13,6 +13,7 @@ The code is in units, each a package or a single module, in tiers. A unit import
 | 6 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
 | 5 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
 | 4 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
+| 4 | `interaction/` | The display component of the interaction contract: correspondence from Blender data, and Blender's selection ([Interaction Contract](../spec/interaction-contract.md)) |
 | 3 | `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) |
 | 2 | `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) |
 | 1 | `core/` | The compiled core: its C++ source and built module |
