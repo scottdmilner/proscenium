@@ -1,12 +1,17 @@
-// Correspondence: floors, the browsing universe, and the viewport's elements by floor, from Python's display elements.
+// Correspondence: floors, the browsing universe, and the viewport's elements by floor, from Python's display elements,
+// and selection targets through the inspection layer.
 #include "correspondence.h"
 
+#include <kind_targets.h>
 #include <pxr/base/tf/stringUtils.h>
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/relationship.h>
 #include <pxr/usd/usdGeom/pointInstancer.h>
 
 #include <algorithm>
+#include <numeric>
+#include <string>
+#include <unordered_set>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -79,6 +84,10 @@ Correspondence::Correspondence(UsdStagePtr stage, std::vector<DisplayElement> el
   std::sort(universe_.begin(), universe_.end());
   universe_.erase(std::unique(universe_.begin(), universe_.end()), universe_.end());
   std::sort(viewportElementsByFloor_.begin(), viewportElementsByFloor_.end());
+  elementIndicesBySourcePath_.resize(entities_.size());
+  std::iota(elementIndicesBySourcePath_.begin(), elementIndicesBySourcePath_.end(), std::size_t{0});
+  std::sort(elementIndicesBySourcePath_.begin(), elementIndicesBySourcePath_.end(),
+            [&](std::size_t a, std::size_t b) { return entities_[a].sourcePath < entities_[b].sourcePath; });
 }
 
 const UsdStage& Correspondence::Live() const {
@@ -118,6 +127,56 @@ std::vector<std::size_t> Correspondence::HighlightTargets(const SdfPathVector& t
   std::sort(covered.begin(), covered.end());
   covered.erase(std::unique(covered.begin(), covered.end()), covered.end());
   return covered;
+}
+
+namespace {
+
+// Throws std::invalid_argument unless `level` is the prim level or a registered kind.
+void CheckLevel(const std::optional<TfToken>& level) {
+  if (level && !proscenium_inspection::IsRegisteredKind(*level))
+    throw std::invalid_argument("'" + level->GetString() + "' is not a registered kind");
+}
+
+SdfPath Target(const UsdStage& stage, const SdfPath& floor, const std::optional<TfToken>& level) {
+  return level ? proscenium_inspection::KindTarget(stage, floor, *level) : floor;
+}
+
+}  // namespace
+
+SdfPath Correspondence::FloorOf(const UsdStage& stage, const SdfPath& entityPath) const {
+  const auto found =
+      std::lower_bound(elementIndicesBySourcePath_.begin(), elementIndicesBySourcePath_.end(), entityPath,
+                       [&](std::size_t element, const SdfPath& path) { return entities_[element].sourcePath < path; });
+  if (found != elementIndicesBySourcePath_.end() && entities_[*found].sourcePath == entityPath)
+    return Floor(entities_[*found]);
+  const SdfPathVector context = InstanceContextOnStage(stage, entityPath);
+  return context.empty() ? entityPath : context.front();
+}
+
+SdfPathVector Correspondence::SelectTargets(const SdfPathVector& entityPaths,
+                                            const std::optional<TfToken>& level) const {
+  const UsdStage& stage = Live();
+  CheckLevel(level);
+  SdfPathVector targets;
+  targets.reserve(entityPaths.size());
+  for (const SdfPath& path : entityPaths) targets.push_back(Target(stage, FloorOf(stage, path), level));
+  return targets;
+}
+
+SourceSelection Correspondence::SelectionFromBlender(const std::vector<std::size_t>& selectedElementIndices,
+                                                     std::optional<std::size_t> activeElementIndex,
+                                                     const std::optional<TfToken>& level) const {
+  const UsdStage& stage = Live();
+  CheckLevel(level);
+  SourceSelection selection;
+  std::unordered_set<SdfPath, SdfPath::Hash> seen;
+  for (const std::size_t element : selectedElementIndices) {
+    if (element >= entities_.size()) continue;
+    SdfPath target = Target(stage, Floor(entities_[element]), level);
+    if (activeElementIndex == element) selection.activeTargetPath = target;
+    if (seen.insert(target).second) selection.targetPaths.push_back(std::move(target));
+  }
+  return selection;
 }
 
 }  // namespace proscenium

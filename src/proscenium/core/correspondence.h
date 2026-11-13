@@ -5,6 +5,7 @@
 // which Python maps to manifest entry keys (DECISIONS.md "Headless interaction functions"). Paths are USD paths.
 #pragma once
 
+#include <pxr/base/tf/token.h>
 #include <pxr/pxr.h>
 #include <pxr/usd/sdf/path.h>
 #include <pxr/usd/usd/stage.h>
@@ -22,6 +23,12 @@ namespace proscenium {
 class SourceUnavailableError : public std::runtime_error {
  public:
   SourceUnavailableError() : std::runtime_error("The source is unavailable: the binding has no live stage") {}
+};
+
+// A selection's targets, as selection_from_blender gives them.
+struct SourceSelection {
+  PXR_NS::SdfPathVector targetPaths;  // in the order of the selected elements, each once
+  PXR_NS::SdfPath activeTargetPath;   // the active element's target; empty when no element is active
 };
 
 // One display element as Python gives it: an object a manifest entry names.
@@ -64,11 +71,24 @@ class Correspondence {
   [[nodiscard]] std::vector<bool> Displayed(const PXR_NS::SdfPathVector& paths) const;
   // The viewport elements at or beneath each target in the universe, by index, ascending and each once.
   [[nodiscard]] std::vector<std::size_t> HighlightTargets(const PXR_NS::SdfPathVector& targetPaths) const;
+  // Each entity's selection target at `level`, a model kind or std::nullopt for the prim level: its floor, or at a
+  // kind level the inspection layer's target for it. An element's entity takes its element's floor; any other path,
+  // the floor its instance context on the live stage gives. Throws std::invalid_argument for a kind that isn't
+  // registered.
+  [[nodiscard]] PXR_NS::SdfPathVector SelectTargets(const PXR_NS::SdfPathVector& entityPaths,
+                                                    const std::optional<PXR_NS::TfToken>& level) const;
+  // The targets at `level` of the selected elements' entities, and the active element's, which is one of them or
+  // std::nullopt; indices naming no element are ignored. Throws as SelectTargets does.
+  [[nodiscard]] SourceSelection SelectionFromBlender(const std::vector<std::size_t>& selectedElementIndices,
+                                                     std::optional<std::size_t> activeElementIndex,
+                                                     const std::optional<PXR_NS::TfToken>& level) const;
 
  private:
   // The live stage, or SourceUnavailableError.
   [[nodiscard]] const PXR_NS::UsdStage& Live() const;
   [[nodiscard]] bool InUniverse(const PXR_NS::SdfPath& path) const;
+  // The floor of the entity at `entityPath`: its element's, or the one its instance context on the stage gives.
+  [[nodiscard]] PXR_NS::SdfPath FloorOf(const PXR_NS::UsdStage& stage, const PXR_NS::SdfPath& entityPath) const;
 
   PXR_NS::UsdStagePtr stage_;           // weak: the binding's live stage, which its caller owns
   std::vector<SourceEntity> entities_;  // by element index
@@ -77,6 +97,7 @@ class Correspondence {
   PXR_NS::SdfPathVector universe_;
   // The viewport's elements as (floor, element index), sorted, so the elements beneath a prim are one range.
   std::vector<std::pair<PXR_NS::SdfPath, std::size_t>> viewportElementsByFloor_;
+  std::vector<std::size_t> elementIndicesBySourcePath_;  // every element's index, sorted by its entity's source path
 };
 
 }  // namespace proscenium

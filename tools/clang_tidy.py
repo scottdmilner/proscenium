@@ -26,12 +26,12 @@ CORE = ROOT / "src" / "proscenium" / "core"
 class TidyProject:
     """A CMake project whose sources clang-tidy checks."""
 
-    source_dir: Path  # the CMake project, whose *.cpp files (or src/*.cpp) are checked
+    source_dir: Path  # the CMake project, whose *.cpp files, at its top level and one directory down, are checked
     build_dir: Path  # its build's results directory; the CMake directory is beside it
 
     def files(self) -> list[Path]:
-        """The project's C++ sources, at its top level and in src/."""
-        return sorted([*self.source_dir.glob("*.cpp"), *self.source_dir.glob("src/*.cpp")])
+        """The project's C++ sources: top level and one directory down (the bridge's src/, the core's inspection/)."""
+        return sorted([*self.source_dir.glob("*.cpp"), *self.source_dir.glob("*/*.cpp")])
 
 
 PROJECTS = (

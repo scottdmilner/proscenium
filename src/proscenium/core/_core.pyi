@@ -253,3 +253,16 @@ class Correspondence:
     def displayed(self, paths: Iterable[str]) -> Buffer: ...  # '?': whether each is in the browsing universe
     # 'i': the viewport elements at or beneath each target in the universe, ascending, each once.
     def highlight_targets(self, target_paths: Iterable[str]) -> Buffer: ...
+    # Each entity's target at the level, None for the prim level or a registered kind's name, which the inspection
+    # layer maps on the live stage. ValueError: a kind that isn't registered.
+    def select_targets(self, entity_paths: Iterable[str], level: str | None) -> tuple[str, ...]: ...
+    # The selected elements' targets at the level, and the active element's. Indices naming no element are ignored.
+    def selection_from_blender(
+        self, selected_element_indices: Iterable[int], active_element_index: int | None, level: str | None
+    ) -> SourceSelection: ...
+
+class SourceSelection:
+    @property
+    def target_paths(self) -> tuple[str, ...]: ...  # in the order of the selected elements, each once
+    @property
+    def active_target_path(self) -> str | None: ...  # the active element's target; None when none is active

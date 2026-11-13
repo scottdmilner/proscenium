@@ -336,6 +336,35 @@ VtIntArray HighlightTargets(const Correspondence& correspondence, const bp::obje
   });
 }
 
+// A selection level from Python: None for the prim level, or a kind's name.
+std::optional<TfToken> Level(const bp::object& level) {
+  if (level.is_none()) return std::nullopt;
+  return TfToken(bp::extract<std::string>(level)());
+}
+
+bp::tuple SelectTargets(const Correspondence& correspondence, const bp::object& entityPaths, const bp::object& level) {
+  const SdfPathVector paths = Paths(entityPaths);
+  const std::optional<TfToken> kind = Level(level);
+  return PathStrings(Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.SelectTargets(paths, kind);
+  }));
+}
+
+SourceSelection SelectionFromBlender(const Correspondence& correspondence, const bp::object& selectedElementIndices,
+                                     const bp::object& activeElementIndex, const bp::object& level) {
+  std::vector<std::size_t> selected;
+  for (bp::stl_input_iterator<std::size_t> index(selectedElementIndices), end; index != end; ++index)
+    selected.push_back(*index);
+  std::optional<std::size_t> active;
+  if (!activeElementIndex.is_none()) active = bp::extract<std::size_t>(activeElementIndex)();
+  const std::optional<TfToken> kind = Level(level);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.SelectionFromBlender(selected, active, kind);
+  });
+}
+
 // The Python type SourceUnavailableError raises, a subclass of RuntimeError; set when the module registers.
 PyObject* sourceUnavailableErrorType = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): set once
 
@@ -351,6 +380,13 @@ void WrapCorrespondence() {
       .add_property(
           "instance_context", +[](const SourceEntity& e) { return PathStrings(e.instanceContext); })
       .add_property("floor", +[](const SourceEntity& e) { return Floor(e).GetString(); });
+  bp::class_<SourceSelection>("SourceSelection", bp::no_init)
+      .add_property(
+          "target_paths", +[](const SourceSelection& s) { return PathStrings(s.targetPaths); })
+      .add_property(
+          "active_target_path", +[](const SourceSelection& s) {
+            return s.activeTargetPath.IsEmpty() ? bp::object() : bp::object(s.activeTargetPath.GetString());
+          });
   bp::class_<Correspondence, std::shared_ptr<Correspondence>, bp::noncopyable>("Correspondence", bp::no_init)
       .def("__init__", bp::make_constructor(&NewCorrespondence, bp::default_call_policies(),
                                             (bp::arg("stage"), bp::arg("source_paths"), bp::arg("instance_contexts"),
@@ -358,6 +394,9 @@ void WrapCorrespondence() {
       .def("resolve_pick", &ResolvePick, (bp::arg("element_index"), bp::arg("world_matrix")))
       .def("displayed", &Displayed, bp::arg("paths"))
       .def("highlight_targets", &HighlightTargets, bp::arg("target_paths"))
+      .def("select_targets", &SelectTargets, (bp::arg("entity_paths"), bp::arg("level")))
+      .def("selection_from_blender", &SelectionFromBlender,
+           (bp::arg("selected_element_indices"), bp::arg("active_element_index"), bp::arg("level")))
       .add_property("element_count", &Correspondence::ElementCount);
 }
 
