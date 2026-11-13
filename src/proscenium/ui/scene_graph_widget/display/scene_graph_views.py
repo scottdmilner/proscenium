@@ -1,7 +1,7 @@
 """The scene graph views by name: each a `PrimTreeView`, and what its host said about where and how it shows.
 
-The registry knows nothing of the properties a view is drawn from; `widget_properties` keeps those. Hosts never see
-a view, only its name (`widget_hosting`).
+The registry knows nothing of the properties a view is drawn from; `scene_graph_properties` keeps those. Hosts never see
+a view, only its name (`scene_graph_hosting`).
 """
 
 from __future__ import annotations

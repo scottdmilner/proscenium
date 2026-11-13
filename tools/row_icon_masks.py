@@ -1,13 +1,13 @@
-"""Make the scene graph widget's row icon masks from Blender's own icon SVGs.
+"""Make the widgets' row icon masks from Blender's own icon SVGs.
 
     uv run --group icons python tools/row_icon_masks.py
 
-For each icon a row can show, it fetches the SVG from the Blender release `uv.lock` pins, rasterizes it with resvg
-(`resvg_py`, whose wheels hold the whole renderer) to PNG bytes, decodes them with pypng, and keeps how much of each
-pixel the icon covers. Both are in the `icons` dependency group, kept out of `dev` since only this tool needs them.
-The masks are written to `src/proscenium/ui/scene_graph_widget/display/blender_icons/row_icon_masks.npz`, where the
-widget recolors them for instances and their proxies. The icons are licensed CC BY-SA 4.0 (that directory's
-`LICENSE.txt`).
+For each icon a widget's row can show (`WIDGET_ROW_ICON_NAMES`), it fetches the SVG from the Blender release `uv.lock`
+pins, rasterizes it with resvg (`resvg_py`, whose wheels hold the whole renderer) to PNG bytes, decodes them with
+pypng, and keeps how much of each pixel the icon covers. Both are in the `icons` dependency group, kept out of `dev`
+since only this tool needs them. The masks are written to
+`src/proscenium/ui/widget_resources/blender_icons/row_icon_masks.npz`, where the widgets recolor them, as the scene
+graph does for instances and their proxies. The icons are licensed CC BY-SA 4.0 (that directory's `LICENSE.txt`).
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ except ImportError as error:
 from proscenium.ui.scene_graph_widget.display.list_columns import name_column
 
 ROOT = Path(__file__).resolve().parents[1]
-MASKS_PATH = (
-    ROOT / "src" / "proscenium" / "ui" / "scene_graph_widget" / "display" / "blender_icons" / "row_icon_masks.npz"
-)
+MASKS_PATH = ROOT / "src" / "proscenium" / "ui" / "widget_resources" / "blender_icons" / "row_icon_masks.npz"
+# Each widget's icons its rows can show, which every mask is made for.
+WIDGET_ROW_ICON_NAMES = (name_column.row_icon_names,)
 BLENDER_BRANCH = "blender-v5.2-release"  # the minor version uv.lock pins
 SVG_URL = (
     f"https://projects.blender.org/blender/blender/raw/branch/{BLENDER_BRANCH}/release/datafiles/icons_svg/{{}}.svg"
@@ -73,7 +73,7 @@ def coverage_mask(svg: str) -> np.ndarray:
 def main() -> None:
     """Fetch, rasterize, and write every row icon's mask."""
     masks: dict[str, np.ndarray] = {}
-    for name in name_column.row_icon_names():
+    for name in sorted({name for row_icon_names in WIDGET_ROW_ICON_NAMES for name in row_icon_names()}):
         with urllib.request.urlopen(SVG_URL.format(name.lower())) as response:
             svg = response.read().decode()
         masks[name] = coverage_mask(svg)

@@ -17,9 +17,9 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 import bpy
 from pxr import Sdf, Usd
 
+from proscenium.ui.columned_list import column_layout
 from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.scene_graph_widget.display import list_columns, widget_properties, widget_views
-from proscenium.ui.scene_graph_widget.display.list_columns import column_layout
+from proscenium.ui.scene_graph_widget.display import list_columns, scene_graph_properties, scene_graph_views
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -96,7 +96,7 @@ def _show_views(stage: Usd.Stage, view_names: list[str], selections: dict[str, l
         selections.setdefault(name, [])
         display.create_view(name, _in_properties_editor, _hear_selections(selections[name]))
         display.set_stage(name, stage)
-        properties = widget_properties.view_properties(wm, name)
+        properties = scene_graph_properties.view_properties(wm, name)
         for column in list_columns.COLUMNS:  # the name column then fills each row, where the cursor sweeps
             setattr(properties, column.show_property, False)
         panel = type(
@@ -210,7 +210,7 @@ def _expanded_paths(view_names: list[str]) -> dict[str, list[str]]:
     """Each view's expanded rows: a step Right expands a row, where the list's own Right only selects the next."""
     expanded: dict[str, list[str]] = {}
     for name in view_names:
-        tree = widget_views.scene_graph_view(name).prim_tree_view.tree
+        tree = scene_graph_views.scene_graph_view(name).prim_tree_view.tree
         expanded[name] = sorted(str(path) for path in tree.expanded_paths) if tree is not None else []
     return expanded
 

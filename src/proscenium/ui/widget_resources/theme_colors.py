@@ -1,11 +1,11 @@
-"""The colors the widget draws its own marks in: the theme's, mixes of them for the rows, and icon pixels in them.
+"""The colors widgets draw their own marks in: the theme's, mixes of them for list rows, and icon pixels in them.
 
-The widget draws its badges, tinted icons, and dashed guide lines itself, so they take the theme's colors from here:
-the collection colors, the list's text color, and the pie menu's, which the badges' block is drawn in. The collection
-colors don't read on a light theme's grey rows, and the list's text color does in any theme, so a color mixed toward
-the text reads in both. A mix is greyer than its color; one that keeps the color's saturation at the mix's luminance
-contrasts as much and reads as the color. An icon drawn in any color is named for its color, rounded, so a color
-computed again names the same icon.
+Widgets draw some marks themselves, such as badges and tinted icons, so those take the theme's colors from here: the
+collection colors, the list's text color, and the pie menu's, which badges' blocks are drawn in. The collection colors
+don't read on a light theme's grey rows, and the list's text color does in any theme, so a color mixed toward the text
+reads in both. A mix is greyer than its color; one that keeps the color's saturation at the mix's luminance contrasts
+as much and reads as the color. An icon drawn in any color is named for its color, rounded, so a color computed again
+names the same icon.
 """
 
 from __future__ import annotations
@@ -36,16 +36,9 @@ class CollectionColor(enum.IntEnum):
     BROWN = 7
 
 
-# Instancing's color, the instance badge's too. How much of a row mark's color is the text's: an instance proxy's is
-# closer to the text, fainter than its instance's, since it's shared from the prototype.
-INSTANCING_COLOR = CollectionColor.GREEN
-INSTANCE_TEXT_WEIGHT = 0.6
-INSTANCE_PROXY_TEXT_WEIGHT = 0.75
-
-
 @dataclass(frozen=True, slots=True)
 class ThemeColors:
-    """The theme's colors the widget draws in, compared to tell when what was drawn in them needs drawing again."""
+    """The theme's colors widgets draw in, compared to tell when what was drawn in them needs drawing again."""
 
     pie_menu_inner_color: RGBA
     pie_menu_roundness: float  # not a color, but the badges' block is drawn to it, so it changes them as one does
@@ -104,7 +97,7 @@ def read_theme_colors() -> ThemeColors:
 
 
 def last_read_theme_colors() -> ThemeColors:
-    """The theme's colors as of the last read, at the last view's draw; the defaults before any."""
+    """The theme's colors as of the last read, at the last list's draw; the defaults before any."""
     return _ThemeColorsState.last_read or DEFAULT_THEME_COLORS
 
 
@@ -150,18 +143,6 @@ def text_mix(color: RGB, text_weight: float) -> RGB:
 def saturated_text_mix(color: RGB, text_weight: float) -> RGB:
     """As light as the color's text mix, as saturated as the color: it contrasts as the mix does, in the color."""
     return saturated_at_luminance(color, relative_luminance(text_mix(color, text_weight)))
-
-
-def instance_color() -> RGB:
-    """The color an instance's row marks it in."""
-    instancing_color = last_read_theme_colors().collection_color(INSTANCING_COLOR)
-    return saturated_text_mix(instancing_color, INSTANCE_TEXT_WEIGHT)
-
-
-def instance_proxy_color() -> RGB:
-    """The color an instance proxy's row marks it in: fainter, for what it shares from its prototype."""
-    instancing_color = last_read_theme_colors().collection_color(INSTANCING_COLOR)
-    return text_mix(instancing_color, INSTANCE_PROXY_TEXT_WEIGHT)
 
 
 def rounded_color(color: RGB) -> RGB:

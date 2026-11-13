@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
+from ... import widget_updates
 from ..prim_tree import PrimTreeView
-from . import widget_properties, widget_views
+from . import scene_graph_properties, scene_graph_views
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,15 +33,15 @@ def create_view(
     """
 
     def run_stage_changes() -> None:
-        widget_properties.apply_stage_changes(name)
+        scene_graph_properties.apply_stage_changes(name)
 
     def run_search() -> None:
-        widget_properties.apply_pending(name)
+        scene_graph_properties.apply_pending(name)
 
     def schedule_stage_change() -> None:
-        widget_properties.schedule(run_stage_changes, 0.0)  # the notice comes mid-edit; read it once the edit is over
+        widget_updates.schedule(run_stage_changes, 0.0)  # the notice comes mid-edit; read it once the edit is over
 
-    view = widget_views.SceneGraphView(
+    view = scene_graph_views.SceneGraphView(
         name=name,
         prim_tree_view=PrimTreeView(schedule_stage_change),
         shows_in_region=shows_in_region,
@@ -48,40 +49,40 @@ def create_view(
         run_stage_changes=run_stage_changes,
         run_search=run_search,
     )
-    widget_views.add_view(view)
+    scene_graph_views.add_view(view)
     wm = bpy.context.window_manager
     if wm is not None:
-        widget_properties.create_missing_view_properties(wm)
+        scene_graph_properties.create_missing_view_properties(wm)
 
 
 def remove_view(name: str) -> None:
     """Stop showing a view's stage, and remove the view and its properties."""
-    view = widget_views.discard_view(name)
-    widget_properties.unschedule(view.run_stage_changes)
-    widget_properties.unschedule(view.run_search)
+    view = scene_graph_views.discard_view(name)
+    widget_updates.unschedule(view.run_stage_changes)
+    widget_updates.unschedule(view.run_search)
     view.prim_tree_view.close()
     wm = bpy.context.window_manager
     if wm is not None:
-        widget_properties.remove_view_properties(wm, name)
+        scene_graph_properties.remove_view_properties(wm, name)
 
 
 def remove_all_views() -> None:
     """Remove every view."""
-    for view in widget_views.all_views():
+    for view in scene_graph_views.all_views():
         remove_view(view.name)
 
 
 def set_stage(name: str, stage: Usd.Stage | None) -> None:
     """Show a stage in a view, or none. The view holds the stage's prims, never the stage."""
-    view = widget_views.scene_graph_view(name)
+    view = scene_graph_views.scene_graph_view(name)
     before = view.prim_tree_view.selected_path
     view.prim_tree_view.set_stage(stage)
-    widget_properties.sync_and_notify(view, before)
+    scene_graph_properties.sync_and_notify(view, before)
 
 
 def selected_path(name: str) -> Sdf.Path | None:
     """The path of the prim selected in a view, or None, as when its stage has been released."""
-    prim_tree_view = widget_views.scene_graph_view(name).prim_tree_view
+    prim_tree_view = scene_graph_views.scene_graph_view(name).prim_tree_view
     return prim_tree_view.selected_path if prim_tree_view.live_tree() is not None else None
 
 
@@ -90,9 +91,9 @@ def select_prim(name: str, path: Sdf.Path | None) -> None:
 
     A path the view's stage has no prim at selects nothing.
     """
-    view = widget_views.scene_graph_view(name)
+    view = scene_graph_views.scene_graph_view(name)
     if path is None:
         view.prim_tree_view.select_row(None)
     else:
         view.prim_tree_view.select_path(path)
-    widget_properties.sync_rows(name)
+    scene_graph_properties.sync_rows(name)

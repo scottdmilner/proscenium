@@ -11,21 +11,24 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |
 | `core/` | The compiled core: its C++ source and the built module. |
-| `ui/` | The user interface: widgets an add-on places in Blender's editors, such as the scene graph's prim tree. |
+| `ui/` | The user interface: widgets an add-on places in Blender's editors, such as the scene graph's prim tree, and what the widgets share. |
 
 ## Import rules
 
-The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers; the lowest tier's units import only themselves, and never `bpy` ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
+The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers; the lowest tier's units import only themselves. The two lowest tiers never import `bpy` ([tiers](../../docs/plans/source-tiers-and-names.md#tiers)):
 
 | Tier | Units |
 |---|---|
-| 7 | `addon.py` |
-| 6 | `ui/scene_graph_widget/display/` |
-| 5 | `api/` |
-| 4 | `synchronization/` |
-| 3 | `binding/runtime/` |
-| 2 | `binding/persistence/` |
-| 1 | `core/`, `binding/source_access/`, `binding/results.py`, `ui/scene_graph_widget/prim_tree/` |
+| 10 | `addon.py` |
+| 9 | `ui/scene_graph_widget/display/` |
+| 8 | `ui/search_box.py` |
+| 7 | `ui/widget_resources/`, `ui/columned_list/`, `ui/widget_updates.py` |
+| 6 | `api/` |
+| 5 | `synchronization/` |
+| 4 | `binding/runtime/` |
+| 3 | `binding/persistence/` |
+| 2 | `ui/scene_graph_widget/prim_tree/` |
+| 1 | `core/`, `binding/source_access/`, `binding/results.py`, `ui/widget_model/` |
 
 `__init__.py`, the extension's entry, and `binding/__init__.py`, `ui/__init__.py`, and `ui/scene_graph_widget/__init__.py`, which group their packages' units and import none of them, are no unit's.
 
@@ -33,4 +36,4 @@ Units reach each other through public modules and exported names. A package unit
 
 Module names are unique across `src/proscenium/` and name what the module holds, so a use names its unit and doesn't repeat itself: `binding_records.BindingConfig`, `binding_settings.PayloadPolicy`.
 
-`tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and fails on any import of a Blender module in the lowest tier and the packages holding it; `tests/bpy_free/test_no_blender_imports.py` checks that they import in a fresh interpreter with Blender's modules blocked.
+`tests/bpy_free/test_import_tiers.py` checks these rules by reading each module's imports, and fails on any import of a Blender module in the two lowest tiers and the packages holding them; `tests/bpy_free/test_no_blender_imports.py` checks that they import in a fresh interpreter with Blender's modules blocked.

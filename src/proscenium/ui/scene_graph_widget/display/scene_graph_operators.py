@@ -1,7 +1,7 @@
-"""The buttons a scene graph row draws: its disclosure triangle, its copy-path button, and its guide lines' button.
+"""The buttons a scene graph row draws: its disclosure triangle and its guide lines' button.
 
-All are internal operators: expansion in a tree is view state, and copying a path changes no data, so none pushes an
-undo step.
+Its copy-path button is the shared `clipboard_operators.CopyUsdPath`. Both are internal operators: expansion in a tree
+is view state, so neither pushes an undo step.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, override
 import bpy
 
 from ..prim_tree import prim_descriptions
-from . import widget_properties, widget_views
+from . import scene_graph_properties, scene_graph_views
 
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 def _tree(view_name: str) -> PrimTree | None:
     """A view's tree, if the view exists and its stage is alive."""
-    view = widget_views.find_view(view_name)
+    view = scene_graph_views.find_view(view_name)
     return view.prim_tree_view.live_tree() if view is not None else None
 
 
@@ -61,30 +61,9 @@ class SceneGraphToggleRow(bpy.types.Operator):
     def execute(self, context: Any) -> set[OperatorReturnItems]:
         if _row(self.view_name, self.row_index) is None:
             return {"CANCELLED"}
-        widget_views.set_entering_search_text(self.view_name, is_entering=False)  # a click on a row ends typing
-        widget_views.scene_graph_view(self.view_name).prim_tree_view.toggle_row(self.row_index, self.recursive)
-        widget_properties.sync_rows(self.view_name)
-        return {"FINISHED"}
-
-
-class SceneGraphCopyPath(bpy.types.Operator):
-    """Copy a prim's path to the clipboard."""
-
-    bl_idname = "proscenium.scene_graph_copy_path"
-    bl_label = "Copy Prim Path"
-    bl_options = {"INTERNAL"}
-
-    prim_path: bpy.props.StringProperty()  # ty: ignore[invalid-type-form]
-
-    @override
-    @classmethod
-    def description(cls, context: Any, properties: Any) -> str:
-        return f"Copy {properties.prim_path}"
-
-    @override
-    def execute(self, context: Any) -> set[OperatorReturnItems]:
-        context.window_manager.clipboard = self.prim_path
-        self.report({"INFO"}, f"Copied {self.prim_path}")
+        scene_graph_views.set_entering_search_text(self.view_name, is_entering=False)  # a click on a row ends typing
+        scene_graph_views.scene_graph_view(self.view_name).prim_tree_view.toggle_row(self.row_index, self.recursive)
+        scene_graph_properties.sync_rows(self.view_name)
         return {"FINISHED"}
 
 
@@ -106,4 +85,4 @@ class SceneGraphGuideLine(bpy.types.Operator):
 
 
 # In registration order.
-CLASSES = (SceneGraphToggleRow, SceneGraphCopyPath, SceneGraphGuideLine)
+CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine)

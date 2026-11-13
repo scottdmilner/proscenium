@@ -13,6 +13,7 @@ from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_search
+from proscenium.ui.widget_model import text_matching
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -47,15 +48,15 @@ def test_name_matches_ignore_case_unless_asked(stage: Usd.Stage) -> None:
 
 
 def test_glob_path_and_regex_modes(stage: Usd.Stage) -> None:
-    assert _matches(_search(stage, text="Crate_0?", mode=prim_search.SearchMode.GLOB)) == [
+    assert _matches(_search(stage, text="Crate_0?", mode=text_matching.MatchMode.GLOB)) == [
         "/World/Geometry/Crates/Crate_01",
         "/World/Geometry/Crates/Crate_02",
     ]
-    assert _matches(_search(stage, text="looks/red", mode=prim_search.SearchMode.PATH)) == [
+    assert _matches(_search(stage, text="looks/red", mode=text_matching.MatchMode.PATH)) == [
         "/World/Looks/Red",
         "/World/Looks/Red/Surface",
     ]
-    assert _matches(_search(stage, text=r"^/World/Looks$", mode=prim_search.SearchMode.REGEX)) == ["/World/Looks"]
+    assert _matches(_search(stage, text=r"^/World/Looks$", mode=text_matching.MatchMode.REGEX)) == ["/World/Looks"]
 
 
 @pytest.mark.parametrize(
@@ -68,8 +69,8 @@ def test_glob_path_and_regex_modes(stage: Usd.Stage) -> None:
     ids=["unclosed group", "overflowing repetition", "deep nesting"],
 )
 def test_invalid_queries_raise(stage: Usd.Stage, text: str) -> None:
-    with pytest.raises(prim_search.SearchError):
-        _search(stage, text=text, mode=prim_search.SearchMode.REGEX)
+    with pytest.raises(text_matching.InvalidPatternError):
+        _search(stage, text=text, mode=text_matching.MatchMode.REGEX)
 
 
 def test_a_search_stops_at_its_limit(stage: Usd.Stage) -> None:

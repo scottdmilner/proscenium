@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .. import widget_operators
-from .column_layout import Column
+from ....columned_list import column_layout
+from ....widget_resources import clipboard_operators
 
 if TYPE_CHECKING:
     import bpy
@@ -20,12 +20,12 @@ def _draw_cell(layout: bpy.types.UILayout, details: RowDetails) -> None:
     # keeps its own width in a wider cell, so a scale is what gives the icon room inside.
     button = layout.row(align=True)
     button.scale_x = COPY_BUTTON_WIDTH_SCALE
-    copy = button.operator(widget_operators.SceneGraphCopyPath.bl_idname, text="", icon="DUPLICATE")
-    copy.prim_path = str(details.path)
+    copy = button.operator(clipboard_operators.CopyUsdPath.bl_idname, text="", icon="DUPLICATE")
+    copy.usd_path = str(details.path)
 
 
 # Its header blank, as each row's button shows what the column holds; a button's width, so not resizable.
-COPY_PATH_COLUMN = Column(
+COPY_PATH_COLUMN: column_layout.Column[RowDetails] = column_layout.Column(
     "Copy Path",
     "show_copy_path_column",
     _draw_cell,

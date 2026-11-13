@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .column_layout import Column
+from ....columned_list import column_layout
 
 if TYPE_CHECKING:
     import bpy
@@ -16,4 +16,6 @@ def _draw_cell(layout: bpy.types.UILayout, details: RowDetails) -> None:
     layout.label(text=details.type_name or "-")
 
 
-TYPE_COLUMN = Column("Type", "show_type_column", _draw_cell, "type_column_units")
+TYPE_COLUMN: column_layout.Column[RowDetails] = column_layout.Column(
+    "Type", "show_type_column", _draw_cell, "type_column_units"
+)

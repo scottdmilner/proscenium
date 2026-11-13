@@ -1,4 +1,4 @@
-"""Registering the scene graph's classes, window-manager properties, icons, key watchers, and load handler.
+"""Registering the scene graph's classes, window-manager properties, key watchers, and load handler.
 
 It places nothing in Blender's editors: a host registers its own panels, creates views, and draws them.
 """
@@ -8,23 +8,22 @@ from __future__ import annotations
 import bpy
 from bpy.app.handlers import persistent
 
+from ...widget_resources import display_registration
 from . import (
-    badge_icons,
-    tinted_icons,
-    widget_drawing,
-    widget_hosting,
-    widget_keys,
-    widget_operators,
-    widget_properties,
-    widget_views,
+    scene_graph_drawing,
+    scene_graph_hosting,
+    scene_graph_keys,
+    scene_graph_operators,
+    scene_graph_properties,
+    scene_graph_views,
 )
 
 # In registration order: property groups before what refers to them.
 CLASSES = (
-    *widget_properties.CLASSES,
-    *widget_operators.CLASSES,
-    *widget_drawing.CLASSES,
-    *widget_keys.CLASSES,
+    *scene_graph_properties.CLASSES,
+    *scene_graph_operators.CLASSES,
+    *scene_graph_drawing.CLASSES,
+    *scene_graph_keys.CLASSES,
 )
 
 
@@ -38,34 +37,32 @@ def _file_loaded(*_args: object) -> None:
     # window's key watcher starts again when it next draws a view. It ends any text edit too.
     wm = bpy.context.window_manager
     if wm is not None:
-        widget_properties.create_missing_view_properties(wm)
-    widget_views.stop_entering_search_text()
+        scene_graph_properties.create_missing_view_properties(wm)
+    scene_graph_views.stop_entering_search_text()
 
 
 def register() -> None:
-    """Register the scene graph's classes and properties, create its icons, and start its key watchers."""
+    """Register what the widgets share, the scene graph's classes and properties, and start its key watchers."""
     if _SceneGraphRegistrationState.is_registered:
         raise RuntimeError("the scene graph is registered")
-    badge_icons.create_icons()
-    tinted_icons.create_icons()
+    display_registration.register()
     for cls in CLASSES:
         bpy.utils.register_class(cls)
-    widget_properties.install_views_property()
+    scene_graph_properties.install_views_property()
     bpy.app.handlers.load_post.append(_file_loaded)
-    widget_keys.start_watching()
+    scene_graph_keys.start_watching()
     _SceneGraphRegistrationState.is_registered = True
 
 
 def unregister() -> None:
     """Remove every view, stop the key watchers, and undo register."""
-    widget_hosting.remove_all_views()
-    widget_keys.stop_watching()  # each watcher ends at its next event
+    scene_graph_hosting.remove_all_views()
+    scene_graph_keys.stop_watching()  # each watcher ends at its next event
     bpy.app.handlers.load_post.remove(_file_loaded)
-    widget_properties.remove_views_property()
+    scene_graph_properties.remove_views_property()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
-    tinted_icons.remove_icons()
-    badge_icons.remove_icons()
+    display_registration.unregister()
     _SceneGraphRegistrationState.is_registered = False
 
 

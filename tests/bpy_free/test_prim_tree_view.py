@@ -14,6 +14,7 @@ from pxr import Sdf, Usd
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget.prim_tree import PrimTreeView, StepDirection, prim_descriptions, prim_search
 from proscenium.ui.scene_graph_widget.prim_tree.prim_tree_view import PendingChange, SearchStatus
+from proscenium.ui.widget_model import composition_arcs, text_matching
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -85,7 +86,7 @@ def test_a_query_filters_and_clearing_it_reveals_the_selection(stage: Usd.Stage)
     view.set_query(prim_search.SearchQuery())
     assert view.search_status == SearchStatus()
     assert view.active_row_index() is not None
-    view.set_query(prim_search.SearchQuery(text="(", mode=prim_search.SearchMode.REGEX))
+    view.set_query(prim_search.SearchQuery(text="(", mode=text_matching.MatchMode.REGEX))
     assert view.search_status.is_error
 
 
@@ -265,28 +266,32 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
         assert prim_details is not None, path
         return prim_descriptions.row_tooltip(details(path), prim_details)
 
-    badge = prim_descriptions.Badge
+    arc = composition_arcs.CompositionArc
     crate = "/World/Geometry/Crates/Crate_01"
-    # The instance badge, then one badge per arc authored on the prim, strongest first; an instance proxy's arcs are
-    # on its prototype's prims.
+    # Whether the instance badge shows, then one badge per arc authored on the prim, strongest first; an instance
+    # proxy's arcs are on its prototype's prims.
     badges_by_path = {
-        crate: [badge.INSTANCE, badge.REFERENCES],
-        "/World/Geometry/Crates/Crate_Instanceable": [badge.INSTANCE],
-        "/World/Geometry/Crates/Crate_Unique": [badge.INHERITS, badge.REFERENCES],
-        "/World/Geometry/Prop_Payloaded": [badge.PAYLOAD, badge.SPECIALIZES],
-        "/World/Geometry/Prop_Variants": [badge.VARIANTS],
-        f"{crate}/Body": [],
-        "/World/Camera": [],
+        crate: (True, [arc.REFERENCES]),
+        "/World/Geometry/Crates/Crate_Instanceable": (True, []),
+        "/World/Geometry/Crates/Crate_Unique": (False, [arc.INHERITS, arc.REFERENCES]),
+        "/World/Geometry/Prop_Payloaded": (False, [arc.PAYLOAD, arc.SPECIALIZES]),
+        "/World/Geometry/Prop_Variants": (False, [arc.VARIANTS]),
+        f"{crate}/Body": (False, []),
+        "/World/Camera": (False, []),
     }
-    assert {path: prim_descriptions.row_badges(details(path)) for path in badges_by_path} == badges_by_path
+    shown_badges = {
+        path: (prim_descriptions.has_instance_badge(details(path)), prim_descriptions.row_arcs(details(path)))
+        for path in badges_by_path
+    }
+    assert shown_badges == badges_by_path
     crate_prim_details = tree.prim_details(Sdf.Path(crate))
     assert crate_prim_details is not None
     prototype = crate_prim_details.prototype_path
     assert row_tooltip(crate) == f"{crate}\nXform, Def\nKind: component\nInstance of {prototype}\nReferences: /_Crate"
     # Greyed out where the metadata does nothing; a proxy's tooltip names its instance.
     instanceable = details("/World/Geometry/Crates/Crate_Instanceable")
-    assert not prim_descriptions.is_badge_in_effect(instanceable, badge.INSTANCE)
-    assert prim_descriptions.is_badge_in_effect(details(crate), badge.INSTANCE)
+    assert not prim_descriptions.is_instance_badge_in_effect(instanceable)
+    assert prim_descriptions.is_instance_badge_in_effect(details(crate))
     assert row_tooltip("/World/Geometry/Crates/Crate_Instanceable").endswith(
         "\nInstanceable, but not an instance: it has no composition arcs"
     )
@@ -345,25 +350,25 @@ def test_arc_targets_are_the_composed_lists(stage: Usd.Stage) -> None:
 
 
 def test_an_unloaded_payload_and_an_unselected_variant_set_are_not_in_effect(stage: Usd.Stage) -> None:
-    badge = prim_descriptions.Badge
+    arc = composition_arcs.CompositionArc
     payloaded, variants = Sdf.Path("/World/Geometry/Prop_Payloaded"), Sdf.Path("/World/Geometry/Prop_Variants")
     view = _view(stage)
     assert view.tree is not None
     tree = view.tree
 
-    def in_effect(path: Sdf.Path, shown: prim_descriptions.Badge) -> bool:
+    def in_effect(path: Sdf.Path, shown: composition_arcs.CompositionArc) -> bool:
         details = tree.details_at(path)
         assert details is not None, path
-        return prim_descriptions.is_badge_in_effect(details, shown)
+        return prim_descriptions.is_arc_in_effect(details, shown)
 
-    assert in_effect(payloaded, badge.PAYLOAD)  # loaded, as the stage opens
-    assert in_effect(payloaded, badge.SPECIALIZES)  # only payloads and variants can be out of effect
-    assert in_effect(variants, badge.VARIANTS)  # shape = box
+    assert in_effect(payloaded, arc.PAYLOAD)  # loaded, as the stage opens
+    assert in_effect(payloaded, arc.SPECIALIZES)  # only payloads and variants can be out of effect
+    assert in_effect(variants, arc.VARIANTS)  # shape = box
     stage.Unload(payloaded)
     stage.GetPrimAtPath(variants).GetVariantSet("shape").ClearVariantSelection()
     tree.refresh()
-    assert not in_effect(payloaded, badge.PAYLOAD)
-    assert not in_effect(variants, badge.VARIANTS)
+    assert not in_effect(payloaded, arc.PAYLOAD)
+    assert not in_effect(variants, arc.VARIANTS)
     prim_details = tree.prim_details(payloaded)
     assert prim_details is not None
     payload_details = tree.details_at(payloaded)

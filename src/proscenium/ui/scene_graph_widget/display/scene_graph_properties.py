@@ -13,17 +13,16 @@ one. Properties made for an existing view, as after a load, start from its appli
 from __future__ import annotations
 
 import re
-from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 import bpy
 
+from ... import search_box, widget_updates
+from ...widget_model import text_matching
 from ..prim_tree import prim_descriptions, prim_search
-from . import widget_views
+from . import scene_graph_views
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-
     from pxr import Sdf
 
 VIEWS_PROPERTY = "proscenium_scene_graph_views"  # the WindowManager's collection of SceneGraphViewProperties
@@ -34,17 +33,13 @@ _ROW_ITEM_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.rows\[(\d+)\]$")
 _VIEW_PROPERTY_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.")
 
 
-class _SceneGraphPropertiesState:
-    is_writing_from_view = False  # set while the properties are written from the view, so no update callback runs
-
-
 def _row_tooltip(row_item: Any) -> str:
     # Computed on hover from the model; the item knows only its RNA path.
     found = _ROW_ITEM_PATH.search(row_item.path_from_id())
     if found is None:
         return ""
     view_index, row_index = int(found[1]), int(found[2])
-    view = widget_views.find_view(getattr(row_item.id_data, VIEWS_PROPERTY)[view_index].name)
+    view = scene_graph_views.find_view(getattr(row_item.id_data, VIEWS_PROPERTY)[view_index].name)
     tree = view.prim_tree_view.live_tree() if view is not None else None
     if tree is None or row_index >= len(tree.rows):
         return ""
@@ -55,12 +50,12 @@ def _row_tooltip(row_item: Any) -> str:
 
 def _on_active_row_changed(properties: Any, _context: Any) -> None:
     # The list's own clicks and its Up and Down keys select the row's prim.
-    if _SceneGraphPropertiesState.is_writing_from_view:
+    if widget_updates.is_writing_from_model():
         return
-    view = widget_views.find_view(properties.name)
+    view = scene_graph_views.find_view(properties.name)
     if view is None:
         return
-    widget_views.set_entering_search_text(view.name, is_entering=False)  # a click on a row ends typing
+    scene_graph_views.set_entering_search_text(view.name, is_entering=False)  # a click on a row ends typing
     before = view.prim_tree_view.selected_path
     view.prim_tree_view.select_row(properties.active_row_index)
     sync_and_notify(view, before)  # selecting reads any pending stage changes, which may change the rows
@@ -68,16 +63,16 @@ def _on_active_row_changed(properties: Any, _context: Any) -> None:
 
 def _on_search_changed(properties: Any, _context: Any) -> None:
     # Typing updates the text on every keystroke, so the search runs a pause after the fields last changed.
-    if _SceneGraphPropertiesState.is_writing_from_view:
+    if widget_updates.is_writing_from_model():
         return
-    view = widget_views.find_view(properties.name)
+    view = scene_graph_views.find_view(properties.name)
     if view is not None:
-        schedule(view.run_search, SEARCH_DELAY_SECONDS)
+        widget_updates.schedule(view.run_search, SEARCH_DELAY_SECONDS)
 
 
 def _on_search_text_changed(properties: Any, context: Any) -> None:
-    if not _SceneGraphPropertiesState.is_writing_from_view:
-        widget_views.set_entering_search_text(properties.name, is_entering=True)
+    if not widget_updates.is_writing_from_model():
+        scene_graph_views.set_entering_search_text(properties.name, is_entering=True)
     _on_search_changed(properties, context)
 
 
@@ -123,7 +118,7 @@ class SceneGraphViewProperties(bpy.types.PropertyGroup):
     search_text: bpy.props.StringProperty(name="Search", options={"TEXTEDIT_UPDATE"}, update=_on_search_text_changed)  # ty: ignore[invalid-type-form]
     search_mode: bpy.props.EnumProperty(  # ty: ignore[invalid-type-form]
         name="Match",
-        items=[(mode.name, mode.value.capitalize(), "") for mode in prim_search.SearchMode],
+        items=search_box.match_mode_items(),
         update=_on_search_changed,
     )
     search_case_sensitive: bpy.props.BoolProperty(name="Match Case", update=_on_search_changed)  # ty: ignore[invalid-type-form]
@@ -172,7 +167,7 @@ def view_name_holding(hovered_property: Any) -> str | None:
 def create_missing_view_properties(wm: Any) -> None:
     """Make the properties of every view that has none, with its applied search, and sync every view's rows."""
     items = getattr(wm, VIEWS_PROPERTY)
-    for view in widget_views.all_views():
+    for view in scene_graph_views.all_views():
         if items.get(view.name) is None:
             properties = items.add()
             properties.name = view.name
@@ -193,7 +188,7 @@ def sync_rows(name: str) -> None:
     properties = view_properties(wm, name) if wm is not None else None
     if properties is None:
         return
-    prim_tree_view = widget_views.scene_graph_view(name).prim_tree_view
+    prim_tree_view = scene_graph_views.scene_graph_view(name).prim_tree_view
     tree = prim_tree_view.live_tree()
     row_count = len(tree.rows) if tree is not None else 0
     rows = properties.rows
@@ -202,56 +197,46 @@ def sync_rows(name: str) -> None:
     for _ in range(row_count - len(rows)):
         rows.add()
     active_row_index = prim_tree_view.active_row_index()
-    with _writing_from_view():
+    with widget_updates.writing_from_model():
         properties.active_row_index = -1 if active_row_index is None else active_row_index
 
 
-def sync_and_notify(view: widget_views.SceneGraphView, before: Sdf.Path | None) -> None:
+def sync_and_notify(view: scene_graph_views.SceneGraphView, before: Sdf.Path | None) -> None:
     """Sync a view's rows after its tree or selection changed, and tell the host if the selection did."""
     sync_rows(view.name)
-    widget_views.notify_selection(view, before)
+    scene_graph_views.notify_selection(view, before)
 
 
 def query_from_properties(properties: Any) -> prim_search.SearchQuery:
     """The search a view's properties hold."""
     return prim_search.SearchQuery(
         text=properties.search_text,
-        mode=prim_search.SearchMode[properties.search_mode],
+        mode=text_matching.MatchMode[properties.search_mode],
         case_sensitive=properties.search_case_sensitive,
         shown_rows_only=properties.search_shown_rows_only,
     )
 
 
 def _write_query(properties: Any, query: prim_search.SearchQuery) -> None:
-    with _writing_from_view():
+    with widget_updates.writing_from_model():
         properties.search_text = query.text
         properties.search_mode = query.mode.name
         properties.search_case_sensitive = query.case_sensitive
         properties.search_shown_rows_only = query.shown_rows_only
 
 
-@contextmanager
-def _writing_from_view() -> Iterator[None]:
-    # Blender 5 keeps bpy.props apart from dict-style ID properties, so only a flag stops the update callbacks.
-    _SceneGraphPropertiesState.is_writing_from_view = True
-    try:
-        yield
-    finally:
-        _SceneGraphPropertiesState.is_writing_from_view = False
-
-
 def apply_stage_changes(name: str) -> None:
     """Read a view's pending stage changes, then sync and redraw; the search fields wait for their own timer."""
-    view = widget_views.scene_graph_view(name)
+    view = scene_graph_views.scene_graph_view(name)
     before = view.prim_tree_view.selected_path
     view.prim_tree_view.apply_pending_changes()
     sync_and_notify(view, before)
-    _tag_redraw_all()
+    widget_updates.redraw_all_areas()
 
 
 def apply_pending(name: str) -> None:
     """Read a view's pending stage changes and run its search if the fields changed, then sync and redraw."""
-    view = widget_views.scene_graph_view(name)
+    view = scene_graph_views.scene_graph_view(name)
     prim_tree_view = view.prim_tree_view
     before = prim_tree_view.selected_path
     prim_tree_view.apply_pending_changes()
@@ -260,27 +245,4 @@ def apply_pending(name: str) -> None:
     if properties is not None and (query := query_from_properties(properties)) != prim_tree_view.query:
         prim_tree_view.set_query(query)
     sync_and_notify(view, before)
-    _tag_redraw_all()
-
-
-def schedule(timer: Callable[[], None], delay_seconds: float) -> None:
-    """Run a view's timer after a delay, restarting the delay if it's already waiting; a file load doesn't cancel it."""
-    unschedule(timer)
-    # A view marks a stage change pending once, until the timer reads it, so a lost timer would stop its updates.
-    bpy.app.timers.register(timer, first_interval=delay_seconds, persistent=True)
-
-
-def unschedule(timer: Callable[[], None]) -> None:
-    """Cancel a view's timer if it's waiting."""
-    if bpy.app.timers.is_registered(timer):
-        bpy.app.timers.unregister(timer)
-
-
-def _tag_redraw_all() -> None:
-    # Hosts draw views wherever they like, so every area redraws.
-    wm: Any = bpy.context.window_manager
-    if wm is None:
-        return
-    for window in wm.windows:
-        for area in window.screen.areas:
-            area.tag_redraw()
+    widget_updates.redraw_all_areas()

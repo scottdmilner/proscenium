@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Sdf, Tf, Usd
 
+from ...widget_model import text_matching
 from . import prim_search
 from .prim_tree import PrimTree
 
@@ -167,7 +168,7 @@ class PrimTreeView:
         try:
             candidate_prims = tree.unfiltered_prims() if self.query.shown_rows_only else None
             result = prim_search.search(stage, self.query, MATCH_LIMIT, candidate_prims)
-        except prim_search.SearchError as error:
+        except text_matching.InvalidPatternError as error:
             self.search_status = SearchStatus(f"Search: {error}", is_error=True)
             return
         elapsed_ms = (time.perf_counter() - start) * 1000

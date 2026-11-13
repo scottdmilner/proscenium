@@ -6,20 +6,23 @@ the guide lines under an instance dashed in those colors.
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING
 
+import numpy as np
 from pxr import Kind, Sdf
 
+from ....columned_list.column_layout import fixed_width
+from ....widget_resources import badge_icons, tinted_icons
 from ...prim_tree import prim_descriptions
-from .. import badge_icons, tinted_icons, widget_colors, widget_operators
-from .column_layout import fixed_width
+from .. import instancing_colors, scene_graph_operators
 
 if TYPE_CHECKING:
     import bpy
     from bpy.stub_internal.rna_enums import IconItems
 
     from ...prim_tree import PrimTree, RowDetails
-    from ..widget_properties import SceneGraphViewProperties
+    from ..scene_graph_properties import SceneGraphViewProperties
 
 # Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
 LEVEL_UNITS = 0.6
@@ -56,6 +59,17 @@ KIND_ICONS: tuple[tuple[str, IconItems], ...] = (
     (Kind.Tokens.subcomponent, "MOD_EXPLODE"),
 )
 OTHER_KIND_ICON: IconItems = "BOOKMARKS"
+# The dashed guide line's mask, drawn as a tinted icon. A label draws its icon 16 points tall in a 20-point row,
+# whatever the icon's pixels, so a line drawn into an icon can't reach its row's edges. The line is dashed, and the
+# dashes are timed so the gap a row leaves at its edges is one of the gaps between them: down a column of rows, the
+# dashes run evenly.
+DASHED_LINE_SIZE_PIXELS = 32
+# The line's pixel columns, left of the icon's center: a label in a guide level draws its icon from the level's left,
+# so these put the line where the level's own line is, under the center of the parent's chevron.
+DASHED_LINE_COLUMNS = (8, 9)
+# The rows left blank, bottom first: dashes of a quarter of the row's 20 points, and gaps as long, two to an icon,
+# with the 2 points the icon leaves at each edge of its row making up the gap there.
+DASHED_LINE_GAP_ROWS = (*range(2), *range(12, 22))
 # The disclosure triangle's icons, collapsed and expanded: chevrons, as the Outliner's.
 COLLAPSED_ICON: IconItems = "RIGHTARROW"
 EXPANDED_ICON: IconItems = "DOWNARROW_HLT"
@@ -93,7 +107,7 @@ def _draw_guide_level(layout: bpy.types.UILayout) -> None:
     fixed_width(level, before_line).label(text="")
     line = fixed_width(level, GUIDE_LINE_UNITS)
     line.enabled = False
-    line.operator(widget_operators.SceneGraphGuideLine.bl_idname, text="", icon="BLANK1")
+    line.operator(scene_graph_operators.SceneGraphGuideLine.bl_idname, text="", icon="BLANK1")
     # The parts have fixed widths that fill the level, so the line keeps its place whatever the row's alignment.
     fixed_width(level, LEVEL_UNITS - before_line - GUIDE_LINE_UNITS).label(text="")
 
@@ -107,9 +121,18 @@ def _find_row_instance(details: RowDetails) -> Sdf.Path | None:
     return details.outermost_instance_path or (details.path if details.is_instance else None)
 
 
+@functools.cache
+def _dashed_line_mask() -> np.ndarray:
+    """The dashed guide line's mask, as Blender's icons' are."""
+    coverages = np.zeros((DASHED_LINE_SIZE_PIXELS, DASHED_LINE_SIZE_PIXELS), dtype=np.uint8)
+    coverages[:, list(DASHED_LINE_COLUMNS)] = 255
+    coverages[list(DASHED_LINE_GAP_ROWS), :] = 0
+    return coverages
+
+
 def _draw_dashed_guide_level(layout: bpy.types.UILayout, color: tuple[float, float, float]) -> None:
     # A label, so a click on it selects its row, as on the plain line, whose disabled button does nothing.
-    icon_value = tinted_icons.dashed_line_icon_id(color)
+    icon_value = tinted_icons.mask_icon_id("dashed", _dashed_line_mask(), color)
     fixed_width(layout, LEVEL_UNITS).label(text="", icon_value=icon_value)
 
 
@@ -122,7 +145,9 @@ def _draw_guide_levels(layout: bpy.types.UILayout, depth: int, details: RowDetai
     for level_depth in range(depth):
         if instance_path is not None and level_depth >= instance_depth:
             is_instance_level = level_depth == instance_depth
-            color = widget_colors.instance_color() if is_instance_level else widget_colors.instance_proxy_color()
+            color = (
+                instancing_colors.instance_color() if is_instance_level else instancing_colors.instance_proxy_color()
+            )
             _draw_dashed_guide_level(layout, color)
         else:
             _draw_guide_level(layout)
@@ -138,9 +163,9 @@ def _draw_chevron(
         return
     disclosure = EXPANDED_ICON if is_expanded else COLLAPSED_ICON
     # Inside an instance, the chevron is a proxy's, in the color of its icon and the lines beside it.
-    proxy_color = widget_colors.instance_proxy_color()
+    proxy_color = instancing_colors.instance_proxy_color()
     tinted = tinted_icons.icon_id(disclosure, proxy_color) if details.is_instance_proxy else None
-    toggle_idname = widget_operators.SceneGraphToggleRow.bl_idname
+    toggle_idname = scene_graph_operators.SceneGraphToggleRow.bl_idname
     if tinted is None:
         toggle = chevron.operator(toggle_idname, text="", icon=disclosure, emboss=False)
     else:
@@ -157,9 +182,9 @@ def _draw_row_icon(layout: bpy.types.UILayout, details: RowDetails) -> None:
     icon = _row_icon(details)
     if (details.is_instance or details.is_instance_proxy) and not details.is_invalid_model:
         if details.is_instance_proxy:
-            color = widget_colors.instance_proxy_color()
+            color = instancing_colors.instance_proxy_color()
         else:
-            color = widget_colors.instance_color()
+            color = instancing_colors.instance_color()
         icon_value = tinted_icons.icon_id(icon, color)
         if icon_value is not None:
             layout.label(text="", icon_value=icon_value)
@@ -172,18 +197,23 @@ def _draw_badges(layout: bpy.types.UILayout, details: RowDetails) -> None:
     # Labels, so a click on one selects the row and the row's tooltip covers them; each icon draws its piece of the
     # block they sit on, so side by side they make one. The instance badge, which marks no arc, stands on its own,
     # and the arcs' badges share a block after a gap.
-    row_badges = prim_descriptions.row_badges(details)
-    arc_badges = [badge for badge in row_badges if badge is not prim_descriptions.Badge.INSTANCE]
-    instance_badges = [badge for badge in row_badges if badge is prim_descriptions.Badge.INSTANCE]
+    instance_badges = (
+        [(instancing_colors.INSTANCE_BADGE_LOOK, prim_descriptions.is_instance_badge_in_effect(details))]
+        if prim_descriptions.has_instance_badge(details)
+        else []
+    )
+    arc_badges = [
+        (badge_icons.ARC_LOOKS[arc], prim_descriptions.is_arc_in_effect(details, arc))
+        for arc in prim_descriptions.row_arcs(details)
+    ]
     # Each cell sits in the name's row itself: the row is short of width, so it keeps each cell narrower than a unit
     # at its width, where a row of the cells, wider than a unit, would shrink with the name.
     for block_index, block in enumerate(block for block in (instance_badges, arc_badges) if block):
         if block_index:
             fixed_width(layout, BADGE_GAP_UNITS).label(text="")
-        for badge_index, badge in enumerate(block):
+        for badge_index, (look, is_in_effect) in enumerate(block):
             place = badge_icons.BadgePlace.at(badge_index, len(block))
-            is_greyed = not prim_descriptions.is_badge_in_effect(details, badge)
-            icon_value = badge_icons.icon_id(badge, place, is_greyed)
+            icon_value = badge_icons.icon_id(look, place, is_greyed=not is_in_effect)
             fixed_width(layout, BADGE_UNITS).label(text="", icon_value=icon_value)
 
 

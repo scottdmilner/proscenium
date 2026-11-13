@@ -23,6 +23,8 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             "proscenium.ui",
             "proscenium.ui.scene_graph_widget",
             "--walk",
+            "proscenium.ui.widget_model",
+            "--walk",
             "proscenium.ui.scene_graph_widget.prim_tree",
             "--walk",
             "proscenium.core",

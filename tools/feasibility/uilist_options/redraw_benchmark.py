@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src"))
 
 from proscenium.ui.scene_graph_widget import display  # noqa: E402 (found through the path inserted above)
-from proscenium.ui.scene_graph_widget.display import widget_drawing, widget_views  # noqa: E402
+from proscenium.ui.scene_graph_widget.display import scene_graph_drawing, scene_graph_views  # noqa: E402
 
 CASES = ("empty", "widget", "reused_flags", "computed_flags")
 VIEW_NAME = "benchmark"
@@ -62,7 +62,7 @@ class BenchmarkState:
 
 
 def _computed_flags(bitflag_filter_item: int) -> list[int]:
-    view = widget_views.scene_graph_view(VIEW_NAME)
+    view = scene_graph_views.scene_graph_view(VIEW_NAME)
     tree = view.prim_tree_view.tree
     rows = tree.rows if tree is not None else []
     flags = [bitflag_filter_item] * len(rows)
@@ -136,7 +136,7 @@ def _report() -> None:
     times = BenchmarkState.tick_times
     intervals_ms = [(b - a) * 1000 for a, b in zip(times, times[1:], strict=False)]
     draws_ms = [duration * 1000 for duration in BenchmarkState.panel_draw_durations_seconds]
-    tree = widget_views.scene_graph_view(VIEW_NAME).prim_tree_view.live_tree()
+    tree = scene_graph_views.scene_graph_view(VIEW_NAME).prim_tree_view.live_tree()
     row_count = len(tree.rows) if tree is not None else 0
     # Rows drawn per panel draw: zero, outside the empty case, means the list never drew.
     rows_per_draw = BenchmarkState.draw_item_count / max(BenchmarkState.panel_draw_count, 1)
@@ -156,7 +156,7 @@ def main() -> None:
     BenchmarkState.case, leaf_count = arguments[0], int(arguments[1])
     if BenchmarkState.case not in CASES:
         raise SystemExit(f"case must be one of {CASES}")
-    original_draw_item = widget_drawing.SceneGraphList.draw_item
+    original_draw_item = scene_graph_drawing.SceneGraphList.draw_item
 
     # Blender checks a draw_item's parameter count, so the wrapper names them all.
     def counted_draw_item(  # noqa: PLR0913
@@ -174,16 +174,16 @@ def main() -> None:
         BenchmarkState.draw_item_count += 1
         original_draw_item(self, context, layout, data, item, icon, active_data, active_property, index, flt_flag)
 
-    widget_drawing.SceneGraphList.draw_item = counted_draw_item
+    scene_graph_drawing.SceneGraphList.draw_item = counted_draw_item
     if BenchmarkState.case in {"reused_flags", "computed_flags"}:
-        widget_drawing.SceneGraphList.filter_items = _filter_items  # ty: ignore[invalid-assignment]
+        scene_graph_drawing.SceneGraphList.filter_items = _filter_items  # ty: ignore[invalid-assignment]
     display.register()
     bpy.utils.register_class(BenchmarkPanel)
     display.create_view(VIEW_NAME, lambda _area, _region: True)
     stage = _load_demo_module().synthetic_stage(fanout=0, depth=0, wide_leaf_count=leaf_count)
     BenchmarkState.stage = stage
     display.set_stage(VIEW_NAME, stage)
-    tree = widget_views.scene_graph_view(VIEW_NAME).prim_tree_view.tree
+    tree = scene_graph_views.scene_graph_view(VIEW_NAME).prim_tree_view.tree
     assert tree is not None
     world_row_index = tree.row_index(stage.GetPrimAtPath("/World").GetPath())
     bpy.ops.proscenium.scene_graph_toggle_row(view_name=VIEW_NAME, row_index=world_row_index)  # ty: ignore[unresolved-attribute]

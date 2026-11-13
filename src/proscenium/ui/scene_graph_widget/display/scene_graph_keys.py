@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, override
 import bpy
 
 from ..prim_tree import StepDirection
-from . import widget_properties, widget_views
+from . import scene_graph_properties, scene_graph_views
 
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
@@ -49,10 +49,10 @@ def _hovered_view_name(window: Any, area: Any, region: Any) -> str | None:
     # The watcher's own context has no region, so it reads the region's hovered button through an override.
     override: Any = bpy.context.temp_override(window=window, area=area, region=region)
     with override:
-        return widget_properties.view_name_holding(getattr(bpy.context, "property", None))
+        return scene_graph_properties.view_name_holding(getattr(bpy.context, "property", None))
 
 
-def _view_under_cursor(window: Any, event: Any) -> tuple[widget_views.SceneGraphView, Any] | None:
+def _view_under_cursor(window: Any, event: Any) -> tuple[scene_graph_views.SceneGraphView, Any] | None:
     """The view whose host draws it under the cursor, and the region it's in.
 
     In a region showing several views, it's the one whose list is under the cursor, or None between them.
@@ -64,7 +64,7 @@ def _view_under_cursor(window: Any, event: Any) -> tuple[widget_views.SceneGraph
     for region in area.regions:
         if not _contains(region, event):
             continue
-        shown = [view for view in widget_views.all_views() if view.shows_in_region(area, region)]
+        shown = [view for view in scene_graph_views.all_views() if view.shows_in_region(area, region)]
         if len(shown) == 1:
             return shown[0], region
         if shown:
@@ -102,7 +102,7 @@ class SceneGraphWatchKeys(bpy.types.Operator):
         if not _SceneGraphKeysState.is_watching:
             return {"CANCELLED", "PASS_THROUGH"}  # without PASS_THROUGH, ending would consume the event
         if event.type in ENDING_EDIT_KEYS and event.value == "PRESS":
-            widget_views.stop_entering_search_text()
+            scene_graph_views.stop_entering_search_text()
             return {"PASS_THROUGH"}
         direction = KEY_DIRECTIONS.get(event.type)
         if direction is None or event.value != "PRESS" or event.ctrl or event.alt or event.oskey:
@@ -111,11 +111,11 @@ class SceneGraphWatchKeys(bpy.types.Operator):
         if found is None or found[0].prim_tree_view.live_tree() is None:
             return {"PASS_THROUGH"}
         view, region = found
-        if widget_views.is_entering_search_text(view.name):
+        if scene_graph_views.is_entering_search_text(view.name):
             return {"PASS_THROUGH"}  # for the search's text box
         before = view.prim_tree_view.selected_path
         view.prim_tree_view.step(direction, recursive=event.shift)
-        widget_properties.sync_and_notify(view, before)
+        scene_graph_properties.sync_and_notify(view, before)
         region.tag_redraw()
         return {"RUNNING_MODAL"}  # consumed: neither the list nor the Frames keymap sees it
 
