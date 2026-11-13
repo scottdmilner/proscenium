@@ -218,3 +218,38 @@ def diff_plans(previous: Plan, plan: Plan) -> PlanDiff: ...
 # as Hydra's own values compose it, ignoring a reset transform stack inside an instance. Only the known-gap check for
 # OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes.
 def _hydra_composed_worlds(snapshot: Snapshot) -> dict[str, Gf.Matrix4d]: ...
+
+class SourceUnavailableError(RuntimeError):
+    """The binding has no live stage (interaction-contract.md "Without a Live Stage")."""
+
+class SourceEntity:
+    @property
+    def source_path(self) -> str: ...  # an instance-proxy or point-instance path inside instance contents
+    @property
+    def instance_context(self) -> tuple[str, ...]: ...  # native-instance roots, instancers, and points, outermost first
+    @property
+    def floor(self) -> str: ...  # the first of its instance context, or the entity outside instance contents
+
+class Correspondence:
+    """A shown generation's correspondence, its elements named by their indices among its own (correspondence.h).
+
+    Built from parallel sequences, one item per display element: its copy's source entity path, its instance context
+    or None to derive it from the path on the live stage, and whether it shows in the viewport. Holds the stage weakly;
+    each method raises SourceUnavailableError once it has expired, as building one without it does. ValueError: the
+    sequences differ in length.
+    """
+
+    def __init__(
+        self,
+        stage: Usd.Stage | None,
+        source_paths: Iterable[str],
+        instance_contexts: Iterable[Iterable[str] | None],
+        visible_in_viewport: Iterable[bool],
+    ) -> None: ...
+    @property
+    def element_count(self) -> int: ...
+    # The element's entity, or None for an index naming no element. The matrix finds a batch's instance (M8).
+    def resolve_pick(self, element_index: int, world_matrix: Gf.Matrix4d) -> SourceEntity | None: ...
+    def displayed(self, paths: Iterable[str]) -> Buffer: ...  # '?': whether each is in the browsing universe
+    # 'i': the viewport elements at or beneath each target in the universe, ascending, each once.
+    def highlight_targets(self, target_paths: Iterable[str]) -> Buffer: ...

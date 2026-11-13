@@ -6,7 +6,9 @@
 #include <pxr/base/tf/pyLock.h>
 #include <pxr/pxr.h>
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <pxr/external/boost/python.hpp>
 #include <pxr/external/boost/python/stl_iterator.hpp>
 #include <stdexcept>
@@ -14,6 +16,7 @@
 #include <vector>
 
 #include "batch_groups.h"
+#include "correspondence.h"
 #include "plan.h"
 #include "plan_diff.h"
 #include "python_error_translation.h"
@@ -273,6 +276,91 @@ void WrapPlan() {
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
 }
 
+// Each path in an iterable of strings; a string that isn't a path is the empty path.
+SdfPathVector Paths(const bp::object& strings) {
+  SdfPathVector paths;
+  for (bp::stl_input_iterator<std::string> path(strings), end; path != end; ++path) paths.emplace_back(*path);
+  return paths;
+}
+
+// Python's display elements, from parallel iterables: source paths, instance contexts (each None or an iterable of
+// paths), and viewport participation.
+std::shared_ptr<Correspondence> NewCorrespondence(const UsdStagePtr& stage, const bp::object& sourcePaths,
+                                                  const bp::object& instanceContexts,
+                                                  const bp::object& visibleInViewport) {
+  std::vector<DisplayElement> elements;
+  for (bp::stl_input_iterator<std::string> path(sourcePaths), end; path != end; ++path)
+    elements.push_back({SdfPath(*path), std::nullopt, false});
+  std::size_t i = 0;
+  for (bp::stl_input_iterator<bp::object> context(instanceContexts), end; context != end; ++context, ++i)
+    if (const bp::object paths = *context; i < elements.size() && !paths.is_none())
+      elements[i].instanceContext = Paths(paths);
+  const std::size_t contextCount = i;
+  i = 0;
+  for (bp::stl_input_iterator<bool> visible(visibleInViewport), end; visible != end; ++visible, ++i)
+    if (i < elements.size()) elements[i].inViewport = *visible;
+  if (contextCount != elements.size() || i != elements.size())
+    throw std::invalid_argument("Source paths, instance contexts, and viewport participation differ in length");
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return std::make_shared<Correspondence>(stage, std::move(elements));
+  });
+}
+
+bp::object ResolvePick(const Correspondence& correspondence, std::size_t elementIndex, const bp::object&) {
+  const std::optional<SourceEntity> entity = Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.ResolvePick(elementIndex);
+  });
+  return entity ? bp::object(*entity) : bp::object();
+}
+
+VtBoolArray Displayed(const Correspondence& correspondence, const bp::object& paths) {
+  const SdfPathVector sourcePaths = Paths(paths);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    const std::vector<bool> displayed = correspondence.Displayed(sourcePaths);
+    return VtBoolArray(displayed.begin(), displayed.end());
+  });
+}
+
+VtIntArray HighlightTargets(const Correspondence& correspondence, const bp::object& targetPaths) {
+  const SdfPathVector targets = Paths(targetPaths);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    const std::vector<std::size_t> covered = correspondence.HighlightTargets(targets);
+    VtIntArray indices(covered.size());
+    std::transform(covered.begin(), covered.end(), indices.begin(),
+                   [](std::size_t index) { return static_cast<int>(index); });
+    return indices;
+  });
+}
+
+// The Python type SourceUnavailableError raises, a subclass of RuntimeError; set when the module registers.
+PyObject* sourceUnavailableErrorType = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): set once
+
+void WrapCorrespondence() {
+  sourceUnavailableErrorType =
+      PyErr_NewException("proscenium.core._core.SourceUnavailableError", PyExc_RuntimeError, nullptr);
+  bp::scope().attr("SourceUnavailableError") = bp::object(bp::handle<>(bp::borrowed(sourceUnavailableErrorType)));
+  bp::register_exception_translator<SourceUnavailableError>(
+      [](const SourceUnavailableError& error) { PyErr_SetString(sourceUnavailableErrorType, error.what()); });
+  bp::class_<SourceEntity>("SourceEntity", bp::no_init)
+      .add_property(
+          "source_path", +[](const SourceEntity& e) { return e.sourcePath.GetString(); })
+      .add_property(
+          "instance_context", +[](const SourceEntity& e) { return PathStrings(e.instanceContext); })
+      .add_property("floor", +[](const SourceEntity& e) { return Floor(e).GetString(); });
+  bp::class_<Correspondence, std::shared_ptr<Correspondence>, bp::noncopyable>("Correspondence", bp::no_init)
+      .def("__init__", bp::make_constructor(&NewCorrespondence, bp::default_call_policies(),
+                                            (bp::arg("stage"), bp::arg("source_paths"), bp::arg("instance_contexts"),
+                                             bp::arg("visible_in_viewport"))))
+      .def("resolve_pick", &ResolvePick, (bp::arg("element_index"), bp::arg("world_matrix")))
+      .def("displayed", &Displayed, bp::arg("paths"))
+      .def("highlight_targets", &HighlightTargets, bp::arg("target_paths"))
+      .add_property("element_count", &Correspondence::ElementCount);
+}
+
 }  // namespace
 }  // namespace proscenium
 
@@ -298,4 +386,5 @@ PXR_BOOST_PYTHON_MODULE(_core) {
   bp::class_<SnapshotView>("Snapshot", bp::no_init)
       .add_property("_copied_prim_count", +[](const SnapshotView& s) { return s.data->copiedPrimCount; });
   WrapPlan();
+  WrapCorrespondence();
 }

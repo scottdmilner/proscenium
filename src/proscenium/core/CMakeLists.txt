@@ -33,6 +33,7 @@ endif()
 
 Python_add_library(_core MODULE WITH_SOABI
   batch_groups.cpp
+  correspondence.cpp
   diagnostics.cpp
   python_error_translation.cpp
   instancing.cpp
