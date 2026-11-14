@@ -20,6 +20,7 @@ from proscenium.binding.results import ResultState
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.interface import interface_registration, source_select_tool
 from support import interaction_oracle, undo
+from support.recording_layout import RecordingLayout
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -157,28 +158,6 @@ def test_in_background_mode_selectability_is_left_alone(bindings: Bindings, tmp_
         del other
 
 
-class _Layout:
-    """A layout that records what a panel draws: each label's text and icon, and whether its row was enabled."""
-
-    labels: list[tuple[str, str, bool]]
-    props: list[str]
-
-    def __init__(self, enabled: bool = True, root: _Layout | None = None) -> None:
-        self.labels = [] if root is None else root.labels
-        self.props = [] if root is None else root.props
-        self.enabled = enabled
-        self._root = root or self
-
-    def prop(self, _data: object, name: str, **_kwargs: object) -> None:
-        self.props.append(name)
-
-    def label(self, *, text: str, icon: str = "NONE") -> None:
-        self.labels.append((text, icon, self.enabled))
-
-    def row(self) -> _Layout:
-        return _Layout(True, self._root)
-
-
 def test_the_sidebar_lists_the_scene_selection(bindings: Bindings, tmp_path: Path) -> None:
     # The sidebar's panel draws the level and each target, the active one marked and an unresolved one dimmed.
     with interaction.kind_hierarchy(tmp_path) as scene:
@@ -188,12 +167,12 @@ def test_the_sidebar_lists_the_scene_selection(bindings: Bindings, tmp_path: Pat
             SelectionEntry(handle.binding_id, "/Nowhere"),
         )
         bindings.set_source_selection(_scene(), PersistentSelection((chair, gone), chair))
-        layout = _Layout()
+        layout = RecordingLayout()
         source_select_tool.draw_source_selection(layout, _scene())
         assert layout.props == [source_select_tool.LEVEL_PROPERTY]
         assert layout.labels == [("/World/Props/Chair", "RADIOBUT_ON", True), ("/Nowhere", "DOT", False)]
         bindings.set_source_selection(_scene(), PersistentSelection((), None))
-        layout = _Layout()
+        layout = RecordingLayout()
         source_select_tool.draw_source_selection(layout, _scene())
         assert layout.labels == [("Nothing selected", "NONE", True)]
 

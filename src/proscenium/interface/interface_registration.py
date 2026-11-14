@@ -12,9 +12,9 @@ from typing import Any
 import bpy
 from bpy.app.handlers import persistent
 
-from . import source_select_tool
+from . import binding_panel, source_select_tool
 
-CLASSES = source_select_tool.CLASSES
+CLASSES = (*binding_panel.CLASSES, *source_select_tool.CLASSES)
 
 
 @persistent

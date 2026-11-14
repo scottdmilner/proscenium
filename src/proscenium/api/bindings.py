@@ -50,7 +50,7 @@ from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
-from . import binding_interaction, scene_source_selection
+from . import binding_interaction, binding_status, scene_source_selection
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -69,6 +69,7 @@ PickedEntity = binding_interaction.PickedEntity
 TargetSelection = binding_interaction.TargetSelection
 SourceUnavailableError = stages.SourceUnavailableError  # an interaction function's, without a live stage
 PersistentSelection = scene_source_selection.PersistentSelection  # a scene's source selection
+BindingStatus = binding_status.BindingStatus
 SelectionEntry = scene_source_selection.SelectionEntry
 SelectionMode = scene_source_selection.SelectionMode
 SelectionResolution = scene_source_selection.SelectionResolution
@@ -266,6 +267,10 @@ class Bindings:
         candidate naming it.
         """
         return [BindingHandle(found.binding_id) for found in binding_operations.find_bindings(scene)]
+
+    def binding_statuses(self, scene: bpy.types.Scene) -> list[BindingStatus]:
+        """What a panel shows of each binding in_scene lists, in one call: name, usability, attachment, state."""
+        return binding_status.binding_statuses(self, scene)
 
     def copied(self) -> list[copy_detection.CopiedBinding]:
         """Every binding identity that isn't unique: its candidates, which is canonical, and why, or none."""
