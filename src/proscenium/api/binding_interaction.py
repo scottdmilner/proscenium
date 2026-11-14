@@ -120,7 +120,7 @@ def selection_from_blender(
     return TargetSelection(selection.target_paths, selection.active_target_path)
 
 
-def _generation(binding_id: BindingId) -> tuple[binding_state.GenerationMetadata, bpy.types.Scene] | None:
+def shown_generation(binding_id: BindingId) -> tuple[binding_state.GenerationMetadata, bpy.types.Scene] | None:
     """The record of the generation the binding's destination shows, and its target scene; None without one."""
     found = binding_operations.find_binding(binding_id)
     if found is None or found.destination is None or found.scene is None:
@@ -137,7 +137,7 @@ def shown_time_code(binding_id: BindingId) -> Usd.TimeCode | None:
     transforms.md#transforms-and-time-codes: a time code its generation holds at its frame, and at any other frame the
     latest before it, or before the earliest, the earliest. A generation synchronized at the default time code shows it.
     """
-    if (found := _generation(binding_id)) is None:
+    if (found := shown_generation(binding_id)) is None:
         return None
     generation, scene = found
     if generation.time_code is None:
@@ -149,4 +149,4 @@ def shown_time_code(binding_id: BindingId) -> Usd.TimeCode | None:
 
 def applied_settings(binding_id: BindingId) -> binding_settings.RequestedSettings | None:
     """The settings the published generation was synchronized with, or None while nothing is published."""
-    return None if (found := _generation(binding_id)) is None else found[0].applied_settings
+    return None if (found := shown_generation(binding_id)) is None else found[0].applied_settings

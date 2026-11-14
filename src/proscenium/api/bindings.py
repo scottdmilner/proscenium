@@ -470,6 +470,22 @@ class Bindings:
         """Change the scene's source selection by the targets at level of the elements a box identifies."""
         scene_source_selection.select_by_box(self, scene, inside, level, mode)
 
+    def mirror_source_selection(self, scene: bpy.types.Scene, view_layer: bpy.types.ViewLayer | None = None) -> None:
+        """Mirror the scene's source selection into view_layer, by default its active one, as when a window shows it."""
+        scene_source_selection.mirror(self, scene, view_layer)
+
+    def mirror_after_frame_change(self, scene: bpy.types.Scene) -> None:
+        """Mirror the scene's source selection again if a binding with entries in it caches time codes."""
+        scene_source_selection.mirror_after_frame_change(self, scene)
+
+    def managed_selectable(self, scene: bpy.types.Scene) -> bool:
+        """Whether the scene's managed content is selectable in Blender."""
+        return scene_source_selection.managed_selectable(scene)
+
+    def set_managed_selectable(self, scene: bpy.types.Scene, selectable: bool) -> None:
+        """Make the scene's managed content selectable or not, as a selection tool becomes active or inactive."""
+        scene_source_selection.set_managed_selectable(self, scene, selectable)
+
     def add_selection_listener(self, listener: Callable[[bpy.types.Scene], None]) -> None:
         """Call listener with the scene once for each change to a scene's stored source selection."""
         self.selection_listeners.append(listener)

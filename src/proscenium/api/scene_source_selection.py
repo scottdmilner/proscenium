@@ -8,6 +8,14 @@ into the scene's active view layer (ICON-27 to ICON-29). A pick or a box changes
 F2): a box identifies the viewport elements whose world bounds' centers lie inside it (ICON-40). Listeners are called
 once for each change to a scene's stored selection. Nothing here pushes an undo step, as only a publishing
 synchronization and a committing cleanup retry do.
+
+The owner of the destinations' display decides when managed content is selectable, through each destination's
+hide_select, which a selection tool sets as it becomes active or inactive (ICON-41). Blender deselects the objects of an
+unselectable collection, and of an object a hide flag hides, without selecting them again, so the selection is
+mirrored again when content becomes selectable, when a window shows a view layer (ICON-39), and when the frame changes
+for a scene whose selection has entries of a binding whose generation caches time codes, the only displays whose hide
+flags change with the frame (DECISIONS.md "Headless interaction functions"). No overlay is hidden: Blender's outlines
+show the selection.
 """
 
 from __future__ import annotations
@@ -21,8 +29,10 @@ from mathutils import Vector
 
 from ..binding.persistence import id_property_records, source_selection
 from ..binding.persistence.source_selection import PersistentSelection, SelectionEntry
+from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
 from ..interaction import blender_selection
+from . import binding_interaction
 from .binding_interaction import ShownDisplay
 
 if TYPE_CHECKING:
@@ -227,3 +237,39 @@ def select_by_box(
         targets = display.correspondence.selection_from_blender(identified, None, level).target_paths
         chosen += [SelectionEntry(binding_id, target) for target in targets]
     _store(bindings, scene, _changed(stored_selection(scene), chosen, mode, None), displays)
+
+
+def managed_selectable(scene: bpy.types.Scene) -> bool:
+    """Whether the scene's managed content is selectable: no destination of its bindings is unselectable."""
+    return not any(
+        f.destination is not None and f.destination.hide_select for f in binding_operations.find_bindings(scene)
+    )
+
+
+def set_managed_selectable(bindings: Bindings, scene: bpy.types.Scene, selectable: bool) -> None:
+    """Make the scene's managed content selectable or not, mirroring its source selection back once it is.
+
+    Blender deselects the objects of an unselectable destination, and the stored selection stays as it was.
+    """
+    for found in binding_operations.find_bindings(scene):
+        if found.destination is not None:
+            found.destination.hide_select = not selectable
+    if selectable:
+        mirror(bindings, scene)
+
+
+def mirror_after_frame_change(bindings: Bindings, scene: bpy.types.Scene) -> None:
+    """Mirror the scene's source selection again if a binding with entries in it caches time codes.
+
+    Nothing while a synchronization, cache call, or cleanup retry runs, or over a stored selection that can't be read.
+    """
+    if bindings.running:
+        return
+    try:
+        selection = stored_selection(scene)
+    except id_property_records.RefusedRecordError:
+        return
+    for binding_id in dict.fromkeys(e.binding_id for e in selection.entries):
+        if (shown := binding_interaction.shown_generation(binding_id)) is not None and shown[0].cached_time_codes:
+            mirror(bindings, scene)
+            return
