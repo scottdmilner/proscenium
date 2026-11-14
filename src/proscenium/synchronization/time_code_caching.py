@@ -25,7 +25,7 @@ from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
-from ..binding.runtime import binding_operations, ownership
+from ..binding.runtime import binding_operations, kept_manifests, ownership
 from ..binding.source_access import stages
 from ..core import _core
 from . import application, evaluation, preparation_resources, time_code_keying
@@ -58,7 +58,7 @@ def cache(
     """
     scene, destination = config.scene, binding_operations.require_canonical_binding_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
-    manifest = manifests.read_manifest(destination)
+    manifest = kept_manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if (unusable := _unusable_state_diagnostic(binding_id, manifest, generation)) is not None:
         return Result(unusable)
@@ -121,7 +121,7 @@ def cache(
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
-        work.rollback_actions.append(functools.partial(manifests.write_manifest, destination, before))
+        work.rollback_actions.append(functools.partial(kept_manifests.write_manifest, destination, before))
         ownership.set_manifest_entries(binding_id, changes, created=work.datablocks, published=before)
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001

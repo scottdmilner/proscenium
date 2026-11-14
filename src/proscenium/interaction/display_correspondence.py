@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from ..binding.persistence import binding_state, id_property_records, manifests
-from ..binding.runtime import binding_operations
+from ..binding.runtime import binding_operations, kept_manifests
 from ..core import _core
 
 if TYPE_CHECKING:
@@ -53,7 +53,7 @@ def display_elements(binding_id: BindingId) -> DisplayElements | None:
     if found is None or not found.usable or found.destination is None:
         return None
     generation = binding_state.read_generation(found.destination)
-    manifest = manifests.read_manifest(found.destination)
+    manifest = kept_manifests.read_manifest(found.destination)
     if not isinstance(generation, id_property_records.LoadedRecord) or not isinstance(
         manifest, id_property_records.LoadedRecord
     ):

@@ -5,6 +5,7 @@ from bpy.app.handlers import persistent
 
 from .api import bindings
 from .binding.persistence import id_property_records
+from .binding.runtime import kept_manifests
 from .interface import interface_registration
 
 
@@ -28,12 +29,14 @@ _registered = False
 def _file_loaded(*_args: object) -> None:
     bindings.BINDINGS.drop_all_stages()  # loading a .blend releases every attachment (source-access.md) and plan
     bindings.BINDINGS.clear_shown_displays()  # whose objects the load freed
+    kept_manifests.clear()  # likewise the datablocks kept manifests name
 
 
 @persistent
 def _undone_or_redone(*_args: object) -> None:
     bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
     bindings.BINDINGS.clear_shown_displays()  # before any other handler reads one: undo may free its objects
+    kept_manifests.clear()  # likewise the datablocks kept manifests name
 
 
 @persistent

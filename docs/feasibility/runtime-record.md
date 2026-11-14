@@ -1814,6 +1814,18 @@ What M7's synchronizations, cache call, and cached frames cost, by the functions
 
 Every range of the memory measures was within 4 MB of its median.
 
+**With manifests kept by revision** (`binding/runtime/kept_manifests.py`, after the findings below): the same calls, the full rebuild left out (`--no-full-rebuild`), three processes per scene, each synchronization's read of the manifest decoding nothing since the write before it kept what it wrote (2026-11-14; load average 21 to 28 over the runs, so the machine was busier than above).
+
+| Call (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Unchanged | 22 (21–26), against 40 | 78 (71–84), against 117 | 264 (253–305), against 466 |
+| Move one object | 43 (41–46), against 62 | 126 (126–135), against 166 | 511 (479–512), against 712 |
+| Hide one | 140 (139–145), against 145 | 343 (336–360), against 372 | 1,609 (1,579–1,658), against 1,715 |
+| Reload, then synchronize | 22 (22–22), against 41 | 98 (96–105), against 141 | 241 (230–251), against 467 |
+| Cache, three time codes | 36 (35–36), against 56 | 304 (285–306), against 315 | 404 (391–518), against 662 |
+
+`partitions_to_replace` is now the largest step of an unchanged synchronization: 10, 26, and 118 ms.
+
 **What a push holds** (ad hoc, one process on `updates-1000`, pushes made directly after the API's push following the first synchronization): the first push with nothing changed grew the heap by 13.2 MB, and each push after it by 0.58 MB, with nothing changed or after one object moved; changing one leaf of the manifest's ID properties grew it by 0.71 MB. So the profile's growth after the move is the second push after a synchronization, not the move's: why that push holds more wasn't investigated.
 
 **The undo push evaluates the depsgraph** (ad hoc, one process on `updates-100`): after a push, `ViewLayer.update()` took 5 µs, against 0.46 ms after the same edit with no push. So each push's time here includes the evaluation a window's redraw would otherwise do, and a view-layer update after a call that pushed found nothing to do.

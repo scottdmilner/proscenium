@@ -16,15 +16,19 @@ import pytest
 from fixtures import schema_version_cases as fixture
 from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
+    REVISION_KEY,
     VERSION_KEY,
     LoadedRecord,
     RefusedRecord,
     RefusedRecordError,
     Schema,
     read,
+    revision,
+    stored,
     write,
     write_items,
 )
+from support import undo
 from support.blend import save_and_reopen
 
 if TYPE_CHECKING:
@@ -57,7 +61,11 @@ def _store_raw(versions: fixture.SchemaVersions) -> None:
 
 
 def _raw() -> dict[str, Any]:
-    return _scene()[NAMESPACE].to_dict()
+    """The scene's stored records, each without the revision its last write gave it."""
+    return {
+        key: {k: v for k, v in record.items() if k != REVISION_KEY} if isinstance(record, dict) else record
+        for key, record in _scene()[NAMESPACE].to_dict().items()
+    }
 
 
 # Storage in ID properties.
@@ -209,3 +217,44 @@ def test_writing_items_that_cannot_be_held_changes_nothing(
     with pytest.raises(error):
         write_items(_scene(), "keyed", KEYED, Keyed(items), "items", list(items), [])
     assert _raw() == before
+
+
+# Revisions.
+
+
+def test_each_write_stores_a_new_revision() -> None:
+    # A whole write and a write by items each store a new revision, which revision() reads; loading and stored() leave
+    # it out, so the record is what was written.
+    write(_scene(), "keyed", KEYED, Keyed({"a": {"n": 1}}))
+    first = revision(_scene(), "keyed")
+    assert first is not None
+    assert len(first) == 32
+    write(_scene(), "keyed", KEYED, Keyed({"a": {"n": 1}}))
+    second = revision(_scene(), "keyed")
+    write_items(_scene(), "keyed", KEYED, Keyed({"a": {"n": 2}}), "items", ["a"], [])
+    third = revision(_scene(), "keyed")
+    assert len({first, second, third}) == 3
+    assert read(_scene(), "keyed", KEYED) == LoadedRecord(Keyed({"a": {"n": 2}}), 2)
+    assert stored(_scene(), "keyed") == {VERSION_KEY: 2, "items": {"a": {"n": 2}}}
+
+
+def test_a_record_stored_without_a_revision_has_none() -> None:
+    # As one stored before revisions: it reads as it did, and has none until it is next written.
+    _store_keyed({VERSION_KEY: 2, "items": {"a": {"n": 1}}})
+    assert revision(_scene(), "keyed") is None
+    assert read(_scene(), "keyed", KEYED) == LoadedRecord(Keyed({"a": {"n": 1}}), 2)
+    assert revision(_scene(), "missing") is None
+
+
+def test_an_undo_restores_a_record_with_its_revision() -> None:
+    # What a reader keeping a decoded record relies on: the record an undo restores has the revision it was written
+    # with.
+    undo.require_global_undo()
+    write(_scene(), "keyed", KEYED, Keyed({"a": {"n": 1}}))
+    first = revision(_scene(), "keyed")
+    undo.push("written")
+    write(_scene(), "keyed", KEYED, Keyed({"a": {"n": 2}}))
+    undo.push("written again")
+    undo.undo()
+    assert revision(_scene(), "keyed") == first
+    assert read(_scene(), "keyed", KEYED) == LoadedRecord(Keyed({"a": {"n": 1}}), 2)

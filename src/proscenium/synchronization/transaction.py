@@ -27,7 +27,7 @@ from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
-from ..binding.runtime import binding_operations
+from ..binding.runtime import binding_operations, kept_manifests
 from ..binding.source_access import stages
 from . import (
     application,
@@ -113,7 +113,7 @@ def _attempt(
     scene = config.scene
     assert scene is not None
     # A manifest naming an unknown role is one that can't be read (ROLE-01).
-    manifest = manifests.read_manifest(destination)
+    manifest = kept_manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if isinstance(manifest, id_property_records.RefusedRecord):
         report.add(Diagnostic(DiagnosticCode.UNSUPPORTED_RECORD, binding_id, manifest.message))

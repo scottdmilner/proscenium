@@ -16,10 +16,10 @@ from pxr import Usd
 from fixtures import transaction
 from fixtures.transaction import translation
 from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
+from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership
+from proscenium.binding.runtime import kept_manifests, ownership
 from support import undo
 
 if TYPE_CHECKING:
@@ -124,14 +124,14 @@ def test_a_call_reads_the_manifest_once(bindings: Bindings, tmp_path: Path, monk
     # Its update by entry starts from the manifest the call read, which reading again would cost as much (F3).
     with transaction.cached_time_codes(tmp_path) as scene:
         handle = _synchronized(bindings, scene)
-        read = manifests.read_manifest
+        read = kept_manifests.read_manifest
         reads: list[None] = []
 
         def counted(destination: bpy.types.Collection) -> Any:
             reads.append(None)
             return read(destination)
 
-        monkeypatch.setattr(manifests, "read_manifest", counted)
+        monkeypatch.setattr(kept_manifests, "read_manifest", counted)
         assert handle.cache(scene.cached).state is ResultState.SUCCESS
         assert len(reads) == 1
 

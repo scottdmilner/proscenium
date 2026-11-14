@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..binding.persistence import binding_state, manifests
+from ..binding.runtime import kept_manifests
 from . import local_updates
 
 if TYPE_CHECKING:
@@ -79,11 +80,11 @@ def publish(
             undo.append(functools.partial(destination.objects.link, obj))
         local_updates.apply_updates(plan, updates, undo)
         if before is None or changed or removed:
-            manifests.write_manifest_entries(destination, manifests.Manifest(entries), changed, removed)
+            kept_manifests.write_manifest_entries(destination, manifests.Manifest(entries), changed, removed)
             if before is None:
-                undo.append(functools.partial(manifests.remove_manifest, destination))
+                undo.append(functools.partial(kept_manifests.remove_manifest, destination))
             else:
-                undo.append(functools.partial(manifests.write_manifest, destination, before))
+                undo.append(functools.partial(kept_manifests.write_manifest, destination, before))
         if generation != previous:
             binding_state.write_generation(destination, generation)
             if previous is None:
