@@ -48,7 +48,7 @@ class TargetSelection:
     active_target_path: str | None
 
 
-class _Shown:
+class ShownDisplay:
     """A binding's display elements and correspondence, read for one call."""
 
     elements: display_correspondence.DisplayElements | None  # None while nothing is published
@@ -66,6 +66,7 @@ class _Shown:
             self.correspondence = display_correspondence.correspondence(self.elements, live, bindings.published_plans)
 
     def objects(self, element_indices: Iterable[int]) -> list[bpy.types.Object]:
+        """The objects of the elements at those indices, in that order."""
         assert self.elements is not None
         return [self.elements.objects[i] for i in element_indices]
 
@@ -74,7 +75,7 @@ def resolve_pick(
     bindings: Bindings, binding_id: BindingId, obj: bpy.types.Object, world_matrix: Gf.Matrix4d
 ) -> PickedEntity | None:
     """The source entity the picked object shows, or None for an object the display doesn't show."""
-    shown = _Shown(bindings, binding_id)
+    shown = ShownDisplay(bindings, binding_id)
     if shown.elements is None or obj not in (indices := shown.elements.element_index_by_object()):
         return None
     entity = shown.correspondence.resolve_pick(indices[obj], world_matrix)
@@ -85,21 +86,21 @@ def select_targets(
     bindings: Bindings, binding_id: BindingId, entity_paths: Iterable[str], level: str | None
 ) -> list[str]:
     """Each entity's selection target at level: None for the prim level, or a registered kind's name."""
-    shown = _Shown(bindings, binding_id)
+    shown = ShownDisplay(bindings, binding_id)
     paths = list(entity_paths)
     return list(shown.correspondence.select_targets(paths, level))
 
 
 def displayed(bindings: Bindings, binding_id: BindingId, paths: Iterable[str]) -> list[bool]:
     """Whether each path is in the browsing universe at the time code the display shows."""
-    shown = _Shown(bindings, binding_id)
+    shown = ShownDisplay(bindings, binding_id)
     source_paths = list(paths)
     return [bool(v) for v in memoryview(shown.correspondence.displayed(source_paths)).tolist()]
 
 
 def highlight_targets(bindings: Bindings, binding_id: BindingId, target_paths: Iterable[str]) -> list[bpy.types.Object]:
     """The display's objects covering exactly the viewport elements of the targets' expanded entities."""
-    shown = _Shown(bindings, binding_id)
+    shown = ShownDisplay(bindings, binding_id)
     targets = list(target_paths)
     covered = shown.correspondence.highlight_targets(targets)
     return [] if shown.elements is None else shown.objects(memoryview(covered).tolist())
@@ -109,7 +110,7 @@ def selection_from_blender(
     bindings: Bindings, binding_id: BindingId, level: str | None, view_layer: bpy.types.ViewLayer
 ) -> TargetSelection:
     """The targets at level of the display's objects selected in view_layer, and the active object's."""
-    shown = _Shown(bindings, binding_id)
+    shown = ShownDisplay(bindings, binding_id)
     if shown.elements is None:
         return TargetSelection((), None)
     read = blender_selection.read_blender_selection(shown.elements, view_layer)

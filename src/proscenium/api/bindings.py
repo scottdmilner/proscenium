@@ -50,12 +50,13 @@ from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
-from . import binding_interaction
+from . import binding_interaction, scene_source_selection
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Concatenate
 
+    from mathutils import Vector
     from pxr import Gf
 
     from ..binding.runtime import copy_detection
@@ -68,6 +69,10 @@ RequestedSettings = binding_settings.RequestedSettings
 PickedEntity = binding_interaction.PickedEntity
 TargetSelection = binding_interaction.TargetSelection
 SourceUnavailableError = stages.SourceUnavailableError  # an interaction function's, without a live stage
+PersistentSelection = scene_source_selection.PersistentSelection  # a scene's source selection
+SelectionEntry = scene_source_selection.SelectionEntry
+SelectionMode = scene_source_selection.SelectionMode
+SelectionResolution = scene_source_selection.SelectionResolution
 
 
 def _reporting_cleanup[**P](
@@ -224,12 +229,15 @@ class Bindings:
     published_plans: held_plans.HeldPlans  # published generations' plans; never saved, and cleared with the stages
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
     published: dict[BindingId, binding_state.GenerationMetadata]  # each binding's last this session (UNDO-05)
+    # Called with the scene once for each change to its stored source selection, in the order added.
+    selection_listeners: list[Callable[[bpy.types.Scene], None]]
 
     def __init__(self) -> None:
         self.stages = stage_tracking.BindingStageTracker()
         self.published_plans = held_plans.HeldPlans()
         self.running = False
         self.published = {}
+        self.selection_listeners = []
 
     def create_binding(
         self,
@@ -425,6 +433,50 @@ class Bindings:
         if not self._require_binding(binding_id).usable:
             return None
         return None if (stages := self.stages.get(binding_id)) is None else stages.live_stage
+
+    # A scene's source selection (scene_source_selection). Each raises RefusedRecordError over a stored selection that
+    # can't be read; an entry whose binding has no live stage is kept and reported unresolved.
+
+    def source_selection(self, scene: bpy.types.Scene) -> PersistentSelection:
+        """The scene's stored source selection: its targets, in order, and the active one; empty if it has none."""
+        return scene_source_selection.stored_selection(scene)
+
+    def set_source_selection(self, scene: bpy.types.Scene, selection: PersistentSelection) -> None:
+        """Store the scene's source selection and mirror it into the scene's active view layer."""
+        scene_source_selection.set_selection(self, scene, selection)
+
+    def resolve_source_selection(self, scene: bpy.types.Scene) -> SelectionResolution:
+        """The scene's source selection's entries resolved, and those unresolved, at the time codes displays show."""
+        return scene_source_selection.resolve(self, scene)
+
+    def select_by_pick(
+        self,
+        scene: bpy.types.Scene,
+        obj: bpy.types.Object | None,
+        world_matrix: Gf.Matrix4d,
+        level: str | None,
+        mode: SelectionMode = SelectionMode.SET,
+    ) -> None:
+        """Change the scene's source selection by the target at level of what a pick hit, as a ray cast gives it."""
+        scene_source_selection.select_by_pick(self, scene, obj, world_matrix, level, mode)
+
+    def select_by_box(
+        self,
+        scene: bpy.types.Scene,
+        inside: Callable[[Vector], bool],
+        level: str | None,
+        mode: SelectionMode = SelectionMode.SET,
+    ) -> None:
+        """Change the scene's source selection by the targets at level of the elements a box identifies."""
+        scene_source_selection.select_by_box(self, scene, inside, level, mode)
+
+    def add_selection_listener(self, listener: Callable[[bpy.types.Scene], None]) -> None:
+        """Call listener with the scene once for each change to a scene's stored source selection."""
+        self.selection_listeners.append(listener)
+
+    def remove_selection_listener(self, listener: Callable[[bpy.types.Scene], None]) -> None:
+        """Stop calling listener; ValueError if it wasn't added."""
+        self.selection_listeners.remove(listener)
 
     def drop_all_stages(self) -> None:
         """Drop every binding's stages and held plans, leaving each with no source stage or attachment.
