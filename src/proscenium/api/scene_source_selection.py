@@ -12,7 +12,8 @@ synchronization and a committing cleanup retry do.
 The owner of the destinations' display decides when managed content is selectable, through each destination's
 hide_select, which a selection tool sets as it becomes active or inactive (ICON-41). Blender deselects the objects of an
 unselectable collection, and of an object a hide flag hides, without selecting them again, so the selection is
-mirrored again when content becomes selectable, when a window shows a view layer (ICON-39), and when the frame changes
+mirrored again when content becomes selectable, when a synchronization publishes objects anew (PH2-02), when a window
+shows a view layer (ICON-39), and when the frame changes
 for a scene whose selection has entries of a binding whose generation caches time codes, the only displays whose hide
 flags change with the frame (DECISIONS.md "Headless interaction functions"). No overlay is hidden: Blender's outlines
 show the selection.
@@ -273,3 +274,17 @@ def mirror_after_frame_change(bindings: Bindings, scene: bpy.types.Scene) -> Non
         if (shown := binding_interaction.shown_generation(binding_id)) is not None and shown[0].cached_time_codes:
             mirror(bindings, scene)
             return
+
+
+def mirror_after_publication(bindings: Bindings, scene: bpy.types.Scene) -> None:
+    """Mirror the scene's source selection again after a publication, whose rebuilt and built objects are unselected.
+
+    The selection's entries whose identities a refresh kept resolve still (PH2-02). Nothing for an empty selection,
+    one that can't be read, or a scene no window or context shows.
+    """
+    try:
+        selection = stored_selection(scene)
+    except id_property_records.RefusedRecordError:
+        return
+    if selection.entries and (layer := active_view_layer(scene)) is not None:
+        _mirror(selection, _displays(bindings, scene), layer)

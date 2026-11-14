@@ -7,15 +7,17 @@ come from the interaction fixtures, F-TIME-VARIATIONS, and the spec's rule for t
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import bpy
 import pytest
-from pxr import Gf, Usd
+from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
 from proscenium.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
+from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.results import ResultState
+from proscenium.core import _core
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -157,3 +159,51 @@ def test_interaction_answers_for_the_time_code_shown(bindings: Bindings, tmp_pat
                 if (entity := handle.resolve_pick(obj, _world(obj))) is not None
             }
             assert (third in picked) is covered, frame
+
+
+def _authored(layer: Sdf.Layer) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+    """Each prim spec's authored kind, and its authored asset info, by path, as the fixture's layer holds them."""
+    kinds: dict[str, str] = {}
+    infos: dict[str, dict[str, Any]] = {}
+
+    def visit(visited: Sdf.Path | str) -> None:
+        path = Sdf.Path(visited)
+        spec = layer.GetPrimAtPath(path) if path.IsPrimPath() else None
+        if spec is None:
+            return
+        if spec.HasInfo("kind"):
+            kinds[str(path)] = spec.GetInfo("kind")
+        if spec.HasInfo("assetInfo"):
+            infos[str(path)] = dict(spec.GetInfo("assetInfo"))
+
+    layer.Traverse(Sdf.Path.absoluteRootPath, visit)
+    return kinds, infos
+
+
+def test_the_live_stage_gives_kinds_and_asset_metadata(bindings: Bindings, tmp_path: Path) -> None:
+    # MODEL-01 on F-KIND-HIERARCHY: through the binding, before and after synchronizing, the live stage gives each
+    # prim's kind and Chair's asset name, version, and identifier as the fixture's layer authors them; neither the
+    # plan's type nor the binding's stored records carry asset metadata.
+    with interaction.kind_hierarchy(tmp_path) as scene:
+        kinds, infos = _authored(Sdf.Layer.FindOrOpen(str(scene.root_layer_path)))
+        assert kinds and set(infos) == set(scene.asset_info) == {"/World/Props/Chair"}
+        handle = _attached(bindings, scene.stage)
+
+        def check() -> None:
+            live = handle.live_stage()
+            assert live is not None
+            for path, kind in kinds.items():
+                assert Usd.ModelAPI(live.GetPrimAtPath(path)).GetKind() == kind, path
+            for path, info in infos.items():
+                model = Usd.ModelAPI(live.GetPrimAtPath(path))
+                assert (model.GetAssetName(), model.GetAssetVersion()) == (info["name"], info["version"]), path
+                assert model.GetAssetIdentifier().path == info["identifier"].path, path
+
+        check()
+        assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
+        check()
+        assert not [name for name in dir(_core.Plan) if "asset" in name.lower()]
+        destination = bpy.data.collections["Shot"]
+        for key in (binding_state.GENERATION_KEY, manifests.MANIFEST_KEY):
+            stored = str(id_property_records.stored(destination, key))
+            assert "assetInfo" not in stored and "chair.usda" not in stored, key

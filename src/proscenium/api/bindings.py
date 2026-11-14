@@ -352,6 +352,8 @@ class Bindings:
             assert isinstance(generation, id_property_records.LoadedRecord)  # the one just published
             self.published[binding_id] = generation.record
             if outcome.committed:  # one that wrote nothing is no undo step, so redo survives it (UNDO-10)
+                if found.scene is not None:  # before the undo step, which then holds the selection mirrored
+                    scene_source_selection.mirror_after_publication(self, found.scene)
                 _push_undo("Synchronize USD Display")
         return result
 
