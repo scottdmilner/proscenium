@@ -27,11 +27,13 @@ _registered = False
 @persistent
 def _file_loaded(*_args: object) -> None:
     bindings.BINDINGS.drop_all_stages()  # loading a .blend releases every attachment (source-access.md) and plan
+    bindings.BINDINGS.clear_shown_displays()  # whose objects the load freed
 
 
 @persistent
 def _undone_or_redone(*_args: object) -> None:
     bindings.BINDINGS.prune_stages()  # at once, so an undone binding's stages are freed without waiting
+    bindings.BINDINGS.clear_shown_displays()  # before any other handler reads one: undo may free its objects
 
 
 @persistent

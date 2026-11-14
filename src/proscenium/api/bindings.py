@@ -50,7 +50,7 @@ from ..binding.persistence import binding_state, id_property_records
 from ..binding.results import Diagnostic, DiagnosticCode, Result, ResultState
 from ..binding.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from ..binding.source_access import binding_settings, stages
-from . import binding_interaction, binding_status, scene_source_selection
+from . import binding_interaction, binding_status, scene_source_selection, shown_displays
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -232,6 +232,7 @@ class Bindings:
     published_plans: held_plans.HeldPlans  # published generations' plans; never saved, and cleared with the stages
     running: bool  # whether an exclusive operation, synchronize, cache, or retry_cleanup, is running
     published: dict[BindingId, binding_state.GenerationMetadata]  # each binding's last this session (UNDO-05)
+    shown_displays: shown_displays.ShownDisplays  # each binding's display, kept for interaction calls; never saved
     # Called with the scene once for each change to its stored source selection, in the order added.
     selection_listeners: list[Callable[[bpy.types.Scene], None]]
 
@@ -240,6 +241,7 @@ class Bindings:
         self.published_plans = held_plans.HeldPlans()
         self.running = False
         self.published = {}
+        self.shown_displays = shown_displays.ShownDisplays()
         self.selection_listeners = []
 
     def create_binding(
@@ -518,6 +520,10 @@ class Bindings:
         """
         self.stages.clear()
         self.published_plans.clear()
+
+    def clear_shown_displays(self) -> None:
+        """Keep no binding's display, as after an undo, a redo, or a file load, which may free its objects."""
+        self.shown_displays.clear()
 
     def prune_stages(self) -> None:
         """Drop evaluation stages of bindings that no longer exist (BindingStageTracker.prune)."""

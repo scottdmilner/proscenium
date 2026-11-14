@@ -2,8 +2,9 @@
 
 DECISIONS.md "Headless interaction functions": api/ gives callers objects, Blender's matrices, and source paths, the
 matrices converted to USD's convention here, where they reach the core, which the display
-component (proscenium.interaction) maps to the core's element indices and back. Each call reads the binding's display
-elements and builds its correspondence then, at the frame the target scene shows, so nothing is held between calls.
+component (proscenium.interaction) maps to the core's element indices and back. Each call takes the binding's display
+elements and correspondence as they are at the frame the target scene shows, kept from an earlier call while what they
+were built from is unchanged (shown_displays).
 Without a live stage each raises source access's SourceUnavailableError (ICON-08); a binding with nothing published
 displays nothing.
 """
@@ -18,9 +19,7 @@ from pxr import Gf, Usd
 
 from ..binding.persistence import binding_state, id_property_records
 from ..binding.runtime import binding_operations
-from ..binding.source_access import stages
-from ..core import _core
-from ..interaction import blender_selection, display_correspondence
+from ..interaction import blender_selection
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -29,6 +28,7 @@ if TYPE_CHECKING:
     from mathutils import Matrix
 
     from ..binding.source_access import BindingId, binding_settings
+    from . import shown_displays
     from .process_bindings import ProcessBindings
 
 
@@ -49,27 +49,11 @@ class TargetSelection:
     active_target_path: str | None
 
 
-class ShownDisplay:
-    """A binding's display elements and correspondence, read for one call."""
-
-    elements: display_correspondence.DisplayElements | None  # None while nothing is published
-    correspondence: _core.Correspondence
-
-    def __init__(self, bindings: ProcessBindings, binding_id: BindingId) -> None:
-        live = bindings.live_stage(binding_id)
-        if live is None:
-            raise stages.SourceUnavailableError(f"Binding {binding_id} has no live stage")
-        self.elements = display_correspondence.display_elements(binding_id)
-        # The binding holds its live stage until released, so it can't expire during the call.
-        if self.elements is None:
-            self.correspondence = _core.Correspondence(live, (), (), ())
-        else:
-            self.correspondence = display_correspondence.correspondence(self.elements, live, bindings.published_plans)
-
-    def objects(self, element_indices: Iterable[int]) -> list[bpy.types.Object]:
-        """The objects of the elements at those indices, in that order."""
-        assert self.elements is not None
-        return [self.elements.objects[i] for i in element_indices]
+def shown_display(bindings: ProcessBindings, binding_id: BindingId) -> shown_displays.ShownDisplay:
+    """The binding's display elements and correspondence now, kept or built; SourceUnavailableError without a stage."""
+    return bindings.shown_displays.shown(
+        binding_id, bindings.live_stage(binding_id), bindings.published_plans, bindings.stages.get(binding_id)
+    )
 
 
 def usd_matrix(matrix: Matrix) -> Gf.Matrix4d:
@@ -81,7 +65,7 @@ def resolve_pick(
     bindings: ProcessBindings, binding_id: BindingId, obj: bpy.types.Object, world_matrix: Matrix
 ) -> PickedEntity | None:
     """The source entity the picked object shows, or None for an object the display doesn't show."""
-    shown = ShownDisplay(bindings, binding_id)
+    shown = shown_display(bindings, binding_id)
     if shown.elements is None or obj not in (indices := shown.elements.element_index_by_object()):
         return None
     entity = shown.correspondence.resolve_pick(indices[obj], usd_matrix(world_matrix))
@@ -92,14 +76,14 @@ def select_targets(
     bindings: ProcessBindings, binding_id: BindingId, entity_paths: Iterable[str], level: str | None
 ) -> list[str]:
     """Each entity's selection target at level: None for the prim level, or a registered kind's name."""
-    shown = ShownDisplay(bindings, binding_id)
+    shown = shown_display(bindings, binding_id)
     paths = list(entity_paths)
     return list(shown.correspondence.select_targets(paths, level))
 
 
 def displayed(bindings: ProcessBindings, binding_id: BindingId, paths: Iterable[str]) -> list[bool]:
     """Whether each path is in the browsing universe at the time code the display shows."""
-    shown = ShownDisplay(bindings, binding_id)
+    shown = shown_display(bindings, binding_id)
     source_paths = list(paths)
     return [bool(v) for v in memoryview(shown.correspondence.displayed(source_paths)).tolist()]
 
@@ -108,7 +92,7 @@ def highlight_targets(
     bindings: ProcessBindings, binding_id: BindingId, target_paths: Iterable[str]
 ) -> list[bpy.types.Object]:
     """The display's objects covering exactly the viewport elements of the targets' expanded entities."""
-    shown = ShownDisplay(bindings, binding_id)
+    shown = shown_display(bindings, binding_id)
     targets = list(target_paths)
     covered = shown.correspondence.highlight_targets(targets)
     return [] if shown.elements is None else shown.objects(memoryview(covered).tolist())
@@ -118,7 +102,7 @@ def selection_from_blender(
     bindings: ProcessBindings, binding_id: BindingId, level: str | None, view_layer: bpy.types.ViewLayer
 ) -> TargetSelection:
     """The targets at level of the display's objects selected in view_layer, and the active object's."""
-    shown = ShownDisplay(bindings, binding_id)
+    shown = shown_display(bindings, binding_id)
     if shown.elements is None:
         return TargetSelection((), None)
     read = blender_selection.read_blender_selection(shown.elements, view_layer)

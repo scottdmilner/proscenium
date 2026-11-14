@@ -1769,6 +1769,134 @@ Building the chain took 0.31 to 0.35 s as built and 0.36 to 0.38 s with notice b
 - **The resync copied nothing:** deactivating the parent removed its prims, and every other prim was shared.
 - **Not measured:** a quiet machine, edits inside native instances, larger time-varying content, global undo, the wheel, Linux and Windows.
 
+### The product's synchronizations (M7 Phase G)
+
+What M7's synchronizations, cache call, and cached frames cost, by the functions they go through, with the undo step each pushes and the memory held, in the binary (Blender 5.2.2) with global undo on, three processes per scene, on an Apple M1 Max with 32 GB, on AC power (2026-11-14; load average 3.8 when the runs began and 10.0 when they ended). Reproduce with `measure/synchronization_profile.py --scenes updates alab --exclude updates-100 --repeats 3`.
+
+**Method** (`measure/synchronization_profile.py`), in a fresh background process per run:
+- **The calls,** through the API, in order: the first synchronization at the scene's time code; again with nothing changed; after a translate op is added, in the session layer, to the first mesh outside native instances; after the second such mesh is made invisible; after the binding's reload of its unchanged layers; a full rebuild (`full_rebuild=True`); a cache call at the next three time codes; then the scene's frame set to the first cached time code, back, and to it again. The API pushes its undo step as with a window (`_undo_steps_enabled` patched true). The add-on isn't registered, so no handler runs on a frame change.
+- **The functions:** each one the calls reach their steps through, wrapped and timed; a time includes the functions it calls.
+- **The memory:** the heap in use (`memory.py`) read around each undo push, and after each call; at the end, what releasing the binding's held plans frees.
+- **The display:** M7's, an object and a bounds mesh per drawn copy: 3,001 objects on `updates-1000`, 6,679 on ALab, and 30,001 on `updates-10000`.
+- **Statistics:** each time as a median and range over the three processes.
+
+| Call (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Objects; manifest entries | 3,001; 6,002 | 6,679; 13,715 | 30,001; 60,002 |
+| **Synchronize** | **539 (519–571)** | **1,643 (1,640–1,685)** | **5,774 (5,726–5,904)** |
+| Building the chain; planning | 38; 4.5 | 316; 23 | 276; 56 |
+| `prepare`; `publish` | 301; 40 | 721; 87 | 3,207; 436 |
+| Undo push | 122 | 256 | 1,468 |
+| **Unchanged** | **40 (40–43)** | **117 (117–118)** | **466 (465–468)** |
+| Manifest read; capture and planning | 20; 5.7 | 47; 36 | 228; 72 |
+| `partitions_to_replace` (the core's diff in it) | 9.9 (0.3) | 24 (0.5) | 112 (3.4) |
+| **Move one object** | **62 (60–66)** | **166 (164–174)** | **712 (706–735)** |
+| `partitions_to_replace`; `prepare_updates` | 13; 2.0 | 32; 4.1 | 154; 41 |
+| Undo push | 15 | 35 | 177 |
+| **Hide one** | **145 (144–148)** | **372 (370–377)** | **1,715 (1,692–1,765)** |
+| `apply_updates` | 1.2 | 3.4 | 21 |
+| Undo push | 98 | 238 | 1,181 |
+| **Reload, then synchronize** | **41 (41–44)** | **141 (141–142)** | **467 (460–479)** |
+| The reload | 0.1 | 21 | 0.2 |
+| **Full rebuild** | **943 (936–949)** | **5,207 (5,111–5,216)** | **104,860 (102,102–107,204)** |
+| `prepare`; `retire` | 292; 417 | 697; 3,665 | 3,078; 98,375 |
+| **Cache, three time codes** | **56 (54–62)** | **315 (310–370)** | **662 (638–721)** |
+| Capture and planning; `key_time_codes` | 17; 11 | 120; 118 | 214; 130 |
+| **Cached frame; back; revisit** | under 0.1 each | **23; 22; 21** | under 0.1 each |
+
+| Memory (MB) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Undo push after the first synchronization | 149 | 300 | 1,479 |
+| after moving one object; hiding one | 13; 1.1 | 31; 3.6 | 128; 5.7 |
+| after the full rebuild | 22 | 52 | 221 |
+| Heap in use after the first synchronization; at the end | 302; 344 | 690; 807 | 2,335; 2,737 |
+| Held plans at the end (count) | 4.5 (3) | 12 (3) | 41 (3) |
+
+Every range of the memory measures was within 4 MB of its median.
+
+**What a push holds** (ad hoc, one process on `updates-1000`, pushes made directly after the API's push following the first synchronization): the first push with nothing changed grew the heap by 13.2 MB, and each push after it by 0.58 MB, with nothing changed or after one object moved; changing one leaf of the manifest's ID properties grew it by 0.71 MB. So the profile's growth after the move is the second push after a synchronization, not the move's: why that push holds more wasn't investigated.
+
+**The undo push evaluates the depsgraph** (ad hoc, one process on `updates-100`): after a push, `ViewLayer.update()` took 5 µs, against 0.46 ms after the same edit with no push. So each push's time here includes the evaluation a window's redraw would otherwise do, and a view-layer update after a call that pushed found nothing to do.
+
+**Findings:**
+- **Synchronizing again costs a fifteenth of a rebuild on ALab:** 117 ms with nothing changed and 166 ms after a move, against M6's 1.74 s full rebuild with the stub ([its profile](#the-products-synchronization-with-m6s-plan-m6-phase-f)). A first synchronization costs about what M6's did: 1.64 s against 1.73 s.
+- **The kept chain saves its build:** 0.28 to 0.32 s on ALab and `updates-10000`, which M6's F1 inferred (0.31 s on ALab); capture and planning from it take 36 ms on ALab.
+- **Reading the manifest is most of an incremental synchronization:** 20, 47, and 228 ms, 40 to 50% of each unchanged one. Finding the partitions to replace is most of the rest, and the core's diff only 0.3 to 3.4 ms of it, so the bridge's diff inside updates, 76 to 123 ms against 38 ms alone, has no counterpart here; the diff alone wasn't timed.
+- **Hiding costs its undo push:** 238 ms on ALab and 1.18 s at 30,001 objects, against 35 ms and 177 ms after a move. The push includes the depsgraph's evaluation, which a change of hide flags makes larger; that it rebuilds the depsgraph's relations is an inference.
+- **A reload of unchanged layers costs nothing more:** the synchronization after it took what an unchanged one does.
+- **A full rebuild's retirement is the cost [M6 found](#retiring-a-large-display-m6-phase-f):** 3.7 s on ALab and 98 s at 30,001 objects.
+- **A cache call costs a tenth of the stub's:** 0.66 s on `updates-10000` against M6 F4's 6.0 s, and 0.32 s on ALab against 2.1 s ([M6's profile](#the-products-synchronization-with-m6s-plan-m6-phase-f)). The `updates` scenes have nothing to key at those time codes, so their frames had nothing to evaluate. On ALab, a cached frame's first visit and its revisit cost alike, 21 to 23 ms.
+- **The undo steps:** the first synchronization's is 300 MB on ALab and 1.48 GB at 30,001 objects. After that, a step holds what changed, a few MB, apart from the second push after a synchronization. [M5's baseline](#the-undo-step-of-a-synchronization-m5-phase-f) pushed 58 MB on ALab after a rebuild, against M7's 52 MB.
+- **The depsgraph's evaluated copies:** each call that pushed left nothing for a view-layer update to evaluate, since its push had. The cache call pushes none: the update after it took 200 ms on ALab, its keys' first evaluation, and the heap grew by 9.4 MB.
+- **Held plans:** about 4 MB a plan on ALab and 14 MB at 30,001 objects. A binding holds up to the undo steps plus one, 33 by default, which at that size would be about 450 MB at 30,001 objects (inferred from three plans, not measured).
+- **Not measured:** a windowed Blender, global undo off, the wheel, Linux and Windows, edits inside native instances, and content that varies at the cached time codes on the `updates` scenes.
+
+### The product's interaction (M7 Phase G)
+
+What M7's interaction calls, the binding panel's listing, and the Source Select tool's ray loop cost, against [M4's provisional budgets](#interaction-at-scale-m4-phase-c) (50 ms for a function on one pick or entry and 250 ms on a whole-assembly selection, with their Blender updates), in the environment of [the synchronizations above](#the-products-synchronizations-m7-phase-g) (2026-11-14; load average 4.2 when the runs began and 4.2 when they ended). Reproduce with `measure/interaction_cost.py --scenes updates alab --exclude updates-100 --repeats 3`.
+
+**Method** (`measure/interaction_cost.py`), in a fresh background process per run: a binding made through the API, synchronized at the scene's time code, three later time codes cached, the scene's managed content made selectable, and the view layer updated. Each operation is then timed in process, repeated 20 times, or 5 over the whole display, and its median kept; the table gives the median and range of the three processes' medians.
+- **The pick:** the managed mesh object whose copy has the deepest instance context; on all three scenes a copy inside one native instance.
+- **The calls** go through the API, so each builds the binding's correspondence from its manifest and hide flags. A call that changes Blender's selection is timed with the view layer's update after it. "Set a selection" is two calls, the selection cleared and then set to the pick's component; "switch selectability" is two, off and on.
+- **The box:** every element, each world bounds' center projected through a fixed matrix in place of the region's.
+- **The tool's ray loop:** `bounds_ray_cast` over `pickable`'s objects, a ray straight down through the pick's bounds center.
+
+| Operation (ms) | Repeats | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| Objects; pickable | | 3,001; 3,001 | 6,679; 1,885 | 30,001; 30,001 |
+| `resolve_pick` | 20 | 31.5 (30.5–31.6) | 84.9 (84.8–88.1) | 377 (376–389) |
+| `select_targets`, prim; assembly | 20 | 30.5; 30.5 | 86.8; 88.6 | 372; 376 |
+| `highlight_targets`, component | 20 | 30.4 (30.2–33.7) | 85.5 (84.6–86.0) | 376 (372–390) |
+| `selection_from_blender`, prim; assembly | 20 | 33.3; 31.7 | 88.2; 89.0 | 387; 388 |
+| `displayed`, one prim (the inspector's line) | 20 | 30.4 (30.2–31.6) | 87.1 (84.0–88.0) | 379 (369–388) |
+| `select_by_pick`, component, with the update | 20 | 42.0 (42.0–42.9) | 115 (113–116) | 495 (490–510) |
+| Set a selection, two calls, with the update | 20 | 74.2 (73.9–75.9) | 209 (205–213) | 894 (886–917) |
+| `resolve_source_selection`, one entry | 20 | 30.5 (30.0–30.8) | 86.0 (85.5–87.2) | 376 (373–382) |
+| `mirror_after_frame_change`, one entry, with the update | 20 | 41.8 (41.8–41.9) | 115 (113–116) | 499 (493–509) |
+| `select_by_box`, every element, assembly, with the update | 5 | 65.1 (64.5–66.3) | 128 (128–132) | 750 (740–759) |
+| `mirror_after_frame_change`, the box's selection, with the update | 5 | 48.6 (47.9–49.6) | 115 (114–116) | 580 (573–594) |
+| Switch selectability, two calls, with the update | 5 | 116 (115–118) | 299 (298–306) | 1,365 (1,337–1,412) |
+| `binding_statuses` (the binding panel) | 20 | 0.12 | 0.12 | 0.12 |
+| `shown_time_code` (the inspector's values) | 20 | 0.03 | 0.03 | 0.03 |
+| The tool's `pickable` | 20 | 1.3 | 3.0 | 15.6 |
+| The tool's `bounds_ray_cast` | 20 | 16.8 (16.4–17.5) | 15.3 (15.1–15.5) | 183 (183–185) |
+
+**Where a call's time goes** (ad hoc, one process per scene, each part's median of 10), in building its correspondence (`binding_interaction.ShownDisplay`):
+
+| Part (ms) | updates-1000 | ALab |
+|---|---|---|
+| Reading the manifest | 22.1 | 53.9 |
+| Its objects collected from its entries | 3.2 | 7.2 |
+| The held plan's instance contexts | 1.6 | 4.8 |
+| The core's `Correspondence` | 4.2 | 20.7 |
+| Hide flags; sorting | 0.3 | 0.9 |
+| **In all** | **33.0** | **86.8** |
+
+**With the display kept** (`api/shown_displays.py`, after the findings below): the same runs again, the binding's display kept between calls while what built it is unchanged, each call reading its objects' hide flags (2026-11-14; load average 31.6 when the runs began and 10.7 when they ended, so the machine was busier than above).
+
+| Operation (ms) | Repeats | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|---|
+| `resolve_pick` | 20 | 0.63 (0.43–0.63) | 1.0 (0.99–1.0) | 5.9 (5.8–7.2) |
+| `select_targets`, prim; assembly | 20 | 0.37; 0.31 | 0.67; 0.69 | 3.6; 3.9 |
+| `highlight_targets`, component | 20 | 0.42 (0.27–0.53) | 0.66 (0.65–0.69) | 3.5 (3.3–5.3) |
+| `selection_from_blender`, prim; assembly | 20 | 1.8; 1.6 | 3.5; 3.7 | 18.3; 18.7 |
+| `displayed`, one prim (the inspector's line) | 20 | 0.28 (0.26–0.33) | 0.66 (0.66–0.68) | 3.4 (3.1–4.0) |
+| `select_by_pick`, component, with the update | 20 | 11.4 (11.1–14.0) | 30.4 (29.9–31.1) | 141 (134–144) |
+| Set a selection, two calls, with the update | 20 | 14.8 (13.2–15.4) | 34.4 (33.7–34.7) | 158 (150–160) |
+| `mirror_after_frame_change`, one entry, with the update | 20 | 11.3 (11.2–13.4) | 30.2 (29.8–30.7) | 130 (130–136) |
+| `select_by_box`, every element, assembly, with the update | 5 | 36.4 (34.3–40.2) | 46.0 (45.2–46.0) | 403 (384–426) |
+| `mirror_after_frame_change`, the box's selection, with the update | 5 | 17.8 (17.3–22.9) | 31.2 (30.6–31.6) | 219 (211–231) |
+| Switch selectability, two calls, with the update | 5 | 89 (88–102) | 231 (216–282) | 1,074 (1,003–1,094) |
+
+**Findings:**
+- **Built for each call, every interaction call was over M4's single-pick budget on ALab:** 85 to 89 ms against 50 ms, and 370 to 390 ms at 30,001 objects, where M4's baseline, which built its correspondence once, took microseconds for each function. A call's own work is a small part: the correspondence it builds is nearly all of it.
+- **Reading the manifest is most of that build:** 54 of 87 ms on ALab. It's also the largest step of an incremental synchronization ([above](#the-products-synchronizations-m7-phase-g)). The core's correspondence is most of the rest, 21 ms on ALab.
+- **With the display kept, every function is within its budget on ALab:** a headless function takes 0.7 to 3.7 ms, a pick with its mirroring and update 30 ms against 50 ms, and a box over every element 46 ms against 250 ms. What's left is reading the hide flags and, for a change of selection, `apply_selection` and the depsgraph update, which [M4 found](#interaction-at-scale-m4-phase-c) grow with the display.
+- **At 30,001 objects, a pick with its mirroring still takes 141 ms,** over the budget, as M4's baseline took 129 ms; a box over every element takes 403 ms, and switching selectability twice 1.07 s.
+- **The temporary UI's per-draw reads:** the binding panel's listing and the inspector's shown time code take 0.12 and 0.03 ms, and the inspector's displayed line, an interaction call, 0.66 ms on ALab with the display kept, against 87 ms built.
+- **The tool's Python ray loop** takes 15 ms on ALab's 1,885 pickable objects and 183 ms on 30,001, 6 to 8 µs an object.
+- **Not measured:** a windowed Blender, playback with the frame handler, a ray from a region, global undo off, the wheel, Linux and Windows.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

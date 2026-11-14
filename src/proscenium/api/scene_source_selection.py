@@ -34,7 +34,6 @@ from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
 from ..interaction import blender_selection
 from . import binding_interaction
-from .binding_interaction import ShownDisplay
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -43,6 +42,7 @@ if TYPE_CHECKING:
 
     from ..binding.source_access import BindingId
     from .process_bindings import ProcessBindings
+    from .shown_displays import ShownDisplay
 
 EMPTY = PersistentSelection((), None)
 
@@ -88,7 +88,7 @@ def _displays(bindings: ProcessBindings, scene: bpy.types.Scene) -> dict[Binding
     displays = {}
     for found in binding_operations.find_bindings(scene):
         try:
-            displays[found.binding_id] = ShownDisplay(bindings, found.binding_id)
+            displays[found.binding_id] = binding_interaction.shown_display(bindings, found.binding_id)
         except stages.SourceUnavailableError:
             continue
     return displays
