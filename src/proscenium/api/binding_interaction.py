@@ -1,6 +1,7 @@
 """A binding's interaction functions, as the binding handle gives them (interaction-contract.md#headless-functions).
 
-DECISIONS.md "Headless interaction functions": api/ gives callers objects and source paths, which the display
+DECISIONS.md "Headless interaction functions": api/ gives callers objects, Blender's matrices, and source paths, the
+matrices converted to USD's convention here, where they reach the core, which the display
 component (proscenium.interaction) maps to the core's element indices and back. Each call reads the binding's display
 elements and builds its correspondence then, at the frame the target scene shows, so nothing is held between calls.
 Without a live stage each raises source access's SourceUnavailableError (ICON-08); a binding with nothing published
@@ -13,7 +14,7 @@ import bisect
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pxr import Usd
+from pxr import Gf, Usd
 
 from ..binding.persistence import binding_state, id_property_records
 from ..binding.runtime import binding_operations
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     import bpy
-    from pxr import Gf
+    from mathutils import Matrix
 
     from ..binding.source_access import BindingId, binding_settings
     from .bindings import Bindings
@@ -71,14 +72,19 @@ class ShownDisplay:
         return [self.elements.objects[i] for i in element_indices]
 
 
+def usd_matrix(matrix: Matrix) -> Gf.Matrix4d:
+    """A Blender matrix as USD holds it: transposed into its row-vector convention, in double precision."""
+    return Gf.Matrix4d(*(value for row in matrix.transposed() for value in row))
+
+
 def resolve_pick(
-    bindings: Bindings, binding_id: BindingId, obj: bpy.types.Object, world_matrix: Gf.Matrix4d
+    bindings: Bindings, binding_id: BindingId, obj: bpy.types.Object, world_matrix: Matrix
 ) -> PickedEntity | None:
     """The source entity the picked object shows, or None for an object the display doesn't show."""
     shown = ShownDisplay(bindings, binding_id)
     if shown.elements is None or obj not in (indices := shown.elements.element_index_by_object()):
         return None
-    entity = shown.correspondence.resolve_pick(indices[obj], world_matrix)
+    entity = shown.correspondence.resolve_pick(indices[obj], usd_matrix(world_matrix))
     return None if entity is None else PickedEntity(entity.source_path, entity.instance_context, entity.floor)
 
 

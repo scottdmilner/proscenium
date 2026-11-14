@@ -5,6 +5,7 @@ from bpy.app.handlers import persistent
 
 from .api import bindings
 from .binding.persistence import id_property_records
+from .interface import interface_registration
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):
@@ -79,12 +80,14 @@ def register() -> None:
     bpy.app.handlers.frame_change_post.append(_frame_changed)
     bpy.app.handlers.load_post.append(_file_loaded_subscribe)
     _subscribe_to_windows()
+    interface_registration.register()
     _registered = True
 
 
 def unregister() -> None:
     """Remove what register() added."""
     global _registered
+    interface_registration.unregister()
     bpy.app.handlers.load_post.remove(_file_loaded)
     bpy.app.handlers.undo_post.remove(_undone_or_redone)
     bpy.app.handlers.redo_post.remove(_undone_or_redone)

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import pytest
+from mathutils import Vector
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
@@ -32,10 +33,6 @@ def _attached(bindings: Bindings, stage: Usd.Stage) -> BindingHandle:
     return handle
 
 
-def _world(obj: bpy.types.Object) -> Gf.Matrix4d:
-    return Gf.Matrix4d(*(value for row in obj.matrix_world for value in row))
-
-
 def test_picks_resolve_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
     # ICON-36 through api/: each managed object with its world matrix, all a ray cast returns, resolves to its entity
     # and floor, inside native instances included; an object the display doesn't show resolves to nothing.
@@ -46,12 +43,12 @@ def test_picks_resolve_through_the_handle(bindings: Bindings, tmp_path: Path) ->
         assert len(shown) == len(scene.elements[0.0])
         resolved = {}
         for obj in shown:
-            picked = handle.resolve_pick(obj, _world(obj))
+            picked = handle.resolve_pick(obj, obj.matrix_world)
             assert isinstance(picked, PickedEntity)
             resolved[picked.source_path] = picked.floor
         assert resolved == {e: scene.floors.get(e, e) for e in scene.elements[0.0]}
         other = bpy.data.objects.new("Unmanaged", None)
-        assert handle.resolve_pick(other, _world(other)) is None
+        assert handle.resolve_pick(other, other.matrix_world) is None
 
 
 def test_selection_round_trips_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
@@ -79,7 +76,7 @@ def test_without_a_live_stage_each_function_reports_it(bindings: Bindings, tmp_p
         handle.release()
         view_layer = bpy.data.scenes["Scene"].view_layers[0]
         calls: list[Callable[[], object]] = [
-            lambda: handle.resolve_pick(obj, _world(obj)),
+            lambda: handle.resolve_pick(obj, obj.matrix_world),
             lambda: handle.select_targets(["/World"], None),
             lambda: handle.displayed(["/World"]),
             lambda: handle.highlight_targets(["/World"]),
@@ -156,7 +153,7 @@ def test_interaction_answers_for_the_time_code_shown(bindings: Bindings, tmp_pat
             picked = {
                 entity.source_path
                 for obj in handle.highlight_targets([time_variations.SCATTER])
-                if (entity := handle.resolve_pick(obj, _world(obj))) is not None
+                if (entity := handle.resolve_pick(obj, obj.matrix_world)) is not None
             }
             assert (third in picked) is covered, frame
 
@@ -207,3 +204,17 @@ def test_the_live_stage_gives_kinds_and_asset_metadata(bindings: Bindings, tmp_p
         for key in (binding_state.GENERATION_KEY, manifests.MANIFEST_KEY):
             stored = str(id_property_records.stored(destination, key))
             assert "assetInfo" not in stored and "chair.usda" not in stored, key
+
+
+def test_a_picks_matrix_reaches_the_core_in_usds_convention() -> None:
+    # The API takes Blender's matrix, as a ray cast returns it, and converts it once for the core: a translation lands
+    # in USD's last row, and a rotated point is where Blender puts it.
+    from mathutils import Matrix
+
+    from proscenium.api import binding_interaction
+
+    blender = Matrix.Translation((1.0, 2.0, 3.0)) @ Matrix.Rotation(0.5, 4, "Z")
+    usd = binding_interaction.usd_matrix(blender)
+    assert usd.ExtractTranslation() == Gf.Vec3d(1.0, 2.0, 3.0)
+    moved = usd.Transform(Gf.Vec3d(1.0, 0.0, 0.0))
+    assert Gf.IsClose(moved, Gf.Vec3d(*(blender @ Vector((1.0, 0.0, 0.0)))), 1e-6)

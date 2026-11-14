@@ -47,17 +47,13 @@ def _object(handle: BindingHandle, path: str) -> bpy.types.Object:
     return obj
 
 
-def _world(obj: bpy.types.Object) -> Gf.Matrix4d:
-    return Gf.Matrix4d(*(value for row in obj.matrix_world for value in row))
-
-
 def _selected(handle: BindingHandle) -> set[str]:
     """The source paths of the display's objects selected in the active view layer."""
     view_layer = _scene().view_layers[0]
     return {
         picked.source_path
         for obj in bpy.data.collections["Shot"].all_objects
-        if obj.select_get(view_layer=view_layer) and (picked := handle.resolve_pick(obj, _world(obj))) is not None
+        if obj.select_get(view_layer=view_layer) and (picked := handle.resolve_pick(obj, obj.matrix_world)) is not None
     }
 
 
@@ -128,7 +124,7 @@ def test_picks_change_the_selection_in_each_mode(bindings: Bindings, tmp_path: P
             (None, SelectionMode.SET, PersistentSelection((), None)),
         ]
         for obj, mode, expected in steps:
-            world = _world(obj) if obj is not None else Gf.Matrix4d(1.0)
+            world = obj.matrix_world if obj is not None else None
             bindings.select_by_pick(_scene(), obj, world, "component", mode)
             assert bindings.source_selection(_scene()) == expected, (obj, mode)
 
@@ -183,7 +179,8 @@ def test_listeners_are_called_once_per_change(bindings: Bindings, tmp_path: Path
         chair = PersistentSelection((SelectionEntry(handle.binding_id, CHAIR),), None)
         bindings.set_source_selection(_scene(), chair)
         bindings.set_source_selection(_scene(), chair)
-        bindings.select_by_pick(_scene(), _object(handle, TOP), Gf.Matrix4d(1.0), None, SelectionMode.EXTEND)
+        top = _object(handle, TOP)
+        bindings.select_by_pick(_scene(), top, top.matrix_world, None, SelectionMode.EXTEND)
         assert calls == [_scene(), _scene()]
         bindings.remove_selection_listener(calls.append)
         bindings.set_source_selection(_scene(), PersistentSelection((), None))

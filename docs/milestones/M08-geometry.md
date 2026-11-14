@@ -40,6 +40,7 @@
   - A batch's instance is one mesh's copy, so a multi-mesh asset's copy spreads over a carrier per mesh and is never one active object (F2). Batching a whole copy as one instance would give it one, at the cost of grouping by whole assets, of copies whose meshes vary on their own leaving their batch, and of a pick resolving to the copy before its element.
   - Cached time codes: a mesh whose points vary caches position attributes, and one whose topology varies a mesh per sample (E4); a mesh's material slots could be the union over its cached time codes, a newly needed slot appended (F5, a suggestion).
   - The bounds comparison's subdivision and approximation cases (ABND-05, ABND-06, F4).
+- From M7 ([M7 plan](../plans/M07-application.md), F1): the Source Select tool (`interface/source_select_tool.py`) picks with a ray of its own, against each visible, selectable object's bounds box and an empty marker within a few pixels of its origin, since M7 draws every copy as a bounds mesh without faces, which Blender's ray cast can't hit. Once copies are meshes with faces, pick them with Blender's `scene.ray_cast`, which is native, casts into a BVH Blender caches, and hits the surface drawn rather than its bounds, keeping the tool's own test only for what is still drawn without faces, placeholders' bounds and empty markers, the nearer of the two hits winning. A hit on a batch's prototype gives its instance through the hit's matrix (D3).
 
 **Tests:**
 

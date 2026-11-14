@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
-from pxr import Gf
 
 from fixtures import edit_sequence
 from proscenium.api.bindings import PersistentSelection, SelectionEntry
@@ -99,10 +98,7 @@ def _stored(handle: BindingHandle) -> tuple[object, object]:
 def _correspondence(handle: BindingHandle, paths: list[str]) -> tuple[object, ...]:
     """Each object's pick, by name, and displayed and each path's highlighted objects over paths."""
     objects = sorted(bpy.data.collections["Shot"].all_objects, key=lambda o: o.name)
-    picks = [
-        (obj.name, handle.resolve_pick(obj, Gf.Matrix4d(*(v for row in obj.matrix_world for v in row))))
-        for obj in objects
-    ]
+    picks = [(obj.name, handle.resolve_pick(obj, obj.matrix_world)) for obj in objects]
     highlights = [sorted(o.name for o in handle.highlight_targets([p])) for p in paths]
     return picks, handle.displayed(paths), highlights
 

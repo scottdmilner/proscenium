@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 import pytest
-from pxr import Gf
 
 from fixtures import interaction
 from proscenium.binding.persistence import id_property_records
@@ -73,7 +72,7 @@ class ProductDisplay:
         return list(self._sources())
 
     def picks(self, obj: bpy.types.Object) -> list[Any]:
-        return [] if obj.hide_viewport else [(obj, Gf.Matrix4d(*(v for row in obj.matrix_world for v in row)))]
+        return [] if obj.hide_viewport else [(obj, obj.matrix_world.copy())]
 
     def coverage(self, obj: bpy.types.Object) -> frozenset[str]:
         return frozenset() if obj.hide_viewport else frozenset({self._sources()[obj]})

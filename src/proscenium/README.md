@@ -10,6 +10,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
 | `interaction/` | The display component of the interaction contract: a binding's correspondence from Blender data, and Blender's selection. |
+| `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, over `api/` only. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |
 | `core/` | The compiled core: its C++ source and the built module. |
 
@@ -19,7 +20,8 @@ The code is in units, each a package or a single module, in tiers. A unit import
 
 | Tier | Units |
 |---|---|
-| 6 | `addon.py` |
+| 7 | `addon.py` |
+| 6 | `interface/` |
 | 5 | `api/` |
 | 4 | `synchronization/`, `interaction/` |
 | 3 | `binding/runtime/` |

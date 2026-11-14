@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import bpy
-from pxr import Gf
 
 from proscenium.binding.persistence import id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
@@ -50,7 +49,7 @@ def answers(handle: BindingHandle, stage: Usd.Stage) -> InteractionAnswers:
     keys = object_entry_keys(handle.binding_id)
     picks = {}
     for obj, key in keys.items():
-        picked = handle.resolve_pick(obj, Gf.Matrix4d(*(v for row in obj.matrix_world for v in row)))
+        picked = handle.resolve_pick(obj, obj.matrix_world)
         picks[key] = None if picked is None else (picked.source_path, picked.instance_context, picked.floor)
     paths = interaction_oracle.all_paths(stage)
     universe = frozenset(p for p, shown in zip(paths, handle.displayed(paths), strict=True) if shown)

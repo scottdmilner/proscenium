@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import bpy
-from pxr import Gf, Usd
 
 from fixtures import interaction, time_variations
 from proscenium.api.bindings import PersistentSelection, SelectionEntry
@@ -20,6 +19,8 @@ from proscenium.binding.results import ResultState
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pxr import Usd
 
     from proscenium.api.bindings import BindingHandle, Bindings
 
@@ -38,10 +39,6 @@ def _synchronized(bindings: Bindings, stage: Usd.Stage) -> BindingHandle:
     return handle
 
 
-def _world(obj: bpy.types.Object) -> Gf.Matrix4d:
-    return Gf.Matrix4d(*(value for row in obj.matrix_world for value in row))
-
-
 def _selected(
     handle: BindingHandle, view_layer: bpy.types.ViewLayer | None = None
 ) -> list[tuple[str, bpy.types.Object]]:
@@ -50,7 +47,7 @@ def _selected(
     return [
         (picked.source_path, obj)
         for obj in bpy.data.collections["Shot"].all_objects
-        if obj.select_get(view_layer=layer) and (picked := handle.resolve_pick(obj, _world(obj))) is not None
+        if obj.select_get(view_layer=layer) and (picked := handle.resolve_pick(obj, obj.matrix_world)) is not None
     ]
 
 

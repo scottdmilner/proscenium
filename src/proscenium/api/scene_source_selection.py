@@ -39,7 +39,7 @@ from .binding_interaction import ShownDisplay
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
-    from pxr import Gf
+    from mathutils import Matrix
 
     from ..binding.source_access import BindingId
     from .bindings import Bindings
@@ -180,11 +180,13 @@ def select_by_pick(
     bindings: Bindings,
     scene: bpy.types.Scene,
     obj: bpy.types.Object | None,
-    world_matrix: Gf.Matrix4d,
+    world_matrix: Matrix | None,
     level: str | None,
     mode: SelectionMode,
 ) -> None:
     """Change the scene's source selection by the target at level of what a pick hit, which becomes active.
+
+    obj and world_matrix are what a ray cast returns; None for nothing hit.
 
     A pick of nothing, or of an object no binding's display shows, chooses no target, so it empties the selection in
     SET mode and leaves it as it is otherwise.
@@ -198,7 +200,8 @@ def select_by_pick(
             or obj not in (indices := display.elements.element_index_by_object())
         ):
             continue
-        entity = display.correspondence.resolve_pick(indices[obj], world_matrix)
+        matrix = binding_interaction.usd_matrix(world_matrix if world_matrix is not None else obj.matrix_world)
+        entity = display.correspondence.resolve_pick(indices[obj], matrix)
         if entity is not None:
             [target] = display.correspondence.select_targets([entity.source_path], level)
             picked = SelectionEntry(binding_id, target)

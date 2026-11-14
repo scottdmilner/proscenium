@@ -30,6 +30,7 @@ TIERS = (
     ("binding.runtime",),
     ("synchronization", "interaction"),
     ("api",),
+    ("interface",),
     ("addon",),
 )
 TIER_OF = {unit: tier for tier, units in enumerate(TIERS) for unit in units}
@@ -120,6 +121,17 @@ def _wrong_way(path: Path, unit: str) -> list[str]:
 
 def test_units_import_only_lower_tiers() -> None:
     found = [v for path in sorted(PACKAGE.rglob("*.py")) if (unit := _own_unit(path)) for v in _wrong_way(path, unit)]
+    assert not found, "\n".join(found)
+
+
+def test_the_interface_imports_only_the_api() -> None:
+    # M7 plan, settled 3: the temporary UI reaches the product only through api/, so M12 can replace it alone.
+    found = [
+        f"{path.relative_to(PACKAGE)}:{line} imports {name}"
+        for path in sorted((PACKAGE / "interface").rglob("*.py"))
+        for line, name, *_ in _imported(path)
+        if _unit(name.split(".")[1:]) not in {"interface", "api"}
+    ]
     assert not found, "\n".join(found)
 
 

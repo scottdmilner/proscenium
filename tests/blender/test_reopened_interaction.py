@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 import bpy
 import pytest
-from pxr import Gf
 
 from fixtures import interaction, source_access
 from proscenium import synchronization
@@ -93,7 +92,7 @@ def test_without_its_source_a_reopened_display_has_no_interaction(bindings: Bind
         obj = next(iter(object_entry_keys(restored.binding_id)))
         view_layer = _scene().view_layers[0]
         calls: list[Callable[[], object]] = [
-            lambda: restored.resolve_pick(obj, Gf.Matrix4d(1.0)),
+            lambda: restored.resolve_pick(obj, obj.matrix_world),
             lambda: restored.select_targets(["/World/Ref"], None),
             lambda: restored.displayed(["/World"]),
             lambda: restored.highlight_targets(["/World"]),

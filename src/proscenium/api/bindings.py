@@ -56,8 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Concatenate
 
-    from mathutils import Vector
-    from pxr import Gf
+    from mathutils import Matrix, Vector
 
     from ..binding.runtime import copy_detection
     from ..binding.source_access import BindingId
@@ -193,8 +192,11 @@ class BindingHandle:
 
     # The interaction functions (binding_interaction): each raises SourceUnavailableError without a live stage.
 
-    def resolve_pick(self, obj: bpy.types.Object, world_matrix: Gf.Matrix4d) -> PickedEntity | None:
-        """The source entity a pick of obj, at world_matrix, resolves to; None for an object not displayed."""
+    def resolve_pick(self, obj: bpy.types.Object, world_matrix: Matrix) -> PickedEntity | None:
+        """The source entity a pick of obj at Blender's world_matrix, as a ray cast returns them, resolves to.
+
+        None for an object the display doesn't show.
+        """
         return binding_interaction.resolve_pick(BINDINGS, self.binding_id, obj, world_matrix)
 
     def select_targets(self, entity_paths: Iterable[str], level: str | None) -> list[str]:
@@ -246,8 +248,16 @@ class Bindings:
         payload_policy: binding_settings.PayloadPolicy = binding_settings.PayloadPolicy.LOAD_ALL,
         name: str = "USD Display",
     ) -> BindingHandle:
-        """Create an unattached binding on scene with a new destination named name."""
-        return BindingHandle(binding_operations.create(scene, binding_settings.new_settings(payload_policy), name))
+        """Create an unattached binding on scene with a new destination named name.
+
+        The destination is unselectable when the scene's managed content is (set_managed_selectable).
+        """
+        selectable = scene_source_selection.managed_selectable(scene)
+        handle = BindingHandle(binding_operations.create(scene, binding_settings.new_settings(payload_policy), name))
+        if not selectable and (found := binding_operations.find_binding(handle.binding_id)) is not None:
+            if found.destination is not None:
+                found.destination.hide_select = True
+        return handle
 
     def in_scene(self, scene: bpy.types.Scene) -> list[BindingHandle]:
         """The bindings whose target scene is scene.
@@ -455,7 +465,7 @@ class Bindings:
         self,
         scene: bpy.types.Scene,
         obj: bpy.types.Object | None,
-        world_matrix: Gf.Matrix4d,
+        world_matrix: Matrix | None,
         level: str | None,
         mode: SelectionMode = SelectionMode.SET,
     ) -> None:
