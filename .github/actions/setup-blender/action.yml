@@ -5,6 +5,12 @@ inputs:
   version:
     description: Blender release, e.g. 5.2.2 (default, the bpy version in uv.lock; needs setup-uv first)
     default: ""
+  window:
+    description: >
+      "true" to let Blender open a window, for tests/isolated's windowed tests: Xvfb and Mesa's software OpenGL on
+      Linux (run the tests under xvfb-run), and Mesa's opengl32.dll beside blender.exe on Windows, whose runners have
+      no OpenGL 4.3 driver. macOS runners need nothing.
+    default: "false"
 
 runs:
   using: composite
@@ -34,6 +40,7 @@ runs:
         sudo apt-get update && sudo apt-get install -y --no-install-recommends
         libegl1 libgl1 libice6 libsm6 libx11-6 libxext6 libxfixes3 libxi6
         libxkbcommon0 libxrender1 libxxf86vm1
+        ${{ inputs.window == 'true' && 'xvfb xauth libgl1-mesa-dri libglx-mesa0' || '' }}
 
     - name: Restore Blender download
       id: cache
@@ -80,6 +87,47 @@ runs:
             hdiutil detach "$mount"
             echo "BLENDER=$dest/Blender.app/Contents/MacOS/Blender" >> "$GITHUB_ENV" ;;
         esac
+
+    # Mesa's software renderer, llvmpipe, gives Blender the OpenGL 4.3 the runner's display adapter lacks. Its
+    # opengl32.dll beside blender.exe is found before the system's.
+    - name: Restore Mesa download
+      if: runner.os == 'Windows' && inputs.window == 'true'
+      id: mesa-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/mesa-download
+        key: mesa3d-26.2.4-release-msvc.7z
+
+    - name: Download Mesa and verify its checksum
+      if: runner.os == 'Windows' && inputs.window == 'true' && steps.mesa-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        dl="$RUNNER_TEMP/mesa-download"
+        mkdir -p "$dl"
+        curl -fsSL -o "$dl/mesa3d.7z" \
+          https://github.com/pal1000/mesa-dist-win/releases/download/26.2.4/mesa3d-26.2.4-release-msvc.7z
+        echo "351fc8c8b695878ffb3eaa044b3ead08672a48b1a045e3c3e3975811df0f6695  mesa3d.7z" > "$dl/SHA256"
+        (cd "$dl" && sha256sum -c SHA256)
+
+    - name: Save Mesa download
+      if: runner.os == 'Windows' && inputs.window == 'true' && steps.mesa-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/mesa-download
+        key: ${{ steps.mesa-cache.outputs.cache-primary-key }}
+
+    - name: Put Mesa's OpenGL beside Blender
+      if: runner.os == 'Windows' && inputs.window == 'true'
+      shell: bash
+      run: |
+        unpacked="$RUNNER_TEMP/mesa"
+        7z x -y -o"$unpacked" "$RUNNER_TEMP/mesa-download/mesa3d.7z" > /dev/null
+        blender_dir=$(dirname "$(cygpath -u "$BLENDER")")
+        cp "$unpacked/x64/opengl32.dll" "$blender_dir/"
+        for dll in libgallium_wgl.dll libglapi.dll; do  # opengl32.dll's own libraries, in the releases that have them
+          if [ -f "$unpacked/x64/$dll" ]; then cp "$unpacked/x64/$dll" "$blender_dir/"; fi
+        done
+        echo "GALLIUM_DRIVER=llvmpipe" >> "$GITHUB_ENV"
 
     - name: Check Blender runs
       shell: bash

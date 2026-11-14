@@ -10,9 +10,9 @@ requires-python = ">=3.13"
 dependencies = []
 
 [dependency-groups]
-# Sync `dev` (the default), which includes the others. `lint` alone fails `ty check`: it also checks tests/ and
-# tools/feasibility/, so it needs pytest, python-dotenv, psutil, and numpy (which comes with bpy). Revisit once
-# the Hydra bridge in tools/feasibility/ is decommissioned.
+# Sync `dev` (the default), which includes the others but `icons`. `lint` alone fails `ty check`: it also checks
+# tests/ and tools/feasibility/, so it needs pytest, python-dotenv, psutil, and numpy (which comes with bpy).
+# Revisit once the Hydra bridge in tools/feasibility/ is decommissioned.
 build = [
     "cmake>=3.26",  # cmake and ninja build compiled modules (tools/native_build.py)
     "ninja>=1.13.2",
@@ -37,6 +37,13 @@ test = [
     "pytest-xdist>=3.8.0",
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
+]
+# Only for remaking the scene graph widget's row icon masks (tools/row_icon_masks.py), with `dev`:
+# `uv run --group icons python tools/row_icon_masks.py`. resvg_py's wheels hold resvg, a self-contained renderer,
+# which returns PNG bytes; pypng, pure Python, decodes them.
+icons = [
+    "pypng>=0.20220715",
+    "resvg_py>=0.5.0",
 ]
 dev = [
     { include-group = "build" },

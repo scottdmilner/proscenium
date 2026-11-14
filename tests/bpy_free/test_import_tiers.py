@@ -23,18 +23,28 @@ from .bpy_blocker import is_blender_origin
 PACKAGE = Path(proscenium.__file__).parent
 
 # The units, each a package or a module, by name under proscenium, lowest tier first. proscenium/__init__.py, the
-# extension's entry, and binding/__init__.py, which groups binding's units, are no unit's.
+# extension's entry, and the grouping packages' __init__.py files, which group their units, are no unit's.
 TIERS = (
-    ("core", "binding.source_access", "binding.results"),  # bpy-free, each importing only itself
+    # bpy-free, each importing only itself
+    ("core", "binding.source_access", "binding.results", "ui.widget_model"),
+    # bpy-free
+    ("ui.scene_graph_widget.prim_tree", "ui.property_viewer_widget.property_list"),
     ("binding.persistence",),
     ("binding.runtime",),
     ("synchronization", "interaction"),
     ("api",),
+    ("ui.columned_list", "ui.widget_updates"),
+    ("ui.widget_resources", "ui.search_box", "ui.text_wrapping"),
+    ("ui.scene_graph_widget.display", "ui.property_viewer_widget.display"),
     ("interface",),
     ("addon",),
 )
 TIER_OF = {unit: tier for tier, units in enumerate(TIERS) for unit in units}
-BPY_FREE = set(TIERS[0])
+BPY_FREE = {*TIERS[0], *TIERS[1]}
+# The packages that group units, by name under proscenium, and are none themselves; their __init__.py imports none
+# of their units.
+GROUPING_PACKAGES = ("binding", "ui", "ui.scene_graph_widget", "ui.property_viewer_widget")
+GROUPING_INITS = tuple(PACKAGE.joinpath(*package.split("."), "__init__.py") for package in GROUPING_PACKAGES)
 
 
 def _allowed(unit: str) -> set[str]:
@@ -45,7 +55,11 @@ def _allowed(unit: str) -> set[str]:
 
 def _unit(parts: list[str] | tuple[str, ...]) -> str:
     """The unit a module belongs to, from its name's parts under proscenium."""
-    return ".".join(parts[:2]) if parts[0] == "binding" and len(parts) > 1 else parts[0]
+    # The unit is the first package under proscenium that groups nothing, or the module itself.
+    depth = 1
+    while depth < len(parts) and ".".join(parts[:depth]) in GROUPING_PACKAGES:
+        depth += 1
+    return ".".join(parts[:depth])
 
 
 def _module_name(path: Path) -> list[str]:
@@ -136,10 +150,14 @@ def test_the_interface_imports_only_the_api() -> None:
 
 
 def test_every_module_is_a_units() -> None:
-    # A new unit gets a row in TIERS, so the tests check it; only the two grouping __init__.py files are no unit's.
+    # A new unit gets a row in TIERS, so the tests check it; only the entry and the grouping __init__.py files are no
+    # unit's.
     stray = [p for p in PACKAGE.rglob("*.py") if _own_unit(p) is None]
-    assert sorted(p.relative_to(PACKAGE) for p in stray) == [Path("__init__.py"), Path("binding/__init__.py")]
-    assert not _imported(PACKAGE / "binding" / "__init__.py")  # so importing a bpy-free unit never imports bpy
+    assert sorted(p.relative_to(PACKAGE) for p in stray) == sorted(
+        [Path("__init__.py"), *(init.relative_to(PACKAGE) for init in GROUPING_INITS)]
+    )
+    for init in GROUPING_INITS:
+        assert not _imported(init)  # so importing a bpy-free unit never imports bpy
 
 
 @functools.cache
@@ -219,6 +237,59 @@ def test_an_import_out_of_form_is_found() -> None:
     assert out_of_form("from ...synchronization.application import prepare") == 1
 
 
+def _own_module_imports(path: Path) -> set[str]:
+    """The modules of path's own unit that path imports, by name, type-only imports included."""
+    unit = _own_unit(path)
+    module = ".".join(_module_name(path))
+    return {
+        i.name
+        for i in _imported(path)
+        if (parts := i.name.split(".")[1:])
+        and _unit(parts) == unit
+        and i.name != module
+        and i.name != f"proscenium.{unit}"
+    }
+
+
+def _cycles(imports_by_module: dict[str, set[str]]) -> list[list[str]]:
+    """The import cycles among modules, each as the modules around it, found by a depth-first walk."""
+    found: list[list[str]] = []
+    finished: set[str] = set()
+
+    def walk(module: str, trail: list[str]) -> None:
+        if module in trail:
+            found.append([*trail[trail.index(module) :], module])
+            return
+        if module in finished:
+            return
+        for imported in sorted(imports_by_module.get(module, ())):
+            walk(imported, [*trail, module])
+        finished.add(module)
+
+    for module in sorted(imports_by_module):
+        walk(module, [])
+    return found
+
+
+def test_a_units_modules_import_each_other_without_cycles() -> None:
+    # Within a unit, modules form layers too: a cycle, even through a type-only import, means two modules each
+    # need the other, so neither can be read or changed alone. A package's __init__.py, which exports its
+    # modules, is left out.
+    imports_by_module = {
+        ".".join(_module_name(path)): _own_module_imports(path)
+        for path in sorted(PACKAGE.rglob("*.py"))
+        if path.name != "__init__.py" and _own_unit(path)
+    }
+    cycles = _cycles(imports_by_module)
+    assert not cycles, "\n".join(" -> ".join(cycle) for cycle in cycles)
+
+
+def test_an_import_cycle_is_found() -> None:
+    # Guards the test above.
+    assert _cycles({"a": {"b"}, "b": {"c"}, "c": {"a"}}) == [["a", "b", "c", "a"]]
+    assert _cycles({"a": {"b", "c"}, "b": {"c"}, "c": set()}) == []
+
+
 def test_a_wrong_way_import_is_found() -> None:
     # Guards the tests above: the API module, read as if it were persistence's, imports above that tier; and the
     # lowest tier's units import only themselves.
@@ -261,8 +332,8 @@ def _is_blender(top: str) -> bool:
 
 
 def _bpy_free(path: Path) -> bool:
-    """Whether path must import without bpy: the lowest tier's units, and the packages that hold them."""
-    return _own_unit(path) in BPY_FREE or path in (PACKAGE / "__init__.py", PACKAGE / "binding" / "__init__.py")
+    """Whether path must import without bpy: the two lowest tiers' units, and the packages that hold them."""
+    return _own_unit(path) in BPY_FREE or path in (PACKAGE / "__init__.py", *GROUPING_INITS)
 
 
 def test_bpy_free_code_never_imports_blender() -> None:
@@ -282,3 +353,8 @@ def test_a_blender_import_is_found() -> None:
     assert [name for _, name in _blender_imports_in(ast.parse(code))] == ["bpy", "mathutils"]
     assert _bpy_free(PACKAGE / "binding" / "source_access" / "source_entity_ids.py")
     assert not _bpy_free(PACKAGE / "binding" / "persistence" / "id_property_records.py")
+    widget = PACKAGE / "ui" / "scene_graph_widget"
+    assert _bpy_free(widget / "prim_tree" / "prim_tree.py")
+    assert not _bpy_free(widget / "display" / "scene_graph_views.py")
+    assert _bpy_free(PACKAGE / "ui" / "widget_model" / "text_matching.py")
+    assert not _bpy_free(PACKAGE / "ui" / "widget_resources" / "theme_colors.py")

@@ -1,0 +1,13 @@
+row_icon_masks.npz holds coverage masks rasterized from Blender's icons (release/datafiles/icons_svg in Blender
+5.2's source, https://projects.blender.org/blender/blender), which the scene graph widget recolors for instances and
+their instance proxies.
+
+Blender's icons are by Andrzej Ambroż (jendrzych) and Blender's contributors, and are licensed under the Creative
+Commons Attribution-ShareAlike 4.0 International License, as stated at
+https://forum.blender.org/t/new-icons-for-blender-2-8x/4651. To view a copy of the license, visit
+https://creativecommons.org/licenses/by-sa/4.0/.
+
+Changes: each icon is rasterized to 64 by 64 pixels, its color dropped to keep only how much of each pixel it covers,
+and drawn by the widget in theme colors. These masks are licensed under the same license.
+
+The rest of this extension is licensed separately; see its blender_manifest.toml.

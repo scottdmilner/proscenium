@@ -10,13 +10,14 @@ The code is in units, each a package or a single module, in tiers. A unit import
 
 | Tier | Unit | Holds |
 |---|---|---|
-| 7 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
-| 6 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `api/` |
-| 5 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
-| 4 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
-| 4 | `interaction/` | The display component of the interaction contract: correspondence from Blender data, and Blender's selection ([Interaction Contract](../spec/interaction-contract.md)) |
-| 3 | `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) |
-| 2 | `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) |
+| 11 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
+| 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `api/` |
+| 2, 7–9 | `ui/`'s units | Widgets an add-on places in Blender's editors, their bpy-free models in tier 2 and the lowest tier ([`src/proscenium/README.md`](../../src/proscenium/README.md#import-rules) lists them) |
+| 6 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
+| 5 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
+| 5 | `interaction/` | The display component of the interaction contract: correspondence from Blender data, and Blender's selection ([Interaction Contract](../spec/interaction-contract.md)) |
+| 4 | `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) |
+| 3 | `binding/persistence/` | Versioned records in ID properties ([Persistence](../spec/lifecycle.md#persistence)) |
 | 1 | `core/` | The compiled core: its C++ source and built module |
 | 1 | `binding/source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers |
 | 1 | `binding/results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) |

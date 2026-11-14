@@ -96,7 +96,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - uses: ./.github/actions/setup-blender  # binary smoke tests in tests/isolated
+      - uses: ./.github/actions/setup-blender  # binary smoke tests in tests/isolated, and its windowed tests
+        with:
+          window: "true"
       - run: uv sync --locked
       - uses: ./.github/actions/blender-deps
         if: runner.os != 'Linux'
@@ -115,7 +117,10 @@ jobs:
           PROSCENIUM_REQUIRE_BLENDER: "1"  # fail, rather than skip, binary tests without a binary
           # Linux uses core-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
           PROSCENIUM_HYDRA_BRIDGE: ${{ runner.os == 'Linux' && 'build/hydra-bridge' || '' }}
-        run: uv run pytest -n auto
+        # On Linux, under a virtual display, where the windowed tests' Blender windows open.
+        run: >
+          ${{ runner.os == 'Linux' && 'xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"' || '' }}
+          uv run pytest -n auto
 
       - uses: actions/upload-artifact@v4
         with:

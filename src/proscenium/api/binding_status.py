@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from ..binding.results import ResultState
     from ..binding.source_access import BindingId
-    from .bindings import Bindings
+    from .process_bindings import ProcessBindings
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +34,7 @@ class BindingStatus:
     last_attempt: ResultState | None  # how its last synchronization ended; None before any, or if it can't be read
 
 
-def binding_statuses(bindings: Bindings, scene: bpy.types.Scene) -> list[BindingStatus]:
+def binding_statuses(bindings: ProcessBindings, scene: bpy.types.Scene) -> list[BindingStatus]:
     """The status of each binding the scene lists, in Bindings.in_scene's order."""
     statuses = []
     for found in binding_operations.find_bindings(scene):

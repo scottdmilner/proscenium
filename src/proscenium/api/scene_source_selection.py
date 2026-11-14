@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from mathutils import Matrix
 
     from ..binding.source_access import BindingId
-    from .bindings import Bindings
+    from .process_bindings import ProcessBindings
 
 EMPTY = PersistentSelection((), None)
 
@@ -83,12 +83,12 @@ def active_view_layer(scene: bpy.types.Scene) -> bpy.types.ViewLayer | None:
     return bpy.context.view_layer if bpy.context.scene == scene else None
 
 
-def _displays(bindings: Bindings, scene: bpy.types.Scene) -> dict[BindingId, ShownDisplay]:
+def _displays(bindings: ProcessBindings, scene: bpy.types.Scene) -> dict[BindingId, ShownDisplay]:
     """Each of the scene's bindings with a live stage, its display read once."""
     displays = {}
-    for handle in bindings.in_scene(scene):
+    for found in binding_operations.find_bindings(scene):
         try:
-            displays[handle.binding_id] = ShownDisplay(bindings, handle.binding_id)
+            displays[found.binding_id] = ShownDisplay(bindings, found.binding_id)
         except stages.SourceUnavailableError:
             continue
     return displays
@@ -108,7 +108,7 @@ def _resolve(selection: PersistentSelection, displays: dict[BindingId, ShownDisp
     )
 
 
-def resolve(bindings: Bindings, scene: bpy.types.Scene) -> SelectionResolution:
+def resolve(bindings: ProcessBindings, scene: bpy.types.Scene) -> SelectionResolution:
     """The scene's stored source selection, resolved at the time code each binding's display shows."""
     return _resolve(stored_selection(scene), _displays(bindings, scene))
 
@@ -129,14 +129,14 @@ def _mirror(
         blender_selection.apply_selection(display.elements, view_layer, covered, active)
 
 
-def mirror(bindings: Bindings, scene: bpy.types.Scene, view_layer: bpy.types.ViewLayer | None = None) -> None:
+def mirror(bindings: ProcessBindings, scene: bpy.types.Scene, view_layer: bpy.types.ViewLayer | None = None) -> None:
     """Mirror the scene's stored source selection into view_layer, by default the scene's active one if it has one."""
     if (layer := view_layer or active_view_layer(scene)) is not None:
         _mirror(stored_selection(scene), _displays(bindings, scene), layer)
 
 
 def _store(
-    bindings: Bindings,
+    bindings: ProcessBindings,
     scene: bpy.types.Scene,
     selection: PersistentSelection,
     displays: dict[BindingId, ShownDisplay],
@@ -150,7 +150,7 @@ def _store(
         _mirror(selection, displays, layer)
 
 
-def set_selection(bindings: Bindings, scene: bpy.types.Scene, selection: PersistentSelection) -> None:
+def set_selection(bindings: ProcessBindings, scene: bpy.types.Scene, selection: PersistentSelection) -> None:
     """Store selection as the scene's source selection and mirror it into the scene's active view layer."""
     _store(bindings, scene, selection, _displays(bindings, scene))
 
@@ -177,7 +177,7 @@ def _changed(
 
 
 def select_by_pick(
-    bindings: Bindings,
+    bindings: ProcessBindings,
     scene: bpy.types.Scene,
     obj: bpy.types.Object | None,
     world_matrix: Matrix | None,
@@ -217,7 +217,7 @@ def world_bounds_center(obj: bpy.types.Object) -> Vector:
 
 
 def select_by_box(
-    bindings: Bindings,
+    bindings: ProcessBindings,
     scene: bpy.types.Scene,
     inside: Callable[[Vector], bool],
     level: str | None,
@@ -250,7 +250,7 @@ def managed_selectable(scene: bpy.types.Scene) -> bool:
     )
 
 
-def set_managed_selectable(bindings: Bindings, scene: bpy.types.Scene, selectable: bool) -> None:
+def set_managed_selectable(bindings: ProcessBindings, scene: bpy.types.Scene, selectable: bool) -> None:
     """Make the scene's managed content selectable or not, mirroring its source selection back once it is.
 
     Blender deselects the objects of an unselectable destination, and the stored selection stays as it was.
@@ -262,7 +262,7 @@ def set_managed_selectable(bindings: Bindings, scene: bpy.types.Scene, selectabl
         mirror(bindings, scene)
 
 
-def mirror_after_frame_change(bindings: Bindings, scene: bpy.types.Scene) -> None:
+def mirror_after_frame_change(bindings: ProcessBindings, scene: bpy.types.Scene) -> None:
     """Mirror the scene's source selection again if a binding with entries in it caches time codes.
 
     Nothing while a synchronization, cache call, or cleanup retry runs, or over a stored selection that can't be read.
@@ -279,7 +279,7 @@ def mirror_after_frame_change(bindings: Bindings, scene: bpy.types.Scene) -> Non
             return
 
 
-def mirror_after_publication(bindings: Bindings, scene: bpy.types.Scene) -> None:
+def mirror_after_publication(bindings: ProcessBindings, scene: bpy.types.Scene) -> None:
     """Mirror the scene's source selection again after a publication, whose rebuilt and built objects are unselected.
 
     The selection's entries whose identities a refresh kept resolve still (PH2-02). Nothing for an empty selection,
