@@ -17,16 +17,20 @@ from pxr import Sdf, Usd
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import (
-    badge_icons,
-    tinted_icons,
-    widget_colors,
-    widget_operators,
-    widget_properties,
-    widget_registration,
-    widget_views,
+    scene_graph_operators,
+    scene_graph_properties,
+    scene_graph_registration,
+    scene_graph_views,
 )
 from proscenium.ui.scene_graph_widget.display.list_columns import name_column
 from proscenium.ui.scene_graph_widget.prim_tree import PrimTree
+from proscenium.ui.widget_resources import (
+    badge_icons,
+    clipboard_operators,
+    display_registration,
+    theme_colors,
+    tinted_icons,
+)
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -58,7 +62,7 @@ def stage(tmp_path: Path) -> Usd.Stage:
 
 
 def _properties(name: str) -> Any:
-    properties = widget_properties.view_properties(bpy.context.window_manager, name)
+    properties = scene_graph_properties.view_properties(bpy.context.window_manager, name)
     assert properties is not None
     return properties
 
@@ -69,13 +73,13 @@ def _never(_area: object, _region: object) -> bool:
 
 def test_registration_adds_only_a_popover_panel_and_unregistration_removes_everything(registered: None) -> None:
     # A header panel shows only where a popover opens it, so the widget shows nowhere by itself.
-    panels = [cls for cls in widget_registration.CLASSES if issubclass(cls, bpy.types.Panel)]
+    panels = [cls for cls in scene_graph_registration.CLASSES if issubclass(cls, bpy.types.Panel)]
     assert [(panel.bl_space_type, panel.bl_region_type) for panel in panels] == [("TOPBAR", "HEADER")]
-    assert hasattr(bpy.types.WindowManager, widget_properties.VIEWS_PROPERTY)
+    assert hasattr(bpy.types.WindowManager, scene_graph_properties.VIEWS_PROPERTY)
     display.create_view("viewport", _never)
     display.unregister()
-    assert not hasattr(bpy.types.WindowManager, widget_properties.VIEWS_PROPERTY)
-    registered_classes: list[Any] = list(widget_registration.CLASSES)  # is_registered is Blender's, not stubbed
+    assert not hasattr(bpy.types.WindowManager, scene_graph_properties.VIEWS_PROPERTY)
+    registered_classes: list[Any] = list(scene_graph_registration.CLASSES)  # is_registered is Blender's, not stubbed
     assert not any(cls.is_registered for cls in registered_classes)
     with pytest.raises(display.ViewNotFoundError):
         display.selected_path("viewport")
@@ -92,13 +96,13 @@ def test_views_keep_separate_rows(registered: None, stage: Usd.Stage) -> None:
     with pytest.raises(ValueError, match="exists"):
         display.create_view("viewport", _never)
     display.remove_view("node_editor")
-    assert widget_properties.view_properties(bpy.context.window_manager, "node_editor") is None
+    assert scene_graph_properties.view_properties(bpy.context.window_manager, "node_editor") is None
 
 
 def test_a_recursive_toggle_and_the_triangle_tooltip(registered: None, stage: Usd.Stage) -> None:
     display.create_view("viewport", _never)
     display.set_stage("viewport", stage)
-    toggle = widget_operators.SceneGraphToggleRow
+    toggle = scene_graph_operators.SceneGraphToggleRow
     assert toggle.description(bpy.context, _ButtonProperties("viewport", WORLD_ROW)).startswith("Expand World.")
     bpy.ops.proscenium.scene_graph_toggle_row(view_name="viewport", row_index=WORLD_ROW, recursive=True)  # ty: ignore[unresolved-attribute]
     assert len(_properties("viewport").rows) == 36
@@ -109,10 +113,22 @@ def test_a_recursive_toggle_and_the_triangle_tooltip(registered: None, stage: Us
 def test_the_copy_path_button_names_its_prim(registered: None) -> None:
     # The background wheel has no clipboard to read back, so this checks the button's tooltip and that it runs.
     class _CopyButtonProperties:
-        prim_path = "/World/Camera"
+        usd_path = "/World/Camera"
 
-    assert widget_operators.SceneGraphCopyPath.description(bpy.context, _CopyButtonProperties()) == "Copy /World/Camera"
-    assert bpy.ops.proscenium.scene_graph_copy_path(prim_path="/World/Camera") == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+    assert clipboard_operators.CopyUsdPath.description(bpy.context, _CopyButtonProperties()) == "Copy /World/Camera"
+    assert bpy.ops.proscenium.copy_usd_path(usd_path="/World/Camera") == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+
+
+def test_the_shared_display_stays_registered_while_any_widget_is(registered: None) -> None:
+    # A second widget registers and unregisters the shared display too; the scene graph's copy button still runs.
+    display_registration.register()
+    display_registration.unregister()
+    assert bpy.ops.proscenium.copy_usd_path(usd_path="/World") == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+
+
+def test_unregistering_the_shared_display_with_no_widget_registered_raises() -> None:
+    with pytest.raises(RuntimeError):
+        display_registration.unregister()
 
 
 def test_the_active_row_selects_and_tells_the_host(registered: None, stage: Usd.Stage) -> None:
@@ -147,7 +163,7 @@ def test_search_fields_filter_the_rows(registered: None, stage: Usd.Stage) -> No
     assert len(properties.rows) == 2  # /World and /World/Sun
     properties.search_text = "prop_"
     display.apply_pending("viewport")
-    view = widget_views.scene_graph_view("viewport").prim_tree_view
+    view = scene_graph_views.scene_graph_view("viewport").prim_tree_view
     assert view.tree is not None
     matching_paths = [str(row.path) for row in view.tree.rows if view.tree.is_match(row)]
     props = ["/World/Geometry/Prop_Payloaded", "/World/Geometry/Prop_Unloaded", "/World/Geometry/Prop_Variants"]
@@ -162,17 +178,17 @@ def test_typing_a_search_leaves_the_arrow_keys_to_it_until_a_row_is_clicked(regi
     display.create_view("viewport", _never)
     display.set_stage("viewport", stage)
     properties = _properties("viewport")
-    assert not widget_views.is_entering_search_text("viewport")
+    assert not scene_graph_views.is_entering_search_text("viewport")
     properties.search_text = "w"  # as a keystroke in the box does
-    assert widget_views.is_entering_search_text("viewport")
+    assert scene_graph_views.is_entering_search_text("viewport")
     properties.active_row_index = WORLD_ROW  # a click on a row
-    assert not widget_views.is_entering_search_text("viewport")
+    assert not scene_graph_views.is_entering_search_text("viewport")
     properties.search_text = "wo"
     bpy.ops.proscenium.scene_graph_toggle_row(view_name="viewport", row_index=WORLD_ROW)  # ty: ignore[unresolved-attribute]
-    assert not widget_views.is_entering_search_text("viewport")  # a chevron is a click on a row too
+    assert not scene_graph_views.is_entering_search_text("viewport")  # a chevron is a click on a row too
     properties.search_text = "wor"
-    widget_views.stop_entering_search_text()  # as Enter, Esc, or Tab does
-    assert not widget_views.is_entering_search_text("viewport")
+    scene_graph_views.stop_entering_search_text()  # as Enter, Esc, or Tab does
+    assert not scene_graph_views.is_entering_search_text("viewport")
 
 
 def test_stage_edits_reach_the_rows(registered: None, stage: Usd.Stage) -> None:
@@ -189,18 +205,18 @@ def test_a_hovered_list_row_names_its_view(registered: None) -> None:
     display.create_view("first", _never)
     display.create_view("second", _never)
     wm = bpy.context.window_manager
-    second_index = list(getattr(wm, widget_properties.VIEWS_PROPERTY).keys()).index("second")
-    hovered = (wm, f"{widget_properties.VIEWS_PROPERTY}[{second_index}].active_row_index", -1)
-    assert widget_properties.view_name_holding(hovered) == "second"
-    assert widget_properties.view_name_holding(None) is None  # between the lists
-    assert widget_properties.view_name_holding((wm, "clipboard", -1)) is None
-    assert widget_properties.view_name_holding((bpy.context.scene, "frame_current", -1)) is None
+    second_index = list(getattr(wm, scene_graph_properties.VIEWS_PROPERTY).keys()).index("second")
+    hovered = (wm, f"{scene_graph_properties.VIEWS_PROPERTY}[{second_index}].active_row_index", -1)
+    assert scene_graph_properties.view_name_holding(hovered) == "second"
+    assert scene_graph_properties.view_name_holding(None) is None  # between the lists
+    assert scene_graph_properties.view_name_holding((wm, "clipboard", -1)) is None
+    assert scene_graph_properties.view_name_holding((bpy.context.scene, "frame_current", -1)) is None
 
 
 def test_typing_a_search_doesnt_put_off_reading_a_stage_change(registered: None, stage: Usd.Stage) -> None:
     display.create_view("viewport", _never)
     display.set_stage("viewport", stage)
-    view = widget_views.scene_graph_view("viewport")
+    view = scene_graph_views.scene_graph_view("viewport")
     stage.DefinePrim("/Added")
     assert bpy.app.timers.is_registered(view.run_stage_changes)
     _properties("viewport").search_text = "sun"  # schedules the search, a pause later
@@ -241,11 +257,11 @@ def test_a_file_load_ends_typing_a_search(registered: None, stage: Usd.Stage, tm
     display.create_view("viewport", _never)
     display.set_stage("viewport", stage)
     _properties("viewport").search_text = "w"  # as a keystroke in the box does
-    assert widget_views.is_entering_search_text("viewport")
+    assert scene_graph_views.is_entering_search_text("viewport")
     blend = tmp_path / "saved.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(blend))
     bpy.ops.wm.open_mainfile(filepath=str(blend))
-    assert not widget_views.is_entering_search_text("viewport")  # so the arrow keys step the tree again
+    assert not scene_graph_views.is_entering_search_text("viewport")  # so the arrow keys step the tree again
 
 
 def test_a_file_load_makes_the_properties_again(registered: None, stage: Usd.Stage, tmp_path: Path) -> None:
@@ -269,7 +285,7 @@ def test_a_file_load_keeps_the_applied_search_and_a_pending_stage_change(
     display.apply_pending("viewport")
     assert len(properties.rows) == 2  # /World and /World/Sun
     stage.DefinePrim("/World/Sundial")  # marks a change the view's timer reads
-    view = widget_views.scene_graph_view("viewport")
+    view = scene_graph_views.scene_graph_view("viewport")
     blend = tmp_path / "saved.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(blend))
     bpy.ops.wm.open_mainfile(filepath=str(blend))
@@ -319,10 +335,14 @@ def test_an_invalid_models_instance_icon_stays_one_the_alert_draws_red(registere
 
 def test_badge_shapes_are_kept_for_one_roundness(registered: None) -> None:
     # Dragging the theme's roundness draws the badges at many; only the last one's shapes are kept.
-    shape_count = len(badge_icons.BADGE_LOOKS) * len(badge_icons.BadgePlace)
+    looks = [*badge_icons.ARC_LOOKS.values(), badge_icons.INSTANCE_BADGE_LOOK]
+    for look in looks:
+        for place in badge_icons.BadgePlace:
+            badge_icons.icon_id(look, place, is_greyed=False)
+    shape_count = len(badge_icons.GLYPH_STROKES) * len(badge_icons.BadgePlace)
     for roundness in (0.1, 0.2, 0.3):
-        theme_colors = dataclasses.replace(widget_colors.DEFAULT_THEME_COLORS, pie_menu_roundness=roundness)
-        badge_icons._draw_icons(theme_colors)  # noqa: SLF001
+        colors = dataclasses.replace(theme_colors.DEFAULT_THEME_COLORS, pie_menu_roundness=roundness)
+        badge_icons._draw_icons(colors)  # noqa: SLF001
     state = badge_icons._BadgeIconsState  # noqa: SLF001
     assert state.coverages_roundness == 0.3
     assert len(state.coverages_by_shape) <= shape_count

@@ -8,34 +8,16 @@ expanded, or over only the prims it's given, such as the rows a tree shows.
 
 from __future__ import annotations
 
-import enum
-import fnmatch
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pxr import Sdf, Usd
 
+from ...widget_model import text_matching
+from ...widget_model.prim_details import CHILD_PREDICATE
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
-
-# Every child a stage editor shows: inactive, unloaded, abstract (class), and undefined (over) prims, and the
-# contents of native instances reached through instance proxies.
-CHILD_PREDICATE = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
-
-
-def child_count(prim: Usd.Prim) -> int:
-    """How many children a prim tree lists under a prim: its children as `CHILD_PREDICATE` filters them."""
-    return len(prim.GetFilteredChildren(CHILD_PREDICATE))
-
-
-class SearchMode(enum.Enum):
-    """What the query's text is matched against, and how."""
-
-    NAME = "name contains"
-    PATH = "path contains"
-    GLOB = "name glob"  # fnmatch: * ? [abc]
-    REGEX = "path regex"  # re.search on the full path
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +25,7 @@ class SearchQuery:
     """Everything a search matches on; empty text matches every prim."""
 
     text: str = ""
-    mode: SearchMode = SearchMode.NAME
+    mode: text_matching.MatchMode = text_matching.MatchMode.NAME
     case_sensitive: bool = False
     # Whether to search only the rows a tree shows without its filter, so the filter expands nothing to show a match;
     # otherwise the whole stage. The tree's view gives the search those rows' prims.
@@ -63,31 +45,17 @@ class SearchResult:
     is_truncated: bool  # whether the search stopped at its match limit
 
 
-class SearchError(ValueError):
-    """A query that can't be matched: an invalid regular expression."""
-
-
 def matcher(query: SearchQuery) -> Callable[[Usd.Prim], bool]:
-    """A test for one prim that a query's text matches; empty text matches every prim."""
-    if not query.text:
+    """A test for one prim that a query's text matches, by its name or its path as its mode says.
+
+    Raises text_matching.InvalidPatternError for text its mode can't match.
+    """
+    if query.is_empty():
         return lambda _prim: True
-    flags = 0 if query.case_sensitive else re.IGNORECASE
-    if query.mode is SearchMode.REGEX:
-        try:
-            pattern = re.compile(query.text, flags)
-        # A repetition count past the engine's limit overflows, and groups nested too deep exceed the compiler's
-        # recursion, rather than raising re.error.
-        except (re.error, OverflowError, RecursionError) as error:
-            raise SearchError(str(error) or type(error).__name__) from error
-        return lambda prim: pattern.search(str(prim.GetPath())) is not None
-    if query.mode is SearchMode.GLOB:
-        pattern = re.compile(fnmatch.translate(query.text), flags)
-        return lambda prim: pattern.match(prim.GetName()) is not None
-    needle = query.text if query.case_sensitive else query.text.lower()
-    fold = (lambda text: text) if query.case_sensitive else str.lower
-    if query.mode is SearchMode.PATH:
-        return lambda prim: needle in fold(str(prim.GetPath()))
-    return lambda prim: needle in fold(prim.GetName())
+    test = text_matching.text_matcher(query.text, query.mode, query.case_sensitive)
+    if query.mode.matches_path:
+        return lambda prim: test(str(prim.GetPath()))
+    return lambda prim: test(prim.GetName())
 
 
 def search(

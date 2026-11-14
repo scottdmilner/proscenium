@@ -14,11 +14,11 @@ editors; a host does:
 It exports the names hosts use.
 """
 
-from .widget_drawing import draw_details, draw_tree
-from .widget_hosting import create_view, remove_view, select_prim, selected_path, set_stage
-from .widget_properties import apply_pending
-from .widget_registration import is_registered, register, unregister
-from .widget_views import ViewNotFoundError
+from .scene_graph_drawing import draw_details, draw_tree
+from .scene_graph_hosting import create_view, remove_view, select_prim, selected_path, set_stage
+from .scene_graph_properties import apply_pending
+from .scene_graph_registration import is_registered, register, unregister
+from .scene_graph_views import ViewNotFoundError
 
 __all__ = [
     "ViewNotFoundError",

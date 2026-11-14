@@ -1,6 +1,6 @@
-"""The scene graph list's columns: one module per column, the layout they share, and the columns after the name."""
+"""The scene graph list's columns: one module per column, and the columns after the name in order."""
 
-from .. import badge_icons, widget_colors
+from ....widget_resources import badge_icons, theme_colors
 from .children_column import CHILDREN_COLUMN
 from .copy_path_column import COPY_PATH_COLUMN
 from .kind_column import KIND_COLUMN
@@ -15,5 +15,5 @@ def redraw_icons_if_theme_changed() -> None:
 
     Called once per view drawn, before its rows, not per row.
     """
-    widget_colors.read_theme_colors()
+    theme_colors.read_theme_colors()
     badge_icons.redraw_icons_if_theme_changed()

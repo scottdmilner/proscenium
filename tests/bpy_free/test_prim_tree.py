@@ -16,6 +16,7 @@ from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_search
+from proscenium.ui.widget_model import prim_details
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
@@ -134,10 +135,10 @@ def test_an_unloaded_payloads_contents_are_neither_rows_nor_search_matches(stage
 
 
 def test_child_count_counts_what_the_tree_lists(stage: Usd.Stage) -> None:
-    assert prim_search.child_count(stage.GetPrimAtPath("/World")) == len(WORLD_CHILDREN)
-    assert prim_search.child_count(stage.GetPrimAtPath("/World/Camera")) == 0
+    assert prim_details.child_count(stage.GetPrimAtPath("/World")) == len(WORLD_CHILDREN)
+    assert prim_details.child_count(stage.GetPrimAtPath("/World/Camera")) == 0
     # An instance's children are instance proxies, Body and Lid from the prototype, as its expanded row lists them.
-    assert prim_search.child_count(stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")) == 2
+    assert prim_details.child_count(stage.GetPrimAtPath("/World/Geometry/Crates/Crate_01")) == 2
     tree = PrimTree(stage)
     world = tree.details(tree.rows[_index(tree, "/World")])
     assert world.child_count == len(WORLD_CHILDREN)

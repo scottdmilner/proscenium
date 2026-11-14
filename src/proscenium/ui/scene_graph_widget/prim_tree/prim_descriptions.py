@@ -5,11 +5,12 @@ It words what the tree has read (`RowDetails`, `PrimDetails`) and makes no USD q
 
 from __future__ import annotations
 
-import enum
 from typing import TYPE_CHECKING
 
+from ...widget_model import prim_detail_text
+
 if TYPE_CHECKING:
-    from .prim_tree import PrimDetails, RowDetails
+    from ...widget_model.prim_details import PrimDetails, RowDetails
 
 # What the tree's keys do, for the disclosure triangle's tooltip.
 KEY_HINTS = "Right: expand, or step in    Left: collapse, or step out    Shift: the whole subtree"
@@ -40,48 +41,6 @@ def row_name(details: RowDetails, shows_display_name: bool) -> str:
     return _sans_italic(name) if details.is_class else name
 
 
-class Badge(enum.Enum):
-    """A mark after a prim's name: instancing, then each composition arc authored on it, by its letter.
-
-    The arcs in LIVRPS strength order, strongest first (local opinions, the L, have none), as a row draws them.
-    """
-
-    INHERITS = "inherits"
-    VARIANTS = "variants"
-    REFERENCES = "references"
-    PAYLOAD = "payload"
-    SPECIALIZES = "specializes"
-    INSTANCE = "instance"  # an instance, or a prim marked instanceable that isn't one
-
-
-def row_badges(details: RowDetails) -> list[Badge]:
-    """The badges a row shows, in drawing order."""
-    shown = (
-        (Badge.INSTANCE, details.is_instance or details.is_instanceable),
-        (Badge.INHERITS, details.has_inherits),
-        (Badge.VARIANTS, details.has_variants),
-        (Badge.REFERENCES, details.has_references),
-        (Badge.PAYLOAD, details.has_payload),
-        (Badge.SPECIALIZES, details.has_specializes),
-    )
-    return [badge for badge, is_shown in shown if is_shown]
-
-
-def is_badge_in_effect(details: RowDetails, badge: Badge) -> bool:
-    """Whether a badge's arc contributes to the prim now; a row greys out a badge that doesn't.
-
-    A payload left unloaded doesn't, nor do variant sets none of which has a variant selected, nor instanceable
-    metadata on a prim without composition arcs, which leaves it no instance.
-    """
-    if badge is Badge.INSTANCE:
-        return details.is_instance
-    if badge is Badge.PAYLOAD:
-        return details.is_loaded
-    if badge is Badge.VARIANTS:
-        return details.has_variant_selection
-    return True
-
-
 def row_tooltip(details: RowDetails, prim_details: PrimDetails) -> str:
     """A row's tooltip: the prim's path, type, specifier, anything unusual about it, and what each badge stands for.
 
@@ -89,14 +48,16 @@ def row_tooltip(details: RowDetails, prim_details: PrimDetails) -> str:
     """
     lines = [str(details.path), f"{details.type_name or 'No type'}, {details.specifier.displayName}"]
     if not details.is_active:
-        lines.append("Inactive")
+        lines.append(prim_detail_text.INACTIVE_LINE)
     if details.model_kind:
         lines.append(f"Kind: {details.model_kind}")
     if details.is_invalid_model:
-        lines.append("Not a model: an ancestor isn't a group or assembly")
-    lines.extend(_badge_line(details, prim_details, badge) for badge in row_badges(details))
+        lines.append(prim_detail_text.INVALID_MODEL_LINE)
+    if prim_detail_text.has_instance_badge(details):
+        lines.append(prim_detail_text.instance_line(details, prim_details))
+    lines.extend(prim_detail_text.arc_line(details, prim_details, arc) for arc in prim_detail_text.row_arcs(details))
     if details.is_instance_proxy:
-        lines.append(f"Instance proxy, read-only: inside instance {details.instance_path}")
+        lines.append(prim_detail_text.instance_proxy_line(details))
     return "\n".join(lines)
 
 
@@ -104,39 +65,6 @@ def disclosure_tooltip(details: RowDetails, is_expanded: bool) -> str:
     """The disclosure triangle's tooltip: what a click does to the row, and the keys that do the same."""
     action = "Collapse" if is_expanded else "Expand"
     return f"{action} {details.name}. Shift-click: the whole subtree.\nKeys: {KEY_HINTS}"
-
-
-def _badge_line(details: RowDetails, prim_details: PrimDetails, badge: Badge) -> str:
-    """The row tooltip's line for a badge: its arc's targets."""
-    if badge is Badge.INHERITS:
-        return f"Inherits: {', '.join(prim_details.inherit_paths)}"
-    if badge is Badge.VARIANTS:
-        selections = prim_details.variant_selections
-        return "Variants: " + ", ".join(f"{name} = {selection or '(none)'}" for name, selection in selections)
-    if badge is Badge.REFERENCES:
-        return f"References: {', '.join(prim_details.reference_targets)}"
-    if badge is Badge.PAYLOAD:
-        state = "loaded" if details.is_loaded else "unloaded"
-        return f"Payload ({state}): {', '.join(prim_details.payload_targets)}"
-    if badge is Badge.INSTANCE:
-        if details.is_instance:
-            return f"Instance of {prim_details.prototype_path}"
-        if not details.is_active:
-            return "Instanceable, but not an instance: it's inactive"
-        if not _has_composition_arcs(details):
-            return "Instanceable, but not an instance: it has no composition arcs"
-        return "Instanceable, but not an instance"
-    return f"Specializes: {', '.join(prim_details.specialize_paths)}"
-
-
-def _has_composition_arcs(details: RowDetails) -> bool:
-    return (
-        details.has_inherits
-        or details.has_variants
-        or details.has_references
-        or details.has_payload
-        or details.has_specializes
-    )
 
 
 def details_lines(details: RowDetails, prim_details: PrimDetails) -> list[str]:

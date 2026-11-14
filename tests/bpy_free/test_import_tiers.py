@@ -26,19 +26,23 @@ PACKAGE = Path(proscenium.__file__).parent
 # extension's entry, and the grouping packages' __init__.py files, which group their units, are no unit's.
 TIERS = (
     # bpy-free, each importing only itself
-    ("core", "binding.source_access", "binding.results", "ui.scene_graph_widget.prim_tree"),
+    ("core", "binding.source_access", "binding.results", "ui.widget_model"),
+    # bpy-free
+    ("ui.scene_graph_widget.prim_tree", "ui.property_viewer_widget.property_list"),
     ("binding.persistence",),
     ("binding.runtime",),
     ("synchronization",),
     ("api",),
-    ("ui.scene_graph_widget.display",),
+    ("ui.columned_list", "ui.widget_updates"),
+    ("ui.widget_resources", "ui.search_box", "ui.text_wrapping"),
+    ("ui.scene_graph_widget.display", "ui.property_viewer_widget.display"),
     ("addon",),
 )
 TIER_OF = {unit: tier for tier, units in enumerate(TIERS) for unit in units}
-BPY_FREE = set(TIERS[0])
+BPY_FREE = {*TIERS[0], *TIERS[1]}
 # The packages that group units, by name under proscenium, and are none themselves; their __init__.py imports none
 # of their units.
-GROUPING_PACKAGES = ("binding", "ui", "ui.scene_graph_widget")
+GROUPING_PACKAGES = ("binding", "ui", "ui.scene_graph_widget", "ui.property_viewer_widget")
 GROUPING_INITS = tuple(PACKAGE.joinpath(*package.split("."), "__init__.py") for package in GROUPING_PACKAGES)
 
 
@@ -316,7 +320,7 @@ def _is_blender(top: str) -> bool:
 
 
 def _bpy_free(path: Path) -> bool:
-    """Whether path must import without bpy: the lowest tier's units, and the packages that hold them."""
+    """Whether path must import without bpy: the two lowest tiers' units, and the packages that hold them."""
     return _own_unit(path) in BPY_FREE or path in (PACKAGE / "__init__.py", *GROUPING_INITS)
 
 
@@ -339,4 +343,6 @@ def test_a_blender_import_is_found() -> None:
     assert not _bpy_free(PACKAGE / "binding" / "persistence" / "id_property_records.py")
     widget = PACKAGE / "ui" / "scene_graph_widget"
     assert _bpy_free(widget / "prim_tree" / "prim_tree.py")
-    assert not _bpy_free(widget / "display" / "widget_views.py")
+    assert not _bpy_free(widget / "display" / "scene_graph_views.py")
+    assert _bpy_free(PACKAGE / "ui" / "widget_model" / "text_matching.py")
+    assert not _bpy_free(PACKAGE / "ui" / "widget_resources" / "theme_colors.py")

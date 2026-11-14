@@ -1,0 +1,165 @@
+#usda 1.0
+# The property viewer's tests (tests/bpy_free/test_property_list.py, tests/blender/test_property_viewer.py,
+# tests/isolated/test_list_keys.py) and tools/scene_graph_demo.py: one property of each kind a property row shows.
+# - Ball is a Sphere, so it has its schema's properties unauthored, each with its fallback, beside authored ones: a
+#   default value, a blocked one, time samples (several, a single one, and several beside a default value), a custom
+#   string, asset, matrix, and a long array, a primvar, xform ops, and relationships: a material binding, a custom
+#   one whose target is missing, and a collection's includes and excludes.
+# - Values has a value of each type a row writes differently: bool, float, half, int64, infinite and not-a-number
+#   floats, string, string array, token, quaternion, vector, timecode, asset array, and an empty array; a custom
+#   uniform declaration; primvars of vertex interpolation with an element size and of faceVarying with indices; and a
+#   documented value in a display group, with an opinion in property_kinds_weaker.usda too.
+# - Animation has each source a value comes from: time samples, a single one, time samples beside a default, a
+#   spline, value clips (from property_kinds_clip.usda), a default alone, and a block.
+# - Links has an authored relationship with no targets, one with several, one of them missing, one targeting a
+#   property, and connections: alone, beside a value, and to a property that doesn't exist. Red's output is
+#   connected to its shader's.
+# - Empty has no properties at all.
+(
+    defaultPrim = "World"
+    endTimeCode = 3
+    startTimeCode = 1
+    subLayers = [
+        @./property_kinds_weaker.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Sphere "Ball" (
+        prepend apiSchemas = ["CollectionAPI:lights", "MaterialBindingAPI"]
+    )
+    {
+        rel collection:lights:excludes = </World/Looks>
+        rel collection:lights:includes = [
+            </World/Sun>,
+            </World/Ball>,
+        ]
+        custom asset texture = @textures/ball.png@
+        custom int[] counts = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        custom matrix4d frame = ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))
+        rel material:binding = </World/Looks/Red>
+        custom rel missing = </World/Nowhere>
+        custom string notes = "hello"
+        color3f[] primvars:displayColor = [(1, 0, 0)] (
+            interpolation = "constant"
+        )
+        custom double pulse = 1
+        custom double pulse.timeSamples = {
+            1: 1,
+            3: 3,
+        }
+        uniform token purpose = None
+        double radius = 2
+        custom double steady.timeSamples = {
+            1: 5,
+        }
+        double3 xformOp:translate.timeSamples = {
+            1: (0, 0, 0),
+            2: (0, 0, 1),
+            3: (0, 0, 2),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Scope "Looks"
+    {
+        def Material "Red"
+        {
+            token outputs:surface.connect = </World/Looks/Red/Surface.outputs:surface>
+
+            def Shader "Surface"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1, 0, 0)
+                token outputs:surface
+            }
+        }
+    }
+
+    def DistantLight "Sun"
+    {
+    }
+
+    def "Values"
+    {
+        custom asset[] assets = [@textures/a.png@, @textures/b.png@]
+        custom int64 big = 9007199254740993
+        custom uniform token category = "prop"
+        custom double documented = 1 (
+            displayGroup = "Showcase"
+            doc = "A value with documentation, in a display group, with an opinion in a weaker layer too."
+        )
+        custom int[] empty = []
+        custom bool enabled = true
+        custom float infinite = inf
+        custom token mode = "fast"
+        custom float notANumber = nan
+        custom float2 offset = (0.5, -0.25)
+        custom quatf orientation = (1, 0, 0, 0)
+        texCoord2f[] primvars:st = [(0, 0), (1, 0), (1, 1), (0, 1)] (
+            interpolation = "faceVarying"
+        )
+        int[] primvars:st:indices = [0, 1, 2, 3]
+        float[] primvars:weights = [1, 0, 0, 1, 0, 1, 1, 0] (
+            elementSize = 2
+            interpolation = "vertex"
+        )
+        custom float ratio = 0.333333333
+        custom half small = 0.5
+        custom timecode start = 12
+        custom string[] tags = ["red", "round"]
+    }
+
+    def "Animation" (
+        clips = {
+            dictionary default = {
+                double2[] active = [(1, 0)]
+                asset[] assetPaths = [@./property_kinds_clip.usda@]
+                string primPath = "/Clip"
+                double2[] times = [(1, 1), (3, 3)]
+            }
+        }
+    )
+    {
+        custom double blocked = None
+        custom double clipped
+        custom double curve.spline = {
+            1: 0; post linear,
+            3: 10,
+        }
+        custom double defaultAndSampled = 1
+        custom double defaultAndSampled.timeSamples = {
+            1: 1,
+            3: 3,
+        }
+        custom double held.timeSamples = {
+            1: 5,
+        }
+        custom double sampled.timeSamples = {
+            1: 0,
+            3: 2,
+        }
+        custom double still = 4
+    }
+
+    def "Links"
+    {
+        custom double broken.connect = </World/Ball.nothing>
+        custom double driven.connect = </World/Ball.radius>
+        custom double drivenWithValue = 3
+        custom double drivenWithValue.connect = </World/Ball.radius>
+        custom rel many = [
+            </World/Ball>,
+            </World/Sun>,
+            </World/Nowhere>,
+        ]
+        custom rel none
+        custom rel toProperty = </World/Ball.radius>
+    }
+
+    def "Empty"
+    {
+    }
+}

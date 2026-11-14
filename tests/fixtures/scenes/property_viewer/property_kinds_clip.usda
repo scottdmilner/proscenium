@@ -1,0 +1,10 @@
+#usda 1.0
+# The value clip property_kinds.usda's Animation prim reads Animation.clipped from: its time samples, at /Clip.
+
+def "Clip"
+{
+    double clipped.timeSamples = {
+        1: 10,
+        3: 30,
+    }
+}

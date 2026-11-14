@@ -1,0 +1,11 @@
+#usda 1.0
+# A weaker sublayer of property_kinds.usda, so a property has opinions in two layers: Values.documented's value here
+# is overridden by the root layer's, which the metadata panel counts as two opinions, the root layer's the strongest.
+
+over "World"
+{
+    over "Values"
+    {
+        custom double documented = 0
+    }
+}
