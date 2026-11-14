@@ -138,13 +138,14 @@ def test_units_import_only_lower_tiers() -> None:
     assert not found, "\n".join(found)
 
 
-def test_the_interface_imports_only_the_api() -> None:
-    # M7 plan, settled 3: the temporary UI reaches the product only through api/, so M12 can replace it alone.
+def test_the_interface_imports_only_the_api_and_widgets() -> None:
+    # M7 plan, settled 3 and Phase F: the temporary UI reaches the product only through api/, and may host ui/'s
+    # widgets, which only read a stage their host gives them, so M12 can replace it alone.
     found = [
         f"{path.relative_to(PACKAGE)}:{line} imports {name}"
         for path in sorted((PACKAGE / "interface").rglob("*.py"))
         for line, name, *_ in _imported(path)
-        if _unit(name.split(".")[1:]) not in {"interface", "api"}
+        if (unit := _unit(name.split(".")[1:])) not in {"interface", "api"} and not unit.startswith("ui.")
     ]
     assert not found, "\n".join(found)
 

@@ -11,7 +11,7 @@ The code is in units, each a package or a single module, in tiers. A unit import
 | Tier | Unit | Holds |
 |---|---|---|
 | 11 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
-| 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `api/` |
+| 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `api/` and `ui/`'s widgets |
 | 2, 7–9 | `ui/`'s units | Widgets an add-on places in Blender's editors, their bpy-free models in tier 2 and the lowest tier ([`src/proscenium/README.md`](../../src/proscenium/README.md#import-rules) lists them) |
 | 6 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
 | 5 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
