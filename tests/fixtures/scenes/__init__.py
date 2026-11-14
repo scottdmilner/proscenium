@@ -26,6 +26,8 @@ class Scene(Enum):
     EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py, generated ones' base included
     # prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree (src/proscenium/ui)
     SCENE_GRAPH = "scene_graph"
+    # property_kinds.usda, with its weaker sublayer and value clip, for the property viewer's list (src/proscenium/ui)
+    PROPERTY_VIEWER = "property_viewer"
 
     @property
     def path(self) -> Path:

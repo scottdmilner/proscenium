@@ -12,15 +12,16 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTreeView, StepDirection, prim_descriptions, prim_search
+from proscenium.ui.scene_graph_widget.prim_tree import PrimTreeView, prim_descriptions, prim_search
 from proscenium.ui.scene_graph_widget.prim_tree.prim_tree_view import PendingChange, SearchStatus
-from proscenium.ui.widget_model import composition_arcs, text_matching
+from proscenium.ui.widget_model import composition_arcs, prim_detail_text, text_matching
+from proscenium.ui.widget_model.list_steps import StepDirection
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.ui.scene_graph_widget.prim_tree.prim_tree import RowDetails
+    from proscenium.ui.widget_model.prim_details import RowDetails
 
 INTO = StepDirection.INTO
 OUT_OF = StepDirection.OUT_OF
@@ -280,7 +281,7 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
         "/World/Camera": (False, []),
     }
     shown_badges = {
-        path: (prim_descriptions.has_instance_badge(details(path)), prim_descriptions.row_arcs(details(path)))
+        path: (prim_detail_text.has_instance_badge(details(path)), prim_detail_text.row_arcs(details(path)))
         for path in badges_by_path
     }
     assert shown_badges == badges_by_path
@@ -290,8 +291,8 @@ def test_badges_and_tooltips(stage: Usd.Stage) -> None:
     assert row_tooltip(crate) == f"{crate}\nXform, Def\nKind: component\nInstance of {prototype}\nReferences: /_Crate"
     # Greyed out where the metadata does nothing; a proxy's tooltip names its instance.
     instanceable = details("/World/Geometry/Crates/Crate_Instanceable")
-    assert not prim_descriptions.is_instance_badge_in_effect(instanceable)
-    assert prim_descriptions.is_instance_badge_in_effect(details(crate))
+    assert not prim_detail_text.is_instance_badge_in_effect(instanceable)
+    assert prim_detail_text.is_instance_badge_in_effect(details(crate))
     assert row_tooltip("/World/Geometry/Crates/Crate_Instanceable").endswith(
         "\nInstanceable, but not an instance: it has no composition arcs"
     )
@@ -359,7 +360,7 @@ def test_an_unloaded_payload_and_an_unselected_variant_set_are_not_in_effect(sta
     def in_effect(path: Sdf.Path, shown: composition_arcs.CompositionArc) -> bool:
         details = tree.details_at(path)
         assert details is not None, path
-        return prim_descriptions.is_arc_in_effect(details, shown)
+        return prim_detail_text.is_arc_in_effect(details, shown)
 
     assert in_effect(payloaded, arc.PAYLOAD)  # loaded, as the stage opens
     assert in_effect(payloaded, arc.SPECIALIZES)  # only payloads and variants can be out of effect

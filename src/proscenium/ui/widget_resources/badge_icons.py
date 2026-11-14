@@ -1,14 +1,13 @@
 """Badge icons for list rows, drawn into a preview collection from pixels made here, so they need no files.
 
-A badge is a glyph, a composition arc's bold LIVRPS letter or an instance's two overlapping squares
-(`INSTANCE_GLYPH`), in one of the theme's collection colors (a `BadgeLook`), on its piece of a dark rounded block: a
-row's badges are labels side by side, so the block is drawn into their icons, each badge drawing the piece for its
-place in the row (`BadgePlace`). The block takes the theme's pie menu color and roundness, the dark of a PIE_MENU
-button. A badge that isn't in effect is greyed out: its glyph is the pie menu's text color, half blended into the
-block. Each badge's icon is drawn the first time it's asked for; preview icons keep the colors they're drawn in, so
-every icon drawn is drawn again when the theme's colors change (`redraw_icons_if_theme_changed`); they're read in
-`theme_colors`. A layout takes the icons by number (`icon_value=icon_id(...)`), not by Blender's icon names. In
-background mode, previews get number 0.
+A badge is a glyph, a composition arc's bold LIVRPS letter or an instance's two overlapping squares (`INSTANCE_GLYPH`),
+in one of the theme's collection colors (a `BadgeLook`), on its piece of a dark rounded block: a row's badges are labels
+side by side, so the block is drawn into their icons, each badge drawing the piece for its place in the row
+(`BadgePlace`). The block takes the theme's pie menu color and roundness, the dark of a PIE_MENU button. A badge that
+isn't in effect is greyed out: its glyph is the pie menu's text color, half blended into the block. Each badge's icon is
+drawn the first time it's asked for; preview icons keep the colors they're drawn in, so every icon drawn is drawn again
+when the theme's colors change (`redraw_icons_if_theme_changed`); they're read in `theme_colors`. A layout takes the
+icons by number (`icon_value=icon_id(...)`), not by Blender's icon names. In background mode, previews get number 0.
 """
 
 from __future__ import annotations
@@ -78,8 +77,8 @@ class BadgeLook(NamedTuple):
     glyph: str
 
 
-# Each arc's badge, its letter in a collection color of its own. Red and brown go unused: brown is too dark on the
-# block.
+# Each arc's badge, its letter in a collection color of its own; none takes the instancing green. Red and brown go
+# unused: brown is too dark on the block.
 ARC_LOOKS: dict[CompositionArc, BadgeLook] = {
     CompositionArc.INHERITS: BadgeLook(CollectionColor.PINK, "I"),
     CompositionArc.VARIANTS: BadgeLook(CollectionColor.VIOLET, "V"),
@@ -87,6 +86,10 @@ ARC_LOOKS: dict[CompositionArc, BadgeLook] = {
     CompositionArc.PAYLOAD: BadgeLook(CollectionColor.YELLOW, "P"),
     CompositionArc.SPECIALIZES: BadgeLook(CollectionColor.BLUE, "S"),
 }
+
+
+# The instance badge's: two overlapping squares in the green the scene graph marks instancing in.
+INSTANCE_BADGE_LOOK = BadgeLook(CollectionColor.GREEN, INSTANCE_GLYPH)
 
 
 class BadgePlace(enum.Enum):

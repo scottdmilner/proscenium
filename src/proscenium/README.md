@@ -11,7 +11,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |
 | `core/` | The compiled core: its C++ source and the built module. |
-| `ui/` | The user interface: widgets an add-on places in Blender's editors, such as the scene graph's prim tree, and what the widgets share. |
+| `ui/` | The user interface: widgets an add-on places in Blender's editors, the scene graph's prim tree and the property viewer's property list, and what the widgets share. |
 
 ## Import rules
 
@@ -20,17 +20,17 @@ The code is in units, each a package or a single module, in tiers. A unit import
 | Tier | Units |
 |---|---|
 | 10 | `addon.py` |
-| 9 | `ui/scene_graph_widget/display/` |
-| 8 | `ui/search_box.py` |
-| 7 | `ui/widget_resources/`, `ui/columned_list/`, `ui/widget_updates.py` |
+| 9 | `ui/scene_graph_widget/display/`, `ui/property_viewer_widget/display/` |
+| 8 | `ui/widget_resources/`, `ui/search_box.py`, `ui/text_wrapping.py` |
+| 7 | `ui/columned_list/`, `ui/widget_updates.py` |
 | 6 | `api/` |
 | 5 | `synchronization/` |
 | 4 | `binding/runtime/` |
 | 3 | `binding/persistence/` |
-| 2 | `ui/scene_graph_widget/prim_tree/` |
+| 2 | `ui/scene_graph_widget/prim_tree/`, `ui/property_viewer_widget/property_list/` |
 | 1 | `core/`, `binding/source_access/`, `binding/results.py`, `ui/widget_model/` |
 
-`__init__.py`, the extension's entry, and `binding/__init__.py`, `ui/__init__.py`, and `ui/scene_graph_widget/__init__.py`, which group their packages' units and import none of them, are no unit's.
+`__init__.py`, the extension's entry, and `binding/__init__.py`, `ui/__init__.py`, `ui/scene_graph_widget/__init__.py`, and `ui/property_viewer_widget/__init__.py`, which group their packages' units and import none of them, are no unit's.
 
 Units reach each other through public modules and exported names. A package unit's `__init__.py` exports its public modules and names, its own or its modules', and nothing else; a module unit is public itself. Code in another unit imports a public module from its package and names each use through it: `from ..binding.persistence import manifests`, then `manifests.Manifest`, and `from ..binding import results`, then `results.Result`. Where a module's qualified uses would nest, as in `results.Result(results.Diagnostic(results.DiagnosticCode.X, ...))`, it imports the names from the public module instead: `from ..binding.results import Diagnostic, DiagnosticCode, Result`. A package that exports names is used the same way: imported from its parent, each use named through it (`from .. import synchronization`, then `synchronization.synchronize`), or its names imported from it. Nothing imports a name a package doesn't export, or anything from a module its package doesn't export. A unit's own modules import each other directly, and tests reach into any module.
 

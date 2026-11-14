@@ -19,6 +19,7 @@ import bpy
 
 from ... import search_box, widget_updates
 from ...widget_model import text_matching
+from ...widget_resources import list_keys
 from ..prim_tree import prim_descriptions, prim_search
 from . import scene_graph_views
 
@@ -29,8 +30,6 @@ VIEWS_PROPERTY = "proscenium_scene_graph_views"  # the WindowManager's collectio
 SEARCH_DELAY_SECONDS = 0.25  # after the last keystroke, before a search runs
 # A row item's RNA path: "proscenium_scene_graph_views[<view index>].rows[<row index>]".
 _ROW_ITEM_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.rows\[(\d+)\]$")
-# A property of a view's item, from the window manager: "proscenium_scene_graph_views[<view index>].<property>".
-_VIEW_PROPERTY_PATH = re.compile(rf"{VIEWS_PROPERTY}\[(\d+)\]\.")
 
 
 def _row_tooltip(row_item: Any) -> str:
@@ -153,15 +152,7 @@ def view_name_holding(hovered_property: Any) -> str | None:
 
     Over a list, the hovered property is its row's active index, so this names the list under the cursor.
     """
-    if not hovered_property:
-        return None
-    owner, data_path, _array_index = hovered_property
-    found = _VIEW_PROPERTY_PATH.match(data_path) if isinstance(owner, bpy.types.WindowManager) else None
-    if found is None:
-        return None
-    items = getattr(owner, VIEWS_PROPERTY)
-    view_index = int(found[1])
-    return items[view_index].name if view_index < len(items) else None
+    return list_keys.item_name_holding(hovered_property, VIEWS_PROPERTY)
 
 
 def create_missing_view_properties(wm: Any) -> None:

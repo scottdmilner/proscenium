@@ -1,7 +1,9 @@
-"""The scene graph widget's Left and Right keys in Blender's window, from simulated mouse moves and key presses.
+"""The widgets' Left and Right keys in Blender's window, from simulated mouse moves and key presses.
 
-The bodies (bodies/scene_graph_keys.py) host views in the 3D View's sidebar on scenes/scene_graph/prim_kinds.usda,
-whose first row is /_Crate: Right with nothing selected expands that row and selects it.
+The bodies (bodies/list_keys.py) host views in a Properties editor. The scene graph's are on
+scenes/scene_graph/prim_kinds.usda, whose first row is /_Crate: Right with nothing selected expands that row and
+selects it. With a property viewer beside one, both are on scenes/property_viewer/property_kinds.usda, and the
+property viewer shows /World/Ball, whose first authored property is collection:lights:excludes, a relationship.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ def _stage_path(tmp_path: Path) -> str:
 def test_right_steps_the_view_whose_list_is_under_the_cursor(windowed_binary: Runtime, tmp_path: Path) -> None:
     observed = run_isolated(
         windowed_binary,
-        BODIES / "scene_graph_keys.py",
+        BODIES / "list_keys.py",
         "keys_step_the_hovered_view",
         tmp_path,
         timeout=TIMEOUT_SECONDS,
@@ -49,7 +51,7 @@ def test_right_steps_a_view_after_the_widget_is_registered_again(windowed_binary
     # Unregistering ends each window's watcher; registering again must start another.
     observed = run_isolated(
         windowed_binary,
-        BODIES / "scene_graph_keys.py",
+        BODIES / "list_keys.py",
         "keys_step_after_registering_again",
         tmp_path,
         timeout=TIMEOUT_SECONDS,
@@ -60,3 +62,28 @@ def test_right_steps_a_view_after_the_widget_is_registered_again(windowed_binary
     assert observed["before"] == stepped
     assert observed["after"] == stepped
     assert observed["heard"] == {"only": ["/_Crate", "/_Crate"]}  # once by each registration's view
+
+
+def test_right_steps_whichever_widgets_list_is_under_the_cursor(windowed_binary: Runtime, tmp_path: Path) -> None:
+    # A scene graph and a property viewer in one editor: one watcher, each widget's own step.
+    stage_path = str(copy_scene(Scene.PROPERTY_VIEWER, tmp_path) / "property_kinds.usda")
+    observed = run_isolated(
+        windowed_binary,
+        BODIES / "list_keys.py",
+        "keys_step_each_widgets_list",
+        tmp_path,
+        timeout=TIMEOUT_SECONDS,
+        stage_path=stage_path,
+    )
+    excludes = "/World/Ball.collection:lights:excludes"
+    # Over the property viewer's row: its first property shows its targets, and the tree is left alone.
+    assert observed["after_properties"] == {
+        "tree": {"selected": None, "expanded": []},
+        "properties": {"selected": excludes, "expanded": ["collection:lights:excludes"]},
+        "heard": {"tree": [], "properties": [excludes]},
+    }
+    assert observed["after_tree"] == {
+        "tree": {"selected": "/World", "expanded": ["/World"]},
+        "properties": {"selected": excludes, "expanded": ["collection:lights:excludes"]},
+        "heard": {"tree": ["/World"], "properties": [excludes]},
+    }

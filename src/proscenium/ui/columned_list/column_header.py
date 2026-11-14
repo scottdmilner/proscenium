@@ -52,9 +52,11 @@ def header_row(layout: bpy.types.UILayout, context: bpy.types.Context, is_scroll
     return row
 
 
-def draw_column_titles(layout: bpy.types.UILayout, properties: Any, shown: list[column_layout.Column[Any]]) -> None:
+def draw_column_titles(
+    layout: bpy.types.UILayout, widths_units: list[float], shown: list[column_layout.Column[Any]]
+) -> None:
     """Each shown column's title, or its icon, over its cells, splitting layout as the rows split theirs."""
-    for cell, column in zip(column_layout.column_cells(layout, properties, shown), shown, strict=True):
+    for cell, column in zip(column_layout.column_cells(layout, widths_units, shown), shown, strict=True):
         if column.header_icon:
             cell.label(text="", icon=column.header_icon)
         else:

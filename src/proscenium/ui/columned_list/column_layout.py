@@ -2,7 +2,9 @@
 
 A list's leading column, such as a tree's names, takes what the other columns leave of a row. Each other column is a
 `Column`, which says how the header and the settings popover show it and draws its cell in a row from the row's
-details; its width and whether it shows are properties of the list's property group.
+details; its width and whether it shows are properties of the list's property group. A column's width is in UI units,
+or else a share of what the columns with widths leave, which it splits with the leading column, so it stays wider or
+narrower than the leading column at any region width (`column_widths`).
 """
 
 from __future__ import annotations
@@ -25,15 +27,35 @@ class Column[RowDetailsT](NamedTuple):
     title: str
     show_property: str
     draw_cell: Callable[[bpy.types.UILayout, RowDetailsT], None]  # draws a row's cell from the row's details
-    units_property: str = ""  # its width's property, or empty for a column of fixed_units
-    fixed_units: float = 0.0  # the width of a column the settings can't resize
+    units_property: str = ""  # its width's property, or empty for a column of fixed_units or a share
+    fixed_units: float = 0.0  # the width of a column the settings can't resize, or a share's without a region's
+    # The property of its share, 0 to 1, of what the columns with widths leave of a row; the leading column takes the
+    # rest. Empty for a column with a width.
+    share_property: str = ""
     header_icon: IconItems | None = None  # in place of the title in the header, for a column too narrow for it
     alignment: CellAlignment = "LEFT"  # its cells', in the header and the rows: RIGHT for numbers
 
 
 def column_units(properties: Any, column: Column[Any]) -> float:
-    """A column's width in UI units: its setting's, or its fixed width."""
+    """A column's width in UI units: its setting's, or its fixed width; a share's fixed width stands in for it."""
     return getattr(properties, column.units_property) if column.units_property else column.fixed_units
+
+
+def column_widths(context: bpy.types.Context | None, properties: Any, shown: list[Column[Any]]) -> list[float]:
+    """Each shown column's width in UI units, a share's worked out from the region's width.
+
+    A share column takes its share of what the columns with widths leave of the row; without a region's width to
+    read, its fixed width.
+    """
+    width_units = row_units(context)
+    fixed_units = sum(column_units(properties, column) for column in shown if not column.share_property)
+    widths: list[float] = []
+    for column in shown:
+        if column.share_property and width_units is not None:
+            widths.append(max(0.0, width_units - fixed_units) * getattr(properties, column.share_property))
+        else:
+            widths.append(column_units(properties, column))
+    return widths
 
 
 def unit_pixels(context: bpy.types.Context) -> float:
@@ -80,13 +102,15 @@ def leading_column_factor(context: bpy.types.Context | None, columns_units: floa
     return min(1.0, max(least_units, width_units - columns_units) / width_units)
 
 
-def column_cells(layout: bpy.types.UILayout, properties: Any, shown: list[Column[Any]]) -> list[bpy.types.UILayout]:
+def column_cells(
+    layout: bpy.types.UILayout, widths_units: list[float], shown: list[Column[Any]]
+) -> list[bpy.types.UILayout]:
     """One cell per shown column, aligned as it says, sharing a layout's width in proportion to the columns' widths."""
     cells = []
-    remaining_units = sum(column_units(properties, column) for column in shown)
-    for column in shown[:-1]:
-        units = column_units(properties, column)
-        split = layout.split(factor=units / remaining_units, align=True)  # this column, then the rest
+    remaining_units = sum(widths_units)
+    for units in widths_units[:-1]:
+        factor = units / remaining_units if remaining_units > 0 else 0.0
+        split = layout.split(factor=factor, align=True)  # this column, then the rest
         cells.append(split.row(align=True))
         layout = split.row(align=True)
         remaining_units -= units

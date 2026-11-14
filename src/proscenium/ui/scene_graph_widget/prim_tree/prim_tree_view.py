@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from pxr import Sdf, Tf, Usd
 
 from ...widget_model import text_matching
+from ...widget_model.list_steps import StepDirection
 from . import prim_search
 from .prim_tree import PrimTree
 
@@ -22,13 +23,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 MATCH_LIMIT = 10_000  # matches; a search stops at this many
-
-
-class StepDirection(enum.Enum):
-    """Which way a key moves through the tree."""
-
-    INTO = "into"  # Right: expand the row, or step into its first child
-    OUT_OF = "out of"  # Left: collapse the row, or step out to its parent
 
 
 class PendingChange(enum.IntEnum):

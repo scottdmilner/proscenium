@@ -23,7 +23,6 @@ CLASSES = (
     *scene_graph_properties.CLASSES,
     *scene_graph_operators.CLASSES,
     *scene_graph_drawing.CLASSES,
-    *scene_graph_keys.CLASSES,
 )
 
 
@@ -57,7 +56,7 @@ def register() -> None:
 def unregister() -> None:
     """Remove every view, stop the key watchers, and undo register."""
     scene_graph_hosting.remove_all_views()
-    scene_graph_keys.stop_watching()  # each watcher ends at its next event
+    scene_graph_keys.stop_watching()  # each watcher ends at its next event, if no other widget's lists are left
     bpy.app.handlers.load_post.remove(_file_loaded)
     scene_graph_properties.remove_views_property()
     for cls in reversed(CLASSES):

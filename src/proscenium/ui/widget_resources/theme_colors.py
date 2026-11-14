@@ -1,7 +1,8 @@
 """The colors widgets draw their own marks in: the theme's, mixes of them for list rows, and icon pixels in them.
 
-Widgets draw some marks themselves, such as badges and tinted icons, so those take the theme's colors from here: the
-collection colors, the list's text color, and the pie menu's, which badges' blocks are drawn in. The collection colors
+Widgets draw some marks themselves, such as badges, keyframes, and tinted icons, so those take the theme's colors
+from here: the collection colors, the list's text color, the pie menu's, which badges' blocks are drawn in, and the
+colors Blender marks animated properties and keyframes in. The collection colors
 don't read on a light theme's grey rows, and the list's text color does in any theme, so a color mixed toward the text
 reads in both. A mix is greyer than its color; one that keeps the color's saturation at the mix's luminance contrasts
 as much and reads as the color. An icon drawn in any color is named for its color, rounded, so a color computed again
@@ -45,6 +46,11 @@ class ThemeColors:
     pie_menu_text_color: RGB
     list_text_color: RGB  # a list row's text color, which reads on the rows in any theme
     collection_colors: tuple[RGB, ...]  # the eight, in CollectionColor's order
+    # The colors Blender marks an animated property in: its field's, keyed on the current frame or only animated
+    # (the State widget colors), and a keyframe diamond's outline (the Dope Sheet's).
+    keyed_color: RGB
+    animated_color: RGB
+    keyframe_border_color: RGBA
 
     def collection_color(self, color: CollectionColor) -> RGB:
         """One of the collection colors."""
@@ -67,6 +73,9 @@ DEFAULT_THEME_COLORS = ThemeColors(
         (0.776, 0.451, 0.722),
         (0.478, 0.329, 0.255),
     ),
+    keyed_color=(0.702, 0.682, 0.212),
+    animated_color=(0.325, 0.6, 0.18),
+    keyframe_border_color=(0.0, 0.0, 0.0, 1.0),
 )
 
 
@@ -85,12 +94,17 @@ def read_theme_colors() -> ThemeColors:
         theme = preferences.themes[0]
         pie_menu = theme.user_interface.wcol_pie_menu
         list_text = theme.user_interface.wcol_list_item.text
+        state = theme.user_interface.wcol_state
+        border = theme.dopesheet_editor.keyframe_border
         theme_colors = ThemeColors(
             pie_menu_inner_color=(pie_menu.inner[0], pie_menu.inner[1], pie_menu.inner[2], pie_menu.inner[3]),
             pie_menu_roundness=pie_menu.roundness,
             pie_menu_text_color=(pie_menu.text.r, pie_menu.text.g, pie_menu.text.b),
             list_text_color=(list_text.r, list_text.g, list_text.b),
             collection_colors=tuple((item.color.r, item.color.g, item.color.b) for item in theme.collection_color),
+            keyed_color=(state.inner_key[0], state.inner_key[1], state.inner_key[2]),
+            animated_color=(state.inner_anim[0], state.inner_anim[1], state.inner_anim[2]),
+            keyframe_border_color=(border[0], border[1], border[2], border[3]),
         )
     _ThemeColorsState.last_read = theme_colors
     return theme_colors

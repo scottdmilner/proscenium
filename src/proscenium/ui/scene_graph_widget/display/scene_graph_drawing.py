@@ -13,8 +13,9 @@ import bpy
 
 from ... import search_box, widget_updates
 from ...columned_list import column_header, column_layout, column_settings
+from ...widget_resources import list_keys
 from ..prim_tree import prim_descriptions
-from . import scene_graph_keys, scene_graph_properties, scene_graph_views
+from . import scene_graph_properties, scene_graph_views
 from .list_columns import COLUMNS, name_column, redraw_icons_if_theme_changed
 
 if TYPE_CHECKING:
@@ -24,14 +25,17 @@ if TYPE_CHECKING:
 # narrow for it and the columns' widths, the columns shrink. Enough for a row a few levels deep to keep its icon and
 # the first letters of its name.
 NAME_LEAST_UNITS = 5.0
-LIST_ROWS = 16  # the list's starting height; it can be dragged taller
+# The list's rows before it's dragged taller, at most: it shows fewer when it holds fewer. Short, so a host's panels
+# fit one above another, as a scene graph and a property viewer in one sidebar; it can be dragged to LIST_LEAST_ROWS.
+LIST_ROWS = 10
+LIST_LEAST_ROWS = 3
 SETTINGS_CONTEXT_MEMBER = "proscenium_scene_graph_view"  # the view's properties, for the settings popover
 
 
 def _name_column_factor(context: bpy.types.Context | None, properties: SceneGraphViewProperties) -> float:
     """The name column's share of a row: all but the shown columns' widths, or NAME_LEAST_UNITS if more."""
     shown = column_layout.shown_columns(properties, COLUMNS)
-    columns_units = sum(column_layout.column_units(properties, column) for column in shown)
+    columns_units = sum(column_layout.column_widths(context, properties, shown))
     return column_layout.leading_column_factor(context, columns_units, NAME_LEAST_UNITS)
 
 
@@ -65,7 +69,10 @@ class SceneGraphList(bpy.types.UIList):
         split = layout.split(factor=_name_column_factor(context, data))
         name_column.draw_name_cell(split, data, tree, index, details)
         shown = column_layout.shown_columns(data, COLUMNS)
-        for cell, column in zip(column_layout.column_cells(split.row(align=True), data, shown), shown, strict=True):
+        widths_units = column_layout.column_widths(context, data, shown)
+        for cell, column in zip(
+            column_layout.column_cells(split.row(align=True), widths_units, shown), shown, strict=True
+        ):
             column.draw_cell(cell, details)
 
     @override
@@ -104,7 +111,9 @@ def _draw_header(
     )
     name_column.draw_name_header(split, properties)
     shown = column_layout.shown_columns(properties, COLUMNS)  # chosen in the settings popover
-    column_header.draw_column_titles(split.row(align=True), properties, shown)
+    column_header.draw_column_titles(
+        split.row(align=True), column_layout.column_widths(context, properties, shown), shown
+    )
 
 
 def draw_tree(
@@ -112,7 +121,7 @@ def draw_tree(
 ) -> None:
     """Draw a view's status, header, tree, and search box below it, and watch its window's keys."""
     view = scene_graph_views.scene_graph_view(view_name)
-    scene_graph_keys.ensure_watcher(context.window)
+    list_keys.ensure_watcher(context.window)
     properties = scene_graph_properties.view_properties(context.window_manager, view_name)
     if properties is None:
         layout.label(text="Loading")  # a file just loaded; its load handler makes the properties
@@ -131,12 +140,7 @@ def draw_tree(
     status_row.label(
         text=status.text or f"{len(tree.rows):,} visible rows", icon="ERROR" if status.is_error else "NONE"
     )
-    # The view's settings at the status line's end; the popover reads the view's properties from the context set here.
-    settings = status_row.row()
-    settings.alignment = "RIGHT"
-    settings.emboss = "NONE"
-    settings.context_pointer_set(SETTINGS_CONTEXT_MEMBER, properties)
-    settings.popover(SceneGraphSettings.bl_idname, text="", icon="PREFERENCES")
+    column_settings.draw_settings_gear(status_row, properties, SceneGraphSettings.bl_idname, SETTINGS_CONTEXT_MEMBER)
     header = layout.column()  # filled once the list has drawn, when its drawn rows tell whether it scrolls
     redraw_icons_if_theme_changed()
     column_header.start_counting_rows(SceneGraphList.bl_idname, view_name)
@@ -148,8 +152,8 @@ def draw_tree(
         properties,
         "active_row_index",
         item_dyntip_propname="tooltip",
-        rows=list_rows,
-        maxrows=list_rows * 3,
+        rows=min(LIST_LEAST_ROWS, list_rows),  # the least it can be dragged to
+        maxrows=list_rows,
     )
     is_list_scrolling = column_header.is_list_scrolling(SceneGraphList.bl_idname, view_name, len(tree.rows))
     _draw_header(header, context, properties, is_list_scrolling)

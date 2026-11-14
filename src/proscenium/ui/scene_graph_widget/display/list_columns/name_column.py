@@ -13,7 +13,8 @@ import numpy as np
 from pxr import Kind, Sdf
 
 from ....columned_list.column_layout import fixed_width
-from ....widget_resources import badge_icons, tinted_icons
+from ....widget_model import prim_detail_text
+from ....widget_resources import badge_icons, tinted_icons, tree_rows
 from ...prim_tree import prim_descriptions
 from .. import instancing_colors, scene_graph_operators
 
@@ -21,22 +22,9 @@ if TYPE_CHECKING:
     import bpy
     from bpy.stub_internal.rna_enums import IconItems
 
-    from ...prim_tree import PrimTree, RowDetails
+    from ....widget_model.prim_details import RowDetails
+    from ...prim_tree import PrimTree
     from ..scene_graph_properties import SceneGraphViewProperties
-
-# Widths in UI units. A level holds its parent's guide line, under the center of that parent's chevron.
-LEVEL_UNITS = 0.6
-CHEVRON_UNITS = 0.6  # narrower than an icon button's 1.0, which leaves wide margins around the chevron
-GUIDE_LINE_UNITS = 0.05
-ROW_ICON_UNITS = 0.8  # the cell of the row's icon: its kind's, or else its type's
-NAME_GAP_FACTOR = 1.0  # the separator between the icon and the name
-BADGE_UNITS = 0.8  # each badge's cell, after the name
-BADGE_GAP_UNITS = 0.2  # between the instance badge and the arcs' block of badges
-# The name cell's natural width, wider than any row, so each row is too narrow for what it holds. A row with width to
-# spare grows every item in proportion to its natural width, which differs from row to row, so the guide lines would
-# drift apart; a row short of width keeps each item narrower than a unit at its width and shrinks the rest, here only
-# the name.
-NAME_CELL_UNITS = 1000.0
 
 TYPE_ICONS: dict[str, IconItems] = {
     "Xform": "EMPTY_AXIS",
@@ -70,9 +58,6 @@ DASHED_LINE_COLUMNS = (8, 9)
 # The rows left blank, bottom first: dashes of a quarter of the row's 20 points, and gaps as long, two to an icon,
 # with the 2 points the icon leaves at each edge of its row making up the gap there.
 DASHED_LINE_GAP_ROWS = (*range(2), *range(12, 22))
-# The disclosure triangle's icons, collapsed and expanded: chevrons, as the Outliner's.
-COLLAPSED_ICON: IconItems = "RIGHTARROW"
-EXPANDED_ICON: IconItems = "DOWNARROW_HLT"
 
 
 def _type_icon(type_name: str) -> IconItems:
@@ -83,7 +68,7 @@ def _type_icon(type_name: str) -> IconItems:
 
 def row_icon_names() -> list[str]:
     """Every icon a row can show: each type's, the lights', the fallback type icon, each kind's, and the chevrons."""
-    names = {*TYPE_ICONS.values(), "LIGHT", "DOT", OTHER_KIND_ICON, COLLAPSED_ICON, EXPANDED_ICON}
+    names = {*TYPE_ICONS.values(), "LIGHT", "DOT", OTHER_KIND_ICON, tree_rows.COLLAPSED_ICON, tree_rows.EXPANDED_ICON}
     names.update(icon for _, icon in KIND_ICONS)
     return sorted(names)
 
@@ -93,23 +78,6 @@ def _row_icon(details: RowDetails) -> IconItems:
     if not details.model_kind:
         return _type_icon(details.type_name)
     return next((icon for kind, icon in KIND_ICONS if Kind.Registry.IsA(details.model_kind, kind)), OTHER_KIND_ICON)
-
-
-def _draw_guide_level(layout: bpy.types.UILayout) -> None:
-    """One indent level, with the vertical line that runs down from its open parent's chevron.
-
-    Every ancestor of a visible row is expanded, so each level of a row's indent holds a line, and the lines join
-    from row to row into one under each open chevron. A layout can't draw a vertical line, so it is a disabled button
-    squeezed to a hairline: disabled, it draws faint, and a click on it selects the row.
-    """
-    level = fixed_width(layout, LEVEL_UNITS)
-    before_line = (CHEVRON_UNITS - GUIDE_LINE_UNITS) / 2
-    fixed_width(level, before_line).label(text="")
-    line = fixed_width(level, GUIDE_LINE_UNITS)
-    line.enabled = False
-    line.operator(scene_graph_operators.SceneGraphGuideLine.bl_idname, text="", icon="BLANK1")
-    # The parts have fixed widths that fill the level, so the line keeps its place whatever the row's alignment.
-    fixed_width(level, LEVEL_UNITS - before_line - GUIDE_LINE_UNITS).label(text="")
 
 
 def _find_row_instance(details: RowDetails) -> Sdf.Path | None:
@@ -133,7 +101,7 @@ def _dashed_line_mask() -> np.ndarray:
 def _draw_dashed_guide_level(layout: bpy.types.UILayout, color: tuple[float, float, float]) -> None:
     # A label, so a click on it selects its row, as on the plain line, whose disabled button does nothing.
     icon_value = tinted_icons.mask_icon_id("dashed", _dashed_line_mask(), color)
-    fixed_width(layout, LEVEL_UNITS).label(text="", icon_value=icon_value)
+    fixed_width(layout, tree_rows.LEVEL_UNITS).label(text="", icon_value=icon_value)
 
 
 def _draw_guide_levels(layout: bpy.types.UILayout, depth: int, details: RowDetails) -> None:
@@ -150,18 +118,18 @@ def _draw_guide_levels(layout: bpy.types.UILayout, depth: int, details: RowDetai
             )
             _draw_dashed_guide_level(layout, color)
         else:
-            _draw_guide_level(layout)
+            tree_rows.draw_guide_level(layout)
 
 
 def _draw_chevron(
     layout: bpy.types.UILayout, view_name: str, row_index: int, details: RowDetails, is_expanded: bool
 ) -> None:
     """The row's disclosure triangle, or a blank of its width on a leaf."""
-    chevron = fixed_width(layout, CHEVRON_UNITS)
+    chevron = fixed_width(layout, tree_rows.CHEVRON_UNITS)
     if not details.has_children:
         chevron.label(text="", icon="BLANK1")
         return
-    disclosure = EXPANDED_ICON if is_expanded else COLLAPSED_ICON
+    disclosure = tree_rows.EXPANDED_ICON if is_expanded else tree_rows.COLLAPSED_ICON
     # Inside an instance, the chevron is a proxy's, in the color of its icon and the lines beside it.
     proxy_color = instancing_colors.instance_proxy_color()
     tinted = tinted_icons.icon_id(disclosure, proxy_color) if details.is_instance_proxy else None
@@ -194,27 +162,17 @@ def _draw_row_icon(layout: bpy.types.UILayout, details: RowDetails) -> None:
 
 def _draw_badges(layout: bpy.types.UILayout, details: RowDetails) -> None:
     """A badge for each composition arc on the prim, and for an instance, after its name."""
-    # Labels, so a click on one selects the row and the row's tooltip covers them; each icon draws its piece of the
-    # block they sit on, so side by side they make one. The instance badge, which marks no arc, stands on its own,
-    # and the arcs' badges share a block after a gap.
-    instance_badges = (
-        [(instancing_colors.INSTANCE_BADGE_LOOK, prim_descriptions.is_instance_badge_in_effect(details))]
-        if prim_descriptions.has_instance_badge(details)
+    # The instance badge, which marks no arc, stands on its own, and the arcs' badges share a block after a gap.
+    instance_badges: list[tree_rows.Badge] = (
+        [(badge_icons.INSTANCE_BADGE_LOOK, prim_detail_text.is_instance_badge_in_effect(details))]
+        if prim_detail_text.has_instance_badge(details)
         else []
     )
-    arc_badges = [
-        (badge_icons.ARC_LOOKS[arc], prim_descriptions.is_arc_in_effect(details, arc))
-        for arc in prim_descriptions.row_arcs(details)
+    arc_badges: list[tree_rows.Badge] = [
+        (badge_icons.ARC_LOOKS[arc], prim_detail_text.is_arc_in_effect(details, arc))
+        for arc in prim_detail_text.row_arcs(details)
     ]
-    # Each cell sits in the name's row itself: the row is short of width, so it keeps each cell narrower than a unit
-    # at its width, where a row of the cells, wider than a unit, would shrink with the name.
-    for block_index, block in enumerate(block for block in (instance_badges, arc_badges) if block):
-        if block_index:
-            fixed_width(layout, BADGE_GAP_UNITS).label(text="")
-        for badge_index, (look, is_in_effect) in enumerate(block):
-            place = badge_icons.BadgePlace.at(badge_index, len(block))
-            icon_value = badge_icons.icon_id(look, place, is_greyed=not is_in_effect)
-            fixed_width(layout, BADGE_UNITS).label(text="", icon_value=icon_value)
+    tree_rows.draw_badge_blocks(layout, (instance_badges, arc_badges))
 
 
 def draw_name_cell(
@@ -235,14 +193,14 @@ def draw_name_cell(
     # The icon in a cell of its own, and a separator before the name, set a narrower gap than a label's icon has.
     named = content.row(align=True)
     named.alert = details.is_orphaned_over  # red: nothing defines it, as a typo in an over's path leaves it
-    icon = fixed_width(named, ROW_ICON_UNITS)
+    icon = fixed_width(named, tree_rows.ROW_ICON_UNITS)
     icon.alert = details.is_invalid_model  # the kind's icon red, as the kind column's text is
     _draw_row_icon(icon, details)
-    named.separator(factor=NAME_GAP_FACTOR)
-    # The name fills what its badges leave (NAME_CELL_UNITS). Left-aligned, so the badges hugged its text, a name too
-    # long for its column would squeeze every cell in the row, indent and icon too.
+    named.separator(factor=tree_rows.NAME_GAP_FACTOR)
+    # The name fills what its badges leave (tree_rows.NAME_CELL_UNITS). Left-aligned, so the badges hugged its text, a
+    # name too long for its column would squeeze every cell in the row, indent and icon too.
     name_and_badges = named.row(align=True)
-    name_cell = fixed_width(name_and_badges, NAME_CELL_UNITS)
+    name_cell = fixed_width(name_and_badges, tree_rows.NAME_CELL_UNITS)
     name_cell.label(text=prim_descriptions.row_name(details, properties.shown_name == "DISPLAY_NAME"))
     _draw_badges(name_and_badges, details)
 

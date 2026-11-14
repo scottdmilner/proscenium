@@ -1,4 +1,4 @@
-"""The scene graph widget's arrow keys in a window, from simulated events (tests/isolated/test_scene_graph_keys.py).
+"""The widgets' arrow keys in a window, from simulated events (tests/isolated/test_list_keys.py).
 
 Each body is a generator the windowed runner steps through (runner.py): a step simulates mouse moves and key
 presses, and the wait it yields lets the window handle them and redraw. The views are hosted in a Properties editor,
@@ -18,6 +18,12 @@ import bpy
 from pxr import Sdf, Usd
 
 from proscenium.ui.columned_list import column_layout
+from proscenium.ui.property_viewer_widget import display as property_display
+from proscenium.ui.property_viewer_widget.display import (
+    property_columns,
+    property_viewer_properties,
+    property_viewer_views,
+)
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import list_columns, scene_graph_properties, scene_graph_views
 
@@ -31,8 +37,8 @@ SETTLE_SECONDS = 0.5  # after a view is shown or the widget registered: its watc
 SWEEP_STEP_PIXELS = 6  # the cursor's step down the editor while finding the rows: under half a row at any scale
 # Below a view's panel, by more than its bottom margin: the empty editor, where no list takes the arrow keys.
 CLEAR_OF_PANELS_UNITS = 2.0
-# A view's property, by the view's index in the window manager's views: over a list row, its active row.
-VIEW_PROPERTY_PATH = re.compile(r"proscenium_scene_graph_views\[(\d+)\]\.(\w+)$")
+# A view's property, by the widget's collection of views and the view's index in it: over a list row, its active row.
+VIEW_PROPERTY_PATH = re.compile(r"(proscenium_(?:scene_graph|property_viewer)_views)\[(\d+)\]\.(\w+)$")
 FIRST_ROW_PATH = "/_Crate"  # prim_kinds.usda's first top-level row, where Right with nothing selected lands
 
 
@@ -150,8 +156,8 @@ def _hovered(window: Any, area: Any, region: Any, y: int) -> Hovered:
     )
     if found is None:
         return Hovered(y, None, is_row=False)
-    view_name = hovered[0].proscenium_scene_graph_views[int(found[1])].name
-    return Hovered(y, view_name, is_row=found[2] == "active_row_index")
+    view_name = getattr(hovered[0], found[1])[int(found[2])].name
+    return Hovered(y, view_name, is_row=found[3] == "active_row_index")
 
 
 def _sweep(window: Any, area: Any, region: Any, view_names: list[str]) -> Steps:
@@ -277,3 +283,66 @@ def keys_step_after_registering_again(stage_path: str) -> Steps:
     yield from _press_right(window, x, row_y)  # the same layout, so the row is where it was
     after = {"selected": _selected_paths(view_names), "expanded": _expanded_paths(view_names)}
     return {"before": before, "after": after, "heard": selections}
+
+
+def _show_property_view(stage: Usd.Stage, name: str, heard: list[str | None], order: int) -> Any:
+    """Register the property viewer, and show /World/Ball's properties, with no columns, in a panel below the others."""
+    property_display.register()
+    property_display.create_view(name, _in_properties_editor, _hear_selections(heard))
+    property_display.set_stage(name, stage)
+    property_display.show_prim(name, Sdf.Path("/World/Ball"))
+    properties = property_viewer_properties.view_properties(bpy.context.window_manager, name)
+    for column in property_columns.COLUMNS:  # the name column then fills each row, where the cursor sweeps
+        setattr(properties, column.show_property, False)
+
+    def draw(self: Any, context: Any) -> None:
+        property_display.draw_properties(self.layout, context, name, list_rows=4)
+
+    panel = type(
+        f"PROSCENIUM_TEST_PT_property_viewer_{name}",
+        (bpy.types.Panel,),
+        {
+            "bl_space_type": "PROPERTIES",
+            "bl_region_type": "WINDOW",
+            "bl_context": "scene",
+            "bl_label": f"Property Viewer {name}",
+            "bl_order": order,
+            "draw": draw,
+        },
+    )
+    bpy.utils.register_class(panel)
+    return panel
+
+
+def _widget_states(tree_name: str, properties_name: str, selections: dict[str, list[str | None]]) -> dict[str, Any]:
+    property_list_view = property_viewer_views.property_viewer_view(properties_name).property_list_view
+    return {
+        "tree": {
+            "selected": _path_text(display.selected_path(tree_name)),
+            "expanded": _expanded_paths([tree_name])[tree_name],
+        },
+        "properties": {
+            "selected": _path_text(property_display.selected_path(properties_name)),
+            "expanded": sorted(property_list_view.expanded_names),
+        },
+        "heard": _heard(selections),
+    }
+
+
+def keys_step_each_widgets_list(stage_path: str) -> Steps:
+    """A scene graph and a property viewer in one editor: Right over the property viewer's row, then the tree's."""
+    _make_properties_editor()
+    yield STEP_SECONDS
+    stage = Usd.Stage.Open(stage_path)
+    selections: dict[str, list[str | None]] = {"properties": []}
+    _show_views(stage, ["tree"], selections)
+    _show_property_view(stage, "properties", selections["properties"], order=1)
+    yield SETTLE_SECONDS
+    window, area, region = _properties_editor()
+    x, hovered_by_height = yield from _sweep(window, area, region, ["tree", "properties"])
+    tree_y, properties_y = (_first_row_height(hovered_by_height, name) for name in ("tree", "properties"))
+    yield from _press_right(window, x, properties_y)
+    observed = {"after_properties": _widget_states("tree", "properties", selections)}
+    yield from _press_right(window, x, tree_y)
+    observed["after_tree"] = _widget_states("tree", "properties", selections)
+    return observed

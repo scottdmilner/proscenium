@@ -17,7 +17,6 @@ from pxr import Sdf, Usd
 from fixtures.scenes import Scene, copy_scene
 from proscenium.ui.scene_graph_widget import display
 from proscenium.ui.scene_graph_widget.display import (
-    instancing_colors,
     scene_graph_operators,
     scene_graph_properties,
     scene_graph_registration,
@@ -336,7 +335,7 @@ def test_an_invalid_models_instance_icon_stays_one_the_alert_draws_red(registere
 
 def test_badge_shapes_are_kept_for_one_roundness(registered: None) -> None:
     # Dragging the theme's roundness draws the badges at many; only the last one's shapes are kept.
-    looks = [*badge_icons.ARC_LOOKS.values(), instancing_colors.INSTANCE_BADGE_LOOK]
+    looks = [*badge_icons.ARC_LOOKS.values(), badge_icons.INSTANCE_BADGE_LOOK]
     for look in looks:
         for place in badge_icons.BadgePlace:
             badge_icons.icon_id(look, place, is_greyed=False)

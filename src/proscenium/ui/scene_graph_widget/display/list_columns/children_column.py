@@ -9,7 +9,7 @@ from ....columned_list import column_layout
 if TYPE_CHECKING:
     import bpy
 
-    from ...prim_tree import RowDetails
+    from ....widget_model.prim_details import RowDetails
 
 
 def _draw_cell(layout: bpy.types.UILayout, details: RowDetails) -> None:

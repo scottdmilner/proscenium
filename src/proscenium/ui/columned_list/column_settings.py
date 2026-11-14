@@ -1,4 +1,8 @@
-"""A list's column settings, as its settings popover draws them: each column's eye, title, and width."""
+"""A list's settings popover: the gear that opens it, and each column's line in it: its eye, title, and width.
+
+The popover is a header panel (`bl_space_type = "TOPBAR"`, `bl_region_type = "HEADER"`), which shows only where a
+popover opens it, and reads the list's properties from a context member the gear's layout sets.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +31,16 @@ def draw_column_settings(
         eye_and_title.label(text=column.title)
         width = row.row()
         width.active = is_shown
-        if column.units_property:
-            width.prop(properties, column.units_property)
+        if column.units_property or column.share_property:
+            width.prop(properties, column.units_property or column.share_property)
         else:
             width.label(text="")
+
+
+def draw_settings_gear(layout: bpy.types.UILayout, properties: Any, panel_idname: str, context_member: str) -> None:
+    """Draw the gear that opens a settings popover at a row's end, giving it the list's properties as a member."""
+    settings = layout.row()
+    settings.alignment = "RIGHT"
+    settings.emboss = "NONE"
+    settings.context_pointer_set(context_member, properties)
+    settings.popover(panel_idname, text="", icon="PREFERENCES")

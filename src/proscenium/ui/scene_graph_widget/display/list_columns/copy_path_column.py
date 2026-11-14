@@ -10,7 +10,7 @@ from ....widget_resources import clipboard_operators
 if TYPE_CHECKING:
     import bpy
 
-    from ...prim_tree import RowDetails
+    from ....widget_model.prim_details import RowDetails
 
 COPY_BUTTON_WIDTH_SCALE = 1.3  # wider than its icon, so the icon's sides stay clear of the button's edges
 

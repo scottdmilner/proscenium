@@ -1,7 +1,7 @@
-"""The buttons a scene graph row draws: its disclosure triangle and its guide lines' button.
+"""The button a scene graph row draws of its own: its disclosure triangle.
 
-Its copy-path button is the shared `clipboard_operators.CopyUsdPath`. Both are internal operators: expansion in a tree
-is view state, so neither pushes an undo step.
+Its guide lines' button and its copy-path button are the shared `tree_rows.TreeGuideLine` and
+`clipboard_operators.CopyUsdPath`. It's internal: expansion in a tree is view state, so it pushes no undo step.
 """
 
 from __future__ import annotations
@@ -67,22 +67,5 @@ class SceneGraphToggleRow(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class SceneGraphGuideLine(bpy.types.Operator):
-    """A tree guide line: drawn as a disabled button, which a layout can squeeze to a hairline, so it never runs."""
-
-    bl_idname = "proscenium.scene_graph_guide_line"
-    bl_label = ""
-    bl_options = {"INTERNAL"}
-
-    @override
-    @classmethod
-    def description(cls, context: Any, properties: Any) -> str:
-        return ""  # a line has no tooltip of its own
-
-    @override
-    def execute(self, context: Any) -> set[OperatorReturnItems]:
-        return {"CANCELLED"}
-
-
 # In registration order.
-CLASSES = (SceneGraphToggleRow, SceneGraphGuideLine)
+CLASSES = (SceneGraphToggleRow,)

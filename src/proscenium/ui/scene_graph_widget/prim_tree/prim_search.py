@@ -14,18 +14,10 @@ from typing import TYPE_CHECKING
 from pxr import Sdf, Usd
 
 from ...widget_model import text_matching
+from ...widget_model.prim_details import CHILD_PREDICATE
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
-
-# Every child a stage editor shows: inactive, unloaded, abstract (class), and undefined (over) prims, and the
-# contents of native instances reached through instance proxies.
-CHILD_PREDICATE = Usd.TraverseInstanceProxies(Usd.PrimAllPrimsPredicate)
-
-
-def child_count(prim: Usd.Prim) -> int:
-    """How many children a prim tree lists under a prim: its children as `CHILD_PREDICATE` filters them."""
-    return len(prim.GetFilteredChildren(CHILD_PREDICATE))
 
 
 @dataclass(frozen=True, slots=True)
