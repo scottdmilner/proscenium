@@ -11,7 +11,9 @@ when called and nothing is held, so a file load, undo, or redo needs nothing don
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import bpy
@@ -21,6 +23,8 @@ from ..binding.runtime import binding_operations, kept_manifests
 from ..core import _core
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from pxr import Usd
 
     from ..binding.runtime import held_plans
@@ -42,9 +46,10 @@ class DisplayElements:
         if len({len(column) for column in columns}) > 1:
             raise ValueError("Each display element needs an entry key, an object, a source path, and participation")
 
-    def element_index_by_object(self) -> dict[bpy.types.Object, int]:
-        """Each element's index, by its object."""
-        return {obj: index for index, obj in enumerate(self.objects)}
+    @functools.cached_property
+    def element_indices_by_object(self) -> Mapping[bpy.types.Object, int]:
+        """Each element's index, by its object; built once, since a kept display's elements serve many calls."""
+        return MappingProxyType({obj: index for index, obj in enumerate(self.objects)})
 
 
 def display_elements(binding_id: BindingId) -> DisplayElements | None:

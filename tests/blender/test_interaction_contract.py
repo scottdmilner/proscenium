@@ -102,7 +102,7 @@ class ProductDisplay:
     def apply_selection(self, display_targets: Any, active: Any) -> None:
         elements = display_correspondence.display_elements(self.handle.binding_id)
         assert elements is not None
-        indices = elements.element_index_by_object()
+        indices = elements.element_indices_by_object
         blender_selection.apply_selection(
             elements, self.view_layer, [indices[o] for o in display_targets], [indices[o] for o in active]
         )

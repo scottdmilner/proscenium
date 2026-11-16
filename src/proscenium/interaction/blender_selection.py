@@ -50,21 +50,28 @@ def apply_selection(
     object; otherwise an active object of the display's stops being active, and an unmanaged one stays. Objects that
     aren't the display's keep their selection (ICON-27 to ICON-29).
     """
-    selected = set(element_indices)
-    for index, obj in enumerate(elements.objects):
-        _select(obj, index in selected, view_layer)
+    # Only the display's objects whose selection changes are set: Blender's list of the view layer's selected objects
+    # is short, where setting every object costs one call each (runtime-record.md#the-products-interaction-m7-phase-g).
+    indices = elements.element_indices_by_object
+    selected_now = {obj for obj in view_layer.objects.selected if obj in indices}
+    targets = {elements.objects[index] for index in element_indices}
+    for obj in selected_now - targets:
+        _select(obj, False, view_layer)
+    for obj in targets - selected_now:
+        _select(obj, True, view_layer)
     if len(active_element_indices) == 1:
         active = elements.objects[next(iter(active_element_indices))]
         if active.select_get(view_layer=view_layer):  # held and shown by the view layer
-            view_layer.objects.active = active
+            if view_layer.objects.active != active:  # assigning it again costs a depsgraph update all the same
+                view_layer.objects.active = active
             return
-    if view_layer.objects.active in set(elements.objects):
+    if view_layer.objects.active in indices:
         view_layer.objects.active = None
 
 
 def read_blender_selection(elements: DisplayElements, view_layer: bpy.types.ViewLayer) -> BlenderSelection:
     """The elements of the display's selected objects in the view layer, and of its active object if it is one."""
-    selected = tuple(i for i, obj in enumerate(elements.objects) if obj.select_get(view_layer=view_layer))
+    indices = elements.element_indices_by_object
+    selected = tuple(sorted(indices[obj] for obj in view_layer.objects.selected if obj in indices))
     current = view_layer.objects.active
-    active = next((i for i, obj in enumerate(elements.objects) if obj == current), None)
-    return BlenderSelection(selected, active)
+    return BlenderSelection(selected, None if current is None else indices.get(current))

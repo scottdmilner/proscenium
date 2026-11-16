@@ -66,7 +66,7 @@ def resolve_pick(
 ) -> PickedEntity | None:
     """The source entity the picked object shows, or None for an object the display doesn't show."""
     shown = shown_display(bindings, binding_id)
-    if shown.elements is None or obj not in (indices := shown.elements.element_index_by_object()):
+    if shown.elements is None or obj not in (indices := shown.elements.element_indices_by_object):
         return None
     entity = shown.correspondence.resolve_pick(indices[obj], usd_matrix(world_matrix))
     return None if entity is None else PickedEntity(entity.source_path, entity.instance_context, entity.floor)

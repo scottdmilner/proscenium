@@ -141,3 +141,27 @@ def test_objects_a_view_layer_cant_select_stay_unselected(display: _Display) -> 
         display.elements, display.view_layer, [display.elements.source_paths.index(TOP)], []
     )
     assert TOP not in display.selected()
+
+
+def test_mirroring_an_unchanged_selection_again_leaves_blender_nothing_to_update(display: _Display) -> None:
+    # Only objects whose selection changes are set, and the active object only when it changes: setting either again
+    # costs Blender a depsgraph update all the same, as after each frame change during playback. The update handler
+    # fires exactly when there is something to update.
+    fired: list[None] = []
+
+    def updated(*_args: object) -> None:
+        fired.append(None)
+
+    chair = display.indices(CHAIR)
+    bpy.app.handlers.depsgraph_update_post.append(updated)
+    try:
+        for active in (chair, display.indices(TOP)[:1]):  # several targets, then one, which becomes the active object
+            blender_selection.apply_selection(display.elements, display.view_layer, chair + active, active)
+            display.view_layer.update()
+            assert fired, "the first mirror changes the selection"
+            fired.clear()
+            blender_selection.apply_selection(display.elements, display.view_layer, chair + active, active)
+            display.view_layer.update()
+            assert not fired
+    finally:
+        bpy.app.handlers.depsgraph_update_post.remove(updated)

@@ -1901,11 +1901,23 @@ What M7's interaction calls, the binding panel's listing, and the Source Select 
 | `mirror_after_frame_change`, the box's selection, with the update | 5 | 17.8 (17.3–22.9) | 31.2 (30.6–31.6) | 219 (211–231) |
 | Switch selectability, two calls, with the update | 5 | 89 (88–102) | 231 (216–282) | 1,074 (1,003–1,094) |
 
+**Mirroring only what changes** (`interaction/blender_selection.py`, after the findings below): Blender updates its depsgraph after any change of selection, however small: one `select_set` and the update took 106 ms at 30,001 objects and about 15 ms on ALab, and assigning the active object to itself costs the same update (ad hoc, one process each, medians of 10). Mirroring set every managed object's selection and assigned the active object at each call, so it paid that update even when nothing changed. It now sets only the objects whose selection changes, from the view layer's selected objects, and the active object only when it changes; reading the selection likewise reads the selected objects. The same runs again (2026-11-16; load average 7 to 9), each operation repeating one call, so after the first a pick or a frame change re-mirrors an unchanged selection, and setting a selection alternates between two:
+
+| Operation (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| `select_by_pick`, repeated, with the update | 0.33, against 11.4 | 0.79, against 30.4 | 3.3, against 141 |
+| `mirror_after_frame_change`, one entry, with the update | 0.34, against 11.3 | 0.80, against 30.2 | 3.3, against 130 |
+| Set a selection, two calls alternating, with the update | 9.3, against 14.8 | 26, against 34 | 115, against 158 |
+| `mirror_after_frame_change`, the box's selection, with the update | 6.4, against 17.8 | 1.2, against 31.2 | 88, against 219 |
+| `select_by_box`, every element, assembly, with the update | 23, against 36 | 14, against 46 | 259, against 403 |
+
+A change of selection still costs Blender's update, which grows with the objects in the view layer; re-mirroring one that hasn't changed, as after every frame change in playback or every publication, now costs only resolving it.
+
 **Findings:**
 - **Built for each call, every interaction call was over M4's single-pick budget on ALab:** 85 to 89 ms against 50 ms, and 370 to 390 ms at 30,001 objects, where M4's baseline, which built its correspondence once, took microseconds for each function. A call's own work is a small part: the correspondence it builds is nearly all of it.
 - **Reading the manifest is most of that build:** 54 of 87 ms on ALab. It's also the largest step of an incremental synchronization ([above](#the-products-synchronizations-m7-phase-g)). The core's correspondence is most of the rest, 21 ms on ALab.
 - **With the display kept, every function is within its budget on ALab:** a headless function takes 0.7 to 3.7 ms, a pick with its mirroring and update 30 ms against 50 ms, and a box over every element 46 ms against 250 ms. What's left is reading the hide flags and, for a change of selection, `apply_selection` and the depsgraph update, which [M4 found](#interaction-at-scale-m4-phase-c) grow with the display.
-- **At 30,001 objects, a pick with its mirroring still takes 141 ms,** over the budget, as M4's baseline took 129 ms; a box over every element takes 403 ms, and switching selectability twice 1.07 s.
+- **At 30,001 objects, a change of selection still costs Blender's depsgraph update, 106 ms ad hoc,** over the budget, so setting a selection, two calls and one update, takes 115 ms, where M4's baseline pick took 129 ms; re-mirroring an unchanged one takes 3.3 ms (above). A box over every element takes 259 ms, and switching selectability twice 1.0 s.
 - **The temporary UI's per-draw reads:** the binding panel's listing and the inspector's shown time code take 0.12 and 0.03 ms, and the inspector's displayed line, an interaction call, 0.66 ms on ALab with the display kept, against 87 ms built.
 - **The tool's Python ray loop** takes 15 ms on ALab's 1,885 pickable objects and 183 ms on 30,001, 6 to 8 µs an object.
 - **Not measured:** a windowed Blender, playback with the frame handler, a ray from a region, global undo off, the wheel, Linux and Windows.

@@ -197,7 +197,7 @@ def select_by_pick(
         if (
             obj is None
             or display.elements is None
-            or obj not in (indices := display.elements.element_index_by_object())
+            or obj not in (indices := display.elements.element_indices_by_object)
         ):
             continue
         matrix = binding_interaction.usd_matrix(world_matrix if world_matrix is not None else obj.matrix_world)
