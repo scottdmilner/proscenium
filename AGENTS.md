@@ -57,7 +57,7 @@ All commands run through uv. The dev group includes the `bpy` wheel, so `bpy` an
 ```sh
 uv sync                                   # install the dev environment
 uv run pre-commit run --all-files         # all lint checks (ruff, ty, clang-format, clang-tidy, lock, matrix); same as CI
-uv run pytest -n auto                     # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
+uv run pytest -n logical                  # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
 uv run python tools/build_extension.py    # dist/proscenium-<version>.zip for this platform (--check: read-only)
 uv run python tools/matrix.py check       # requirement matrix (render: regenerate requirements-matrix.md)
 uv run python tools/feasibility/run_all.py  # feasibility probes (wheel, pytest, binary)

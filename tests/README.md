@@ -5,8 +5,8 @@ What is tested and what passing means are defined in [docs/testing/strategy.md](
 ## Running
 
 ```sh
-uv run pytest -n auto                 # everything, in parallel worker processes
-uv run pytest -n auto -m bpy_free     # one layer: bpy_free, blender, or isolated
+uv run pytest -n logical              # everything, in parallel worker processes
+uv run pytest -n logical -m bpy_free  # one layer: bpy_free, blender, or isolated
 uv run pytest tests/blender/test_smoke.py -k undo   # a single file or test, serially
 ```
 

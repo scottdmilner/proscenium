@@ -2214,7 +2214,7 @@ requirements:
     rows:
       - id: AWHERE-01
         quote: "Bespoke fixtures run in ordinary CI."
-        oracle: "CI runs pytest -n auto on all three platforms."
+        oracle: "CI runs pytest -n logical on all three platforms."
       - id: AWHERE-02
         quote: "A smaller generated fixture with production-like structure"
         oracle: "tests/fixtures/production_like.py runs in CI (bpy_free and isolated tests)."
