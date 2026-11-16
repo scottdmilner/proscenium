@@ -1922,6 +1922,28 @@ A change of selection still costs Blender's update, which grows with the objects
 - **The tool's Python ray loop** takes 15 ms on ALab's 1,885 pickable objects and 183 ms on 30,001, 6 to 8 µs an object.
 - **Not measured:** a windowed Blender, playback with the frame handler, a ray from a region, global undo off, the wheel, Linux and Windows.
 
+### Removing objects beside others (M7 Phase G)
+
+Why retiring a display can take minutes ([Retiring a large display](#retiring-a-large-display-m6-phase-f), 98 s for 30,001 objects in [the synchronizations above](#the-products-synchronizations-m7-phase-g)), ad hoc: one background process per case in the binary (Blender 5.2.2), on an Apple M1 Max with 32 GB (2026-11-16, load average 4 to 8). Each case builds a display of N objects, each with a mesh of its own, linked in a collection the scene links, the view layer updated, and M other datablocks, then times removing the display's objects in one `bpy.data.batch_remove` call.
+
+| Objects removed | Other datablocks | Removing the objects (s) |
+|---|---|---|
+| 10,000 | none | 0.39 |
+| 10,000 | 5,000 objects with meshes | 1.36 |
+| 10,000 | 10,000 objects with meshes | 5.8 |
+| 10,000 | 20,000 objects with meshes | 12.4 |
+| 5,000 | 10,000 objects with meshes | 2.7 |
+| 20,000 | 10,000 objects with meshes | 13.7 |
+| 10,000 | 10,000 objects without data | 6.2 |
+| 10,000 | 10,000 meshes | 0.39 |
+| 10,000 | 10,000 objects with meshes, named as the removed ones | 6.1 |
+
+**Findings:**
+- **Removing objects costs about 60 ns for each removed object and each other object in the file:** linked in a scene or not, with data or without, whatever their names. Other meshes cost nothing. So a synchronization that retires a display while the display replacing it exists, as a full rebuild does and every synchronization without a held plan, pays the old display's objects times the new one's: about 30,001 × 30,001 at `updates-10000`, which the 98 s fits.
+- **No other way of removing is cheaper** (10,000 removed beside 10,000): `orphans_purge` after unlinking took 5.6 s and `batch_remove` 5.5 s, and `bpy.data.objects.remove` one object at a time 59 s. In one `batch_remove` call, removing objects and meshes together, unlinking the objects first, or removing their collection with them cost what objects then meshes did (0.65 s with no others); calls of 1,000 cost 2.1 s.
+- **Removing the meshes before their objects crashed Blender** (one run); `datablock_removal` removes users first, so retirement never does.
+- **Setting properties on each object** as preparation does (its matrix, display type, and hide flags) added 0.3 s at 10,000 with no others; queued notifiers aren't the cause there. Whether a window's event loop changes any of this wasn't tested, nor what in Blender's removal does the per-pair work.
+
 ### Distribution (M1b Phase F)
 
 The bridge shipped as users would get it from a GitHub release: Proscenium's extension zip for one platform, installed from disk into the Blender binary. Reproduce with:

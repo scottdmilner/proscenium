@@ -19,6 +19,7 @@
   - Cleanup reaches the pending work of a binding removed with its destination or target scene, which stays in the ledger ([Removed Destination](../spec/lifecycle.md#removed-destination), DEST-10).
   - Detection runs at every lookup, so a binding record or index changed by a script is found by the next call. Lifecycle operations that act on copies look for them first, as synchronization does.
 - Undo/redo of every lifecycle operation.
+- From M7 ([M7 plan](../plans/M07-application.md), G7), a noted cost: removing objects costs about 60 ns for each removed object and each other object in the file, whatever API removes them ([record](../feasibility/runtime-record.md#removing-objects-beside-others-m7-phase-g)). Retirement removes the old display beside its replacement, so a full rebuild, and every synchronization without a held plan (after reopening, or an undo past the held plans), took 98 s at 30,001 objects, 3.7 s on ALab; cleanup and binding removal share the same removal (`datablock_removal.remove_unused`). Suggested, not probed: when a partition with a published counterpart of the same identity is prepared again without a held plan, reuse the published object, giving it the new state and retiring only its replaced data, while a requested full rebuild keeps building fresh objects to recover from damage; or remove obsolete objects from a timer after the call returns, which moves the cost but doesn't lower it. Removing a mesh before its objects crashed Blender once; the removal removes users first.
 
 **Tests:**
 
