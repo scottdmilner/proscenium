@@ -29,6 +29,10 @@ struct SourceInfoTokens {
   // int64 array, on a point instancer that authors ids: each point's id, which names its copies (DECISIONS.md "Point
   // instancers"). Hydra keeps none. A UsdImaging attribute data source, so animated ids read at the chain's time.
   static const PXR_NS::TfToken& PointIds();
+  // float3 array, on a gprim other than a mesh with an authored extent: that extent, a UsdImaging attribute data
+  // source, so it reads at the chain's time. Hydra's extent reads a value block there as zeros, a box with no size;
+  // this reads it as no value, so the planner draws the empty marker it calls for (MODEL-05).
+  static const PXR_NS::TfToken& AuthoredExtent();
   // The authored guide, proxy, and render visibility, as tokens named by the purpose they control, which Hydra
   // doesn't image (UsdGeomVisibilityAPI): UsdGeomTokens' guide, proxy, and render.
 };
@@ -39,8 +43,15 @@ struct SourceInfoTokens {
 PXR_NS::HdContainerDataSourceHandle SourceInfo(const PXR_NS::UsdPrim& prim, bool imaged,
                                                const PXR_NS::UsdImagingDataSourceStageGlobals& globals);
 
-// Whether USD computes the extent of `prim` for the filter when none is authored: point-based prims that Hydra
-// doesn't draw as meshes, such as curves and points.
+// Whether a fact the filter adds for `prim` reads its `property`, which Hydra doesn't dirty an edit to: its authored
+// purpose visibility, the op order a transform-stack reset is read from, a point instancer's ids, or any property of a
+// prim whose extent USD computes for the filter (ComputesExtent), which may read it. A prim's type and an instance
+// root's prototype change only with a resync, which Hydra reports.
+bool FactReadsProperty(const PXR_NS::UsdPrim& prim, const PXR_NS::TfToken& property);
+
+// Whether USD computes the extent of `prim` for the filter when none is authored: gprims other than meshes, so the
+// curves and points Hydra doesn't draw as meshes, and the implicit shapes and NURBS patches its filters turn into
+// meshes that carry no extent of their own. USD computes none for a volume.
 bool ComputesExtent(const PXR_NS::UsdPrim& prim);
 
 // USD's computed extent at `time` for a prim ComputesExtent accepts, as an extent schema container; null otherwise.

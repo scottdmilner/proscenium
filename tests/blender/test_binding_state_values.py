@@ -38,6 +38,7 @@ def test_the_categories_are_the_specs() -> None:
         "invalid data",
         "unavailable source",
         "source state",
+        "verification",
         "pending cleanup",
         "fatal failure",
     }

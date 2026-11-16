@@ -1,0 +1,60 @@
+#usda 1.0
+# F-SAME-VALUES (tests/fixtures/incremental.py): values sampled over time that are equal at different time
+# codes, so synchronizing at one and then another writes nothing (DISC-04):
+# - Held's translate is sampled at 0, 10, 20, and 30, its samples at 10 and 20 equal, so every time code from
+#   10 to 20 evaluates to the same place;
+# - Blink is invisible from 10 until 20, a token held between samples, and visible otherwise;
+# - Still is a mesh nothing varies on, so no change of time code touches it.
+# Default values equal the samples at 0, so the default time code shows what 0 does.
+(
+    defaultPrim = "World"
+    endTimeCode = 30
+    metersPerUnit = 1
+    startTimeCode = 0
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Mesh "Held"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 0, 0)
+        double3 xformOp:translate.timeSamples = {
+            0: (0, 0, 0),
+            10: (5, 0, 0),
+            20: (5, 0, 0),
+            30: (0, 0, 0),
+        }
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Blink"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        token visibility = "inherited"
+        token visibility.timeSamples = {
+            0: "inherited",
+            10: "invisible",
+            20: "inherited",
+        }
+        double3 xformOp:translate = (0, 3, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Still"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 6, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

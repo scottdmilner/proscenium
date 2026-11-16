@@ -1,4 +1,6 @@
-"""Cache calls that fail, against the stub application layer (pipeline.md#cached-time-codes; M5 plan, E2).
+"""Cache calls that fail, against the application layer's keying (pipeline.md#cached-time-codes; M5 plan, E2).
+
+A call keys the copies that vary, Mover alone here, each insertion one channel's key at one time code.
 
 On F-CACHED-TIME-CODES (fixtures/transaction.py): synchronized at 0, with 5, 10, and 20 cached, a call for 15 fails at
 keying, its failure step, or while recording what it cached. Each failure is injected by patching a module function the
@@ -20,8 +22,7 @@ from proscenium.binding.persistence import binding_state, cleanup_ledgers, id_pr
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import application, datablock_removal
+from proscenium.synchronization import datablock_removal, time_code_keying
 
 from .published_state import datablocks, published_generation
 
@@ -32,8 +33,8 @@ if TYPE_CHECKING:
     from fixtures.transaction import CachedTimeCodesScene
     from proscenium.api.bindings import BindingHandle, Bindings
 
-MOVER = "/World/Mover"
-PLACEHOLDERS = len(transaction.DRAWN[PayloadPolicy.LOAD_ALL])  # each keyed once per time code
+MOVER = "/World/Mover"  # the one copy that varies
+KEYS_PER_TIME_CODE = 11  # Mover's: its transform's nine channels and its two hide flags
 
 
 def _synchronized(bindings: Bindings, scene: CachedTimeCodesScene) -> BindingHandle:
@@ -64,8 +65,8 @@ def _held(handle: BindingHandle) -> tuple[Any, ...]:
 
 
 def _failing_keying(monkeypatch: pytest.MonkeyPatch, after: int) -> None:
-    """Make keying fail once after-many placeholders are keyed at a time code."""
-    insert = application._insert_keys  # noqa: SLF001 - the step's module function
+    """Make keying fail once after-many of its insertions, each one channel's key at one time code."""
+    insert = time_code_keying._insert_key  # noqa: SLF001 - the step's module function
     calls: list[None] = []
 
     def failing(*args: Any) -> None:
@@ -74,7 +75,7 @@ def _failing_keying(monkeypatch: pytest.MonkeyPatch, after: int) -> None:
         calls.append(None)
         insert(*args)
 
-    monkeypatch.setattr(application, "_insert_keys", failing)
+    monkeypatch.setattr(time_code_keying, "_insert_key", failing)
 
 
 def _shown_at(handle: BindingHandle, frame: float) -> tuple[float, ...]:
@@ -90,20 +91,19 @@ def _shown_at(handle: BindingHandle, frame: float) -> tuple[float, ...]:
     return tuple(obj.matrix_world.translation[:])
 
 
-@pytest.mark.parametrize("after", [0, 1, PLACEHOLDERS - 1])
 def test_a_failing_call_caches_none_of_its_time_codes(
-    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, after: int
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # CACHE-03, CACHE-11 on F-CACHED-TIME-CODES "failed-call": failing at keying, after each number of placeholders
-    # keyed, the call returns its own failure and leaves the generation, its keys, and the last attempt as they were;
-    # the frame of the failed time code still shows the latest cached before it.
+    # CACHE-03, CACHE-11 on F-CACHED-TIME-CODES "failed-call": failing at keying Mover at 15, the call returns its own
+    # failure and leaves the generation, its keys, and the last attempt as they were; the frame of the failed time code
+    # still shows the latest cached before it.
     with transaction.cached_time_codes(tmp_path) as scene:
         assert scene.failure is SynchronizationFailureStep.PREPARE
         handle = _synchronized(bindings, scene)
         assert handle.cache(scene.cached).state is ResultState.SUCCESS
         before = _held(handle)
         with monkeypatch.context() as patch:
-            _failing_keying(patch, after)
+            _failing_keying(patch, 0)
             result = handle.cache(scene.failing)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PREPARATION_FAILED]
         assert result.attempted_time_codes == tuple(Usd.TimeCode(t) for t in scene.failing)
@@ -119,12 +119,12 @@ def test_a_failing_call_caches_none_of_its_time_codes(
 def test_a_failing_first_call_disposes_of_the_actions_it_made(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # CACHE-03: a first call makes each object's action, so failing partway it disposes of them, and the objects have
-    # no animation data again.
+    # CACHE-03: a first call makes the action of each object it keys, so failing partway, after Mover's key at the
+    # generation's own time code, it disposes of it, and the objects have no animation data again.
     with transaction.cached_time_codes(tmp_path) as scene:
         handle = _synchronized(bindings, scene)
         before = _held(handle)
-        _failing_keying(monkeypatch, 2 * 2)  # the own and cached time codes' keys, of two placeholders
+        _failing_keying(monkeypatch, KEYS_PER_TIME_CODE)  # after the own time code's keys, at the cached one's
         assert handle.cache(scene.cached[:1]).state is ResultState.FATAL_FAILURE
         assert _held(handle) == before
         assert not bpy.data.actions
@@ -172,7 +172,7 @@ def test_an_action_that_cant_be_disposed_of_is_pending_cleanup(
             remove(datablocks)
 
         with monkeypatch.context() as patch:
-            _failing_keying(patch, PLACEHOLDERS + 1)
+            _failing_keying(patch, 2 * KEYS_PER_TIME_CODE)  # after the own time code's keys and 5's
             patch.setattr(datablock_removal, "_batch_remove", failing_remove)
             result = handle.cache(scene.cached)
         codes = [d.code for d in result.diagnostics]

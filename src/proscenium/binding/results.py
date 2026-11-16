@@ -33,6 +33,7 @@ class DiagnosticCategory(StrEnum):
     INVALID_DATA = "invalid data"
     UNAVAILABLE_SOURCE = "unavailable source"  # fatal
     SOURCE_STATE = "source state"  # informational: it doesn't change the result state
+    VERIFICATION = "verification"  # informational: a capture that differed from a full re-read, under the opt-in mode
     PENDING_CLEANUP = "pending cleanup"  # retryable disposal of prepared or obsolete resources
     FATAL_FAILURE = "fatal failure"
 
@@ -60,11 +61,19 @@ class DiagnosticCode(StrEnum):
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
     PLANNING_FAILED = "planning-failed"
-    PREPARATION_FAILED = "preparation-failed"  # making or keying the display's resources failed, so it was undone
+    # Application's runtime failure: a Blender operation making or keying the display's resources failed, so the
+    # attempt was undone; it names the resource when one was being made.
+    PREPARATION_FAILED = "preparation-failed"
+    # Application's state-change failure: the destination became invalid, as by being removed, during preparation.
+    DESTINATION_INVALID = "destination-invalid"
     PUBLICATION_FAILED = "publication-failed"  # publishing, or recording cached time codes, failed, so it was undone
     DISPOSAL_FAILED = "disposal-failed"  # a prepared resource couldn't be removed, so it's pending cleanup
     RETIREMENT_FAILED = "retirement-failed"  # an obsolete resource couldn't be removed, so it's pending cleanup
     CLEANUP_FAILED = "cleanup-failed"  # a cleanup retry resolved nothing
+    # The destination is also linked into a scene whose unit scale differs from the target scene's, which the display
+    # is planned for (transforms.md#coordinate-conversion).
+    CAPTURE_MISMATCH = "capture-mismatch"  # an incremental capture differed from a full re-read (verification mode)
+    UNIT_SCALE_MISMATCH = "unit-scale-mismatch"
     # Source-side content, which the compiled core reports (core.diagnostics.h).
     PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
     UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
@@ -100,6 +109,9 @@ _KINDS: dict[DiagnosticCode, tuple[DiagnosticCategory, Severity]] = {
     DiagnosticCode.NEEDS_SYNCHRONIZATION: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PLANNING_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.PREPARATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.DESTINATION_INVALID: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
+    DiagnosticCode.CAPTURE_MISMATCH: (DiagnosticCategory.VERIFICATION, Severity.INFO),
+    DiagnosticCode.UNIT_SCALE_MISMATCH: (DiagnosticCategory.LOSSY_CONVERSION, Severity.WARNING),
     DiagnosticCode.PUBLICATION_FAILED: (DiagnosticCategory.FATAL_FAILURE, Severity.ERROR),
     DiagnosticCode.DISPOSAL_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
     DiagnosticCode.RETIREMENT_FAILED: (DiagnosticCategory.PENDING_CLEANUP, Severity.WARNING),
@@ -130,7 +142,7 @@ class Diagnostic:
     fallback_description: str = ""  # what is displayed in its place
     layer_identifiers: tuple[str, ...] = ()  # layer identifiers it concerns, sorted
     pending_resource_key: str = ""  # for pending cleanup, the ledger key of the pending resource it concerns
-    role: str = ""  # that resource's representation role
+    role: str = ""  # the representation role of the resource it concerns: a pending one, or one that failed
 
     def __post_init__(self) -> None:
         # A stored diagnostic's code is a plain string and its layers a list; an unknown code raises ValueError.
@@ -175,6 +187,7 @@ class Diagnostic:
 # The state each category gives a result on its own (pipeline.md#diagnostics); a result's is its worst diagnostic's.
 _STATE_OF: dict[DiagnosticCategory, ResultState] = {
     DiagnosticCategory.SOURCE_STATE: ResultState.SUCCESS,
+    DiagnosticCategory.VERIFICATION: ResultState.SUCCESS,
     DiagnosticCategory.UNSUPPORTED: ResultState.COMPLETED_WITH_ISSUES,
     DiagnosticCategory.APPROXIMATION: ResultState.COMPLETED_WITH_ISSUES,
     DiagnosticCategory.LOSSY_CONVERSION: ResultState.COMPLETED_WITH_ISSUES,
@@ -239,3 +252,29 @@ class Result:
     def is_success(self) -> bool:
         """Whether the operation succeeded."""
         return self.state == ResultState.SUCCESS
+
+
+class DiagnosticCollector:
+    """The diagnostics an operation reports as its steps run, in order, for its result."""
+
+    _reported: list[Diagnostic]
+
+    def __init__(self) -> None:
+        self._reported = []
+
+    def add(self, diagnostic: Diagnostic) -> None:
+        """Report diagnostic."""
+        self._reported.append(diagnostic)
+
+    def extend(self, diagnostics: Iterable[Diagnostic]) -> None:
+        """Report each of diagnostics, in order."""
+        self._reported.extend(diagnostics)
+
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]:
+        """Those reported so far, aggregated as a result's are (DIAG-03)."""
+        return deduplicated_diagnostics(self._reported)
+
+    def result(self, *, attempted_time_codes: Iterable[Usd.TimeCode] = ()) -> Result:
+        """A result holding those reported so far."""
+        return Result(*self._reported, attempted_time_codes=attempted_time_codes)

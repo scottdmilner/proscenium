@@ -6,6 +6,7 @@
 # reaches Geom from Seat but nothing from Legs, and /Debris/Rock sits under no model at all.
 # Kinds outside a valid model hierarchy (UsdPrim::IsModel false) still match a kind level: Vase is a
 # component inside the component Table, and Crate a component under Debris, which has no kind.
+# Chair carries asset metadata, which callers read from the live stage (MODEL-01).
 # Every mesh is one triangle, so any display representation shows it.
 (
     defaultPrim = "World"
@@ -20,6 +21,11 @@ def Xform "World" (
     )
     {
         def Xform "Chair" (
+            assetInfo = {
+                asset identifier = @./chair.usda@
+                string name = "Chair"
+                string version = "2"
+            }
             kind = "component"
         )
         {

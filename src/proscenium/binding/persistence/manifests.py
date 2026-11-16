@@ -244,6 +244,11 @@ def read_manifest(destination: bpy.types.Collection) -> LoadedRecord[Manifest] |
     return id_property_records.read(destination, MANIFEST_KEY, MANIFEST)
 
 
+def manifest_revision(destination: bpy.types.Collection) -> str | None:
+    """The revision of the destination's manifest, new at each write, without reading it; None if it has none."""
+    return id_property_records.revision(destination, MANIFEST_KEY)
+
+
 def write_manifest(destination: bpy.types.Collection, manifest: Manifest) -> LoadedRecord[Manifest]:
     """Store the destination's manifest whole; the manifest as reading it back would give it.
 

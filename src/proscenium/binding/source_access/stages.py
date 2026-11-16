@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 import uuid
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, NewType
+from typing import TYPE_CHECKING, NewType, Protocol
 
 from pxr import Sdf, Tf, Usd
 
@@ -42,6 +42,23 @@ def dirty_layers(stage: Usd.Stage) -> list[str]:
     return [layer.identifier for layer in contributing_layers(stage) if layer.dirty]
 
 
+class KeptChain(Protocol):
+    """A scene-index chain over a binding's evaluation stage, which its BindingStages keeps and releases.
+
+    The core's SceneIndexChain, which source access names only by what BindingStages calls, since it doesn't import
+    the core (import rules). A released chain holds no stage.
+    """
+
+    @property
+    def released(self) -> bool:
+        """Whether the chain has been released."""
+        ...
+
+    def release(self) -> None:
+        """Drop the chain and its stage reference; idempotent."""
+        ...
+
+
 class _SourceRevisions:
     """A binding's current source revision, which its evaluation stage's listener advances."""
 
@@ -62,6 +79,11 @@ class BindingStages:
     The source is held until explicit release so its layers and unsaved edits have a clear lifetime.
     Layers are evaluated as loaded; only reload() rereads them.
 
+    The chain kept over the evaluation stage (keep_chain) follows what the stage's notices carry: edits, reloads, and
+    another payload policy, mask, muting, or interpolation applied to it. It lives until the evaluation stage is
+    dropped, as on release, replacement by another stage's layers, or pruning, which releases it, so a released stage
+    expires (SRC-02), and the next capture is from a new chain.
+
     The source revision changes with anything the evaluation stage evaluates: an edit to one of its layers, a
     reload that rereads one, a caller's setting or a payload policy that an acquisition matches, and every
     attachment and new evaluation stage. An acquisition that matches nothing new leaves it.
@@ -75,6 +97,7 @@ class BindingStages:
     # Advances the revision on the evaluation stage's ObjectsChanged; it holds the revisions, not self, so it keeps
     # nothing else alive, and is revoked when dropped.
     _listener: Tf.Notice.Listener | None
+    _kept_chain: KeptChain | None
 
     def __init__(self) -> None:
         self._source_stage = None
@@ -82,6 +105,7 @@ class BindingStages:
         self._payload_policy = None
         self._revisions = _SourceRevisions()
         self._listener = None
+        self._kept_chain = None
 
     @property
     def evaluation_stage(self) -> Usd.Stage | None:
@@ -97,6 +121,28 @@ class BindingStages:
     def source_revision(self) -> SourceRevision:
         """What the evaluated source is now, for a generation to be compared with (pipeline.md#cached-time-codes)."""
         return self._revisions.current
+
+    @property
+    def kept_chain(self) -> KeptChain | None:
+        """The chain kept over the evaluation stage, or None: none kept yet, or released since."""
+        return self._kept_chain
+
+    def keep_chain(self, chain: KeptChain) -> None:
+        """Keep chain, built over the evaluation stage, releasing any other kept before it.
+
+        Raises SourceUnavailableError before the first acquisition.
+        """
+        if self._evaluation_stage is None:
+            raise SourceUnavailableError("No stage is evaluated")
+        if chain is not self._kept_chain:
+            self.release_kept_chain()
+        self._kept_chain = chain
+
+    def release_kept_chain(self) -> None:
+        """Release the kept chain, if any, so the next capture is from a new one."""
+        if self._kept_chain is not None:
+            self._kept_chain.release()
+        self._kept_chain = None
 
     @contextmanager
     def monitor_evaluation_layer_changes(self) -> Generator[set[str]]:
@@ -132,7 +178,8 @@ class BindingStages:
             self.drop_evaluation_stage()
 
     def drop_evaluation_stage(self) -> None:
-        """Let go of the evaluation stage, keeping the attachment; the next acquisition reopens it."""
+        """Let go of the evaluation stage and its kept chain, keeping the attachment; the next acquisition reopens."""
+        self.release_kept_chain()
         if self._listener is not None:
             self._listener.Revoke()
         self._listener = None
@@ -152,7 +199,8 @@ class BindingStages:
         """
         stage = self._ensure_evaluation_stage_matches_source(payload_policy)
         if self._payload_policy != payload_policy:
-            # A reused stage: never reopened, so the session layer's opinions stay.
+            # A reused stage: never reopened, so the session layer's opinions stay, and the kept chain hears the
+            # payloads load or unload.
             if payload_policy is binding_settings.PayloadPolicy.LOAD_ALL:
                 stage.Load()
             else:
@@ -212,5 +260,6 @@ class BindingStages:
         muted, wanted = set(stage.GetMutedLayers()), set(attached.GetMutedLayers())
         if muted != wanted:
             stage.MuteAndUnmuteLayers(sorted(wanted - muted), sorted(muted - wanted))
-        stage.SetInterpolationType(attached.GetInterpolationType())
+        if stage.GetInterpolationType() != attached.GetInterpolationType():
+            stage.SetInterpolationType(attached.GetInterpolationType())
         return stage

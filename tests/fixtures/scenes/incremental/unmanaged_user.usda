@@ -1,0 +1,45 @@
+#usda 1.0
+# F-UNMANAGED-USER (tests/fixtures/incremental.py): drawn copies a test gives unmanaged users in Blender, so
+# refresh and removal leave unmanaged content as it was (OWN-07) and never mutate a managed resource it uses
+# (OWN-08):
+# - Used is basis curves with an authored extent, a placeholder box, whose bounds mesh a test gives to an
+#   unmanaged object; the edit grows its extent, so a refresh replaces the mesh and releases the old one intact;
+# - Child is a mesh whose managed object a test parents to an unmanaged empty; the edit moves it, so a refresh
+#   writes its copy's place and leaves the parent as it was;
+# - Still is a mesh nothing edits, drawn beside an unmanaged object a test links into the destination.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def BasisCurves "Used"
+    {
+        int[] curveVertexCounts = [2]
+        float3[] extent = [(0, 0, 0), (1, 1, 1)]
+        point3f[] points = [(0, 0, 0), (1, 1, 1)]
+        uniform token type = "linear"
+    }
+
+    def Mesh "Child"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (3, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Mesh "Still"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (6, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

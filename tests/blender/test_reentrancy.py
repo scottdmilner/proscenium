@@ -1,9 +1,8 @@
 """Calls made while a synchronization, a cache call, or a cleanup retry runs (source-access.md#source-consistency).
 
 M5 plan, D11 and E1. On F-SOURCE-CHANGE (fixtures/transaction.py), with a second binding on the same stage. The calls
-are made from inside
-the evaluation step, by patching the core's SceneIndexChain, and from inside a retry's removal, by patching the removal
-module's function, so src/ has no hooks.
+are made from inside the evaluation step, by patching the core's SceneIndexChain.capture, and from inside a retry's
+removal, by patching the removal module's function, so src/ has no hooks.
 """
 
 from __future__ import annotations
@@ -88,15 +87,15 @@ def test_calls_during_a_synchronization_raise(
     # running attempt records the settings it started with, and the synchronization then completes.
     with transaction.source_change(tmp_path) as scene:
         handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
-        chain = _core.SceneIndexChain
+        capture = _core.SceneIndexChain.capture
         made: list[int] = []
 
-        def reentering(stage: Usd.Stage) -> _core.SceneIndexChain:
+        def reentering(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
             made.append(_check_reentrant_calls(bindings, scene, handle, other))
             assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-            return chain(stage)
+            return capture(chain, time_code)
 
-        monkeypatch.setattr(_core, "SceneIndexChain", reentering)
+        monkeypatch.setattr(_core.SceneIndexChain, "capture", reentering)
         result = handle.synchronize(0)
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS
@@ -106,7 +105,7 @@ def test_calls_during_a_synchronization_raise(
             isinstance(last, id_property_records.LoadedRecord)
             and last.record.attempted_settings.payload_policy is PayloadPolicy.LOAD_ALL
         )
-        monkeypatch.setattr(_core, "SceneIndexChain", chain)
+        monkeypatch.setattr(_core.SceneIndexChain, "capture", capture)
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
 
 
@@ -116,15 +115,15 @@ def test_calls_during_a_cache_call_raise(bindings: Bindings, tmp_path: Path, mon
     with transaction.source_change(tmp_path) as scene:
         handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
         assert handle.synchronize(0).state is ResultState.SUCCESS
-        chain = _core.SceneIndexChain
+        capture = _core.SceneIndexChain.capture
         made: list[int] = []
 
-        def reentering(stage: Usd.Stage) -> _core.SceneIndexChain:
+        def reentering(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
             made.append(_check_reentrant_calls(bindings, scene, handle, other))
             assert other.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
-            return chain(stage)
+            return capture(chain, time_code)
 
-        monkeypatch.setattr(_core, "SceneIndexChain", reentering)
+        monkeypatch.setattr(_core.SceneIndexChain, "capture", reentering)
         result = handle.cache([10])
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS
@@ -167,7 +166,7 @@ def test_an_exception_escaping_a_synchronization_ends_it(
     with transaction.source_change(tmp_path) as scene:
         handle = _binding(bindings, scene, "Shot")
 
-        def failing(*_args: object) -> None:
+        def failing(*_args: object, **_kwargs: object) -> None:
             raise RuntimeError("injected bug")
 
         monkeypatch.setattr(synchronization, "synchronize", failing)

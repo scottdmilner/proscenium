@@ -1,7 +1,8 @@
 """Retirement: the resources a publication made obsolete, removed or left pending (M5 plan, D7).
 
-On F-RETIREMENT-FAILURE (fixtures/transaction.py). A failed removal is injected by patching the removal module's
-function, so src/ has no hooks.
+On F-RETIREMENT-FAILURE (fixtures/transaction.py). Each later synchronization is a requested full rebuild, so it
+replaces every partition, whose resources retirement then removes. A failed removal is injected by patching the
+removal module's function, so src/ has no hooks.
 """
 
 from __future__ import annotations
@@ -12,12 +13,14 @@ import bpy
 import pytest
 
 from fixtures import transaction
+from proscenium.api import bindings as api
 from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.synchronization import datablock_removal
+from support import undo
 from support.blend import prim_name
 from support.destinations import destination
 
@@ -88,7 +91,7 @@ def test_a_failed_retirement_completes_with_issues(
         old = {e.datablock for e in _manifest(handle).entries.values()}
         old_uids = {d.session_uid for d in old if d is not None}
         _fail_retirement(monkeypatch)
-        result = handle.synchronize(second)
+        result = handle.synchronize(second, full_rebuild=True)
         assert result.state is scene.outcome
         assert all(d.category is DiagnosticCategory.PENDING_CLEANUP for d in result.diagnostics)
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.RETIREMENT_FAILED] * 2
@@ -129,9 +132,9 @@ def test_a_repeated_retirement_failure_reports_each_leftover_once(
         first, second = scene.time_codes
         assert handle.synchronize(first).state is ResultState.SUCCESS
         _fail_retirement(monkeypatch)
-        earlier = handle.synchronize(second)
+        earlier = handle.synchronize(second, full_rebuild=True)
         before = _ledger()
-        again = handle.synchronize(second)
+        again = handle.synchronize(second, full_rebuild=True)
         assert again.state is scene.outcome
         assert len(again.diagnostics) == 2
         assert set(again.diagnostics).isdisjoint(earlier.diagnostics)  # this attempt's leftovers, not the earlier
@@ -158,7 +161,7 @@ def test_a_replacement_takes_its_resources_identities(
         for obj in bpy.data.collections["Shot"].objects:
             obj.name = f"Renamed {obj.name}"
         calls = _counted_removals(monkeypatch)
-        assert handle.synchronize(second).state is ResultState.SUCCESS
+        assert handle.synchronize(second, full_rebuild=True).state is ResultState.SUCCESS
         assert calls == [len(transaction.DRAWN[PayloadPolicy.LOAD_ALL])] * 2  # one call per level: objects, meshes
         after = _manifest(handle)
         assert {k: e.identity for k, e in after.entries.items()} == identities
@@ -178,7 +181,7 @@ def test_an_obsolete_resource_something_else_uses_is_released_intact(bindings: B
         users = bpy.data.collections.new("Mine")
         bpy.data.scenes["Scene"].collection.children.link(users)
         users.objects.link(kept)
-        assert handle.synchronize(second).state is ResultState.SUCCESS
+        assert handle.synchronize(second, full_rebuild=True).state is ResultState.SUCCESS
         assert kept.name in bpy.data.objects and kept.data == mesh and set(kept.users_collection) == {users}
         assert ownership.of(kept).claims == ()
         assert _ledger() == {}  # released, so no retry deletes it
@@ -203,6 +206,24 @@ def test_a_retirement_the_ledger_cant_record_raises(
 
         monkeypatch.setattr(pending_cleanup, "set_ledger_entries", failing)
         with pytest.raises(RuntimeError, match="injected ledger failure"):
-            handle.synchronize(second)
+            handle.synchronize(second, full_rebuild=True)
         generation = binding_state.read_generation(bpy.data.collections["Shot"])
         assert isinstance(generation, LoadedRecord) and generation.record.time_code == second
+
+
+def test_retirement_after_an_undo_push_removes_the_obsolete_display(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # M6 F5, on F-RETIREMENT-FAILURE's scene with nothing failing: with the API's undo step pushed after the first
+    # synchronization, as with a window, the view layer holds a base for each published object until the depsgraph
+    # next updates, through which bpy.data.user_map names the Scene a user of each obsolete object once publication
+    # unlinks it. Synchronizing again still removes every obsolete resource, releasing and leaving pending none.
+    undo.require_global_undo()
+    monkeypatch.setattr(api, "_undo_steps_enabled", lambda: True)
+    with transaction.retirement_failure(tmp_path) as scene:
+        handle = _binding(bindings, scene)
+        assert handle.synchronize(scene.time_codes[0]).state is ResultState.SUCCESS
+        first = {e.datablock for e in _manifest(handle).entries.values()}
+        assert handle.synchronize(scene.time_codes[1], full_rebuild=True).state is ResultState.SUCCESS
+        assert all(not id_property_records.alive(d) for d in first if d is not None)
+        assert not _ledger()

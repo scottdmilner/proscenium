@@ -24,9 +24,13 @@ class SceneIndexChain:
     def release(self) -> None: ...  # drop the chain and its stage reference; idempotent
     @property
     def released(self) -> bool: ...
+    def _drop_next_capture_notices(self) -> None: ...  # the next capture misses its notices; for tests only
 
 class Snapshot:
     """An immutable capture at one time code, which only planning reads."""
+
+    @property
+    def _copied_prim_count(self) -> int: ...  # prims it copied rather than shared, for tests and measurements only
 
 class Diagnostic:
     """A source-side problem the core reports; Python builds the binding's Diagnostic from it.
@@ -144,6 +148,8 @@ class Plan:
     def partitions(self) -> tuple[Partition, ...]: ...
     @property
     def resources(self) -> tuple[PlannedResource, ...]: ...
+    # The resources at those positions in resources, in that order, converting only them. IndexError: past the end.
+    def resources_at(self, resource_indices: Iterable[int]) -> tuple[PlannedResource, ...]: ...
     @property
     def correspondence(self) -> tuple[CorrespondenceEntry, ...]: ...
     @property
@@ -152,6 +158,10 @@ class Plan:
     def copy_world_matrices(self) -> Buffer: ...  # 'f', 16 each: world matrices in Blender's layout (USD row-major)
     @property
     def copy_object_resource_indices(self) -> Buffer: ...  # 'i': its object, in resources
+    @property
+    def copy_bounds_mesh_resource_indices(self) -> Buffer: ...  # 'i': its bounds mesh, in resources; -1 for a marker's
+    @property
+    def copy_shear_parent_resource_indices(self) -> Buffer: ...  # 'i': its shear parent, in resources; -1 for none
     @property
     def copy_geometry_indices(self) -> Buffer: ...  # 'i': its geometry description, in geometries; -1 for none
     @property
@@ -170,6 +180,8 @@ class Plan:
     def shear_object_basis_matrices(self) -> Buffer: ...  # 'f', 16 each: its object's basis below the shear parent
     @property
     def geometries(self) -> tuple[GeometryDescription, ...]: ...
+    # The geometry descriptions at those positions in geometries, in that order. IndexError: past the end.
+    def geometries_at(self, geometry_indices: Iterable[int]) -> tuple[GeometryDescription, ...]: ...
     @property
     def diagnostics(self) -> tuple[Diagnostic, ...]: ...
     def batch_groups(
@@ -180,7 +192,77 @@ class Plan:
 
 def plan(snapshot: Snapshot, settings: PlanSettings, context: PlanningContext) -> Plan: ...  # ValueError: version
 
+class PlanDiff:
+    """What a new plan changes from a previous one: 'i' buffers of copy indices, each in the order of its plan.
+
+    Copies match by identity, their source path and instance context. A kept copy is rebuilt when its partition holds
+    another bounds mesh or shear parent; otherwise it is in each list of what differs, which may be more than one.
+    """
+
+    @property
+    def previous_copy_indices(self) -> Buffer: ...  # per new copy: the previous plan's with its identity, or -1
+    @property
+    def rebuilt_copy_indices(self) -> Buffer: ...  # new copies whose partition is prepared anew
+    @property
+    def moved_copy_indices(self) -> Buffer: ...  # new copies whose world matrix or shear split differs
+    @property
+    def bounds_changed_copy_indices(self) -> Buffer: ...  # new copies whose bounds mesh is replaced
+    @property
+    def participation_changed_copy_indices(self) -> Buffer: ...  # new copies whose hide flags change
+    @property
+    def removed_previous_copy_indices(self) -> Buffer: ...  # previous copies with no new counterpart
+
+def diff_plans(previous: Plan, plan: Plan) -> PlanDiff: ...
+
 # EXCEPTION to the rule against test-only API (with the user, 2026-11-06): each drawn copy's world transform, by source,
 # as Hydra's own values compose it, ignoring a reset transform stack inside an instance. Only the known-gap check for
 # OpenUSD #862 calls it: the bug shows only in Hydra's composition, which nothing else exposes.
 def _hydra_composed_worlds(snapshot: Snapshot) -> dict[str, Gf.Matrix4d]: ...
+
+class SourceUnavailableError(RuntimeError):
+    """The binding has no live stage (interaction-contract.md "Without a Live Stage")."""
+
+class SourceEntity:
+    @property
+    def source_path(self) -> str: ...  # an instance-proxy or point-instance path inside instance contents
+    @property
+    def instance_context(self) -> tuple[str, ...]: ...  # native-instance roots, instancers, and points, outermost first
+    @property
+    def floor(self) -> str: ...  # the first of its instance context, or the entity outside instance contents
+
+class Correspondence:
+    """A shown generation's correspondence, its elements named by their indices among its own (correspondence.h).
+
+    Built from parallel sequences, one item per display element: its copy's source entity path, its instance context
+    or None to derive it from the path on the live stage, and whether it shows in the viewport. Holds the stage weakly;
+    each method raises SourceUnavailableError once it has expired, as building one without it does. ValueError: the
+    sequences differ in length.
+    """
+
+    def __init__(
+        self,
+        stage: Usd.Stage | None,
+        source_paths: Iterable[str],
+        instance_contexts: Iterable[Iterable[str] | None],
+        visible_in_viewport: Iterable[bool],
+    ) -> None: ...
+    @property
+    def element_count(self) -> int: ...
+    # The element's entity, or None for an index naming no element. The matrix finds a batch's instance (M8).
+    def resolve_pick(self, element_index: int, world_matrix: Gf.Matrix4d) -> SourceEntity | None: ...
+    def displayed(self, paths: Iterable[str]) -> Buffer: ...  # '?': whether each is in the browsing universe
+    # 'i': the viewport elements at or beneath each target in the universe, ascending, each once.
+    def highlight_targets(self, target_paths: Iterable[str]) -> Buffer: ...
+    # Each entity's target at the level, None for the prim level or a registered kind's name, which the inspection
+    # layer maps on the live stage. ValueError: a kind that isn't registered.
+    def select_targets(self, entity_paths: Iterable[str], level: str | None) -> tuple[str, ...]: ...
+    # The selected elements' targets at the level, and the active element's. Indices naming no element are ignored.
+    def selection_from_blender(
+        self, selected_element_indices: Iterable[int], active_element_index: int | None, level: str | None
+    ) -> SourceSelection: ...
+
+class SourceSelection:
+    @property
+    def target_paths(self) -> tuple[str, ...]: ...  # in the order of the selected elements, each once
+    @property
+    def active_target_path(self) -> str | None: ...  # the active element's target; None when none is active

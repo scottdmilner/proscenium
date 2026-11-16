@@ -6,7 +6,9 @@
 #include <pxr/base/tf/pyLock.h>
 #include <pxr/pxr.h>
 
+#include <algorithm>
 #include <memory>
+#include <optional>
 #include <pxr/external/boost/python.hpp>
 #include <pxr/external/boost/python/stl_iterator.hpp>
 #include <stdexcept>
@@ -14,7 +16,9 @@
 #include <vector>
 
 #include "batch_groups.h"
+#include "correspondence.h"
 #include "plan.h"
+#include "plan_diff.h"
 #include "python_error_translation.h"
 #include "scene_index_chain.h"
 #include "snapshot.h"
@@ -95,6 +99,16 @@ std::shared_ptr<PlanSettings> NewPlanSettings(const bp::object& viewport, const 
   return Guarded([&] { return std::make_shared<PlanSettings>(viewportPurposes, renderPurposes, conversion); });
 }
 
+// The elements at the given positions, in that order, so a caller converts only those it reads. Throws
+// std::out_of_range for a position past the end.
+template <class T>
+bp::tuple ElementsAt(const std::vector<T>& elements, const bp::object& indices) {
+  bp::list items;
+  for (bp::stl_input_iterator<std::size_t> index(indices), end; index != end; ++index)
+    items.append(elements.at(*index));
+  return bp::tuple(items);
+}
+
 // The plan's batch groups, which Python reads as plain values and Vt buffers.
 bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
   const BatchGroups grouped = Guarded([&] {
@@ -102,6 +116,13 @@ bp::tuple PlanBatchGroups(const PlanView& plan, std::size_t minimum) {
     return GroupForBatches(*plan.data, minimum);
   });
   return bp::make_tuple(ToTuple(grouped.groups), grouped.unbatchedCopyIndices);
+}
+
+PlanDiff DiffPlanViews(const PlanView& previous, const PlanView& plan) {
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return DiffPlans(*previous.data, *plan.data);
+  });
 }
 
 PlanView MakePlan(const SnapshotView& snapshot, const PlanSettings& settings, const PlanningContext& context) {
@@ -192,6 +213,12 @@ void WrapPlan() {
       .add_property("copy_indices", +[](const BatchGroup& g) { return g.copyIndices; });
   bp::class_<PlanView>("Plan", bp::no_init)
       .def("batch_groups", &PlanBatchGroups, bp::arg("minimum"))
+      .def(
+          "resources_at", +[](const PlanView& p, const bp::object& i) { return ElementsAt(p.data->resources, i); },
+          bp::arg("resource_indices"))
+      .def(
+          "geometries_at", +[](const PlanView& p, const bp::object& i) { return ElementsAt(p.data->geometries, i); },
+          bp::arg("geometry_indices"))
       .add_property(
           "time_code", +[](const PlanView& p) { return p.data->timeCode; })
       .add_property(
@@ -208,6 +235,11 @@ void WrapPlan() {
           "copy_world_matrices", +[](const PlanView& p) { return p.data->copyWorldMatrices; })
       .add_property(
           "copy_object_resource_indices", +[](const PlanView& p) { return p.data->copyObjectResourceIndices; })
+      .add_property(
+          "copy_bounds_mesh_resource_indices", +[](const PlanView& p) { return p.data->copyBoundsMeshResourceIndices; })
+      .add_property(
+          "copy_shear_parent_resource_indices",
+          +[](const PlanView& p) { return p.data->copyShearParentResourceIndices; })
       .add_property(
           "copy_geometry_indices", +[](const PlanView& p) { return p.data->copyGeometryIndices; })
       .add_property(
@@ -228,7 +260,144 @@ void WrapPlan() {
           "geometries", +[](const PlanView& p) { return ToTuple(p.data->geometries); })
       .add_property("diagnostics", +[](const PlanView& p) { return ToTuple(p.data->diagnostics); });
   bp::def("plan", &MakePlan, (bp::arg("snapshot"), bp::arg("settings"), bp::arg("context")));
+  bp::class_<PlanDiff>("PlanDiff", bp::no_init)
+      .add_property(
+          "previous_copy_indices", +[](const PlanDiff& d) { return d.previousCopyIndices; })
+      .add_property(
+          "rebuilt_copy_indices", +[](const PlanDiff& d) { return d.rebuiltCopyIndices; })
+      .add_property(
+          "moved_copy_indices", +[](const PlanDiff& d) { return d.movedCopyIndices; })
+      .add_property(
+          "bounds_changed_copy_indices", +[](const PlanDiff& d) { return d.boundsChangedCopyIndices; })
+      .add_property(
+          "participation_changed_copy_indices", +[](const PlanDiff& d) { return d.participationChangedCopyIndices; })
+      .add_property("removed_previous_copy_indices", +[](const PlanDiff& d) { return d.removedPreviousCopyIndices; });
+  bp::def("diff_plans", &DiffPlanViews, (bp::arg("previous"), bp::arg("plan")));
   bp::def("_hydra_composed_worlds", &HydraComposedWorldsDict, bp::arg("snapshot"));
+}
+
+// Each path in an iterable of strings; a string that isn't a path is the empty path.
+SdfPathVector Paths(const bp::object& strings) {
+  SdfPathVector paths;
+  for (bp::stl_input_iterator<std::string> path(strings), end; path != end; ++path) paths.emplace_back(*path);
+  return paths;
+}
+
+// Python's display elements, from parallel iterables: source paths, instance contexts (each None or an iterable of
+// paths), and viewport participation.
+std::shared_ptr<Correspondence> NewCorrespondence(const UsdStagePtr& stage, const bp::object& sourcePaths,
+                                                  const bp::object& instanceContexts,
+                                                  const bp::object& visibleInViewport) {
+  std::vector<DisplayElement> elements;
+  for (bp::stl_input_iterator<std::string> path(sourcePaths), end; path != end; ++path)
+    elements.push_back({SdfPath(*path), std::nullopt, false});
+  std::size_t i = 0;
+  for (bp::stl_input_iterator<bp::object> context(instanceContexts), end; context != end; ++context, ++i)
+    if (const bp::object paths = *context; i < elements.size() && !paths.is_none())
+      elements[i].instanceContext = Paths(paths);
+  const std::size_t contextCount = i;
+  i = 0;
+  for (bp::stl_input_iterator<bool> visible(visibleInViewport), end; visible != end; ++visible, ++i)
+    if (i < elements.size()) elements[i].inViewport = *visible;
+  if (contextCount != elements.size() || i != elements.size())
+    throw std::invalid_argument("Source paths, instance contexts, and viewport participation differ in length");
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return std::make_shared<Correspondence>(stage, std::move(elements));
+  });
+}
+
+bp::object ResolvePick(const Correspondence& correspondence, std::size_t elementIndex, const bp::object&) {
+  const std::optional<SourceEntity> entity = Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.ResolvePick(elementIndex);
+  });
+  return entity ? bp::object(*entity) : bp::object();
+}
+
+VtBoolArray Displayed(const Correspondence& correspondence, const bp::object& paths) {
+  const SdfPathVector sourcePaths = Paths(paths);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    const std::vector<bool> displayed = correspondence.Displayed(sourcePaths);
+    return VtBoolArray(displayed.begin(), displayed.end());
+  });
+}
+
+VtIntArray HighlightTargets(const Correspondence& correspondence, const bp::object& targetPaths) {
+  const SdfPathVector targets = Paths(targetPaths);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    const std::vector<std::size_t> covered = correspondence.HighlightTargets(targets);
+    VtIntArray indices(covered.size());
+    std::transform(covered.begin(), covered.end(), indices.begin(),
+                   [](std::size_t index) { return static_cast<int>(index); });
+    return indices;
+  });
+}
+
+// A selection level from Python: None for the prim level, or a kind's name.
+std::optional<TfToken> Level(const bp::object& level) {
+  if (level.is_none()) return std::nullopt;
+  return TfToken(bp::extract<std::string>(level)());
+}
+
+bp::tuple SelectTargets(const Correspondence& correspondence, const bp::object& entityPaths, const bp::object& level) {
+  const SdfPathVector paths = Paths(entityPaths);
+  const std::optional<TfToken> kind = Level(level);
+  return PathStrings(Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.SelectTargets(paths, kind);
+  }));
+}
+
+SourceSelection SelectionFromBlender(const Correspondence& correspondence, const bp::object& selectedElementIndices,
+                                     const bp::object& activeElementIndex, const bp::object& level) {
+  std::vector<std::size_t> selected;
+  for (bp::stl_input_iterator<std::size_t> index(selectedElementIndices), end; index != end; ++index)
+    selected.push_back(*index);
+  std::optional<std::size_t> active;
+  if (!activeElementIndex.is_none()) active = bp::extract<std::size_t>(activeElementIndex)();
+  const std::optional<TfToken> kind = Level(level);
+  return Guarded([&] {
+    TF_PY_ALLOW_THREADS_IN_SCOPE();
+    return correspondence.SelectionFromBlender(selected, active, kind);
+  });
+}
+
+// The Python type SourceUnavailableError raises, a subclass of RuntimeError; set when the module registers.
+PyObject* sourceUnavailableErrorType = nullptr;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables): set once
+
+void WrapCorrespondence() {
+  sourceUnavailableErrorType =
+      PyErr_NewException("proscenium.core._core.SourceUnavailableError", PyExc_RuntimeError, nullptr);
+  bp::scope().attr("SourceUnavailableError") = bp::object(bp::handle<>(bp::borrowed(sourceUnavailableErrorType)));
+  bp::register_exception_translator<SourceUnavailableError>(
+      [](const SourceUnavailableError& error) { PyErr_SetString(sourceUnavailableErrorType, error.what()); });
+  bp::class_<SourceEntity>("SourceEntity", bp::no_init)
+      .add_property(
+          "source_path", +[](const SourceEntity& e) { return e.sourcePath.GetString(); })
+      .add_property(
+          "instance_context", +[](const SourceEntity& e) { return PathStrings(e.instanceContext); })
+      .add_property("floor", +[](const SourceEntity& e) { return Floor(e).GetString(); });
+  bp::class_<SourceSelection>("SourceSelection", bp::no_init)
+      .add_property(
+          "target_paths", +[](const SourceSelection& s) { return PathStrings(s.targetPaths); })
+      .add_property(
+          "active_target_path", +[](const SourceSelection& s) {
+            return s.activeTargetPath.IsEmpty() ? bp::object() : bp::object(s.activeTargetPath.GetString());
+          });
+  bp::class_<Correspondence, std::shared_ptr<Correspondence>, bp::noncopyable>("Correspondence", bp::no_init)
+      .def("__init__", bp::make_constructor(&NewCorrespondence, bp::default_call_policies(),
+                                            (bp::arg("stage"), bp::arg("source_paths"), bp::arg("instance_contexts"),
+                                             bp::arg("visible_in_viewport"))))
+      .def("resolve_pick", &ResolvePick, (bp::arg("element_index"), bp::arg("world_matrix")))
+      .def("displayed", &Displayed, bp::arg("paths"))
+      .def("highlight_targets", &HighlightTargets, bp::arg("target_paths"))
+      .def("select_targets", &SelectTargets, (bp::arg("entity_paths"), bp::arg("level")))
+      .def("selection_from_blender", &SelectionFromBlender,
+           (bp::arg("selected_element_indices"), bp::arg("active_element_index"), bp::arg("level")))
+      .add_property("element_count", &Correspondence::ElementCount);
 }
 
 }  // namespace
@@ -248,9 +417,13 @@ PXR_BOOST_PYTHON_MODULE(_core) {
       .def(
           "stage", +[](const SceneIndexChain& c) { return StageOrNone(c.Stage()); })
       .def("capture", &Capture, bp::arg("time_code"))
+      .def("_drop_next_capture_notices", &SceneIndexChain::DropNextCaptureNotices)  // for tests of missed notices
       .def("release", &SceneIndexChain::Release)
       .add_property("released", &SceneIndexChain::Released);
-  // Opaque: only planning reads a snapshot.
-  const bp::class_<SnapshotView> snapshot("Snapshot", bp::no_init);
+  // Opaque: only planning reads a snapshot. How many prims a capture copied is for tests and measurements of
+  // incremental capture only.
+  bp::class_<SnapshotView>("Snapshot", bp::no_init)
+      .add_property("_copied_prim_count", +[](const SnapshotView& s) { return s.data->copiedPrimCount; });
   WrapPlan();
+  WrapCorrespondence();
 }

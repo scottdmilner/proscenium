@@ -48,10 +48,12 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-BINDING-STATE` | **Binding state through handles:** bindings created, configured, synchronized, saved and reopened, undone, and removed through handles, with a persistent selection over two bindings. |
 | `F-FAILED-SETTINGS` | **Failed settings transition:** requested settings change; the published display remains old. |
 | `F-CACHED-TIME-CODES` | **Cached time codes:** time codes cached in a published generation, a `cache` call that fails, a generation synchronized at the default time code, and synchronizing again. |
+| `F-TIME-VARIATIONS` | **Every variation over time:** a transform, a shear that changes and one that appears, visibility, a placeholder's bounds that change and ones that appear and vanish, and a point instancer whose points appear, vanish, and change prototype, synchronized at one time code and cached at the others in several groupings. |
 | `F-SHARED-MATERIAL-FAILURE` | **Shared-material failure:** abort after preparing some material dependencies. |
 | `F-PUBLICATION-FAILURE` | **Publication failure:** correspondence publication fails. |
 | `F-PREPARATION-CLEANUP-FAILURE` | **Preparation and disposal both fail:** the old generation is unchanged, prepared leftovers stay inactive and persistently tracked, and retry after save/reopen is safe. |
 | `F-RETIREMENT-FAILURE` | **Retirement failure:** the new display is active; obsolete resources remain tracked. |
+| `F-APPLICATION-FAILURE` | **Application-time failure:** a resource operation fails, or the destination is removed, partway through preparation; the attempt aborts with a diagnostic, and the published generation is unchanged. |
 | `F-OWNERSHIP-AMBIGUITY` | **Ownership ambiguity:** copied binding identities on each copy route, a missing, cleared, or duplicated binding index, a linked binding, managed content copied without its manifest, and manifest entries whose content was deleted. |
 | `F-UNMANAGED-USER` | **Unmanaged user of managed data:** refresh and removal preserve unrelated content. |
 | `F-DETACH-SHARED` | **Detach with shared instance content:** a later refresh cannot mutate the detached result. |
@@ -64,6 +66,7 @@ Each fixture is assigned to a milestone in [milestones/](../milestones/README.md
 | `F-SAME-VALUES` | **Same evaluated values at a different time:** no unnecessary display writes. |
 | `F-UNDO-AFTER-DAMAGE` | **Undo after partial external display damage.** |
 | `F-NO-OP-REFRESH` | **No-op refresh:** resource counts and diagnostics follow [Resource Stability](../spec/lifecycle.md#resource-stability), including separate pending-cleanup accounting and recovery, and zero unnecessary writes. |
+| `F-EDIT-SEQUENCE` | **Edit sequence:** one edit per change-matrix case, each refresh compared with a clean full rebuild: inherited and repeated edits, a shear introduced and removed, bounds that change, appear, and vanish, a type change and a variant switch, prims added, activated, deactivated, removed, renamed, and moved, `instanceable` toggled, shared instance contents changed, points moved and removed with and without ids, and the binding's settings, representation version, layers, and attached stage changed. |
 | `F-KIND-HIERARCHY` | **Kind hierarchy:** an assembly, group, and component above meshes, a mesh under no model, components outside a valid model hierarchy, and intermediate prims with nothing Hydra needs to keep; selection by kind and expansion follow the composed stage. |
 | `F-NESTED-SELECTION` | **Selection floors in nested native instances:** one prototype used inside and outside an outer instance, and a kind on an instance root; nothing inside instance contents is a selection target. |
 | `F-UNIVERSE-MEMBERSHIP` | **Browsing-universe membership:** invisible, guide-only, render-only, inactive, abstract, and unloaded content, a guide made explicitly visible by an ancestor's `guideVisibility`, a materials scope, an empty organizational prim, an unsupported gprim shown as a placeholder or marker, and visibility that changes over time. |

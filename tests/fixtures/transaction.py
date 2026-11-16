@@ -13,6 +13,8 @@ src/ (M5 plan, D13); the fixture names the step and leaves the patching to the t
   some prepared work failing, on a first synchronization and on a later one. Pending Cleanup.
 - retirement_failure (F-RETIREMENT-FAILURE): a synchronization that publishes, then fails to retire some
   of the old generation's resources. Synchronization Transaction.
+- application_failure (F-APPLICATION-FAILURE): a failure only application can detect, partway through
+  preparation: a resource operation failing, and the destination removed. Blender Application.
 - source_change (F-SOURCE-CHANGE): a contributing layer edited while the binding evaluates, and changed
   after a generation is synchronized, before cache. Source Consistency, Cached Time Codes.
 - cached_time_codes (F-CACHED-TIME-CODES): time codes cached in a generation, a cache call that fails, a
@@ -190,6 +192,38 @@ def retirement_failure(dest: Path) -> Generator[RetirementFailureScene]:
         time_codes=(0.0, 10.0),
         failed_retirements=ROLES_PER_PLACEHOLDER,
         outcome=ResultState.COMPLETED_WITH_ISSUES,
+    )
+
+
+class ApplicationFailureKind(StrEnum):
+    """A failure only application can detect, which a test injects partway through preparation (APP-05)."""
+
+    RUNTIME = "runtime"  # a resource operation fails, as creating the next datablock raising
+    STATE_CHANGE = "state change"  # the destination becomes invalid: its collection is removed
+
+
+@dataclass
+class ApplicationFailureScene(TransactionScene):
+    failures: tuple[ApplicationFailureKind, ...]  # one test run each, on a first synchronization and a later one
+    prepared_before_failure: int  # the failure comes once this many resources are prepared
+    outcome: ResultState
+
+
+@contextmanager
+def application_failure(dest: Path) -> Generator[ApplicationFailureScene]:
+    """F-APPLICATION-FAILURE: preparation fails after two placeholders, by each kind of failure in turn.
+
+    The plan authorizes no fallback, so each failure aborts the attempt (APP-06): it's fatal, with a diagnostic
+    naming the failure's kind and the resource or destination it came from, the prepared work disposed of, and
+    the published generation unchanged, none on a first synchronization and the earlier one on a later. Blender
+    data outside the binding is unchanged. Resource-consumption failures, such as a texture that disappeared,
+    need content M9 brings.
+    """
+    yield ApplicationFailureScene(
+        **vars(_open(dest)),
+        failures=tuple(ApplicationFailureKind),
+        prepared_before_failure=4,
+        outcome=ResultState.FATAL_FAILURE,
     )
 
 

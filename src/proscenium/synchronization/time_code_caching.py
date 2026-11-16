@@ -2,8 +2,12 @@
 
 A cache call evaluates and plans the source at each time code the generation hasn't cached, under the generation's
 settings, before changing any Blender data, so its source-state diagnostics exist before then, as a synchronization's
-do. The application layer then keys the published display at them, and the generation record gains them. It
-publishes no new generation, records no last attempt, and pushes no undo step, as Bindings pushes none for it.
+do. What varies is what differs: each plan is compared with the generation's own, held since it was published
+(binding.runtime.held_plans), through the core's plan diff, and a copy a cached time code moves, rebuilds, or shows
+otherwise, or one keyed already, varies (DECISIONS.md "What a cache call keys"). time_code_keying then keys those copies
+at every time code the generation holds, and the generation record gains the call's. Without the generation's plan held,
+as after an undo past the held plans, every copy is keyed. It publishes no new generation, records no last attempt, and
+pushes no undo step, as Bindings pushes none for it.
 
 A call that fails caches none of its time codes (CACHE-03): before then a failure only reports, and after it the keys
 the call added are removed, the manifest restored, and the actions it made disposed of under the transaction's rules,
@@ -20,31 +24,33 @@ from typing import TYPE_CHECKING
 from pxr import Usd
 
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
-from ..binding.results import Diagnostic, DiagnosticCode, Result
-from ..binding.runtime import binding_operations, ownership
+from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
+from ..binding.runtime import binding_operations, kept_manifests, ownership
 from ..binding.source_access import stages
-from . import application, evaluation, preparation_resources
+from ..core import _core
+from . import application, evaluation, preparation_resources, time_code_keying
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Sequence
+    from collections.abc import Collection
 
     import bpy
 
     from ..binding.persistence import binding_records
-    from ..binding.runtime import stage_tracking
+    from ..binding.runtime import held_plans, stage_tracking
     from ..binding.source_access import BindingId
-    from ..core import _core
 
 
 def cache(
     binding_id: BindingId,
     config: binding_records.BindingConfig,
     current: stage_tracking.BindingStageTracker,
+    published_plans: held_plans.HeldPlans,
     time_codes: Collection[Usd.TimeCode],
 ) -> Result:
     """Cache the published generation's time-varying values at each of time_codes it hasn't cached, all or none.
 
-    config is a usable binding's, and time_codes numeric. The result names the time codes it attempted, those the
+    config is a usable binding's, and time_codes numeric; published_plans hold the published generations' plans. The
+    result names the time codes it attempted, those the
     generation hadn't cached, in order. A generation synchronized at the default time code has nothing to cache, so
     the call succeeds caching nothing (CACHE-06); one with no generation, or whose source changed since it was
     synchronized, or whose target scene's unit scale changed since, needs synchronizing, so the call fails caching
@@ -52,7 +58,7 @@ def cache(
     """
     scene, destination = config.scene, binding_operations.require_canonical_binding_record(binding_id).collection
     assert scene is not None  # a binding's candidate names a target scene that exists
-    manifest = manifests.read_manifest(destination)
+    manifest = kept_manifests.read_manifest(destination)
     generation = binding_state.read_generation(destination)
     if (unusable := _unusable_state_diagnostic(binding_id, manifest, generation)) is not None:
         return Result(unusable)
@@ -83,40 +89,81 @@ def cache(
         )
     if not new:
         return Result()
-    own = evaluation.source_state_diagnostics(binding_id, evaluation_stage)
-    planned = evaluation.evaluate_display_plans(
+    report = DiagnosticCollector()
+    plans = evaluation.evaluate_display_plans(
         binding_id,
         binding_stages,
         evaluation_stage,
         published.applied_settings,
         published.unit_scale,
         attempted,
+        report,
         representation_version=application.REPRESENTATION_VERSION,
     )
-    if isinstance(planned, Diagnostic):
-        return Result(*own, planned, attempted_time_codes=attempted)
-    own = (*own, *_plans_diagnostics(binding_id, planned))
+    if plans is None:
+        return report.result(attempted_time_codes=attempted)
 
     work = preparation_resources.new_preparation_resources(binding_id, cleanup_ledgers.OriginatingOperation.CACHE)
     before = _published_manifest(manifest)
+    plans_by_time_code = dict(zip(new, plans, strict=True))
+    own = published_plans.plan_for(published)
+    unknown = time_code_keying.VaryingCopies(None)  # without the generation's plan, every copy
+    varying = unknown if own is None else _varying_copies(own, plans_by_time_code.values(), before)
     try:
-        changes = application.key_time_codes(dict(zip(new, planned, strict=True)), before, published.time_code, work)
+        changes = time_code_keying.key_time_codes(
+            plans_by_time_code, varying, before, destination, published.time_code, published.cached_time_codes, work
+        )
     except Exception as error:  # noqa: BLE001 - any failure is the call's fatal diagnostic
         message = f"Keying the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PREPARATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
+        preparation_resources.abort(report, failed, work)
+        return report.result(attempted_time_codes=attempted)
     cached = tuple(sorted({*published.cached_time_codes, *new}))
     try:
         # Restored whole, since an update by entry that fails partway may have written some entries.
-        work.rollback_actions.append(functools.partial(manifests.write_manifest, destination, before))
+        work.rollback_actions.append(functools.partial(kept_manifests.write_manifest, destination, before))
         ownership.set_manifest_entries(binding_id, changes, created=work.datablocks, published=before)
         binding_state.write_generation(destination, dataclasses.replace(published, cached_time_codes=cached))
     except Exception as error:  # noqa: BLE001
         message = f"Recording the cached time codes failed: {error}"
         failed = Diagnostic(DiagnosticCode.PUBLICATION_FAILED, binding_id, message)
-        return Result(*own, failed, *_discarded(work), attempted_time_codes=attempted)
+        preparation_resources.abort(report, failed, work)
+        return report.result(attempted_time_codes=attempted)
     preparation_resources.remove_staging_and_clear_tracking(work)
-    return Result(*own, attempted_time_codes=attempted)
+    return report.result(attempted_time_codes=attempted)
+
+
+def _varying_copies(
+    own: _core.Plan, plans: Collection[_core.Plan], published: manifests.Manifest
+) -> time_code_keying.VaryingCopies:
+    """The copies that vary from own in plans, or that published keys already, by source entity.
+
+    A copy varies when keyed already, or when a plan moves it, rebuilds it, shows it otherwise, changes its bounds,
+    lacks it, or has it where own doesn't.
+    """
+    varying = {
+        identity.entity
+        for entry in published.entries.values()
+        if (identity := entry.identity) is not None and identity.role is manifests.RepresentationRole.ACTION
+    }
+    own_sources = [entry.source_path for entry in own.correspondence]
+    for plan in plans:
+        diff = _core.diff_plans(own, plan)
+        sources = [entry.source_path for entry in plan.correspondence]
+        changed = (
+            diff.moved_copy_indices,
+            diff.rebuilt_copy_indices,
+            diff.participation_changed_copy_indices,
+            diff.bounds_changed_copy_indices,
+        )
+        for buffer in changed:
+            with memoryview(buffer) as copies:  # released before returning (SNAP-13)
+                varying.update(sources[copy] for copy in copies.tolist())
+        with memoryview(diff.previous_copy_indices) as previous:
+            varying.update(sources[copy] for copy, old in enumerate(previous.tolist()) if old < 0)
+        with memoryview(diff.removed_previous_copy_indices) as removed:
+            varying.update(own_sources[old] for old in removed.tolist())
+    return time_code_keying.VaryingCopies(varying)
 
 
 def _unusable_state_diagnostic(
@@ -147,11 +194,6 @@ def _published_manifest(stored: id_property_records.LoadedRecord[manifests.Manif
     return manifests.Manifest({}) if stored is None else stored.record
 
 
-def _plans_diagnostics(binding_id: BindingId, planned: Sequence[_core.Plan]) -> tuple[Diagnostic, ...]:
-    """The source-side diagnostics of each of the plans, in order."""
-    return tuple(d for plan in planned for d in evaluation.plan_diagnostics(binding_id, plan))
-
-
 def _stale_message(
     binding_stages: stages.BindingStages, published: binding_state.GenerationMetadata, scene: bpy.types.Scene
 ) -> str | None:
@@ -162,15 +204,3 @@ def _stale_message(
     if scene.unit_settings.scale_length != published.unit_scale:
         return "The target scene's unit scale changed since the binding was synchronized; synchronize it first"
     return None
-
-
-def _discarded(work: preparation_resources.PreparationResources) -> tuple[Diagnostic, ...]:
-    """Undo work's changes to the published generation, and dispose of what it made; each disposal that failed.
-
-    Raises, as defects, what reverting or writing the ledger raises, having disposed of the work either way.
-    """
-    try:
-        preparation_resources.revert_published_resource_changes(work)
-    finally:
-        disposed = preparation_resources.dispose(work)
-    return disposed

@@ -79,7 +79,7 @@ def _raising(*_args: object, **_kwargs: object) -> None:
 def _fail_publication_write(monkeypatch: pytest.MonkeyPatch, write: str) -> None:
     """Make one of publication's writes fail."""
     if write == "manifest":
-        monkeypatch.setattr(manifests, "write_manifest", _raising)
+        monkeypatch.setattr(manifests, "write_manifest_entries", _raising)
     else:
         monkeypatch.setattr(binding_state, "write_generation", _raising)
 
@@ -89,7 +89,7 @@ def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Syn
         handle.release()  # a source reason: the caller's stage is no longer attached
         return
     module, name = {
-        SynchronizationFailureStep.EVALUATE: (_core, "SceneIndexChain"),
+        SynchronizationFailureStep.EVALUATE: (_core.SceneIndexChain, "capture"),
         SynchronizationFailureStep.PLAN: (_core, "plan"),
         SynchronizationFailureStep.PREPARE: (application, "prepare"),
         SynchronizationFailureStep.PUBLISH: (publication, "publish"),
@@ -118,7 +118,7 @@ def test_a_publication_switches_the_whole_generation(bindings: Bindings, tmp_pat
         assert _ledger_entries() == {}
         assert [c.name for c in bpy.data.collections] == ["Shot"]  # the staging collection is gone
         uids = {d.session_uid for d in named if d is not None}  # a removed datablock can't be compared
-        assert handle.synchronize(12).state is ResultState.SUCCESS
+        assert handle.synchronize(12, full_rebuild=True).state is ResultState.SUCCESS
         second = _published(handle)
         assert uids.isdisjoint(second["objects"])
         assert second["manifest"] != first["manifest"]
@@ -157,7 +157,7 @@ def test_a_failed_publication_keeps_the_published_generation(
         assert handle.synchronize(10).state is ResultState.SUCCESS
         published, before = _published(handle), datablocks()
         _fail_publication_write(monkeypatch, write)
-        result = handle.synchronize(12)
+        result = handle.synchronize(12, full_rebuild=True)  # every partition replaced
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
         assert _published(handle) == published
         assert all(ownership.of(obj).claims for obj in _destination().objects)

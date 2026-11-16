@@ -45,6 +45,7 @@ class InteractionScene:
     absent_floor: tuple[str, str, str] | None = None
     excluded: dict[str, str] = field(default_factory=dict)  # composed prim -> why it is not in the universe
     outside_model_hierarchy: tuple[str, ...] = ()  # prims with an authored model kind that UsdPrim.IsModel rejects
+    asset_info: dict[str, dict[str, str]] = field(default_factory=dict)  # prim -> its assetInfo's name and version
 
 
 def _with_ancestors(paths: frozenset[str]) -> frozenset[str]:
@@ -98,6 +99,7 @@ def kind_hierarchy(dest: Path) -> Generator[InteractionScene]:
         probes=("/World/Props/Missing",),
         absent_floor=("/World/Table", top, "group"),
         outside_model_hierarchy=("/World/Table/Vase", "/Debris/Crate"),
+        asset_info={chair: {"name": "Chair", "version": "2"}},
     )
 
 

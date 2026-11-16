@@ -84,6 +84,7 @@ Failure safety for synchronization is defined separately by the [Synchronization
 All persistent state (see [Binding State](#binding-state)) lives in Blender data, so undo restores previously published display state and its metadata together. It does not undo external USD changes or guarantee that the restored display matches the current source.
 
 - Each synchronization that publishes is exactly one undo step. Synchronizations invoked through the Python API push the step explicitly; an operator that calls the API does not push a second one.
+- A synchronization that writes nothing, as a refresh with nothing changed, publishes nothing new and pushes no undo step, so the redo history survives it.
 - A failed synchronization pushes no undo step. It may update the last-attempt record and pending-cleanup tracking, but leaves binding configuration and the published generation unchanged.
 - With global undo disabled or in background mode, synchronization behaves the same but pushes no step.
 - Caching time codes ([Cached Time Codes](pipeline.md#cached-time-codes)) pushes no undo step. Undo and redo restore a generation's cached time codes with the rest of it.

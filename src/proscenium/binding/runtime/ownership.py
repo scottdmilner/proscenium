@@ -20,7 +20,7 @@ import bpy
 
 from ..persistence import binding_records, manifests
 from ..persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
-from . import binding_operations
+from . import binding_operations, kept_manifests
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -72,7 +72,7 @@ def of(datablock: bpy.types.ID) -> Ownership:
     ]
     claims = []
     for holder in sorted(holders, key=lambda c: c.name):
-        manifest = manifests.read_manifest(holder)
+        manifest = kept_manifests.read_manifest(holder)
         if isinstance(manifest, LoadedRecord):  # one that can't be read claims nothing until it is repaired
             claimant = binding_records.binding_ids(holder)[0]
             claims += [
@@ -86,7 +86,7 @@ def manifest(binding_id: BindingId) -> LoadedRecord[manifests.Manifest] | Refuse
 
     Raises KeyError if no binding has this identifier, and DisabledBindingError if it has no canonical candidate.
     """
-    return manifests.read_manifest(binding_operations.require_canonical_binding_record(binding_id).collection)
+    return kept_manifests.read_manifest(binding_operations.require_canonical_binding_record(binding_id).collection)
 
 
 def set_manifest(binding_id: BindingId, manifest: manifests.Manifest | None) -> None:
@@ -97,9 +97,9 @@ def set_manifest(binding_id: BindingId, manifest: manifests.Manifest | None) -> 
     """
     record = binding_operations.require_canonical_binding_record(binding_id)
     if manifest is None:
-        manifests.remove_manifest(record.collection)
+        kept_manifests.remove_manifest(record.collection)
     else:
-        manifests.write_manifest(record.collection, manifest)
+        kept_manifests.write_manifest(record.collection, manifest)
     binding_operations.restore_missing_binding_index_entry(binding_id, record)
 
 
@@ -128,10 +128,10 @@ def set_manifest_entries(
     if not changed and not removed:
         return
     if published is None:
-        stored = manifests.read_manifest(record.collection)
+        stored = kept_manifests.read_manifest(record.collection)
         if isinstance(stored, RefusedRecord):
             raise RefusedRecordError(stored)
         published = manifests.Manifest({}) if stored is None else stored.record
     after = published.updated(changed, removed, created)
-    manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)
+    kept_manifests.write_manifest_entries(record.collection, after, changed.keys(), removed)
     binding_operations.restore_missing_binding_index_entry(binding_id, record)

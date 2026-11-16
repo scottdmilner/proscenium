@@ -15,11 +15,15 @@ older version to the next.
   report why.
 - A record that can't be read survives until the user repairs it: writers read a record first and refuse on any
   refusal, and write() itself refuses to replace one that is unreadable or newer.
+- Each write stores a new random revision under REVISION_KEY, which revision() reads without loading the record, so a
+  reader can tell a record it decoded before is unchanged: an undo restores a record with its revision. A record
+  stored before revisions has none until it is next written.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import secrets
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -32,6 +36,7 @@ if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
 NAMESPACE = "proscenium"
+REVISION_KEY = "_revision"  # a record's revision, new at each write
 VERSION_KEY = "_schema_version"
 _STAGING_KEY = "_staging"  # write_items' scratch group, gone when it returns
 
@@ -52,8 +57,9 @@ class Schema[R: DataclassInstance]:
             raise TypeError(f"{self.name}: the record type must be a dataclass")
         if set(self.migrations) != set(range(1, self.version)):
             raise ValueError(f"{self.name}: needs one migration from each version below {self.version}")
-        if VERSION_KEY in {f.name for f in dataclasses.fields(self.record_type)}:
-            raise ValueError(f"{self.name}: {VERSION_KEY!r} is reserved")
+        for reserved in (VERSION_KEY, REVISION_KEY):
+            if reserved in {f.name for f in dataclasses.fields(self.record_type)}:
+                raise ValueError(f"{self.name}: {reserved!r} is reserved")
 
 
 class RefusalReason(StrEnum):
@@ -106,7 +112,7 @@ def _load[R: DataclassInstance](schema: Schema[R], stored: object, *, copy: bool
     if isinstance(version, RefusedRecord):
         return version
     assert isinstance(stored, Mapping)
-    fields = {key: value for key, value in stored.items() if key != VERSION_KEY}
+    fields = {key: value for key, value in stored.items() if key not in (VERSION_KEY, REVISION_KEY)}  # see stored()
     if copy:
         fields = _copy_record_containers(fields)
     # Any exception is a refusal: stored data must never crash the extension. A missing or unknown
@@ -177,13 +183,16 @@ def _namespace(id_: bpy.types.ID, schema: Schema[Any]) -> Any:
 
 
 def stored(id_: bpy.types.ID, key: str) -> object | None:
-    """A copy of the stored record under key, as plain values; None if there is none."""
+    """A copy of the stored record under key, as plain values, without its revision; None if there is none."""
     namespace = id_.get(NAMESPACE)
     if namespace is None:
         return None
     if not _is_group(namespace):  # the namespace itself is damaged: its records are unreadable
         return _id_property_to_python(namespace)
-    return _id_property_to_python(namespace.get(key))
+    value = _id_property_to_python(namespace.get(key))
+    if isinstance(value, dict):
+        value.pop(REVISION_KEY, None)  # write metadata, not the record's
+    return value
 
 
 def has(id_: bpy.types.ID, key: str) -> bool:
@@ -196,6 +205,18 @@ def keys(id_: bpy.types.ID) -> list[str]:
     """The keys of id_'s records; none if its namespace is missing or damaged."""
     namespace = id_.get(NAMESPACE)
     return list(namespace.keys()) if _is_group(namespace) else []
+
+
+def revision(id_: bpy.types.ID, key: str) -> str | None:
+    """The revision of the record under key, without reading the record; None if it has none, or there's none."""
+    namespace = id_.get(NAMESPACE)
+    if namespace is None or not _is_group(namespace):
+        return None
+    stored_record = namespace.get(key)
+    if stored_record is None or not _is_group(stored_record):
+        return None
+    found = stored_record.get(REVISION_KEY)
+    return found if isinstance(found, str) else None
 
 
 def read[R: DataclassInstance](
@@ -219,7 +240,7 @@ def write[R: DataclassInstance](id_: bpy.types.ID, key: str, schema: Schema[R], 
     existing = None if namespace is None else namespace.get(key)
     if existing is not None and isinstance(result := _version(schema, existing), RefusedRecord):
         raise RefusedRecordError(result)
-    value = {VERSION_KEY: schema.version} | _encode_record_fields(record)
+    value = {VERSION_KEY: schema.version, REVISION_KEY: _new_revision()} | _encode_record_fields(record)
     if namespace is None:
         id_[NAMESPACE] = {}
         namespace = id_[NAMESPACE]
@@ -263,7 +284,7 @@ def write_items[R: DataclassInstance](
     if not _is_group(group):  # none stored, or not at the current version: written whole
         write(id_, key, schema, record)
         return
-    assert namespace is not None and group is not None
+    assert namespace is not None and existing is not None and group is not None
     items = getattr(record, field)
     # Blender converts a whole group before storing it, so a value or key it can't hold fails here, having
     # stored nothing; then each item is copied from the staged group, which can't fail.
@@ -275,6 +296,11 @@ def write_items[R: DataclassInstance](
     for k in changed:
         group[k] = staged[k]
     del namespace[_STAGING_KEY]
+    existing[REVISION_KEY] = _new_revision()
+
+
+def _new_revision() -> str:
+    return secrets.token_hex(16)
 
 
 def _encode_record_fields(value: Any) -> Any:

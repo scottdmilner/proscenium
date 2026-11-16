@@ -11,6 +11,9 @@
 - The undo step and retirement measured again with incremental refresh ([M5 plan](../plans/M05-architecture.md), F1, F2): after a full rebuild a step held about the display's size, 1.2 GB on ALab, and 4.5 MB after moving one object (DECISIONS.md "Undo memory cost"); retirement costs about the datablocks removed times those left in the file, 5.0 s for a full rebuild on ALab.
 - Manifest updates by entry measured with the refresh measurements (M7), and where they're over budget, a count of each resource's users and a persistent map in place of the copied entries.
 - Where a target is missed, the work that meets it, within Phase 1's correctness.
+- From M7 ([M7 plan](../plans/M07-application.md), Phase G; [runtime record](../feasibility/runtime-record.md#the-products-synchronizations-m7-phase-g)):
+  - Narrowing the plan diff by the notices a capture read: it compares the whole plans, 0.5 ms on ALab and 3 ms at 30,001 copies, but each refresh's per-copy decision and its source paths grow with the plan.
+  - Noted costs: the first refresh after a whole write, which groups the manifest's partitions from every entry, 44 ms of partition replacement on ALab and 222 ms at 30,001 objects; the held plans, up to the undo steps plus one per binding, about 4 MB each on ALab and 14 MB at 30,001 objects; a hide's undo push, 238 ms on ALab against 35 ms after a move, with the push evaluating the depsgraph; the second undo push after a synchronization, 13 MB on `updates-1000` with nothing changed, not explained; and retirement beside a replacement display (M11's note).
 
 **Tests:**
 

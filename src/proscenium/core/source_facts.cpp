@@ -51,6 +51,11 @@ const TfToken& SourceInfoTokens::PointIds() {
   return token;
 }
 
+const TfToken& SourceInfoTokens::AuthoredExtent() {
+  static const TfToken token("authoredExtent");
+  return token;
+}
+
 HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
                                        const UsdImagingDataSourceStageGlobals& globals) {
   TfTokenVector names;
@@ -78,6 +83,14 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
           ids, globals, prim.GetPath(), HdDataSourceLocator(SourceInfoTokens::Schema(), SourceInfoTokens::PointIds())));
     }
   }
+  if (ComputesExtent(prim)) {
+    if (const UsdAttribute extent = UsdGeomBoundable(prim).GetExtentAttr(); extent && extent.HasAuthoredValue()) {
+      names.push_back(SourceInfoTokens::AuthoredExtent());
+      values.push_back(UsdImagingDataSourceAttributeNew(
+          extent, globals, prim.GetPath(),
+          HdDataSourceLocator(SourceInfoTokens::Schema(), SourceInfoTokens::AuthoredExtent())));
+    }
+  }
   if (prim.IsInstance()) {
     names.push_back(SourceInfoTokens::InstancePrototype());
     values.push_back(HdRetainedTypedSampledDataSource<TfToken>::New(prim.GetPrototype().GetPath().GetToken()));
@@ -96,10 +109,17 @@ HdContainerDataSourceHandle SourceInfo(const UsdPrim& prim, bool imaged,
   return HdRetainedContainerDataSource::New(names.size(), names.data(), values.data());
 }
 
-// Point instancers and volumes are left out: their extents would mean evaluating prototypes or reading field files
-// merely for a placeholder.
-bool ComputesExtent(const UsdPrim& prim) {
-  return prim.IsA<UsdGeomPointBased>() && !prim.IsA<UsdGeomMesh>() && !prim.IsA<UsdGeomNurbsPatch>();
+// Point instancers aren't gprims, and USD has no extent computation for a volume: theirs would mean evaluating
+// prototypes or reading field files merely for a placeholder.
+bool ComputesExtent(const UsdPrim& prim) { return prim.IsA<UsdGeomGprim>() && !prim.IsA<UsdGeomMesh>(); }
+
+bool FactReadsProperty(const UsdPrim& prim, const TfToken& property) {
+  if (!prim) return false;
+  if (property == UsdGeomTokens->guideVisibility || property == UsdGeomTokens->proxyVisibility ||
+      property == UsdGeomTokens->renderVisibility || property == UsdGeomTokens->xformOpOrder)
+    return true;
+  if (property == UsdGeomTokens->ids && prim.IsA<UsdGeomPointInstancer>()) return true;
+  return ComputesExtent(prim);
 }
 
 HdContainerDataSourceHandle ComputedExtent(const UsdPrim& prim, UsdTimeCode time) {

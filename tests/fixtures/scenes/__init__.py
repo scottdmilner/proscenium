@@ -24,6 +24,8 @@ class Scene(Enum):
     APPEARANCE = "appearance"  # F-APPEARANCE-CASES (with its texture), F-NESTED-STRESS, and point instancers
     TRANSACTION = "transaction"  # layers for every generator in fixtures/transaction.py
     EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py, generated ones' base included
+    INCREMENTAL = "incremental"  # layers for every generator in fixtures/incremental.py and edit_sequence.py
+    TIME_VARIATIONS = "time_variations"  # F-TIME-VARIATIONS' layer, for fixtures/time_variations.py
     # prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree (src/proscenium/ui)
     SCENE_GRAPH = "scene_graph"
     # property_kinds.usda, with its weaker sublayer and value clip, for the property viewer's list (src/proscenium/ui)

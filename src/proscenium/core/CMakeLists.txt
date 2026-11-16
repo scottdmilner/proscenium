@@ -31,60 +31,75 @@ if(NOT EXISTS "${USD_LIBRARY}")
   message(FATAL_ERROR "Blender's USD library not found: '${USD_LIBRARY}' (set USD_LIBRARY)")
 endif()
 
+# The settings every target of this build shares: C++17, Blender's USD headers as system includes, the core's
+# warnings, and on Windows Blender's runtime and USD's MSVC flags.
+function(proscenium_compile_settings target)
+  target_compile_features(${target} PRIVATE cxx_std_17)
+  set_target_properties(${target} PROPERTIES CXX_EXTENSIONS OFF)
+  target_include_directories(${target} SYSTEM PRIVATE
+    "${BLENDER_DEPS}/usd/include"
+    "${BLENDER_DEPS}/tbb/include"
+  )
+  # Warnings for the build's own code; USD's headers are system includes.
+  if(MSVC)
+    target_compile_options(${target} PRIVATE /W4)
+  else()
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  # Clang's nearest equivalents of MSVC's /W4 shadowing (C4456-C4458) and size_t narrowing (C4267), so a macOS
+  # build reports what the Windows one would.
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(${target} PRIVATE -Wshadow-all -Wshorten-64-to-32)
+  endif()
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # USD's tf/hashset.h includes libstdc++'s deprecated <ext/hash_set>, which #warns in every file that
+    # reaches sdf/path.h. USD builds itself with the same flag (cmake/defaults/gccclangshareddefaults.cmake).
+    # Deprecated functions still warn: that is -Wdeprecated-declarations.
+    target_compile_options(${target} PRIVATE -Wno-deprecated)
+  endif()
+  if(WIN32)
+    # Blender's CRT and STL layout: release dynamic runtime only, and USD's MSVC flags.
+    set_target_properties(${target} PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+    target_compile_options(${target} PRIVATE /permissive- /Zc:inline /Zc:__cplusplus /bigobj /EHsc)
+    target_compile_definitions(${target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
+  else()
+    set_target_properties(${target} PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+  endif()
+endfunction()
+
+# The inspection layer, a library of its own that includes and links only USD (interaction-contract.md "Two Layers
+# and the Live Stage"); the core links it statically.
+add_subdirectory(inspection)
+
 Python_add_library(_core MODULE WITH_SOABI
   batch_groups.cpp
+  correspondence.cpp
   diagnostics.cpp
   python_error_translation.cpp
   instancing.cpp
   python_bindings.cpp
   plan.cpp
+  plan_diff.cpp
   snapshot_prim_reader.cpp
   prim_record.cpp
   revision_cached_container.cpp
   scene_index_chain.cpp
+  scene_index_notices.cpp
   snapshot.cpp
   source_facts.cpp
   source_info_scene_index.cpp
   stage_handle.cpp
 )
-target_compile_features(_core PRIVATE cxx_std_17)
-set_target_properties(_core PROPERTIES CXX_EXTENSIONS OFF)
-target_include_directories(_core SYSTEM PRIVATE
-  "${BLENDER_DEPS}/usd/include"
-  "${BLENDER_DEPS}/tbb/include"
-)
-# Warnings for the core's own code; USD's headers are system includes.
-if(MSVC)
-  target_compile_options(_core PRIVATE /W4)
-else()
-  target_compile_options(_core PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-# Clang's nearest equivalents of MSVC's /W4 shadowing (C4456-C4458) and size_t narrowing (C4267), so a macOS
-# build reports what the Windows one would.
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  target_compile_options(_core PRIVATE -Wshadow-all -Wshorten-64-to-32)
-endif()
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # USD's tf/hashset.h includes libstdc++'s deprecated <ext/hash_set>, which #warns in every file that
-  # reaches sdf/path.h. USD builds itself with the same flag (cmake/defaults/gccclangshareddefaults.cmake).
-  # Deprecated functions still warn: that is -Wdeprecated-declarations.
-  target_compile_options(_core PRIVATE -Wno-deprecated)
-endif()
+proscenium_compile_settings(_core)
 # On the interface of Blender's exported pxr Python target; match it.
 target_compile_definitions(_core PRIVATE PXR_BOOST_PYTHON_NO_PY_SIGNATURES)
-target_link_libraries(_core PRIVATE "${USD_LIBRARY}")
+target_link_libraries(_core PRIVATE proscenium_inspection "${USD_LIBRARY}")
 
 if(WIN32)
-  # Blender's CRT and STL layout: release dynamic runtime only, and USD's MSVC flags.
-  set_target_properties(_core PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
-  target_compile_options(_core PRIVATE /permissive- /Zc:inline /Zc:__cplusplus /bigobj /EHsc)
-  target_compile_definitions(_core PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
   # oneTBB headers auto-link tbb12.lib.
   target_link_directories(_core PRIVATE "${BLENDER_DEPS}/tbb/lib")
 else()
   set_target_properties(_core PROPERTIES
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
     # The host loads its own USD first. Do not embed a machine's library paths.
     SKIP_BUILD_RPATH TRUE
     INSTALL_RPATH ""

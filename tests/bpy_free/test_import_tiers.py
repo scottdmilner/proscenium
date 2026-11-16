@@ -31,11 +31,12 @@ TIERS = (
     ("ui.scene_graph_widget.prim_tree", "ui.property_viewer_widget.property_list"),
     ("binding.persistence",),
     ("binding.runtime",),
-    ("synchronization",),
+    ("synchronization", "interaction"),
     ("api",),
     ("ui.columned_list", "ui.widget_updates"),
     ("ui.widget_resources", "ui.search_box", "ui.text_wrapping"),
     ("ui.scene_graph_widget.display", "ui.property_viewer_widget.display"),
+    ("interface",),
     ("addon",),
 )
 TIER_OF = {unit: tier for tier, units in enumerate(TIERS) for unit in units}
@@ -134,6 +135,18 @@ def _wrong_way(path: Path, unit: str) -> list[str]:
 
 def test_units_import_only_lower_tiers() -> None:
     found = [v for path in sorted(PACKAGE.rglob("*.py")) if (unit := _own_unit(path)) for v in _wrong_way(path, unit)]
+    assert not found, "\n".join(found)
+
+
+def test_the_interface_imports_only_the_api_and_widgets() -> None:
+    # M7 plan, settled 3 and Phase F: the temporary UI reaches the product only through api/, and may host ui/'s
+    # widgets, which only read a stage their host gives them, so M12 can replace it alone.
+    found = [
+        f"{path.relative_to(PACKAGE)}:{line} imports {name}"
+        for path in sorted((PACKAGE / "interface").rglob("*.py"))
+        for line, name, *_ in _imported(path)
+        if (unit := _unit(name.split(".")[1:])) not in {"interface", "api"} and not unit.startswith("ui.")
+    ]
     assert not found, "\n".join(found)
 
 

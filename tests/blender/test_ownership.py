@@ -12,7 +12,6 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding import persistence
 from proscenium.binding.persistence import binding_records, id_property_records, manifests
 from proscenium.binding.persistence.id_property_records import (
     NAMESPACE,
@@ -23,7 +22,7 @@ from proscenium.binding.persistence.id_property_records import (
     RefusedRecordError,
 )
 from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
-from proscenium.binding.runtime import ownership
+from proscenium.binding.runtime import kept_manifests, ownership
 from proscenium.binding.runtime.ownership import Claim
 from proscenium.binding.source_access import BindingId
 from support import ownership as oracle
@@ -136,13 +135,13 @@ def test_a_linked_copy_scene_shares_one_manifest(
     assert len(bpy.data.scenes) == 2
     shot = bpy.data.collections["Shot"]
     read: list[bpy.types.Collection] = []
-    read_manifest = persistence.manifests.read_manifest
+    read_manifest = kept_manifests.read_manifest
 
     def counted(destination: bpy.types.Collection) -> object:
         read.append(destination)
         return read_manifest(destination)
 
-    monkeypatch.setattr(persistence.manifests, "read_manifest", counted)
+    monkeypatch.setattr(kept_manifests, "read_manifest", counted)
     found = {obj: claims for obj in bpy.data.objects if (claims := ownership.of(obj).claims)}
     assert read == [shot] * len(found)  # only the managed objects' queries read a manifest
     assert {obj: claims for obj, claims in found.items() if obj in set(shot.objects)} == {
@@ -258,6 +257,7 @@ def test_an_invalid_manifest_is_refused(
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     stored["entries"][key("a")] |= change
     destination[NAMESPACE][manifests.MANIFEST_KEY] = stored
+    kept_manifests.clear()  # as the file load bringing a damaged manifest does; no write gave it a revision
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)
     assert result.refusal is RefusalReason.INVALID
@@ -271,6 +271,7 @@ def test_a_newer_manifest_is_refused_and_kept(bindings: Bindings, tmp_path: Path
     handle, manifest = _managed(bindings, tmp_path)
     destination = bpy.data.collections["Shot"]
     destination[NAMESPACE][manifests.MANIFEST_KEY][VERSION_KEY] = manifests.MANIFEST.version + 1
+    kept_manifests.clear()  # as the file load bringing a newer manifest does; no write gave it a revision
     stored = destination[NAMESPACE][manifests.MANIFEST_KEY].to_dict()
     result = manifests.read_manifest(destination)
     assert isinstance(result, RefusedRecord)

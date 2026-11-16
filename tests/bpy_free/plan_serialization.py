@@ -26,6 +26,8 @@ from proscenium.core import _core
 BUFFERS = (
     "copy_world_matrices",
     "copy_object_resource_indices",
+    "copy_bounds_mesh_resource_indices",
+    "copy_shear_parent_resource_indices",
     "copy_geometry_indices",
     "copy_placeholder_bounds_indices",
     "placeholder_bounds",

@@ -32,7 +32,7 @@
 # them; once it is listed in `started`, the checker requires an oracle on each of its
 # rows and a fixture on each of its behavior rows.
 
-started: [M1, M1b, M2, M3, M4, M5, M6]
+started: [M1, M1b, M2, M3, M4, M5, M6, M7]
 
 # Retired on 2026-11-03: SRC-01 (binding-owned file stage), ICON-32 and ICON-33
 # (file-stage live identity and lazy opening). Never reuse these IDs.
@@ -50,6 +50,8 @@ requirements:
       - id: ARCH-01
         quote: "The USD hierarchy must remain accessible through source inspection"
         delivery: M7
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY's display, every prim of the browsing universe is on the binding's live stage at its path, `displayed` is true for each and false for the probes, and each target's `highlight_targets` covers its subtree's display elements, whatever objects and parenting the display uses."
       - id: ARCH-04
         quote: "Supported descendants must receive the correct ancestor state, including beneath unsupported ancestors."
         fixtures: [F-UNSUPPORTED-CONTENT]
@@ -59,6 +61,7 @@ requirements:
         quote: "Source hierarchy and selection identities are independent of display partitioning."
         fixtures: [F-NESTED-STRESS]
         delivery: M7
+        oracle: "On F-NESTED-STRESS, the browsing universe and each display element's source entity, instance context, and floor come from the plan's correspondence, not Blender objects: they are the same after a full rebuild that replaces every object, and after a refresh that rebuilds some partitions and keeps the rest."
       - id: ARCH-06
         quote: "Tools address USD entities through the source selection model."
         kind: contract
@@ -81,10 +84,14 @@ requirements:
       - id: PH2-02
         quote: "Preserve source selections where their source identities remain valid."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, a persistent selection holding a copy that a step updates in place or rebuilds stays resolved after the refresh, and Blender's selection mirrors it; an entry for a path the step retires, such as a rename's old path, stays stored and is reported unresolved."
         note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh (DECISIONS.md \"Partition unit\"); the ID keeps its prefix, since IDs are never reused."
       - id: PH2-03
         quote: "Maintain sharing and reclaim obsolete managed resources without breaking sharing or other owners."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's instanceable steps, the instance that stays instanced keeps the prototype's mesh, the same datablock, while the other gets its own; after every step, no managed resource is left that no manifest entry uses, and none that another copy or an unmanaged user uses is removed."
         note: "Moved from Phase 2 with the user, 2026-11-07, with incremental refresh."
       - id: PH1-02
         quote: "The acceptance suite must pass"
@@ -148,6 +155,8 @@ requirements:
       - id: SNAP-13
         quote: "Application does not retain borrowed buffers beyond the synchronization that supplied them."
         delivery: M7
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "Once each synchronization of F-NO-OP-REFRESH returns, every buffer the plan lent has its export closed, and only the held plans (DECISIONS.md \"Incremental refresh comparison\") reference the plan, which releasing them releases."
       - id: SNAP-16
         quote: "Conversions made by Hydra filters, such as implicit surfaces or NURBS turned into meshes, are reported as approximations where inexact."
         fixtures: [F-UNSUPPORTED-CONTENT]
@@ -178,10 +187,16 @@ requirements:
     rows:
       - id: APP-05
         quote: "Report failures that only application can detect as diagnostics"
+        fixtures: [F-APPLICATION-FAILURE]
+        oracle: "On F-APPLICATION-FAILURE, each failure gives one diagnostic whose code names its kind (a runtime failure, or a state change for the removed destination) and that names the resource or destination it came from; the result is fatal."
       - id: APP-06
         quote: "When a resource fails during application, abort the transaction unless the plan already authorized a fallback for that resource."
+        fixtures: [F-APPLICATION-FAILURE]
+        oracle: "On F-APPLICATION-FAILURE, each failure aborts the attempt: the published generation, manifest, correspondence, and display are as before it (none on a first synchronization), every resource prepared before the failure is gone or tracked pending cleanup, and no undo step is pushed."
       - id: APP-08
         quote: "Application must not query USD to fill in unresolved source semantics."
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "The application layer's modules import nothing that reaches a stage (pxr, the compiled core, or the binding's source access) other than for types, which a bpy-free check of their imports enforces; on F-NO-OP-REFRESH, a plan whose chain is released and whose stage is gone still prepares every copy's partition."
 
   - section: spec/pipeline.md#why-the-boundary-is-enforced
     delivery: M5
@@ -246,6 +261,8 @@ requirements:
       - id: TXN-12
         quote: "These guarantees apply equally to incremental mutations."
         delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, with a failure injected at each transaction step after a step's local updates and rebuilt partitions are prepared, the published generation, manifest, correspondence, and every kept object's world matrix, hide flags, bounds mesh, and keys are those before the refresh, and the prepared partitions are disposed of or tracked pending cleanup, as for a full rebuild."
 
   - section: spec/pipeline.md#cached-time-codes
     delivery: M5
@@ -254,10 +271,13 @@ requirements:
       - id: CACHE-01
         quote: "evaluates the source at each given time code not yet cached, under the generation's settings, and adds the values that vary"
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
         oracle: "Synchronized at one sampled time code and cached at the others, in more than one order, the display at each sampled time code's frame passes the standard end-to-end checks against a clean synchronization there, content that appears or vanishes included; a frame between cached time codes shows the latest one before it."
       - id: CACHE-09
         quote: "One call caching several time codes displays the same as calls caching them one at a time, in any order and grouping."
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, synchronized at 0 and cached by each of its groupings, every cached time code's frame, and each frame between them, shows the same for every grouping: each copy's world matrix, hide flags, bounds, and presence."
       - id: CACHE-02
         quote: "Caching publishes no new generation."
         fixtures: [F-CACHED-TIME-CODES]
@@ -274,6 +294,8 @@ requirements:
       - id: CACHE-10
         quote: "A call never fails because of how content varies"
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, every cache call succeeds, whichever way each copy varies (a transform, a shear appearing, visibility, bounds, a box becoming a marker, copies appearing and vanishing, a point's prototype changing), and each cached frame shows what a clean synchronization at its time code does."
       - id: CACHE-05
         quote: "If the source has changed since the generation was synchronized, cache caches nothing and reports that the binding needs synchronizing"
         fixtures: [F-SOURCE-CHANGE]
@@ -294,6 +316,8 @@ requirements:
       - id: CACHE-08
         quote: "The display never synchronizes or caches on its own."
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "With F-TIME-VARIATIONS synchronized and cached, changing the frame, editing the live stage, and saving and reopening neither synchronize nor cache: the published generation, its cached time codes, and the last attempt are unchanged."
 
   - section: spec/pipeline.md#diagnostics
     delivery: M5
@@ -345,9 +369,14 @@ requirements:
         fixtures: [F-PREPARATION-CLEANUP-FAILURE]
         oracle: "On F-PREPARATION-CLEANUP-FAILURE, a later synchronization that succeeds reports success, with the earlier leftovers in its cleanup status and not among its own diagnostics."
       - id: DIAG-09
-        quote: "Success: no diagnostics in any category other than source state."
+        quote: "Success: no diagnostics in any category other than source state and verification."
         fixtures: [F-DIRTY-LAYER]
         oracle: "F-DIRTY-LAYER's synchronization reports success, holding only source-state diagnostics."
+      - id: DIAG-17
+        quote: "Verification (informational): an incremental capture that differed from a full re-read, reported only under the opt-in verification mode"
+        delivery: M7
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, with PROSCENIUM_VERIFY_CAPTURE set, a synchronization whose kept chain was made to miss an edit reports a capture-mismatch verification diagnostic naming each drawn copy that differs, which leaves its result state as its other diagnostics give it, and displays what a clean full rebuild does; with no miss it reports none, and without the variable it captures once."
       - id: DIAG-10
         quote: "Completed with issues: at least one unsupported, approximation, lossy-conversion, missing-dependency, invalid-data, or pending-cleanup diagnostic, but no fatal failure."
         fixtures: [F-RETIREMENT-FAILURE, F-UNSUPPORTED-CONTENT]
@@ -416,6 +445,11 @@ requirements:
         quote: "attach(stage, confirm=False) attaches the caller's stage to this binding and returns an immutable result."
         fixtures: [F-REATTACH]
         oracle: "Attachment returns success, a source-confirmation-required failure, or a refusal for an unreadable or disabled binding. Refusals leave the source and persistent records unchanged."
+      - id: API-15
+        quote: "With `full_rebuild=True`, the attempt rereads the source through a new imaging pipeline and prepares every display partition anew"
+        delivery: M7
+        fixtures: [F-NO-OP-REFRESH, F-EDIT-SEQUENCE]
+        oracle: "synchronize(full_rebuild=True) builds a new chain, whose capture copies every prim, and prepares every partition anew: on F-NO-OP-REFRESH its display, manifest, and correspondence equal a clean first synchronization's, with no kept datablock; on F-EDIT-SEQUENCE, after an edit the kept chain is made to miss, it displays the edit."
       - id: API-12
         quote: "release() drops this binding's source and evaluation stages and returns None."
         fixtures: [F-REATTACH]
@@ -693,10 +727,12 @@ requirements:
         quote: "Unrelated unmanaged content must not be modified or deleted."
         delivery: M7
         fixtures: [F-UNMANAGED-USER]
+        oracle: "On F-UNMANAGED-USER, after each refresh the unmanaged object, the unmanaged empty, and the object linked into the destination keep their data, transforms, parenting, collection links, selection, and names."
       - id: OWN-08
         quote: "Refresh does not mutate a managed resource that unmanaged content uses."
         delivery: M7
         fixtures: [F-UNMANAGED-USER]
+        oracle: "On F-UNMANAGED-USER, the bounds mesh an unmanaged object uses keeps its name and vertices through every refresh, the one after Used's bounds grow included; Used's copy gets a new mesh, and the old one leaves the manifest."
         risk: high
       - id: OWN-09
         quote: "Content without sufficient ownership evidence is treated as unmanaged. Ambiguous candidates are reported, not automatically claimed or deleted."
@@ -734,10 +770,10 @@ requirements:
         oracle: "Each placeholder's object and bounds mesh have identities from its drawn gprim's source path and instance context, distinct between gprims and equal across synchronizations."
       - id: ROLE-04
         quote: "A batch's resources take their identity from the content its copies share, and a shared datablock's from its content."
-        delivery: M7
+        delivery: M8
       - id: ROLE-06
         quote: "A batch's and a shared datablock's identities aren't persisted, so after reopening, a synchronization may replace their published resources as obsolete even where a prepared one has the same identity."
-        delivery: M7
+        delivery: M8
       - id: ROLE-05
         quote: "A prepared resource that represents what a published one does, in the same role, has its identity"
         fixtures: [F-RETIREMENT-FAILURE]
@@ -750,15 +786,19 @@ requirements:
     rows:
       - id: STAB-01
         quote: "Count active display resources and inactive pending-cleanup resources separately."
+        oracle: "On F-NO-OP-REFRESH synchronized five times unchanged, active display resources (in the manifest and linked) and inactive pending-cleanup resources (in the ledger) are counted separately, and the active count and the source/display diagnostics stay the first synchronization's."
       - id: STAB-02
         quote: "Disposal failures may retain additional resources only as inactive, persistently tracked pending cleanup with ownership evidence."
         fixtures: [F-NO-OP-REFRESH, F-RETIREMENT-FAILURE]
+        oracle: "On F-NO-OP-REFRESH's full rebuilds with retirement failing, and on F-RETIREMENT-FAILURE, the active count stays the clean one, and each leftover is inactive (linked into no scene), in the ledger with its ownership evidence, and reported by one cleanup diagnostic; nothing else is added."
       - id: STAB-03
         quote: "explicit cleanup retry must restore managed-resource counts to the clean baseline"
         fixtures: [F-NO-OP-REFRESH, F-PREPARATION-CLEANUP-FAILURE]
+        oracle: "Once the failures are removed, cleanup on F-NO-OP-REFRESH and F-PREPARATION-CLEANUP-FAILURE restores the total managed count to the published generation's clean baseline, empties the ledger, and clears the cleanup diagnostics."
       - id: STAB-04
         quote: "Resources that must be released intact to protect detached or external users are accounted for separately"
         fixtures: [F-NO-OP-REFRESH, F-UNMANAGED-USER]
+        oracle: "On F-NO-OP-REFRESH's protected user and on F-UNMANAGED-USER, a resource an unmanaged object uses is released intact: it leaves the manifest and the ledger, is counted apart from the active and pending-cleanup counts, and survives cleanup, while the clean counts are restored without it."
 
   - section: spec/lifecycle.md#detach-as-is
     delivery: M11
@@ -812,6 +852,11 @@ requirements:
         fixtures: [F-FAILED-SETTINGS]
         delivery: M5
         oracle: "A publishing synchronization adds exactly one undo step, through the API and through an operator calling it, and undoing it restores the previous generation."
+      - id: UNDO-10
+        quote: "A synchronization that writes nothing, as a refresh with nothing changed, publishes nothing new and pushes no undo step"
+        delivery: M7
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH with undo steps pushed, after an undo restores a held generation, a refresh that writes nothing pushes no undo step, so a redo then restores the later generation."
       - id: UNDO-03
         quote: "A failed synchronization pushes no undo step."
         delivery: M5
@@ -939,7 +984,7 @@ requirements:
         quote: "The saved display remains usable without its USD source"
         fixtures: [F-OFFLINE]
         oracle: "Reopening F-OFFLINE with its source moved away or nothing attached keeps the saved display's geometry, transforms, and materials unchanged."
-        note: "M7 adds the correspondence records to F-OFFLINE when it defines them."
+        note: "M7 adds correspondence after reopening to F-OFFLINE, built from the manifest and the display (DECISIONS.md \"Persisted correspondence\")."
       - id: REOPEN-08
         quote: "Image textures remain references to external files"
         delivery: M9
@@ -1006,12 +1051,18 @@ requirements:
     rows:
       - id: INSP-01
         quote: "Display selection resolves to a binding and source entity, including instance context where applicable."
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "On both fixtures' displays, `resolve_pick` with each managed object and its world matrix gives the binding and the source entity its correspondence entry names, with the instance context inside native instances."
         risk: high
       - id: INSP-02
         quote: "Source selection of a prim or subtree resolves to its associated display elements."
+        fixtures: [F-KIND-HIERARCHY, F-NESTED-SELECTION]
+        oracle: "On both fixtures' displays, `highlight_targets` of each prim's or subtree's target covers exactly the display objects of its expanded entities (support/interaction_checks.py against the real display)."
         risk: high
       - id: INSP-03
         quote: "Source inspection works independently of Blender parenting."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY, after the managed objects are reparented, unparented, and renamed in Blender, `resolve_pick`, `displayed`, and `highlight_targets` give what they gave before."
       - id: INSP-04
         quote: "Native instance roots are selectable and source-identifiable."
         delivery: M10
@@ -1029,9 +1080,12 @@ requirements:
       - id: INSP-10
         quote: "Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection."
         fixtures: [F-OFFLINE]
+        oracle: "F-OFFLINE reopened without its source shows its saved display unchanged, each of the core's interaction functions reports the source unavailable, and the persistent selection is unchanged; once the stage is attached again, they answer as before saving."
         note: "Replaces INSP-08 (retired), which required persisted inspection."
       - id: INSP-09
         quote: "Distinguish the last synchronized snapshot from newly evaluated source state."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "After an F-EDIT-SEQUENCE step's edit and before its refresh, the binding reports that it may be out of date, and its published generation, display, and correspondence are the earlier ones while the live stage shows the edit; after the refresh, it doesn't report it."
 
   - section: spec/interaction.md#interaction-testing
     delivery: M2
@@ -1052,19 +1106,27 @@ requirements:
     rows:
       - id: ICON-01
         quote: "It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY's display, `resolve_pick`, `displayed`, and `highlight_targets` give the fixture's display elements, universe, and targets (support/interaction_checks.py)."
       - id: ICON-02
         quote: "It stores no inspection data."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY, changing a prim's kind on the live stage changes kind-level `select_targets` without a synchronization, and nothing persisted with the generation names a kind or asset metadata."
       - id: ICON-03
         quote: "It never reads the display, the plan, or the snapshot"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "The inspection layer's sources include no header of the core or Hydra, and on F-KIND-HIERARCHY kind-level `select_targets` gives the same targets with the display's objects removed from Blender."
       - id: ICON-04
         quote: "It does not depend on the compiled core: it shares no code with it"
         kind: process
         qualified_by: M7
+        oracle: "A test over the inspection layer's sources and its build's link inputs finds only USD's headers and libraries: none of the core's sources, headers, or targets."
         note: "COMP-06 covers its linkage."
       - id: ICON-05
         quote: "so paths never pass through Python between the layers"
         kind: process
         qualified_by: M7
+        oracle: "The core's bindings and stubs expose the interaction functions and no inspection-layer function, so a kind-level `select_targets` reaches the inspection layer in C++ and no Python passes paths between the layers."
       - id: ICON-06
         quote: "The inspection layer is read-only."
         fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
@@ -1081,6 +1143,8 @@ requirements:
         oracle: "The binding handle returns the exact caller-attached stage as live, including when the caller cached it; attachment and synchronization never insert it or the evaluation stage into a cache."
       - id: ICON-35
         quote: "the core loads it from Blender data once the binding has a live stage, without synchronizing"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "F-KIND-HIERARCHY saved and reopened, with the caller's stage attached again and nothing synchronized, gives the same `resolve_pick`, `displayed`, `highlight_targets`, and `select_targets` results as before saving, and no synchronization or cache runs."
 
   - section: spec/interaction-contract.md#without-a-live-stage
     delivery: M7
@@ -1134,6 +1198,8 @@ requirements:
         oracle: "displayed is false for instance-proxy paths, point-instance paths, an unloaded payload root, inactive prims, and an abstract prim."
       - id: ICON-16
         quote: "It is derived from correspondence, not stored"
+        fixtures: [F-UNIVERSE-MEMBERSHIP]
+        oracle: "On F-UNIVERSE-MEMBERSHIP, a generation's universe is the entities of its correspondence's viewport elements outside instance contents (one inside counting for its floor) and their path prefixes, and after save and reopen, with nothing synchronized, it is the same as before; no record lists it."
 
   - section: spec/interaction-contract.md#picking
     delivery: M7
@@ -1145,6 +1211,8 @@ requirements:
         oracle: "resolve_pick returns the same entity after the display objects are renamed and reparented in Blender."
       - id: ICON-36
         quote: "A pick supplies what a ray cast returns: the object hit and its world matrix."
+        fixtures: [F-NESTED-SELECTION]
+        oracle: "On F-NESTED-SELECTION, each managed object with its `matrix_world`, all a ray cast returns, resolves through `resolve_pick` to its correspondence entry's entity and floor, inside native instances included."
       - id: ICON-37
         quote: "for an instance in a batch, the object is the batch's prototype, and the element is the instance whose world transform the matrix is"
         delivery: M8
@@ -1225,10 +1293,16 @@ requirements:
         risk: high
       - id: ICON-39
         quote: "in the active view layer, and into a view layer again when it becomes active"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY with two view layers, setting a source selection mirrors it into the active one; making the other active mirrors it there, and unmanaged objects' selection is unchanged in both."
       - id: ICON-40
         quote: "A box identifies the viewport display elements whose world bounds' centers lie inside it."
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY, a box selects exactly the targets, at the selection level, of the viewport display elements whose world bounds' centers lie inside it, in set, extend, toggle, and subtract modes."
       - id: ICON-41
         quote: "Blender's own selection tools don't select managed content"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY, while a tool other than Source Select is active the managed objects can't be selected (the destination's `hide_select`) and the source selection is unchanged; once Source Select is active again, it is mirrored back."
 
   - section: spec/interaction-contract.md#interfaces-for-future-tools
     delivery: M7
@@ -1236,6 +1310,8 @@ requirements:
     rows:
       - id: ICON-31
         quote: "Future USD manipulation tools receive: the live stage"
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "On F-KIND-HIERARCHY, `api/` gives a binding's live stage, `resolve_pick`, `displayed`, `highlight_targets`, getting and setting a scene's source selection, a listener called once per change to it, the time code the display shows, and the published generation's settings, and no function that authors USD."
 
   # --- spec/incremental.md --------------------------------------------------------------------
 
@@ -1245,8 +1321,12 @@ requirements:
     rows:
       - id: DISC-01
         quote: "Manual refresh of an attached source, including after an explicit reload of its contributing layers."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, a refresh after its sublayer is rewritten on disk writes nothing until the binding's layers are reloaded; after the reload, a refresh updates only Far's copy, and the display equals a clean full rebuild's."
       - id: DISC-02
         quote: "Prim existence, activation, type, hierarchy, and variants."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's existence, activation, type, hierarchy, and variant steps, each refresh's display equals a clean full rebuild's, with exactly the step's retired, built, and rebuilt copies."
       - id: DISC-03
         quote: "including external assets changed without any USD edit."
         delivery: M9
@@ -1254,16 +1334,23 @@ requirements:
       - id: DISC-04
         quote: "including time changes that do not alter evaluated values."
         fixtures: [F-SAME-VALUES]
+        oracle: "On F-SAME-VALUES, synchronized at one of each pair of equal time codes and then at the other, the second synchronization writes no display resource, only the generation record and last attempt, for the time code it shows, and its display equals a clean synchronization's there."
       - id: DISC-05
         quote: "Managed Blender content requiring repair, distinguished from legitimate external users of managed resources."
         delivery: M11
         fixtures: [F-UNMANAGED-USER]
       - id: DISC-06
         quote: "Separate change discovery from dependency invalidation."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On each F-EDIT-SEQUENCE step, the copies a refresh acts on are those that depend on the step's source-affected prims, as the step lists them: an edit to a prim with no copy of its own, Group's, acts on the copies beneath it, and an edit to shared instance contents acts on every instance's copy."
       - id: DISC-07
         quote: "Recover correctly from missed or coalesced change notifications."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, two edits before one refresh display the last, and an edit undone before a refresh displays as before it; a refresh after the binding's kept chain is released equals a clean full rebuild; and after an edit its kept chain is made to miss, its recorded notices dropped, a requested full rebuild equals a clean one."
       - id: DISC-08
         quote: "Editor-provided change descriptions may be hints, but are not the sole correctness mechanism."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, notices only name what a refresh re-reads, and comparing plans decides what is written: a refresh whose notices also name unrelated prims displays what a clean full rebuild does and writes only what the comparison finds changed, and a miss, its notices dropped, is recovered by a requested full rebuild (DISC-07)."
 
   - section: spec/incremental.md#affected-content
     delivery: M7
@@ -1271,6 +1358,8 @@ requirements:
     rows:
       - id: AFF-01
         quote: "Source-affected entities: source state actually changed."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On each F-EDIT-SEQUENCE step, the copies a refresh acts on (updated, rebuilt, retired, built) are exactly those depending on the step's source-affected prims, as the step lists them, and every other managed resource keeps its identity and isn't written."
       - id: AFF-02
         quote: "Level 3 is permitted but bounded by churn and performance budgets"
         delivery: M13
@@ -1278,8 +1367,153 @@ requirements:
         risk: high
       - id: AFF-03
         quote: "Untouched resources keep stable identities, and a no-op refresh performs no unnecessary Blender writes."
-        fixtures: [F-NO-OP-REFRESH]
+        fixtures: [F-NO-OP-REFRESH, F-SAME-VALUES]
+        oracle: "On F-NO-OP-REFRESH synchronized again unchanged, and after an undo or redo to a generation whose plan is held, the refresh writes no Blender data and every managed datablock keeps its identity; on F-SAME-VALUES, between equal time codes, no display resource is written, only the generation record and last attempt, and every managed datablock keeps its identity."
         risk: high
+      - id: AFF-04
+        quote: "may instead replace every display resource, with the result of a clean full rebuild."
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH after save and reopen, and after an undo past the held plans, a refresh's display, manifest, and correspondence equal a clean full rebuild's."
+
+  # --- spec/change-matrix.md -------------------------------------------------------------------
+
+  - section: spec/change-matrix.md#actions
+    delivery: M7
+    phase: 1
+    rows:
+      - id: CHG-01
+        quote: "Local update: a kept resource is changed in place"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's local-update steps, each updated copy's object is the same datablock, with the world matrix, hide flags, or bounds mesh a clean full rebuild gives."
+      - id: CHG-02
+        quote: "The resource keeps its identity and its Blender selection."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On those steps, an updated copy's object that was selected or active before the refresh still is, and the source selection holding it stays resolved."
+      - id: CHG-03
+        quote: "Partition rebuild: the drawn copy's partition is prepared anew beside the published generation"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's rebuild steps, each rebuilt copy's resources are new datablocks, prepared while the old ones stay published; publication replaces them, and the old ones are retired."
+      - id: CHG-04
+        quote: "Full rebuild: every partition is prepared anew, as for a first synchronization."
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH, a requested full rebuild, and the refresh after the representation version changes, replace every managed resource with new datablocks, and the display, manifest, and correspondence equal a first synchronization's."
+      - id: CHG-05
+        quote: "Local updates are made at publication, and publication undoes them if it fails."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's publication failure, publication failing after local updates leaves each kept object's world matrix, hide flags, bounds mesh, and keys the published generation's, which stays published."
+      - id: CHG-06
+        quote: "A resource that unmanaged content uses is never updated in place: its partition is rebuilt, and it is released intact."
+        fixtures: [F-UNMANAGED-USER]
+        oracle: "On F-UNMANAGED-USER's edit, Used's copy is rebuilt as a new object and bounds mesh, and its old mesh, which the unmanaged object uses, is unchanged and released."
+      - id: CHG-07
+        quote: "A refresh writes only what its actions name. A resource the comparison finds equal is not written."
+        fixtures: [F-NO-OP-REFRESH, F-EDIT-SEQUENCE]
+        oracle: "On each F-EDIT-SEQUENCE step, as on F-NO-OP-REFRESH, no copy the step doesn't name is written, and the type-changed step writes no display resource, only the generation record and last attempt, for the source revision it shows."
+      - id: CHG-08
+        quote: "A bounds mesh whose content changed is replaced, and its kept object is pointed at the replacement."
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's bounds-changed step, Odd's object is the same datablock, pointed at a new bounds mesh of its grown extent, and its old mesh is retired."
+
+  - section: spec/change-matrix.md#cases
+    delivery: M7
+    phase: 1
+    rows:
+      - id: CHG-09
+        quote: "A prim added, activated, or loaded through a payload |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's added and activated steps, and its payload policy switched back to load-all, a copy is built for each new prim and nothing else is written."
+      - id: CHG-10
+        quote: "A prim removed, deactivated, or unloaded through a payload |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's deactivated, removed, and purpose-guide steps, and its payload policy switched to load-none, the copy's resources are retired and nothing else is written."
+      - id: CHG-11
+        quote: "A prim renamed or moved under another parent |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's renamed and moved steps, the copy at the old path is retired and one at the new path built."
+      - id: CHG-12
+        quote: "A variant selection switched |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's variant-switched step, Body's partition is rebuilt from a box to a marker, as a clean full rebuild draws it."
+      - id: CHG-13
+        quote: "A gprim's type changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's type-changed step, Odd's box is equal and no resource is written; on its variant-switched step, Body's type and bounds change together and its partition is rebuilt."
+      - id: CHG-14
+        quote: "A transform changed, on a prim or an ancestor |"
+        fixtures: [F-SAME-VALUES, F-UNMANAGED-USER, F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's transform steps, the copies' world matrices change in place: both of Group's meshes from its edit, and A to its last value after coalesced edits; a shear introduced or removed rebuilds A's partition. On F-SAME-VALUES, Held is updated only between time codes where its value differs; on F-UNMANAGED-USER, Child's copy moves under its unmanaged parent."
+      - id: CHG-15
+        quote: "Visibility changed, on a prim or an ancestor |"
+        fixtures: [F-SAME-VALUES, F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's visibility steps, both of Group's copies change their hide flags in place; on F-SAME-VALUES, Blink's change only between time codes on opposite sides of 10 or 20."
+      - id: CHG-16
+        quote: "Purpose changed, on a prim or an ancestor |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's purpose steps, B's hide flags change in place to render only, its copy is retired at guide, and it is built again at default."
+      - id: CHG-17
+        quote: "An untranslated gprim's bounds changed, appeared, or vanished |"
+        fixtures: [F-UNMANAGED-USER, F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, Odd's bounds mesh is replaced when its bounds change, and Fog's partition is rebuilt as a box when its bounds appear and as a marker when they vanish; on F-UNMANAGED-USER, Used's partition is rebuilt."
+      - id: CHG-18
+        quote: "A prim made instanceable, or no longer instanceable |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's instanceable steps, Left's copy is retired and built at its new instance context, and Right's copy and its shared mesh are kept."
+      - id: CHG-19
+        quote: "A prim inside a native instance's shared contents changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's shared-contents step, both instances' copies update their world matrices in place."
+      - id: CHG-20
+        quote: "A point instancer's points, ids, or prototypes changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE's point steps, the moved point's copy is updated in place; removing id 1 retires only its copy; removing Numbered's first point retires the last index's copy and updates the others' in place."
+      - id: CHG-21
+        quote: "The time code synchronized changed |"
+        fixtures: [F-SAME-VALUES]
+        oracle: "On F-SAME-VALUES, a synchronization at another time code updates in place exactly the copies `changed_copies` names, and writes no resource between equal time codes."
+      - id: CHG-22
+        quote: "A generation with cached time codes synchronized again |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, synchronizing at 0 after caching 5 and 10 removes Mover's keys in place, its object kept and its animation data retired, and writes nothing else."
+      - id: CHG-23
+        quote: "The payload policy changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, switching the payload policy to load-none retires Leaf's copy, and back to load-all builds it, with nothing else written."
+      - id: CHG-24
+        quote: "A destination's purposes changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, removing proxy from the viewport's purposes retires Proxy's copy, which the render's don't include, and adding it again builds the copy, with nothing else written."
+      - id: CHG-25
+        quote: "Coordinate conversion turned on or off, or the target scene's unit scale changed while it is on |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, turning coordinate conversion on or off, and changing the target scene's unit scale while it is on, updates every copy's world matrix in place, each object kept."
+      - id: CHG-26
+        quote: "The target scene's unit scale changed while coordinate conversion is off |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, changing the target scene's unit scale with coordinate conversion off writes no display resource, only the generation record and last attempt, for the unit scale they record."
+      - id: CHG-27
+        quote: "The representation version changed |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, a generation of another representation version reaches a refresh only from a file another process saved, since a process applies one version, so a refresh after save and reopen, with no plan held, replaces every managed resource, equal to a first synchronization."
+      - id: CHG-28
+        quote: "A reload reread layers |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, a reload after Far's sublayer is rewritten on disk, then a refresh, updates only Far's copy, in place."
+      - id: CHG-29
+        quote: "A stage attached in place of another |"
+        fixtures: [F-EDIT-SEQUENCE]
+        oracle: "On F-EDIT-SEQUENCE, attaching the stage with Far moved in its session layer, then a refresh, updates only Far's copy, in place."
+      - id: CHG-30
+        quote: "An undo or redo restored another generation |"
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH, after an undo or redo restores a generation whose plan is held, a refresh writes nothing; after an undo past the held plans, it is a full rebuild equal to a clean one."
+      - id: CHG-31
+        quote: "A .blend reopened |"
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH saved and reopened, the first refresh is a full rebuild equal to a clean one."
+      - id: CHG-32
+        quote: "A full rebuild requested |"
+        fixtures: [F-NO-OP-REFRESH]
+        oracle: "On F-NO-OP-REFRESH, a requested full rebuild builds every partition anew, equal to a first synchronization."
 
   # --- spec/support/transforms.md -------------------------------------------------------------
 
@@ -1322,12 +1556,18 @@ requirements:
       - id: XFORM-09
         quote: "Authored animation data and its caches are managed content"
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, the animation data and sample attributes a cache call makes are named in the binding's manifest, and synchronizing again retires them with the old generation's keys, so none is left that no manifest names."
       - id: XFORM-10
         quote: "Do not change the target scene's frame rate or playback range."
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "Synchronizing and caching F-TIME-VARIATIONS leaves the target scene's frame rate, frame range, and current frame unchanged."
       - id: XFORM-11
         quote: "USD time code t is Blender frame t, its fraction a subframe"
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, with the scene at 24 and at 30 frames per second, the time code cached at 12.5 shows at frame 12, subframe 0.5, what a synchronization at 12.5 does, and a synchronization without a time code at that frame and subframe synchronizes at 12.5."
       - id: XFORM-12
         quote: "Without a time code, synchronization uses the time code of the target scene's current frame, its subframe included."
         fixtures: [F-MULTI-BINDING]
@@ -1336,9 +1576,13 @@ requirements:
       - id: XFORM-13
         quote: "A display shows each time code cached in its generation"
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, synchronized at 0 and cached at 5, 10, 12.5, 15, and 20, each of those frames shows what a clean synchronization there does, a frame between two cached time codes the earlier one, and a frame before 0 what 0 does."
       - id: XFORM-14
         quote: "Interaction answers for the time code the display shows."
         delivery: M7
+        fixtures: [F-TIME-VARIATIONS]
+        oracle: "On F-TIME-VARIATIONS, at a frame showing a cached time code from 10 on, `displayed` reports Blink outside the browsing universe, and Scatter's `highlight_targets` covers its third point's copy; at a frame showing 0, the reverse."
 
   - section: spec/support/transforms.md#coordinate-conversion
     delivery: M6
@@ -1351,6 +1595,8 @@ requirements:
       - id: CONV-02
         quote: "Enabled conversion respects the target scene's unit scale without changing scene settings."
         delivery: M7
+        fixtures: [F-UNITS-UP-AXIS]
+        oracle: "On F-UNITS-UP-AXIS with conversion on, in target scenes of unit scale 1 and 0.01, each copy's world matrix in Blender is the planned one, and the scene's unit system, scale, and length unit are unchanged by synchronizing."
       - id: CONV-03
         quote: "Converted results are consistent for geometry, transforms, bounds, and instances."
         fixtures: [F-UNITS-UP-AXIS]
@@ -1359,6 +1605,8 @@ requirements:
       - id: CONV-07
         quote: "If the destination collection is linked into a scene whose unit scale differs from the target scene's, diagnose the mismatch rather than guessing."
         delivery: M7
+        fixtures: [F-UNITS-UP-AXIS]
+        oracle: "On F-UNITS-UP-AXIS, with the destination also linked into a scene whose unit scale differs from the target scene's, synchronization reports a diagnostic naming the destination and both unit scales, which exists before any Blender data is mutated."
       - id: CONV-08
         quote: "scale = stage.metersPerUnit / target_scene.unit_settings.scale_length"
         fixtures: [F-UNITS-UP-AXIS]
@@ -1660,6 +1908,8 @@ requirements:
       - id: MODEL-01
         quote: "Expose model kind and available asset metadata."
         delivery: M7
+        fixtures: [F-KIND-HIERARCHY]
+        oracle: "Through a binding on F-KIND-HIERARCHY, the live stage gives each prim's kind and Chair's asset name, version, and identifier as the fixture authors them, before and after synchronizing, and the plan carries no asset metadata."
         note: "Moved from M6 with the user, 2026-11-06: callers read kind and asset metadata from the live stage, and the snapshot and plan carry kind only where planning reads it (DECISIONS.md \"Browsing universe and inspection metadata set\")."
       - id: MODEL-03
         quote: "Support is decided per behavior, not per prim type."
@@ -1744,6 +1994,7 @@ requirements:
     rows:
       - id: TINC-01
         quote: "Compare results against a clean full rebuild."
+        oracle: "The F-EDIT-SEQUENCE, F-SAME-VALUES, F-NO-OP-REFRESH, and F-UNMANAGED-USER refresh tests compare the display, manifest, and correspondence with a clean full rebuild of the same state, through one helper in tests/support."
 
   # --- testing/acceptance.md ------------------------------------------------------------------
 
@@ -1787,13 +2038,18 @@ requirements:
     rows:
       - id: ASTD-01
         quote: "Synchronization completes without a fatal failure."
+        oracle: "The end-to-end tests on M6-generated plans, the production-like CI fixture and the bespoke evaluation fixtures, synchronize without a fatal failure; M12 qualifies it on ALab."
       - id: ASTD-02
         quote: "World bounds of each model's display match USD-computed bounds under the bounds comparison contract."
+        oracle: "A bounds check in tests/support under the Bounds Comparison Contract passes on each end-to-end case: each model's display bounds in each destination match USD's within its tolerance."
         risk: high
+        note: "In M7, whose display draws each mesh as a box of its extent, a mesh copy is compared as a placeholder is, by its usable bounds' corners: its authored extent, else USD's computed one; the points comparison starts with M8 (with the user, 2026-11-11)."
       - id: ASTD-03
         quote: "Unique mesh-data counts are recorded as an aggregate regression metric"
+        oracle: "The end-to-end tests record each case's unique mesh-data count, without asserting a bound on it."
       - id: ASTD-04
         quote: "Save and reopen preserves the display and correspondence without accessing the source."
+        oracle: "Each end-to-end case saved and reopened with its source moved away shows the same objects, transforms, hide flags, and meshes, and once its stage is attached again the core loads correspondence without synchronizing."
         risk: high
 
   - section: testing/acceptance.md#expected-failure-checks
@@ -1869,14 +2125,18 @@ requirements:
         quote: "The bounds check reuses decisions made elsewhere rather than making its own."
         delivery: M7
         qualified_by: M12
+        oracle: "The bounds check (tests/support/bounds_check.py) takes participation and correspondence from the plan, and transforms, usable bounds, and kinds from USD's own APIs, under the spec's conversion, with no rule of its own: its correction equals F-UNITS-UP-AXIS's, its participation F-VISIBILITY-PURPOSE's, and on displays made from the core's plans it agrees with the planner."
       - id: ABND-03
         quote: "each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too"
         delivery: M7
         qualified_by: M12
+        oracle: "On the production-like fixture under each payload policy, the models the check compares are exactly its groups, the assembly included, and its components, by the counts its parameters give, inside native instances too; it runs on F-KIND-HIERARCHY and F-NESTED-SELECTION end to end."
       - id: ABND-04
         quote: "each displayed prim's points at the time code, under USD's local-to-world transform and the coordinate conversion, boxed after they are transformed"
-        delivery: M7
+        delivery: M8
         qualified_by: M12
+        oracle: "The check's expected box for each model is its displayed prims' points at the time code under USD's local-to-world transform and the conversion, boxed after transforming; a rotated triangle's expected box is its points', not its extent's."
+        note: "M7 draws a mesh as a box of its extent, so its check compares a mesh copy as a placeholder, by its usable bounds' corners, boxed after transforming; comparing points waits for M8's mesh content (with the user, 2026-11-11)."
       - id: ABND-05
         quote: "a subdivision surface is compared as its control cage on both sides"
         delivery: M8
@@ -1889,14 +2149,17 @@ requirements:
         quote: "a bounding-box placeholder's eight corners are its usable bounds' corners under its world transform, compared corner by corner"
         delivery: M7
         qualified_by: M12
+        oracle: "The check compares each placeholder box's eight corners one by one with its usable bounds' corners under its world transform."
       - id: ABND-08
         quote: "empty markers and content without usable bounds are excluded from both sides"
         delivery: M7
         qualified_by: M12
+        oracle: "Markers and content without usable bounds are on neither side of the check, and a model with nothing compared in a destination expects no displayed vertices there."
       - id: ABND-09
         quote: "each face of a display box is within 1e-6 + 1e-5 × m of the expected box's in Blender world units"
         delivery: M7
         qualified_by: M12
+        oracle: "The check accepts each face of each display box within 1e-6 + 1e-5 × m of the expected box's, in Blender world units, and fails a box offset by twice that."
 
   - section: testing/acceptance.md#production-scale-validation-alab
     kind: process
@@ -1961,6 +2224,22 @@ requirements:
         oracle: "alab-marked tests are skipped without PROSCENIUM_ALAB_ROOT; the ALab workflow is manual or scheduled."
 
 excluded:
+  - section: spec/change-matrix.md
+    quotes: ["What each change to a binding's source, settings, or state affects, and what a refresh does about it"]
+    reason: "File introduction."
+  - section: spec/change-matrix.md#actions
+    quotes: ["A refresh compares the new plan with the plan of the generation the destination shows"]
+    reason: "Lead-in: the comparison base is DECISIONS.md \"Incremental refresh comparison\", which AFF-03 and AFF-04 test; the actions below are rows."
+  - section: spec/change-matrix.md#discovery
+    quotes: ["Design note (settled by M7; see DECISIONS.md \"Change discovery\")"]
+    reason: "Design note; DISC-06 to DISC-08 test discovery, and the CHG rows what it leads to."
+  - section: spec/change-matrix.md#owned-by-later-milestones
+    quotes:
+      - "Geometry, topology, normals, and primvars, and a drawn copy moving between a batch and an object of its own: M8."
+      - "Materials, networks, bindings, and their dependencies, including external assets changed without a USD edit: M9."
+      - "Changes to shared instance contents' representation, and point instancers nested in point instancers: M10."
+      - "Managed Blender content requiring repair: M11."
+    reason: "Scope: the milestones that add these cases to the matrix."
   - section: PROJECT.md#project-overview
     quotes:
       - "This project is a Blender extension"
@@ -2039,7 +2318,7 @@ excluded:
       - "Target-scene unit scale and representation version."
     restates: [DISC-02]
   - section: spec/incremental.md#change-discovery
-    quotes: ["Design note (suggested, not settled; M1b adopted Hydra, and M7 decides)"]
+    quotes: ["Design note (settled by M7; see DECISIONS.md \"Change discovery\")"]
     reason: "Design note."
   - section: spec/incremental.md#affected-content
     quotes:
@@ -2106,7 +2385,7 @@ excluded:
     reason: "Scope limit; the lifecycle permission that generated content is USD-authoritative covers edits."
   - section: spec/interaction-contract.md#headless-functions
     quotes:
-      - "Design note (names and signatures are settled by M3 and M7)"
+      - "Design note (signatures settled by M7; see DECISIONS.md \"Headless interaction functions\")"
       - "resolve_pick | what a viewport pick supplies"
       - "displayed | source paths"
       - "highlight_targets | selection targets"

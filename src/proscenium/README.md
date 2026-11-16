@@ -1,14 +1,16 @@
 # `proscenium`
 
-The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, and five packages: what callers use, the synchronization transaction, the bindings' code, the compiled core, and the user interface. The bindings' code and the core are kept apart, so either can change without the other.
+The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, and seven packages: what callers use, the synchronization transaction, the display component of interaction, the temporary UI, the bindings' code, the compiled core, and the user interface's widgets. The bindings' code and the core are kept apart, so either can change without the other.
 
 | Path | Holds |
 |---|---|
 | `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep the C++ sources, CMake files, and these READMEs out of the zip; only the built core module ships. |
 | `__init__.py` | The package, with `register` and `unregister`. It imports without `bpy`, and imports `addon` only when Blender registers the extension. |
-| `addon.py` | Registration: the record namespace's property group, and the handlers for file load, undo, and redo that drop or prune the bindings' stages. |
+| `addon.py` | Registration: the record namespace's property group, the handlers for file load, undo, and redo that drop or prune the bindings' stages, and the frame-change handler and message-bus subscriptions to what windows show that mirror a scene's source selection again. |
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
+| `interaction/` | The display component of the interaction contract: a binding's correspondence from Blender data, and Blender's selection. |
+| `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, over `api/` and `ui/`'s widgets only. |
 | `binding/` | The bindings' code: their runtime state, records, source access, and results. |
 | `core/` | The compiled core: its C++ source and the built module. |
 | `ui/` | The user interface: widgets an add-on places in Blender's editors, the scene graph's prim tree and the property viewer's property list, and what the widgets share. |
@@ -19,12 +21,13 @@ The code is in units, each a package or a single module, in tiers. A unit import
 
 | Tier | Units |
 |---|---|
-| 10 | `addon.py` |
+| 11 | `addon.py` |
+| 10 | `interface/` |
 | 9 | `ui/scene_graph_widget/display/`, `ui/property_viewer_widget/display/` |
 | 8 | `ui/widget_resources/`, `ui/search_box.py`, `ui/text_wrapping.py` |
 | 7 | `ui/columned_list/`, `ui/widget_updates.py` |
 | 6 | `api/` |
-| 5 | `synchronization/` |
+| 5 | `synchronization/`, `interaction/` |
 | 4 | `binding/runtime/` |
 | 3 | `binding/persistence/` |
 | 2 | `ui/scene_graph_widget/prim_tree/`, `ui/property_viewer_widget/property_list/` |

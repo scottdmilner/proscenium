@@ -1,0 +1,20 @@
+#usda 1.0
+# F-EDIT-SEQUENCE's sublayer (see edit_sequence.usda): Far, which a reload moves once this layer is rewritten
+# on disk (DISC-01).
+(
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+over "World"
+{
+    def Mesh "Far"
+    {
+        float3[] extent = [(0, 0, 0), (1, 1, 0)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (6, 15, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

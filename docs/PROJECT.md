@@ -22,6 +22,7 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [spec/interaction.md](spec/interaction.md) | Source inspection, interaction contract, interaction testing |
 | [spec/interaction-contract.md](spec/interaction-contract.md) | Draft interaction contract: browsing universe, inspection metadata, picking, selection, Blender selection |
 | [spec/incremental.md](spec/incremental.md) | Change discovery and affected content (Phase 1), and churn budgets (Phase 2) |
+| [spec/change-matrix.md](spec/change-matrix.md) | Change matrix: what each change affects and what a refresh does about it |
 | [spec/support/](spec/support/) | Supported scene state: [transforms](spec/support/transforms.md), [geometry](spec/support/geometry.md), [instancing](spec/support/instancing.md), [materials](spec/support/materials.md), [visibility and unsupported content](spec/support/visibility.md) |
 | [testing/strategy.md](testing/strategy.md) | Test layers and named contract fixtures |
 | [testing/acceptance.md](testing/acceptance.md) | Acceptance criteria: bespoke fixtures, standard checks, bounds contract, ALab production-scale validation, performance |

@@ -94,7 +94,7 @@ def test_a_failure_at_each_preparation_step_disposes_of_its_work(
         handle = _attempting(bindings, scene)
         published, before = _published(handle), datablocks()
         _failing_after(monkeypatch, held)
-        result = handle.synchronize(scene.attempted[1])
+        result = handle.synchronize(scene.attempted[1], full_rebuild=True)  # so every resource is prepared
         assert [d.code for d in result.diagnostics] == [DiagnosticCode.PREPARATION_FAILED]
         assert _published(handle) == published
         assert datablocks() == before
@@ -102,10 +102,10 @@ def test_a_failure_at_each_preparation_step_disposes_of_its_work(
 
 
 def _core_error_at_evaluation(monkeypatch: pytest.MonkeyPatch) -> None:
-    def failing(_stage: Usd.Stage) -> None:
+    def failing(_chain: _core.SceneIndexChain, _time_code: Usd.TimeCode) -> None:
         _core._post_tf_error("injected core error")  # noqa: SLF001 - the core's error path, for tests
 
-    monkeypatch.setattr(_core, "SceneIndexChain", failing)
+    monkeypatch.setattr(_core.SceneIndexChain, "capture", failing)
 
 
 def _core_error_at_planning(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +160,8 @@ def test_nothing_changes_before_preparation(
 
         monkeypatch.setattr(preparation_resources, "new_preparation_resources", noting)
         _failing_after(monkeypatch, 1)
-        assert handle.synchronize(scene.attempted[1]).state is ResultState.FATAL_FAILURE
+        result = handle.synchronize(scene.attempted[1], full_rebuild=True)  # every partition prepared
+        assert result.state is ResultState.FATAL_FAILURE
         assert at_preparation == [(published, before)]
 
 
@@ -194,14 +195,14 @@ def test_a_source_change_during_evaluation_discards_the_attempt(
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         published, before = _published(handle), datablocks()
-        chain = _core.SceneIndexChain
+        capture = _core.SceneIndexChain.capture
 
-        def editing(stage: Usd.Stage) -> _core.SceneIndexChain:
+        def editing(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
             scene.edit()  # as a caller editing the source during the synchronization would
-            return chain(stage)
+            return capture(chain, time_code)
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(_core, "SceneIndexChain", editing)
+            patch.setattr(_core.SceneIndexChain, "capture", editing)
             result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics

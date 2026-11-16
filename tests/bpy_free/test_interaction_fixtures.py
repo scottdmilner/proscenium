@@ -68,3 +68,14 @@ def test_absent_floor_is_a_displayed_floor(fixture_id: str, tmp_path: Path) -> N
         floor = scene.floors.get(entity, entity)
         assert entity in scene.elements[scene.times[0]]
         assert floor == removed or floor.startswith(removed + "/")
+
+
+def test_asset_info(fixture_id: str, tmp_path: Path) -> None:
+    # Exactly the listed prims carry assetInfo, with the listed name and version.
+    with GENERATORS[fixture_id](tmp_path) as scene:
+        models = [Usd.ModelAPI(prim) for prim in scene.stage.Traverse() if prim.HasAssetInfo()]
+        found = {
+            str(model.GetPrim().GetPath()): {"name": model.GetAssetName(), "version": model.GetAssetVersion()}
+            for model in models
+        }
+        assert found == scene.asset_info

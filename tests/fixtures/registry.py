@@ -21,7 +21,17 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from . import appearance, binding_copy_cases, evaluation, interaction, source_access, transaction
+from . import (
+    appearance,
+    binding_copy_cases,
+    edit_sequence,
+    evaluation,
+    incremental,
+    interaction,
+    source_access,
+    time_variations,
+    transaction,
+)
 
 # A generator writes the fixture into a fresh directory and yields a handle to it.
 # It is a context manager so in-process state (open stages, cache entries) is released on exit.
@@ -273,6 +283,30 @@ FIXTURES: dict[str, Fixture] = {
                 Case("changed-unit-scale", Operation.CACHE, FAILURE, ("CACHE-12",), 1),
             ),
         ),
+        Fixture(
+            "F-TIME-VARIATIONS",
+            "Each way M7's content varies over time",
+            ("M7",),
+            time_variations.time_variations,
+            (
+                # Synchronized at 0, then cached by each grouping: every cached frame shows what a clean
+                # synchronization there does, the same for every grouping, a frame between two cached time
+                # codes the earlier one, at 24 and 30 frames per second.
+                Case(
+                    "cached",
+                    Operation.CACHE,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CACHE-01", "CACHE-09", "CACHE-10", "XFORM-11", "XFORM-13"),
+                    1,
+                ),
+                # The keys, actions, and samples it makes are managed, and synchronizing again retires them.
+                Case("managed-keys", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("XFORM-09",), 1),
+                # Nothing synchronizes or caches on its own, and the scene's frame rate and range are kept.
+                Case("display-only", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CACHE-08", "XFORM-10"), 1),
+                # Interaction answers for the time code each frame shows.
+                Case("interaction-at-frame", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("XFORM-14",), 1),
+            ),
+        ),
         Fixture("F-SHARED-MATERIAL-FAILURE", "Shared-material failure", ("M9",)),
         Fixture(
             "F-PUBLICATION-FAILURE",
@@ -345,6 +379,18 @@ FIXTURES: dict[str, Fixture] = {
             ),
         ),
         Fixture(
+            "F-APPLICATION-FAILURE",
+            "Application-time failure",
+            ("M7",),
+            transaction.application_failure,
+            (
+                # A resource operation failing, and the destination removed, partway through preparation: each
+                # aborts the attempt with its diagnostic, since the plan authorizes no fallback.
+                Case("runtime", SYNC, FAILURE, ("APP-05", "APP-06"), 1),
+                Case("state-change", SYNC, FAILURE, ("APP-05", "APP-06"), 1),
+            ),
+        ),
+        Fixture(
             "F-OWNERSHIP-AMBIGUITY",
             "Ownership ambiguity",
             ("M3", "M11"),
@@ -379,7 +425,31 @@ FIXTURES: dict[str, Fixture] = {
                 Case("duplicated-object", SYNC, SUCCESS, ("OWN-16",), 1),
             ),
         ),
-        Fixture("F-UNMANAGED-USER", "Unmanaged user of managed data", ("M7",)),
+        Fixture(
+            "F-UNMANAGED-USER",
+            "Unmanaged user of managed data",
+            ("M7", "M11"),
+            incremental.unmanaged_user,
+            (
+                # Synchronized again, a full rebuild: Used's old bounds mesh is released intact for its unmanaged
+                # user and counted apart, and the unmanaged parent and linked object are as they were.
+                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("OWN-07", "OWN-08", "STAB-04"), 1),
+                # After the edit: Used's partition is rebuilt and its old mesh released intact, unchanged, and
+                # Child's copy moves under its unmanaged parent, which is as it was.
+                Case(
+                    "used-mesh-changed",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("OWN-07", "OWN-08", "STAB-04", "CHG-06", "CHG-14", "CHG-17"),
+                    1,
+                ),
+                # A full rebuild whose retirement of Used's old mesh fails, the mesh then given to an unmanaged
+                # object: a cleanup retry releases it intact and resolves its tracking.
+                Case("cleanup-retry", CLEANUP, SUCCESS, ("PEND-02", "STAB-04"), 1),
+                # Removing the binding removes its managed content and leaves the unmanaged users as they were.
+                Case("binding-removed", Operation.REMOVE_BINDING, SUCCESS, ("OWN-07", "OWN-14", "OWN-15"), 1),
+            ),
+        ),
         Fixture("F-DETACH-SHARED", "Detach with shared instance content", ("M11",)),
         Fixture("F-DETACH-AS-IS", "Detach surviving content as-is", ("M11",)),
         Fixture("F-LIFECYCLE-FAILURE", "Lifecycle failure and retry", ("M11",)),
@@ -402,6 +472,9 @@ FIXTURES: dict[str, Fixture] = {
                 ),
                 # Opened without the extension, the saved display is ordinary Blender content.
                 Case("no-extension", SYNC, SUCCESS, ("SCHEMA-05",), 1),
+                # Reopened without its source: the display stays, interaction reports the source unavailable, and
+                # the persistent selection is kept, until the stage is attached again.
+                Case("no-interaction", SYNC, FAILURE, ("INSP-10", "ICON-08", "ICON-09"), 1),
             ),
         ),
         Fixture(
@@ -428,20 +501,180 @@ FIXTURES: dict[str, Fixture] = {
             appearance.appearance_cases,
         ),
         Fixture("F-TEXTURE-IN-PLACE", "Texture edited in place", ("M9",)),
-        Fixture("F-SAME-VALUES", "Same evaluated values at a different time", ("M7", "M12")),
+        Fixture(
+            "F-SAME-VALUES",
+            "Same evaluated values at a different time",
+            ("M7", "M12"),
+            incremental.same_values,
+            (
+                # Synchronized at one time code, then at another where every value is equal: nothing written.
+                Case("equal-values", SYNC, SUCCESS, ("DISC-04", "AFF-03", "CHG-21"), 1),
+                # Then at one where values differ: only the copies whose content differs change, in place.
+                Case("differing-values", SYNC, SUCCESS, ("CHG-14", "CHG-15", "CHG-21"), 1),
+            ),
+        ),
         Fixture("F-UNDO-AFTER-DAMAGE", "Undo after partial external display damage", ("M11",)),
-        Fixture("F-NO-OP-REFRESH", "No-op refresh", ("M7", "M12")),
+        Fixture(
+            "F-NO-OP-REFRESH",
+            "No-op refresh",
+            ("M7", "M12"),
+            incremental.no_op_refresh,
+            (
+                # Synchronizing again unchanged writes nothing, and keeps counts and diagnostics.
+                Case("unchanged", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "STAB-01", "CHG-07", "DIAG-07"), 1),
+                # Full rebuilds whose retirement fails: leftovers only as tracked, inactive pending cleanup.
+                Case("disposal-failure", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("STAB-02",), 1),
+                # Once the failures are gone, a cleanup retry restores the clean counts.
+                Case("cleanup-retry", CLEANUP, SUCCESS, ("STAB-03",), 1),
+                # A resource released intact for an unmanaged user is counted apart, never deleted.
+                Case("protected-user", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("STAB-04",), 1),
+                # After an undo or redo restores a held generation, an unchanged refresh writes nothing.
+                Case("after-undo", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-03", "CHG-30", "UNDO-10"), 1),
+                # After reopening, a refresh may rebuild everything, as a clean full rebuild would.
+                Case("after-reopen", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("AFF-04", "CHG-31"), 1),
+                # A requested full rebuild builds every partition, equal to a first synchronization.
+                Case("full-rebuild", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-04", "CHG-32", "API-15"), 1),
+                # Application keeps no buffer the plan lent and queries no USD.
+                Case("application-boundary", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("SNAP-13", "APP-08"), 1),
+            ),
+        ),
+        Fixture(
+            "F-EDIT-SEQUENCE",
+            "Edit sequence",
+            ("M7",),
+            edit_sequence.edit_sequence,
+            (
+                # Each step's refresh, compared with a clean full rebuild of the same state, and its affected
+                # resources the step's: changed in place, rebuilt, retired, or built, the rest not written.
+                # Local updates: inherited, coalesced, and repeated transforms, visibility, purpose, and shared
+                # instance contents; each kept copy keeps its identity and Blender selection.
+                Case(
+                    "local-updates",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-01", "CHG-02", "CHG-14", "CHG-15", "CHG-16", "CHG-19", "AFF-01", "PH2-02"),
+                    1,
+                ),
+                # Rebuilds and replacements: a shear introduced and removed, bounds changed, appearing, and
+                # vanishing, a type changed with its bounds equal, and a variant switch.
+                Case(
+                    "partition-rebuilds",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-03", "CHG-07", "CHG-08", "CHG-12", "CHG-13", "CHG-14", "CHG-17", "AFF-01"),
+                    1,
+                ),
+                # Existence and hierarchy: added, activated, deactivated, removed, renamed, moved, and instanceable
+                # toggled, the prototype's mesh still shared by the instance that keeps it.
+                Case(
+                    "existence",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("CHG-09", "CHG-10", "CHG-11", "CHG-18", "DISC-02", "AFF-01", "PH2-03"),
+                    1,
+                ),
+                # Discovery: each step's source-affected entities found apart from what depends on them, edits
+                # coalesced or their notices lost, notices treated as hints, and a lost one found by verification.
+                Case(
+                    "discovery",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("DISC-06", "DISC-07", "DISC-08", "API-15", "DIAG-17"),
+                    1,
+                ),
+                # Between a step's edit and its refresh, the binding reports it may be out of date.
+                Case("out-of-date", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("INSP-09",), 1),
+                # Points moved and removed, with authored ids and without.
+                Case("point-instancers", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-20", "AFF-01"), 1),
+                # Publication failing after a step: its local updates are undone with the rest of the attempt.
+                Case("publication-failure", SYNC, FAILURE, ("CHG-05", "TXN-12"), 1),
+                # From the scene as it starts: a change of payload policy builds or retires Leaf's copy, and the
+                # viewport's purposes without proxy retire Proxy's.
+                Case("payload-policy", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-23",), 1),
+                Case("purposes", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-24",), 1),
+                # Coordinate conversion and unit scale: every world matrix updated in place, or nothing written.
+                Case("unit-scale", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-25", "CHG-26"), 1),
+                Case("representation-version", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-27",), 1),
+                # A reload of the sublayer rewritten on disk, and a stage attached in place of the live one: only
+                # Far's copy updated.
+                Case("reload", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-28", "DISC-01"), 1),
+                Case("attach", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-29",), 1),
+                # Synchronized again after a cache call: Mover's keys removed in place, its animation data retired.
+                Case("cached-again", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CHG-22",), 1),
+            ),
+        ),
         Fixture(
             "F-KIND-HIERARCHY",
             "Kind hierarchy with organizational prims Hydra does not keep",
             ("M2", "M4", "M7"),
             interaction.kind_hierarchy,
+            (
+                # M4's interaction checks against the real display: picks, the universe, kind targets and their
+                # expansion, highlighting, and Blender's selection mirrored, from correspondence alone.
+                Case(
+                    "interaction",
+                    SYNC,
+                    SUCCESS,
+                    (
+                        "ARCH-01",
+                        "INSP-01",
+                        "INSP-02",
+                        "ICON-01",
+                        "ICON-10",
+                        "ICON-13",
+                        "ICON-17",
+                        "ICON-18",
+                        "ICON-20",
+                        "ICON-21",
+                        "ICON-22",
+                        "ICON-23",
+                        "ICON-27",
+                        "ICON-28",
+                        "ICON-29",
+                    ),
+                    1,
+                ),
+                # The managed objects reparented and renamed in Blender, or removed: the same answers.
+                Case("blender-edits", SYNC, SUCCESS, ("INSP-03", "ICON-03", "ICON-17"), 1),
+                # Kinds and asset metadata from the live stage: a kind changed there changes kind targets without
+                # a synchronization, and the inspection layer leaves the stage as it was.
+                Case("live-stage", SYNC, SUCCESS, ("ICON-02", "ICON-06", "MODEL-01"), 1),
+                # Saved and reopened, the stage attached again: correspondence loaded without synchronizing.
+                Case("reopened", SYNC, SUCCESS, ("ICON-35",), 1),
+                # The selection tool: a pick and a box at each level and mode, two view layers, and other tools
+                # unable to select managed content.
+                Case("selection-tool", SYNC, SUCCESS, ("ICON-30", "ICON-39", "ICON-40", "ICON-41"), 1),
+                # What api/ gives future tools.
+                Case("future-tools", SYNC, SUCCESS, ("ICON-31",), 1),
+            ),
         ),
         Fixture(
             "F-NESTED-SELECTION",
             "Selection floors in nested native instances",
             ("M2", "M4", "M7", "M10"),
             interaction.nested_selection,
+            (
+                # M4's interaction checks against the real display, inside nested native instances: picks by
+                # object and world matrix, floors, kind targets, and highlighting.
+                Case(
+                    "interaction",
+                    SYNC,
+                    SUCCESS,
+                    (
+                        "INSP-01",
+                        "INSP-02",
+                        "ICON-11",
+                        "ICON-15",
+                        "ICON-20",
+                        "ICON-21",
+                        "ICON-22",
+                        "ICON-23",
+                        "ICON-36",
+                    ),
+                    1,
+                ),
+                Case("selection-tool", SYNC, SUCCESS, ("ICON-30",), 1),
+            ),
         ),
         Fixture(
             "F-UNIVERSE-MEMBERSHIP",
@@ -451,6 +684,18 @@ FIXTURES: dict[str, Fixture] = {
             (
                 # A guide made explicitly visible by an ancestor's guideVisibility displays in the viewport.
                 Case("explicit-guide", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("VIS-04",), 1),
+                # Membership at each time code the display shows, against the real display: what is in the
+                # universe, what isn't and why, derived from correspondence, the same after reopening.
+                Case(
+                    "membership",
+                    SYNC,
+                    Outcome.COMPLETED_WITH_ISSUES,
+                    ("ICON-06", "ICON-11", "ICON-12", "ICON-13", "ICON-14", "ICON-15", "ICON-16"),
+                    1,
+                ),
+                # A persistent selection resolved against each generation: entries outside its universe kept and
+                # reported unresolved, and resolved again when a later generation displays them.
+                Case("persistent-selection", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("ICON-25", "ICON-26"), 1),
             ),
         ),
         Fixture(
@@ -487,7 +732,7 @@ FIXTURES: dict[str, Fixture] = {
         Fixture(
             "F-UNITS-UP-AXIS",
             "Units and up-axis conversion",
-            ("M6",),
+            ("M6", "M7"),
             evaluation.units_up_axis,
             (
                 # Conversion off: the correction is the identity, whatever the stage's units and up axis.
@@ -495,6 +740,10 @@ FIXTURES: dict[str, Fixture] = {
                 # Relation 2: conversion on prefixes the spec's correction to every world transform, for
                 # geometry, bounds, and instances alike, in target scenes of each unit scale.
                 Case("conversion-on", SYNC, SUCCESS, ("CONV-01", "CONV-03", "CONV-08"), 1),
+                # In Blender: the target scene's unit settings unchanged by conversion, and a destination also
+                # linked into a scene of another unit scale diagnosed before Blender data is mutated.
+                Case("scene-settings", SYNC, SUCCESS, ("CONV-02",), 1),
+                Case("linked-elsewhere", SYNC, Outcome.COMPLETED_WITH_ISSUES, ("CONV-07",), 1),
             ),
         ),
         Fixture(
@@ -549,6 +798,8 @@ FIXTURES: dict[str, Fixture] = {
                 Case("inside-native-instances", SYNC, SUCCESS, ("INST-08", "ICON-42", "ICON-19"), 1),
                 # Each point's per-point primvars, and its instancer's constant ones, on its copies.
                 Case("per-point-primvars", SYNC, SUCCESS, ("INST-09",), 1),
+                # Point-instance paths are outside the browsing universe; their instancers are in it.
+                Case("universe", SYNC, SUCCESS, ("ICON-15",), 1),
             ),
         ),
     )

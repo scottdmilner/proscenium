@@ -19,6 +19,7 @@ from proscenium.binding.persistence import binding_state, id_property_records
 from proscenium.binding.persistence.manifests import RepresentationRole
 from proscenium.binding.results import DiagnosticCode, ResultState
 from proscenium.binding.runtime import ownership
+from proscenium.synchronization import application
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
@@ -77,6 +78,65 @@ def test_a_synchronization_plans_under_the_binding_settings_and_scene_scale(
         for path, world in scene.world_matrices_by_source.items():
             expected = world * correction if conversion else world
             assert _close(objects[path].matrix_world, _blender(expected)), path
+
+
+def _unit_settings(scene: bpy.types.Scene) -> tuple[object, ...]:
+    settings = scene.unit_settings
+    return (settings.system, settings.scale_length, settings.length_unit)
+
+
+@pytest.mark.parametrize(("scale_length", "length_unit"), [(1.0, "METERS"), (0.01, "CENTIMETERS")])
+def test_conversion_leaves_the_scene_unit_settings(
+    bindings: Bindings, tmp_path: Path, scale_length: float, length_unit: str
+) -> None:
+    # CONV-02 on F-UNITS-UP-AXIS "scene-settings": with conversion on, each copy's object shows its world transform
+    # under the correction for the target scene's scale, and the scene's unit system, scale, and length unit are as
+    # they were.
+    with evaluation.units_up_axis(tmp_path) as scene:
+        units = _scene().unit_settings
+        units.system, units.scale_length = "METRIC", scale_length
+        units.length_unit = length_unit  # ty: ignore[invalid-assignment] - the stubs list only DEFAULT
+        before = _unit_settings(_scene())
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_paths["y-up-cm"], name="Shot")
+        assert handle.set_settings(coordinate_conversion=True).state is ResultState.SUCCESS
+        assert handle.synchronize(0).state is ResultState.SUCCESS
+        assert _unit_settings(_scene()) == before
+        objects, correction = _objects(handle), scene.correction("y-up-cm", scale_length)
+        for path, world in scene.world_matrices_by_source.items():
+            assert _close(objects[path].matrix_world, _blender(world * correction)), path
+
+
+def test_a_destination_in_a_scene_of_another_unit_scale_is_diagnosed(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CONV-07 on F-UNITS-UP-AXIS "linked-elsewhere": the destination, also linked into a scene of another unit scale
+    # (through a collection of its own) and one of the same, gets a diagnostic for the other only, naming it, the
+    # destination, and both scales, which the generation records; it's found before preparation, since a failing
+    # preparation reports it too.
+    with evaluation.units_up_axis(tmp_path) as scene:
+        handle = binding_on_file(bindings, _scene(), scene.root_layer_paths["z-up-m"], name="Shot")
+        destination = bpy.data.collections["Shot"]
+        other, same = bpy.data.scenes.new("Other"), bpy.data.scenes.new("Same")
+        other.unit_settings.scale_length = 0.01
+        group = bpy.data.collections.new("Group")
+        other.collection.children.link(group)
+        group.children.link(destination)
+        same.collection.children.link(destination)
+        result = handle.synchronize(0)
+        assert result.state is ResultState.COMPLETED_WITH_ISSUES
+        [mismatch] = result.diagnostics
+        assert mismatch.code is DiagnosticCode.UNIT_SCALE_MISMATCH
+        assert all(text in mismatch.message for text in ("'Shot'", "'Other'", "0.01", "'Scene'", " 1,"))
+        generation = binding_state.read_generation(destination)
+        assert isinstance(generation, id_property_records.LoadedRecord)
+        assert generation.record.diagnostics == (mismatch,)
+
+        def failing(*_args: object) -> None:
+            raise RuntimeError("injected preparation failure")
+
+        monkeypatch.setattr(application, "prepare", failing)
+        codes = [d.code for d in handle.synchronize(0).diagnostics]
+        assert codes == [DiagnosticCode.UNIT_SCALE_MISMATCH, DiagnosticCode.PREPARATION_FAILED]
 
 
 def test_a_synchronization_shows_the_binding_purposes(bindings: Bindings, tmp_path: Path) -> None:

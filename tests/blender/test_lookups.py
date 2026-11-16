@@ -334,12 +334,14 @@ def test_a_resource_is_read_through_its_bindings_manifest_alone(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A binding's manifest() reads that binding's manifest alone, and ownership of a datablock only the manifests
-    # among its users.
+    # among its users. What's kept is cleared first, so each query decodes what it reads.
     ids, _ = _two_managed(bindings, tmp_path)
     reads = _counted_reads(monkeypatch)
+    runtime.kept_manifests.clear()
     assert _resource(ids[1], "a") == bpy.data.objects["A"]
     assert [read for read in reads if read[1] == manifests.MANIFEST_KEY] == [("Other", manifests.MANIFEST_KEY)]
     reads.clear()
+    runtime.kept_manifests.clear()
     assert [c.binding_id for c in ownership.of(bpy.data.objects["A"]).claims] == [ids[1]]
     assert [read for read in reads if read[1] == manifests.MANIFEST_KEY] == [("Other", manifests.MANIFEST_KEY)]
 
