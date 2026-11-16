@@ -48,7 +48,8 @@ jobs:
 
   # The compiled core for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
   # manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
-  # tools/build_extension.py uses this module because its build record is current. The Hydra bridge, which M4's
+  # tools/build_extension.py uses this module because its build record is current. Its compile commands go with it,
+  # for the inspection layer's include check (tests/bpy_free/test_core_inspection.py). The Hydra bridge, which M4's
   # prototype tests run, is built here too, since its build audits the same floor.
   core-linux:
     needs: changes
@@ -76,6 +77,7 @@ jobs:
           path: |
             build/core/build.json
             src/proscenium/core/_core.*.so
+            build/core-cmake/compile_commands.json
             build/hydra-bridge/build.json
             build/hydra-bridge/_hydra_bridge.*.so
           if-no-files-found: error

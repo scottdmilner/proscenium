@@ -130,6 +130,11 @@ def _includes(path: Path) -> list[str]:
     return re.findall(r'^\s*#\s*include\s*[<"]([^>"]+)[>"]', path.read_text(), flags=re.MULTILINE)
 
 
+def _in_this_checkout(path: Path, built_checkout: Path) -> Path:
+    """A path the core's build recorded, moved from the checkout it was built in to this one."""
+    return ROOT / path.relative_to(built_checkout) if path.is_relative_to(built_checkout) else path
+
+
 def test_the_inspection_layer_reads_only_usd() -> None:
     # ICON-04: the library's sources include only USD's headers, the standard library's, and its own; its build
     # target links only Blender's USD; and its compile commands' include directories are its own and USD's with
@@ -142,15 +147,22 @@ def test_the_inspection_layer_reads_only_usd() -> None:
             assert header.startswith("pxr/") or header in own or "." not in header, (source.name, header)
     cmake = (INSPECTION / "CMakeLists.txt").read_text()
     assert re.findall(r"target_link_libraries\(([^)]*)\)", cmake) == ['proscenium_inspection PRIVATE "${USD_LIBRARY}"']
+    # CI's Linux tests read the compile commands core-linux built with, whose paths are its container's checkout.
     commands = json.loads((ROOT / "build" / "core-cmake" / "compile_commands.json").read_text())
-    inspection_commands = [c for c in commands if Path(c["file"]).parent == INSPECTION]
-    assert {Path(c["file"]).name for c in inspection_commands} == {p.name for p in sources if p.suffix == ".cpp"}
-    for command in inspection_commands:
+    inspection_commands = []
+    for command in commands:
+        # Each command runs in the build directory, build/core-cmake under the checkout it was built in.
+        built_checkout = Path(command["directory"]).parents[1]
+        source = _in_this_checkout(Path(command["file"]), built_checkout)
+        if source.parent == INSPECTION:
+            inspection_commands.append((source, command, built_checkout))
+    assert {source.name for source, _, _ in inspection_commands} == {p.name for p in sources if p.suffix == ".cpp"}
+    for source, command, built_checkout in inspection_commands:
         arguments = command.get("arguments") or command["command"].split()
         directories = [a.removeprefix("-I") for a in arguments if a.startswith("-I") and a != "-I"]
         directories += [arguments[i + 1] for i, a in enumerate(arguments) if a in {"-isystem", "-I"}]
-        assert directories, command["file"]
-        for directory in map(Path, directories):
+        assert directories, source.name
+        for directory in (_in_this_checkout(Path(d), built_checkout) for d in directories):
             assert directory == INSPECTION or re.search(
                 r"/(usd|tbb|python)/include(/python3\.\d+)?$", directory.as_posix()
             ), directory
