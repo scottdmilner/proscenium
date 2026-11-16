@@ -29,12 +29,15 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from ..binding.persistence import manifests
+from ..binding.runtime import kept_manifests
 from ..core import _core
 from . import datablock_removal
 
 if TYPE_CHECKING:
     from collections.abc import Buffer, Collection, Mapping
+
+    from ..binding.persistence import manifests
+    from ..binding.runtime import copy_partitions
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,83 +83,59 @@ def every_partition(plan: _core.Plan, published: manifests.Manifest) -> Partitio
 def changed_partitions(
     previous: _core.Plan, plan: _core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
 ) -> PartitionReplacement:
-    """The partitions of plan's copies that differ from previous's, the plan published is the display of."""
+    """The partitions of plan's copies that differ from previous's, the plan published is the display of.
+
+    The core gives the plan diff and plan's copies' source paths; the published manifest's partitions are the ones
+    kept_manifests keeps beside it, so no refresh groups every entry.
+    """
     diff = _core.diff_plans(previous, plan)
     matched = _indices(diff.previous_copy_indices)
     rebuilt = set(_indices(diff.rebuilt_copy_indices))
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))
     participation = set(_indices(diff.participation_changed_copy_indices))
-    found = _PublishedPartitions.of(published)
-    keys_by_source, action_keys, incomplete = found.keys_by_source, found.action_keys, found.incomplete
+    partitions = kept_manifests.published_partitions(destination, published)
     sources = [entry.source_path for entry in plan.correspondence]
-    previous_sources = [entry.source_path for entry in previous.correspondence]
     sheared = [parent >= 0 for parent in _indices(plan.copy_shear_parent_resource_indices)]
     prepared: list[int] = []
     updated: dict[int, CopyUpdate] = {}
     for copy, old in enumerate(matched):
-        source = sources[copy]
-        unmatched = (source in found.parented) != sheared[copy] or source in found.sampled | found.doubled
-        if old < 0 or copy in rebuilt or source in incomplete or source not in keys_by_source or unmatched:
+        partition = partitions.partition(sources[copy])
+        unmatched = partition is not None and (
+            partition.parented != sheared[copy] or partition.sampled or partition.doubled
+        )
+        if old < 0 or copy in rebuilt or partition is None or partition.incomplete or unmatched:
             prepared.append(copy)
-        elif copy in moved | bounds | participation or source in action_keys:
-            updated[copy] = CopyUpdate(copy in moved, copy in bounds, copy in participation, source in action_keys)
-    shared = _used_elsewhere({sources[c] for c in updated}, keys_by_source, published, destination)
+        elif copy in moved or copy in bounds or copy in participation or partition.action_entry_key is not None:
+            keyed = partition.action_entry_key is not None
+            updated[copy] = CopyUpdate(copy in moved, copy in bounds, copy in participation, keyed)
+    shared = _used_elsewhere({sources[c] for c in updated}, partitions, published, destination)
     for copy in [c for c in updated if sources[c] in shared]:
         del updated[copy]
         prepared.append(copy)
     prepared.sort()
-    replaced = {key for copy in prepared for key in keys_by_source.get(sources[copy], ())}
-    replaced |= {action_keys[sources[c]] for c, change in updated.items() if change.cached_keys_removed}
-    for old in _indices(diff.removed_previous_copy_indices):
-        replaced |= keys_by_source.get(previous_sources[old], set())
+
+    def keys(source: str) -> frozenset[str]:
+        partition = partitions.partition(source)
+        return frozenset() if partition is None else partition.entry_keys
+
+    replaced = {key for copy in prepared for key in keys(sources[copy])}
+    for copy, change in updated.items():
+        if change.cached_keys_removed and (partition := partitions.partition(sources[copy])) is not None:
+            replaced.add(str(partition.action_entry_key))
+    removed = _indices(diff.removed_previous_copy_indices)
+    # A matched copy has its counterpart's source path, so previous's are plan's and the removed copies'.
+    removed_sources = {previous.correspondence[old].source_path for old in removed} if removed else set()
+    for source in removed_sources:
+        replaced |= keys(source)
     # And the copies a cache call built for its time codes alone, which neither plan has.
-    planned = set(sources) | set(previous_sources)
-    replaced |= {key for source, keys in keys_by_source.items() if source not in planned for key in keys}
-    return PartitionReplacement(tuple(prepared), frozenset(replaced | _unused_shared(published, replaced)), updated)
-
-
-def _unused_shared(published: manifests.Manifest, replaced: Collection[str]) -> set[str]:
-    """The keys of published's shared datablocks' entries that only replaced entries use."""
-    used = {used for key, e in published.entries.items() if key not in replaced for used in e.dependency_entry_keys}
-    return {key for key, e in published.entries.items() if e.identity is None and key not in used}
-
-
-@dataclass(frozen=True, slots=True)
-class _PublishedPartitions:
-    """The published copies' partitions, by source entity."""
-
-    keys_by_source: dict[str, set[str]]  # each copy's entries' keys
-    action_keys: dict[str, str]  # the entry key of the action holding a copy's cached keys
-    incomplete: set[str]  # the copies with a published resource gone
-    parented: set[str]  # the copies with a published shear parent
-    sampled: set[str]  # the copies whose entries use a shared datablock, the frames group a cache call sampled for
-    doubled: set[str]  # the copies with a second object, a cache call's for the form their plan didn't draw
-
-    @staticmethod
-    def of(published: manifests.Manifest) -> _PublishedPartitions:
-        """The partitions of published's copies."""
-        found = _PublishedPartitions({}, {}, set(), set(), set(), set())
-        shared = {k for k, e in published.entries.items() if e.identity is None}
-        for entry_key, entry in published.entries.items():
-            if (identity := entry.identity) is None:
-                continue
-            found.keys_by_source.setdefault(identity.entity, set()).add(entry_key)
-            if identity.role is manifests.RepresentationRole.ACTION:
-                found.action_keys[identity.entity] = entry_key
-            if identity.role is manifests.RepresentationRole.SHEAR_PARENT:
-                found.parented.add(identity.entity)
-            if entry.datablock is None:
-                found.incomplete.add(identity.entity)
-            if not shared.isdisjoint(entry.dependency_entry_keys):
-                found.sampled.add(identity.entity)
-            if identity.role is manifests.RepresentationRole.OBJECT and identity.object_index_in_copy > 0:
-                found.doubled.add(identity.entity)
-        return found
+    for source in partitions.source_paths() - set(sources) - removed_sources:
+        replaced |= keys(source)
+    return PartitionReplacement(tuple(prepared), frozenset(replaced | partitions.unused_shared(replaced)), updated)
 
 
 def _used_elsewhere(
     sources: Collection[str],
-    keys_by_source: Mapping[str, Collection[str]],
+    published_partitions: copy_partitions.PublishedPartitions,
     published: manifests.Manifest,
     destination: bpy.types.Collection,
 ) -> set[str]:
@@ -164,7 +143,8 @@ def _used_elsewhere(
     partitions: dict[str, set[int]] = {}  # by source: its partition's datablocks' session_uids
     kept: dict[bpy.types.ID, str] = {}  # the partitions' resources, to their sources
     for source in sources:
-        entries = [published.entries[key] for key in keys_by_source[source]]
+        partition = published_partitions.partition(source)
+        entries = [] if partition is None else [published.entries[key] for key in partition.entry_keys]
         partitions[source] = {e.datablock.session_uid for e in entries if e.datablock is not None}
         kept |= {e.datablock: source for e in entries if e.datablock is not None}
     if not kept:

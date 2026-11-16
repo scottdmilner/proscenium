@@ -13,7 +13,7 @@ import bpy
 from proscenium.binding.persistence import id_property_records, manifests
 from proscenium.binding.persistence.id_property_records import LoadedRecord, RefusedRecord
 from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.runtime import kept_manifests
+from proscenium.binding.runtime import copy_partitions, kept_manifests
 from support import undo
 from support.manifests import key, object_change, object_entry
 
@@ -49,6 +49,12 @@ def _read(destination: bpy.types.Collection) -> Manifest:
     loaded = kept_manifests.read_manifest(destination)
     assert isinstance(loaded, LoadedRecord)
     return loaded.record
+
+
+def _entry_keys(partitions: copy_partitions.PublishedPartitions, source_path: str) -> set[str]:
+    partition = partitions.partition(source_path)
+    assert partition is not None
+    return set(partition.entry_keys)
 
 
 def test_reads_after_a_write_decode_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,3 +125,46 @@ def test_an_undo_restoring_a_removed_datablock_decodes_the_manifest(
     restored = bpy.data.collections["Destination"]
     assert _read(restored).entries[key("a")].datablock == bpy.data.objects["A"]
     assert len(decodes) == 2
+
+
+def test_partitions_are_kept_beside_the_manifest_through_writes_by_entry() -> None:
+    # Asked for the kept manifest's partitions, the same grouping comes back each time, and a write by entry changes it
+    # in place to match the manifest written; a whole write keeps none, so the next request builds them again.
+    destination, manifest = _destination()
+    partitions = kept_manifests.published_partitions(destination, manifest)
+    assert kept_manifests.published_partitions(destination, manifest) is partitions
+    assert _entry_keys(partitions, "/World/A") == {key("a")}
+    c = bpy.data.objects.new("C", None)
+    after = manifest.updated({key("c"): object_change("/World/C")}, removed=[key("a")], created={key("c"): c})
+    kept_manifests.write_manifest_entries(destination, after, [key("c")], [key("a")])
+    assert kept_manifests.published_partitions(destination, _read(destination)) is partitions
+    assert partitions.partition("/World/A") is None
+    assert _entry_keys(partitions, "/World/C") == {key("c")}
+    kept_manifests.write_manifest(destination, manifest)
+    rebuilt = kept_manifests.published_partitions(destination, _read(destination))
+    assert rebuilt is not partitions
+    assert _entry_keys(rebuilt, "/World/A") == {key("a")}
+
+
+def test_partitions_of_another_manifest_are_built_and_not_kept() -> None:
+    # A manifest that isn't the destination's kept one, as one a caller built, gets partitions of its own each time.
+    destination, manifest = _destination()
+    other = Manifest({key("b"): manifest.entries[key("b")]})
+    first = kept_manifests.published_partitions(destination, other)
+    assert kept_manifests.published_partitions(destination, other) is not first
+    assert first.partition("/World/A") is None
+
+
+def test_partitions_of_a_manifest_written_past_them_are_built_again() -> None:
+    # Kept partitions take a write by entry only when they describe the stored manifest: written in between other than
+    # through kept_manifests, its revision is another, so the write by entry keeps none and they're built again.
+    destination, manifest = _destination()
+    partitions = kept_manifests.published_partitions(destination, manifest)
+    without_a = Manifest({key("b"): manifest.entries[key("b")]})
+    manifests.write_manifest(destination, without_a)  # not through kept_manifests
+    c = bpy.data.objects.new("C", None)
+    after = without_a.updated({key("c"): object_change("/World/C")}, created={key("c"): c})
+    kept_manifests.write_manifest_entries(destination, after, [key("c")], [])
+    rebuilt = kept_manifests.published_partitions(destination, _read(destination))
+    assert rebuilt is not partitions
+    assert rebuilt.partition("/World/A") is None

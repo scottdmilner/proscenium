@@ -1826,22 +1826,23 @@ Every range of the memory measures was within 4 MB of its median.
 
 `partitions_to_replace` is now the largest step of an unchanged synchronization: 10, 26, and 118 ms.
 
-**What a push holds** (ad hoc, one process on `updates-1000`, pushes made directly after the API's push following the first synchronization): the first push with nothing changed grew the heap by 13.2 MB, and each push after it by 0.58 MB, with nothing changed or after one object moved; changing one leaf of the manifest's ID properties grew it by 0.71 MB. So the profile's growth after the move is the second push after a synchronization, not the move's: why that push holds more wasn't investigated.
+**With partitions kept beside the manifest** (`binding/runtime/copy_partitions.py`, kept by `kept_manifests`): the same calls again, three processes per scene (2026-11-16; load average 10 to 25 over the runs, so the machine was busier than above). `partitions_to_replace`, against the version just above:
 
-**The undo push evaluates the depsgraph** (ad hoc, one process on `updates-100`): after a push, `ViewLayer.update()` took 5 µs, against 0.46 ms after the same edit with no push. So each push's time here includes the evaluation a window's redraw would otherwise do, and a view-layer update after a call that pushed found nothing to do.
+| `partitions_to_replace` (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Unchanged, its partitions grouped from every entry | 19, against 10 | 44, against 26 | 222, against 118 |
+| Move one object | 5.2, against 13 | 14, against 33 | 70, against 167 |
+| Hide one | 5.2, against 13 | 13, against 33 | 69, against 168 |
+| Reload, then synchronize | 2.1, against 10 | 5.5, against 25 | 26, against 110 |
 
-**Findings:**
-- **Synchronizing again costs a fifteenth of a rebuild on ALab:** 117 ms with nothing changed and 166 ms after a move, against M6's 1.74 s full rebuild with the stub ([its profile](#the-products-synchronization-with-m6s-plan-m6-phase-f)). A first synchronization costs about what M6's did: 1.64 s against 1.73 s.
-- **The kept chain saves its build:** 0.28 to 0.32 s on ALab and `updates-10000`, which M6's F1 inferred (0.31 s on ALab); capture and planning from it take 36 ms on ALab.
-- **Reading the manifest is most of an incremental synchronization:** 20, 47, and 228 ms, 40 to 50% of each unchanged one. Finding the partitions to replace is most of the rest, and the core's diff only 0.3 to 3.4 ms of it, so the bridge's diff inside updates, 76 to 123 ms against 38 ms alone, has no counterpart here; the diff alone wasn't timed.
-- **Hiding costs its undo push:** 238 ms on ALab and 1.18 s at 30,001 objects, against 35 ms and 177 ms after a move. The push includes the depsgraph's evaluation, which a change of hide flags makes larger; that it rebuilds the depsgraph's relations is an inference.
-- **A reload of unchanged layers costs nothing more:** the synchronization after it took what an unchanged one does.
-- **A full rebuild's retirement is the cost [M6 found](#retiring-a-large-display-m6-phase-f):** 3.7 s on ALab and 98 s at 30,001 objects.
-- **A cache call costs a tenth of the stub's:** 0.66 s on `updates-10000` against M6 F4's 6.0 s, and 0.32 s on ALab against 2.1 s ([M6's profile](#the-products-synchronization-with-m6s-plan-m6-phase-f)). The `updates` scenes have nothing to key at those time codes, so their frames had nothing to evaluate. On ALab, a cached frame's first visit and its revisit cost alike, 21 to 23 ms.
-- **The undo steps:** the first synchronization's is 300 MB on ALab and 1.48 GB at 30,001 objects. After that, a step holds what changed, a few MB, apart from the second push after a synchronization. [M5's baseline](#the-undo-step-of-a-synchronization-m5-phase-f) pushed 58 MB on ALab after a rebuild, against M7's 52 MB.
-- **The depsgraph's evaluated copies:** each call that pushed left nothing for a view-layer update to evaluate, since its push had. The cache call pushes none: the update after it took 200 ms on ALab, its keys' first evaluation, and the heap grew by 9.4 MB.
-- **Held plans:** about 4 MB a plan on ALab and 14 MB at 30,001 objects. A binding holds up to the undo steps plus one, 33 by default, which at that size would be about 450 MB at 30,001 objects (inferred from three plans, not measured).
-- **Not measured:** a windowed Blender, global undo off, the wheel, Linux and Windows, edits inside native instances, and content that varies at the cached time codes on the `updates` scenes.
+| Call (ms) | updates-1000 | ALab | updates-10000 |
+|---|---|---|---|
+| Unchanged | 32 | 101 | 357 |
+| Move one object | 33 | 104 | 400 |
+| Hide one | 119 | 323 | 1,439 |
+| Reload, then synchronize | 13 | 82 | 152 |
+
+The unchanged synchronization is the first after the first one, whose whole write keeps no partitions, so it groups them from every entry, which costs more than the one-pass grouping above did, since it also indexes each entry's users for later writes; each later synchronization takes the partitions as its write before left them. A version that decided in the core, given the manifest's entries at every refresh, cost about what the Python loop did (16 to 21 ms on ALab, one process each, ad hoc): passing the whole manifest in replaced passing the plans' correspondence out. Kept beside the manifest in the core, it took 11 ms after a move on ALab and 64 ms at 30,001 objects, near what the kept Python partitions take, so the saving is the keeping (three processes per scene, 2026-11-14, load average 6 to 18; that version wasn't kept).
 
 ### The product's interaction (M7 Phase G)
 

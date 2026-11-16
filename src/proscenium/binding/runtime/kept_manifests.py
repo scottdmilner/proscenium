@@ -7,6 +7,11 @@ written at, and a read whose stored revision is the kept one returns it, once ev
 alive: removing a datablock clears its pointer in the record without a write, so a kept manifest naming a removed one
 is decoded again. A manifest stored before revisions is decoded at every read until it is next written.
 
+Beside a kept manifest, the grouping of its copies' partitions a refresh decides from
+(copy_partitions.PublishedPartitions): built from every entry the first time it's asked for, then kept in step
+with each write by entry, which gives it only the entries it changed and removed. A whole write keeps none, to be built
+again when next asked for.
+
 Every manifest read and write goes through here, so a write keeps what it wrote. A manifest names datablocks, which an
 undo, a redo, or a file load may free or restore, so proscenium.addon clears what's kept after each (clear).
 """
@@ -18,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from ..persistence import id_property_records, manifests
 from ..persistence.id_property_records import LoadedRecord, RefusedRecord
+from . import copy_partitions
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -29,6 +35,8 @@ if TYPE_CHECKING:
 class _KeptManifest:
     revision: str
     loaded: LoadedRecord[manifests.Manifest]
+    # Its copies' partitions, once asked for; each write by entry changes them in place.
+    partitions: copy_partitions.PublishedPartitions | None = None
 
 
 class _KeptManifestsState:
@@ -46,6 +54,23 @@ def read_manifest(destination: bpy.types.Collection) -> LoadedRecord[manifests.M
     return loaded
 
 
+def published_partitions(
+    destination: bpy.types.Collection, manifest: manifests.Manifest
+) -> copy_partitions.PublishedPartitions:
+    """The partitions of manifest's copies, kept if manifest is the destination's kept one, else built.
+
+    The destination's next write by entry changes kept partitions in place, so a caller uses them only until then.
+    """
+    kept = _KeptManifestsState.kept_by_destination.get(destination.session_uid)
+    if kept is None or kept.loaded.record is not manifest:
+        return copy_partitions.PublishedPartitions(manifest)
+    if kept.partitions is None:
+        kept = _KeptManifest(kept.revision, kept.loaded, copy_partitions.PublishedPartitions(manifest))
+        _KeptManifestsState.kept_by_destination[destination.session_uid] = kept
+    assert kept.partitions is not None
+    return kept.partitions
+
+
 def write_manifest(destination: bpy.types.Collection, manifest: manifests.Manifest) -> LoadedRecord[manifests.Manifest]:
     """Store the destination's manifest whole and keep it (manifests.write_manifest)."""
     written = manifests.write_manifest(destination, manifest)
@@ -56,9 +81,17 @@ def write_manifest(destination: bpy.types.Collection, manifest: manifests.Manife
 def write_manifest_entries(
     destination: bpy.types.Collection, manifest: manifests.Manifest, changed: Collection[str], removed: Collection[str]
 ) -> LoadedRecord[manifests.Manifest]:
-    """Store manifest by its changed and removed entries and keep it (manifests.write_manifest_entries)."""
+    """Store manifest by its changed and removed entries and keep it (manifests.write_manifest_entries).
+
+    Kept partitions of the manifest the write replaces take its changed and removed entries.
+    """
+    kept = _KeptManifestsState.kept_by_destination.get(destination.session_uid)
+    current = kept is not None and kept.revision == manifests.manifest_revision(destination)
+    partitions = kept.partitions if current and kept is not None else None
     written = manifests.write_manifest_entries(destination, manifest, changed, removed)
-    _keep(destination, manifests.manifest_revision(destination), written)
+    if partitions is not None:
+        partitions.replace_entries(manifest, changed, removed)
+    _keep(destination, manifests.manifest_revision(destination), written, partitions)
     return written
 
 
@@ -77,9 +110,11 @@ def _keep(
     destination: bpy.types.Collection,
     revision: str | None,
     loaded: LoadedRecord[manifests.Manifest] | RefusedRecord | None,
+    partitions: copy_partitions.PublishedPartitions | None = None,
 ) -> None:
     if revision is not None and isinstance(loaded, LoadedRecord):
-        _KeptManifestsState.kept_by_destination[destination.session_uid] = _KeptManifest(revision, loaded)
+        kept = _KeptManifest(revision, loaded, partitions)
+        _KeptManifestsState.kept_by_destination[destination.session_uid] = kept
     else:
         _KeptManifestsState.kept_by_destination.pop(destination.session_uid, None)
 
