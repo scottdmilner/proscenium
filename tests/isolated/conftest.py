@@ -9,7 +9,8 @@ Fixtures:
 - `runtime`: parametrized over the wheel and the Blender binary, for smoke tests
   that should also pass in the runtime users run.
 - `windowed_binary`: the Blender binary with a window, for what needs drawing and input events. Linux needs a
-  display for it: CI runs the tests under Xvfb.
+  display for it: CI runs the tests under Xvfb. Locally, a test using it is skipped until what it covers changes
+  since it last passed (windowed_runs.py); CI always runs it.
 - `hydra_bridge`: the directory of M1b's compiled Hydra bridge, which M4's prototypes run. Built from its
   sources once per run, unless PROSCENIUM_HYDRA_BRIDGE names a directory holding a prebuilt one (CI on Linux).
 Without a binary, binary runs are skipped, unless PROSCENIUM_REQUIRE_BLENDER is set (CI).
@@ -21,14 +22,18 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 import pytest
 from filelock import FileLock
 
 from blender_paths import find_blender
 
+from . import windowed_runs
 from .harness import WHEEL, Runtime, RuntimeKind
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE_BUILD = ROOT / "tools/feasibility/hydra_bridge/build.py"
@@ -53,10 +58,28 @@ def runtime(request: pytest.FixtureRequest) -> Runtime:
 
 
 @pytest.fixture
-def windowed_binary() -> Runtime:
+def windowed_binary(request: pytest.FixtureRequest) -> Runtime:
     if sys.platform == "linux" and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
         _skip_or_fail("no display for Blender's window; run under xvfb-run")
-    return Runtime(RuntimeKind.WINDOWED_BINARY, _binary().blender_executable)
+    blender_executable = _binary().blender_executable
+    assert blender_executable is not None  # a binary runtime's
+    item = request.node
+    digest = windowed_runs.covered_files_digest(item, blender_executable)
+    if not windowed_runs.is_run_regardless(item) and windowed_runs.passed_digest(item) == digest:
+        pytest.skip("windowed, and nothing it covers changed since it passed; set PROSCENIUM_RUN_WINDOWED to run it")
+    item.stash[windowed_runs.COVERED_DIGEST] = digest
+    return Runtime(RuntimeKind.WINDOWED_BINARY, blender_executable)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    """Record a windowed test's pass, with the digest of what it covered."""
+    report = yield
+    if report.when == "call" and report.passed:
+        windowed_runs.record_pass(item)
+    return report
 
 
 def _binary() -> Runtime:

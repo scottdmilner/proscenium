@@ -112,4 +112,5 @@ markers = [
     "isolated: fresh Blender process (bpy wheel or binary) per test",
     "alab: requires PROSCENIUM_ALAB_ROOT",
     "slow: long-running",
+    "windowed: opens a Blender window; covers=(...) names what it tests, so a local run skips it until that changes",
 ]

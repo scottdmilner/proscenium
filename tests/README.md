@@ -52,6 +52,7 @@ tests/
 │   ├── conftest.py           `wheel`, `runtime`, and `hydra_bridge` fixtures
 │   ├── harness.py            run_isolated: starts the fresh process, returns the body's result
 │   ├── runner.py             the script the fresh process executes
+│   ├── windowed_runs.py      when a windowed test runs: in CI always, locally once what it covers changes
 │   └── bodies/               functions run inside the fresh process
 ├── support/                  helpers used by more than one layer or by fixtures/
 ├── tools/                    scripts for inspecting fixtures; not tests
@@ -129,6 +130,7 @@ A test calls `run_isolated(runtime, body, function, tmp_path, **kwargs)` from `i
 - The **`wheel`** fixture is a fresh bpy-wheel process. Use it by default.
 - The **`runtime`** fixture is parametrized over the wheel and the Blender binary. Use it for cross-platform smoke tests that should also pass in the runtime users run. The **`binary`** fixture is the binary alone, for a check another layer already makes with the wheel. Binary runs are skipped without a binary, unless `PROSCENIUM_REQUIRE_BLENDER` is set.
 - The **`windowed_binary`** fixture is the Blender binary with a window that takes only simulated input (`--enable-event-simulate`), for what needs drawing and input events, such as the widgets' arrow keys (`test_list_keys.py`). Its body is a generator: each step simulates events with `Window.event_simulate`, and the seconds it yields let the window handle them before the next step; its return value is the result. The window starts from `--factory-startup`'s scene, with the splash turned off. On Linux it needs a display, so CI runs the tests under `xvfb-run`; Windows runners get Mesa's software OpenGL (the `window` input of `.github/actions/setup-blender`). Without a display, or a binary, it skips unless `PROSCENIUM_REQUIRE_BLENDER` is set.
+  - Its window takes over the screen, so a local run skips a windowed test until what it covers has changed since it last passed (`isolated/windowed_runs.py`, by a hash of those files kept in pytest's cache). Its module names what it covers in its `windowed` marker, `pytestmark = pytest.mark.windowed(covers=(...))`, as paths from the repository root, a directory standing for every file under it; the test's own module and the layer's `conftest.py`, `harness.py`, and `runner.py` count too, and a covered path that's missing fails the test. It runs anyway in CI (where `CI` is set), when `PROSCENIUM_RUN_WINDOWED` is set, or when the command line names its module (`uv run pytest tests/isolated/test_list_keys.py`). With pytest's cache off (`-p no:cacheprovider`), it always runs.
 - Each call gets its own Blender user dir under the test's `tmp_path`.
 - The **`hydra_bridge`** fixture is the directory of M1b's compiled Hydra bridge (`tools/feasibility/hydra_bridge/`), which M4's prototype tests pass to their bodies. It builds the bridge from its sources once per run, into `build/hydra-bridge/` as `build.py` does; when nothing changed, the build only checks. `PROSCENIUM_HYDRA_BRIDGE` names a prebuilt one instead, as CI does on Linux, where the build must run on Blender's glibc floor.
 
