@@ -10,11 +10,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from fixtures.scenes import Scene, copy_scene
 
 from .harness import Runtime, run_isolated
 
 BODIES = Path(__file__).parent / "bodies"
+# The widgets' key stepping, hover detection, and the watcher they share, with the scenes and the bodies that drive
+# them. A local run skips these tests until one of these changes (windowed_runs.py).
+pytestmark = pytest.mark.windowed(
+    covers=(
+        "src/proscenium/ui/widget_resources/",
+        "src/proscenium/ui/widget_model/list_steps.py",
+        "src/proscenium/ui/columned_list/",
+        "src/proscenium/ui/scene_graph_widget/display/",
+        "src/proscenium/ui/property_viewer_widget/display/",
+        "tests/isolated/bodies/list_keys.py",
+        "tests/fixtures/scenes/scene_graph/prim_kinds.usda",
+        "tests/fixtures/scenes/property_viewer/property_kinds.usda",
+    )
+)
 TIMEOUT_SECONDS = 120  # the sweep down the sidebar takes a few seconds; a window that never draws times out
 
 
