@@ -7,7 +7,6 @@ from dataclasses import replace
 import pytest
 from pxr import Usd
 
-from proscenium_sync import results
 from proscenium_sync.results import (
     Diagnostic,
     DiagnosticCategory,
@@ -15,6 +14,7 @@ from proscenium_sync.results import (
     DiagnosticCollector,
     Result,
     ResultState,
+    operation_results,
 )
 
 DIRTY = Diagnostic(DiagnosticCode.UNSAVED_LAYERS, "binding", "Displaying unsaved edits", layer_identifiers=("/a.usda",))
@@ -55,7 +55,7 @@ def test_each_category_gives_the_state_the_spec_names() -> None:
         | {c: ResultState.FATAL_FAILURE for c in fatal}
         | {c: ResultState.SUCCESS for c in (DiagnosticCategory.SOURCE_STATE, DiagnosticCategory.VERIFICATION)}
     )
-    assert results._STATE_OF == expected  # noqa: SLF001
+    assert operation_results._STATE_OF == expected  # noqa: SLF001
     assert expected.keys() == set(DiagnosticCategory)
 
 

@@ -12,7 +12,7 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 | `runtime/` | Lookups and writes on `persistence/`'s records, read when called, and every binding's stages. |
 | `persistence/` | Versioned records in Blender ID properties. |
 | `source_access/` | The stages a binding reads its source from, and the binding identifiers, canonical-candidate rule, requested settings, and source-entity identifiers they're found and made by. The lowest tier. |
-| `results.py` | What operations on a binding report: `Result`, whose state derives from its aggregated diagnostics (`result_state`, `deduplicated_diagnostics`) and never from its cleanup status, `DiagnosticCollector`, which gathers an operation's diagnostics as its steps run, `ResultState`, `Diagnostic`, `DiagnosticCode`, the list of stable codes, each with one `DiagnosticCategory` and `Severity`, ([Diagnostics](../../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. The lowest tier. |
+| `results/` | What operations on a binding report: `Result`, whose state derives from its aggregated diagnostics (`result_state`, `deduplicated_diagnostics`) and never from its cleanup status, `DiagnosticCollector`, which gathers an operation's diagnostics as its steps run, `ResultState`, `Diagnostic`, `DiagnosticCode`, the list of stable codes, each with one `DiagnosticCategory` and `Severity`, ([Diagnostics](../../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. The lowest tier. |
 | `planner/` | The planner: its C++ source and the built module. The lowest tier. |
 
 ## Import rules
@@ -26,6 +26,6 @@ The workspace's [import rules](../../../README.md#import-rules) hold here, with 
 | 4 | `synchronization/`, `interaction/` |
 | 3 | `runtime/` |
 | 2 | `persistence/` |
-| 1 | `planner/`, `source_access/`, `results.py` |
+| 1 | `planner/`, `source_access/`, `results/` |
 
 `__init__.py`, which imports none of its units, is no unit's.
