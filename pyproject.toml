@@ -5,9 +5,9 @@ description = "Blender extension for one-way synchronization of composed OpenUSD
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-# Runtime dependencies are distributed with the extension. Keep this empty
-# unless a package is meant to ship.
-dependencies = []
+# Runtime dependencies are distributed with the extension. Keep this to the
+# workspace's packages unless another package is meant to ship.
+dependencies = ["proscenium_ui"]
 
 [dependency-groups]
 # Sync `dev` (the default), which includes the others but `icons`. `lint` alone fails `ty check`: it also checks
@@ -64,15 +64,16 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 bpy-site-packages = { path = "tools/bpy-site-packages" }
+proscenium_ui = { workspace = true }
 
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-src = ["src", "tools", "tools/feasibility", "tests"]
+src = ["src", "packages/*/src", "tools", "tools/feasibility", "tests"]
 
 [tool.ruff.lint]
 future-annotations = true
-select = ["E", "W", "F", "I", "A", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415", "RUF022", "C901"]
+select = ["E", "W", "F", "I", "A", "ANN", "B", "UP", "TC", "PERF", "N818", "D", "D415", "RUF022", "C901", "TID252"]
 ignore = [
     "ANN401", # Any is the honest type for untyped pxr/bpy objects
     "D105", "D107", # a magic method or __init__ is described by its class
@@ -83,18 +84,27 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D101", "D102", "D103"] # a test's name says what it checks
 "tools/feasibility/**/*.py" = ["D101", "D102", "D103"] # M1's evidence code, kept as it was measured
-"!src/**/*.py" = ["C901"] # only test complexity on code that ships
+"{tests,tools}/**/*.py" = ["C901"] # only test complexity on code that ships
+# Blender installs the extension as bl_ext.<repository>.proscenium, so it can't import its own modules absolutely.
+"src/proscenium/**/*.py" = ["TID252"]
+
+# Relative imports reach only a sibling or a descendant; any other import is absolute.
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
 
 [tool.ruff.lint.isort]
-known-first-party = ["proscenium"]
+known-first-party = ["proscenium", "proscenium_ui"]
 known-third-party = ["bpy", "pxr"]
 
 [tool.ty.environment]
 python-version = "3.13"
 extra-paths = ["tools", "tools/feasibility", "tests"]
+
+[tool.ty.src]
+exclude = [".claude"]  # Claude Code's worktrees, each a copy of the repository
 
 [tool.ty.rules]
 missing-override-decorator = "error"  # every override is marked with typing.override

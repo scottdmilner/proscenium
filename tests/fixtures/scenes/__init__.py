@@ -26,9 +26,9 @@ class Scene(Enum):
     EVALUATION = "evaluation"  # layers for every generator in fixtures/evaluation.py, generated ones' base included
     INCREMENTAL = "incremental"  # layers for every generator in fixtures/incremental.py and edit_sequence.py
     TIME_VARIATIONS = "time_variations"  # F-TIME-VARIATIONS' layer, for fixtures/time_variations.py
-    # prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree (src/proscenium/ui)
+    # prim_kinds.usda and nested_instances.usda, for the scene graph's prim tree (proscenium_ui)
     SCENE_GRAPH = "scene_graph"
-    # property_kinds.usda, with its weaker sublayer and value clip, for the property viewer's list (src/proscenium/ui)
+    # property_kinds.usda, with its weaker sublayer and value clip, for the property viewer's list (proscenium_ui)
     PROPERTY_VIEWER = "property_viewer"
 
     @property

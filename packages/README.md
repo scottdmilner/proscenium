@@ -4,4 +4,6 @@ The workspace's library packages: each a uv workspace member with its own `pypro
 
 A package boundary goes only where the interface between two sides stands on its own, a USD stage or the extension's public API, so nothing on either side is kept in step with the other by hand. Each package's name starts with `proscenium_`, and is a top-level name of its own, never part of a shared namespace: Blender removes a wheel by deleting its top-level directories.
 
-It holds no package yet.
+| Path | Holds |
+|---|---|
+| `proscenium_ui/` | The widgets the extension usees to build the UI: the scene graph and the property viewer ([its README](proscenium_ui/README.md)). |

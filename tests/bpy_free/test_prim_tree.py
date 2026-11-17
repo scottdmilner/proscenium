@@ -1,4 +1,4 @@
-"""The prim tree's rows (proscenium.ui.scene_graph_widget.prim_tree.prim_tree), on the scene graph test scene.
+"""The prim tree's rows (proscenium_ui.scene_graph_widget.prim_tree.prim_tree), on the scene graph test scene.
 
 The scene is scenes/scene_graph/prim_kinds.usda.
 
@@ -15,8 +15,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_search
-from proscenium.ui.widget_model import prim_details
+from proscenium_ui.scene_graph_widget.prim_tree import PrimTree, prim_search
+from proscenium_ui.widget_model import prim_details
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:

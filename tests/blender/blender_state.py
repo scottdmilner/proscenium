@@ -20,8 +20,8 @@ from pxr import Sdf, UsdUtils
 
 import proscenium
 from proscenium import addon
-from proscenium.ui.property_viewer_widget import display as property_display
-from proscenium.ui.scene_graph_widget import display
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.scene_graph_widget import display
 
 HandlerLists = dict[str, list[Callable[..., object]]]
 

@@ -38,6 +38,8 @@ def test_install_enable_disable(runtime: Runtime, extension_zip: Path, tmp_path:
         repo_dir=str(repo),
     )
     assert repo in Path(result["module_file"]).parents  # the installed copy, not src/
+    ui_file = Path(result["ui_file"])
+    assert tmp_path in ui_file.parents and "site-packages" in ui_file.parts  # the zip's wheel, not packages/
     assert result["enabled_after_install"]
     registered = result["registered_after_install"]
     assert {"load_post", "undo_post", "redo_post"} <= set(registered["handlers"])

@@ -7,16 +7,21 @@ from __future__ import annotations
 
 import importlib
 import sys
+from pathlib import Path
 from typing import Any
 
 import bpy
 
 REPO = "proscenium_test_repo"
+PACKAGES = Path(__file__).resolve().parents[3] / "packages"
 
 
 def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     """Install `archive` into a temporary local repo with enable_on_install, load its compiled core, then disable it."""
     import addon_utils  # in the wheel, importable only after bpy
+
+    # Drop the paths to the workspace's packages' sources, so the extension imports them from the zip's wheels.
+    sys.path[:] = [p for p in sys.path if not Path(p).is_relative_to(PACKAGES)]
 
     prefs = bpy.context.preferences
     assert prefs is not None
@@ -29,6 +34,7 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
         "module_file": module.__file__,
         "enabled_after_install": name in prefs.addons,
         "registered_after_install": _registrations(module.addon),
+        "ui_file": sys.modules["proscenium_ui"].__file__,
     }
     from pxr import Usd
 

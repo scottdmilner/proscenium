@@ -17,15 +17,15 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 import bpy
 from pxr import Sdf, Usd
 
-from proscenium.ui.columned_list import column_layout
-from proscenium.ui.property_viewer_widget import display as property_display
-from proscenium.ui.property_viewer_widget.display import (
+from proscenium_ui.columned_list import column_layout
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.property_viewer_widget.display import (
     property_columns,
     property_viewer_properties,
     property_viewer_views,
 )
-from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.scene_graph_widget.display import list_columns, scene_graph_properties, scene_graph_views
+from proscenium_ui.scene_graph_widget import display
+from proscenium_ui.scene_graph_widget.display import list_columns, scene_graph_properties, scene_graph_views
 
 if TYPE_CHECKING:
     from collections.abc import Generator

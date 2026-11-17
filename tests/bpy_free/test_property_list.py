@@ -1,4 +1,4 @@
-"""A prim's property list, its view, and what it says about properties (proscenium.ui.property_viewer_widget).
+"""A prim's property list, its view, and what it says about properties (proscenium_ui.property_viewer_widget).
 
 On scenes/property_viewer/property_kinds.usda; expected values are written from how the scene is built.
 """
@@ -13,19 +13,19 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.property_viewer_widget.property_list import (
+from proscenium_ui.property_viewer_widget.property_list import (
     PropertyListView,
     PropertyRow,
     ValueSource,
     property_descriptions,
     property_search,
 )
-from proscenium.ui.widget_model import text_matching
-from proscenium.ui.widget_model.list_steps import StepDirection
+from proscenium_ui.widget_model import text_matching
+from proscenium_ui.widget_model.list_steps import StepDirection
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
-    from proscenium.ui.property_viewer_widget.property_list import PropertyDetails, PropertyList
+    from proscenium_ui.property_viewer_widget.property_list import PropertyDetails, PropertyList
 
 BALL = Sdf.Path("/World/Ball")
 VALUES = Sdf.Path("/World/Values")

@@ -26,10 +26,10 @@ from typing import Any, override
 import bpy
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "proscenium_ui" / "src"))
 
-from proscenium.ui.scene_graph_widget import display  # noqa: E402 (found through the path inserted above)
-from proscenium.ui.scene_graph_widget.display import scene_graph_drawing, scene_graph_views  # noqa: E402
+from proscenium_ui.scene_graph_widget import display  # noqa: E402 (found through the path inserted above)
+from proscenium_ui.scene_graph_widget.display import scene_graph_drawing, scene_graph_views  # noqa: E402
 
 CASES = ("empty", "widget", "reused_flags", "computed_flags")
 VIEW_NAME = "benchmark"

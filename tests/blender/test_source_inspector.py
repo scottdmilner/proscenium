@@ -18,10 +18,10 @@ from fixtures import interaction
 from proscenium.api.bindings import PersistentSelection, SelectionEntry
 from proscenium.binding.results import ResultState
 from proscenium.interface import source_inspector
-from proscenium.ui.property_viewer_widget import display as property_display
-from proscenium.ui.property_viewer_widget.display import property_viewer_views
-from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.scene_graph_widget.display import scene_graph_views
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.property_viewer_widget.display import property_viewer_views
+from proscenium_ui.scene_graph_widget import display
+from proscenium_ui.scene_graph_widget.display import scene_graph_views
 from support import undo
 from support.recording_layout import RecordingLayout
 

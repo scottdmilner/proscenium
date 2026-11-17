@@ -89,7 +89,7 @@ Tests here read and write no Blender data, so they skip the blender layer's rese
 
 What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). Two tests prove it, and neither depends on what a worker has already imported:
 
-- `test_no_blender_imports.py`: `proscenium`, `proscenium.binding`, `proscenium.binding.results`, `proscenium.ui`, `proscenium.ui.scene_graph_widget`, `proscenium.ui.property_viewer_widget`, and every `proscenium.core`, `proscenium.binding.source_access`, `proscenium.ui.widget_model`, `proscenium.ui.scene_graph_widget.prim_tree`, and `proscenium.ui.property_viewer_widget.property_list` module import in a fresh interpreter with Blender blocked.
+- `test_no_blender_imports.py`: `proscenium`, `proscenium.binding`, `proscenium.binding.results`, `proscenium_ui`, `proscenium_ui.scene_graph_widget`, `proscenium_ui.property_viewer_widget`, and every `proscenium.core`, `proscenium.binding.source_access`, `proscenium_ui.widget_model`, `proscenium_ui.scene_graph_widget.prim_tree`, and `proscenium_ui.property_viewer_widget.property_list` module import in a fresh interpreter with Blender blocked.
 - `test_import_tiers.py`: the same modules' source has no import of a Blender module anywhere, including type-only imports and imports inside functions, which importing a module doesn't run.
 
 Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything that can't be found without `bpy`, such as `mathutils`, which bpy's C code creates (see `bpy_blocker.py`).
@@ -115,7 +115,7 @@ meshes from previous points meshes and state whether their prototype or element 
 
 All blender-layer tests in a worker share one bpy-wheel process. The autouse `clean_blender` fixture, using `blender/blender_state.py`, does the following:
 
-1. Before the test, it resets to Blender's empty factory state and asserts a clean baseline: neither the extension nor a widget (the scene graph's `proscenium.ui.scene_graph_widget.display`, the property viewer's `proscenium.ui.property_viewer_widget.display`) is registered, handlers match Blender's own, there is no data beyond the factory UI and one empty scene, `UsdUtils.StageCache` is empty, and no file-backed layer with unsaved edits is still loaded.
+1. Before the test, it resets to Blender's empty factory state and asserts a clean baseline: neither the extension nor a widget (the scene graph's `proscenium_ui.scene_graph_widget.display`, the property viewer's `proscenium_ui.property_viewer_widget.display`) is registered, handlers match Blender's own, there is no data beyond the factory UI and one empty scene, `UsdUtils.StageCache` is empty, and no file-backed layer with unsaved edits is still loaded.
 2. After the test, `clear_test_registrations_and_stage_cache()` unregisters the extension and the widgets, removes handlers the test added, and clears the stage cache.
 
 A test therefore always starts clean, even after a failing test. If the baseline assertion fires, something escaped the reset; fix the reset rather than the test. `test_state_reset.py` shows that each kind of leftover is detected and removed.

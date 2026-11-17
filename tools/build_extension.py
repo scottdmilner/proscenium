@@ -21,10 +21,13 @@ Steps:
    release, the hash of the sources and build tools it was built from, and the
    module's own hash. CI's Linux tests use a module built on Blender's glibc
    floor this way.
-5. Copy the source dir to a temporary dir and add the build's keys to the copy's
-   generated block, so the checked-in manifest stays the same on every platform
-   and release: `platforms` (this platform) and `blender_version_max` (the next
-   minor after the locked release, since the module binds to that release's exact
+5. Copy the source dir to a temporary dir, build a wheel of each workspace
+   package the extension depends on into the copy's wheels/ (uv build), and add
+   them to the copy's `wheels` key, so the checked-in block names only uv.lock's
+   wheels; then add the build's keys to the copy's generated block, so the
+   checked-in manifest stays the same on every platform and release:
+   `platforms` (this platform) and `blender_version_max` (the next minor after
+   the locked release, since the module binds to that release's exact
    USD build), then validate and build the copy with the extension CLI shipped in
    the bpy wheel, so no Blender binary is needed
    (docs/feasibility/runtime-record.md#packaging).
@@ -66,7 +69,8 @@ BUILD_TOOLS = (Path(__file__).with_name("native_build.py"), Path(__file__).with_
 def runtime_wheels() -> list[PackageWheel]:
     """This machine's wheel for every runtime package locked in uv.lock."""
     out = subprocess.run(
-        ["uv", "export", "--locked", "--no-dev", "--no-emit-project", "--format", "pylock.toml"],
+        # The workspace's packages are built from source (workspace_wheels), not downloaded.
+        ["uv", "export", "--locked", "--no-dev", "--no-emit-project", "--no-emit-workspace", "--format", "pylock.toml"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -80,6 +84,29 @@ def runtime_wheels() -> list[PackageWheel]:
             raise SystemExit(f"{package.name}: uv.lock has no wheel for this platform")
         wheels.append(dist)
     return sorted(wheels, key=lambda w: w.filename)
+
+
+def workspace_packages() -> list[str]:
+    """The workspace's packages the extension depends on: runtime dependencies that uv sources from the workspace."""
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    sources = project["tool"]["uv"]["sources"]
+    return sorted(name for name in project["project"]["dependencies"] if sources.get(name, {}).get("workspace"))
+
+
+def workspace_wheels(dest: Path) -> list[Path]:
+    """Build a wheel of each workspace package the extension depends on into dest; returns them."""
+    dest.mkdir(parents=True, exist_ok=True)
+    built = []
+    for package in workspace_packages():
+        with tempfile.TemporaryDirectory(prefix=f"{package}-wheel-") as tmp:
+            subprocess.run(
+                ["uv", "build", "--package", package, "--wheel", "--out-dir", tmp, "--quiet"],
+                cwd=ROOT,
+                check=True,
+            )
+            (wheel,) = Path(tmp).glob("*.whl")
+            built.append(Path(shutil.move(wheel, dest / wheel.name)))
+    return built
 
 
 def sync_wheels(wheels: list[PackageWheel], dest: Path, *, write: bool = True) -> list[Path]:
@@ -233,6 +260,7 @@ def build(source_dir: Path, output_dir: Path, *, sync: bool = True) -> Path:
     with tempfile.TemporaryDirectory(prefix="proscenium-build-") as tmp:
         staged = Path(tmp) / source_dir.name
         shutil.copytree(source_dir, staged, ignore=shutil.ignore_patterns("__pycache__"))
+        sync_manifest(staged / "blender_manifest.toml", [*wheels, *workspace_wheels(staged / "wheels")])
         _add_build_keys(staged / "blender_manifest.toml", str(current_platform()), blender_version())
         _cli("validate", str(staged))
         output_dir.mkdir(parents=True, exist_ok=True)  # the CLI does not create it

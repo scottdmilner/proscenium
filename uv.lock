@@ -2,6 +2,12 @@ version = 1
 revision = 3
 requires-python = ">=3.13"
 
+[manifest]
+members = [
+    "proscenium",
+    "proscenium-ui",
+]
+
 [[package]]
 name = "attrs"
 version = "26.1.0"
@@ -502,6 +508,9 @@ wheels = [
 name = "proscenium"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "proscenium-ui" },
+]
 
 [package.dev-dependencies]
 build = [
@@ -556,6 +565,7 @@ test = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "proscenium-ui", editable = "packages/proscenium_ui" }]
 
 [package.metadata.requires-dev]
 build = [
@@ -608,6 +618,11 @@ test = [
     { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
 ]
+
+[[package]]
+name = "proscenium-ui"
+version = "0.1.0"
+source = { editable = "packages/proscenium_ui" }
 
 [[package]]
 name = "psutil"

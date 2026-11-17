@@ -1,6 +1,6 @@
 """The source inspector: a binding's live stage in the scene graph widget, synced with the source selection.
 
-M7 plan, Phase F item 4 (F3), hosting proscenium.ui's scene graph widget in the sidebar's Proscenium tab. The panel
+M7 plan, Phase F item 4 (F3), hosting proscenium_ui's scene graph widget in the sidebar's Proscenium tab. The panel
 shows the live stage of the binding chosen in its dropdown, and whether the prim selected in the tree is displayed.
 The view never holds the stage, nor does the inspector: each draw compares the binding's live stage with the one
 shown, and a timer shows another, since a draw may write no data.
@@ -26,10 +26,11 @@ from typing import Any, override
 import bpy
 from pxr import Sdf, Usd
 
+from proscenium_ui import widget_updates
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.scene_graph_widget import display
+
 from ..api import bindings
-from ..ui import widget_updates
-from ..ui.property_viewer_widget import display as property_display
-from ..ui.scene_graph_widget import display
 
 VIEW_NAME = "proscenium_source_inspector"
 PROPERTY_VIEW_NAME = "proscenium_source_properties"

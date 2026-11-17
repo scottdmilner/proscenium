@@ -1,4 +1,4 @@
-"""A prim tree as a widget shows it, and what it says about prims (proscenium.ui.scene_graph_widget.prim_tree).
+"""A prim tree as a widget shows it, and what it says about prims (proscenium_ui.scene_graph_widget.prim_tree).
 
 On scenes/scene_graph/prim_kinds.usda; expected values are written from how the scene is built.
 """
@@ -12,16 +12,16 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTreeView, prim_descriptions, prim_search
-from proscenium.ui.scene_graph_widget.prim_tree.prim_tree_view import PendingChange, SearchStatus
-from proscenium.ui.widget_model import composition_arcs, prim_detail_text, text_matching
-from proscenium.ui.widget_model.list_steps import StepDirection
+from proscenium_ui.scene_graph_widget.prim_tree import PrimTreeView, prim_descriptions, prim_search
+from proscenium_ui.scene_graph_widget.prim_tree.prim_tree_view import PendingChange, SearchStatus
+from proscenium_ui.widget_model import composition_arcs, prim_detail_text, text_matching
+from proscenium_ui.widget_model.list_steps import StepDirection
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.ui.widget_model.prim_details import RowDetails
+    from proscenium_ui.widget_model.prim_details import RowDetails
 
 INTO = StepDirection.INTO
 OUT_OF = StepDirection.OUT_OF

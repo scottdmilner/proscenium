@@ -21,11 +21,11 @@ BODIES = Path(__file__).parent / "bodies"
 # them. A local run skips these tests until one of these changes (windowed_runs.py).
 pytestmark = pytest.mark.windowed(
     covers=(
-        "src/proscenium/ui/widget_resources/",
-        "src/proscenium/ui/widget_model/list_steps.py",
-        "src/proscenium/ui/columned_list/",
-        "src/proscenium/ui/scene_graph_widget/display/",
-        "src/proscenium/ui/property_viewer_widget/display/",
+        "packages/proscenium_ui/src/proscenium_ui/widget_resources/",
+        "packages/proscenium_ui/src/proscenium_ui/widget_model/list_steps.py",
+        "packages/proscenium_ui/src/proscenium_ui/columned_list/",
+        "packages/proscenium_ui/src/proscenium_ui/scene_graph_widget/display/",
+        "packages/proscenium_ui/src/proscenium_ui/property_viewer_widget/display/",
         "tests/isolated/bodies/list_keys.py",
         "tests/fixtures/scenes/scene_graph/prim_kinds.usda",
         "tests/fixtures/scenes/property_viewer/property_kinds.usda",
