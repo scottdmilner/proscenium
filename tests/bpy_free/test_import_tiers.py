@@ -48,7 +48,7 @@ PACKAGES = {
             ("binding.runtime",),
             ("synchronization", "interaction"),
             ("api",),
-            ("interface",),
+            ("interface", "registration"),
             ("addon",),
         ),
         ("binding",),

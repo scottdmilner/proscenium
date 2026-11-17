@@ -1,12 +1,13 @@
 # `proscenium`
 
-The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, and six packages: what callers use, the synchronization transaction, the display component of interaction, the temporary UI, the bindings' code, and the compiled core. The widgets the temporary UI hosts are the `proscenium_ui` package's ([its README](../../packages/proscenium_ui/src/proscenium_ui/README.md)), which the extension depends on and its zip bundles as a wheel. The bindings' code and the core are kept apart, so either can change without the other.
+The extension's source directory: what `tools/build_extension.py` zips into the extension Blender installs. It holds the extension's manifest and registration, the synchronizer's registration, and six packages: what callers use, the synchronization transaction, the display component of interaction, the temporary UI, the bindings' code, and the compiled core. The widgets the temporary UI hosts are the `proscenium_ui` package's ([its README](../../packages/proscenium_ui/src/proscenium_ui/README.md)), which the extension depends on and its zip bundles as a wheel. The bindings' code and the core are kept apart, so either can change without the other.
 
 | Path | Holds |
 |---|---|
 | `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep the C++ sources, CMake files, and these READMEs out of the zip; only the built core module ships. |
 | `__init__.py` | The package, with `register` and `unregister`. It imports without `bpy`, and imports `addon` only when Blender registers the extension. |
-| `addon.py` | Registration: the record namespace's property group, the handlers for file load, undo, and redo that drop or prune the bindings' stages, and the frame-change handler and message-bus subscriptions to what windows show that mirror a scene's source selection again. |
+| `addon.py` | The extension's registration: the synchronizer's, then the temporary UI's. |
+| `registration.py` | The synchronizer's registration: the record namespace's property group, the handlers for file load, undo, and redo that drop or prune the bindings' stages, and the frame-change handler and message-bus subscriptions to what windows show that mirror a scene's source selection again. |
 | `api/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
 | `interaction/` | The display component of the interaction contract: a binding's correspondence from Blender data, and Blender's selection. |
@@ -21,7 +22,7 @@ The code is in units, each a package or a single module, in tiers. A unit import
 | Tier | Units |
 |---|---|
 | 7 | `addon.py` |
-| 6 | `interface/` |
+| 6 | `interface/`, `registration.py` |
 | 5 | `api/` |
 | 4 | `synchronization/`, `interaction/` |
 | 3 | `binding/runtime/` |

@@ -8,7 +8,7 @@ through proscenium.addon.
 
 
 def register() -> None:
-    """Register the extension: its record types and its handlers (proscenium.addon)."""
+    """Register the extension's record types and handlers."""
     from . import addon
 
     addon.register()

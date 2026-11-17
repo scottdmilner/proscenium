@@ -33,7 +33,7 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "module_file": module.__file__,
         "enabled_after_install": name in prefs.addons,
-        "registered_after_install": _registrations(module.addon),
+        "registered_after_install": _registrations(module.registration),
         "ui_file": sys.modules["proscenium_ui"].__file__,
     }
     from pxr import Usd
@@ -45,18 +45,22 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     # default_set=True also removes the preferences entry, as unchecking it in the UI does.
     addon_utils.disable(name, default_set=True)
     result["enabled_after_disable"] = name in prefs.addons
-    result["registered_after_disable"] = _registrations(module.addon)
+    result["registered_after_disable"] = _registrations(module.registration)
     return result
 
 
-def _registrations(addon: Any) -> dict[str, Any]:
-    """What the installed extension has added to Blender: its handlers' events, record namespaces, and classes."""
+def _registrations(registration: Any) -> dict[str, Any]:
+    """What the synchronizer's registration has added: its handlers' events, record namespaces, and classes."""
     handlers = bpy.app.handlers
     lists = {name: fns for name in dir(handlers) if isinstance(fns := getattr(handlers, name), list)}
+    namespace = registration.id_property_records.NAMESPACE
     return {
         "handlers": sorted(
-            event for event, fns in lists.items() if any(getattr(f, "__module__", None) == addon.__name__ for f in fns)
+            event
+            for event, fns in lists.items()
+            if any(getattr(f, "__module__", None) == registration.__name__ for f in fns)
         ),
-        "namespaces": [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, addon.id_property_records.NAMESPACE)],
-        "classes": [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
+        "namespaces": [t.__name__ for t in registration.RECORD_TYPES if hasattr(t, namespace)],
+        # Registering gives a class its bl_rna.
+        "classes": [c.__name__ for c in registration.CLASSES if "bl_rna" in vars(c)],
     }

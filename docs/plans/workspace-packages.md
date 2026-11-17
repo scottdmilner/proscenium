@@ -96,7 +96,7 @@ tests/                               unchanged layers, over all three packages
 
 ## Registration
 
-`addon.py` reaches into the bindings' code now: it registers the record namespace's property group under `id_property_records.NAMESPACE`, and clears `kept_manifests` from its file-load and undo handlers. Those become the synchronizer's, in `registration.py`, which exports `register` and `unregister`. `addon.py` calls them, then registers the temporary UI. The record namespace's name and the property group's stored keys are unchanged, so saved files read as before.
+The synchronizer's registration is `registration.py`, which exports `register` and `unregister`: the record namespace's property group under `id_property_records.NAMESPACE`, the file-load, undo, and redo handlers that drop or prune the bindings' stages and clear `kept_manifests`, and the frame-change handler and message-bus subscriptions that mirror source selections. `addon.py` calls them, then registers the temporary UI. The record namespace's name and the property group's stored keys are unchanged, so saved files read as before.
 
 ## Build and distribution
 
@@ -129,7 +129,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 2. **The core exporting its names** (`core.Plan`, never `_core.Plan`), before anything moves.
 3. **The workspace,** with no member: the root `pyproject.toml` as its root, and `packages/README.md`.
 4. **`proscenium_ui`:** `ui/` moves into it, its imports follow the import rules above (ruff's TID252), and the extension depends on it. `tools/build_extension.py` bundles the workspace's packages' wheels, the import rules' test checks each package's tiers and the imports between packages, and the package's README holds its tier table. It is first because nothing but `interface/` imports it.
-5. **The synchronizer's registration** in `binding/` and `api/`, which `addon.py` calls, before the move, so the extension reaches the bindings' code only through `api/` and it.
+5. **The synchronizer's registration** in `registration.py`, which `addon.py` calls, before the move, so the extension reaches the bindings' code only through `api/` and it.
 6. **`proscenium_sync`:** `binding/`'s units, `synchronization/`, `interaction/`, `api/`, and `core/` move into it, with its per-platform wheel built by its build hook, and CI's paths.
 7. **The core becomes the planner:** `core/` to `planner/`, `_core` to `_planner`, `build/core/` to `build/planner/`, and the spec, matrix, DECISIONS.md, and AGENTS.md wording.
 

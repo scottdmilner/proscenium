@@ -17,7 +17,7 @@ from pxr import Sdf, Usd
 from fixtures import schema_version_cases as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
-from proscenium import addon
+from proscenium import addon, registration
 from proscenium.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
@@ -548,7 +548,7 @@ def test_the_stored_identifier_is_the_records_after_undo(bindings: Bindings, tmp
 # The records' namespace.
 
 
-@pytest.mark.parametrize("id_type", addon.RECORD_TYPES, ids=lambda t: t.__name__)
+@pytest.mark.parametrize("id_type", registration.RECORD_TYPES, ids=lambda t: t.__name__)
 def test_the_namespace_is_registered_so_the_panel_hides_it(extension: ModuleType, id_type: type[bpy.types.ID]) -> None:
     # The Custom Properties panel skips properties the Python API defines (rna_prop_ui.draw).
     runtime = {p.identifier for p in id_type.bl_rna.properties if p.is_runtime}

@@ -23,8 +23,9 @@ Do not read `docs/archive/` unless the user asks for it. It holds superseded doc
 - `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`).
   - `proscenium/api/`, `proscenium/binding/`, and `proscenium/core/`: what callers use, the bindings' code, and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently. The UI widgets an add-on places in Blender's editors are the `proscenium_ui` package's, in `packages/`.
   - The code is in units, each a package or a single module, in tiers; a unit imports only from itself and from units in lower tiers. [`src/proscenium/README.md`](src/proscenium/README.md#import-rules) has the table and the rules, which `tests/bpy_free/test_import_tiers.py` enforces. From the top:
-    - `proscenium/addon.py`: registers the extension and its handlers, and the temporary UI. It registers no UI widget yet.
-    - `proscenium/interface/`: the temporary UI, the Source Select tool and minimal panels, which imports only `proscenium/api/` and `proscenium_ui`'s widgets (besides `bpy` and USD), so M12 can replace it. It reaches the product only through `api/`, and may host a widget in a panel of its own.
+    - `proscenium/addon.py`: registers the extension: the synchronizer's registration, then the temporary UI. It registers no UI widget yet.
+    - `proscenium/registration.py`: the synchronizer's registration: the records' namespace, and the handlers that drop or prune the bindings' stages and mirror source selections.
+    - `proscenium/interface/`, in the same tier: the temporary UI, the Source Select tool and minimal panels, which imports only `proscenium/api/` and `proscenium_ui`'s widgets (besides `bpy` and USD), so M12 can replace it. It reaches the product only through `api/`, and may host a widget in a panel of its own.
     - `proscenium/api/`: what callers use, the binding handle and the process's bindings.
     - `proscenium/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M7's, replacing M5's stub).
     - `proscenium/interaction/`, in the same tier: the display component of the interaction contract, which builds a binding's correspondence from Blender data and reads and writes Blender's selection.
