@@ -25,9 +25,9 @@ from typing import TYPE_CHECKING
 import bpy
 from pxr import Usd
 
-from proscenium_sync.binding_persistence import binding_state, cleanup_ledgers, id_property_records, manifests
-from proscenium_sync.binding_runtime import binding_operations, kept_manifests
+from proscenium_sync.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from proscenium_sync.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
+from proscenium_sync.runtime import binding_operations, kept_manifests
 from proscenium_sync.source_access import stages
 
 from . import (
@@ -41,8 +41,8 @@ from . import (
 )
 
 if TYPE_CHECKING:
-    from proscenium_sync.binding_persistence import binding_records
-    from proscenium_sync.binding_runtime import held_plans, stage_tracking
+    from proscenium_sync.persistence import binding_records
+    from proscenium_sync.runtime import held_plans, stage_tracking
     from proscenium_sync.source_access import BindingId
 
 

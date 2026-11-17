@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import id_property_records
+from proscenium_sync.persistence import id_property_records
 from proscenium_sync.synchronization import datablock_removal
 from support import undo
 

@@ -16,9 +16,9 @@ import pytest
 
 from fixtures import source_access, transaction
 from proscenium_sync import planner
-from proscenium_sync.binding_runtime import pending_cleanup
 from proscenium_sync.planner import _planner
 from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState
+from proscenium_sync.runtime import pending_cleanup
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import application, preparation_resources
 from support.usd import binding_on_file
@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.transaction import FailedSettingsScene, TransactionScene
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
-    from proscenium_sync.binding_persistence.manifests import RepresentationRole
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence.manifests import RepresentationRole
 
 
 def _scene() -> bpy.types.Scene:

@@ -7,7 +7,7 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 | `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep these READMEs out of the zip. |
 | `__init__.py` | The package, with `register` and `unregister`. It imports without `bpy`, and imports `addon` only when Blender registers the extension. |
 | `addon.py` | The extension's registration: the synchronizer's (`proscenium_sync.registration`), then the temporary UI's. |
-| `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, over `proscenium_sync.api` and `proscenium_ui`'s widgets only. |
+| `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, over `proscenium_sync.bindings` and `proscenium_ui`'s widgets only. |
 
 ## Import rules
 

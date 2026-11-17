@@ -25,7 +25,7 @@ from support.refresh_checks import refresh_acting_on
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _time_code(time_code: float | None) -> Usd.TimeCode:

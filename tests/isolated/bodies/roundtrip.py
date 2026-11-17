@@ -13,7 +13,7 @@ from bpy.app.handlers import persistent
 from pxr import Usd
 
 import proscenium
-from proscenium_sync.api.bindings import BINDINGS
+from proscenium_sync.bindings import BINDINGS
 from support.blend import save_and_reopen
 
 

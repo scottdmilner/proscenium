@@ -17,7 +17,7 @@ from support import undo
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 
 def test_undo_and_redo_leave_attachments(bindings: Bindings, tmp_path: Path) -> None:

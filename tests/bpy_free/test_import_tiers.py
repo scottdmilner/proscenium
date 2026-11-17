@@ -46,10 +46,10 @@ PACKAGES = {
         Path(proscenium_sync.__file__).parent,
         (
             ("planner", "source_access", "results"),  # bpy-free, each importing only itself
-            ("binding_persistence",),
-            ("binding_runtime",),
+            ("persistence",),
+            ("runtime",),
             ("synchronization", "interaction"),
-            ("api",),
+            ("bindings",),
             ("registration",),
         ),
         (),
@@ -207,13 +207,13 @@ def test_units_import_only_lower_tiers() -> None:
 
 
 def test_the_interface_imports_only_the_api_and_widgets() -> None:
-    # M7 plan, settled 3 and Phase F: the temporary UI reaches the product only through api/, and may host
+    # M7 plan, settled 3 and Phase F: the temporary UI reaches the product only through bindings/, and may host
     # proscenium_ui's widgets, which only read a stage their host gives them, so M12 can replace it alone.
     found = [
         f"{_shown(path)}:{line} imports {name}"
         for path in sorted((PACKAGES["proscenium"].directory / "interface").rglob("*.py"))
         for line, name, *_ in _imported(path)
-        if (unit := _unit(name.split("."))) not in {"proscenium.interface", "proscenium_sync.api"}
+        if (unit := _unit(name.split("."))) not in {"proscenium.interface", "proscenium_sync.bindings"}
         and not unit.startswith("proscenium_ui.")
     ]
     assert not found, "\n".join(found)
@@ -295,22 +295,22 @@ def test_an_import_out_of_form_is_found() -> None:
     # Guards the test above, from a runtime module: a public module from its package, names from a public module, and a
     # package that exports names, or those names from it, take the form; a name a package doesn't export, a package
     # that exports only modules, and an unexported module or a name from one, don't.
-    module = PACKAGES["proscenium_sync"].directory / "binding_runtime" / "copy_detection.py"
-    runtime = ["proscenium_sync", "binding_runtime"]
+    module = PACKAGES["proscenium_sync"].directory / "runtime" / "copy_detection.py"
+    runtime = ["proscenium_sync", "runtime"]
 
     def out_of_form(code: str) -> int:
         return len(_out_of_form(module, _imports_in(ast.parse(code), runtime)))
 
-    assert out_of_form("from proscenium_sync.binding_persistence import manifests, id_property_records") == 0
+    assert out_of_form("from proscenium_sync.persistence import manifests, id_property_records") == 0
     assert out_of_form("from proscenium_sync import results") == 0
     assert out_of_form("from proscenium_sync import planner") == 0
     assert out_of_form("from proscenium_sync.planner import Plan, plan") == 0
     assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
-    assert out_of_form("from proscenium_sync.binding_persistence.manifests import Manifest, RepresentationRole") == 0
+    assert out_of_form("from proscenium_sync.persistence.manifests import Manifest, RepresentationRole") == 0
     assert out_of_form("from proscenium_sync.results import Diagnostic, Result") == 0
     assert out_of_form("from proscenium_sync import synchronization") == 0
     assert out_of_form("from proscenium_sync.synchronization import synchronize, cache") == 0
-    assert out_of_form("from proscenium_sync.binding_persistence import Manifest") == 1
+    assert out_of_form("from proscenium_sync.persistence import Manifest") == 1
     assert out_of_form("from proscenium_sync.synchronization import prepare") == 1
     assert out_of_form("from proscenium_sync.synchronization import application") == 1
     assert out_of_form("from proscenium_sync.synchronization.application import prepare") == 1
@@ -375,21 +375,21 @@ def test_a_wrong_way_import_is_found() -> None:
     # Guards the tests above: the API module, read as if it were persistence's, imports above that tier; the lowest
     # tier's units import only themselves; a package imports only the packages it depends on, and its bpy-free units
     # none.
-    api = PACKAGES["proscenium_sync"].directory / "api" / "bindings.py"
-    persistence = "proscenium_sync.binding_persistence"
-    assert any("imports proscenium_sync.binding_runtime" in v for v in _wrong_way(api, persistence))
+    api = PACKAGES["proscenium_sync"].directory / "bindings" / "binding_service.py"
+    persistence = "proscenium_sync.persistence"
+    assert any("imports proscenium_sync.runtime" in v for v in _wrong_way(api, persistence))
     assert _allowed("proscenium_sync.results") == {"proscenium_sync.results"}
-    assert {"proscenium_sync.api", "proscenium_ui.scene_graph_widget.display"} <= _allowed("proscenium.interface")
-    assert "proscenium_sync.api" not in _allowed("proscenium_ui.scene_graph_widget.display")
+    assert {"proscenium_sync.bindings", "proscenium_ui.scene_graph_widget.display"} <= _allowed("proscenium.interface")
+    assert "proscenium_sync.bindings" not in _allowed("proscenium_ui.scene_graph_widget.display")
     assert "proscenium.interface" not in _allowed("proscenium_sync.registration")
     assert not _allowed("proscenium_sync.planner") & {u for u in TIER_OF if u.startswith("proscenium_ui.")}
 
 
 def test_an_absolute_import_of_a_unit_is_found() -> None:
     # Guards the tests above: "from proscenium_sync import x" names the unit it imports.
-    imports = _imports_in(ast.parse("from proscenium_sync import binding_runtime"), ["proscenium_sync", "planner"])
-    assert [i.name for i in imports] == ["proscenium_sync.binding_runtime"]
-    assert "proscenium_sync.binding_runtime" not in _allowed("proscenium_sync.planner")
+    imports = _imports_in(ast.parse("from proscenium_sync import runtime"), ["proscenium_sync", "planner"])
+    assert [i.name for i in imports] == ["proscenium_sync.runtime"]
+    assert "proscenium_sync.runtime" not in _allowed("proscenium_sync.planner")
 
 
 def _blender_imports_in(tree: ast.Module) -> list[tuple[int, str]]:
@@ -440,7 +440,7 @@ def test_a_blender_import_is_found() -> None:
     assert [name for _, name in _blender_imports_in(ast.parse(code))] == ["bpy", "mathutils"]
     sync, ui = PACKAGES["proscenium_sync"].directory, PACKAGES["proscenium_ui"].directory
     assert _bpy_free(sync / "source_access" / "source_entity_ids.py")
-    assert not _bpy_free(sync / "binding_persistence" / "id_property_records.py")
+    assert not _bpy_free(sync / "persistence" / "id_property_records.py")
     assert _bpy_free(ui / "scene_graph_widget" / "prim_tree" / "prim_tree.py")
     assert not _bpy_free(ui / "scene_graph_widget" / "display" / "scene_graph_views.py")
     assert _bpy_free(ui / "widget_model" / "text_matching.py")

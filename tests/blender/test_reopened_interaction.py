@@ -15,8 +15,8 @@ import pytest
 
 from fixtures import interaction, source_access
 from proscenium_sync import synchronization
-from proscenium_sync.api.bindings import BindingHandle, PersistentSelection, SelectionEntry, SourceUnavailableError
-from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.bindings import BindingHandle, PersistentSelection, SelectionEntry, SourceUnavailableError
+from proscenium_sync.persistence import binding_state, id_property_records
 from proscenium_sync.results import ResultState
 from support.blend import collection_content, save_and_reopen
 from support.interaction_answers import answers, object_entry_keys
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 
 def _scene() -> bpy.types.Scene:

@@ -15,9 +15,9 @@ from pxr import Gf
 
 from fixtures import edit_sequence, incremental
 from proscenium_sync import planner
-from proscenium_sync.binding_persistence import id_property_records
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import id_property_records
 from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import ownership
 from support.clean_rebuild import clean_rebuild, display_state
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     import pytest
     from pxr import Usd
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:

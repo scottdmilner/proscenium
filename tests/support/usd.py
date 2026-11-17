@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def open_stage_without_cache(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:

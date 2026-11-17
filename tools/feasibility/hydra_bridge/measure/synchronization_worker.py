@@ -215,14 +215,14 @@ def run_prototype(config: dict[str, Any], markers: Markers) -> dict[str, Any]:
         # The display goes into a binding's destination, with the measured stage attached; C5 writes its manifest.
         sys.path.insert(0, str(HERE.parents[3] / "src"))
         import proscenium
-        from proscenium_sync import binding_runtime
-        from proscenium_sync.api.bindings import BINDINGS
+        from proscenium_sync import runtime
+        from proscenium_sync.bindings import BINDINGS
 
         proscenium.register()
         handle = BINDINGS.create_binding(scene, name="Prototype")
         binding_id = handle.binding_id
         handle.attach(usd_stage)
-        found = binding_runtime.binding_operations.find_binding(binding_id)
+        found = runtime.binding_operations.find_binding(binding_id)
         assert found is not None and found.destination is not None
         collection = found.destination
     else:

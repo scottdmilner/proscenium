@@ -644,7 +644,7 @@ FIXTURES: dict[str, Fixture] = {
                 # The selection tool: a pick and a box at each level and mode, two view layers, and other tools
                 # unable to select managed content.
                 Case("selection-tool", SYNC, SUCCESS, ("ICON-30", "ICON-39", "ICON-40", "ICON-41"), 1),
-                # What api/ gives future tools.
+                # What bindings/ gives future tools.
                 Case("future-tools", SYNC, SUCCESS, ("ICON-31",), 1),
             ),
         ),

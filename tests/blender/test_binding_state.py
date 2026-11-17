@@ -12,9 +12,9 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records, manifests
-from proscenium_sync.binding_persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium_sync.binding_persistence.id_property_records import (
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium_sync.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -22,7 +22,7 @@ from proscenium_sync.binding_persistence.id_property_records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium_sync.binding_persistence.manifests import Manifest
+from proscenium_sync.persistence.manifests import Manifest
 from proscenium_sync.results import Diagnostic, DiagnosticCode
 from proscenium_sync.source_access.binding_settings import PayloadPolicy, RequestedSettings, new_settings
 from proscenium_sync.source_access.stages import SourceRevision
@@ -33,7 +33,7 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 DIRTY = Diagnostic(
     DiagnosticCode.UNSAVED_LAYERS,

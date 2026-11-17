@@ -13,11 +13,11 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium_sync.api import bindings as api
-from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
-from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.bindings import binding_service as api
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord
 from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import datablock_removal
 from support import undo
@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import RetirementFailureScene
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
-    from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
 
 FAILING = "Still"  # the placeholder whose object and bounds mesh can't be retired: /World/Still's
 

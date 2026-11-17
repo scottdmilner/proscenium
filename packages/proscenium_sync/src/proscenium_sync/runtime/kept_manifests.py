@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import id_property_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord, RefusedRecord
+from proscenium_sync.persistence import id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord
 
 from . import copy_partitions
 

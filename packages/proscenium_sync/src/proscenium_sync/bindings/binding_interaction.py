@@ -1,6 +1,7 @@
 """A binding's interaction functions, as the binding handle gives them (interaction-contract.md#headless-functions).
 
-DECISIONS.md "Headless interaction functions": api/ gives callers objects, Blender's matrices, and source paths, the
+DECISIONS.md "Headless interaction functions": bindings/ gives callers objects, Blender's matrices, and source paths,
+the
 matrices converted to USD's convention here, where they reach the planner, which the display component
 (proscenium_sync.interaction) maps to the planner's element indices and back. Each call takes the binding's display
 elements and correspondence as they are at the frame the target scene shows, kept from an earlier call while what they
@@ -16,9 +17,9 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf, Usd
 
-from proscenium_sync.binding_persistence import binding_state, id_property_records
-from proscenium_sync.binding_runtime import binding_operations
 from proscenium_sync.interaction import blender_selection
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.runtime import binding_operations
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

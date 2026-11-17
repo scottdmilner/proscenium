@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
     from proscenium_sync.results import Diagnostic, Result
     from support.bounds_check import DisplayedCopy
 

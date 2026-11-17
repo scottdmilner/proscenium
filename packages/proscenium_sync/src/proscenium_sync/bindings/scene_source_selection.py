@@ -1,7 +1,7 @@
 """A scene's source selection: stored, resolved, mirrored, and changed by picks and boxes (interaction-contract.md).
 
 DECISIONS.md "Headless interaction functions": Bindings gives callers each scene's source selection. The persistent
-selection (proscenium_sync.binding_persistence.source_selection) stores targets. Resolving it at the time code each
+selection (proscenium_sync.persistence.source_selection) stores targets. Resolving it at the time code each
 binding's display shows expands the entries that display's universe holds and reports the rest unresolved, kept stored
 (ICON-25, ICON-26); an entry whose binding has no live stage is unresolved too. Setting it stores it and mirrors it
 into the scene's active view layer (ICON-27 to ICON-29). A pick or a box changes it at a level, in a mode (M4 plan,
@@ -28,10 +28,10 @@ from typing import TYPE_CHECKING
 import bpy
 from mathutils import Vector
 
-from proscenium_sync.binding_persistence import id_property_records, source_selection
-from proscenium_sync.binding_persistence.source_selection import PersistentSelection, SelectionEntry
-from proscenium_sync.binding_runtime import binding_operations
 from proscenium_sync.interaction import blender_selection
+from proscenium_sync.persistence import id_property_records, source_selection
+from proscenium_sync.persistence.source_selection import PersistentSelection, SelectionEntry
+from proscenium_sync.runtime import binding_operations
 from proscenium_sync.source_access import stages
 
 from . import binding_interaction

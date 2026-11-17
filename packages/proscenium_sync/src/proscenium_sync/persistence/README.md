@@ -1,4 +1,4 @@
-# `proscenium_sync.binding_persistence`
+# `proscenium_sync.persistence`
 
 Everything the extension saves in the `.blend`: versioned records in Blender ID properties ([Persistence](../../../../../docs/spec/lifecycle.md#persistence)). Tier 2: it may import only the lowest tier (`proscenium_sync.planner`, `proscenium_sync.source_access`, `proscenium_sync.results`).
 

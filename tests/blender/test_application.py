@@ -19,9 +19,9 @@ from pxr import Usd
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
-from proscenium_sync import binding_runtime, planner
-from proscenium_sync.binding_persistence.cleanup_ledgers import OriginatingOperation
-from proscenium_sync.binding_persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
+from proscenium_sync import planner, runtime
+from proscenium_sync.persistence.cleanup_ledgers import OriginatingOperation
+from proscenium_sync.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium_sync.results import DiagnosticCode
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import application, datablock_removal, preparation_resources
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
     from pxr import Gf
 
-    from proscenium_sync.api.bindings import Bindings
-    from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.bindings import Bindings
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
     from proscenium_sync.source_access import BindingId
     from proscenium_sync.synchronization.preparation_resources import PreparationResources
 
@@ -68,7 +68,7 @@ def _prepared(binding_id: BindingId, plan: planner.Plan, published: Manifest | N
 
 
 def _ledger() -> dict[str, LedgerEntry]:
-    ledger = binding_runtime.pending_cleanup.ledger()
+    ledger = runtime.pending_cleanup.ledger()
     return {} if ledger is None else dict(ledger.record.entries)  # ty: ignore[unresolved-attribute] - not refused
 
 

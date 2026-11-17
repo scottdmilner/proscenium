@@ -17,14 +17,14 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium_sync import binding_runtime
-from proscenium_sync.api.bindings import BindingHandle, BindingNotFoundError, Bindings, Result
-from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records
-from proscenium_sync.binding_persistence.binding_state import LastSynchronizationAttempt
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
-from proscenium_sync.binding_persistence.manifests import Manifest
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync import runtime
+from proscenium_sync.bindings import BindingHandle, BindingNotFoundError, Bindings, Result
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.persistence.binding_state import LastSynchronizationAttempt
+from proscenium_sync.persistence.id_property_records import LoadedRecord
+from proscenium_sync.persistence.manifests import Manifest
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership
 from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
 from support import undo
 from support.blend import collection_content, save_and_reopen
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.source_access import SavedDisplay
-    from proscenium_sync.binding_persistence.binding_records import BindingConfig
+    from proscenium_sync.persistence.binding_records import BindingConfig
     from proscenium_sync.source_access import BindingId
 
 
@@ -46,7 +46,7 @@ def _scene() -> bpy.types.Scene:
 
 
 def _config(handle: BindingHandle) -> BindingConfig:
-    found = binding_runtime.binding_operations.find_binding(handle.binding_id)
+    found = runtime.binding_operations.find_binding(handle.binding_id)
     assert found is not None and found.config is not None
     return found.config
 

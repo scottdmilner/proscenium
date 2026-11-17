@@ -8,7 +8,7 @@ from __future__ import annotations
 import pytest
 from pxr import Usd
 
-from proscenium_sync.binding_persistence import binding_state
+from proscenium_sync.persistence import binding_state
 from proscenium_sync.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
 
 

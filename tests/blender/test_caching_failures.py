@@ -18,10 +18,10 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import SynchronizationFailureStep, translation
-from proscenium_sync.binding_persistence import binding_state, cleanup_ledgers, id_property_records
-from proscenium_sync.binding_persistence.manifests import RepresentationRole
-from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.persistence import binding_state, cleanup_ledgers, id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from proscenium_sync.synchronization import datablock_removal, time_code_keying
 
 from .published_state import datablocks, published_generation
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import CachedTimeCodesScene
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 MOVER = "/World/Mover"  # the one copy that varies
 KEYS_PER_TIME_CODE = 11  # Mover's: its transform's nine channels and its two hide flags

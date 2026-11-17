@@ -20,7 +20,7 @@ from support.recording_layout import RecordingLayout
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
     from proscenium_sync.source_access import BindingId
 
 

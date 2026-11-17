@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import id_property_records
-from proscenium_sync.binding_persistence.manifests import RepresentationRole
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.runtime import ownership
 
 from .bounds_check import DisplayedCopy
 

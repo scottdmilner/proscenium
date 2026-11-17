@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from proscenium_sync import planner
-    from proscenium_sync.binding_persistence import binding_state
+    from proscenium_sync.persistence import binding_state
     from proscenium_sync.source_access import BindingId
 
 type GenerationKey = binding_state.GenerationMetadata  # a generation record without its cached time codes

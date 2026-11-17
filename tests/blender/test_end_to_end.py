@@ -23,7 +23,7 @@ from pxr import Usd
 
 from fixtures import appearance, evaluation, interaction, production_like
 from proscenium_sync import synchronization
-from proscenium_sync.api.bindings import BindingHandle
+from proscenium_sync.bindings import BindingHandle
 from proscenium_sync.results import ResultState
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import evaluation as planning
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium_sync import planner
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 
 @contextmanager

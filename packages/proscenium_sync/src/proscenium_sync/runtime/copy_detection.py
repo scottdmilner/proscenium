@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import binding_records, id_property_records
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord, RefusedRecord
+from proscenium_sync.persistence import binding_records, id_property_records
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord
 from proscenium_sync.source_access import canonical_candidate
 
 if TYPE_CHECKING:

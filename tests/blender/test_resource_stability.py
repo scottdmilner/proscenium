@@ -18,10 +18,10 @@ import bpy
 from pxr import Gf
 
 from fixtures import incremental
-from proscenium_sync.binding_persistence import id_property_records
-from proscenium_sync.binding_persistence.manifests import RepresentationRole
-from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from proscenium_sync.synchronization import datablock_removal
 from support.blend import prim_name
 from support.usd import binding_on_file
@@ -32,9 +32,9 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
-    from proscenium_sync.binding_persistence import manifests
-    from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence import manifests
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
     from proscenium_sync.results import Diagnostic, Result
 
 SYNCHRONIZATIONS = 5  # STAB-01's unchanged synchronizations

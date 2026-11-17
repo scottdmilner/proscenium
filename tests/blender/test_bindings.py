@@ -18,23 +18,23 @@ from fixtures import schema_version_cases as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from proscenium import addon
-from proscenium_sync import binding_runtime, registration
-from proscenium_sync.api.bindings import (
+from proscenium_sync import registration, runtime
+from proscenium_sync.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
     Result,
 )
-from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records, manifests
-from proscenium_sync.binding_persistence.binding_records import BindingConfig, BindingIndex
-from proscenium_sync.binding_persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium_sync.binding_persistence.id_property_records import (
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium_sync.persistence.binding_records import BindingConfig, BindingIndex
+from proscenium_sync.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     LoadedRecord,
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium_sync.binding_persistence.manifests import MANIFEST_KEY
+from proscenium_sync.persistence.manifests import MANIFEST_KEY
 from proscenium_sync.results import Diagnostic, DiagnosticCode, ResultState
 from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
 from proscenium_sync.source_access.stages import SourceRevision
@@ -397,7 +397,7 @@ def test_a_configuration_write_refuses_an_unsupported_one(bindings: Bindings, tm
         collection = _unsupported(binding_id, stored)
         config = BindingConfig(_scene(), new_settings(PayloadPolicy.LOAD_ALL))
         with pytest.raises(RefusedRecordError):
-            binding_runtime.binding_operations.set_config(binding_id, config)
+            runtime.binding_operations.set_config(binding_id, config)
         assert id_property_records.stored(collection, binding_records.config_key(binding_id)) == stored
 
 

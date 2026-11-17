@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
+from proscenium_sync.runtime import ownership
 from support.blend import collection_content
 
 if TYPE_CHECKING:

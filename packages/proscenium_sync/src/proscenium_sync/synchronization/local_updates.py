@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium_sync.binding_persistence import manifests
+from proscenium_sync.persistence import manifests
 
 from . import application
 

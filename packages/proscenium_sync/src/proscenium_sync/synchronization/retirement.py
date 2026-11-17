@@ -16,16 +16,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import cleanup_ledgers
-from proscenium_sync.binding_runtime import pending_cleanup
+from proscenium_sync.persistence import cleanup_ledgers
 from proscenium_sync.results import Diagnostic, DiagnosticCode
+from proscenium_sync.runtime import pending_cleanup
 
 from . import datablock_removal
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from proscenium_sync.binding_persistence import manifests
+    from proscenium_sync.persistence import manifests
     from proscenium_sync.source_access import BindingId
 
 

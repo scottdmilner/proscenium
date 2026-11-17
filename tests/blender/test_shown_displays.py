@@ -1,4 +1,4 @@
-"""A binding's display, kept between interaction calls while what built it is unchanged (api/shown_displays.py).
+"""A binding's display, kept between interaction calls while what built it is unchanged (bindings/shown_displays.py).
 
 On F-NESTED-SELECTION. Builds are counted by wrapping the display component's correspondence builder; each check's
 answer comes from the fixture, so a kept display that should have been rebuilt gives a wrong one.
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 CRATE_B_BODY = "/World/Shelf/CrateB/Body"
 
@@ -143,7 +143,7 @@ def test_clearing_rebuilds_and_a_release_reports_no_stage(
     # released, the binding has no live stage, which each call reports rather than answering from what was kept.
     import pytest
 
-    from proscenium_sync.api.bindings import SourceUnavailableError
+    from proscenium_sync.bindings import SourceUnavailableError
 
     builds = _builds(monkeypatch)
     for handle, _ in _synchronized(bindings, tmp_path):

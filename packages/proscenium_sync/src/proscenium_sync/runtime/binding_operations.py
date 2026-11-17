@@ -13,8 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import binding_records
-from proscenium_sync.binding_persistence.id_property_records import RefusedRecord, RefusedRecordError
+from proscenium_sync.persistence import binding_records
+from proscenium_sync.persistence.id_property_records import RefusedRecord, RefusedRecordError
 from proscenium_sync.source_access import canonical_candidate
 
 from . import copy_detection
@@ -22,7 +22,7 @@ from . import copy_detection
 if TYPE_CHECKING:
     import bpy
 
-    from proscenium_sync.binding_persistence.binding_records import BindingConfig
+    from proscenium_sync.persistence.binding_records import BindingConfig
     from proscenium_sync.source_access import BindingId, binding_settings
 
     from .copy_detection import BindingRecord, CopiedBinding, IdentityCandidates

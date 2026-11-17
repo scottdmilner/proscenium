@@ -1311,7 +1311,7 @@ requirements:
       - id: ICON-31
         quote: "Future USD manipulation tools receive: the live stage"
         fixtures: [F-KIND-HIERARCHY]
-        oracle: "On F-KIND-HIERARCHY, `api/` gives a binding's live stage, `resolve_pick`, `displayed`, `highlight_targets`, getting and setting a scene's source selection, a listener called once per change to it, the time code the display shows, and the published generation's settings, and no function that authors USD."
+        oracle: "On F-KIND-HIERARCHY, `bindings/` gives a binding's live stage, `resolve_pick`, `displayed`, `highlight_targets`, getting and setting a scene's source selection, a listener called once per change to it, the time code the display shows, and the published generation's settings, and no function that authors USD."
 
   # --- spec/incremental.md --------------------------------------------------------------------
 
@@ -2701,7 +2701,7 @@ excluded:
     quotes: ["synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame"]
     restates: [BIND-05, XFORM-12]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Design note (settled by M3 and M5): the API is proscenium_sync.api.bindings."]
+    quotes: ["Design note (settled by M3 and M5): the API is proscenium_sync.bindings."]
     reason: "Design record of M3's API."
   - section: spec/source-access.md#synchronization-api
     quotes: ["Methods that use the binding's records look it up when called; release addresses runtime state directly. Two handles are equal when their identifiers are."]

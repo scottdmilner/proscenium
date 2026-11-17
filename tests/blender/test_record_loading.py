@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import schema_version_cases as fixture
-from proscenium_sync.binding_persistence.id_property_records import (
+from proscenium_sync.persistence.id_property_records import (
     VERSION_KEY,
     LoadedRecord,
     RefusalReason,

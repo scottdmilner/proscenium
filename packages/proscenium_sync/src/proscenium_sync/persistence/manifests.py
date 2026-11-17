@@ -20,7 +20,7 @@ Nothing is stored on the managed datablocks: a datablock is managed by the bindi
   nowhere; only bpy.data's remove clears the pointer. Reading unmanaged users has to discount the manifests (M7).
 
 Reading a manifest reads every entry, so ownership of a datablock reads only the manifests among its users
-(proscenium_sync.binding_runtime.ownership). write_manifest_entries writes only the entries that change; an update gives
+(proscenium_sync.runtime.ownership). write_manifest_entries writes only the entries that change; an update gives
 them without their datablocks (ManifestEntryChange), so it can't name a datablock another entry names.
 """
 

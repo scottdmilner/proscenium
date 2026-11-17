@@ -1,7 +1,8 @@
-"""What the API's helper modules read of the process's bindings, which bindings.Bindings provides.
+"""What the API's helper modules read of the process's bindings, which binding_service.Bindings provides.
 
 binding_interaction, scene_source_selection, and binding_status take the process's bindings as this protocol, not as
-Bindings itself, so bindings.py can import them without either needing the other (tests/bpy_free/test_import_tiers.py
+Bindings itself, so binding_service.py can import them without either needing the other
+(tests/bpy_free/test_import_tiers.py
 forbids a cycle within a unit, a type-only import's included).
 """
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     import bpy
     from pxr import Usd
 
-    from proscenium_sync.binding_runtime import held_plans, stage_tracking
+    from proscenium_sync.runtime import held_plans, stage_tracking
     from proscenium_sync.source_access import BindingId
 
     from .shown_displays import ShownDisplays

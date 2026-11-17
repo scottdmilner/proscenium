@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.transaction import TransactionScene
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, scene: TransactionScene) -> BindingHandle:

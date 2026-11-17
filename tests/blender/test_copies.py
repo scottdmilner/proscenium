@@ -13,13 +13,13 @@ import bpy
 import pytest
 
 from fixtures import binding_copy_cases, transaction
-from proscenium_sync import binding_runtime
-from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
-from proscenium_sync.binding_persistence.manifests import Manifest
-from proscenium_sync.binding_runtime import ownership
-from proscenium_sync.binding_runtime.binding_operations import DisabledBindingError
+from proscenium_sync import runtime
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord
+from proscenium_sync.persistence.manifests import Manifest
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership
+from proscenium_sync.runtime.binding_operations import DisabledBindingError
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import binding_copy_operations as routes
 from support import ownership as oracle
@@ -33,8 +33,8 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.binding_copy_cases import CanonicalCandidateOutcome
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
-    from proscenium_sync.binding_runtime.copy_detection import CopiedBinding
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.runtime.copy_detection import CopiedBinding
 
 
 def _scene() -> bpy.types.Scene:
@@ -104,7 +104,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         assert [c.is_canonical for c in report.candidates] == [True] + [False] * (outcome.candidate_count - 1)
         assert (report.candidates[0].scene_name, report.candidates[0].destination_name) == ("Scene", "Shot")
         assert result.state is ResultState.SUCCESS
-        found = binding_runtime.binding_operations.find_binding(handle.binding_id)
+        found = runtime.binding_operations.find_binding(handle.binding_id)
         assert found is not None and found.scene == _scene()
         for name in scenes:
             assert bindings.in_scene(bpy.data.scenes[name]) == ([handle] if name == "Scene" else [])
@@ -125,7 +125,7 @@ def _check(bindings: Bindings, handle: BindingHandle, outcome: CanonicalCandidat
         assert handle.live_stage() is None
         # The runtime's lookup finds it disabled, with its copies; its manifest and writes raise.
         binding_id = handle.binding_id
-        operations = binding_runtime.binding_operations
+        operations = runtime.binding_operations
         assert operations.find_binding(binding_id) == operations.FoundBinding(
             binding_id, None, None, None, None, report
         )
@@ -144,7 +144,7 @@ def test_route(bindings: Bindings, tmp_path: Path, route: str) -> None:
     with binding_copy_cases.ownership_ambiguity(tmp_path) as scene:
         expected = scene.routes[route]
         handle = _published(bindings, scene.root_layer_path)
-        found = binding_runtime.binding_operations.find_binding(handle.binding_id)
+        found = runtime.binding_operations.find_binding(handle.binding_id)
         assert found is not None
         routes.run_binding_copy_route(route, tmp_path)
         before = routes.records_by_name()

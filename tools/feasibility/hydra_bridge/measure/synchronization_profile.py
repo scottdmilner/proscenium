@@ -3,7 +3,7 @@
     uv run python tools/feasibility/hydra_bridge/measure/synchronization_profile.py [--scenes updates alab] \
         [--exclude updates-100] [--repeats 3] [--undo on off] [--runtimes binary wheel] [--no-full-rebuild]
 
-M7 plan, Phase G (items 1, 2, 3, and 5). Each run makes a binding through the API (proscenium_sync.api.bindings),
+M7 plan, Phase G (items 1, 2, 3, and 5). Each run makes a binding through the API (proscenium_sync.bindings),
 attaches the scene's stage, and makes these calls in order (CALLS), each one step:
 - synchronize: the first synchronization, at the scene's time code;
 - unchanged: synchronizing again with nothing changed;
@@ -64,12 +64,12 @@ CALLS = [
 ]
 # (module, function) pairs the calls reach their steps through, in the order they run.
 STEPS = [
-    ("proscenium_sync.api.bindings", "Bindings._require_binding"),
+    ("proscenium_sync.bindings.binding_service", "Bindings._require_binding"),
     ("proscenium_sync.source_access.stages", "BindingStages.reload"),
     ("proscenium_sync.synchronization", "synchronize"),
     ("proscenium_sync.synchronization", "cache"),
-    ("proscenium_sync.binding_persistence.manifests", "read_manifest"),
-    ("proscenium_sync.binding_persistence.binding_state", "read_generation"),
+    ("proscenium_sync.persistence.manifests", "read_manifest"),
+    ("proscenium_sync.persistence.binding_state", "read_generation"),
     ("proscenium_sync.source_access.stages", "BindingStages.acquire_evaluation_stage"),
     ("proscenium_sync.synchronization.evaluation", "source_state_diagnostics"),
     ("proscenium_sync.synchronization.evaluation", "evaluate_display_plans"),
@@ -83,17 +83,17 @@ STEPS = [
     ("proscenium_sync.synchronization.time_code_keying", "key_time_codes"),
     ("proscenium_sync.synchronization.publication", "publish"),
     ("proscenium_sync.synchronization.local_updates", "apply_updates"),
-    ("proscenium_sync.binding_persistence.manifests", "write_manifest"),
-    ("proscenium_sync.binding_runtime.ownership", "set_manifest_entries"),
-    ("proscenium_sync.binding_persistence.binding_state", "write_generation"),
-    ("proscenium_sync.binding_runtime.held_plans", "HeldPlans.hold"),
+    ("proscenium_sync.persistence.manifests", "write_manifest"),
+    ("proscenium_sync.runtime.ownership", "set_manifest_entries"),
+    ("proscenium_sync.persistence.binding_state", "write_generation"),
+    ("proscenium_sync.runtime.held_plans", "HeldPlans.hold"),
     ("proscenium_sync.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
     ("proscenium_sync.synchronization.retirement", "retire"),
     ("proscenium_sync.synchronization.datablock_removal", "remove_unused"),
     ("proscenium_sync.synchronization.datablock_removal", "remove_datablocks_collecting_failures"),
-    ("proscenium_sync.binding_persistence.binding_state", "write_last_attempt"),
-    ("proscenium_sync.api.scene_source_selection", "mirror_after_publication"),
-    ("proscenium_sync.api.bindings", "_push_undo"),
+    ("proscenium_sync.persistence.binding_state", "write_last_attempt"),
+    ("proscenium_sync.bindings.scene_source_selection", "mirror_after_publication"),
+    ("proscenium_sync.bindings.binding_service", "_push_undo"),
 ]
 
 
@@ -145,8 +145,8 @@ def child(config: dict[str, Any]) -> None:
     import memory
     from pxr import Gf, Usd, UsdGeom
 
-    from proscenium_sync.api import bindings as api
-    from proscenium_sync.binding_persistence import id_property_records, manifests
+    from proscenium_sync.bindings import binding_service as api
+    from proscenium_sync.persistence import id_property_records, manifests
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender

@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import manifests
+from proscenium_sync.persistence import manifests
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Set

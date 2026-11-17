@@ -2,7 +2,7 @@
 
 On F-KIND-HIERARCHY's display, through the planner's correspondence over its display elements. Expected values come from
 the fixture: Chair's component holds Seat, Back, and Legs, and Top is Table's. support/interaction_checks.py checks the
-same functions through api/.
+same functions through bindings/.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium_sync import planner
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 CHAIR = "/World/Props/Chair"
 SEAT, BACK, LEGS = f"{CHAIR}/Geom/Seat", f"{CHAIR}/Geom/Back", f"{CHAIR}/Legs"

@@ -1,23 +1,23 @@
-# `proscenium_sync.api`
+# `proscenium_sync.bindings`
 
 What callers use to reach bindings ([Synchronization API](../../../../../docs/spec/source-access.md#synchronization-api)). Tier 5: it may import every unit below it, and `registration.py` and the extension's `interface/` import it ([import rules](../README.md#import-rules)).
 
 | File | Holds |
 |---|---|
-| `__init__.py` | The package's exports: `bindings`. |
-| `bindings.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `BindingNotFoundError`, and `RequestedSettings`, `Result`, `PickedEntity`, `TargetSelection`, `SourceUnavailableError`, `PersistentSelection`, `BindingStatus`, `SelectionEntry`, `SelectionMode`, and `SelectionResolution`, the types callers pass and receive, re-exported so callers outside `proscenium` import only this module. |
+| `__init__.py` | The public binding handle, process bindings, and caller-facing types, re-exported from `binding_service.py`. |
+| `binding_service.py` | `BindingHandle`, the immutable value of a binding's identifier that callers hold, and `Bindings`, the process's bindings, of which `BINDINGS` is the one instance. Also `BindingNotFoundError`, and `RequestedSettings`, `Result`, `PickedEntity`, `TargetSelection`, `SourceUnavailableError`, `PersistentSelection`, `BindingStatus`, `SelectionEntry`, `SelectionMode`, and `SelectionResolution`, the types callers pass and receive, exported by the package for callers. |
 | `scene_source_selection.py` | A scene's source selection, which `Bindings` gives: the stored persistent selection, resolved at the time code each binding's display shows with unresolved entries kept and reported, mirrored into the scene's active view layer when set, and changed by a pick or a box at a level in set, extend, toggle, or subtract mode; listeners are called once per change. Also the destinations' selectability, and mirroring again when content becomes selectable, a synchronization publishes, a window shows a view layer, or the frame changes for a binding caching time codes. |
-| `process_bindings.py` | `ProcessBindings`, the protocol of what the helper modules read of the process's bindings, which `Bindings` provides, so `bindings.py` imports them without a cycle. |
+| `process_bindings.py` | `ProcessBindings`, the protocol of what the helper modules read of the process's bindings, which `Bindings` provides, so `binding_service.py` imports them without a cycle. |
 | `binding_status.py` | `BindingStatus`, what a panel shows of a binding, and `binding_statuses(scene)`, which gives for each of a scene's bindings, in one call, its destination's name, why it can't be used, whether a stage is attached, whether its display may be out of date, whether it shows a published generation, and how its last attempt ended. |
 | `shown_displays.py` | `ShownDisplays`, each binding's display elements and correspondence, kept between interaction calls while the generation shown, its held plan, the source revision, and the elements' objects are unchanged, each object's hide flag read at every call; `registration.py`'s handlers clear it after an undo, a redo, or a file load (`Bindings.clear_shown_displays`). |
 | `binding_interaction.py` | The interaction functions the handle gives ([Headless Functions](../../../../../docs/spec/interaction-contract.md#headless-functions)), taking and giving Blender objects and source paths, each through the display component's elements and the planner's correspondence as they are now (`shown_display`); the time code the display shows; and the published generation's applied settings. |
 
-## `bindings.py`
+## `binding_service.py`
 
 - **The handle** holds only the binding's identifier, never a datablock or cached state, so undo, redo, and file loads can't leave it stale. Its methods (`attach`, `release`, `synchronize`, `cache`, `set_settings`, `reload`, `retry_cleanup`, `possibly_out_of_date`, `requested_settings`, `live_stage`) delegate to the methods of `BINDINGS` keyed by that identifier, which tests call on a fresh `Bindings`. Its interaction functions (`resolve_pick`, `select_targets`, `displayed`, `highlight_targets`, `selection_from_blender`), `shown_time_code`, and `applied_settings` delegate to `binding_interaction`; each interaction function raises `SourceUnavailableError` without a live stage.
 - **Operations that span bindings** are `Bindings`' own: creating an unattached binding (`create_binding(scene, ...)`), listing a scene's bindings (`in_scene`) and what a panel shows of each (`binding_statuses`), reporting copied bindings (`copied`), a scene's source selection (`source_selection`, `set_source_selection`, `resolve_source_selection`, `select_by_pick`, `select_by_box`, `add_selection_listener`, `remove_selection_listener`), mirroring it again (`mirror_source_selection`, `mirror_after_frame_change`, which `registration.py`'s handlers call), and whether managed content is selectable (`managed_selectable`, `set_managed_selectable`), which delegate to `scene_source_selection`. Callers open source stages and resolve file paths.
 - **Results and refusals:** an operation returns a `Result` (`proscenium_sync.results`) whose diagnostics say why it failed: an unavailable source, a configuration that can't be read, or a binding with copies and no canonical candidate. A query raises instead, and methods needing records raise `BindingNotFoundError` for a binding that doesn't exist, one whose destination or target scene was removed included. `release()` is an idempotent runtime operation that remains valid after undo or removal.
-- **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `BindingStageTracker` (`proscenium_sync.binding_runtime.stage_tracking`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `registration.py`'s handler drops them all when a file is loaded (`drop_all_stages`), with `Bindings.published_plans`, the plan of each generation a synchronization published this session (`proscenium_sync.binding_runtime.held_plans`).
+- **Runtime stages:** each binding's source and evaluation stages are in `Bindings.stages`, a `BindingStageTracker` (`proscenium_sync.runtime.stage_tracking`), created unattached on first use and compared with the bindings before any use once the bindings' state was rebuilt. `registration.py`'s handler drops them all when a file is loaded (`drop_all_stages`), with `Bindings.published_plans`, the plan of each generation a synchronization published this session (`proscenium_sync.runtime.held_plans`).
 
 `synchronize(time_code=None, *, full_rebuild=False)` finds the binding and refuses one that isn't usable, and `proscenium_sync.synchronization` runs the transaction at the time code given, the USD default time code included, or else at the target scene's current frame's, its subframe included, since time code t is frame t. With `full_rebuild=True`, the attempt rereads the source through a new scene-index chain and prepares every partition anew, which recovers from any change the kept chain missed. The result names the time code attempted; a refusal here, before the attempt, names only one given.
 
@@ -35,7 +35,7 @@ With the extension enabled in Blender, the caller opens a stage and attaches it 
 import bpy
 from pxr import Usd
 
-from proscenium_sync.api.bindings import BINDINGS
+from proscenium_sync.bindings import BINDINGS
 
 stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
 handle = BINDINGS.create_binding(bpy.context.scene, name="Shot")

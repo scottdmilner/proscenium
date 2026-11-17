@@ -1,7 +1,7 @@
 """An oracle for the ownership index: every datablock's claims, read from the records now.
 
 See lifecycle.md#ownership-and-lifecycle. The extension has one path to ownership, its runtime
-index (proscenium_sync.binding_runtime). This one shares none of its code past reading the records, so a test
+index (proscenium_sync.runtime). This one shares none of its code past reading the records, so a test
 can compare the two: each local collection holding binding records, a copied destination's included, claims
 each datablock its manifest names, for the first binding whose record it holds. A manifest that can't be read
 claims nothing.
@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import binding_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
-from proscenium_sync.binding_runtime import ownership
-from proscenium_sync.binding_runtime.ownership import Claim
+from proscenium_sync.persistence import binding_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord
+from proscenium_sync.runtime import ownership
+from proscenium_sync.runtime.ownership import Claim
 
 if TYPE_CHECKING:
     from proscenium_sync.source_access import BindingId

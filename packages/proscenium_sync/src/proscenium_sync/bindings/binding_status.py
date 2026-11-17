@@ -10,8 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import binding_state, id_property_records
-from proscenium_sync.binding_runtime import binding_operations
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.runtime import binding_operations
 
 if TYPE_CHECKING:
     import bpy

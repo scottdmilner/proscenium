@@ -18,8 +18,8 @@ import functools
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import binding_state, manifests
-from proscenium_sync.binding_runtime import kept_manifests
+from proscenium_sync.persistence import binding_state, manifests
+from proscenium_sync.runtime import kept_manifests
 
 from . import local_updates
 

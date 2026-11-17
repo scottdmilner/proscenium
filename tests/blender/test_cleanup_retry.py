@@ -13,9 +13,9 @@ import pytest
 
 from fixtures import schema_version_cases as record_fixtures
 from fixtures import transaction
-from proscenium_sync.binding_persistence import binding_records, cleanup_ledgers, id_property_records
-from proscenium_sync.binding_runtime import pending_cleanup
+from proscenium_sync.persistence import binding_records, cleanup_ledgers, id_property_records
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import pending_cleanup
 from proscenium_sync.synchronization import datablock_removal
 from support.blend import save_and_reopen
 
@@ -26,8 +26,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import PreparationCleanupFailureScene
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
-    from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene, name: str = "Shot") -> BindingHandle:

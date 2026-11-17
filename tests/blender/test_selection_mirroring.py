@@ -1,7 +1,8 @@
 """Mirroring a scene's source selection again: as content becomes selectable, into another view layer, and per frame.
 
 DECISIONS.md "Headless interaction functions": Blender deselects an unselectable collection's objects and an object a
-hide flag hides, without selecting them again, so api/ mirrors the stored selection again when managed content becomes
+hide flag hides, without selecting them again, so bindings/ mirrors the stored selection again when managed content
+becomes
 selectable (ICON-41), when a window shows a view layer (ICON-39), and on a frame change for a scene whose selection has
 entries of a binding that caches time codes. A window's view layer can't change without a window, so the message-bus
 callback isn't run here; these tests call what it calls, and the window's part is tried by hand (Phase F).
@@ -14,7 +15,7 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import interaction, time_variations
-from proscenium_sync.api.bindings import PersistentSelection, SelectionEntry
+from proscenium_sync.bindings import PersistentSelection, SelectionEntry
 from proscenium_sync.results import ResultState
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 CHAIR = "/World/Props/Chair"
 CHAIR_PARTS = {f"{CHAIR}/Geom/Seat", f"{CHAIR}/Geom/Back", f"{CHAIR}/Legs"}

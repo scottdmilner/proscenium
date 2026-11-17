@@ -3,7 +3,7 @@
 The display elements are the objects the manifest names in a drawn copy's object role, each in the viewport when its
 hide flag shows it at the frame shown; instance contexts come from the held plan, or from the live stage without one.
 Expected values come from the interaction fixtures and F-TIME-VARIATIONS, and from USD's own APIs
-(support/interaction_oracle.py). support/interaction_checks.py checks the interaction functions through api/.
+(support/interaction_oracle.py). support/interaction_checks.py checks the interaction functions through bindings/.
 """
 
 from __future__ import annotations
@@ -15,12 +15,12 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
-from proscenium_sync.api.bindings import BindingHandle
-from proscenium_sync.binding_persistence import binding_state, id_property_records
-from proscenium_sync.binding_persistence.manifests import RepresentationRole
-from proscenium_sync.binding_runtime import held_plans, ownership
+from proscenium_sync.bindings import BindingHandle
 from proscenium_sync.interaction import display_correspondence
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
 from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import held_plans, ownership
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle
 from support.blend import save_and_reopen
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium_sync import planner
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
     from proscenium_sync.source_access import BindingId
 
 IDENTITY = Gf.Matrix4d(1.0)

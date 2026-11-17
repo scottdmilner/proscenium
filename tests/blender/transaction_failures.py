@@ -18,8 +18,8 @@ if TYPE_CHECKING:
     import bpy
 
     from fixtures.transaction import PreparationCleanupFailureScene
-    from proscenium_sync.api.bindings import BindingHandle
-    from proscenium_sync.binding_persistence.manifests import RepresentationRole
+    from proscenium_sync.bindings import BindingHandle
+    from proscenium_sync.persistence.manifests import RepresentationRole
     from proscenium_sync.results import Result
 
 

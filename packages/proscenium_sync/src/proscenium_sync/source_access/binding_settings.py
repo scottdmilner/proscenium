@@ -1,6 +1,6 @@
 """Requested binding settings and payload policy (lifecycle.md#binding-state).
 
-The binding's configuration holds them (proscenium_sync.binding_persistence.binding_records), and set_settings changes
+The binding's configuration holds them (proscenium_sync.persistence.binding_records), and set_settings changes
 them. A record gives every field: one without the conversion and purpose settings, which configuration version 1 gained
 in place (DECISIONS.md "Conversion and purpose settings"), is refused like any other invalid record.
 """

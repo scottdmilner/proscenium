@@ -18,7 +18,7 @@ from pxr import Usd
 
 from fixtures import edit_sequence, evaluation
 from proscenium_sync import planner
-from proscenium_sync.binding_persistence.manifests import Manifest, ManifestEntry, RepresentationRole
+from proscenium_sync.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
 from proscenium_sync.synchronization import partition_replacement
 from support.manifests import key
 

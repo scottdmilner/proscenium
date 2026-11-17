@@ -19,10 +19,10 @@ from mathutils import Matrix
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium_sync.binding_persistence import id_property_records
-from proscenium_sync.binding_persistence.manifests import RepresentationRole
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
 from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import ownership
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import evaluation as planning
 from support import time_codes
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from proscenium_sync import planner
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 @dataclass(frozen=True)

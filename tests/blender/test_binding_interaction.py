@@ -1,6 +1,6 @@
 """The binding handle's interaction functions, the time code the display shows, and the applied settings.
 
-api/'s surface over the display component and the planner (DECISIONS.md "Headless interaction functions"). Expected
+bindings/'s surface over the display component and the planner (DECISIONS.md "Headless interaction functions"). Expected
 values come from the interaction fixtures, F-TIME-VARIATIONS, and the spec's rule for the time code a display shows
 (transforms.md#transforms-and-time-codes). support/interaction_checks.py checks the contract's results through it.
 """
@@ -16,15 +16,15 @@ from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
 from proscenium_sync import planner
-from proscenium_sync.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
-from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.bindings import PickedEntity, SourceUnavailableError, TargetSelection
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
 from proscenium_sync.results import ResultState
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _attached(bindings: Bindings, stage: Usd.Stage) -> BindingHandle:
@@ -34,7 +34,8 @@ def _attached(bindings: Bindings, stage: Usd.Stage) -> BindingHandle:
 
 
 def test_picks_resolve_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-36 through api/: each managed object with its world matrix, all a ray cast returns, resolves to its entity
+    # ICON-36 through bindings/: each managed object with its world matrix, all a ray cast returns, resolves to its
+    # entity
     # and floor, inside native instances included; an object the display doesn't show resolves to nothing.
     with interaction.nested_selection(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
@@ -52,7 +53,7 @@ def test_picks_resolve_through_the_handle(bindings: Bindings, tmp_path: Path) ->
 
 
 def test_selection_round_trips_through_the_handle(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-30 through api/: the display's selected objects give their targets at the level, and the active one's.
+    # ICON-30 through bindings/: the display's selected objects give their targets at the level, and the active one's.
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
@@ -68,7 +69,7 @@ def test_selection_round_trips_through_the_handle(bindings: Bindings, tmp_path: 
 
 
 def test_without_a_live_stage_each_function_reports_it(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-08 through api/: released after synchronizing, each interaction function raises SourceUnavailableError.
+    # ICON-08 through bindings/: released after synchronizing, each interaction function raises SourceUnavailableError.
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
@@ -100,7 +101,8 @@ def test_nothing_published_displays_nothing(bindings: Bindings, tmp_path: Path) 
 
 
 def test_the_time_code_shown_follows_the_frame(bindings: Bindings, tmp_path: Path) -> None:
-    # XFORM-13's rule through api/: synchronized at 0 and cached at 10 and 12.5, a frame shows its time code where the
+    # XFORM-13's rule through bindings/: synchronized at 0 and cached at 10 and 12.5, a frame shows its time code where
+    # the
     # generation holds one, the latest before it elsewhere, and 0 before 0; at a subframe, its time code.
     target = bpy.data.scenes["Scene"]
     with time_variations.time_variations(tmp_path) as scene:
@@ -138,7 +140,8 @@ def test_the_applied_settings_are_the_published_generations(bindings: Bindings, 
 
 
 def test_interaction_answers_for_the_time_code_shown(bindings: Bindings, tmp_path: Path) -> None:
-    # XFORM-14 through api/: at the frame showing 15, Blink isn't displayed and Scatter's highlight covers its third
+    # XFORM-14 through bindings/: at the frame showing 15, Blink isn't displayed and Scatter's highlight covers its
+    # third
     # point's object; at the frame showing 0, the reverse.
     target = bpy.data.scenes["Scene"]
     with time_variations.time_variations(tmp_path) as scene:
@@ -211,7 +214,7 @@ def test_a_picks_matrix_reaches_the_planner_in_usds_convention() -> None:
     # lands in USD's last row, and a rotated point is where Blender puts it.
     from mathutils import Matrix
 
-    from proscenium_sync.api import binding_interaction
+    from proscenium_sync.bindings import binding_interaction
 
     blender = Matrix.Translation((1.0, 2.0, 3.0)) @ Matrix.Rotation(0.5, 4, "Z")
     usd = binding_interaction.usd_matrix(blender)

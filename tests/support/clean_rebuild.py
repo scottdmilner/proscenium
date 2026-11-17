@@ -13,16 +13,16 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import id_property_records
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import id_property_records
 from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import ownership
 
 from .displayed_copies import displayed_copies
 
 if TYPE_CHECKING:
     from pxr import Usd
 
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
     from proscenium_sync.source_access import BindingId, binding_settings
 
     from .bounds_check import DisplayedCopy

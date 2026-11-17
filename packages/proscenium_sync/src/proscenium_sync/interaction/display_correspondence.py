@@ -19,15 +19,15 @@ from typing import TYPE_CHECKING
 import bpy
 
 from proscenium_sync import planner
-from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
-from proscenium_sync.binding_runtime import binding_operations, kept_manifests
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
+from proscenium_sync.runtime import binding_operations, kept_manifests
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from pxr import Usd
 
-    from proscenium_sync.binding_runtime import held_plans
+    from proscenium_sync.runtime import held_plans
     from proscenium_sync.source_access import BindingId
 
 

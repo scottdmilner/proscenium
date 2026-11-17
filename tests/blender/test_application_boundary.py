@@ -15,9 +15,9 @@ from pxr import Usd
 
 from fixtures import evaluation, incremental
 from proscenium_sync import planner
-from proscenium_sync.binding_persistence import binding_state, id_property_records
-from proscenium_sync.binding_persistence.cleanup_ledgers import OriginatingOperation
-from proscenium_sync.binding_persistence.manifests import Manifest, RepresentationRole
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.persistence.cleanup_ledgers import OriginatingOperation
+from proscenium_sync.persistence.manifests import Manifest, RepresentationRole
 from proscenium_sync.results import ResultState
 from proscenium_sync.synchronization import application, preparation_resources
 from support.destinations import destination
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=application.REPRESENTATION_VERSION)
 SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults

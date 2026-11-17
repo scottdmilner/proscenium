@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 import bpy
 from mathutils import Matrix
 
-from proscenium_sync.binding_persistence import manifests
+from proscenium_sync.persistence import manifests
 
 from . import application, attribute_samples
 

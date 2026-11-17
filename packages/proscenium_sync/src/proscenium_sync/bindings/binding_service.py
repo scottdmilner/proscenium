@@ -4,9 +4,9 @@ A synchronization runs the transaction (proscenium_sync.synchronization) on a bi
 given or else, as the transaction chooses it, the target scene's current frame's. A cache call caches time codes in the
 published generation of a binding found usable, without synchronizing.
 
-A binding's configuration is its records (proscenium_sync.binding_persistence.binding_records). This module reaches them
-through proscenium_sync.binding_runtime.binding_operations, which reads and writes them when called. Its stages and
-attachment are runtime state, never saved, in Bindings.stages (proscenium_sync.binding_runtime.stage_tracking), created
+A binding's configuration is its records (proscenium_sync.persistence.binding_records). This module reaches them
+through proscenium_sync.runtime.binding_operations, which reads and writes them when called. Its stages and
+attachment are runtime state, never saved, in Bindings.stages (proscenium_sync.runtime.stage_tracking), created
 unattached on first use.
 
 A binding refuses the operations that need its configuration when the configuration can't be read
@@ -20,7 +20,7 @@ none in background mode or with global undo off (lifecycle.md#undo-and-runtime-s
 doesn't declare UNDO, so it adds no second step.
 
 Each operation's result reports the binding's cleanup status as it ends
-(proscenium_sync.binding_runtime.pending_cleanup), a refusal's included.
+(proscenium_sync.runtime.pending_cleanup), a refusal's included.
 
 Each kind of call reports a refusal one way:
 
@@ -46,9 +46,9 @@ import bpy
 from pxr import Usd
 
 from proscenium_sync import synchronization
-from proscenium_sync.binding_persistence import binding_state, id_property_records
-from proscenium_sync.binding_runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
+from proscenium_sync.persistence import binding_state, id_property_records
 from proscenium_sync.results import Diagnostic, DiagnosticCode, Result, ResultState
+from proscenium_sync.runtime import binding_operations, held_plans, pending_cleanup, stage_tracking
 from proscenium_sync.source_access import binding_settings, stages
 
 from . import binding_interaction, binding_status, scene_source_selection, shown_displays
@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 
     from mathutils import Matrix, Vector
 
-    from proscenium_sync.binding_runtime import copy_detection
+    from proscenium_sync.runtime import copy_detection
     from proscenium_sync.source_access import BindingId
 
 

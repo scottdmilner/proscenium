@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 import bpy
 from mathutils import Matrix
 
-from proscenium_sync.binding_persistence import manifests
+from proscenium_sync.persistence import manifests
 
 if TYPE_CHECKING:
     from collections.abc import Buffer, Callable, Iterable, Iterator, Sequence

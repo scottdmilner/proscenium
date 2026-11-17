@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import binding_state
-from proscenium_sync.binding_persistence.binding_state import GenerationMetadata
-from proscenium_sync.binding_persistence.manifests import Manifest, ManifestEntry
-from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.persistence import binding_state
+from proscenium_sync.persistence.binding_state import GenerationMetadata
+from proscenium_sync.persistence.manifests import Manifest, ManifestEntry
+from proscenium_sync.runtime import ownership
 from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
 from proscenium_sync.source_access.stages import SourceRevision
 from support.manifests import key

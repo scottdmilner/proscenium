@@ -12,14 +12,14 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import evaluation
-from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.persistence import binding_state, id_property_records
 from proscenium_sync.results import DiagnosticCode, ResultState
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
     from proscenium_sync.results import Result
 
 

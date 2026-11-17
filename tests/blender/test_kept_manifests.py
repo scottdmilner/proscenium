@@ -1,6 +1,6 @@
-"""Manifests kept between operations by their stored revision (proscenium_sync.binding_runtime.kept_manifests).
+"""Manifests kept between operations by their stored revision (proscenium_sync.runtime.kept_manifests).
 
-Decodes are counted by wrapping proscenium_sync.binding_persistence.manifests.read_manifest, which decodes the
+Decodes are counted by wrapping proscenium_sync.persistence.manifests.read_manifest, which decodes the
 record; each expected manifest is the one the test wrote or built.
 """
 
@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import id_property_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord, RefusedRecord
-from proscenium_sync.binding_persistence.manifests import Manifest
-from proscenium_sync.binding_runtime import copy_partitions, kept_manifests
+from proscenium_sync.persistence import id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord
+from proscenium_sync.persistence.manifests import Manifest
+from proscenium_sync.runtime import copy_partitions, kept_manifests
 from support import undo
 from support.manifests import key, object_change, object_entry
 

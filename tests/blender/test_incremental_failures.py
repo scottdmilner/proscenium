@@ -18,9 +18,9 @@ import pytest
 from pxr import Gf, UsdGeom, Vt
 
 from fixtures import edit_sequence
-from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
-from proscenium_sync.binding_runtime import pending_cleanup
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
 from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import pending_cleanup
 from proscenium_sync.synchronization import datablock_removal, local_updates
 
 from .published_state import datablocks, published_generation
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _raising_after(function: Callable[..., Any]) -> Callable[..., Any]:

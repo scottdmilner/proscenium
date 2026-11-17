@@ -1,7 +1,7 @@
 """A binding's published generation and last attempt (lifecycle.md#binding-state).
 
 The published generation is what the display was produced with: the generation record and the ownership manifest
-beside it on the destination collection (proscenium_sync.binding_persistence.manifests), and the correspondence M7 adds.
+beside it on the destination collection (proscenium_sync.persistence.manifests), and the correspondence M7 adds.
 The generation record holds the settings and time code it was synchronized at, those M5's cache added to it since
 (pipeline.md#cached-time-codes), and the source revision and target scene's unit scale it was synchronized from,
 which cache compares with the current ones; it's stored, so undo restores it with the generation it describes. It

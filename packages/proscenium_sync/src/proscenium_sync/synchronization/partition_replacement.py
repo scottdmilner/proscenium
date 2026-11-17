@@ -30,15 +30,15 @@ from typing import TYPE_CHECKING
 import bpy
 
 from proscenium_sync import planner
-from proscenium_sync.binding_runtime import kept_manifests
+from proscenium_sync.runtime import kept_manifests
 
 from . import datablock_removal
 
 if TYPE_CHECKING:
     from collections.abc import Buffer, Collection, Mapping
 
-    from proscenium_sync.binding_persistence import manifests
-    from proscenium_sync.binding_runtime import copy_partitions
+    from proscenium_sync.persistence import manifests
+    from proscenium_sync.runtime import copy_partitions
 
 
 @dataclass(frozen=True, slots=True)

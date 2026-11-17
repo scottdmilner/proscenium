@@ -3,9 +3,9 @@
 import bpy
 from bpy.app.handlers import persistent
 
-from .api import bindings
-from .binding_persistence import id_property_records
-from .binding_runtime import kept_manifests
+from . import bindings
+from .persistence import id_property_records
+from .runtime import kept_manifests
 
 
 class ProsceniumRecords(bpy.types.PropertyGroup):

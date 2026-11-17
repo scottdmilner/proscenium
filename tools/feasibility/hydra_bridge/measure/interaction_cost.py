@@ -5,14 +5,14 @@
 
 M7 plan, Phase G (item 4), against M4's provisional budgets: 50 ms for a function on one pick or entry and 250 ms on
 a whole-assembly selection, with their Blender updates ([M4 plan](../../../../docs/plans/M04-prototypes.md)). Each run
-makes a binding through the API (proscenium_sync.api.bindings), attaches the scene's stage, synchronizes at its time
+makes a binding through the API (proscenium_sync.bindings), attaches the scene's stage, synchronizes at its time
 code, caches CACHED later ones, makes the scene's managed content selectable, and updates the view layer. Then each
 operation is timed in process with a monotonic clock, repeated (SINGLE_REPEATS, or WHOLE_REPEATS for those over the
 whole display), and its median and range kept; the summary gives the median and range of the processes' medians.
 
 The pick is the managed object whose copy has the deepest instance context, at the API's levels: the prim (None),
 component, and assembly. An API call builds the binding's correspondence from its manifest and hide flags, or reuses
-the one api/shown_displays.py keeps, reading the hide flags, so each time includes that. An operation that changes
+the one bindings/shown_displays.py keeps, reading the hide flags, so each time includes that. An operation that changes
 Blender's selection is timed with the view layer update after it, as a window's redraw would evaluate the depsgraph.
 The box selection takes every element (inside always true) after projecting its world bounds' center through a fixed
 matrix, standing in for the region's projection. The tool's ray loop is `source_select_tool.bounds_ray_cast` over
@@ -64,8 +64,8 @@ def child(config: dict[str, Any]) -> None:
     from pxr import Usd
 
     from proscenium.interface import source_select_tool
-    from proscenium_sync.api import binding_interaction
-    from proscenium_sync.api import bindings as api
+    from proscenium_sync import bindings as api
+    from proscenium_sync.bindings import binding_interaction
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene: Any = bpy.context.scene

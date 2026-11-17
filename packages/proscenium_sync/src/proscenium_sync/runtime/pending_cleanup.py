@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium_sync.binding_persistence import binding_records, cleanup_ledgers
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
+from proscenium_sync.persistence import binding_records, cleanup_ledgers
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping

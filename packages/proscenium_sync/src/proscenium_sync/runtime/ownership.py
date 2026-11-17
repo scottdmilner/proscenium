@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync.binding_persistence import binding_records, manifests
-from proscenium_sync.binding_persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
+from proscenium_sync.persistence import binding_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
 
 from . import binding_operations, kept_manifests
 
