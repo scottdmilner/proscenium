@@ -1,4 +1,4 @@
-"""The scene graph widget's display (proscenium.ui.scene_graph_widget.display): registration, views, and rows.
+"""The scene graph widget's display (proscenium_ui.scene_graph_widget.display): registration, views, and rows.
 
 Drawing needs a window, so nothing here draws: these check the RNA side a UIList draws from, on
 scenes/scene_graph/prim_kinds.usda, whose top level is _Crate, World, and World_Override_Only.
@@ -15,16 +15,16 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.scene_graph_widget.display import (
+from proscenium_ui.scene_graph_widget import display
+from proscenium_ui.scene_graph_widget.display import (
     scene_graph_operators,
     scene_graph_properties,
     scene_graph_registration,
     scene_graph_views,
 )
-from proscenium.ui.scene_graph_widget.display.list_columns import name_column
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTree
-from proscenium.ui.widget_resources import (
+from proscenium_ui.scene_graph_widget.display.list_columns import name_column
+from proscenium_ui.scene_graph_widget.prim_tree import PrimTree
+from proscenium_ui.widget_resources import (
     badge_icons,
     clipboard_operators,
     display_registration,

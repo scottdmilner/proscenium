@@ -1,4 +1,4 @@
-# The C++ clang-tidy checks, for the compiled core and the Hydra bridge (tools/feasibility/hydra_bridge/), run by
+# The C++ clang-tidy checks, for the planner and the Hydra bridge (tools/feasibility/hydra_bridge/), run by
 # pre-commit through tools/clang_tidy.py. At the root, so clang-tidy and editors find it from either project.
 # Every warning fails.
 # Left out:

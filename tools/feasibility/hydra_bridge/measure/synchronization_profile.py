@@ -3,8 +3,8 @@
     uv run python tools/feasibility/hydra_bridge/measure/synchronization_profile.py [--scenes updates alab] \
         [--exclude updates-100] [--repeats 3] [--undo on off] [--runtimes binary wheel] [--no-full-rebuild]
 
-M7 plan, Phase G (items 1, 2, 3, and 5). Each run makes a binding through the API (proscenium.api.bindings), attaches
-the scene's stage, and makes these calls in order (CALLS), each one step:
+M7 plan, Phase G (items 1, 2, 3, and 5). Each run makes a binding through the API (proscenium_sync.bindings),
+attaches the scene's stage, and makes these calls in order (CALLS), each one step:
 - synchronize: the first synchronization, at the scene's time code;
 - unchanged: synchronizing again with nothing changed;
 - move: after a translate op is added, in the session layer, to the first mesh outside native instances;
@@ -64,36 +64,36 @@ CALLS = [
 ]
 # (module, function) pairs the calls reach their steps through, in the order they run.
 STEPS = [
-    ("proscenium.api.bindings", "Bindings._require_binding"),
-    ("proscenium.binding.source_access.stages", "BindingStages.reload"),
-    ("proscenium.synchronization", "synchronize"),
-    ("proscenium.synchronization", "cache"),
-    ("proscenium.binding.persistence.manifests", "read_manifest"),
-    ("proscenium.binding.persistence.binding_state", "read_generation"),
-    ("proscenium.binding.source_access.stages", "BindingStages.acquire_evaluation_stage"),
-    ("proscenium.synchronization.evaluation", "source_state_diagnostics"),
-    ("proscenium.synchronization.evaluation", "evaluate_display_plans"),
-    ("proscenium.synchronization.evaluation", "_kept_chain"),
-    ("proscenium.core._core", "plan"),
-    ("proscenium.synchronization.partition_replacement", "partitions_to_replace"),
-    ("proscenium.core._core", "diff_plans"),
-    ("proscenium.synchronization.application", "prepare"),
-    ("proscenium.synchronization.local_updates", "prepare_updates"),
-    ("proscenium.synchronization.time_code_caching", "_varying_copies"),
-    ("proscenium.synchronization.time_code_keying", "key_time_codes"),
-    ("proscenium.synchronization.publication", "publish"),
-    ("proscenium.synchronization.local_updates", "apply_updates"),
-    ("proscenium.binding.persistence.manifests", "write_manifest"),
-    ("proscenium.binding.runtime.ownership", "set_manifest_entries"),
-    ("proscenium.binding.persistence.binding_state", "write_generation"),
-    ("proscenium.binding.runtime.held_plans", "HeldPlans.hold"),
-    ("proscenium.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
-    ("proscenium.synchronization.retirement", "retire"),
-    ("proscenium.synchronization.datablock_removal", "remove_unused"),
-    ("proscenium.synchronization.datablock_removal", "remove_datablocks_collecting_failures"),
-    ("proscenium.binding.persistence.binding_state", "write_last_attempt"),
-    ("proscenium.api.scene_source_selection", "mirror_after_publication"),
-    ("proscenium.api.bindings", "_push_undo"),
+    ("proscenium_sync.bindings.binding_service", "Bindings._require_binding"),
+    ("proscenium_sync.source_access.stages", "BindingStages.reload"),
+    ("proscenium_sync.synchronization", "synchronize"),
+    ("proscenium_sync.synchronization", "cache"),
+    ("proscenium_sync.persistence.manifests", "read_manifest"),
+    ("proscenium_sync.persistence.binding_state", "read_generation"),
+    ("proscenium_sync.source_access.stages", "BindingStages.acquire_evaluation_stage"),
+    ("proscenium_sync.synchronization.evaluation", "source_state_diagnostics"),
+    ("proscenium_sync.synchronization.evaluation", "evaluate_display_plans"),
+    ("proscenium_sync.synchronization.evaluation", "_kept_chain"),
+    ("proscenium_sync.planner._planner", "plan"),
+    ("proscenium_sync.synchronization.partition_replacement", "partitions_to_replace"),
+    ("proscenium_sync.planner._planner", "diff_plans"),
+    ("proscenium_sync.synchronization.application", "prepare"),
+    ("proscenium_sync.synchronization.local_updates", "prepare_updates"),
+    ("proscenium_sync.synchronization.time_code_caching", "_varying_copies"),
+    ("proscenium_sync.synchronization.time_code_keying", "key_time_codes"),
+    ("proscenium_sync.synchronization.publication", "publish"),
+    ("proscenium_sync.synchronization.local_updates", "apply_updates"),
+    ("proscenium_sync.persistence.manifests", "write_manifest"),
+    ("proscenium_sync.runtime.ownership", "set_manifest_entries"),
+    ("proscenium_sync.persistence.binding_state", "write_generation"),
+    ("proscenium_sync.runtime.held_plans", "HeldPlans.hold"),
+    ("proscenium_sync.synchronization.preparation_resources", "remove_staging_and_clear_tracking"),
+    ("proscenium_sync.synchronization.retirement", "retire"),
+    ("proscenium_sync.synchronization.datablock_removal", "remove_unused"),
+    ("proscenium_sync.synchronization.datablock_removal", "remove_datablocks_collecting_failures"),
+    ("proscenium_sync.persistence.binding_state", "write_last_attempt"),
+    ("proscenium_sync.bindings.scene_source_selection", "mirror_after_publication"),
+    ("proscenium_sync.bindings.binding_service", "_push_undo"),
 ]
 
 
@@ -145,8 +145,8 @@ def child(config: dict[str, Any]) -> None:
     import memory
     from pxr import Gf, Usd, UsdGeom
 
-    from proscenium.api import bindings as api
-    from proscenium.binding.persistence import id_property_records, manifests
+    from proscenium_sync.bindings import binding_service as api
+    from proscenium_sync.persistence import id_property_records, manifests
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender

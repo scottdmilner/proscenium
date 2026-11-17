@@ -8,7 +8,7 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium.binding.persistence.id_property_records import (
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -16,14 +16,14 @@ from proscenium.binding.persistence.id_property_records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.persistence.source_selection import (
+from proscenium_sync.persistence.source_selection import (
     SELECTION_KEY,
     PersistentSelection,
     SelectionEntry,
     read_selection,
     write_selection,
 )
-from proscenium.binding.source_access import BindingId
+from proscenium_sync.source_access import BindingId
 from support import interaction_oracle
 from support.blend import save_and_reopen
 from support.usd import binding_on_file
@@ -31,7 +31,7 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 
 def _scene() -> bpy.types.Scene:

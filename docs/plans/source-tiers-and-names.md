@@ -4,16 +4,16 @@ How `src/proscenium/` is arranged so its structure shows in the tree, and how it
 
 ## Tiers
 
-`src/proscenium/` holds three packages: `api/`, what callers use; `binding/`, the bindings' code; and `core/`, the compiled core. The bindings' code and the core are separate packages, so the Blender-facing code and the core and its Hydra code change independently.
+`src/proscenium/` holds three packages: `bindings/`, what callers use; `binding/`, the bindings' code; and `core/`, the compiled core. The bindings' code and the core are separate packages, so the Blender-facing code and the core and its Hydra code change independently.
 
 The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers, and the lowest tier's units import only themselves:
 
 | Tier | Unit | Holds |
 |---|---|---|
 | 11 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
-| 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `api/` and `ui/`'s widgets |
+| 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `bindings/` and `ui/`'s widgets |
 | 2, 7–9 | `ui/`'s units | Widgets an add-on places in Blender's editors, their bpy-free models in tier 2 and the lowest tier ([`src/proscenium/README.md`](../../src/proscenium/README.md#import-rules) lists them) |
-| 6 | `api/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
+| 6 | `bindings/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
 | 5 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
 | 5 | `interaction/` | The display component of the interaction contract: correspondence from Blender data, and Blender's selection ([Interaction Contract](../spec/interaction-contract.md)) |
 | 4 | `binding/runtime/` | Disposable in-memory state built from the records ([Undo and Runtime State](../spec/lifecycle.md#undo-and-runtime-state)) |
@@ -32,9 +32,9 @@ A `bpy_free` test reads every module's imports with `ast`, without importing it,
 src/proscenium/
   __init__.py
   addon.py
-  api/
+  bindings/
     __init__.py
-    bindings.py                  Bindings, BINDINGS, BindingHandle, RequestedSettings
+    binding_service.py           Bindings, BINDINGS, BindingHandle, RequestedSettings
   binding/
     __init__.py
     runtime/
@@ -131,7 +131,7 @@ The Synchronization API's design note in [source-access.md](../spec/source-acces
 Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docstrings, docs, and tests that name what it moves or renames. Files move with `git mv`, before their content changes.
 
 1. This plan.
-2. **Moves into the tiers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `api/`. AGENTS.md's Layout section describes the tiers.
+2. **Moves into the tiers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `bindings/`. AGENTS.md's Layout section describes the tiers.
 3. **The import-direction test.**
 4. **`runtime/indexes.py` split** into `blender_state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
 5. **Exceptions end in `Error`.**
@@ -141,7 +141,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 9. **Runtime names:** the state's public functions (`find_copies`, `rebuilds`, `update_manifest`).
 10. **`DiagnosticCategory`.**
 11. **A disabled binding reported in band** by runtime lookups.
-12. **The API:** `api/synchronization.py` to `api/bindings.py`, its class, instance, and methods, with the spec, matrix, and DECISIONS.md changes above.
+12. **The API:** `bindings/synchronization.py` to `bindings/binding_service.py`, its class, instance, and methods, with the spec, matrix, and DECISIONS.md changes above.
 13. **The binding record**, at version 1, with its last attached root-layer identifier, destination, and requested settings.
 14. **AGENTS.md's Style section** gains the conventions.
 
@@ -151,5 +151,5 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 - **Runtime binding operations.** `binding_operations.py` holds lookup, creation, configuration writes, and index-entry restoration. `copy_detection.py` reads candidate evidence and applies the canonical-candidate rule; `ownership.py` reads ownership evidence and writes manifests.
 - **Copied bindings.** `copy_detection.py` names detection from the records. Its functions share the pure rule in `source_access/canonical_candidate.py`.
 - **The API (commit 12).** The blender tests' `sync` fixture is `bindings`, for the `Bindings` it gives, so *synchronization* names only an attempt in the tests too. The spec section keeps its name, Synchronization API.
-- **Units in tiers, reached through public modules and exported names.** A package unit exports public modules and names, its own or its modules'. Callers qualify uses through a module or a package that exports names, or import names from either where qualification would nest. `synchronization/` exports `synchronize`, `cache`, and `retry_cleanup`, the only functions `api/` calls, so its modules are all its own; `source_access/` defines and exports `BindingId`, a `NewType` that needs no module of its own. `api/bindings.py` also re-exports `RequestedSettings` and `Result`, so callers outside `proscenium` import the caller-facing types from it. Module names identify their domain and responsibility, including when multiple modules hold records or identifiers.
+- **Units in tiers, reached through public modules and exported names.** A package unit exports public modules and names, its own or its modules'. Callers qualify uses through a module or a package that exports names, or import names from either where qualification would nest. `synchronization/` exports `synchronize`, `cache`, and `retry_cleanup`, the only functions `bindings/` calls, so its modules are all its own; `source_access/` defines and exports `BindingId`, a `NewType` that needs no module of its own. `bindings/` also exports `RequestedSettings` and `Result`, so callers import the caller-facing types from the package. Module names identify their domain and responsibility, including when multiple modules hold records or identifiers.
 - **Reads in persistence (after commit 14).** The binding records' functions that decode records are `read_configs()` and `read_tags()`. `scene_bindings()`, `index_texts()`, and `tagged_uids()` find where records are without decoding them, so they keep names for what they return.

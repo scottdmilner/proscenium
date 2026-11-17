@@ -2,7 +2,7 @@
 
     Blender --python tools/scene_graph_demo.py [-- path/to/stage.usda]
 
-It registers `proscenium.ui.scene_graph_widget.display` and `proscenium.ui.property_viewer_widget.display`
+It registers `proscenium_ui.scene_graph_widget.display` and `proscenium_ui.property_viewer_widget.display`
 from `src/` and places two views of one stage: one in the 3D View's sidebar and one in the node editor's, each on a
 "Scene Graph" tab, with a scene graph panel, a property viewer panel below it showing the properties of the prim the
 scene graph selects, and a property metadata panel summarizing the selected property. A target's jump button
@@ -26,11 +26,11 @@ from bpy.app.handlers import persistent
 from pxr import Sdf, Usd
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "packages" / "proscenium_ui" / "src"))
 
 # Found through the path inserted above.
-from proscenium.ui.property_viewer_widget import display as property_display  # noqa: E402
-from proscenium.ui.scene_graph_widget import display  # noqa: E402
+from proscenium_ui.property_viewer_widget import display as property_display  # noqa: E402
+from proscenium_ui.scene_graph_widget import display  # noqa: E402
 
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias

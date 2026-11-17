@@ -1,0 +1,156 @@
+"""A binding's published generation and last attempt (lifecycle.md#binding-state).
+
+The published generation is what the display was produced with: the generation record and the ownership manifest
+beside it on the destination collection (proscenium_sync.persistence.manifests), and the correspondence M7 adds.
+The generation record holds the settings and time code it was synchronized at, those M5's cache added to it since
+(pipeline.md#cached-time-codes), and the source revision and target scene's unit scale it was synchronized from,
+which cache compares with the current ones; it's stored, so undo restores it with the generation it describes. It
+describes the destination's content, so it travels with the destination on copy routes, as the manifest does.
+
+The last attempt is the most recent synchronization attempt, the settings it requested, and its result. It is on the
+destination beside the binding's configuration and the generation, under its own key: it exists without a
+publication, and reading the configuration doesn't load its diagnostics.
+
+The synchronization transaction writes both (proscenium_sync.synchronization): the generation as part of publication,
+and the last attempt at every attempt's end.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from pxr import Usd
+
+from proscenium_sync import results
+from proscenium_sync.source_access import binding_settings, stages
+
+from . import id_property_records
+from .id_property_records import Schema
+
+if TYPE_CHECKING:
+    import bpy
+
+    from proscenium_sync.source_access import BindingId
+
+    from .id_property_records import LoadedRecord, RefusedRecord
+
+GENERATION_KEY = "generation"
+ATTEMPT_KEY = "attempt"
+
+
+def encode_time_code(time_code: Usd.TimeCode) -> float | None:
+    """A time code as a record stores it: its value, or None for the default time code, whose NaN breaks equality."""
+    return None if time_code.IsDefault() else time_code.GetValue()
+
+
+def decode_time_code(stored: float | None) -> Usd.TimeCode:
+    """A stored time code as a Usd.TimeCode again."""
+    return Usd.TimeCode.Default() if stored is None else Usd.TimeCode(stored)
+
+
+def _restore_record_field_types(record: Any, settings_field: str) -> None:
+    """Turn a stored record's plain values back into the fields' types; ValueError or TypeError if they can't be."""
+    settings = getattr(record, settings_field)
+    if isinstance(settings, Mapping):
+        settings = binding_settings.RequestedSettings(**settings)
+        object.__setattr__(record, settings_field, settings)
+    if not isinstance(settings, binding_settings.RequestedSettings):
+        raise TypeError("the settings are not a group")
+    if not isinstance(record.time_code, float | None):
+        raise TypeError("a time code is a float, or None for the default time code")
+    diagnostics = tuple(d if isinstance(d, results.Diagnostic) else results.Diagnostic(**d) for d in record.diagnostics)
+    object.__setattr__(record, "diagnostics", diagnostics)
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationMetadata:
+    """The settings, source state, time codes, and diagnostics of a binding's published generation."""
+
+    binding_id: BindingId
+    applied_settings: binding_settings.RequestedSettings  # the binding's requested settings when it was synchronized
+    unit_scale: float  # its target scene's then, which planning applied
+    time_code: float | None  # see encode_time_code
+    source_revision: stages.SourceRevision  # BindingStages.source_revision when it was synchronized
+    diagnostics: tuple[results.Diagnostic, ...]  # its source/display diagnostics
+    # The time codes cached in it since, sorted, without its own; one at the default time code has none to cache.
+    cached_time_codes: tuple[float, ...] = ()
+
+    def __post_init__(self) -> None:
+        _restore_record_field_types(self, "applied_settings")
+        if type(self.binding_id) is not str:
+            raise TypeError("a generation names its binding")
+        if type(self.unit_scale) is not float:
+            raise TypeError("a unit scale is a float")
+        if not (math.isfinite(self.unit_scale) and self.unit_scale > 0):
+            raise ValueError("a unit scale is positive and finite")
+        if type(self.source_revision) is not str:
+            raise TypeError("a source revision is a string")
+        if not self.source_revision:
+            raise ValueError("a generation names the source revision it was synchronized from")
+        cached = tuple(self.cached_time_codes)  # a stored one comes back as an ID-property array
+        if not all(type(t) is float for t in cached):
+            raise TypeError("a cached time code is a float")
+        if list(cached) != sorted(set(cached)):
+            raise ValueError("cached time codes are sorted, each once")
+        if self.time_code in cached:
+            raise ValueError("a generation's own time code isn't one cached in it")
+        if cached and self.time_code is None:
+            raise ValueError("a generation synchronized at the default time code has no time codes to cache")
+        object.__setattr__(self, "cached_time_codes", cached)
+
+
+@dataclass(frozen=True, slots=True)
+class LastSynchronizationAttempt:
+    """The most recent synchronization attempt: what it asked for, and how it ended."""
+
+    attempted_settings: binding_settings.RequestedSettings  # the binding's requested settings when it started
+    time_code: float | None  # see encode_time_code
+    diagnostics: tuple[results.Diagnostic, ...]
+
+    def __post_init__(self) -> None:
+        _restore_record_field_types(self, "attempted_settings")
+
+    @property
+    def result_state(self) -> results.ResultState:
+        """How it ended, from its diagnostics."""
+        return results.result_state(self.diagnostics)
+
+
+GENERATION = Schema("generation", version=1, record_type=GenerationMetadata)
+ATTEMPT = Schema("last attempt", version=1, record_type=LastSynchronizationAttempt)
+
+
+def read_generation(destination: bpy.types.Collection) -> LoadedRecord[GenerationMetadata] | RefusedRecord | None:
+    """The destination's published generation, why it can't be read, or None if it has none."""
+    return id_property_records.read(destination, GENERATION_KEY, GENERATION)
+
+
+def write_generation(destination: bpy.types.Collection, generation: GenerationMetadata) -> None:
+    """Store the destination's published generation.
+
+    Raises RefusedRecordError, changing nothing, over a stored generation that can't be read.
+    """
+    id_property_records.write(destination, GENERATION_KEY, GENERATION, generation)
+
+
+def remove_generation(destination: bpy.types.Collection) -> None:
+    """Remove the destination's published generation, if it has one; raises as write_generation does."""
+    id_property_records.remove(destination, GENERATION_KEY, GENERATION)
+
+
+def read_last_attempt(
+    destination: bpy.types.Collection,
+) -> LoadedRecord[LastSynchronizationAttempt] | RefusedRecord | None:
+    """The binding's last attempt on its destination, why it can't be read, or None if it has none."""
+    return id_property_records.read(destination, ATTEMPT_KEY, ATTEMPT)
+
+
+def write_last_attempt(destination: bpy.types.Collection, attempt: LastSynchronizationAttempt) -> None:
+    """Store the binding's last attempt on its destination.
+
+    Raises RefusedRecordError, changing nothing, over a stored last attempt that can't be read.
+    """
+    id_property_records.write(destination, ATTEMPT_KEY, ATTEMPT, attempt)

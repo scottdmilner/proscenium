@@ -7,8 +7,8 @@ from dataclasses import replace
 import pytest
 from pxr import Usd
 
-from proscenium.binding import results
-from proscenium.binding.results import (
+from proscenium_sync import results
+from proscenium_sync.results import (
     Diagnostic,
     DiagnosticCategory,
     DiagnosticCode,
@@ -65,8 +65,8 @@ def test_a_repeated_problem_is_one_diagnostic() -> None:
     assert Result(FAILED, DIRTY, FAILED, reworded).diagnostics == (FAILED, DIRTY)
 
 
-def test_the_core_tells_its_problems_apart_by_their_wording() -> None:
-    # The core's message states its problem: two Tf warnings about one prim are two problems, and one repeated, as
+def test_the_planner_tells_its_problems_apart_by_their_wording() -> None:
+    # The planner's message states its problem: two Tf warnings about one prim are two problems, and one repeated, as
     # the plans of a cache call's time codes repeat it, is one.
     warned = Diagnostic(DiagnosticCode.USD_WARNING, "binding", "No data-source support", source_path="/World/A")
     other = replace(warned, message="An unsupported primvar")

@@ -1885,7 +1885,7 @@ What M7's interaction calls, the binding panel's listing, and the Source Select 
 | Hide flags; sorting | 0.3 | 0.9 |
 | **In all** | **33.0** | **86.8** |
 
-**With the display kept** (`api/shown_displays.py`, after the findings below): the same runs again, the binding's display kept between calls while what built it is unchanged, each call reading its objects' hide flags (2026-11-14; load average 31.6 when the runs began and 10.7 when they ended, so the machine was busier than above).
+**With the display kept** (`bindings/shown_displays.py`, after the findings below): the same runs again, the binding's display kept between calls while what built it is unchanged, each call reading its objects' hide flags (2026-11-14; load average 31.6 when the runs began and 10.7 when they ended, so the machine was busier than above).
 
 | Operation (ms) | Repeats | updates-1000 | ALab | updates-10000 |
 |---|---|---|---|---|

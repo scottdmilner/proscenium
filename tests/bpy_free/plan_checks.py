@@ -1,4 +1,4 @@
-"""Checks of the core's plans against expected values: drawn copies by source, and their corners."""
+"""Checks of the planner's plans against expected values: drawn copies by source, and their corners."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, cast
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium.core import _core
+from proscenium_sync import planner
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
-SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
+CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 XYZ = tuple[float, float, float]
 
@@ -35,16 +35,16 @@ class PlannedDrawnCopy:
     shear_transform_split: tuple[Gf.Matrix4d, Gf.Matrix4d] | None
 
 
-def plan_at(stage: Usd.Stage, time: float, settings: _core.PlanSettings = SETTINGS) -> _core.Plan:
+def plan_at(stage: Usd.Stage, time: float, settings: planner.PlanSettings = SETTINGS) -> planner.Plan:
     """The plan of one capture at `time`, with the chain released."""
-    chain = _core.SceneIndexChain(stage)
+    chain = planner.SceneIndexChain(stage)
     try:
-        return _core.plan(chain.capture(Usd.TimeCode(time)), settings, CONTEXT)
+        return planner.plan(chain.capture(Usd.TimeCode(time)), settings, CONTEXT)
     finally:
         chain.release()
 
 
-def copies(plan: _core.Plan) -> dict[str, PlannedDrawnCopy]:
+def copies(plan: planner.Plan) -> dict[str, PlannedDrawnCopy]:
     """Each drawn copy by its source, read from the plan's copy table."""
     objects = memoryview(plan.copy_object_resource_indices).tolist()
     worlds = memoryview(plan.copy_world_matrices).tolist()

@@ -15,15 +15,15 @@ from mathutils import Vector
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import interaction
-from proscenium.api.bindings import PersistentSelection, SelectionEntry, SelectionMode
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.bindings import PersistentSelection, SelectionEntry, SelectionMode
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 CHAIR, TABLE = "/World/Props/Chair", "/World/Table"
 SEAT, TOP = f"{CHAIR}/Geom/Seat", f"{TABLE}/Top"
@@ -58,7 +58,8 @@ def _selected(handle: BindingHandle) -> set[str]:
 
 
 def test_setting_stores_and_mirrors(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-27, ICON-28 through api/: setting a scene's source selection stores it, selects exactly the objects of its
+    # ICON-27, ICON-28 through bindings/: setting a scene's source selection stores it, selects exactly the objects of
+    # its
     # targets' expanded entities, and makes the active entry's one object active.
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage)
@@ -97,7 +98,7 @@ def test_hidden_entries_stay_stored_and_unresolved(bindings: Bindings, tmp_path:
 
 
 def test_entries_without_a_live_stage_stay_stored(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-09 through api/: released, the binding's entries are unresolved and stay stored.
+    # ICON-09 through bindings/: released, the binding's entries are unresolved and stay stored.
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage)
         selection = PersistentSelection((SelectionEntry(handle.binding_id, CHAIR),), None)
@@ -108,7 +109,8 @@ def test_entries_without_a_live_stage_stay_stored(bindings: Bindings, tmp_path: 
 
 
 def test_picks_change_the_selection_in_each_mode(bindings: Bindings, tmp_path: Path) -> None:
-    # ICON-30 through api/, M4's modes: picks at the component level set, extend, toggle, and subtract their targets,
+    # ICON-30 through bindings/, M4's modes: picks at the component level set, extend, toggle, and subtract their
+    # targets,
     # each picked target active while selected; a pick of nothing empties the selection in set mode only.
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _synchronized(bindings, scene.stage)

@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.runtime import ownership
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.runtime import ownership
 
 from .bounds_check import DisplayedCopy
 
 if TYPE_CHECKING:
     from mathutils import Matrix
 
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.source_access import BindingId
 
 
 def _objects(binding_id: BindingId) -> list[tuple[str, bpy.types.Object]]:

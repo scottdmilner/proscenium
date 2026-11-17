@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from proscenium.binding.runtime import binding_operations
+from proscenium_sync.runtime import binding_operations
 
 if TYPE_CHECKING:
     import bpy
 
-    from proscenium.api.bindings import BindingHandle
+    from proscenium_sync.bindings import BindingHandle
 
 
 def destination(handle: BindingHandle) -> bpy.types.Collection:

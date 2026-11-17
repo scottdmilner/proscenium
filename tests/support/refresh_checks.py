@@ -16,10 +16,10 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import ownership
 
 from .blender_writes import ObservedWrites, observed_writes
 from .clean_rebuild import clean_rebuild, display_state
@@ -30,10 +30,10 @@ if TYPE_CHECKING:
     import pytest
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence import manifests
-    from proscenium.binding.results import Result
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence import manifests
+    from proscenium_sync.results import Result
+    from proscenium_sync.source_access import BindingId
 
 type EntriesBySource = dict[str, dict[str, manifests.ManifestEntry]]
 

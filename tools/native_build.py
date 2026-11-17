@@ -1,16 +1,19 @@
 """Build a Python module against Blender's USD with CMake and Ninja from the dev group, and audit its linkage.
 
-Shared by the compiled core (build_extension.py) and the feasibility bridge
-(feasibility/hydra_bridge/build.py). The CMake project receives BLENDER_DEPS, the
-headers of the locked Blender release (blender_deps.py), and on macOS and Linux
-USD_LIBRARY, the bpy wheel's libusd_ms to link. Each platform's audit checks that
-the module binds only to Blender's usd_ms and loads wherever that Blender does.
+The repository's compiled modules are here: the planner, which proscenium_sync's build hook and
+build_extension.py build through sync_module, and the feasibility bridge (feasibility/hydra_bridge/build.py).
+clang_tidy.py checks both with their builds' compile commands. The CMake project receives BLENDER_DEPS, the headers
+of the locked Blender release (blender_deps.py), and on macOS and Linux USD_LIBRARY, the bpy wheel's libusd_ms to
+link. Each platform's audit checks that the module binds only to Blender's usd_ms and loads wherever that Blender
+does.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.metadata
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -31,7 +34,9 @@ from blender_deps import (
     ensure_dependency_checkout,
     release,
 )
+from blender_release import blender_tag
 
+ROOT = Path(__file__).resolve().parents[1]
 # The dev group's cmake and ninja, installed beside this interpreter.
 SCRIPTS = Path(sysconfig.get_path("scripts"))
 
@@ -45,6 +50,94 @@ MACOS_MIN = "11.2"
 
 
 @dataclass(frozen=True)
+class NativeModule:
+    """A compiled module: its CMake project, and the directory its builds go to."""
+
+    name: str  # the module's name before its extension suffix, as its CMake project installs it
+    source_dir: Path  # the CMake project
+    out_dir: Path  # the build's results: the built module and its build record
+
+    @property
+    def cmake_dir(self) -> Path:
+        """The CMake build directory: beside out_dir, which holds only results."""
+        return self.out_dir.with_name(self.out_dir.name + "-cmake")
+
+
+PLANNER = NativeModule(
+    "_planner", ROOT / "packages/proscenium_sync/src/proscenium_sync/planner", ROOT / "build/planner"
+)
+HYDRA_BRIDGE = NativeModule("_hydra_bridge", ROOT / "tools/feasibility/hydra_bridge", ROOT / "build/hydra-bridge")
+# What sync_module hashes to tell whether a module is current: its project's sources, and these build tools.
+SOURCE_PATTERNS = ("*.cpp", "*.h", "CMakeLists.txt")
+BUILD_TOOLS = (Path(__file__), Path(__file__).with_name("blender_deps.py"))
+
+
+def wheel_tag() -> str:
+    """The tag of a wheel holding a module built here: this interpreter's, and the floor the linkage audit holds to."""
+    python = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    platform = {
+        Platform.MACOS_ARM64: f"macosx_{MACOS_MIN.split('.')[0]}_0_arm64",  # tags spell macOS 11 and later as N_0
+        Platform.LINUX_X64: f"manylinux_{MAX_GLIBC[0]}_{MAX_GLIBC[1]}_x86_64",
+        Platform.WINDOWS_X64: "win_amd64",
+    }[current_platform()]
+    return f"{python}-{python}-{platform}"
+
+
+def sync_module(module: NativeModule, *, write: bool = True) -> Path:
+    """Build the module into its source directory, where its package imports it, unless it's current; returns it.
+
+    It's current when its build record (out_dir/build.json) names this platform, the locked Blender release, the hash
+    of its sources and the build tools, and the module's own hash. With write=False nothing is built: it fails unless
+    the module is already current.
+    """
+    inputs = _build_inputs(module.source_dir)
+    current = _current_module(module, inputs)
+    if current is not None:
+        return current
+    if not write:
+        raise SystemExit(f"{module.source_dir}: {module.name} is missing or out of date; run tools/build_extension.py")
+    built = build_module(module)
+    for stale in _installed_modules(module):
+        stale.unlink()
+    installed = Path(shutil.copy2(built.module_path, module.source_dir / built.module_path.name))
+    build = {k: v for k, v in built.build_manifest.items() if k not in {"imports", "linkage"}}
+    record = {**inputs, "module_sha256": _sha256(installed), "build": build}
+    (module.out_dir / "build.json").write_text(json.dumps(record, indent=2) + "\n")
+    print(f"built {installed}")
+    return installed
+
+
+def _build_inputs(source_dir: Path) -> dict[str, Any]:
+    sources = hashlib.sha256()
+    files = {p for pattern in SOURCE_PATTERNS for p in source_dir.rglob(pattern)}
+    for path in sorted(files, key=lambda p: p.relative_to(source_dir).as_posix()):
+        sources.update(path.relative_to(source_dir).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+    for path in BUILD_TOOLS:
+        sources.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+    return {"platform": str(current_platform()), "blender_tag": blender_tag(), "sources_sha256": sources.hexdigest()}
+
+
+def _current_module(module: NativeModule, inputs: dict[str, Any]) -> Path | None:
+    """The module installed in its source directory, if its build record matches inputs and the module itself."""
+    record = module.out_dir / "build.json"
+    if not record.is_file():
+        return None
+    recorded = json.loads(record.read_text(encoding="utf-8"))
+    installed = _installed_modules(module)
+    if any(recorded.get(k) != v for k, v in inputs.items()) or len(installed) != 1:
+        return None
+    return installed[0] if _sha256(installed[0]) == recorded.get("module_sha256") else None
+
+
+def _installed_modules(module: NativeModule) -> list[Path]:
+    return sorted(p for p in module.source_dir.glob(f"{module.name}.*") if p.suffix in {".so", ".pyd"})
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@dataclass(frozen=True)
 class NativeModuleBuildResult:
     """The native module's output path and build and linkage-audit manifest."""
 
@@ -52,19 +145,18 @@ class NativeModuleBuildResult:
     build_manifest: dict[str, Any]  # platform, Blender release, dependency revision, command, and audit
 
 
-def build_module(source: Path, out: Path, name: str, usd_library: Path | None = None) -> NativeModuleBuildResult:
-    """Configure, build, and install the CMake project at source, then move module `name` into out and audit it."""
+def build_module(module: NativeModule, usd_library: Path | None = None) -> NativeModuleBuildResult:
+    """Configure, build, and install the module's CMake project, then move the module into its out_dir and audit it."""
     key = current_platform()
-    out.mkdir(parents=True, exist_ok=True)
+    module.out_dir.mkdir(parents=True, exist_ok=True)
     blender = release()
-    build = cmake_dir(out)
-    command = configure(source, build, usd_library)
+    command = configure(module, usd_library)
     deps = deps_dir(key)
     env = build_env(key)
-    subprocess.run([command[0], "--build", str(build)], check=True, env=env)
-    with tempfile.TemporaryDirectory(prefix=f"{name}-install-") as tmp:
-        subprocess.run([command[0], "--install", str(build), "--prefix", tmp], check=True, env=env)
-        module = _take_module(Path(tmp), out, name)
+    subprocess.run([command[0], "--build", str(module.cmake_dir)], check=True, env=env)
+    with tempfile.TemporaryDirectory(prefix=f"{module.name}-install-") as tmp:
+        subprocess.run([command[0], "--install", str(module.cmake_dir), "--prefix", tmp], check=True, env=env)
+        built = _take_module(Path(tmp), module.out_dir, module.name)
     audits = {
         Platform.MACOS_ARM64: _audit_macos,
         Platform.LINUX_X64: _audit_linux,
@@ -77,22 +169,18 @@ def build_module(source: Path, out: Path, name: str, usd_library: Path | None = 
         "dependency_repo": LIBS[key].repository_name,
         "dependency_revision": _git(deps, "rev-parse", "HEAD"),
         "command": command,
-        "module": str(module),
-        **audits[key](module),
+        "module": str(built),
+        **audits[key](built),
     }
-    return NativeModuleBuildResult(module, manifest)
+    return NativeModuleBuildResult(built, manifest)
 
 
-def cmake_dir(out: Path) -> Path:
-    """The CMake build directory for the results directory out: beside it, since out holds only results."""
-    return out.with_name(out.name + "-cmake")
+def configure(module: NativeModule, usd_library: Path | None = None) -> list[str]:
+    """Configure the module's CMake project in its cmake_dir, and return the command.
 
-
-def configure(source: Path, build: Path, usd_library: Path | None = None) -> list[str]:
-    """Configure the CMake project at source in build, and return the command.
-
-    Also writes build/compile_commands.json, which clang-tidy reads (tools/clang_tidy.py).
+    Also writes compile_commands.json there, which clang-tidy reads (tools/clang_tidy.py).
     """
+    source, build = module.source_dir, module.cmake_dir
     key = current_platform()
     _check_installed_bpy(release())
     deps = ensure_dependency_checkout(key)
@@ -107,8 +195,18 @@ def configure(source: Path, build: Path, usd_library: Path | None = None) -> lis
     ]  # fmt: skip
     if key != Platform.WINDOWS_X64:
         command.append(f"-DUSD_LIBRARY={(usd_library or _wheel_usd_library(key)).resolve()}")
+    if _cached_source(build) not in (None, source.resolve()):
+        command.append("--fresh")  # CMake refuses a cache made from another source directory, as before a move
     subprocess.run(command, check=True, env=build_env(key))
     return command
+
+
+def _cached_source(build: Path) -> Path | None:
+    """The source directory build's CMake cache was made from, if it has one."""
+    cache = build / "CMakeCache.txt"
+    text = cache.read_text(encoding="utf-8", errors="replace") if cache.is_file() else ""
+    found = re.search(r"^CMAKE_HOME_DIRECTORY:INTERNAL=(.*)$", text, re.MULTILINE)
+    return Path(found.group(1)).resolve() if found else None
 
 
 def _check_installed_bpy(blender: dict[str, str]) -> None:

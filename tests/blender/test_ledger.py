@@ -16,19 +16,19 @@ import pytest
 
 from fixtures import schema_version_cases as record_fixtures
 from fixtures.scenes import Scene, copy_scene
-from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import cleanup_ledgers
-from proscenium.binding.persistence.cleanup_ledgers import Ledger, LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.id_property_records import (
+from proscenium_sync import persistence, runtime
+from proscenium_sync.persistence import cleanup_ledgers
+from proscenium_sync.persistence.cleanup_ledgers import Ledger, LedgerEntry, OriginatingOperation
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     LoadedRecord,
     RefusalReason,
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
-from proscenium.synchronization import preparation_resources
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import Diagnostic, DiagnosticCode, ResultState
+from proscenium_sync.synchronization import preparation_resources
 from support.blend import save_and_reopen
 from support.manifests import key
 from support.usd import binding_on_file
@@ -36,8 +36,8 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.bindings import Bindings
+    from proscenium_sync.source_access import BindingId
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -131,7 +131,8 @@ def test_two_binding_indexes_refuse_the_ledger(bindings: Bindings) -> None:
     with pytest.raises(ValueError, match="2 binding indexes"):
         preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
     assert runtime.pending_cleanup.cleanup_status(binding_id) == ()  # no ledger names what's pending
-    assert all(cleanup_ledgers.LEDGER_KEY not in text[NAMESPACE] for text in persistence.binding_records.index_texts())
+    index_texts = persistence.binding_records.index_texts()
+    assert all(cleanup_ledgers.LEDGER_KEY not in text[NAMESPACE] for text in index_texts)
 
 
 @pytest.mark.parametrize("name", ["newer", "no-version", "not-a-group"])  # F-SCHEMA-VERSIONS' ledgers

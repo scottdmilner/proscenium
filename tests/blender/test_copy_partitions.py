@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import bpy
 
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntryChange, RepresentationRole
-from proscenium.binding.runtime.copy_partitions import CopyPartition, PublishedPartitions
+from proscenium_sync.persistence.manifests import Manifest, ManifestEntryChange, RepresentationRole
+from proscenium_sync.runtime.copy_partitions import CopyPartition, PublishedPartitions
 from support.manifests import key, object_change
 
 SOURCES = ("/World/A", "/World/B", "/World/C")

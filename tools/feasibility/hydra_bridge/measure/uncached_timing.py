@@ -48,7 +48,7 @@ def _stats(call: Callable[[], Any]) -> dict[str, Any]:
 
 def _claims_by_scan(target: bpy.types.ID) -> list[tuple[str, str]]:
     """No cache: every binding record and every manifest read, then the claims on target."""
-    from proscenium.binding.persistence import binding_records, id_property_records, manifests
+    from proscenium_sync.persistence import binding_records, id_property_records, manifests
 
     found = []
     seen = set()
@@ -64,7 +64,7 @@ def _claims_by_scan(target: bpy.types.ID) -> list[tuple[str, str]]:
 
 def _claims_by_users(targets: list[bpy.types.ID]) -> dict[int, list[tuple[str, str]]]:
     """No cache: the targets' users, the binding collections among them, and a scan of each one's stored entries."""
-    from proscenium.binding.persistence import binding_records, id_property_records, manifests
+    from proscenium_sync.persistence import binding_records, id_property_records, manifests
 
     user_map = bpy.data.user_map(subset=targets)
     holders: dict[bpy.types.Collection, set[int]] = {}
@@ -84,9 +84,9 @@ def _claims_by_users(targets: list[bpy.types.ID]) -> dict[int, list[tuple[str, s
 
 def measure(binding_id: Any, display: Any, records: list[dict[str, Any]], materials: list[dict[str, Any]]) -> dict:
     """Write the manifest, then time the lookups."""
-    from proscenium.binding.persistence import manifests
-    from proscenium.binding.persistence.manifests import Manifest
-    from proscenium.binding.runtime import binding_operations, ownership
+    from proscenium_sync.persistence import manifests
+    from proscenium_sync.persistence.manifests import Manifest
+    from proscenium_sync.runtime import binding_operations, ownership
 
     manifest = Manifest(ownership_timing.entries(display, records, materials))
     ownership.set_manifest(binding_id, manifest)

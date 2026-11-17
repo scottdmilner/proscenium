@@ -19,12 +19,12 @@ import pytest
 from pxr import Gf, UsdGeom
 
 from fixtures import edit_sequence, incremental
-from proscenium.api import bindings as api
-from proscenium.binding.persistence import id_property_records, manifests
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.synchronization import transaction
+from proscenium_sync.bindings import binding_service as api
+from proscenium_sync.persistence import id_property_records, manifests
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership
+from proscenium_sync.synchronization import transaction
 from support import undo
 from support.blend import save_and_reopen
 from support.blender_writes import observed_writes
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 _GENERATION = re.compile(r"~(\d{6})\.")  # a managed object name's generation (DECISIONS.md "Managed object names")
 

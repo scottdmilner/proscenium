@@ -1,5 +1,5 @@
 # The Hydra bridge's C++ style (clang-format, run by pre-commit): the 4-space style M1b wrote it in, with pxr/pxr.h
-# first among USD's headers as USD requires. The compiled core's style is src/proscenium/core/.clang-format.
+# first among USD's headers as USD requires. The planner's style is packages/proscenium_sync/src/proscenium_sync/planner/.clang-format.
 BasedOnStyle: LLVM
 IndentWidth: 4
 ColumnLimit: 120

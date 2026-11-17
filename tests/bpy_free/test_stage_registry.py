@@ -1,6 +1,6 @@
 """When a binding's runtime stages are made, kept, and let go (source-access.md#source-stages; UNDO-06, SRC-02).
 
-The registry is runtime state keyed by binding identity: proscenium.api.bindings says which
+The registry is runtime state keyed by binding identity: proscenium_sync.bindings says which
 bindings exist and which can't be read; tests/blender/test_synchronization.py runs these rules
 through undo, redo, and removed scenes.
 """
@@ -10,9 +10,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from fixtures import source_access
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.binding.source_access.stage_registry import StageRegistry
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.stage_registry import StageRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path

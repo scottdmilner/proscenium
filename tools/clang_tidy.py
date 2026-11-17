@@ -1,9 +1,9 @@
 """Run clang-tidy on the repository's C++ with the compile commands of each build (a pre-commit hook).
 
-Two projects: the compiled core (src/proscenium/core/) and M1b's Hydra bridge (tools/feasibility/hydra_bridge/),
-which M4's prototypes extend. It configures each one's CMake build directory (tools/native_build.py), so
-clang-tidy parses each source with the flags and Blender headers that build uses. The first run fetches those
-headers (tools/blender_deps.py). clang-tidy finds the checks itself, in the repository's root .clang-tidy.
+Two projects, which tools/native_build.py names: the planner (proscenium_sync's planner/) and M1b's Hydra bridge
+(tools/feasibility/hydra_bridge/), which M4's prototypes extend. It configures each one's CMake build directory, so
+clang-tidy parses each source with the flags and Blender headers that build uses. The first run fetches those headers
+(tools/blender_deps.py). clang-tidy finds the checks itself, in the repository's root .clang-tidy.
 """
 
 from __future__ import annotations
@@ -12,48 +12,33 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import native_build
 from blender_deps import Platform, current_platform
 
-ROOT = Path(__file__).resolve().parents[1]
-CORE = ROOT / "src" / "proscenium" / "core"
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
-@dataclass(frozen=True)
-class TidyProject:
-    """A CMake project whose sources clang-tidy checks."""
-
-    source_dir: Path  # the CMake project, whose *.cpp files, at its top level and one directory down, are checked
-    build_dir: Path  # its build's results directory; the CMake directory is beside it
-
-    def files(self) -> list[Path]:
-        """The project's C++ sources: top level and one directory down (the bridge's src/, the core's inspection/)."""
-        return sorted([*self.source_dir.glob("*.cpp"), *self.source_dir.glob("*/*.cpp")])
-
-
-PROJECTS = (
-    TidyProject(CORE, ROOT / "build" / "core"),  # build_extension.py's results directory for the core
-    TidyProject(ROOT / "tools" / "feasibility" / "hydra_bridge", ROOT / "build" / "hydra-bridge"),  # build.py's
-)
+def _sources(module: native_build.NativeModule) -> list[Path]:
+    """The project's C++ sources: top level and one directory down (the bridge's src/, the planner's inspection/)."""
+    return sorted([*module.source_dir.glob("*.cpp"), *module.source_dir.glob("*/*.cpp")])
 
 
 def main() -> int:
     """Run clang-tidy on each project's sources; the exit status, nonzero if any project's run failed."""
     key = current_platform()
     status = 0
-    for project in PROJECTS:
-        build = native_build.cmake_dir(project.build_dir)
-        native_build.configure(project.source_dir, build)
+    for module in (native_build.PLANNER, native_build.HYDRA_BRIDGE):
+        native_build.configure(module)
         command = [
             native_build.tool("clang-tidy"),
             "-p",
-            str(build),
+            str(module.cmake_dir),
             "--quiet",
             # The project's own headers; USD's and the standard library's are never reported.
-            f"--header-filter={project.source_dir.as_posix()}/",
+            f"--header-filter={module.source_dir.as_posix()}/",
         ]
         if key == Platform.MACOS_ARM64:
             # AppleClang's compile commands leave the SDK implicit; clang-tidy's own clang needs it named.
@@ -68,7 +53,7 @@ def main() -> int:
             return result.returncode
 
         with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
-            codes = list(pool.map(tidy, project.files()))
+            codes = list(pool.map(tidy, _sources(module)))
         status = status or max(codes, default=0)
     return status
 

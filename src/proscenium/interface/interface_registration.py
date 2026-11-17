@@ -1,6 +1,6 @@
 """Registration of the temporary UI: its scene properties, classes, tool, and subscriptions (M7 plan, F1).
 
-proscenium.addon registers it after the records. After a file loads, the message-bus subscriptions, which a load
+proscenium.addon registers it after the synchronizer. After a file loads, the message-bus subscriptions, which a load
 clears, are made again, and after a load, an undo, or a redo, selectability is recomputed from the active tool rather
 than kept as the file or the undo step stored it. After an undo or a redo, the source inspector's tree takes up the
 restored source selection.

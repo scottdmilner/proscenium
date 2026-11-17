@@ -12,8 +12,8 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding.persistence import binding_records, id_property_records, manifests
-from proscenium.binding.persistence.id_property_records import (
+from proscenium_sync.persistence import binding_records, id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -21,10 +21,15 @@ from proscenium.binding.persistence.id_property_records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, ManifestEntryChange, RepresentationRole
-from proscenium.binding.runtime import kept_manifests, ownership
-from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access import BindingId
+from proscenium_sync.persistence.manifests import (
+    Manifest,
+    ManifestEntry,
+    ManifestEntryChange,
+    RepresentationRole,
+)
+from proscenium_sync.runtime import kept_manifests, ownership
+from proscenium_sync.runtime.ownership import Claim
+from proscenium_sync.source_access import BindingId
 from support import ownership as oracle
 from support.blend import save_and_reopen
 from support.manifests import key, object_change, object_entry
@@ -34,7 +39,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _scene() -> bpy.types.Scene:

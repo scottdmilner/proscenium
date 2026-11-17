@@ -13,12 +13,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records
-from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.id_property_records import LoadedRecord
-from proscenium.binding.results import DiagnosticCode, Result, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
+from proscenium_sync import runtime
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry, OriginatingOperation
+from proscenium_sync.persistence.id_property_records import LoadedRecord
+from proscenium_sync.results import DiagnosticCode, Result, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from support.blend import save_and_reopen
 from support.destinations import destination
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import PreparationCleanupFailureScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene) -> BindingHandle:

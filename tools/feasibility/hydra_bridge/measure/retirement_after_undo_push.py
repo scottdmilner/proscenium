@@ -45,9 +45,9 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd
 
-    from proscenium.api import bindings as api
-    from proscenium.binding.results import ResultState
-    from proscenium.synchronization import retirement
+    from proscenium_sync.bindings import binding_service as api
+    from proscenium_sync.results import ResultState
+    from proscenium_sync.synchronization import retirement
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender

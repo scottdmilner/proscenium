@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import edit_sequence
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access import binding_settings
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access import binding_settings
 from support.blend import save_and_reopen
 from support.blender_writes import observed_writes
 from support.refresh_checks import copy_object, entries_by_source, refresh_acting_on
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     import pytest
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 _GENERATION = re.compile(r"~(\d{6})\.")  # a managed name's generation (DECISIONS.md "Managed object names")
 

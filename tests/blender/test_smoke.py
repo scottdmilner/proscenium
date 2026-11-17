@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from proscenium import addon
-from proscenium.binding.persistence import id_property_records
+from proscenium_sync import registration
+from proscenium_sync.persistence import id_property_records
 from support import undo
 from support.blend import save_and_reopen
 
@@ -41,20 +41,20 @@ def _registrations() -> _Registrations:
             for e, fns in handler_lists().items()
             if (names := [getattr(f, "__name__", repr(f)) for f in fns if _ours(f)])
         },
-        [t.__name__ for t in addon.RECORD_TYPES if hasattr(t, id_property_records.NAMESPACE)],
-        [c.__name__ for c in addon.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
+        [t.__name__ for t in registration.RECORD_TYPES if hasattr(t, id_property_records.NAMESPACE)],
+        [c.__name__ for c in registration.CLASSES if "bl_rna" in vars(c)],  # registering gives a class its bl_rna
     )
 
 
 def _ours(fn: Callable[..., object]) -> bool:
-    return getattr(fn, "__module__", None) == addon.__name__
+    return getattr(fn, "__module__", None) == registration.__name__
 
 
 def test_extension_registers_and_unregisters(extension: ModuleType) -> None:
     registered = _registrations()
     assert {"load_post", "undo_post", "redo_post"} <= registered.handlers.keys()
-    assert registered.namespaces == [t.__name__ for t in addon.RECORD_TYPES]
-    assert registered.classes == [c.__name__ for c in addon.CLASSES]
+    assert registered.namespaces == [t.__name__ for t in registration.RECORD_TYPES]
+    assert registered.classes == [c.__name__ for c in registration.CLASSES]
     extension.unregister()
     assert _registrations() == _Registrations({}, [], [])
 

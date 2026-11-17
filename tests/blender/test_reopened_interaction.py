@@ -1,6 +1,6 @@
 """Interaction after a reopening: correspondence loaded from Blender data, and a source unavailable (lifecycle.md).
 
-DECISIONS.md "Persisted correspondence": after reopening, once the binding's stage is attached again, the core builds
+DECISIONS.md "Persisted correspondence": after reopening, once the binding's stage is attached again, the planner builds
 correspondence from the saved manifest and objects without synchronizing (ICON-35). Without a live stage, the saved
 display stays as it was, each interaction function reports the source unavailable, and the persistent selection is kept
 (INSP-10, ICON-08, ICON-09). Answers are compared by manifest entry key (support/interaction_answers.py).
@@ -14,10 +14,10 @@ import bpy
 import pytest
 
 from fixtures import interaction, source_access
-from proscenium import synchronization
-from proscenium.api.bindings import BindingHandle, PersistentSelection, SelectionEntry, SourceUnavailableError
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.results import ResultState
+from proscenium_sync import synchronization
+from proscenium_sync.bindings import BindingHandle, PersistentSelection, SelectionEntry, SourceUnavailableError
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.results import ResultState
 from support.blend import collection_content, save_and_reopen
 from support.interaction_answers import answers, object_entry_keys
 from support.offline_display import expected_content, publish_by_hand
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
 
 def _scene() -> bpy.types.Scene:

@@ -2,7 +2,7 @@
 
 The Blender release comes from uv.lock's bpy version (blender_release.py). Its git tag records
 each precompiled-library repo's revision as a submodule under lib/; those are the pins. The cache
-is build/blender-deps/, shared by the compiled core and the feasibility bridge.
+is build/blender-deps/, shared by the planner and the feasibility bridge.
 
 Usage: python tools/blender_deps.py   # prints the dependency directory; progress goes to stderr
 """

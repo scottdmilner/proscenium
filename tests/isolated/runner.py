@@ -27,8 +27,14 @@ if TYPE_CHECKING:
 
 TESTS = Path(__file__).resolve().parents[1]
 # Blender's Python ignores PYTHONPATH, so put the support package, the extension
-# source, and tools/ on sys.path here (harmless duplicates in the uv environment).
-sys.path[:0] = [str(TESTS), str(TESTS.parent / "src"), str(TESTS.parent / "tools")]
+# source, the workspace's packages' sources, and tools/ on sys.path here (harmless
+# duplicates in the uv environment).
+sys.path[:0] = [
+    str(TESTS),
+    str(TESTS.parent / "src"),
+    *(str(source) for source in sorted((TESTS.parent / "packages").glob("*/src"))),
+    str(TESTS.parent / "tools"),
+]
 WINDOW_START_SECONDS = 1.0  # before a windowed body's first step, so the window exists and has drawn
 
 

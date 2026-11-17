@@ -1,6 +1,6 @@
 """Every part of a plan as plain values, and a script that prints a scene's plan that way from a fresh process.
 
-test_core_determinism.py compares plans built in separate processes (PLAN-08, ROLE-02):
+test_planner_determinism.py compares plans built in separate processes (PLAN-08, ROLE-02):
 
     python tests/bpy_free/plan_serialization.py <root layer> <time code>
 
@@ -21,7 +21,7 @@ if __name__ == "__main__":  # run as a script: the test tree's modules, as conft
 
 from pxr import Usd
 
-from proscenium.core import _core
+from proscenium_sync import planner
 
 BUFFERS = (
     "copy_world_matrices",
@@ -39,7 +39,7 @@ BUFFERS = (
 )
 
 
-def contents(plan: _core.Plan) -> dict[str, Any]:
+def contents(plan: planner.Plan) -> dict[str, Any]:
     """Every part of the plan, in its order, as JSON values: what equal plans share."""
     groups, single = plan.batch_groups(1)
     return {
@@ -83,9 +83,9 @@ def main(root: str, time: float) -> None:
     from bpy_free.plan_checks import CONTEXT, SETTINGS
 
     stage = Usd.Stage.Open(root, Usd.Stage.LoadAll)
-    chain = _core.SceneIndexChain(stage)
+    chain = planner.SceneIndexChain(stage)
     try:
-        plan = _core.plan(chain.capture(Usd.TimeCode(time)), SETTINGS, CONTEXT)
+        plan = planner.plan(chain.capture(Usd.TimeCode(time)), SETTINGS, CONTEXT)
     finally:
         chain.release()
     print(json.dumps(contents(plan)))

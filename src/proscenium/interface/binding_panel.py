@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, override
 
 import bpy
 
-from ..api import bindings
+from proscenium_sync import bindings
 
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias

@@ -5,9 +5,9 @@
 For each icon a widget's row can show (`WIDGET_ROW_ICON_NAMES`), it fetches the SVG from the Blender release `uv.lock`
 pins, rasterizes it with resvg (`resvg_py`, whose wheels hold the whole renderer) to PNG bytes, decodes them with
 pypng, and keeps how much of each pixel the icon covers. Both are in the `icons` dependency group, kept out of `dev`
-since only this tool needs them. The masks are written to
-`src/proscenium/ui/widget_resources/blender_icons/row_icon_masks.npz`, where the widgets recolor them, as the scene
-graph does for instances and their proxies. The icons are licensed CC BY-SA 4.0 (that directory's `LICENSE.txt`).
+since only this tool needs them. The masks are written to `proscenium_ui`'s
+`widget_resources/blender_icons/row_icon_masks.npz`, where the widgets recolor them, as the scene graph does for
+instances and their proxies. The icons are licensed CC BY-SA 4.0 (that directory's `LICENSE.txt`).
 """
 
 from __future__ import annotations
@@ -24,10 +24,10 @@ try:  # only in the `icons` dependency group
 except ImportError as error:
     sys.exit(f"{error}: run with `uv run --group icons`")
 
-from proscenium.ui.scene_graph_widget.display.list_columns import name_column
+from proscenium_ui.scene_graph_widget.display.list_columns import name_column
 
 ROOT = Path(__file__).resolve().parents[1]
-MASKS_PATH = ROOT / "src" / "proscenium" / "ui" / "widget_resources" / "blender_icons" / "row_icon_masks.npz"
+MASKS_PATH = ROOT / "packages/proscenium_ui/src/proscenium_ui/widget_resources/blender_icons/row_icon_masks.npz"
 # Each widget's icons its rows can show, which every mask is made for.
 WIDGET_ROW_ICON_NAMES = (name_column.row_icon_names,)
 BLENDER_BRANCH = "blender-v5.2-release"  # the minor version uv.lock pins

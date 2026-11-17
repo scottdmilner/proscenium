@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from proscenium.binding.source_access.canonical_candidate import CanonicalCandidateReason
+from proscenium_sync.source_access.canonical_candidate import CanonicalCandidateReason
 
 from .scenes import Scene, copy_scene
 

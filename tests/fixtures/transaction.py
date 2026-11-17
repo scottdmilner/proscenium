@@ -34,8 +34,8 @@ from typing import TYPE_CHECKING
 
 from pxr import Gf, Sdf, Usd
 
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support.usd import open_stage_without_cache
 
 from .scenes import Scene, copy_scene

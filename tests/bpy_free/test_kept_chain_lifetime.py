@@ -1,10 +1,10 @@
 """The scene-index chain a binding keeps over its evaluation stage, and what releases it (M7 plan, C1; SRC-02).
 
-With the core's chain kept through BindingStages.keep_chain, as evaluation keeps it. A chain outlives what its stage's
-notices carry: on F-SOURCE-CHANGE's scene, edits and a reattachment over the same layers; on F-EDIT-SEQUENCE's,
-reloads and another payload policy, mask, muting, or interpolation, after each of which, and after an edit that
-follows, it plans what a new chain plans (M7 plan, C3d). It's released with the evaluation stage, so the next capture
-is from a new chain. tests/blender/test_kept_chain_use.py checks that synchronizations and cache calls share it.
+With the planner's chain kept through BindingStages.keep_chain, as evaluation keeps it. A chain outlives what its
+stage's notices carry: on F-SOURCE-CHANGE's scene, edits and a reattachment over the same layers; on F-EDIT-SEQUENCE's,
+reloads and another payload policy, mask, muting, or interpolation, after each of which, and after an edit that follows,
+it plans what a new chain plans (M7 plan, C3d). It's released with the evaluation stage, so the next capture is from a
+new chain. tests/blender/test_kept_chain_use.py checks that synchronizations and cache calls share it.
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ import pytest
 from pxr import Sdf, Usd, UsdGeom
 
 from fixtures import edit_sequence, transaction
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.binding.source_access.stage_registry import StageRegistry
-from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
-from proscenium.core import _core
+from proscenium_sync import planner
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.stage_registry import StageRegistry
+from proscenium_sync.source_access.stages import BindingStages, SourceUnavailableError
 
 from . import plan_serialization
 from .attached_binding_stages import binding
@@ -33,21 +33,21 @@ if TYPE_CHECKING:
     from fixtures.edit_sequence import EditSequenceScene
     from fixtures.transaction import SourceChangeScene
 
-SETTINGS = _core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
-CONTEXT = _core.PlanningContext(1.0, 1)
+SETTINGS = planner.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+CONTEXT = planner.PlanningContext(1.0, 1)
 EXPIRY_WAIT = 2.0  # expiry can lag a release, by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C)
 
 
-def _keep(stages: BindingStages) -> _core.SceneIndexChain:
+def _keep(stages: BindingStages) -> planner.SceneIndexChain:
     """A chain over the binding's evaluation stage under LOAD_ALL, kept and captured from once."""
-    chain = _core.SceneIndexChain(stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))
+    chain = planner.SceneIndexChain(stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL))
     stages.keep_chain(chain)
     chain.capture(Usd.TimeCode(0))
     return chain
 
 
-def _planned(chain: _core.SceneIndexChain) -> dict[str, object]:
-    return plan_serialization.contents(_core.plan(chain.capture(Usd.TimeCode(0)), SETTINGS, CONTEXT))
+def _planned(chain: planner.SceneIndexChain) -> dict[str, object]:
+    return plan_serialization.contents(planner.plan(chain.capture(Usd.TimeCode(0)), SETTINGS, CONTEXT))
 
 
 def _sub(scene: SourceChangeScene) -> str:
@@ -67,7 +67,7 @@ def test_a_kept_chain_follows_edits_and_reattachment(tmp_path: Path) -> None:
         evaluation_stage = stages.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
         assert stages.kept_chain is chain
         assert not chain.released
-        fresh = _core.SceneIndexChain(evaluation_stage)
+        fresh = planner.SceneIndexChain(evaluation_stage)
         try:
             assert _planned(chain) == _planned(fresh) != before
         finally:
@@ -200,13 +200,13 @@ FOLLOWED: dict[str, tuple[SourceStep, ...]] = {
 }
 
 
-def _planned_at(chain: _core.SceneIndexChain) -> dict[str, object]:
-    return plan_serialization.contents(_core.plan(chain.capture(AT), SETTINGS, CONTEXT))
+def _planned_at(chain: planner.SceneIndexChain) -> dict[str, object]:
+    return plan_serialization.contents(planner.plan(chain.capture(AT), SETTINGS, CONTEXT))
 
 
 def _new_chain_plan(stages: BindingStages) -> dict[str, object]:
     assert stages.evaluation_stage is not None
-    fresh = _core.SceneIndexChain(stages.evaluation_stage)
+    fresh = planner.SceneIndexChain(stages.evaluation_stage)
     try:
         return _planned_at(fresh)
     finally:
@@ -276,7 +276,7 @@ def test_keeping_another_chain_releases_the_first(tmp_path: Path) -> None:
 def test_a_chain_is_kept_only_over_an_evaluation_stage(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
         stages = binding(scene.caller)
-        chain = _core.SceneIndexChain(scene.caller)
+        chain = planner.SceneIndexChain(scene.caller)
         try:
             with pytest.raises(SourceUnavailableError):
                 stages.keep_chain(chain)

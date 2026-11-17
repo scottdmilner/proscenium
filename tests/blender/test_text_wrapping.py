@@ -1,4 +1,4 @@
-"""Wrapping a label's text to its region's width (proscenium.ui.text_wrapping), so a long path shows whole.
+"""Wrapping a label's text to its region's width (proscenium_ui.text_wrapping), so a long path shows whole.
 
 The wrapping is measured here by character count, a character a pixel, so each expected line is written from the
 text; Blender's own measure needs a region, which the background wheel's context doesn't have.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import bpy
 
-from proscenium.ui import text_wrapping
+from proscenium_ui import text_wrapping
 
 
 def _characters(text: str) -> float:

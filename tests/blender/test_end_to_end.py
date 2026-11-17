@@ -22,11 +22,11 @@ import pytest
 from pxr import Usd
 
 from fixtures import appearance, evaluation, interaction, production_like
-from proscenium import synchronization
-from proscenium.api.bindings import BindingHandle
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync import synchronization
+from proscenium_sync.bindings import BindingHandle
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import evaluation as planning
 from support import bounds_check, time_codes
 from support.blend import save_and_reopen
 from support.displayed_copies import displayed_copies, unique_mesh_data_count
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from proscenium.api.bindings import Bindings
-    from proscenium.core import _core
+    from proscenium_sync import planner
+    from proscenium_sync.bindings import Bindings
 
 
 @contextmanager
@@ -102,9 +102,9 @@ CASES = {
 
 
 @pytest.fixture
-def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
+def plans(monkeypatch: pytest.MonkeyPatch) -> list[planner.Plan]:
     """Every plan the transaction gets from evaluation.evaluate_display_plans, in order."""
-    got: list[_core.Plan] = []
+    got: list[planner.Plan] = []
     original = planning.evaluate_display_plans
 
     def spy(*args: object, **kwargs: object) -> object:
@@ -122,7 +122,7 @@ def test_the_standard_end_to_end_checks(
     name: str,
     bindings: Bindings,
     tmp_path: Path,
-    plans: list[_core.Plan],
+    plans: list[planner.Plan],
     record_property: Callable[[str, object], None],
 ) -> None:
     case = CASES[name]

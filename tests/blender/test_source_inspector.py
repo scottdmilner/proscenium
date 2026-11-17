@@ -15,13 +15,13 @@ import bpy
 from pxr import Sdf, Usd
 
 from fixtures import interaction
-from proscenium.api.bindings import PersistentSelection, SelectionEntry
-from proscenium.binding.results import ResultState
 from proscenium.interface import source_inspector
-from proscenium.ui.property_viewer_widget import display as property_display
-from proscenium.ui.property_viewer_widget.display import property_viewer_views
-from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.scene_graph_widget.display import scene_graph_views
+from proscenium_sync.bindings import PersistentSelection, SelectionEntry
+from proscenium_sync.results import ResultState
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.property_viewer_widget.display import property_viewer_views
+from proscenium_ui.scene_graph_widget import display
+from proscenium_ui.scene_graph_widget.display import scene_graph_views
 from support import undo
 from support.recording_layout import RecordingLayout
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 CRATE_A = "/World/CrateA"
 INSIDE_CRATE_A = f"{CRATE_A}/Body"  # an instance proxy: its floor is CrateA
@@ -51,7 +51,7 @@ def _sync(on: bool) -> None:
 
 
 def _selection() -> PersistentSelection:
-    from proscenium.api import bindings
+    from proscenium_sync import bindings
 
     return bindings.BINDINGS.source_selection(_scene())
 

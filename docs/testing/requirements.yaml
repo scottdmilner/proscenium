@@ -132,7 +132,7 @@ requirements:
         quote: "Compiled components link only against the OpenUSD libraries bundled with each supported Blender distribution."
         delivery: M1b
         oracle: "Per platform, in the bpy wheel and the Blender binary: the build audit finds the module importing USD symbols only from Blender's usd_ms library, with no embedded search path and no bundled USD, TBB, or Python library; at run time exactly one usd_ms image is loaded, it is the host's own, and it is the image that provides USD symbols to the module."
-        note: "Applies to the M1b bridge; the compiled core M1b adopted inherits the checks."
+        note: "Applies to the M1b bridge; the planner M1b adopted inherits the checks."
 
   # --- spec/pipeline.md -----------------------------------------------------------------------
 
@@ -163,7 +163,7 @@ requirements:
         oracle: "On F-UNSUPPORTED-CONTENT, the Sphere and the NURBS patch are provisional meshes, each with one approximation diagnostic naming its source path; the Cube, converted exactly, has none."
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
       - id: SNAP-17
-        quote: "Hydra prim types the core does not translate"
+        quote: "Hydra prim types the planner does not translate"
         fixtures: [F-UNSUPPORTED-CONTENT]
         oracle: "On F-UNSUPPORTED-CONTENT, each untranslated prim (the basis curves, points, HermiteCurves, and the volume) has one placeholder at its source path and one untranslated-type diagnostic, aggregated by problem."
         note: "Applies since M1b adopted Hydra. M1b's prototype checks the case but is not production code, so M6 delivers it."
@@ -196,7 +196,7 @@ requirements:
       - id: APP-08
         quote: "Application must not query USD to fill in unresolved source semantics."
         fixtures: [F-NO-OP-REFRESH]
-        oracle: "The application layer's modules import nothing that reaches a stage (pxr, the compiled core, or the binding's source access) other than for types, which a bpy-free check of their imports enforces; on F-NO-OP-REFRESH, a plan whose chain is released and whose stage is gone still prepares every copy's partition."
+        oracle: "The application layer's modules import nothing that reaches a stage (pxr, the planner, or the binding's source access) other than for types, which a bpy-free check of their imports enforces; on F-NO-OP-REFRESH, a plan whose chain is released and whose stage is gone still prepares every copy's partition."
 
   - section: spec/pipeline.md#why-the-boundary-is-enforced
     delivery: M5
@@ -206,7 +206,7 @@ requirements:
         quote: "Every feature extends both evaluation/planning and application explicitly."
         kind: process
         qualified_by: M12
-        oracle: "Each feature milestone's close names the evaluation or planning change and the application change it made; M5's are the minimal capture and planner in the core and the stub application layer."
+        oracle: "Each feature milestone's close names the evaluation or planning change and the application change it made; M5's are the minimal capture and planner in the planner and the stub application layer."
       - id: BND-02
         quote: "All source-semantic diagnostics and known representation limitations exist before any Blender data is mutated."
         fixtures: [F-DIRTY-LAYER, F-FAILED-SETTINGS]
@@ -1080,7 +1080,7 @@ requirements:
       - id: INSP-10
         quote: "Interaction requires the live source stage. A saved display whose source is unavailable remains displayed, without inspection or selection."
         fixtures: [F-OFFLINE]
-        oracle: "F-OFFLINE reopened without its source shows its saved display unchanged, each of the core's interaction functions reports the source unavailable, and the persistent selection is unchanged; once the stage is attached again, they answer as before saving."
+        oracle: "F-OFFLINE reopened without its source shows its saved display unchanged, each of the planner's interaction functions reports the source unavailable, and the persistent selection is unchanged; once the stage is attached again, they answer as before saving."
         note: "Replaces INSP-08 (retired), which required persisted inspection."
       - id: INSP-09
         quote: "Distinguish the last synchronized snapshot from newly evaluated source state."
@@ -1115,18 +1115,18 @@ requirements:
       - id: ICON-03
         quote: "It never reads the display, the plan, or the snapshot"
         fixtures: [F-KIND-HIERARCHY]
-        oracle: "The inspection layer's sources include no header of the core or Hydra, and on F-KIND-HIERARCHY kind-level `select_targets` gives the same targets with the display's objects removed from Blender."
+        oracle: "The inspection layer's sources include no header of the planner or Hydra, and on F-KIND-HIERARCHY kind-level `select_targets` gives the same targets with the display's objects removed from Blender."
       - id: ICON-04
-        quote: "It does not depend on the compiled core: it shares no code with it"
+        quote: "It does not depend on the planner: it shares no code with it"
         kind: process
         qualified_by: M7
-        oracle: "A test over the inspection layer's sources and its build's link inputs finds only USD's headers and libraries: none of the core's sources, headers, or targets."
+        oracle: "A test over the inspection layer's sources and its build's link inputs finds only USD's headers and libraries: none of the planner's sources, headers, or targets."
         note: "COMP-06 covers its linkage."
       - id: ICON-05
         quote: "so paths never pass through Python between the layers"
         kind: process
         qualified_by: M7
-        oracle: "The core's bindings and stubs expose the interaction functions and no inspection-layer function, so a kind-level `select_targets` reaches the inspection layer in C++ and no Python passes paths between the layers."
+        oracle: "The planner's bindings and stubs expose the interaction functions and no inspection-layer function, so a kind-level `select_targets` reaches the inspection layer in C++ and no Python passes paths between the layers."
       - id: ICON-06
         quote: "The inspection layer is read-only."
         fixtures: [F-KIND-HIERARCHY, F-UNIVERSE-MEMBERSHIP]
@@ -1142,7 +1142,7 @@ requirements:
         fixtures: [F-CACHED-STAGE]
         oracle: "The binding handle returns the exact caller-attached stage as live, including when the caller cached it; attachment and synchronization never insert it or the evaluation stage into a cache."
       - id: ICON-35
-        quote: "the core loads it from Blender data once the binding has a live stage, without synchronizing"
+        quote: "the planner loads it from Blender data once the binding has a live stage, without synchronizing"
         fixtures: [F-KIND-HIERARCHY]
         oracle: "F-KIND-HIERARCHY saved and reopened, with the caller's stage attached again and nothing synchronized, gives the same `resolve_pick`, `displayed`, `highlight_targets`, and `select_targets` results as before saving, and no synchronization or cache runs."
 
@@ -1152,11 +1152,11 @@ requirements:
     fixtures: [F-OFFLINE]
     rows:
       - id: ICON-08
-        quote: "each of the core's interaction functions reports that the source is unavailable"
-        oracle: "With no live stage, each of the core's five functions reports the source unavailable."
+        quote: "each of the planner's interaction functions reports that the source is unavailable"
+        oracle: "With no live stage, each of the planner's five functions reports the source unavailable."
       - id: ICON-09
         quote: "stored persistent selections are kept unchanged"
-        oracle: "With no live stage, a stored persistent selection is unchanged after each of the core's five functions is called."
+        oracle: "With no live stage, a stored persistent selection is unchanged after each of the planner's five functions is called."
 
   - section: spec/interaction-contract.md#source-entities-and-hierarchy
     delivery: M7
@@ -1311,7 +1311,7 @@ requirements:
       - id: ICON-31
         quote: "Future USD manipulation tools receive: the live stage"
         fixtures: [F-KIND-HIERARCHY]
-        oracle: "On F-KIND-HIERARCHY, `api/` gives a binding's live stage, `resolve_pick`, `displayed`, `highlight_targets`, getting and setting a scene's source selection, a listener called once per change to it, the time code the display shows, and the published generation's settings, and no function that authors USD."
+        oracle: "On F-KIND-HIERARCHY, `bindings/` gives a binding's live stage, `resolve_pick`, `displayed`, `highlight_targets`, getting and setting a scene's source selection, a listener called once per change to it, the time code the display shows, and the published generation's settings, and no function that authors USD."
 
   # --- spec/incremental.md --------------------------------------------------------------------
 
@@ -2027,7 +2027,7 @@ requirements:
         delivery: M12
       - id: AFIX-06
         quote: "Fixtures with time-varying content are evaluated at the sampled time codes. Fixtures with payloads run under both payload policies."
-        oracle: "F-TRANSFORMS' world transforms, at the default time code and at each sampled one, synchronized and cached, are checked under both payload policies (test_core_instancing.py, test_time_varying.py), as is the payload round trip (relation 4); its and F-VISIBILITY-PURPOSE's time-varying cases run at the time codes the sampled-time-codes helper gives them."
+        oracle: "F-TRANSFORMS' world transforms, at the default time code and at each sampled one, synchronized and cached, are checked under both payload policies (test_planner_instancing.py, test_time_varying.py), as is the payload round trip (relation 4); its and F-VISIBILITY-PURPOSE's time-varying cases run at the time codes the sampled-time-codes helper gives them."
         delivery: M6
 
   - section: testing/acceptance.md#standard-end-to-end-checks
@@ -2049,7 +2049,7 @@ requirements:
         oracle: "The end-to-end tests record each case's unique mesh-data count, without asserting a bound on it."
       - id: ASTD-04
         quote: "Save and reopen preserves the display and correspondence without accessing the source."
-        oracle: "Each end-to-end case saved and reopened with its source moved away shows the same objects, transforms, hide flags, and meshes, and once its stage is attached again the core loads correspondence without synchronizing."
+        oracle: "Each end-to-end case saved and reopened with its source moved away shows the same objects, transforms, hide flags, and meshes, and once its stage is attached again the planner loads correspondence without synchronizing."
         risk: high
 
   - section: testing/acceptance.md#expected-failure-checks
@@ -2125,7 +2125,7 @@ requirements:
         quote: "The bounds check reuses decisions made elsewhere rather than making its own."
         delivery: M7
         qualified_by: M12
-        oracle: "The bounds check (tests/support/bounds_check.py) takes participation and correspondence from the plan, and transforms, usable bounds, and kinds from USD's own APIs, under the spec's conversion, with no rule of its own: its correction equals F-UNITS-UP-AXIS's, its participation F-VISIBILITY-PURPOSE's, and on displays made from the core's plans it agrees with the planner."
+        oracle: "The bounds check (tests/support/bounds_check.py) takes participation and correspondence from the plan, and transforms, usable bounds, and kinds from USD's own APIs, under the spec's conversion, with no rule of its own: its correction equals F-UNITS-UP-AXIS's, its participation F-VISIBILITY-PURPOSE's, and on displays made from the planner's plans it agrees with the planner."
       - id: ABND-03
         quote: "each prim whose kind is a model kind (component, group, assembly, or one derived from them) is compared, once per drawn copy, inside native instances too"
         delivery: M7
@@ -2389,7 +2389,7 @@ excluded:
       - "resolve_pick | what a viewport pick supplies"
       - "displayed | source paths"
       - "highlight_targets | selection targets"
-      - "Core bindings, which route to the correspondence and inspection layers internally:"
+      - "Planner bindings, which route to the correspondence and inspection layers internally:"
       - "select_targets | resolved entities and a selection level"
       - "selection_from_blender | the display-resource identities"
       - "apply_selection | display targets, with those of the active entry marked"
@@ -2701,7 +2701,7 @@ excluded:
     quotes: ["synchronizes the binding at a USD time code, which may be the default time code, or without one at the time code of the target scene's current frame"]
     restates: [BIND-05, XFORM-12]
   - section: spec/source-access.md#synchronization-api
-    quotes: ["Design note (settled by M3 and M5): the API is proscenium.api.bindings."]
+    quotes: ["Design note (settled by M3 and M5): the API is proscenium_sync.bindings."]
     reason: "Design record of M3's API."
   - section: spec/source-access.md#synchronization-api
     quotes: ["Methods that use the binding's records look it up when called; release addresses runtime state directly. Two handles are equal when their identifiers are."]

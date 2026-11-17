@@ -1,6 +1,6 @@
 # Scene Graph UI
 
-How Phase 3's stage editor shows a USD stage's prim hierarchy as a tree in Blender: which UI mechanism it's built on, where in Blender's UI it fits, what the keyboard, icons, tooltips, search, and selection can do, and how the widget in [`src/proscenium/ui/`](../../src/proscenium/ui/README.md) is arranged for a host to place it, and how its rows compare with usdview's and Solaris's. This is a design note, not a requirement ([Phase 3 notes](README.md)). The widget may exist alongside Phases 1 and 2 because it reads a stage its host gives it, and selects through no source selection model, shows no edits through bindings, and pushes no undo step ([DECISIONS.md](../DECISIONS.md) "Phase 3 ordering").
+How Phase 3's stage editor shows a USD stage's prim hierarchy as a tree in Blender: which UI mechanism it's built on, where in Blender's UI it fits, what the keyboard, icons, tooltips, search, and selection can do, and how the widget in [`packages/proscenium_ui/src/proscenium_ui/`](../../packages/proscenium_ui/src/proscenium_ui/README.md) is arranged for a host to place it, and how its rows compare with usdview's and Solaris's. This is a design note, not a requirement ([Phase 3 notes](README.md)). The widget may exist alongside Phases 1 and 2 because it reads a stage its host gives it, and selects through no source selection model, shows no edits through bindings, and pushes no undo step ([DECISIONS.md](../DECISIONS.md) "Phase 3 ordering").
 
 The measurements below were taken on a proof of concept, kept at commit `32b1b86ecc749a772a534a2d1f2d456c5c4f924f` in `tools/feasibility/scene_graph_ui/`. Its README there lists each file, how to run it, and its findings in full. Its row model, search, tooltip text, key watcher, and badge icons became the widget; its benchmarks (`bench.py`, `bench_watcher.py`) and the native tree (`native_tree.py`) stayed behind with it.
 
@@ -22,7 +22,7 @@ Timings are single runs unless stated, and varied by about 2× between runs. Win
   A dedicated pane, an editor whose header is hidden and whose sidebar is dragged nearly full width, is the next candidate. The Properties editor, the toolbar, and the Tool Settings strip don't suit a tree.
 - **Take Left and Right with one modal operator** that passes every other event on. Keymaps can't reach plain arrow keys over a list. A Python modal operator costs about 1.7 µs per event.
 - **Search the whole stage, and show each match under its ancestors.** The UIList's own filter can't do that. At a million prims, a Python traversal is too slow for typing, and an index is the fix.
-- **Keep the row model and the search independent of the drawing,** so they test in `bpy_free` and could move into the core.
+- **Keep the row model and the search independent of the drawing,** so they test in `bpy_free` and could move into the planner.
 
 ## Approaches
 
@@ -57,7 +57,7 @@ The Maya Workflow Kit uses `gpu` for decoration over native widgets: about 50 dr
 
 ## The widget
 
-`src/proscenium/ui/scene_graph_widget/` groups the widget's two units, by the [import rules](../../src/proscenium/README.md#import-rules): the model that holds the tree, and the display that draws it. Each builds on units the widgets share, in lower tiers: `ui/widget_model/`, its search's text matching, its keys' steps, what it reads of each prim (`prim_details`, the children it lists included), and the badges and lines it says of a prim (`prim_detail_text`), and, for the display, `ui/widget_resources/`, the theme's colors, tinted and badge icons, what a tree's rows draw alike (their widths, guide lines, and badges), and the copy-path operator, `ui/columned_list/`, the columns' layout, header, and settings, `ui/search_box.py`, and `ui/widget_updates.py`, timers. The [property viewer](property-viewer-ui.md) shares them too.
+`packages/proscenium_ui/src/proscenium_ui/scene_graph_widget/` groups the widget's two units, by the [import rules](../../src/proscenium/README.md#import-rules): the model that holds the tree, and the display that draws it. Each builds on units the widgets share, in lower tiers: `ui/widget_model/`, its search's text matching, its keys' steps, what it reads of each prim (`prim_details`, the children it lists included), and the badges and lines it says of a prim (`prim_detail_text`), and, for the display, `ui/widget_resources/`, the theme's colors, tinted and badge icons, what a tree's rows draw alike (their widths, guide lines, and badges), and the copy-path operator, `ui/columned_list/`, the columns' layout, header, and settings, `ui/search_box.py`, and `ui/widget_updates.py`, timers. The [property viewer](property-viewer-ui.md) shares them too.
 - **`prim_tree/`, the model, just above the lowest tier,** imports nothing of Blender's: the search that walks the children a tree lists (`prim_search`), the row model (`prim_tree`), which caches what the tree shows of each prim, read by `widget_model.prim_details`, what only the tree says about a prim (`prim_descriptions`: row names and its tooltips' and details panel's text), worded from what was read with no USD queries of its own, and one tree as a widget shows it (`prim_tree_view.PrimTreeView`), with its selection, query, keyboard steps, and the stage changes it follows. The logic tests can reach is here.
 - **`display/`, below the add-on,** only draws and forwards input to a `PrimTreeView`: a registry of views that knows nothing of Blender's data, the property groups a `UIList` draws from and everything that reads or writes them, the operators, icons, drawing, and key watcher above those, and the host's calls and registration at the top.
 
@@ -66,7 +66,7 @@ Each package's modules import each other in that order, each only from those bef
 ### What a host does
 
 The widget draws nowhere by itself: its one panel is its settings popover, which shows only where its gear opens it. A host:
-1. **Registers it** with `display.register()`, from `proscenium.ui.scene_graph_widget`: its classes, a collection on the window manager, its icons, its key watchers, and a load handler.
+1. **Registers it** with `display.register()`, from `proscenium_ui.scene_graph_widget`: its classes, a collection on the window manager, its icons, its key watchers, and a load handler.
 2. **Creates a view** per place it shows a tree, by name: `create_view(name, shows_in_region, on_selection_changed)`.
    - `shows_in_region(area, region)` says whether a region is showing that view now, such as a 3D View sidebar on the host's tab. The key watcher asks it, since only the host knows which panels draw which view.
    - `on_selection_changed(path)` hears the prim selected from the tree, by a click or the keys, and `None` when a new stage or the selected prim leaving the stage clears the selection. `select_prim(name, path)` selects from elsewhere, such as the viewport, and isn't reported back, so the two directions can't loop.
@@ -533,7 +533,7 @@ What edits or overrides the stage, so waits on how Phase 3 edits it: visibility,
 - How fast is drawing and scrolling a `UIList` with thousands of rows? Only the model and the collection were timed.
 - Does a hierarchy change in a stage with many visible rows rebuild them fast enough while editing, or should a change rebuild only the subtrees it resyncs?
 - Can a dedicated pane's sidebar take the area's full width, and does the empty main area bother users?
-- What should own the search index as the stage changes: the core, or a Python layer that listens to `Tf.Notice`?
+- What should own the search index as the stage changes: the planner, or a Python layer that listens to `Tf.Notice`?
 - Where do the tree's own edits, such as visibility or active, go: a session layer, a viewport-only layer as in Solaris, or the edit target ([Compared with usdview and Solaris](#compared-with-usdview-and-solaris))?
 - What does the widget's row menu hold, and should Ctrl+click add a row to a selection?
 - How do multiple selected prims show in a list that highlights only one row: a highlighted button per selected row, which takes the row's clicks, or a marker icon ([Colors](#colors))?

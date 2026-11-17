@@ -19,12 +19,12 @@ from mathutils import Matrix
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import ownership
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import evaluation as planning
 from support import time_codes
 from support.usd import binding_on_file
 
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.core import _core
+    from proscenium_sync import planner
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 
 @dataclass(frozen=True)
@@ -57,9 +57,9 @@ class Shown:
 
 
 @pytest.fixture
-def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
+def plans(monkeypatch: pytest.MonkeyPatch) -> list[planner.Plan]:
     """Every plan the transaction and cache calls get from evaluation.evaluate_display_plans, in order."""
-    got: list[_core.Plan] = []
+    got: list[planner.Plan] = []
     original = planning.evaluate_display_plans
 
     def spy(*args: object, **kwargs: object) -> object:
@@ -108,7 +108,7 @@ def _value(time_code: Usd.TimeCode) -> float | None:
     return None if time_code.IsDefault() else time_code.GetValue()
 
 
-def _shown(plan: _core.Plan) -> dict[str, Shown]:
+def _shown(plan: planner.Plan) -> dict[str, Shown]:
     """Each drawn copy by its source."""
     worlds = memoryview(plan.copy_world_matrices).tolist()
     viewport, render = (
@@ -129,7 +129,7 @@ def _close(shown: Gf.Matrix4d, expected: Gf.Matrix4d) -> bool:
     )
 
 
-def _check(plan: _core.Plan, expected: Expected) -> None:
+def _check(plan: planner.Plan, expected: Expected) -> None:
     time_code = _value(plan.time_code)
     shown = _shown(plan)
     assert shown.keys() == expected.drawn, time_code
@@ -172,7 +172,7 @@ def _frame_set(time_code: float) -> None:
 
 @pytest.mark.parametrize("case", CASES)
 def test_each_sampled_time_code_synchronized(
-    bindings: Bindings, tmp_path: Path, plans: list[_core.Plan], case: str
+    bindings: Bindings, tmp_path: Path, plans: list[planner.Plan], case: str
 ) -> None:
     # XFORM-06 on F-TRANSFORMS "time-codes" and F-VISIBILITY-PURPOSE "time-varying": each synchronization's plan holds
     # the fixture's world transforms and participation at its time code, and its published objects show them.
@@ -195,7 +195,9 @@ def test_each_sampled_time_code_synchronized(
 
 
 @pytest.mark.parametrize("case", CASES)
-def test_each_sampled_time_code_cached(bindings: Bindings, tmp_path: Path, plans: list[_core.Plan], case: str) -> None:
+def test_each_sampled_time_code_cached(
+    bindings: Bindings, tmp_path: Path, plans: list[planner.Plan], case: str
+) -> None:
     # XFORM-06 on F-TRANSFORMS "cached-time-codes" and F-VISIBILITY-PURPOSE "time-varying": synchronized at the
     # start, one cache call's plans, one per other sampled time code but the default, which isn't one to cache, hold
     # the fixture's values at each, and each object shows its world transform and hide flags there, Blinking's keyed.

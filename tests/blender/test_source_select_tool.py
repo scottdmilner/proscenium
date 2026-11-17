@@ -15,17 +15,17 @@ from mathutils import Vector
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import interaction
-from proscenium.api.bindings import PersistentSelection, SelectionEntry
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.interface import interface_registration, source_select_tool
+from proscenium_sync.bindings import PersistentSelection, SelectionEntry
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle, undo
 from support.recording_layout import RecordingLayout
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 DOWN = Vector((0.0, 0.0, -1.0))
 

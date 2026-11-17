@@ -1,4 +1,4 @@
-"""The prim tree's search and its filter (proscenium.ui.scene_graph_widget.prim_tree.prim_search).
+"""The prim tree's search and its filter (proscenium_ui.scene_graph_widget.prim_tree.prim_search).
 
 On scenes/scene_graph/prim_kinds.usda, expected matches are written from how the scene is built: six prims
 named Lid (the class's, three crates', and the two payloaded props').
@@ -12,8 +12,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.scene_graph_widget.prim_tree import PrimTree, prim_search
-from proscenium.ui.widget_model import text_matching
+from proscenium_ui.scene_graph_widget.prim_tree import PrimTree, prim_search
+from proscenium_ui.widget_model import text_matching
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:

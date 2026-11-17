@@ -18,26 +18,26 @@ from fixtures import schema_version_cases as record_fixtures
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from proscenium import addon
-from proscenium.api.bindings import (
+from proscenium_sync import registration, runtime
+from proscenium_sync.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
     Result,
 )
-from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records, manifests
-from proscenium.binding.persistence.binding_records import BindingConfig, BindingIndex
-from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium.binding.persistence.id_property_records import (
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium_sync.persistence.binding_records import BindingConfig, BindingIndex
+from proscenium_sync.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium_sync.persistence.id_property_records import (
     NAMESPACE,
     LoadedRecord,
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.persistence.manifests import MANIFEST_KEY
-from proscenium.binding.results import Diagnostic, DiagnosticCode, ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
-from proscenium.binding.source_access.stages import SourceRevision
+from proscenium_sync.persistence.manifests import MANIFEST_KEY
+from proscenium_sync.results import Diagnostic, DiagnosticCode, ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
+from proscenium_sync.source_access.stages import SourceRevision
 from support import undo
 from support.blend import save_and_reopen
 from support.destinations import destination
@@ -47,7 +47,7 @@ if TYPE_CHECKING:
     from pathlib import Path
     from types import ModuleType
 
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:
@@ -548,7 +548,7 @@ def test_the_stored_identifier_is_the_records_after_undo(bindings: Bindings, tmp
 # The records' namespace.
 
 
-@pytest.mark.parametrize("id_type", addon.RECORD_TYPES, ids=lambda t: t.__name__)
+@pytest.mark.parametrize("id_type", registration.RECORD_TYPES, ids=lambda t: t.__name__)
 def test_the_namespace_is_registered_so_the_panel_hides_it(extension: ModuleType, id_type: type[bpy.types.ID]) -> None:
     # The Custom Properties panel skips properties the Python API defines (rna_prop_ui.draw).
     runtime = {p.identifier for p in id_type.bl_rna.properties if p.is_runtime}

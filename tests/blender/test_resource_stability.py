@@ -18,11 +18,11 @@ import bpy
 from pxr import Gf
 
 from fixtures import incremental
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.synchronization import datablock_removal
+from proscenium_sync.persistence import id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
+from proscenium_sync.synchronization import datablock_removal
 from support.blend import prim_name
 from support.usd import binding_on_file
 
@@ -32,10 +32,10 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence import manifests
-    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
-    from proscenium.binding.results import Diagnostic, Result
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence import manifests
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.results import Diagnostic, Result
 
 SYNCHRONIZATIONS = 5  # STAB-01's unchanged synchronizations
 FAILING = "Plain"  # F-NO-OP-REFRESH's mesh whose object and bounds mesh retirement fails to remove

@@ -1,6 +1,7 @@
 """The Source Select tool: the extension's own selection of USD source targets in the 3D viewport (M7 plan, F2).
 
-Ported from the bridge's select_tool.py, over proscenium.api only (DECISIONS.md "Headless interaction functions"):
+Ported from the bridge's select_tool.py, over proscenium_sync.bindings only (DECISIONS.md "Headless interaction
+functions"):
 
 - **Click** picks what a ray under the cursor hits; shift toggles its target, ctrl removes it, and a click on nothing
   clears the selection. M7's display draws each copy as its bounds, a mesh of corners without faces, or an empty
@@ -29,7 +30,7 @@ from bpy_extras import view3d_utils
 from mathutils import Vector
 from pxr import Kind
 
-from ..api import bindings
+from proscenium_sync import bindings
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable

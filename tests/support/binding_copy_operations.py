@@ -12,16 +12,16 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import binding_records, id_property_records, manifests
-from proscenium.binding.persistence.id_property_records import LoadedRecord
-from proscenium.binding.persistence.manifests import Manifest
+from proscenium_sync.persistence import binding_records, id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord
+from proscenium_sync.persistence.manifests import Manifest
 from support import blend
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.source_access import BindingId
 
 
 MANAGED = "Still"  # one of the published objects: /World/Still's placeholder

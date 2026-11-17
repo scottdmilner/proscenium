@@ -15,17 +15,17 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium.api.bindings import (
+from proscenium_sync import persistence
+from proscenium_sync.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
     Result,
 )
-from proscenium.binding import persistence
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records
-from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import undo
 from support.destinations import destination
 from support.usd import binding_on_file, open_stage_without_cache

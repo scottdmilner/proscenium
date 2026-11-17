@@ -14,12 +14,12 @@ import bpy
 from pxr import Usd
 
 from fixtures import evaluation, incremental
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
-from proscenium.binding.persistence.manifests import Manifest, RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.core import _core
-from proscenium.synchronization import application, preparation_resources
+from proscenium_sync import planner
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.persistence.cleanup_ledgers import OriginatingOperation
+from proscenium_sync.persistence.manifests import Manifest, RepresentationRole
+from proscenium_sync.results import ResultState
+from proscenium_sync.synchronization import application, preparation_resources
 from support.destinations import destination
 from support.usd import binding_on_file, open_stage_without_cache
 
@@ -28,10 +28,10 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync.bindings import Bindings
 
-CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=application.REPRESENTATION_VERSION)
-SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
+CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=application.REPRESENTATION_VERSION)
+SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _open_plan_views() -> set[int]:
@@ -53,10 +53,10 @@ def test_nothing_borrowed_outlives_a_synchronization(
 ) -> None:
     # SNAP-13: once each synchronization returns, every view of its plan's buffers is released, and only the held plans
     # hold the plan, as the shown generation's, so releasing them releases it.
-    plans: list[weakref.ref[_core.Plan]] = []
+    plans: list[weakref.ref[planner.Plan]] = []
     prepare = application.prepare
 
-    def recording_prepare(plan: _core.Plan, *rest: object) -> None:
+    def recording_prepare(plan: planner.Plan, *rest: object) -> None:
         plans.append(weakref.ref(plan))
         prepare(plan, *rest)  # ty: ignore[invalid-argument-type] - prepare's own arguments
 
@@ -84,8 +84,8 @@ def test_a_plan_is_prepared_without_its_stage(bindings: Bindings, tmp_path: Path
     with incremental.no_op_refresh(tmp_path) as scene:
         stage = open_stage_without_cache(scene.root_layer_path)
         expected = scene.copies
-    chain = _core.SceneIndexChain(stage)
-    plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
+    chain = planner.SceneIndexChain(stage)
+    plan = planner.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
     chain.release()
     stage_ref = weakref.ref(stage)
     del stage
@@ -105,8 +105,8 @@ def test_preparing_some_copies_makes_only_their_partitions(bindings: Bindings, t
     # Each copy's partition is made on its own, so preparing some copies makes theirs, in the order asked, and
     # preparing the rest makes the others: together, what preparing every copy makes.
     with incremental.no_op_refresh(tmp_path) as scene:
-        chain = _core.SceneIndexChain(scene.stage)
-        plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
+        chain = planner.SceneIndexChain(scene.stage)
+        plan = planner.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
         chain.release()
     binding_id = bindings.create_binding(bpy.data.scenes["Scene"]).binding_id
     sources = [e.source_path for e in plan.correspondence]

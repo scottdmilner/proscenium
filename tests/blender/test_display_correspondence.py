@@ -3,7 +3,7 @@
 The display elements are the objects the manifest names in a drawn copy's object role, each in the viewport when its
 hide flag shows it at the frame shown; instance contexts come from the held plan, or from the live stage without one.
 Expected values come from the interaction fixtures and F-TIME-VARIATIONS, and from USD's own APIs
-(support/interaction_oracle.py). support/interaction_checks.py checks the interaction functions through api/.
+(support/interaction_oracle.py). support/interaction_checks.py checks the interaction functions through bindings/.
 """
 
 from __future__ import annotations
@@ -15,13 +15,13 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
-from proscenium.api.bindings import BindingHandle
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import held_plans, ownership
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.interaction import display_correspondence
+from proscenium_sync.bindings import BindingHandle
+from proscenium_sync.interaction import display_correspondence
+from proscenium_sync.persistence import binding_state, id_property_records
+from proscenium_sync.persistence.manifests import RepresentationRole
+from proscenium_sync.results import ResultState
+from proscenium_sync.runtime import held_plans, ownership
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
@@ -31,9 +31,9 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from proscenium.api.bindings import Bindings
-    from proscenium.binding.source_access import BindingId
-    from proscenium.core import _core
+    from proscenium_sync import planner
+    from proscenium_sync.bindings import Bindings
+    from proscenium_sync.source_access import BindingId
 
 IDENTITY = Gf.Matrix4d(1.0)
 SCENES: dict[str, Callable[[Path], AbstractContextManager[interaction.InteractionScene]]] = {
@@ -71,7 +71,7 @@ def _object_entries(binding_id: BindingId) -> dict[str, tuple[bpy.types.ID | Non
 
 
 def _answers(
-    elements: display_correspondence.DisplayElements, correspondence: _core.Correspondence, stage: Usd.Stage
+    elements: display_correspondence.DisplayElements, correspondence: planner.Correspondence, stage: Usd.Stage
 ) -> Answers:
     """What the correspondence answers, by entry key: each element's entity, the universe, and each prim's highlight."""
     picks = {}
@@ -201,8 +201,8 @@ def test_a_copys_second_object_is_an_element(bindings: Bindings, tmp_path: Path)
 
 def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
     # INSP-10's display half: with the live stage released, the display elements are still read from Blender data,
-    # and the core's correspondence reports the source unavailable.
-    from proscenium.core import _core
+    # and the planner's correspondence reports the source unavailable.
+    from proscenium_sync import planner
 
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
@@ -210,7 +210,7 @@ def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
         handle.release()
         elements = _elements(handle.binding_id)
         assert len(elements.objects) == len(scene.elements[0.0])
-        with pytest.raises(_core.SourceUnavailableError):
+        with pytest.raises(planner.SourceUnavailableError):
             display_correspondence.correspondence(elements, handle.live_stage(), bindings.published_plans)
 
 

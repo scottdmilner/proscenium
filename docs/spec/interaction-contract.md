@@ -8,12 +8,12 @@ The contract defines what the display layer provides, not its Blender structure.
 
 Callers of the contract have the binding's live USD stage. They browse and inspect it through the USD API: hierarchy, prims, attributes, metadata, and composition. The contract provides no browsing or inspection functions of its own, only what the stage cannot answer: what is displayed, and how display and source map to each other. Two layers share that work:
 
-- The **correspondence layer** says what is displayed and which source entity each displayed thing came from. The compiled core maintains it, from Hydra's scene indices and the composed stage, as part of planning; application only records which Blender resources realize each correspondence entry. It is persisted with the published generation, and after a `.blend` is reopened, the core loads it from Blender data once the binding has a live stage, without synchronizing. It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected. It stores no inspection data.
+- The **correspondence layer** says what is displayed and which source entity each displayed thing came from. The planner maintains it, from Hydra's scene indices and the composed stage, as part of planning; application only records which Blender resources realize each correspondence entry. It is persisted with the published generation, and after a `.blend` is reopened, the planner loads it from Blender data once the binding has a live stage, without synchronizing. It resolves picks to source prims, says which prims are displayed, and shows a set of source prims as selected. It stores no inspection data.
 - The **inspection layer** maps picked prims to selection targets by model kind on the live stage. It never reads the display, the plan, or the snapshot, and it is not needed to display anything or to select at the prim level.
 
-The inspection layer is a C++ library that does not touch Blender. It does not depend on the compiled core: it shares no code with it, and uses none of the core's scene indices, snapshot, or plan. Its inputs are a USD stage, source paths, and model kinds. The core calls it; it has no Python bindings of its own.
+The inspection layer is a C++ library that does not touch Blender. It does not depend on the planner: it shares no code with it, and uses none of the planner's scene indices, snapshot, or plan. Its inputs are a USD stage, source paths, and model kinds. The planner calls it; it has no Python bindings of its own.
 
-The core's Python bindings expose the interaction functions, and the core routes each call to the correspondence and inspection layers internally, so paths never pass through Python between the layers. The only Python in interaction is the display component that reads and writes Blender's selection state.
+The planner's Python bindings expose the interaction functions, and the planner routes each call to the correspondence and inspection layers internally, so paths never pass through Python between the layers. The only Python in interaction is the display component that reads and writes Blender's selection state.
 
 The inspection layer is read-only. It never authors USD, loads or unloads payloads, changes the population mask, or changes any other stage setting.
 
@@ -23,7 +23,7 @@ The live stage may differ from the display once the source has changed since syn
 
 ## Without a Live Stage
 
-Interaction requires the binding's live stage. Without one, such as when a saved display is reopened with its source unavailable, the saved display remains displayed as ordinary Blender content, each of the core's interaction functions reports that the source is unavailable, and stored persistent selections are kept unchanged. The Python display component's functions read only display targets and Blender's state, not the source.
+Interaction requires the binding's live stage. Without one, such as when a saved display is reopened with its source unavailable, the saved display remains displayed as ordinary Blender content, each of the planner's interaction functions reports that the source is unavailable, and stored persistent selections are kept unchanged. The Python display component's functions read only display targets and Blender's state, not the source.
 
 ## Source Entities and Hierarchy
 
@@ -84,7 +84,7 @@ Blender's transform tools are not USD authoring tools. Edits to managed content 
 
 Design note (signatures settled by M7; see DECISIONS.md "Headless interaction functions"): the contract is checked through these functions, which take and return plain values so that they run without a window. Everything else a caller needs, it reads from the live stage.
 
-Core bindings, which route to the correspondence and inspection layers internally:
+Planner bindings, which route to the correspondence and inspection layers internally:
 
 | Function | Input | Result |
 |---|---|---|

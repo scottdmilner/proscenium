@@ -13,13 +13,13 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding import persistence, runtime
-from proscenium.binding.persistence import binding_records, id_property_records, manifests
-from proscenium.binding.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
-from proscenium.binding.runtime import ownership
-from proscenium.binding.runtime.ownership import Claim
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync import persistence, runtime
+from proscenium_sync.persistence import binding_records, id_property_records, manifests
+from proscenium_sync.persistence.id_property_records import LoadedRecord, RefusedRecord, RefusedRecordError
+from proscenium_sync.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
+from proscenium_sync.runtime import ownership
+from proscenium_sync.runtime.ownership import Claim
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import ownership as oracle
 from support import undo
 from support.blend import save_and_reopen
@@ -29,10 +29,10 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.binding_records import BindingConfig
-    from proscenium.binding.persistence.manifests import ManifestEntryChange
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence.binding_records import BindingConfig
+    from proscenium_sync.persistence.manifests import ManifestEntryChange
+    from proscenium_sync.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:

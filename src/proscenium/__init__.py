@@ -1,14 +1,12 @@
 """Proscenium: one-way synchronization of composed OpenUSD stages into Blender.
 
-This module must stay importable without bpy so the bpy-free code,
-proscenium.core (the compiled core), proscenium.binding.source_access, and proscenium.binding.results,
-can be tested outside Blender. Blender-facing code is imported only on register,
+This module must stay importable without bpy (tests/bpy_free). Blender-facing code is imported only on register,
 through proscenium.addon.
 """
 
 
 def register() -> None:
-    """Register the extension: its record types and its handlers (proscenium.addon)."""
+    """Register the extension's record types and handlers."""
     from . import addon
 
     addon.register()

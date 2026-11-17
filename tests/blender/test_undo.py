@@ -14,12 +14,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.results import Result, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.core import _core
-from proscenium.synchronization import datablock_removal
+from proscenium_sync import planner
+from proscenium_sync.bindings import binding_service as api
+from proscenium_sync.persistence import binding_state, id_property_records, manifests
+from proscenium_sync.results import Result, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
+from proscenium_sync.synchronization import datablock_removal
 from support import undo
 
 from .transaction_failures import failing_preparation
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
     from fixtures.transaction import TransactionScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.bindings import BindingHandle, Bindings
 
 MARKER = "Undo base"
 
@@ -172,7 +172,7 @@ def test_a_failed_synchronization_adds_no_step(
         before = _shown()
         assert handle.synchronize(scene.published[1]).state is ResultState.SUCCESS
         with monkeypatch.context() as patch:
-            patch.setattr(_core, "plan", lambda *_: (_ for _ in ()).throw(RuntimeError("injected failure")))
+            patch.setattr(planner, "plan", lambda *_: (_ for _ in ()).throw(RuntimeError("injected failure")))
             assert handle.synchronize(scene.attempted[1]).state is scene.outcome
         undo.undo_unpushed()
         assert _shown() == before

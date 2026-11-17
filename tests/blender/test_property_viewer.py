@@ -1,4 +1,4 @@
-"""The property viewer widget's display (proscenium.ui.property_viewer_widget.display): views and rows.
+"""The property viewer widget's display (proscenium_ui.property_viewer_widget.display): views and rows.
 
 Drawing needs a window, so nothing here draws: these check the RNA side a UIList draws from, on
 scenes/property_viewer/property_kinds.usda.
@@ -13,8 +13,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium.ui.property_viewer_widget import display as property_display
-from proscenium.ui.property_viewer_widget.display import (
+from proscenium_ui.property_viewer_widget import display as property_display
+from proscenium_ui.property_viewer_widget.display import (
     prim_summary,
     property_columns,
     property_viewer_operators,
@@ -22,10 +22,10 @@ from proscenium.ui.property_viewer_widget.display import (
     property_viewer_registration,
     property_viewer_views,
 )
-from proscenium.ui.property_viewer_widget.property_list import PropertyRow
-from proscenium.ui.scene_graph_widget import display
-from proscenium.ui.widget_model import composition_arcs, prim_details
-from proscenium.ui.widget_resources import badge_icons, keyframe_icons, theme_colors
+from proscenium_ui.property_viewer_widget.property_list import PropertyRow
+from proscenium_ui.scene_graph_widget import display
+from proscenium_ui.widget_model import composition_arcs, prim_details
+from proscenium_ui.widget_resources import badge_icons, keyframe_icons, theme_colors
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:

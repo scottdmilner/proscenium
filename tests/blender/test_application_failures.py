@@ -19,11 +19,11 @@ from pxr import Sdf
 
 from fixtures import transaction
 from fixtures.transaction import DRAWN, ApplicationFailureKind
-from proscenium.api import bindings as bindings_module
-from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import pending_cleanup
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import application, preparation_resources
+from proscenium_sync.bindings import binding_service as bindings_module
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import pending_cleanup
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import application, preparation_resources
 
 from .published_state import datablocks, published_generation
 
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.manifests import RepresentationRole
+    from proscenium_sync.bindings import BindingHandle, Bindings
+    from proscenium_sync.persistence.manifests import RepresentationRole
 
 Attempt = tuple[ApplicationFailureKind, bool]  # its kind, and whether a generation was published before
 ATTEMPTS = [(kind, later) for kind in ApplicationFailureKind for later in (False, True)]

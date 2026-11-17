@@ -79,7 +79,7 @@ def run_once(blender: str, config: dict[str, Any], work: Path, timeout: float) -
 
 def _one_call_each(remove: Callable[[Sequence[bpy.types.ID]], None], datablocks: Sequence[bpy.types.ID]) -> int:
     """Remove datablocks in one call, and if it fails, one call each; how many fail."""
-    from proscenium.binding.persistence import id_property_records
+    from proscenium_sync.persistence import id_property_records
 
     try:
         remove(datablocks)
@@ -107,8 +107,8 @@ def child(config: dict[str, Any]) -> None:
     import object_display
     from pxr import Usd
 
-    from proscenium.binding.persistence import id_property_records
-    from proscenium.synchronization import datablock_removal
+    from proscenium_sync.persistence import id_property_records
+    from proscenium_sync.synchronization import datablock_removal
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     preferences: Any = bpy.context.preferences  # never None in a running Blender

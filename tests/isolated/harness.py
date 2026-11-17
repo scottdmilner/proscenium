@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -75,10 +76,11 @@ def run_isolated(
     Fails the test with the process output if the body raises, or the process
     exits without writing a result or with a nonzero code.
     """
-    run_dir = tmp_path / f"isolated-{runtime.kind}-{function}"
-    run_dir.mkdir()
+    # Short names: Blender extracts an extension's wheels beneath its user resources, and Windows limits a path to 260
+    # characters.
+    run_dir = Path(tempfile.mkdtemp(dir=tmp_path))
     out = run_dir / "result.json"
-    env = {**os.environ, "BLENDER_USER_RESOURCES": str(run_dir / "blender-user")}
+    env = {**os.environ, "BLENDER_USER_RESOURCES": str(run_dir / "user")}
     cmd = runtime.command(str(body), function, str(out), json.dumps(kwargs))
     proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
     log = (proc.stdout + proc.stderr)[-4000:]

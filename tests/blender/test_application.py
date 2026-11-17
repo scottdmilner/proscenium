@@ -3,7 +3,7 @@
 Written for M5's stub (M5 plan, D3 and D4; M6 plan, D4) and moved to M7's layer, which makes the same objects and
 bounds meshes of the same plan (M7 plan, B1 and B5).
 
-Plans come from the core on the transaction scenes; expected values come from how the scene is built
+Plans come from the planner on the transaction scenes; expected values come from how the scene is built
 (fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
 disposal fails to remove enters the ledger.
 """
@@ -19,13 +19,12 @@ from pxr import Usd
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
-from proscenium.binding import runtime
-from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
-from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
-from proscenium.binding.results import DiagnosticCode
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
-from proscenium.synchronization import application, datablock_removal, preparation_resources
+from proscenium_sync import planner, runtime
+from proscenium_sync.persistence.cleanup_ledgers import OriginatingOperation
+from proscenium_sync.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
+from proscenium_sync.results import DiagnosticCode
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
 
@@ -35,13 +34,13 @@ if TYPE_CHECKING:
 
     from pxr import Gf
 
-    from proscenium.api.bindings import Bindings
-    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
-    from proscenium.binding.source_access import BindingId
-    from proscenium.synchronization.preparation_resources import PreparationResources
+    from proscenium_sync.bindings import Bindings
+    from proscenium_sync.persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.source_access import BindingId
+    from proscenium_sync.synchronization.preparation_resources import PreparationResources
 
-CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
-SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
+CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _staged(work: PreparationResources) -> bpy.types.Collection:
@@ -50,8 +49,8 @@ def _staged(work: PreparationResources) -> bpy.types.Collection:
     return work.staging_collection
 
 
-def _plan(stage: Usd.Stage, time_code: float) -> _core.Plan:
-    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
+def _plan(stage: Usd.Stage, time_code: float) -> planner.Plan:
+    return planner.plan(planner.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -62,7 +61,7 @@ def _work(binding_id: BindingId) -> PreparationResources:
     return preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
-def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
+def _prepared(binding_id: BindingId, plan: planner.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
     application.prepare(plan, range(plan.copy_count), published or Manifest({}), work)
     return work
