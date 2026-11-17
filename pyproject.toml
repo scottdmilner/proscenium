@@ -58,6 +58,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium"]
 
+# Library packages the extension bundles as wheels (packages/README.md)
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [tool.uv.sources]
 bpy-site-packages = { path = "tools/bpy-site-packages" }
 
