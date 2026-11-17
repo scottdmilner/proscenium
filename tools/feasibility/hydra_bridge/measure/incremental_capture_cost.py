@@ -55,7 +55,7 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd, UsdGeom
 
-    from proscenium_sync.core import _core
+    from proscenium_sync.planner import _planner
     from proscenium_sync.source_access import binding_settings, stages
     from proscenium_sync.synchronization import application
 
@@ -63,15 +63,15 @@ def child(config: dict[str, Any]) -> None:
     binding_stages = stages.BindingStages()
     binding_stages.attach(stage)
     evaluation_stage = binding_stages.acquire_evaluation_stage(binding_settings.PayloadPolicy.LOAD_ALL)
-    settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), False)
-    context = _core.PlanningContext(1.0, application.REPRESENTATION_VERSION)
+    settings = _planner.PlanSettings(("default", "proxy"), ("default", "render"), False)
+    context = _planner.PlanningContext(1.0, application.REPRESENTATION_VERSION)
 
-    def planned(snapshot: _core.Snapshot) -> tuple[int, bytes]:
-        plan = _core.plan(snapshot, settings, context)
+    def planned(snapshot: _planner.Snapshot) -> tuple[int, bytes]:
+        plan = _planner.plan(snapshot, settings, context)
         return plan.copy_count, bytes(memoryview(plan.copy_world_matrices))
 
     start = time.perf_counter()
-    chain = _core.SceneIndexChain(evaluation_stage)
+    chain = _planner.SceneIndexChain(evaluation_stage)
     built = time.perf_counter() - start
     start = time.perf_counter()
     first = chain.capture(Usd.TimeCode(config["time"]))
@@ -100,7 +100,7 @@ def child(config: dict[str, Any]) -> None:
         snapshot = chain.capture(Usd.TimeCode(time_code))
         incremental = time.perf_counter() - start
         start = time.perf_counter()
-        fresh = _core.SceneIndexChain(evaluation_stage)
+        fresh = _planner.SceneIndexChain(evaluation_stage)
         full = fresh.capture(Usd.TimeCode(time_code))
         full_seconds = time.perf_counter() - start
         result["steps"][step] = {

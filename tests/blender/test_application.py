@@ -3,7 +3,7 @@
 Written for M5's stub (M5 plan, D3 and D4; M6 plan, D4) and moved to M7's layer, which makes the same objects and
 bounds meshes of the same plan (M7 plan, B1 and B5).
 
-Plans come from the core on the transaction scenes; expected values come from how the scene is built
+Plans come from the planner on the transaction scenes; expected values come from how the scene is built
 (fixtures/transaction.py). Each preparation is a binding's, and its prepared work holds what it makes; only what
 disposal fails to remove enters the ledger.
 """
@@ -19,7 +19,7 @@ from pxr import Usd
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
-from proscenium_sync import binding_runtime, core
+from proscenium_sync import binding_runtime, planner
 from proscenium_sync.binding_persistence.cleanup_ledgers import OriginatingOperation
 from proscenium_sync.binding_persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium_sync.results import DiagnosticCode
@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from proscenium_sync.source_access import BindingId
     from proscenium_sync.synchronization.preparation_resources import PreparationResources
 
-CONTEXT = core.PlanningContext(unit_scale=1.0, representation_version=1)
-SETTINGS = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
+CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _staged(work: PreparationResources) -> bpy.types.Collection:
@@ -49,8 +49,8 @@ def _staged(work: PreparationResources) -> bpy.types.Collection:
     return work.staging_collection
 
 
-def _plan(stage: Usd.Stage, time_code: float) -> core.Plan:
-    return core.plan(core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
+def _plan(stage: Usd.Stage, time_code: float) -> planner.Plan:
+    return planner.plan(planner.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -61,7 +61,7 @@ def _work(binding_id: BindingId) -> PreparationResources:
     return preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
-def _prepared(binding_id: BindingId, plan: core.Plan, published: Manifest | None = None) -> PreparationResources:
+def _prepared(binding_id: BindingId, plan: planner.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
     application.prepare(plan, range(plan.copy_count), published or Manifest({}), work)
     return work

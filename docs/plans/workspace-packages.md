@@ -15,7 +15,7 @@ A package boundary goes only where the interface between two sides stands on its
 
 The planner and the synchronizer stay one package. The display plan is the application layer's input, and nothing else reads it. The two sides share vocabularies that a package boundary would turn into version dependencies between wheels:
 - the representation roles, which `RoleName` in `plan.h` names and ownership records store as `manifests.RepresentationRole`
-- the diagnostic codes, which `results.CORE_CODES` lists and `synchronization/evaluation.py` checks on import
+- the diagnostic codes, which `results.PLANNER_CODES` lists and `synchronization/evaluation.py` checks on import
 - the representation version, which `application.REPRESENTATION_VERSION` declares and the planner checks
 - the plan's buffer layouts and their -1 sentinels
 - the planning settings' purpose tokens
@@ -58,7 +58,7 @@ packages/
       binding_persistence/           binding/persistence/ now
       source_access/                 binding/source_access/ now
       results.py                     binding/results.py now
-      planner/                       core/ now: the C++ source, the inspection layer, _planner, its stubs
+      planner/                       the C++ source, the inspection layer, _planner, its stubs
   proscenium_ui/
     pyproject.toml
     README.md
@@ -100,11 +100,11 @@ The synchronizer's registration is `registration.py`, which exports `register` a
 
 ## Build and distribution
 
-- **The synchronizer's wheel** is built by its hatch build hook (`packages/proscenium_sync/hatch_build.py`), which calls `tools/native_build.py`'s `sync_module` on the core, as `tools/build_extension.py` does, keeping the linkage audit, the pinned headers, and `build/core/build.json`'s check of whether the module is current (as `build/planner/` after the rename). It adds the module, which Git ignores, to the wheel. The wheel's tag names the uv environment's Python, which matches Blender 5.2's 3.13, and the platform floor the linkage audit holds the module to (`native_build.wheel_platform_tag`: `macosx_11_0_arm64`, `manylinux_2_28_x86_64`, `win_amd64`). An editable install skips the hook.
-- **The members' wheels build without isolation,** in the uv environment, since the core's build needs the dev group's CMake and Ninja and links the installed bpy wheel's `usd_ms`. The `build` group holds hatchling for it.
+- **The synchronizer's wheel** is built by its hatch build hook (`packages/proscenium_sync/hatch_build.py`), which calls `tools/native_build.py`'s `sync_module` on the planner, as `tools/build_extension.py` does, keeping the linkage audit, the pinned headers, and `build/planner/build.json`'s check of whether the module is current. It adds the module, which Git ignores, to the wheel. The wheel's tag names the uv environment's Python, which matches Blender 5.2's 3.13, and the platform floor the linkage audit holds the module to (`native_build.wheel_tag`: `macosx_11_0_arm64`, `manylinux_2_28_x86_64`, `win_amd64`). An editable install skips the hook.
+- **The members' wheels build without isolation,** in the uv environment, since the planner's build needs the dev group's CMake and Ninja and links the installed bpy wheel's `usd_ms`. The `build` group holds hatchling for it.
 - **`tools/build_extension.py`** builds each workspace member's wheel with `uv build --package`, and exports the third-party runtime wheels from `uv.lock` without the workspace members. The manifest's generated `wheels` list names both. The members' wheels are built into the temporary copy, and only its manifest names them, so the checked-in generated block names only `uv.lock`'s wheels, the same on every platform, and `--check` still only reads the source dir.
 - **One zip per platform and Blender minor version,** as [DECISIONS.md](../DECISIONS.md) "Native core distribution" has it: the synchronizer's wheel carries the platform, the manifest's `platforms` still names it, and `blender_version_max` is unchanged.
-- **The dev environment** installs every member editable. The compiled module is built in place, in `core/` (`planner/` after the rename), and stays ignored by Git.
+- **The dev environment** installs every member editable. The compiled module is built in place, in `planner/`, and stays ignored by Git.
 - **`tests/isolated/test_extension.py`** checks the installed zip: Blender extracts the wheels into its shared site-packages, and enabling the extension loads the synchronizer, its compiled module, and the widgets from there. That makes it the check that the wheels install as described above.
 
 ## Docs

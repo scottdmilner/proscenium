@@ -15,7 +15,7 @@ import dataclasses
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from proscenium_sync import core
+    from proscenium_sync import planner
     from proscenium_sync.binding_persistence import binding_state
     from proscenium_sync.source_access import BindingId
 
@@ -30,12 +30,12 @@ def generation_key(generation: binding_state.GenerationMetadata) -> GenerationKe
 class HeldPlans:
     """Each binding's held plans, by generation key, oldest first."""
 
-    _plans_by_binding: dict[BindingId, dict[GenerationKey, core.Plan]]
+    _plans_by_binding: dict[BindingId, dict[GenerationKey, planner.Plan]]
 
     def __init__(self) -> None:
         self._plans_by_binding = {}
 
-    def hold(self, generation: binding_state.GenerationMetadata, plan: core.Plan, bound: int) -> None:
+    def hold(self, generation: binding_state.GenerationMetadata, plan: planner.Plan, bound: int) -> None:
         """Hold plan as the published generation's, newest, keeping the binding's newest bound plans.
 
         A plan held before under an equal record is replaced, so a record names the plan last published with it.
@@ -50,7 +50,7 @@ class HeldPlans:
         for oldest in list(plans_by_key)[: max(0, len(plans_by_key) - bound)]:
             del plans_by_key[oldest]
 
-    def plan_for(self, generation: binding_state.GenerationMetadata) -> core.Plan | None:
+    def plan_for(self, generation: binding_state.GenerationMetadata) -> planner.Plan | None:
         """The plan held for the generation that record describes, or None."""
         plans_by_key = self._plans_by_binding.get(generation.binding_id)
         return None if plans_by_key is None else plans_by_key.get(generation_key(generation))

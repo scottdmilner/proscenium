@@ -22,7 +22,7 @@ Timings are single runs unless stated, and varied by about 2× between runs. Win
   A dedicated pane, an editor whose header is hidden and whose sidebar is dragged nearly full width, is the next candidate. The Properties editor, the toolbar, and the Tool Settings strip don't suit a tree.
 - **Take Left and Right with one modal operator** that passes every other event on. Keymaps can't reach plain arrow keys over a list. A Python modal operator costs about 1.7 µs per event.
 - **Search the whole stage, and show each match under its ancestors.** The UIList's own filter can't do that. At a million prims, a Python traversal is too slow for typing, and an index is the fix.
-- **Keep the row model and the search independent of the drawing,** so they test in `bpy_free` and could move into the core.
+- **Keep the row model and the search independent of the drawing,** so they test in `bpy_free` and could move into the planner.
 
 ## Approaches
 
@@ -533,7 +533,7 @@ What edits or overrides the stage, so waits on how Phase 3 edits it: visibility,
 - How fast is drawing and scrolling a `UIList` with thousands of rows? Only the model and the collection were timed.
 - Does a hierarchy change in a stage with many visible rows rebuild them fast enough while editing, or should a change rebuild only the subtrees it resyncs?
 - Can a dedicated pane's sidebar take the area's full width, and does the empty main area bother users?
-- What should own the search index as the stage changes: the core, or a Python layer that listens to `Tf.Notice`?
+- What should own the search index as the stage changes: the planner, or a Python layer that listens to `Tf.Notice`?
 - Where do the tree's own edits, such as visibility or active, go: a session layer, a viewport-only layer as in Solaris, or the edit target ([Compared with usdview and Solaris](#compared-with-usdview-and-solaris))?
 - What does the widget's row menu hold, and should Ctrl+click add a row to a selection?
 - How do multiple selected prims show in a list that highlights only one row: a highlighted button per selected row, which takes the row's clicks, or a marker icon ([Colors](#colors))?

@@ -3,10 +3,10 @@
 DECISIONS.md "Persisted correspondence": the display elements are the objects the binding's manifest names in a drawn
 copy's object role, a copy's second object included, ordered by their identities, so an element's index doesn't depend
 on how the manifest was written. Each element's viewport participation is its object's viewport hide flag as Blender
-holds it, which keys set at the frame shown, so the correspondence answers for the time code the display shows, a
-cached one included (XFORM-14). Each copy's instance context comes from the held plan of the generation shown, where it
-holds the copy, and otherwise the core derives it from the copy's path on the live stage (ICON-35). Everything is read
-when called and nothing is held, so a file load, undo, or redo needs nothing done.
+holds it, which keys set at the frame shown, so the correspondence answers for the time code the display shows, a cached
+one included (XFORM-14). Each copy's instance context comes from the held plan of the generation shown, where it holds
+the copy, and otherwise the planner derives it from the copy's path on the live stage (ICON-35). Everything is read when
+called and nothing is held, so a file load, undo, or redo needs nothing done.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
 from proscenium_sync.binding_runtime import binding_operations, kept_manifests
 
@@ -82,16 +82,16 @@ def display_elements(binding_id: BindingId) -> DisplayElements | None:
 
 def correspondence(
     elements: DisplayElements, live_stage: Usd.Stage | None, published_plans: held_plans.HeldPlans
-) -> core.Correspondence:
-    """The core's correspondence over elements on the live stage.
+) -> planner.Correspondence:
+    """The planner's correspondence over elements on the live stage.
 
     Each element's instance context is the shown generation's held plan's, where it holds the element's copy. Raises
-    core.SourceUnavailableError without a live stage, or for an expired one.
+    planner.SourceUnavailableError without a live stage, or for an expired one.
     """
     contexts: dict[str, tuple[str, ...]] = {}
     if (plan := published_plans.plan_for(elements.generation)) is not None:
         contexts = {entry.source_path: entry.instance_context for entry in plan.correspondence}
-    return core.Correspondence(
+    return planner.Correspondence(
         live_stage,
         elements.source_paths,
         [contexts.get(path) for path in elements.source_paths],

@@ -36,7 +36,7 @@ from pxr import Gf, Kind, Sdf, Usd, UsdGeom
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
 
 XYZ = tuple[float, float, float]
 
@@ -71,7 +71,7 @@ class DisplayedCopy:
         return self.visible_in_viewport if destination is Destination.VIEWPORT else self.visible_in_render
 
 
-def planned_copies(plan: core.Plan) -> list[PlannedCopy]:
+def planned_copies(plan: planner.Plan) -> list[PlannedCopy]:
     """The plan's drawn copies, in its order."""
     with memoryview(plan.copy_visible_in_viewport) as viewport, memoryview(plan.copy_visible_in_render) as render:
         shown = list(zip(viewport.tolist(), render.tolist(), strict=True))

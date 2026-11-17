@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
 
     from .preparation_resources import PreparationResources
 
@@ -43,7 +43,7 @@ class Publication:
 
 def publish(
     destination: bpy.types.Collection,
-    plan: core.Plan,
+    plan: planner.Plan,
     work: PreparationResources,
     replaced_entry_keys: Collection[str],
     updates: Sequence[local_updates.KeptCopyUpdate],

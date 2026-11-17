@@ -39,7 +39,7 @@ from . import application
 if TYPE_CHECKING:
     from collections.abc import Buffer, Callable, Mapping, Sequence
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
 
     from .partition_replacement import CopyUpdate
     from .preparation_resources import PreparationResources
@@ -90,7 +90,7 @@ _ROTATIONS = {"QUATERNION": "rotation_quaternion", "AXIS_ANGLE": "rotation_axis_
 
 
 def prepare_updates(
-    plan: core.Plan,
+    plan: planner.Plan,
     updated: Mapping[int, CopyUpdate],
     published: manifests.Manifest,
     work: PreparationResources,
@@ -184,7 +184,7 @@ def _replacement_mesh(
     return mesh
 
 
-def apply_updates(plan: core.Plan, updates: Sequence[KeptCopyUpdate], undo: list[Callable[[], object]]) -> None:
+def apply_updates(plan: planner.Plan, updates: Sequence[KeptCopyUpdate], undo: list[Callable[[], object]]) -> None:
     """Set plan's values on each update's kept copy, adding how to undo each change to undo first.
 
     Raises what Blender raises.

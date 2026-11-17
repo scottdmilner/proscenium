@@ -1,7 +1,7 @@
 """Failures injected at the transaction's boundaries before publication (M5 plan, D13; pipeline.md).
 
 On F-FAILED-SETTINGS, F-DIRTY-LAYER, and F-SOURCE-CHANGE. Each failure is injected by patching a module function the
-transaction calls, or the core's own error path, so src/ has no hooks, and each test compares the whole published
+transaction calls, or the planner's own error path, so src/ has no hooks, and each test compares the whole published
 generation before and after through published_state.py (TLAY-03). Preparation fails through PreparationResources.track,
 which the stub and M7's application layer share, so these tests rerun unchanged against M7's.
 """
@@ -15,9 +15,9 @@ import bpy
 import pytest
 
 from fixtures import source_access, transaction
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_runtime import pending_cleanup
-from proscenium_sync.core import _core
+from proscenium_sync.planner import _planner
 from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from proscenium_sync.synchronization import application, preparation_resources
@@ -102,30 +102,30 @@ def test_a_failure_at_each_preparation_step_disposes_of_its_work(
         assert _no_pending(handle)
 
 
-def _core_error_at_evaluation(monkeypatch: pytest.MonkeyPatch) -> None:
-    def failing(_chain: core.SceneIndexChain, _time_code: Usd.TimeCode) -> None:
-        _core._post_tf_error("injected core error")  # noqa: SLF001 - the core's error path, for tests
+def _planner_error_at_evaluation(monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing(_chain: planner.SceneIndexChain, _time_code: Usd.TimeCode) -> None:
+        _planner._post_tf_error("injected planner error")  # noqa: SLF001 - the planner's error path, for tests
 
-    monkeypatch.setattr(core.SceneIndexChain, "capture", failing)
+    monkeypatch.setattr(planner.SceneIndexChain, "capture", failing)
 
 
-def _core_error_at_planning(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The core refuses a representation version it doesn't plan, through its own error translation.
+def _planner_error_at_planning(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The planner refuses a representation version it doesn't plan, through its own error translation.
     monkeypatch.setattr(application, "REPRESENTATION_VERSION", application.REPRESENTATION_VERSION + 1)
 
 
 @pytest.mark.parametrize(
     ("inject", "code"),
     [
-        (_core_error_at_evaluation, DiagnosticCode.EVALUATION_FAILED),
-        (_core_error_at_planning, DiagnosticCode.PLANNING_FAILED),
+        (_planner_error_at_evaluation, DiagnosticCode.EVALUATION_FAILED),
+        (_planner_error_at_planning, DiagnosticCode.PLANNING_FAILED),
     ],
     ids=["evaluation", "planning"],
 )
-def test_a_core_error_fails_before_touching_the_display(
+def test_a_planner_error_fails_before_touching_the_display(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, inject: Any, code: DiagnosticCode
 ) -> None:
-    # BND-03, API-04 on F-FAILED-SETTINGS "failed-attempt": a Tf error the core raises is the attempt's fatal
+    # BND-03, API-04 on F-FAILED-SETTINGS "failed-attempt": a Tf error the planner raises is the attempt's fatal
     # diagnostic, never an exception, and every datablock in the file stays as it was, nothing prepared.
     with transaction.failed_settings(tmp_path) as scene:
         handle = _attempting(bindings, scene)
@@ -196,14 +196,14 @@ def test_a_source_change_during_evaluation_discards_the_attempt(
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         published, before = _published(handle), datablocks()
-        capture = core.SceneIndexChain.capture
+        capture = planner.SceneIndexChain.capture
 
-        def editing(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
+        def editing(chain: planner.SceneIndexChain, time_code: Usd.TimeCode) -> planner.Snapshot:
             scene.edit()  # as a caller editing the source during the synchronization would
             return capture(chain, time_code)
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(core.SceneIndexChain, "capture", editing)
+            patch.setattr(planner.SceneIndexChain, "capture", editing)
             result = handle.synchronize(0)
         assert result.state is ResultState.FATAL_FAILURE
         [diagnostic] = result.diagnostics

@@ -45,8 +45,8 @@ def dirty_layers(stage: Usd.Stage) -> list[str]:
 class KeptChain(Protocol):
     """A scene-index chain over a binding's evaluation stage, which its BindingStages keeps and releases.
 
-    The core's SceneIndexChain, which source access names only by what BindingStages calls, since it doesn't import
-    the core (import rules). A released chain holds no stage.
+    The planner's SceneIndexChain, which source access names only by what BindingStages calls, since it doesn't import
+    the planner (import rules). A released chain holds no stage.
     """
 
     @property

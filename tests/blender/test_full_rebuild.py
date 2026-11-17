@@ -2,7 +2,7 @@
 
 It rereads the source through a new scene-index chain, whose capture copies every prim, and prepares every partition
 anew. Its display is compared by value with a clean binding's on the same stage, synchronized once
-(support/clean_rebuild.py). A miss is made by the core's test hook, which makes the kept chain's next capture drop
+(support/clean_rebuild.py). A miss is made by the planner's test hook, which makes the kept chain's next capture drop
 the notices it takes, so it shares what they named.
 """
 
@@ -14,7 +14,7 @@ import bpy
 from pxr import Gf
 
 from fixtures import edit_sequence, incremental
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_persistence import id_property_records
 from proscenium_sync.binding_runtime import ownership
 from proscenium_sync.results import ResultState
@@ -35,11 +35,11 @@ def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:
     return handle
 
 
-def _kept(bindings: Bindings, handle: BindingHandle) -> core.SceneIndexChain:
+def _kept(bindings: Bindings, handle: BindingHandle) -> planner.SceneIndexChain:
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     chain = stages.kept_chain
-    assert isinstance(chain, core.SceneIndexChain)
+    assert isinstance(chain, planner.SceneIndexChain)
     return chain
 
 
@@ -56,16 +56,16 @@ def test_a_full_rebuild_rereads_and_rebuilds_everything(
     # clean first synchronization's.
     with incremental.no_op_refresh(tmp_path) as scene:
         handle = _binding(bindings, scene.stage, "Shot")
-        capture = core.SceneIndexChain.capture
+        capture = planner.SceneIndexChain.capture
         copied: list[int] = []
 
-        def counting(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
+        def counting(chain: planner.SceneIndexChain, time_code: Usd.TimeCode) -> planner.Snapshot:
             snapshot = capture(chain, time_code)
-            copied.append(snapshot._copied_prim_count)  # noqa: SLF001 - the core exposes it for tests only
+            copied.append(snapshot._copied_prim_count)  # noqa: SLF001 - the planner exposes it for tests only
             return snapshot
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(core.SceneIndexChain, "capture", counting)
+            patch.setattr(planner.SceneIndexChain, "capture", counting)
             assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
             first, before = _kept(bindings, handle), _managed(handle)
             assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
@@ -86,7 +86,7 @@ def test_a_full_rebuild_recovers_from_a_missed_edit(bindings: Bindings, tmp_path
         assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
         before = display_state(handle.binding_id)
         scene.stage.GetAttributeAtPath(f"{edit_sequence.A}.xformOp:translate").Set(Gf.Vec3d(1, 0, 0))
-        _kept(bindings, handle)._drop_next_capture_notices()  # noqa: SLF001 - the core's test hook for a miss
+        _kept(bindings, handle)._drop_next_capture_notices()  # noqa: SLF001 - the planner's test hook for a miss
         assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
         assert display_state(handle.binding_id) == before  # missed
         assert handle.synchronize(0, full_rebuild=True).state is not ResultState.FATAL_FAILURE

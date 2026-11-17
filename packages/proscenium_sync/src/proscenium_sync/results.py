@@ -57,7 +57,7 @@ class DiagnosticCode(StrEnum):
     SOURCE_CONFIRMATION_REQUIRED = "source-confirmation-required"  # an attachment's root-layer identifier changed
     UNSUPPORTED_RECORD = "unsupported-record"  # a record the binding's operation needs can't be read
     COPIED_BINDING = "copied-binding"  # the binding has copies and no canonical candidate (source-access.md)
-    EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the core's errors included
+    EVALUATION_FAILED = "evaluation-failed"  # capturing the evaluated source failed, the planner's errors included
     SOURCE_CHANGED = "source-changed"  # a contributing layer changed during evaluation, so the attempt was discarded
     NEEDS_SYNCHRONIZATION = "needs-synchronization"  # cache found no generation, or a source or scale changed since
     PLANNING_FAILED = "planning-failed"
@@ -74,7 +74,7 @@ class DiagnosticCode(StrEnum):
     # is planned for (transforms.md#coordinate-conversion).
     CAPTURE_MISMATCH = "capture-mismatch"  # an incremental capture differed from a full re-read (verification mode)
     UNIT_SCALE_MISMATCH = "unit-scale-mismatch"
-    # Source-side content, which the compiled core reports (core.diagnostics.h).
+    # Source-side content, which the planner reports (planner.diagnostics.h).
     PROJECTIVE_TRANSFORM = "projective-transform"  # a world transform placed by its affine part
     UNSUPPORTED_INSTANCING = "unsupported-instancing"  # instancing Hydra gives that isn't translated
     INVALID_INSTANCER = "invalid-instancer"  # instancing data that can't be resolved
@@ -84,9 +84,9 @@ class DiagnosticCode(StrEnum):
     APPROXIMATED_GEOMETRY = "approximated-geometry"  # a filter's inexact conversion to a mesh, such as a sphere's
 
 
-# The codes the compiled core reports, whose messages state their problems (Diagnostic.aggregation_key);
-# synchronization.evaluation checks the core's list against it on import.
-CORE_CODES = frozenset(
+# The codes the planner reports, whose messages state their problems (Diagnostic.aggregation_key);
+# synchronization.evaluation checks the planner's list against it on import.
+PLANNER_CODES = frozenset(
     {
         DiagnosticCode.PROJECTIVE_TRANSFORM,
         DiagnosticCode.UNSUPPORTED_INSTANCING,
@@ -177,10 +177,10 @@ class Diagnostic:
     def aggregation_key(self) -> tuple[object, ...]:
         """The identity used to deduplicate reports of the same problem (DIAG-03).
 
-        The core's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
+        The planner's message states its problem, a Tf warning's text or the type left untranslated, so it is part of
         the problem; another's is prose about one, so it isn't.
         """
-        worded = self.code in CORE_CODES
+        worded = self.code in PLANNER_CODES
         return tuple(getattr(self, f.name) for f in fields(self) if worded or f.name != "message")
 
 

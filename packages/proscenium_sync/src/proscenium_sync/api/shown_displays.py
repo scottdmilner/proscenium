@@ -7,8 +7,8 @@ record, which a synchronization or a cache call changes; the held plan for it, w
 source revision, which advances on an attachment, a reload that changes a layer, and any change the binding's evaluation
 stage sees, so instance contexts derived on the live stage follow it (DECISIONS.md "Persisted correspondence"); and each
 element's object and viewport hide flag, read at every call, so participation is the flags' at the frame shown. Changed
-hide flags rebuild only the core's correspondence, and a removed object everything. A generation with no held plan, as
-after reopening or an undo past the held plans, keeps nothing: its evaluation stage may not exist to advance the
+hide flags rebuild only the planner's correspondence, and a removed object everything. A generation with no held plan,
+as after reopening or an undo past the held plans, keeps nothing: its evaluation stage may not exist to advance the
 revision. A released binding has no live stage, so its calls raise. The synchronizer's registration clears what's kept
 after an undo, a redo, or a file load (Bindings.clear_shown_displays), which may free the objects it names.
 """
@@ -18,7 +18,7 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_persistence import binding_state, id_property_records
 from proscenium_sync.binding_runtime import binding_operations
 from proscenium_sync.interaction import display_correspondence
@@ -39,7 +39,7 @@ class ShownDisplay:
     """A binding's display elements and correspondence."""
 
     elements: display_correspondence.DisplayElements | None  # None while nothing is published
-    correspondence: core.Correspondence
+    correspondence: planner.Correspondence
 
     def objects(self, element_indices: Iterable[int]) -> list[bpy.types.Object]:
         """The objects of the elements at those indices, in that order."""
@@ -51,7 +51,7 @@ class ShownDisplay:
 class _KeptDisplay:
     shown: ShownDisplay
     elements: display_correspondence.DisplayElements  # shown's, never None
-    held_plan: core.Plan  # the plan held for the generation shown when it was built
+    held_plan: planner.Plan  # the plan held for the generation shown when it was built
     source_revision: stages.SourceRevision
 
 
@@ -97,7 +97,7 @@ class ShownDisplays:
         elements = display_correspondence.display_elements(binding_id)
         # The binding holds its live stage until released, so it can't expire during the call.
         if elements is None:
-            return ShownDisplay(None, core.Correspondence(live, (), (), ()))
+            return ShownDisplay(None, planner.Correspondence(live, (), (), ()))
         return self._keep(binding_id, elements, live, published_plans, binding_stages)
 
     def _keep(

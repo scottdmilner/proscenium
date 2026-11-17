@@ -6,7 +6,7 @@ A package boundary goes only where the interface between two sides stands on its
 
 | Path | Holds |
 |---|---|
-| `proscenium_sync/` | The synchronizer: the bindings, their synchronization and interaction, the API, and the compiled core, in a wheel for each platform ([its README](proscenium_sync/README.md)). |
+| `proscenium_sync/` | The synchronizer: the bindings, their synchronization and interaction, the API, and the planner, in a wheel for each platform ([its README](proscenium_sync/README.md)). |
 | `proscenium_ui/` | The widgets the extension uses to build the UI: the scene graph and the property viewer ([its README](proscenium_ui/README.md)). |
 
 ## Import rules

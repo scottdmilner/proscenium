@@ -1,7 +1,7 @@
 [project]
 name = "proscenium_sync"
 version = "0.1.0"
-description = "The bindings of OpenUSD stages to Blender, their synchronization, and the compiled core"
+description = "The bindings of OpenUSD stages to Blender, their synchronization, and the planner"
 license = "MIT"
 requires-python = ">=3.13"
 # bpy and pxr come with Blender, so nothing ships.
@@ -13,8 +13,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium_sync"]
-# Each directory's README, for developers, and the compiled core's sources and dotfiles: only its module ships.
+# Each directory's README, for developers, and the planner's sources and dotfiles: only its module ships.
 exclude = ["README.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
 
-# Builds the compiled core and tags the wheel for this platform (hatch_build.py).
+# Builds the planner and tags the wheel for this platform (hatch_build.py).
 [tool.hatch.build.targets.wheel.hooks.custom]

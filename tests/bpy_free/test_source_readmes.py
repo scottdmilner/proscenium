@@ -1,6 +1,6 @@
 """Every directory of the extension's and the packages' sources has a README naming each entry (AGENTS.md#layout).
 
-A README names an entry in backticks, a subdirectory with its trailing slash: `bindings.py`, `core/`. The sources are
+A README names an entry in backticks, a subdirectory with its trailing slash: `bindings.py`, `planner/`. The sources are
 the extension's and each package's import directories, all through, and packages/ and each package's directory, whose
 own entries are its pyproject.toml, src/, and any build hook.
 """
@@ -18,8 +18,8 @@ import proscenium_ui
 ROOT = Path(proscenium.__file__).parents[2]
 SOURCES = tuple(Path(package.__file__).parent for package in (proscenium, proscenium_sync, proscenium_ui))
 PACKAGES = ROOT / "packages"
-# Not sources: Python's caches, and the compiled module the build puts in core/, which core/.gitignore ignores.
-SKIPPED = ("__pycache__", "_core.*.so", "_core.*.pyd")
+# Not sources: Python's caches, and the compiled module the build puts in planner/, which planner/.gitignore ignores.
+SKIPPED = ("__pycache__", "_planner.*.so", "_planner.*.pyd")
 
 
 def _directories() -> list[Path]:

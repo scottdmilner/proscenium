@@ -30,7 +30,7 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             "--walk",
             "proscenium_ui.property_viewer_widget.property_list",
             "--walk",
-            "proscenium_sync.core",
+            "proscenium_sync.planner",
             "--walk",
             "proscenium_sync.source_access",
         ],

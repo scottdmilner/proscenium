@@ -1,4 +1,4 @@
-"""The built extension zip installs, registers on enable, loads its compiled core, and unregisters on disable.
+"""The built extension zip installs, registers on enable, loads its planner, and unregisters on disable.
 
 Built from src/proscenium in check mode (sync=False), which only reads the source dir,
 so the test never writes into the repository and workers can build concurrently.
@@ -47,8 +47,8 @@ def test_install_enable_disable(runtime: Runtime, extension_zip: Path, tmp_path:
     assert {"load_post", "undo_post", "redo_post"} <= set(registered["handlers"])
     assert registered["namespaces"] == ["Scene", "Collection", "Text"]
     assert registered["classes"] == ["ProsceniumRecords"]
-    assert Path(result["core_file"]).parent == Path(result["sync_file"]).parent / "core"
-    assert result["core_usd_version"] == result["host_usd_version"]  # built against this Blender's USD
+    assert Path(result["planner_file"]).parent == Path(result["sync_file"]).parent / "planner"
+    assert result["planner_usd_version"] == result["host_usd_version"]  # built against this Blender's USD
     assert not result["enabled_after_disable"]
     assert result["registered_after_disable"] == {"handlers": [], "namespaces": [], "classes": []}
 
@@ -64,5 +64,5 @@ def test_zip_names_this_platform_and_release(extension_zip: Path) -> None:
     major, minor = blender_version().split(".")[:2]
     assert manifest["blender_version_max"] == f"{major}.{int(minor) + 1}.0"  # the locked minor only
     assert sync_wheel.endswith(f"-{wheel_tag()}.whl")
-    assert [n for n in wheel_names if n.startswith("proscenium_sync/core/_core.")]  # the compiled module ships
+    assert [n for n in wheel_names if n.startswith("proscenium_sync/planner/_planner.")]  # the compiled module ships
     assert not [n for n in [*names, *wheel_names] if n.endswith((".cpp", ".h", "CMakeLists.txt"))]  # its sources don't

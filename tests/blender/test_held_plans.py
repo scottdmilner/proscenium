@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.edit_sequence import EditSequenceScene
-    from proscenium_sync import core
+    from proscenium_sync import planner
     from proscenium_sync.api.bindings import BindingHandle, Bindings
     from proscenium_sync.binding_persistence.binding_state import GenerationMetadata
 
@@ -42,12 +42,12 @@ def scene(tmp_path: Path) -> Iterator[EditSequenceScene]:
 
 
 @pytest.fixture
-def prepared(monkeypatch: pytest.MonkeyPatch) -> list[core.Plan]:
+def prepared(monkeypatch: pytest.MonkeyPatch) -> list[planner.Plan]:
     """The plans application prepared, in order."""
-    plans: list[core.Plan] = []
+    plans: list[planner.Plan] = []
     prepare = application.prepare
 
-    def recording_prepare(plan: core.Plan, *rest: object) -> None:
+    def recording_prepare(plan: planner.Plan, *rest: object) -> None:
         plans.append(plan)
         prepare(plan, *rest)  # ty: ignore[invalid-argument-type] - prepare's own arguments
 
@@ -77,7 +77,7 @@ def _move_a(scene: EditSequenceScene, z: float) -> None:
 
 
 def test_each_published_generation_holds_its_plan(
-    bindings: Bindings, scene: EditSequenceScene, prepared: list[core.Plan]
+    bindings: Bindings, scene: EditSequenceScene, prepared: list[planner.Plan]
 ) -> None:
     handle = _binding(bindings, scene)
     first = _synchronized(handle)
@@ -93,7 +93,7 @@ def test_each_published_generation_holds_its_plan(
 
 
 def test_undo_and_redo_find_the_restored_generations_plan(
-    bindings: Bindings, scene: EditSequenceScene, prepared: list[core.Plan], monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, scene: EditSequenceScene, prepared: list[planner.Plan], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Each synchronization pushes its undo step, as Blender with global undo on, outside background mode, would.
     undo.require_global_undo()
@@ -112,7 +112,7 @@ def test_undo_and_redo_find_the_restored_generations_plan(
 
 
 def test_a_cached_time_code_keeps_the_generations_plan(
-    bindings: Bindings, scene: EditSequenceScene, prepared: list[core.Plan]
+    bindings: Bindings, scene: EditSequenceScene, prepared: list[planner.Plan]
 ) -> None:
     handle = _binding(bindings, scene)
     _synchronized(handle)
@@ -122,7 +122,7 @@ def test_a_cached_time_code_keeps_the_generations_plan(
 
 
 def test_the_oldest_plan_goes_past_the_undo_steps(
-    bindings: Bindings, scene: EditSequenceScene, prepared: list[core.Plan], monkeypatch: pytest.MonkeyPatch
+    bindings: Bindings, scene: EditSequenceScene, prepared: list[planner.Plan], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # With two undo steps, Blender's least, a binding holds three plans: the generation shown, and two an undo restores.
     preferences = bpy.context.preferences
@@ -158,7 +158,7 @@ def test_a_record_held_again_is_the_newest(bindings: Bindings, scene: EditSequen
     # Records differing only in their time code, each held with a plan of its own, two at a time.
     record = _synchronized(_binding(bindings, scene))
     first, second, third = (dataclasses.replace(record, time_code=t) for t in (1.0, 2.0, 3.0))
-    plans = {name: cast("core.Plan", object()) for name in ("first", "second", "again", "third")}
+    plans = {name: cast("planner.Plan", object()) for name in ("first", "second", "again", "third")}
     published_plans = held_plans.HeldPlans()
     published_plans.hold(first, plans["first"], 2)
     published_plans.hold(second, plans["second"], 2)

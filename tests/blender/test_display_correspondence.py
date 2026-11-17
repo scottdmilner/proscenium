@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
     from proscenium_sync.api.bindings import Bindings
     from proscenium_sync.source_access import BindingId
 
@@ -71,7 +71,7 @@ def _object_entries(binding_id: BindingId) -> dict[str, tuple[bpy.types.ID | Non
 
 
 def _answers(
-    elements: display_correspondence.DisplayElements, correspondence: core.Correspondence, stage: Usd.Stage
+    elements: display_correspondence.DisplayElements, correspondence: planner.Correspondence, stage: Usd.Stage
 ) -> Answers:
     """What the correspondence answers, by entry key: each element's entity, the universe, and each prim's highlight."""
     picks = {}
@@ -201,8 +201,8 @@ def test_a_copys_second_object_is_an_element(bindings: Bindings, tmp_path: Path)
 
 def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
     # INSP-10's display half: with the live stage released, the display elements are still read from Blender data,
-    # and the core's correspondence reports the source unavailable.
-    from proscenium_sync import core
+    # and the planner's correspondence reports the source unavailable.
+    from proscenium_sync import planner
 
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
@@ -210,7 +210,7 @@ def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
         handle.release()
         elements = _elements(handle.binding_id)
         assert len(elements.objects) == len(scene.elements[0.0])
-        with pytest.raises(core.SourceUnavailableError):
+        with pytest.raises(planner.SourceUnavailableError):
             display_correspondence.correspondence(elements, handle.live_stage(), bindings.published_plans)
 
 

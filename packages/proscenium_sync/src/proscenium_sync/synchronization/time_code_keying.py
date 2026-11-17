@@ -37,7 +37,7 @@ from . import application, attribute_samples
 if TYPE_CHECKING:
     from collections.abc import Buffer, Callable, Collection, Iterable, Mapping, Sequence
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
 
     from .preparation_resources import PreparationResources
 
@@ -57,7 +57,7 @@ class VaryingCopies:
 class _PlanViews:
     """Views of the plan buffers keying reads, released with the time code's keying (SNAP-13)."""
 
-    plan: core.Plan
+    plan: planner.Plan
     shears: memoryview
     shear_parents: memoryview  # each copy's shear parent's resource index, or -1
     worlds: memoryview
@@ -68,7 +68,7 @@ class _PlanViews:
 
 
 def key_time_codes(  # noqa: PLR0913 - the plans, what they key, and the generation they key
-    plans: Mapping[float, core.Plan],
+    plans: Mapping[float, planner.Plan],
     varying: VaryingCopies,
     published: manifests.Manifest,
     destination: bpy.types.Collection,
@@ -121,7 +121,7 @@ class _CallKeying:
         self.frames_group_key = groups[0] if groups else None  # M7's one shared node group
 
     def key_plan(
-        self, time_code: float, plan: core.Plan, varying: VaryingCopies, view: Callable[[Buffer], memoryview]
+        self, time_code: float, plan: planner.Plan, varying: VaryingCopies, view: Callable[[Buffer], memoryview]
     ) -> None:
         """Key the copies varying names at time_code, as plan shows them; view opens a view of its buffers."""
         views = _PlanViews(
@@ -166,7 +166,7 @@ class _CallKeying:
                 self._key_bounds(time_code, shown, shown_key, action, bounds[copy])
         self._hide_absent(time_code, present, varying)
 
-    def _build_copy(self, plan: core.Plan, copy: int) -> None:
+    def _build_copy(self, plan: planner.Plan, copy: int) -> None:
         """Make plan's copy's partition as preparation does, held in the prepared work, linked into the destination."""
         made_before = set(self.work.manifest_entries)
         application.prepare(plan, [copy], self.published, self.work, self.names)

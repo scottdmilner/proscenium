@@ -1,6 +1,6 @@
 # `proscenium_sync`
 
-The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records, runtime state, source access, and results; the synchronization transaction; the display component of interaction; the API callers use; and the compiled core. The bindings' code is kept apart from the core, so the Blender-facing code and the core and its Hydra code change independently. The extension registers it through `registration.py` and reaches it through `api/`.
+The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records, runtime state, source access, and results; the synchronization transaction; the display component of interaction; the API callers use; and the planner. The bindings' code is kept apart from the planner, so the Blender-facing code and the planner and its Hydra code change independently. The extension registers it through `registration.py` and reaches it through `api/`.
 
 | Path | Holds |
 |---|---|
@@ -13,7 +13,7 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 | `binding_persistence/` | Versioned records in Blender ID properties. |
 | `source_access/` | The stages a binding reads its source from, and the binding identifiers, canonical-candidate rule, requested settings, and source-entity identifiers they're found and made by. The lowest tier. |
 | `results.py` | What operations on a binding report: `Result`, whose state derives from its aggregated diagnostics (`result_state`, `deduplicated_diagnostics`) and never from its cleanup status, `DiagnosticCollector`, which gathers an operation's diagnostics as its steps run, `ResultState`, `Diagnostic`, `DiagnosticCode`, the list of stable codes, each with one `DiagnosticCategory` and `Severity`, ([Diagnostics](../../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. The lowest tier. |
-| `core/` | The compiled core: its C++ source and the built module. The lowest tier. |
+| `planner/` | The planner: its C++ source and the built module. The lowest tier. |
 
 ## Import rules
 
@@ -26,6 +26,6 @@ The workspace's [import rules](../../../README.md#import-rules) hold here, with 
 | 4 | `synchronization/`, `interaction/` |
 | 3 | `binding_runtime/` |
 | 2 | `binding_persistence/` |
-| 1 | `core/`, `source_access/`, `results.py` |
+| 1 | `planner/`, `source_access/`, `results.py` |
 
 `__init__.py`, which imports none of its units, is no unit's.

@@ -106,7 +106,7 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd, UsdGeom
 
-    from proscenium_sync.core import _core
+    from proscenium_sync.planner import _planner
     from proscenium_sync.source_access import binding_settings, stages
     from proscenium_sync.synchronization import application
 
@@ -126,24 +126,24 @@ def child(config: dict[str, Any]) -> None:
     binding_stages.attach(stage)
     evaluation_stage = binding_stages.acquire_evaluation_stage(binding_settings.PayloadPolicy.LOAD_ALL)
     mark("acquire")
-    settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), False)
-    converting = _core.PlanSettings(("default", "proxy"), ("default", "render"), True)
-    context = _core.PlanningContext(1.0, application.REPRESENTATION_VERSION)
+    settings = _planner.PlanSettings(("default", "proxy"), ("default", "render"), False)
+    converting = _planner.PlanSettings(("default", "proxy"), ("default", "render"), True)
+    context = _planner.PlanningContext(1.0, application.REPRESENTATION_VERSION)
     setup = list(marks)
     iterations = []
     for _ in range(ITERATIONS):
         marks.clear()
         mark("start")
-        chain = _core.SceneIndexChain(evaluation_stage)
+        chain = _planner.SceneIndexChain(evaluation_stage)
         mark("chain")
         snapshot = chain.capture(Usd.TimeCode(config["time"]))
         mark("capture")
         chain.release()
         del chain
         mark("release chain")
-        plan = _core.plan(snapshot, settings, context)
+        plan = _planner.plan(snapshot, settings, context)
         mark("plan")
-        converted = _core.plan(snapshot, converting, context)
+        converted = _planner.plan(snapshot, converting, context)
         mark("plan, converting")
         del converted
         mark("drop converted")

@@ -1,6 +1,6 @@
 """Build a Python module against Blender's USD with CMake and Ninja from the dev group, and audit its linkage.
 
-The repository's compiled modules are here: the compiled core, which proscenium_sync's build hook and
+The repository's compiled modules are here: the planner, which proscenium_sync's build hook and
 build_extension.py build through sync_module, and the feasibility bridge (feasibility/hydra_bridge/build.py).
 clang_tidy.py checks both with their builds' compile commands. The CMake project receives BLENDER_DEPS, the headers
 of the locked Blender release (blender_deps.py), and on macOS and Linux USD_LIBRARY, the bpy wheel's libusd_ms to
@@ -63,7 +63,9 @@ class NativeModule:
         return self.out_dir.with_name(self.out_dir.name + "-cmake")
 
 
-CORE = NativeModule("_core", ROOT / "packages/proscenium_sync/src/proscenium_sync/core", ROOT / "build/core")
+PLANNER = NativeModule(
+    "_planner", ROOT / "packages/proscenium_sync/src/proscenium_sync/planner", ROOT / "build/planner"
+)
 HYDRA_BRIDGE = NativeModule("_hydra_bridge", ROOT / "tools/feasibility/hydra_bridge", ROOT / "build/hydra-bridge")
 # What sync_module hashes to tell whether a module is current: its project's sources, and these build tools.
 SOURCE_PATTERNS = ("*.cpp", "*.h", "CMakeLists.txt")

@@ -3,7 +3,7 @@
 tests/bpy_free/test_no_blender_imports.py runs it as a script for the bpy-free code:
 
     python tests/bpy_free/bpy_blocker.py proscenium proscenium_sync proscenium_sync.results \
-        --walk proscenium_sync.core --walk proscenium_sync.source_access
+        --walk proscenium_sync.planner --walk proscenium_sync.source_access
 
 A fresh interpreter has no Blender module cached, so every import of one goes through the block. Blender modules are
 recognized by where they come from, not by name: bpy itself (bpy/__init__.so) and Blender's Python modules under

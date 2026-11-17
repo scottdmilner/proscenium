@@ -17,7 +17,7 @@ PACKAGES = Path(__file__).resolve().parents[3] / "packages"
 
 
 def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
-    """Install `archive` into a temporary local repo with enable_on_install, load its compiled core, then disable it."""
+    """Install `archive` into a temporary local repo with enable_on_install, load its planner, then disable it."""
     import addon_utils  # in the wheel, importable only after bpy
 
     # Drop the paths to the workspace's packages' sources, so the extension imports them from the zip's wheels.
@@ -39,9 +39,9 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     }
     from pxr import Usd
 
-    core = importlib.import_module("proscenium_sync.core._core")
-    result["core_file"] = core.__file__
-    result["core_usd_version"] = list(core.usd_version())
+    planner = importlib.import_module("proscenium_sync.planner._planner")
+    result["planner_file"] = planner.__file__
+    result["planner_usd_version"] = list(planner.usd_version())
     result["host_usd_version"] = list(Usd.GetVersion())
     # default_set=True also removes the preferences entry, as unchecking it in the UI does.
     addon_utils.disable(name, default_set=True)

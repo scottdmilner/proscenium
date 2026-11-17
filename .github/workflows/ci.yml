@@ -40,18 +40,18 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked  # fail if uv.lock is out of date
-      # clang-tidy parses the compiled core with Blender's dependency headers (tools/clang_tidy.py).
+      # clang-tidy parses the planner with Blender's dependency headers (tools/clang_tidy.py).
       - uses: ./.github/actions/blender-deps
       # Checks are defined once, in .pre-commit-config.yaml. Fixes made by
       # ruff count as failures here, and the diff is printed.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
 
-  # The compiled core for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
+  # The planner for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
   # manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
   # tools/build_extension.py uses this module because its build record is current. Its compile commands go with it,
-  # for the inspection layer's include check (tests/bpy_free/test_core_inspection.py). The Hydra bridge, which M4's
+  # for the inspection layer's include check (tests/bpy_free/test_planner_inspection.py). The Hydra bridge, which M4's
   # prototype tests run, is built here too, since its build audits the same floor.
-  core-linux:
+  planner-linux:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -67,23 +67,23 @@ jobs:
           enable-cache: true
       - run: uv sync --locked
       - uses: ./.github/actions/blender-deps
-      - name: Build the compiled core
+      - name: Build the planner
         run: uv run python tools/build_extension.py
       - name: Build the Hydra bridge
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - uses: actions/upload-artifact@v4
         with:
-          name: core-linux-x64
+          name: planner-linux-x64
           path: |
-            build/core/build.json
-            packages/proscenium_sync/src/proscenium_sync/core/_core.*.so
-            build/core-cmake/compile_commands.json
+            build/planner/build.json
+            packages/proscenium_sync/src/proscenium_sync/planner/_planner.*.so
+            build/planner-cmake/compile_commands.json
             build/hydra-bridge/build.json
             build/hydra-bridge/_hydra_bridge.*.so
           if-no-files-found: error
 
   test:
-    needs: [changes, core-linux]
+    needs: [changes, planner-linux]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
@@ -107,17 +107,17 @@ jobs:
       - uses: actions/download-artifact@v4
         if: runner.os == 'Linux'
         with:
-          name: core-linux-x64
+          name: planner-linux-x64
 
-      # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock and builds the compiled core
-      # (on Linux, it keeps core-linux's), which the extension test's read-only build (--check mode) needs.
+      # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock and builds the planner
+      # (on Linux, it keeps planner-linux's), which the extension test's read-only build (--check mode) needs.
       - name: Build extension
         run: uv run python tools/build_extension.py
 
       - name: Tests
         env:
           PROSCENIUM_REQUIRE_BLENDER: "1"  # fail, rather than skip, binary tests without a binary
-          # Linux uses core-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
+          # Linux uses planner-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
           PROSCENIUM_HYDRA_BRIDGE: ${{ runner.os == 'Linux' && 'build/hydra-bridge' || '' }}
         # On Linux, under a virtual display, where the windowed tests' Blender windows open.
         run: >

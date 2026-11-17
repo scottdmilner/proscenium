@@ -45,7 +45,7 @@ PACKAGES = {
     "proscenium_sync": PackageRules(
         Path(proscenium_sync.__file__).parent,
         (
-            ("core", "source_access", "results"),  # bpy-free, each importing only itself
+            ("planner", "source_access", "results"),  # bpy-free, each importing only itself
             ("binding_persistence",),
             ("binding_runtime",),
             ("synchronization", "interaction"),
@@ -146,7 +146,7 @@ def _submodule(target: str, name: str) -> str:
     """target.name if that is a module of one of the packages, else target.
 
     Compared with the directory's entries, since a case-insensitive file system finds records.py for a name Records.
-    A compiled module, such as core's _core, is found by its type stub.
+    A compiled module, such as the planner's _planner, is found by its type stub.
     """
     directory = PACKAGES[target.split(".")[0]].directory.parent.joinpath(*target.split("."))
     entries = {p.name for p in directory.iterdir()} if directory.is_dir() else set()
@@ -303,8 +303,8 @@ def test_an_import_out_of_form_is_found() -> None:
 
     assert out_of_form("from proscenium_sync.binding_persistence import manifests, id_property_records") == 0
     assert out_of_form("from proscenium_sync import results") == 0
-    assert out_of_form("from proscenium_sync import core") == 0
-    assert out_of_form("from proscenium_sync.core import Plan, plan") == 0
+    assert out_of_form("from proscenium_sync import planner") == 0
+    assert out_of_form("from proscenium_sync.planner import Plan, plan") == 0
     assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
     assert out_of_form("from proscenium_sync.binding_persistence.manifests import Manifest, RepresentationRole") == 0
     assert out_of_form("from proscenium_sync.results import Diagnostic, Result") == 0
@@ -314,7 +314,7 @@ def test_an_import_out_of_form_is_found() -> None:
     assert out_of_form("from proscenium_sync.synchronization import prepare") == 1
     assert out_of_form("from proscenium_sync.synchronization import application") == 1
     assert out_of_form("from proscenium_sync.synchronization.application import prepare") == 1
-    assert out_of_form("from proscenium_sync.core import _core") == 1  # the compiled module is the core's own
+    assert out_of_form("from proscenium_sync.planner import _planner") == 1  # the compiled module is the planner's own
     # Another package's units take the same form.
     assert out_of_form("from proscenium_ui.scene_graph_widget import display") == 0
     assert out_of_form("from proscenium_ui import widget_updates") == 0
@@ -382,14 +382,14 @@ def test_a_wrong_way_import_is_found() -> None:
     assert {"proscenium_sync.api", "proscenium_ui.scene_graph_widget.display"} <= _allowed("proscenium.interface")
     assert "proscenium_sync.api" not in _allowed("proscenium_ui.scene_graph_widget.display")
     assert "proscenium.interface" not in _allowed("proscenium_sync.registration")
-    assert not _allowed("proscenium_sync.core") & {u for u in TIER_OF if u.startswith("proscenium_ui.")}
+    assert not _allowed("proscenium_sync.planner") & {u for u in TIER_OF if u.startswith("proscenium_ui.")}
 
 
 def test_an_absolute_import_of_a_unit_is_found() -> None:
     # Guards the tests above: "from proscenium_sync import x" names the unit it imports.
-    imports = _imports_in(ast.parse("from proscenium_sync import binding_runtime"), ["proscenium_sync", "core"])
+    imports = _imports_in(ast.parse("from proscenium_sync import binding_runtime"), ["proscenium_sync", "planner"])
     assert [i.name for i in imports] == ["proscenium_sync.binding_runtime"]
-    assert "proscenium_sync.binding_runtime" not in _allowed("proscenium_sync.core")
+    assert "proscenium_sync.binding_runtime" not in _allowed("proscenium_sync.planner")
 
 
 def _blender_imports_in(tree: ast.Module) -> list[tuple[int, str]]:

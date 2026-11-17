@@ -1,4 +1,4 @@
-"""The Bounds Comparison Contract's check (support/bounds_check.py) on displays made by hand from the core's plans.
+"""The Bounds Comparison Contract's check (support/bounds_check.py) on displays made by hand from the planner's plans.
 
 Each display here is what M7's application layer draws of a plan, made from the plan's own buffers: each copy's local
 bounds' corners under its world matrix, shown where the plan says. The check reads the same copies' bounds and
@@ -22,24 +22,24 @@ from .plan_checks import CONTEXT, SETTINGS, copies
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
 
 STRAND = "/World/Placed/Strand"  # F-UNSUPPORTED-CONTENT's placeholder inside a component, rotated, render-only
 
 
 def _plan(
-    stage: Usd.Stage, context: core.PlanningContext = CONTEXT, settings: core.PlanSettings = SETTINGS
-) -> core.Plan:
-    from proscenium_sync import core
+    stage: Usd.Stage, context: planner.PlanningContext = CONTEXT, settings: planner.PlanSettings = SETTINGS
+) -> planner.Plan:
+    from proscenium_sync import planner
 
-    chain = core.SceneIndexChain(stage)
+    chain = planner.SceneIndexChain(stage)
     try:
-        return core.plan(chain.capture(Usd.TimeCode(0.0)), settings, context)
+        return planner.plan(chain.capture(Usd.TimeCode(0.0)), settings, context)
     finally:
         chain.release()
 
 
-def _drawn(plan: core.Plan) -> list[DisplayedCopy]:
+def _drawn(plan: planner.Plan) -> list[DisplayedCopy]:
     """What M7 draws of the plan: each copy's local bounds' corners under its world matrix, a marker none."""
     found = []
     for source, copy in copies(plan).items():
@@ -52,7 +52,7 @@ def _drawn(plan: core.Plan) -> list[DisplayedCopy]:
     return found
 
 
-def _check(stage: Usd.Stage, plan: core.Plan, displayed: list[DisplayedCopy]) -> list[str]:
+def _check(stage: Usd.Stage, plan: planner.Plan, displayed: list[DisplayedCopy]) -> list[str]:
     identity = Gf.Matrix4d(1.0)
     return bounds_check.model_bounds_mismatches(
         stage, Usd.TimeCode(0.0), bounds_check.planned_copies(plan), displayed, identity

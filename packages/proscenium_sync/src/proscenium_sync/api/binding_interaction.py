@@ -1,8 +1,8 @@
 """A binding's interaction functions, as the binding handle gives them (interaction-contract.md#headless-functions).
 
 DECISIONS.md "Headless interaction functions": api/ gives callers objects, Blender's matrices, and source paths, the
-matrices converted to USD's convention here, where they reach the core, which the display component
-(proscenium_sync.interaction) maps to the core's element indices and back. Each call takes the binding's display
+matrices converted to USD's convention here, where they reach the planner, which the display component
+(proscenium_sync.interaction) maps to the planner's element indices and back. Each call takes the binding's display
 elements and correspondence as they are at the frame the target scene shows, kept from an earlier call while what they
 were built from is unchanged (shown_displays). Without a live stage each raises source access's SourceUnavailableError
 (ICON-08); a binding with nothing published displays nothing.

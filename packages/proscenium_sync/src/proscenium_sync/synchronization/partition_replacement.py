@@ -2,13 +2,13 @@
 
 incremental.md "Affected Content".
 
-A refresh compares its plan with the plan of the generation the destination shows, held since this session published
-it (binding.runtime.held_plans), through the core's plan diff (change-matrix.md "Actions"). It prepares the partitions
+A refresh compares its plan with the plan of the generation the destination shows, held since this session published it
+(binding.runtime.held_plans), through the planner's plan diff (change-matrix.md "Actions"). It prepares the partitions
 of the copies the diff builds, and of the kept copies whose partitions hold other resources; a kept copy that only
 moved, changed its bounds, changed its participation, or holds a cached generation's keys is updated in place
-(local_updates), its action's entry replaced, so retirement removes the action. Without a held plan, as
-on a first synchronization, after reopening, or after an undo past the held plans, and on a requested full rebuild,
-every partition is prepared (AFF-04).
+(local_updates), its action's entry replaced, so retirement removes the action. Without a held plan, as on a first
+synchronization, after reopening, or after an undo past the held plans, and on a requested full rebuild, every partition
+is prepared (AFF-04).
 
 A kept copy is rebuilt instead of updated in place when unmanaged content uses any of its partition's resources
 (CHG-06, OWN-08): anything but the destination collection, whose manifest names them, a scene linking it, whose view
@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_runtime import kept_manifests
 
 from . import datablock_removal
@@ -64,7 +64,7 @@ class PartitionReplacement:
 
 
 def partitions_to_replace(
-    shown: core.Plan | None, plan: core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
+    shown: planner.Plan | None, plan: planner.Plan, published: manifests.Manifest, destination: bpy.types.Collection
 ) -> PartitionReplacement:
     """What a synchronization of plan replaces: every partition without shown, else what differs from it.
 
@@ -76,20 +76,20 @@ def partitions_to_replace(
     return changed_partitions(shown, plan, published, destination)
 
 
-def every_partition(plan: core.Plan, published: manifests.Manifest) -> PartitionReplacement:
+def every_partition(plan: planner.Plan, published: manifests.Manifest) -> PartitionReplacement:
     """Every partition prepared, replacing every published entry: a full rebuild."""
     return PartitionReplacement(tuple(range(plan.copy_count)), frozenset(published.entries))
 
 
 def changed_partitions(
-    previous: core.Plan, plan: core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
+    previous: planner.Plan, plan: planner.Plan, published: manifests.Manifest, destination: bpy.types.Collection
 ) -> PartitionReplacement:
     """The partitions of plan's copies that differ from previous's, the plan published is the display of.
 
-    The core gives the plan diff and plan's copies' source paths; the published manifest's partitions are the ones
+    The planner gives the plan diff and plan's copies' source paths; the published manifest's partitions are the ones
     kept_manifests keeps beside it, so no refresh groups every entry.
     """
-    diff = core.diff_plans(previous, plan)
+    diff = planner.diff_plans(previous, plan)
     matched = _indices(diff.previous_copy_indices)
     rebuilt = set(_indices(diff.rebuilt_copy_indices))
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))

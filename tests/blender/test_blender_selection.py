@@ -1,6 +1,6 @@
 """The display component's apply_selection and read_blender_selection on a binding's display (interaction-contract.md).
 
-On F-KIND-HIERARCHY's display, through the core's correspondence over its display elements. Expected values come from
+On F-KIND-HIERARCHY's display, through the planner's correspondence over its display elements. Expected values come from
 the fixture: Chair's component holds Seat, Back, and Legs, and Top is Table's. support/interaction_checks.py checks the
 same functions through api/.
 """
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from proscenium_sync import core
+    from proscenium_sync import planner
     from proscenium_sync.api.bindings import Bindings
 
 CHAIR = "/World/Props/Chair"
@@ -32,7 +32,7 @@ class _Display:
     """A synchronized F-KIND-HIERARCHY display: its elements, correspondence, and the active view layer."""
 
     elements: display_correspondence.DisplayElements
-    correspondence: core.Correspondence
+    correspondence: planner.Correspondence
     view_layer: bpy.types.ViewLayer
 
     def __init__(self, bindings: Bindings, scene: interaction.InteractionScene) -> None:

@@ -1,7 +1,7 @@
 """The binding handle's interaction functions, the time code the display shows, and the applied settings.
 
-api/'s surface over the display component and the core (DECISIONS.md "Headless interaction functions"). Expected values
-come from the interaction fixtures, F-TIME-VARIATIONS, and the spec's rule for the time code a display shows
+api/'s surface over the display component and the planner (DECISIONS.md "Headless interaction functions"). Expected
+values come from the interaction fixtures, F-TIME-VARIATIONS, and the spec's rule for the time code a display shows
 (transforms.md#transforms-and-time-codes). support/interaction_checks.py checks the contract's results through it.
 """
 
@@ -15,7 +15,7 @@ from mathutils import Vector
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
 from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
 from proscenium_sync.results import ResultState
@@ -199,16 +199,16 @@ def test_the_live_stage_gives_kinds_and_asset_metadata(bindings: Bindings, tmp_p
         check()
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
         check()
-        assert not [name for name in dir(core.Plan) if "asset" in name.lower()]
+        assert not [name for name in dir(planner.Plan) if "asset" in name.lower()]
         destination = bpy.data.collections["Shot"]
         for key in (binding_state.GENERATION_KEY, manifests.MANIFEST_KEY):
             stored = str(id_property_records.stored(destination, key))
             assert "assetInfo" not in stored and "chair.usda" not in stored, key
 
 
-def test_a_picks_matrix_reaches_the_core_in_usds_convention() -> None:
-    # The API takes Blender's matrix, as a ray cast returns it, and converts it once for the core: a translation lands
-    # in USD's last row, and a rotated point is where Blender puts it.
+def test_a_picks_matrix_reaches_the_planner_in_usds_convention() -> None:
+    # The API takes Blender's matrix, as a ray cast returns it, and converts it once for the planner: a translation
+    # lands in USD's last row, and a rotated point is where Blender puts it.
     from mathutils import Matrix
 
     from proscenium_sync.api import binding_interaction

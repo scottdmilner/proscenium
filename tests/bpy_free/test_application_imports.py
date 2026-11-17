@@ -1,7 +1,7 @@
 """The application layer reads no USD (APP-08): its modules import nothing that reaches a stage.
 
 Imports are read from each module's source with ast, without importing it. Imports under `if TYPE_CHECKING:` are
-skipped, since they name types only: the plan's type is the core's.
+skipped, since they name types only: the plan's type is the planner's.
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import proscenium_sync
 
 SYNCHRONIZATION = Path(proscenium_sync.__file__).parent / "synchronization"
 APPLICATION_MODULES = ("application",)  # the application layer's, in synchronization/
-# What reaches a stage: USD itself, the compiled core that captures one, and the binding's stages.
-STAGE_READERS = ("pxr", "proscenium_sync.core", "proscenium_sync.source_access")
+# What reaches a stage: USD itself, the planner that captures one, and the binding's stages.
+STAGE_READERS = ("pxr", "proscenium_sync.planner", "proscenium_sync.source_access")
 
 
 def _runtime_imports(path: Path, package: list[str]) -> list[tuple[int, str]]:
@@ -60,7 +60,7 @@ def test_the_check_finds_a_stage_reader(tmp_path: Path) -> None:
         "    from pxr import Gf\n"
         "def f() -> None:\n"
         "    from pxr import Vt\n"
-        "from proscenium_sync import core\n"
+        "from proscenium_sync import planner\n"
     )
     found = [name for _, name in _runtime_imports(module, ["proscenium_sync", "synchronization"])]
-    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium_sync.core"]
+    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium_sync.planner"]

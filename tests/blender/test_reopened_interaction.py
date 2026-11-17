@@ -1,6 +1,6 @@
 """Interaction after a reopening: correspondence loaded from Blender data, and a source unavailable (lifecycle.md).
 
-DECISIONS.md "Persisted correspondence": after reopening, once the binding's stage is attached again, the core builds
+DECISIONS.md "Persisted correspondence": after reopening, once the binding's stage is attached again, the planner builds
 correspondence from the saved manifest and objects without synchronizing (ICON-35). Without a live stage, the saved
 display stays as it was, each interaction function reports the source unavailable, and the persistent selection is kept
 (INSP-10, ICON-08, ICON-09). Answers are compared by manifest entry key (support/interaction_answers.py).

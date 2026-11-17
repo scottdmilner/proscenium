@@ -18,10 +18,10 @@ INPUTS = {"platform": "macos-arm64", "blender_tag": "v5.2.2", "sources_sha256": 
 
 def _built(tmp_path: Path, record: dict[str, object] | None = None) -> tuple[NativeModule, Path]:
     """A module installed in its source directory, with a build record matching INPUTS and it unless given one."""
-    module = NativeModule("_core", tmp_path / "core", tmp_path / "build")
+    module = NativeModule("_planner", tmp_path / "planner", tmp_path / "build")
     module.source_dir.mkdir()
     module.out_dir.mkdir()
-    installed = module.source_dir / "_core.cpython-313-darwin.so"
+    installed = module.source_dir / "_planner.cpython-313-darwin.so"
     installed.write_bytes(b"module")
     sha = hashlib.sha256(b"module").hexdigest()
     (module.out_dir / "build.json").write_text(
@@ -56,7 +56,7 @@ def test_stale_without_record(tmp_path: Path) -> None:
 
 
 def test_sources_hash_covers_sources_only(tmp_path: Path) -> None:
-    source_dir = tmp_path / "core"
+    source_dir = tmp_path / "planner"
     source_dir.mkdir()
     (source_dir / "python_bindings.cpp").write_text("int a;")
     before = _build_inputs(source_dir)["sources_sha256"]

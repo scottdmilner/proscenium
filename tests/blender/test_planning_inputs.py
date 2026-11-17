@@ -1,6 +1,6 @@
 """A synchronization plans under its binding's requested settings and target scene's unit scale (M6 plan, D2).
 
-The transaction passes the core's plan the binding's conversion and purpose settings and the target scene's unit
+The transaction passes the planner's plan the binding's conversion and purpose settings and the target scene's unit
 scale; the published generation and last attempt record them, and cache plans under the generation's. Expected
 transforms and participation come from how the fixtures are built (fixtures/evaluation.py, fixtures/transaction.py).
 """

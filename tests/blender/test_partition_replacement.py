@@ -17,7 +17,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import edit_sequence, evaluation
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_persistence.manifests import Manifest, ManifestEntry, RepresentationRole
 from proscenium_sync.synchronization import partition_replacement
 from support.manifests import key
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from fixtures.edit_sequence import EditSequenceScene
 
 MOVED, BOUNDS, PARTICIPATION, KEYS = "moved", "bounds changed", "participation changed", "cached keys removed"
-# What each step that updates copies in place changes of them (bpy_free/test_core_plan_diff.py's cases).
+# What each step that updates copies in place changes of them (bpy_free/test_planner_plan_diff.py's cases).
 CHANGE_BY_STEP = {
     "ancestor-transform": MOVED,
     "coalesced-transform": MOVED,
@@ -42,8 +42,8 @@ CHANGE_BY_STEP = {
     "point-moved": MOVED,
     "point-removed-by-index": MOVED,
 }
-CONTEXT = core.PlanningContext(unit_scale=1.0, representation_version=1)
-SETTINGS = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)
+CONTEXT = planner.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = planner.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)
 SHARED = "shared frames"  # a shared datablock's entry, as the frames group a cache call samples with
 
 
@@ -70,10 +70,10 @@ def scene(tmp_path: Path) -> Iterator[EditSequenceScene]:
         yield scene
 
 
-def _plan_at(stage: Usd.Stage) -> core.Plan:
-    chain = core.SceneIndexChain(stage)
+def _plan_at(stage: Usd.Stage) -> planner.Plan:
+    chain = planner.SceneIndexChain(stage)
     try:
-        return core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
+        return planner.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
     finally:
         chain.release()
 
@@ -83,7 +83,7 @@ def _indices(buffer: Buffer) -> list[int]:
         return view.tolist()
 
 
-def _published(plan: core.Plan) -> list[Entry]:
+def _published(plan: planner.Plan) -> list[Entry]:
     """The entries publishing plan would write: each copy's object, bounds mesh, and shear parent."""
     bounds = _indices(plan.copy_bounds_mesh_resource_indices)
     parents = _indices(plan.copy_shear_parent_resource_indices)
@@ -109,7 +109,9 @@ def _manifest(entries: list[Entry]) -> Manifest:
     return Manifest(built)
 
 
-def _decided(previous: core.Plan, plan: core.Plan, entries: list[Entry], destination: bpy.types.Collection) -> Decided:
+def _decided(
+    previous: planner.Plan, plan: planner.Plan, entries: list[Entry], destination: bpy.types.Collection
+) -> Decided:
     published = _manifest(entries)
     replacement = partition_replacement.changed_partitions(previous, plan, published, destination)
     sources = [entry.source_path for entry in plan.correspondence]
@@ -143,7 +145,7 @@ def destination() -> bpy.types.Collection:
     return bpy.data.collections.new("Destination")
 
 
-def _equal_plans(scene: EditSequenceScene) -> tuple[core.Plan, core.Plan, list[Entry], str]:
+def _equal_plans(scene: EditSequenceScene) -> tuple[planner.Plan, planner.Plan, list[Entry], str]:
     """Two equal plans, the entries publishing the first, and an unsheared copy's source path."""
     previous, plan = _plan_at(scene.stage), _plan_at(scene.stage)
     parents = _indices(plan.copy_shear_parent_resource_indices)

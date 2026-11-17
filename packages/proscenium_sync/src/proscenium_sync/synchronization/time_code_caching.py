@@ -3,7 +3,7 @@
 A cache call evaluates and plans the source at each time code the generation hasn't cached, under the generation's
 settings, before changing any Blender data, so its source-state diagnostics exist before then, as a synchronization's
 do. What varies is what differs: each plan is compared with the generation's own, held since it was published
-(binding.runtime.held_plans), through the core's plan diff, and a copy a cached time code moves, rebuilds, or shows
+(binding.runtime.held_plans), through the planner's plan diff, and a copy a cached time code moves, rebuilds, or shows
 otherwise, or one keyed already, varies (DECISIONS.md "What a cache call keys"). time_code_keying then keys those copies
 at every time code the generation holds, and the generation record gains the call's. Without the generation's plan held,
 as after an undo past the held plans, every copy is keyed. It publishes no new generation, records no last attempt, and
@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.binding_persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from proscenium_sync.binding_runtime import binding_operations, kept_manifests, ownership
 from proscenium_sync.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
@@ -135,7 +135,7 @@ def cache(
 
 
 def _varying_copies(
-    own: core.Plan, plans: Collection[core.Plan], published: manifests.Manifest
+    own: planner.Plan, plans: Collection[planner.Plan], published: manifests.Manifest
 ) -> time_code_keying.VaryingCopies:
     """The copies that vary from own in plans, or that published keys already, by source entity.
 
@@ -149,7 +149,7 @@ def _varying_copies(
     }
     own_sources = [entry.source_path for entry in own.correspondence]
     for plan in plans:
-        diff = core.diff_plans(own, plan)
+        diff = planner.diff_plans(own, plan)
         sources = [entry.source_path for entry in plan.correspondence]
         changed = (
             diff.moved_copy_indices,

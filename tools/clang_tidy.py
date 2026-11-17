@@ -1,6 +1,6 @@
 """Run clang-tidy on the repository's C++ with the compile commands of each build (a pre-commit hook).
 
-Two projects, which tools/native_build.py names: the compiled core (proscenium_sync's core/) and M1b's Hydra bridge
+Two projects, which tools/native_build.py names: the planner (proscenium_sync's planner/) and M1b's Hydra bridge
 (tools/feasibility/hydra_bridge/), which M4's prototypes extend. It configures each one's CMake build directory, so
 clang-tidy parses each source with the flags and Blender headers that build uses. The first run fetches those headers
 (tools/blender_deps.py). clang-tidy finds the checks itself, in the repository's root .clang-tidy.
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 def _sources(module: native_build.NativeModule) -> list[Path]:
-    """The project's C++ sources: top level and one directory down (the bridge's src/, the core's inspection/)."""
+    """The project's C++ sources: top level and one directory down (the bridge's src/, the planner's inspection/)."""
     return sorted([*module.source_dir.glob("*.cpp"), *module.source_dir.glob("*/*.cpp")])
 
 
@@ -30,7 +30,7 @@ def main() -> int:
     """Run clang-tidy on each project's sources; the exit status, nonzero if any project's run failed."""
     key = current_platform()
     status = 0
-    for module in (native_build.CORE, native_build.HYDRA_BRIDGE):
+    for module in (native_build.PLANNER, native_build.HYDRA_BRIDGE):
         native_build.configure(module)
         command = [
             native_build.tool("clang-tidy"),

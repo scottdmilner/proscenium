@@ -2,8 +2,8 @@
 
 With it set, a capture from the binding's kept chain is also made through a new chain, and where their plans differ the
 new one's is displayed, its chain kept instead, and each differing drawn copy reported as a verification diagnostic,
-which leaves the result state alone. A miss is made by the core's test hook, which makes the kept chain's next capture
-drop the notices it takes. Displays are compared by value with a clean binding's on the same stage.
+which leaves the result state alone. A miss is made by the planner's test hook, which makes the kept chain's next
+capture drop the notices it takes. Displays are compared by value with a clean binding's on the same stage.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import bpy
 from pxr import Gf, Usd
 
 from fixtures import appearance, edit_sequence
-from proscenium_sync import core
+from proscenium_sync import planner
 from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium_sync.source_access import BindingId
 from proscenium_sync.synchronization import capture_verification
@@ -38,11 +38,11 @@ def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:
     return handle
 
 
-def _kept(bindings: Bindings, handle: BindingHandle) -> core.SceneIndexChain:
+def _kept(bindings: Bindings, handle: BindingHandle) -> planner.SceneIndexChain:
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     chain = stages.kept_chain
-    assert isinstance(chain, core.SceneIndexChain)
+    assert isinstance(chain, planner.SceneIndexChain)
     return chain
 
 
@@ -54,16 +54,16 @@ def _mismatches(result: Result) -> list[Diagnostic]:
     return [d for d in result.diagnostics if d.code is DiagnosticCode.CAPTURE_MISMATCH]
 
 
-def _counting_captures(monkeypatch: pytest.MonkeyPatch) -> list[core.SceneIndexChain]:
+def _counting_captures(monkeypatch: pytest.MonkeyPatch) -> list[planner.SceneIndexChain]:
     """The chains captured from, in order, while the patch lasts."""
-    capture = core.SceneIndexChain.capture
-    captured_from: list[core.SceneIndexChain] = []
+    capture = planner.SceneIndexChain.capture
+    captured_from: list[planner.SceneIndexChain] = []
 
-    def recording(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
+    def recording(chain: planner.SceneIndexChain, time_code: Usd.TimeCode) -> planner.Snapshot:
         captured_from.append(chain)
         return capture(chain, time_code)
 
-    monkeypatch.setattr(core.SceneIndexChain, "capture", recording)
+    monkeypatch.setattr(planner.SceneIndexChain, "capture", recording)
     return captured_from
 
 
@@ -76,7 +76,7 @@ def test_a_missed_edit_is_reported_and_the_full_re_read_displayed(
         assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
         missing = _kept(bindings, handle)
         scene.stage.GetAttributeAtPath(A_TRANSLATE).Set(Gf.Vec3d(1, 0, 0))
-        missing._drop_next_capture_notices()  # noqa: SLF001 - the core's test hook for a miss
+        missing._drop_next_capture_notices()  # noqa: SLF001 - the planner's test hook for a miss
         result = handle.synchronize(0)
         [mismatch] = _mismatches(result)
         assert (mismatch.source_path, mismatch.category) == (edit_sequence.A, DiagnosticCategory.VERIFICATION)
@@ -123,11 +123,11 @@ def test_without_the_variable_a_synchronization_captures_once(
         assert captured_from == [_kept(bindings, handle)]
 
 
-def _plan(stage: Usd.Stage) -> core.Plan:
-    chain = core.SceneIndexChain(stage)
+def _plan(stage: Usd.Stage) -> planner.Plan:
+    chain = planner.SceneIndexChain(stage)
     try:
-        settings = core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
-        return core.plan(chain.capture(Usd.TimeCode(0)), settings, core.PlanningContext(1.0, 1))
+        settings = planner.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+        return planner.plan(chain.capture(Usd.TimeCode(0)), settings, planner.PlanningContext(1.0, 1))
     finally:
         chain.release()
 
