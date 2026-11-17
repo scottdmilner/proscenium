@@ -12,9 +12,9 @@ import bpy
 import pytest
 
 from fixtures import source_access
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records, manifests
-from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium.binding.persistence.id_property_records import (
+from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records, manifests
+from proscenium_sync.binding_persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium_sync.binding_persistence.id_property_records import (
     NAMESPACE,
     VERSION_KEY,
     LoadedRecord,
@@ -22,10 +22,10 @@ from proscenium.binding.persistence.id_property_records import (
     RefusedRecord,
     RefusedRecordError,
 )
-from proscenium.binding.persistence.manifests import Manifest
-from proscenium.binding.results import Diagnostic, DiagnosticCode
-from proscenium.binding.source_access.binding_settings import PayloadPolicy, RequestedSettings, new_settings
-from proscenium.binding.source_access.stages import SourceRevision
+from proscenium_sync.binding_persistence.manifests import Manifest
+from proscenium_sync.results import Diagnostic, DiagnosticCode
+from proscenium_sync.source_access.binding_settings import PayloadPolicy, RequestedSettings, new_settings
+from proscenium_sync.source_access.stages import SourceRevision
 from support.blend import save_and_reopen
 from support.manifests import key, object_entry
 from support.usd import binding_on_file
@@ -33,7 +33,7 @@ from support.usd import binding_on_file
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 DIRTY = Diagnostic(
     DiagnosticCode.UNSAVED_LAYERS,

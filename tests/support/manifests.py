@@ -1,7 +1,7 @@
 """Entry keys and entries for manifests that tests build by hand.
 
-A manifest's entry keys are random (proscenium.binding.persistence.manifests.new_entry_key). A test names each entry
-instead: key(name) is that name's own key, the same in every process, so assertions can name entries.
+A manifest's entry keys are random (proscenium_sync.binding_persistence.manifests.new_entry_key). A test names each
+entry instead: key(name) is that name's own key, the same in every process, so assertions can name entries.
 """
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
-from proscenium.binding.persistence.manifests import ManifestEntry, ManifestEntryChange, RepresentationRole
+from proscenium_sync.binding_persistence.manifests import ManifestEntry, ManifestEntryChange, RepresentationRole
 
 if TYPE_CHECKING:
     import bpy

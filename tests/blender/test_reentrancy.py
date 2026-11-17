@@ -13,12 +13,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium import core, synchronization
-from proscenium.api.bindings import ReentrantCallError
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import datablock_removal
+from proscenium_sync import core, synchronization
+from proscenium_sync.api.bindings import ReentrantCallError
+from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import datablock_removal
 from support.destinations import destination
 
 from .transaction_failures import failing_preparation
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.transaction import TransactionScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _scene() -> bpy.types.Scene:

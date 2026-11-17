@@ -13,15 +13,15 @@ import bpy
 import pytest
 
 from fixtures import interaction
-from proscenium.binding.results import ResultState
-from proscenium.interaction import blender_selection, display_correspondence
+from proscenium_sync.interaction import blender_selection, display_correspondence
+from proscenium_sync.results import ResultState
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from proscenium import core
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync import core
+    from proscenium_sync.api.bindings import Bindings
 
 CHAIR = "/World/Props/Chair"
 SEAT, BACK, LEGS = f"{CHAIR}/Geom/Seat", f"{CHAIR}/Geom/Back", f"{CHAIR}/Legs"

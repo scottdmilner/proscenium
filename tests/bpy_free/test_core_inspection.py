@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import interaction
-from proscenium import core
-from proscenium.core import _core
+from proscenium_sync import core
+from proscenium_sync.core import _core
 from support import interaction_oracle
 
 from .plan_checks import plan_at
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
 ROOT = Path(__file__).resolve().parents[2]
-CORE = ROOT / "src" / "proscenium" / "core"
+CORE = ROOT / "packages" / "proscenium_sync" / "src" / "proscenium_sync" / "core"
 INSPECTION = CORE / "inspection"
 SCENES: dict[str, Callable[[Path], AbstractContextManager[interaction.InteractionScene]]] = {
     "F-KIND-HIERARCHY": interaction.kind_hierarchy,

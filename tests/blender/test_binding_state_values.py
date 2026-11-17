@@ -8,8 +8,8 @@ from __future__ import annotations
 import pytest
 from pxr import Usd
 
-from proscenium.binding.persistence import binding_state
-from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
+from proscenium_sync.binding_persistence import binding_state
+from proscenium_sync.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
 
 
 def test_time_codes_are_stored_as_their_value_or_none() -> None:

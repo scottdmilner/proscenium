@@ -36,7 +36,7 @@ from pxr import Gf, Kind, Sdf, Usd, UsdGeom
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
-    from proscenium import core
+    from proscenium_sync import core
 
 XYZ = tuple[float, float, float]
 

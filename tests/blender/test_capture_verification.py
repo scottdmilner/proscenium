@@ -14,10 +14,10 @@ import bpy
 from pxr import Gf, Usd
 
 from fixtures import appearance, edit_sequence
-from proscenium import core
-from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
-from proscenium.binding.source_access import BindingId
-from proscenium.synchronization import capture_verification
+from proscenium_sync import core
+from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.synchronization import capture_verification
 from support.displayed_copies import displayed_copies
 
 if TYPE_CHECKING:
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.results import Diagnostic, Result
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.results import Diagnostic, Result
     from support.bounds_check import DisplayedCopy
 
 A_TRANSLATE = f"{edit_sequence.A}.xformOp:translate"

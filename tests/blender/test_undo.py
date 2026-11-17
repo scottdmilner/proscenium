@@ -14,12 +14,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium import core
-from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.results import Result, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.synchronization import datablock_removal
+from proscenium_sync import core
+from proscenium_sync.api import bindings as api
+from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.results import Result, ResultState
+from proscenium_sync.synchronization import datablock_removal
 from support import undo
 
 from .transaction_failures import failing_preparation
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
     from fixtures.transaction import TransactionScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 MARKER = "Undo base"
 

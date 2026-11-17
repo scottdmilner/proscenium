@@ -7,7 +7,7 @@ license = "MIT"
 requires-python = ">=3.13"
 # Runtime dependencies are distributed with the extension. Keep this to the
 # workspace's packages unless another package is meant to ship.
-dependencies = ["proscenium_ui"]
+dependencies = ["proscenium_sync", "proscenium_ui"]
 
 [dependency-groups]
 # Sync `dev` (the default), which includes the others but `icons`. `lint` alone fails `ty check`: it also checks
@@ -15,6 +15,7 @@ dependencies = ["proscenium_ui"]
 # Revisit once the Hydra bridge in tools/feasibility/ is decommissioned.
 build = [
     "cmake>=3.26",  # cmake and ninja build compiled modules (tools/native_build.py)
+    "hatchling>=1.27",  # builds proscenium_sync's wheel in this environment (tools/build_extension.py)
     "ninja>=1.13.2",
     "packaging>=26.3",
 ]
@@ -64,6 +65,7 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 bpy-site-packages = { path = "tools/bpy-site-packages" }
+proscenium_sync = { workspace = true }
 proscenium_ui = { workspace = true }
 
 [tool.ruff]
@@ -96,7 +98,7 @@ ban-relative-imports = "parents"
 convention = "pep257"
 
 [tool.ruff.lint.isort]
-known-first-party = ["proscenium", "proscenium_ui"]
+known-first-party = ["proscenium", "proscenium_sync", "proscenium_ui"]
 known-third-party = ["bpy", "pxr"]
 
 [tool.ty.environment]

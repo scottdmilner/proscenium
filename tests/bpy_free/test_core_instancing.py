@@ -14,10 +14,10 @@ import pytest
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
-from proscenium import core
-from proscenium.binding.source_access import source_entity_ids
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
+from proscenium_sync import core
+from proscenium_sync.core import _core
+from proscenium_sync.source_access import source_entity_ids
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support.usd import open_stage_without_cache
 
 from .plan_checks import assert_world, copies, plan_at

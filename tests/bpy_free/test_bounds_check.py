@@ -22,7 +22,7 @@ from .plan_checks import CONTEXT, SETTINGS, copies
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium import core
+    from proscenium_sync import core
 
 STRAND = "/World/Placed/Strand"  # F-UNSUPPORTED-CONTENT's placeholder inside a component, rotated, render-only
 
@@ -30,7 +30,7 @@ STRAND = "/World/Placed/Strand"  # F-UNSUPPORTED-CONTENT's placeholder inside a 
 def _plan(
     stage: Usd.Stage, context: core.PlanningContext = CONTEXT, settings: core.PlanSettings = SETTINGS
 ) -> core.Plan:
-    from proscenium import core
+    from proscenium_sync import core
 
     chain = core.SceneIndexChain(stage)
     try:

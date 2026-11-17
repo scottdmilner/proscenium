@@ -7,8 +7,8 @@ from dataclasses import replace
 import pytest
 from pxr import Usd
 
-from proscenium.binding import results
-from proscenium.binding.results import (
+from proscenium_sync import results
+from proscenium_sync.results import (
     Diagnostic,
     DiagnosticCategory,
     DiagnosticCode,

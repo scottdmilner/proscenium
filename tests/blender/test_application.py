@@ -19,13 +19,12 @@ from pxr import Usd
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
-from proscenium import core
-from proscenium.binding import runtime
-from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
-from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
-from proscenium.binding.results import DiagnosticCode
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import application, datablock_removal, preparation_resources
+from proscenium_sync import binding_runtime, core
+from proscenium_sync.binding_persistence.cleanup_ledgers import OriginatingOperation
+from proscenium_sync.binding_persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
+from proscenium_sync.results import DiagnosticCode
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
 
@@ -35,10 +34,10 @@ if TYPE_CHECKING:
 
     from pxr import Gf
 
-    from proscenium.api.bindings import Bindings
-    from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry
-    from proscenium.binding.source_access import BindingId
-    from proscenium.synchronization.preparation_resources import PreparationResources
+    from proscenium_sync.api.bindings import Bindings
+    from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry
+    from proscenium_sync.source_access import BindingId
+    from proscenium_sync.synchronization.preparation_resources import PreparationResources
 
 CONTEXT = core.PlanningContext(unit_scale=1.0, representation_version=1)
 SETTINGS = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
@@ -69,7 +68,7 @@ def _prepared(binding_id: BindingId, plan: core.Plan, published: Manifest | None
 
 
 def _ledger() -> dict[str, LedgerEntry]:
-    ledger = runtime.pending_cleanup.ledger()
+    ledger = binding_runtime.pending_cleanup.ledger()
     return {} if ledger is None else dict(ledger.record.entries)  # ty: ignore[unresolved-attribute] - not refused
 
 

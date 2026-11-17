@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pxr import Tf
 
-from proscenium import core
-from proscenium.core import _core
+from proscenium_sync import core
+from proscenium_sync.core import _core
 
 
 def test_tf_error_raises_tf_error_exception() -> None:

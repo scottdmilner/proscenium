@@ -1,6 +1,7 @@
 """Blender registration. Imports bpy, so no bpy-free module imports this one."""
 
-from . import registration
+from proscenium_sync import registration
+
 from .interface import interface_registration
 
 _registered = False

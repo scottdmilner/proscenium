@@ -14,15 +14,15 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import interaction, time_variations
-from proscenium.api.bindings import PersistentSelection, SelectionEntry
-from proscenium.binding.results import ResultState
+from proscenium_sync.api.bindings import PersistentSelection, SelectionEntry
+from proscenium_sync.results import ResultState
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 CHAIR = "/World/Props/Chair"
 CHAIR_PARTS = {f"{CHAIR}/Geom/Seat", f"{CHAIR}/Geom/Back", f"{CHAIR}/Legs"}

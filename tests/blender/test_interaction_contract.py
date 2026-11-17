@@ -15,12 +15,12 @@ import bpy
 import pytest
 
 from fixtures import interaction
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.interaction import blender_selection, display_correspondence
+from proscenium_sync.binding_persistence import id_property_records
+from proscenium_sync.binding_persistence.manifests import RepresentationRole
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.interaction import blender_selection, display_correspondence
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle
 from support.interaction_checks import CHECKS, NotApplicableError, ResolvedPick, SourceEntity, SourceSelection
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 FIXTURES = {
     "kind_hierarchy": interaction.kind_hierarchy,

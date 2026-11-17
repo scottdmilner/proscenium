@@ -14,7 +14,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom, Vt
 
 from fixtures import edit_sequence, evaluation, time_variations
-from proscenium import core
+from proscenium_sync import core
 
 from . import plan_serialization
 

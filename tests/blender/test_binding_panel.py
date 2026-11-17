@@ -12,16 +12,16 @@ import bpy
 import pytest
 
 from fixtures import interaction
-from proscenium.binding.results import ResultState
 from proscenium.interface import binding_panel
+from proscenium_sync.results import ResultState
 from support import binding_copy_operations
 from support.recording_layout import RecordingLayout
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.source_access import BindingId
 
 
 def _scene() -> bpy.types.Scene:

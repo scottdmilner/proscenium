@@ -2,7 +2,7 @@
 
 A README names an entry in backticks, a subdirectory with its trailing slash: `bindings.py`, `core/`. The sources are
 the extension's and each package's import directories, all through, and packages/ and each package's directory, whose
-own entries are its pyproject.toml and src/.
+own entries are its pyproject.toml, src/, and any build hook.
 """
 
 from __future__ import annotations
@@ -12,10 +12,11 @@ from pathlib import Path
 import pytest
 
 import proscenium
+import proscenium_sync
 import proscenium_ui
 
 ROOT = Path(proscenium.__file__).parents[2]
-SOURCES = (Path(proscenium.__file__).parent, Path(proscenium_ui.__file__).parent)
+SOURCES = tuple(Path(package.__file__).parent for package in (proscenium, proscenium_sync, proscenium_ui))
 PACKAGES = ROOT / "packages"
 # Not sources: Python's caches, and the compiled module the build puts in core/, which core/.gitignore ignores.
 SKIPPED = ("__pycache__", "_core.*.so", "_core.*.pyd")

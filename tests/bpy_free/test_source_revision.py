@@ -17,8 +17,8 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import transaction
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.stages import BindingStages, SourceUnavailableError
 
 from .attached_binding_stages import binding
 
@@ -127,7 +127,7 @@ def test_a_dropped_evaluation_stage_changes_the_revision_no_more(tmp_path: Path)
 
 def test_revisions_are_unique_to_their_process() -> None:
     # A generation synchronized in another session never matches: the revision there names its own process.
-    script = "from proscenium.binding.source_access.stages import BindingStages; print(BindingStages().source_revision)"
+    script = "from proscenium_sync.source_access.stages import BindingStages; print(BindingStages().source_revision)"
     elsewhere = subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
     here = BindingStages().source_revision
     assert elsewhere.stdout.strip().split(".")[0] != here.split(".")[0]

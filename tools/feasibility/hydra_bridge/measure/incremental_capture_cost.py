@@ -55,9 +55,9 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd, UsdGeom
 
-    from proscenium.binding.source_access import binding_settings, stages
-    from proscenium.core import _core
-    from proscenium.synchronization import application
+    from proscenium_sync.core import _core
+    from proscenium_sync.source_access import binding_settings, stages
+    from proscenium_sync.synchronization import application
 
     stage = Usd.Stage.Open(config["scene"])
     binding_stages = stages.BindingStages()

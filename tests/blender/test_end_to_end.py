@@ -22,11 +22,11 @@ import pytest
 from pxr import Usd
 
 from fixtures import appearance, evaluation, interaction, production_like
-from proscenium import synchronization
-from proscenium.api.bindings import BindingHandle
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync import synchronization
+from proscenium_sync.api.bindings import BindingHandle
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import evaluation as planning
 from support import bounds_check, time_codes
 from support.blend import save_and_reopen
 from support.displayed_copies import displayed_copies, unique_mesh_data_count
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
-    from proscenium import core
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync import core
+    from proscenium_sync.api.bindings import Bindings
 
 
 @contextmanager

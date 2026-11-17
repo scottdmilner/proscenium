@@ -29,23 +29,24 @@ def install_enable_disable(archive: str, repo_dir: str) -> dict[str, Any]:
     bpy.ops.extensions.package_install_files(filepath=archive, repo=REPO, enable_on_install=True)
 
     name = f"bl_ext.{REPO}.proscenium"
-    module = sys.modules[name]
+    registration = sys.modules["proscenium_sync.registration"]  # the extension's registration imported it
     result: dict[str, Any] = {
-        "module_file": module.__file__,
+        "module_file": sys.modules[name].__file__,
         "enabled_after_install": name in prefs.addons,
-        "registered_after_install": _registrations(module.registration),
+        "registered_after_install": _registrations(registration),
+        "sync_file": registration.__file__,
         "ui_file": sys.modules["proscenium_ui"].__file__,
     }
     from pxr import Usd
 
-    core = importlib.import_module(f"{name}.core._core")
+    core = importlib.import_module("proscenium_sync.core._core")
     result["core_file"] = core.__file__
     result["core_usd_version"] = list(core.usd_version())
     result["host_usd_version"] = list(Usd.GetVersion())
     # default_set=True also removes the preferences entry, as unchecking it in the UI does.
     addon_utils.disable(name, default_set=True)
     result["enabled_after_disable"] = name in prefs.addons
-    result["registered_after_disable"] = _registrations(module.registration)
+    result["registered_after_disable"] = _registrations(registration)
     return result
 
 

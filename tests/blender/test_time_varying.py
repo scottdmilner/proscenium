@@ -19,12 +19,12 @@ from mathutils import Matrix
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync.binding_persistence import id_property_records
+from proscenium_sync.binding_persistence.manifests import RepresentationRole
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.synchronization import evaluation as planning
 from support import time_codes
 from support.usd import binding_on_file
 
@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
     from pathlib import Path
 
-    from proscenium import core
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync import core
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 @dataclass(frozen=True)

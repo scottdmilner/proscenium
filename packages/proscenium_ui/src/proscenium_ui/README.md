@@ -18,7 +18,7 @@ It holds two widgets for Phase 3's stage editor: the scene graph widget, a prim 
 
 ## Import rules
 
-The extension's [import rules](../../../../src/proscenium/README.md#import-rules) hold here, with this package's tiers. It imports no other package of the workspace. A relative import reaches only a sibling or a descendant (`from .columned_list import column_layout`); every other import is absolute (`from proscenium_ui.widget_model import text_matching`). The two lowest tiers never import `bpy`:
+The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers. It imports no other package of the workspace. The two lowest tiers never import `bpy`:
 
 | Tier | Units |
 |---|---|

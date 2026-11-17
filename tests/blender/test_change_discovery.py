@@ -18,14 +18,14 @@ import pytest
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import edit_sequence, incremental
-from proscenium import core
-from proscenium.binding.results import ResultState
+from proscenium_sync import core
+from proscenium_sync.results import ResultState
 from support.refresh_checks import refresh_acting_on
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _time_code(time_code: float | None) -> Usd.TimeCode:

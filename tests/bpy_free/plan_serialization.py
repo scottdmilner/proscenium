@@ -21,7 +21,7 @@ if __name__ == "__main__":  # run as a script: the test tree's modules, as conft
 
 from pxr import Usd
 
-from proscenium import core
+from proscenium_sync import core
 
 BUFFERS = (
     "copy_world_matrices",

@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import transaction
-from proscenium import core
-from proscenium.binding.results import DiagnosticCode, ResultState
+from proscenium_sync import core
+from proscenium_sync.results import DiagnosticCode, ResultState
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.transaction import TransactionScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, scene: TransactionScene) -> BindingHandle:

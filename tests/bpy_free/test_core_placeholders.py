@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from fixtures import evaluation
-from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
-from proscenium.binding.source_access import BindingId
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync.results import Diagnostic, DiagnosticCategory, DiagnosticCode, Severity
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.synchronization import evaluation as planning
 
 from .plan_checks import assert_world, copies, plan_at
 

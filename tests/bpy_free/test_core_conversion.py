@@ -15,7 +15,7 @@ from pxr import Usd, UsdGeom
 
 from fixtures import evaluation
 from fixtures.evaluation import RENDER_PURPOSES, VIEWPORT_PURPOSES
-from proscenium import core
+from proscenium_sync import core
 
 from .plan_checks import SETTINGS, assert_world, copies
 

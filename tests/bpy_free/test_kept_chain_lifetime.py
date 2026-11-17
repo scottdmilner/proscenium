@@ -17,11 +17,11 @@ import pytest
 from pxr import Sdf, Usd, UsdGeom
 
 from fixtures import edit_sequence, transaction
-from proscenium import core
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.binding.source_access.stage_registry import StageRegistry
-from proscenium.binding.source_access.stages import BindingStages, SourceUnavailableError
+from proscenium_sync import core
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.stage_registry import StageRegistry
+from proscenium_sync.source_access.stages import BindingStages, SourceUnavailableError
 
 from . import plan_serialization
 from .attached_binding_stages import binding

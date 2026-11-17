@@ -15,11 +15,11 @@ from mathutils import Matrix
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import translation
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.synchronization import application
+from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.binding_persistence.manifests import RepresentationRole
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.synchronization import application
 from support.usd import binding_on_file
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from pxr import Gf
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 MOVER = "/World/Mover"
 

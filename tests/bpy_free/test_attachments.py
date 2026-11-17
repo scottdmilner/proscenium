@@ -13,10 +13,10 @@ import pytest
 from pxr import Sdf, Usd
 
 from fixtures import source_access
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.binding.source_access.stage_registry import StageRegistry
-from proscenium.binding.source_access.stages import SourceUnavailableError
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.stage_registry import StageRegistry
+from proscenium_sync.source_access.stages import SourceUnavailableError
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:

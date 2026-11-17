@@ -14,7 +14,7 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures import evaluation, interaction
-from proscenium import core
+from proscenium_sync import core
 from support import interaction_oracle
 
 from .plan_checks import plan_at

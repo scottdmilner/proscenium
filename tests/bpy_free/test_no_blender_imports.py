@@ -1,4 +1,4 @@
-"""The extension's bpy-free parts import in a fresh interpreter with Blender modules blocked (AGENTS.md#layout)."""
+"""The packages' bpy-free parts import in a fresh interpreter with Blender modules blocked (AGENTS.md#layout)."""
 
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             sys.executable,
             str(BLOCKER),
             "proscenium",
-            "proscenium.binding",
-            "proscenium.binding.results",
+            "proscenium_sync",
+            "proscenium_sync.results",
             "proscenium_ui",
             "proscenium_ui.scene_graph_widget",
             "proscenium_ui.property_viewer_widget",
@@ -30,9 +30,9 @@ def test_bpy_free_packages_import_without_bpy() -> None:
             "--walk",
             "proscenium_ui.property_viewer_widget.property_list",
             "--walk",
-            "proscenium.core",
+            "proscenium_sync.core",
             "--walk",
-            "proscenium.binding.source_access",
+            "proscenium_sync.source_access",
         ],
         capture_output=True,
         text=True,

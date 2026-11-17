@@ -15,16 +15,16 @@ from mathutils import Vector
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
-from proscenium import core
-from proscenium.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.results import ResultState
+from proscenium_sync import core
+from proscenium_sync.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
+from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.results import ResultState
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _attached(bindings: Bindings, stage: Usd.Stage) -> BindingHandle:
@@ -211,7 +211,7 @@ def test_a_picks_matrix_reaches_the_core_in_usds_convention() -> None:
     # in USD's last row, and a rotated point is where Blender puts it.
     from mathutils import Matrix
 
-    from proscenium.api import binding_interaction
+    from proscenium_sync.api import binding_interaction
 
     blender = Matrix.Translation((1.0, 2.0, 3.0)) @ Matrix.Rotation(0.5, 4, "Z")
     usd = binding_interaction.usd_matrix(blender)

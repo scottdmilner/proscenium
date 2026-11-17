@@ -14,14 +14,14 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import SynchronizationFailureStep
-from proscenium import core
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
-from proscenium.binding.persistence.id_property_records import LoadedRecord
-from proscenium.binding.results import DiagnosticCode, Result, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
-from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
-from proscenium.synchronization import application, publication
+from proscenium_sync import core
+from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.binding_persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
+from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
+from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.results import DiagnosticCode, Result, ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
+from proscenium_sync.synchronization import application, publication
 from support.blend import save_and_reopen
 from support.destinations import destination
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import TransactionScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 # What a failure at each step before publication reports.
 FAILED = {

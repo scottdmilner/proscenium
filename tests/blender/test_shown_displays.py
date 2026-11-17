@@ -12,8 +12,8 @@ import bpy
 from pxr import Usd, UsdGeom
 
 from fixtures import interaction, time_variations
-from proscenium.binding.results import ResultState
-from proscenium.interaction import display_correspondence
+from proscenium_sync.interaction import display_correspondence
+from proscenium_sync.results import ResultState
 from support import undo
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     import pytest
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 CRATE_B_BODY = "/World/Shelf/CrateB/Body"
 
@@ -143,7 +143,7 @@ def test_clearing_rebuilds_and_a_release_reports_no_stage(
     # released, the binding has no live stage, which each call reports rather than answering from what was kept.
     import pytest
 
-    from proscenium.api.bindings import SourceUnavailableError
+    from proscenium_sync.api.bindings import SourceUnavailableError
 
     builds = _builds(monkeypatch)
     for handle, _ in _synchronized(bindings, tmp_path):

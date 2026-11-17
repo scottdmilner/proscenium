@@ -10,14 +10,14 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Usd
 
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     import bpy
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def open_stage_without_cache(path: Path, load: Any = Usd.Stage.LoadAll) -> Usd.Stage:

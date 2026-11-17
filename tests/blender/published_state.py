@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.runtime import ownership
+from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.binding_runtime import ownership
 from support.blend import collection_content
 
 if TYPE_CHECKING:
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.source_access import BindingId
 
 
 def published_generation(binding_id: BindingId, destination: bpy.types.Collection) -> dict[str, Any]:

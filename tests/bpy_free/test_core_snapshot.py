@@ -13,7 +13,7 @@ import pytest
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium import core
+from proscenium_sync import core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS

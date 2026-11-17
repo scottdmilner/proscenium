@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium import core
+from proscenium_sync import core
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

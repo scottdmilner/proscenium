@@ -654,15 +654,15 @@ In either language, the cook authors through the Sdf API, which was faster than 
 
 ### Where it lives
 
-- **A lowest-tier unit with its own compiled module,** `src/proscenium/cook/` holding `_cook`, beside `core/`. It imports without `bpy`, and neither unit imports the other: the core never needs to know where a stage came from, and the cook never needs the core. The inspection layer is the precedent for native code kept apart from the core.
-- **The node tree's front end is a higher-tier unit:** the `bpy` code that turns the tree into its layer, reads Blender's arrays, and calls the cook. It hands stages to bindings through `api/`, so the cook meets the display only through the public API every caller uses.
+- **A package of its own with its own compiled module,** `proscenium_cook` in `packages/`, holding `_cook`, in a wheel for each platform ([workspace packages](../plans/workspace-packages.md)). It imports without `bpy`, and neither it nor `proscenium_sync` imports the other: the core never needs to know where a stage came from, and the cook never needs the core. The inspection layer is the precedent for native code kept apart from the core.
+- **The node tree's front end is a higher-tier unit:** the `bpy` code that turns the tree into its layer, reads Blender's arrays, and calls the cook. It hands stages to bindings through `proscenium_sync.api`, so the cook meets the display only through the public API every caller uses.
 - **Stages cross as `pxr` Python objects.** Both modules link Blender's `usd_ms`, so they share no C++ types or headers.
-- **The cook's reports are per node,** not a binding's diagnostics, so they get their own type rather than `binding/results.py`'s.
+- **The cook's reports are per node,** not a binding's diagnostics, so they get their own type rather than `proscenium_sync.results`'.
 
 What it costs:
-- `tools/build_extension.py` builds only `src/proscenium/core/`. It would build a second CMake project, or one project would produce both modules; the linkage audit and the manifest's `[build]` exclusions would cover both.
+- `tools/build_extension.py` builds each workspace package's wheel, and `proscenium_sync`'s build hook builds only the core. The cook's wheel would have a build hook of its own, building a second CMake project through `tools/native_build.py`, so the linkage audit covers both.
 - AGENTS.md's boundary rules apply to the new module: Tf errors and C++ exceptions become Python exceptions, buffers are read-only and typed as Blender's, the GIL is released while waiting, and OpenUSD workarounds are labeled. The core's small error translation is duplicated at first rather than split into a shared library.
-- The new unit goes in src/proscenium/README.md's tier table, `tests/bpy_free/test_import_tiers.py`, its directory READMEs, and AGENTS.md's Layout and Compiled core sections.
+- The new package gets its README's tier table, `tests/bpy_free/test_import_tiers.py`'s rules, its directory READMEs, and AGENTS.md's Layout and Compiled core sections.
 
 This note holds the design and its decisions; there's no plan file in `docs/plans/` while Phase 3 has no milestone. PROJECT.md records compiled components in DECISIONS.md, so the module gets a row there when it becomes product code.
 

@@ -14,10 +14,10 @@ import bpy
 from pxr import Gf
 
 from fixtures import edit_sequence, incremental
-from proscenium import core
-from proscenium.binding.persistence import id_property_records
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
+from proscenium_sync import core
+from proscenium_sync.binding_persistence import id_property_records
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.results import ResultState
 from support.clean_rebuild import clean_rebuild, display_state
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     import pytest
     from pxr import Usd
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:

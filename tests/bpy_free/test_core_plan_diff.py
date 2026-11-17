@@ -15,7 +15,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import edit_sequence, evaluation, incremental
-from proscenium import core
+from proscenium_sync import core
 
 from .plan_checks import CONTEXT, SETTINGS, plan_at
 

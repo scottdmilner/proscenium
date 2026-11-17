@@ -15,15 +15,15 @@ from mathutils import Vector
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import interaction
-from proscenium.api.bindings import PersistentSelection, SelectionEntry, SelectionMode
-from proscenium.binding.results import ResultState
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.api.bindings import PersistentSelection, SelectionEntry, SelectionMode
+from proscenium_sync.results import ResultState
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import interaction_oracle
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 CHAIR, TABLE = "/World/Props/Chair", "/World/Table"
 SEAT, TOP = f"{CHAIR}/Geom/Seat", f"{TABLE}/Top"

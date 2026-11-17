@@ -15,18 +15,18 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import translation
-from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.binding.runtime import kept_manifests, ownership
+from proscenium_sync.api import bindings as api
+from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.binding_persistence.manifests import RepresentationRole
+from proscenium_sync.binding_runtime import kept_manifests, ownership
+from proscenium_sync.results import DiagnosticCode, ResultState
 from support import undo
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import CachedTimeCodesScene, SourceChangeScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 MOVER = "/World/Mover"
 MARKER = "Undo base"

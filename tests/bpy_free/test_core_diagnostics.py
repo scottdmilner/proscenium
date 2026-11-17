@@ -15,11 +15,10 @@ import pytest
 from pxr import Usd, UsdGeom
 
 from fixtures import appearance, evaluation
-from proscenium import core
-from proscenium.binding import results
-from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
-from proscenium.binding.source_access import BindingId
-from proscenium.synchronization import evaluation as planning
+from proscenium_sync import core, results
+from proscenium_sync.results import Diagnostic, DiagnosticCategory, DiagnosticCode
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.synchronization import evaluation as planning
 
 from .plan_checks import CONTEXT, SETTINGS, plan_at
 

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import proscenium
-from proscenium.api.bindings import Bindings
+from proscenium_sync.api.bindings import Bindings
 
 from . import blender_state as blender_state
 
@@ -52,8 +52,8 @@ def extension() -> Generator[ModuleType]:
 def bindings(extension: ModuleType, monkeypatch: pytest.MonkeyPatch) -> Generator[Bindings]:
     """The process's bindings, fresh, which handles use, with the extension registered.
 
-    Its handlers keep the bindings' in-memory state current (proscenium.binding.runtime).
+    Its handlers keep the bindings' in-memory state current (proscenium_sync.binding_runtime).
     """
     fresh = Bindings()
-    monkeypatch.setattr("proscenium.api.bindings.BINDINGS", fresh)
+    monkeypatch.setattr("proscenium_sync.api.bindings.BINDINGS", fresh)
     yield fresh

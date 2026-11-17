@@ -11,7 +11,7 @@ from typing import Any
 
 from pxr import Sdf, Usd
 
-from proscenium import core
+from proscenium_sync import core
 
 # Expiry can lag release(), by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
 EXPIRY_WAIT = 2.0

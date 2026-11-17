@@ -5,8 +5,8 @@
 
 M7 plan, Phase G (item 4), against M4's provisional budgets: 50 ms for a function on one pick or entry and 250 ms on
 a whole-assembly selection, with their Blender updates ([M4 plan](../../../../docs/plans/M04-prototypes.md)). Each run
-makes a binding through the API (proscenium.api.bindings), attaches the scene's stage, synchronizes at its time code,
-caches CACHED later ones, makes the scene's managed content selectable, and updates the view layer. Then each
+makes a binding through the API (proscenium_sync.api.bindings), attaches the scene's stage, synchronizes at its time
+code, caches CACHED later ones, makes the scene's managed content selectable, and updates the view layer. Then each
 operation is timed in process with a monotonic clock, repeated (SINGLE_REPEATS, or WHOLE_REPEATS for those over the
 whole display), and its median and range kept; the summary gives the median and range of the processes' medians.
 
@@ -63,9 +63,9 @@ def child(config: dict[str, Any]) -> None:
     sys.path.insert(0, str(ROOT / "src"))
     from pxr import Usd
 
-    from proscenium.api import binding_interaction
-    from proscenium.api import bindings as api
     from proscenium.interface import source_select_tool
+    from proscenium_sync.api import binding_interaction
+    from proscenium_sync.api import bindings as api
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene: Any = bpy.context.scene

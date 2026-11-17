@@ -18,7 +18,7 @@ def publish_and_save(tmp_dir: str, path: str) -> dict[str, Any]:
     """With the extension registered from source: a binding on F-OFFLINE, its display published by hand, saved."""
     import proscenium
     from fixtures import source_access
-    from proscenium.api.bindings import Bindings
+    from proscenium_sync.api.bindings import Bindings
     from support.offline_display import publish_by_hand
     from support.usd import binding_on_file
 

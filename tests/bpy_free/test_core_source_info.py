@@ -13,7 +13,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom, Vt
 
 from fixtures import evaluation, time_variations
-from proscenium import core
+from proscenium_sync import core
 from support.time_codes import sampled
 
 from .plan_checks import CONTEXT, SETTINGS, assert_box, copies, plan_at

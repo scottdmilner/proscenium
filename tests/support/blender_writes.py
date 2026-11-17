@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 import bpy
 
-from proscenium.binding.persistence import id_property_records
+from proscenium_sync.binding_persistence import id_property_records
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator

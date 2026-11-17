@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import bpy
 
-from proscenium import registration
-from proscenium.binding.persistence import id_property_records
+from proscenium_sync import registration
+from proscenium_sync.binding_persistence import id_property_records
 from support import undo
 from support.blend import save_and_reopen
 

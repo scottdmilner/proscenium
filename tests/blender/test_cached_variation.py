@@ -16,11 +16,11 @@ import pytest
 from pxr import Gf, Usd
 
 from fixtures import edit_sequence, incremental, time_variations
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.persistence.manifests import RepresentationRole
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import ownership
-from proscenium.synchronization import attribute_samples, time_code_keying
+from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.binding_persistence.manifests import RepresentationRole
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.results import ResultState
+from proscenium_sync.synchronization import attribute_samples, time_code_keying
 from support.blend import save_and_reopen
 from support.clean_rebuild import clean_rebuild
 from support.displayed_copies import displayed_copies
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
     from support.bounds_check import DisplayedCopy
 
 

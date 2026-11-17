@@ -19,7 +19,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import appearance, evaluation, transaction
-from proscenium import core
+from proscenium_sync import core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS

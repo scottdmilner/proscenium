@@ -16,11 +16,11 @@ import pytest
 from pxr import Gf
 
 from fixtures import edit_sequence
-from proscenium.api import bindings as api
-from proscenium.binding.persistence import binding_state, id_property_records
-from proscenium.binding.results import ResultState
-from proscenium.binding.runtime import held_plans
-from proscenium.synchronization import application
+from proscenium_sync.api import bindings as api
+from proscenium_sync.binding_persistence import binding_state, id_property_records
+from proscenium_sync.binding_runtime import held_plans
+from proscenium_sync.results import ResultState
+from proscenium_sync.synchronization import application
 from support import undo
 from support.blend import save_and_reopen
 from support.destinations import destination
@@ -30,9 +30,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.edit_sequence import EditSequenceScene
-    from proscenium import core
-    from proscenium.api.bindings import BindingHandle, Bindings
-    from proscenium.binding.persistence.binding_state import GenerationMetadata
+    from proscenium_sync import core
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.binding_persistence.binding_state import GenerationMetadata
 
 
 @pytest.fixture

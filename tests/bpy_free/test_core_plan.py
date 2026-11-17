@@ -14,8 +14,8 @@ from pxr import Usd
 
 from fixtures import incremental, transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
-from proscenium import core
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync import core
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS, copies

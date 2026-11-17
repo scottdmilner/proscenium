@@ -14,8 +14,8 @@ import pytest
 from pxr import Sdf, Usd, Vt
 
 from fixtures import evaluation
-from proscenium import core
-from proscenium.binding.source_access import source_entity_ids
+from proscenium_sync import core
+from proscenium_sync.source_access import source_entity_ids
 
 from .plan_checks import CONTEXT, SETTINGS, assert_world, copies, plan_at
 

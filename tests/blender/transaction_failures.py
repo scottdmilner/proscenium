@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import transaction
-from proscenium.synchronization import application, datablock_removal, preparation_resources
+from proscenium_sync.synchronization import application, datablock_removal, preparation_resources
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     import bpy
 
     from fixtures.transaction import PreparationCleanupFailureScene
-    from proscenium.api.bindings import BindingHandle
-    from proscenium.binding.persistence.manifests import RepresentationRole
-    from proscenium.binding.results import Result
+    from proscenium_sync.api.bindings import BindingHandle
+    from proscenium_sync.binding_persistence.manifests import RepresentationRole
+    from proscenium_sync.results import Result
 
 
 def failing_preparation(

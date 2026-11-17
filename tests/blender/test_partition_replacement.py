@@ -17,9 +17,9 @@ import pytest
 from pxr import Usd
 
 from fixtures import edit_sequence, evaluation
-from proscenium import core
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry, RepresentationRole
-from proscenium.synchronization import partition_replacement
+from proscenium_sync import core
+from proscenium_sync.binding_persistence.manifests import Manifest, ManifestEntry, RepresentationRole
+from proscenium_sync.synchronization import partition_replacement
 from support.manifests import key
 
 if TYPE_CHECKING:

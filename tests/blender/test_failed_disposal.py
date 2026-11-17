@@ -13,12 +13,12 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium.binding import runtime
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records
-from proscenium.binding.persistence.cleanup_ledgers import LedgerEntry, OriginatingOperation
-from proscenium.binding.persistence.id_property_records import LoadedRecord
-from proscenium.binding.results import DiagnosticCode, Result, ResultState
-from proscenium.binding.runtime import ownership, pending_cleanup
+from proscenium_sync import binding_runtime
+from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.binding_persistence.cleanup_ledgers import LedgerEntry, OriginatingOperation
+from proscenium_sync.binding_persistence.id_property_records import LoadedRecord
+from proscenium_sync.binding_runtime import ownership, pending_cleanup
+from proscenium_sync.results import DiagnosticCode, Result, ResultState
 from support.blend import save_and_reopen
 from support.destinations import destination
 
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fixtures.transaction import PreparationCleanupFailureScene
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _binding(bindings: Bindings, scene: PreparationCleanupFailureScene) -> BindingHandle:
@@ -176,7 +176,7 @@ def test_removing_the_destination_leaves_the_pending_cleanup(bindings: Bindings,
         for check in range(2):
             if check:
                 save_and_reopen(tmp_path / "removed.blend")
-            assert runtime.binding_operations.find_binding(handle.binding_id) is None
+            assert binding_runtime.binding_operations.find_binding(handle.binding_id) is None
             assert {k: (e.binding_id, e.role, e.datablock and e.datablock.name) for k, e in _ledger().items()} == named
             [text] = binding_records.index_texts()
             index = id_property_records.read(text, binding_records.INDEX_KEY, binding_records.INDEX)

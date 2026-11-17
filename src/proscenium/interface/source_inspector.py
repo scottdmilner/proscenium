@@ -26,11 +26,10 @@ from typing import Any, override
 import bpy
 from pxr import Sdf, Usd
 
+from proscenium_sync.api import bindings
 from proscenium_ui import widget_updates
 from proscenium_ui.property_viewer_widget import display as property_display
 from proscenium_ui.scene_graph_widget import display
-
-from ..api import bindings
 
 VIEW_NAME = "proscenium_source_inspector"
 PROPERTY_VIEW_NAME = "proscenium_source_properties"

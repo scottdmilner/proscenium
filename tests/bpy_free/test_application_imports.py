@@ -9,12 +9,12 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-import proscenium
+import proscenium_sync
 
-SYNCHRONIZATION = Path(proscenium.__file__).parent / "synchronization"
+SYNCHRONIZATION = Path(proscenium_sync.__file__).parent / "synchronization"
 APPLICATION_MODULES = ("application",)  # the application layer's, in synchronization/
 # What reaches a stage: USD itself, the compiled core that captures one, and the binding's stages.
-STAGE_READERS = ("pxr", "proscenium.core", "proscenium.binding.source_access")
+STAGE_READERS = ("pxr", "proscenium_sync.core", "proscenium_sync.source_access")
 
 
 def _runtime_imports(path: Path, package: list[str]) -> list[tuple[int, str]]:
@@ -43,7 +43,7 @@ def test_the_application_layer_imports_nothing_that_reads_a_stage() -> None:
     found = [
         f"{name}.py:{line} imports {imported}"
         for name in APPLICATION_MODULES
-        for line, imported in _runtime_imports(SYNCHRONIZATION / f"{name}.py", ["proscenium", "synchronization"])
+        for line, imported in _runtime_imports(SYNCHRONIZATION / f"{name}.py", ["proscenium_sync", "synchronization"])
         if any(imported == reader or imported.startswith(f"{reader}.") for reader in STAGE_READERS)
     ]
     assert not found, "\n".join(found)
@@ -60,7 +60,7 @@ def test_the_check_finds_a_stage_reader(tmp_path: Path) -> None:
         "    from pxr import Gf\n"
         "def f() -> None:\n"
         "    from pxr import Vt\n"
-        "from .. import core\n"
+        "from proscenium_sync import core\n"
     )
-    found = [name for _, name in _runtime_imports(module, ["proscenium", "synchronization"])]
-    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium.core"]
+    found = [name for _, name in _runtime_imports(module, ["proscenium_sync", "synchronization"])]
+    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium_sync.core"]

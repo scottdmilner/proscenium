@@ -10,17 +10,17 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import binding_state
-from proscenium.binding.persistence.binding_state import GenerationMetadata
-from proscenium.binding.persistence.manifests import Manifest, ManifestEntry
-from proscenium.binding.runtime import ownership
-from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
-from proscenium.binding.source_access.stages import SourceRevision
+from proscenium_sync.binding_persistence import binding_state
+from proscenium_sync.binding_persistence.binding_state import GenerationMetadata
+from proscenium_sync.binding_persistence.manifests import Manifest, ManifestEntry
+from proscenium_sync.binding_runtime import ownership
+from proscenium_sync.source_access.binding_settings import PayloadPolicy, new_settings
+from proscenium_sync.source_access.stages import SourceRevision
 from support.manifests import key
 
 if TYPE_CHECKING:
     from fixtures.source_access import SavedDisplay
-    from proscenium.binding.source_access import BindingId
+    from proscenium_sync.source_access import BindingId
 
 
 def publish_by_hand(binding_id: BindingId, destination: bpy.types.Collection, display: SavedDisplay) -> None:

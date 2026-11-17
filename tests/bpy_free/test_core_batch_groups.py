@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from proscenium import core
+    from proscenium_sync import core
 
 
 @pytest.fixture

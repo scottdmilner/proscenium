@@ -40,7 +40,7 @@ Operations that span bindings belong to the process's bindings: creating a bindi
 
 `create_binding(scene, *, payload_policy=LOAD_ALL, name="USD Display")` creates an unattached binding with a dedicated destination named for `name`. It opens no source stage; the caller attaches one through the returned handle.
 
-Design note (settled by M3 and M5): the API is `proscenium.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
+Design note (settled by M3 and M5): the API is `proscenium_sync.api.bindings`. The process's bindings are `BINDINGS`, a `Bindings` whose methods keyed by binding identifier the handle's methods delegate to, and which tests exercise on a fresh instance.
 
 ## Source Consistency
 

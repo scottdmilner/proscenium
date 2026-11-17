@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import edit_sequence
-from proscenium.api.bindings import PersistentSelection, SelectionEntry
-from proscenium.binding.persistence import binding_state, id_property_records, manifests
-from proscenium.binding.results import ResultState
+from proscenium_sync.api.bindings import PersistentSelection, SelectionEntry
+from proscenium_sync.binding_persistence import binding_state, id_property_records, manifests
+from proscenium_sync.results import ResultState
 from support import interaction_oracle
 from support.refresh_checks import copy_object, entries_by_source
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from pxr import Usd
 
     from fixtures.edit_sequence import CopyIdentity
-    from proscenium.api.bindings import BindingHandle, Bindings
+    from proscenium_sync.api.bindings import BindingHandle, Bindings
 
 
 def _scene() -> bpy.types.Scene:

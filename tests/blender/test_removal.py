@@ -1,6 +1,6 @@
 """Removing managed datablocks nothing else uses, users first, one call per level, halved where one fails.
 
-See proscenium.synchronization.datablock_removal.
+See proscenium_sync.synchronization.datablock_removal.
 """
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 import bpy
 
-from proscenium.binding.persistence import id_property_records
-from proscenium.synchronization import datablock_removal
+from proscenium_sync.binding_persistence import id_property_records
+from proscenium_sync.synchronization import datablock_removal
 from support import undo
 
 if TYPE_CHECKING:

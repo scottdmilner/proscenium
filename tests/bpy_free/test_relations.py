@@ -16,9 +16,9 @@ import pytest
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
-from proscenium import core
-from proscenium.binding.source_access import stages
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync import core
+from proscenium_sync.source_access import stages
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 
 from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at
 from .plan_serialization import contents

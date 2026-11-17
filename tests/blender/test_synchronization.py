@@ -15,17 +15,17 @@ from pxr import Usd, UsdUtils
 from fixtures import source_access
 from fixtures.scenes import Scene, copy_scene
 from fixtures.source_access import DISK, read_values
-from proscenium.api.bindings import (
+from proscenium_sync import binding_persistence
+from proscenium_sync.api.bindings import (
     BindingHandle,
     BindingNotFoundError,
     Bindings,
     Result,
 )
-from proscenium.binding import persistence
-from proscenium.binding.persistence import binding_records, binding_state, id_property_records
-from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
-from proscenium.binding.source_access import BindingId
-from proscenium.binding.source_access.binding_settings import PayloadPolicy
+from proscenium_sync.binding_persistence import binding_records, binding_state, id_property_records
+from proscenium_sync.results import DiagnosticCategory, DiagnosticCode, ResultState, Severity
+from proscenium_sync.source_access import BindingId
+from proscenium_sync.source_access.binding_settings import PayloadPolicy
 from support import undo
 from support.destinations import destination
 from support.usd import binding_on_file, open_stage_without_cache
@@ -282,13 +282,13 @@ def test_releasing_changes_only_its_binding(bindings: Bindings, tmp_path: Path) 
 def _counted_scans(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """One item for every time every binding record is read from here on, as pruning the stages reads them."""
     scans: list[int] = []
-    read_configs = persistence.binding_records.read_configs
+    read_configs = binding_persistence.binding_records.read_configs
 
     def counted() -> object:
         scans.append(1)
         return read_configs()
 
-    monkeypatch.setattr(persistence.binding_records, "read_configs", counted)
+    monkeypatch.setattr(binding_persistence.binding_records, "read_configs", counted)
     return scans
 
 
