@@ -15,10 +15,10 @@ import pytest
 from pxr import Usd, UsdGeom
 
 from fixtures import appearance, evaluation
+from proscenium import core
 from proscenium.binding import results
 from proscenium.binding.results import Diagnostic, DiagnosticCategory, DiagnosticCode
 from proscenium.binding.source_access import BindingId
-from proscenium.core import _core
 from proscenium.synchronization import evaluation as planning
 
 from .plan_checks import CONTEXT, SETTINGS, plan_at
@@ -41,7 +41,7 @@ CONTENT = {
 
 
 def test_every_code_the_core_reports_is_a_documented_content_code() -> None:
-    codes = _core.diagnostic_codes()
+    codes = core.diagnostic_codes()
     assert codes and len(set(codes)) == len(codes)
     assert set(codes) == results.CORE_CODES  # the codes whose wording is part of their problem
     for code in codes:
@@ -79,7 +79,7 @@ def test_valid_content_plans_with_no_diagnostics(
             assert plan_at(stage, 0.0).diagnostics == ()
 
 
-def _usd_warnings(plan: _core.Plan) -> list[Diagnostic]:
+def _usd_warnings(plan: core.Plan) -> list[Diagnostic]:
     return [d for d in planning.plan_diagnostics(BINDING, plan) if d.code is DiagnosticCode.USD_WARNING]
 
 
@@ -88,9 +88,9 @@ def test_a_warning_usd_posts_while_capturing_names_its_prim(tmp_path: Path) -> N
     # while the chain is built and again whenever a capture lists Tangents' children: one diagnostic per capture,
     # naming Tangents, through one chain and its later captures alike.
     with evaluation.unsupported_content(tmp_path) as unsupported:
-        chain = _core.SceneIndexChain(unsupported.stage)
+        chain = core.SceneIndexChain(unsupported.stage)
         try:
-            plans = [_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT) for t in (0.0, 1.0, 1.0)]
+            plans = [core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT) for t in (0.0, 1.0, 1.0)]
         finally:
             chain.release()
     for plan in plans:
@@ -152,6 +152,6 @@ def test_a_code_the_list_lacks_raises() -> None:
     reported = SimpleNamespace(
         code="no-such-code", source_path="", message="", property_path="", asset_identifier="", fallback_description=""
     )
-    plan = cast("_core.Plan", SimpleNamespace(diagnostics=(reported,)))
+    plan = cast("core.Plan", SimpleNamespace(diagnostics=(reported,)))
     with pytest.raises(ValueError, match="no-such-code"):
         planning.plan_diagnostics(BINDING, plan)

@@ -15,10 +15,10 @@ from mathutils import Vector
 from pxr import Gf, Sdf, Usd
 
 from fixtures import interaction, time_variations
+from proscenium import core
 from proscenium.api.bindings import PickedEntity, SourceUnavailableError, TargetSelection
 from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.results import ResultState
-from proscenium.core import _core
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -199,7 +199,7 @@ def test_the_live_stage_gives_kinds_and_asset_metadata(bindings: Bindings, tmp_p
         check()
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
         check()
-        assert not [name for name in dir(_core.Plan) if "asset" in name.lower()]
+        assert not [name for name in dir(core.Plan) if "asset" in name.lower()]
         destination = bpy.data.collections["Shot"]
         for key in (binding_state.GENERATION_KEY, manifests.MANIFEST_KEY):
             stored = str(id_property_records.stored(destination, key))

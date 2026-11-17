@@ -14,13 +14,13 @@ from pxr import Usd
 
 from fixtures import transaction
 from fixtures.transaction import SynchronizationFailureStep
+from proscenium import core
 from proscenium.binding.persistence import binding_state, id_property_records, manifests
 from proscenium.binding.persistence.binding_state import GenerationMetadata, LastSynchronizationAttempt
 from proscenium.binding.persistence.id_property_records import LoadedRecord
 from proscenium.binding.results import DiagnosticCode, Result, ResultState
 from proscenium.binding.runtime import ownership, pending_cleanup
 from proscenium.binding.source_access.binding_settings import PayloadPolicy, new_settings
-from proscenium.core import _core
 from proscenium.synchronization import application, publication
 from support.blend import save_and_reopen
 from support.destinations import destination
@@ -89,8 +89,8 @@ def _fail_step(monkeypatch: pytest.MonkeyPatch, handle: BindingHandle, step: Syn
         handle.release()  # a source reason: the caller's stage is no longer attached
         return
     module, name = {
-        SynchronizationFailureStep.EVALUATE: (_core.SceneIndexChain, "capture"),
-        SynchronizationFailureStep.PLAN: (_core, "plan"),
+        SynchronizationFailureStep.EVALUATE: (core.SceneIndexChain, "capture"),
+        SynchronizationFailureStep.PLAN: (core, "plan"),
         SynchronizationFailureStep.PREPARE: (application, "prepare"),
         SynchronizationFailureStep.PUBLISH: (publication, "publish"),
     }[step]

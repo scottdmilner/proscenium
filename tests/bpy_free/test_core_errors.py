@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pxr import Tf
 
+from proscenium import core
 from proscenium.core import _core
 
 
@@ -16,7 +17,7 @@ def test_tf_error_raises_tf_error_exception() -> None:
 def test_cpp_exception_raises_python_exception() -> None:
     # The StageHandle constructor throws std::invalid_argument for a null stage.
     with pytest.raises(ValueError, match="valid USD stage"):
-        _core.StageHandle(None)
+        core.StageHandle(None)
 
 
 def test_cpp_exception_after_a_tf_error_joins_it() -> None:

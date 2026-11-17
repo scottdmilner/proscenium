@@ -40,7 +40,7 @@ from ..binding.persistence import manifests
 if TYPE_CHECKING:
     from collections.abc import Buffer, Callable, Iterable, Iterator, Sequence
 
-    from ..core import _core
+    from .. import core
     from .preparation_resources import PreparationResources
 
 # A managed object's name, which its bounds mesh shares: a tilde, which sorts after ASCII letters, digits, and most
@@ -86,7 +86,7 @@ class ManagedNames:
 
 
 def prepare(
-    plan: _core.Plan,
+    plan: core.Plan,
     copy_indices: Iterable[int],
     published: manifests.Manifest,
     work: PreparationResources,
@@ -215,7 +215,7 @@ def _staged_hide_flags(work: PreparationResources) -> dict[str, list[bool]]:
 
 
 def local_bounds(
-    plan: _core.Plan, copy_indices: Sequence[int], view: Callable[[Buffer], memoryview]
+    plan: core.Plan, copy_indices: Sequence[int], view: Callable[[Buffer], memoryview]
 ) -> dict[int, Sequence[float]]:
     """By copy index, each copy's local bounds as (min x, y, z, max x, y, z), or empty for none.
 

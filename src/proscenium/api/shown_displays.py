@@ -19,10 +19,10 @@ from __future__ import annotations
 import dataclasses
 from typing import TYPE_CHECKING
 
+from .. import core
 from ..binding.persistence import binding_state, id_property_records
 from ..binding.runtime import binding_operations
 from ..binding.source_access import stages
-from ..core import _core
 from ..interaction import display_correspondence
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ class ShownDisplay:
     """A binding's display elements and correspondence."""
 
     elements: display_correspondence.DisplayElements | None  # None while nothing is published
-    correspondence: _core.Correspondence
+    correspondence: core.Correspondence
 
     def objects(self, element_indices: Iterable[int]) -> list[bpy.types.Object]:
         """The objects of the elements at those indices, in that order."""
@@ -52,7 +52,7 @@ class ShownDisplay:
 class _KeptDisplay:
     shown: ShownDisplay
     elements: display_correspondence.DisplayElements  # shown's, never None
-    held_plan: _core.Plan  # the plan held for the generation shown when it was built
+    held_plan: core.Plan  # the plan held for the generation shown when it was built
     source_revision: stages.SourceRevision
 
 
@@ -98,7 +98,7 @@ class ShownDisplays:
         elements = display_correspondence.display_elements(binding_id)
         # The binding holds its live stage until released, so it can't expire during the call.
         if elements is None:
-            return ShownDisplay(None, _core.Correspondence(live, (), (), ()))
+            return ShownDisplay(None, core.Correspondence(live, (), (), ()))
         return self._keep(binding_id, elements, live, published_plans, binding_stages)
 
     def _keep(

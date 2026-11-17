@@ -19,12 +19,12 @@ from pxr import Usd
 
 from fixtures import evaluation, transaction
 from fixtures.transaction import EXTENT, ROLES_PER_PLACEHOLDER, translation
+from proscenium import core
 from proscenium.binding import runtime
 from proscenium.binding.persistence.cleanup_ledgers import OriginatingOperation
 from proscenium.binding.persistence.manifests import CopyResourceIdentity, Manifest, RepresentationRole
 from proscenium.binding.results import DiagnosticCode
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
 from proscenium.synchronization import application, datablock_removal, preparation_resources
 from support.blend import save_and_reopen
 from support.usd import open_stage_without_cache
@@ -40,8 +40,8 @@ if TYPE_CHECKING:
     from proscenium.binding.source_access import BindingId
     from proscenium.synchronization.preparation_resources import PreparationResources
 
-CONTEXT = _core.PlanningContext(unit_scale=1.0, representation_version=1)
-SETTINGS = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
+CONTEXT = core.PlanningContext(unit_scale=1.0, representation_version=1)
+SETTINGS = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES)  # the defaults
 
 
 def _staged(work: PreparationResources) -> bpy.types.Collection:
@@ -50,8 +50,8 @@ def _staged(work: PreparationResources) -> bpy.types.Collection:
     return work.staging_collection
 
 
-def _plan(stage: Usd.Stage, time_code: float) -> _core.Plan:
-    return _core.plan(_core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
+def _plan(stage: Usd.Stage, time_code: float) -> core.Plan:
+    return core.plan(core.SceneIndexChain(stage).capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT)
 
 
 def _binding(bindings: Bindings) -> BindingId:
@@ -62,7 +62,7 @@ def _work(binding_id: BindingId) -> PreparationResources:
     return preparation_resources.new_preparation_resources(binding_id, OriginatingOperation.SYNCHRONIZE)
 
 
-def _prepared(binding_id: BindingId, plan: _core.Plan, published: Manifest | None = None) -> PreparationResources:
+def _prepared(binding_id: BindingId, plan: core.Plan, published: Manifest | None = None) -> PreparationResources:
     work = _work(binding_id)
     application.prepare(plan, range(plan.copy_count), published or Manifest({}), work)
     return work

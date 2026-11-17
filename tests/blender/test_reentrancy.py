@@ -13,12 +13,11 @@ import bpy
 import pytest
 
 from fixtures import transaction
-from proscenium import synchronization
+from proscenium import core, synchronization
 from proscenium.api.bindings import ReentrantCallError
 from proscenium.binding.persistence import binding_records, binding_state, id_property_records
 from proscenium.binding.results import ResultState
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
 from proscenium.synchronization import datablock_removal
 from support.destinations import destination
 
@@ -87,15 +86,15 @@ def test_calls_during_a_synchronization_raise(
     # running attempt records the settings it started with, and the synchronization then completes.
     with transaction.source_change(tmp_path) as scene:
         handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
-        capture = _core.SceneIndexChain.capture
+        capture = core.SceneIndexChain.capture
         made: list[int] = []
 
-        def reentering(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+        def reentering(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
             made.append(_check_reentrant_calls(bindings, scene, handle, other))
             assert handle.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
             return capture(chain, time_code)
 
-        monkeypatch.setattr(_core.SceneIndexChain, "capture", reentering)
+        monkeypatch.setattr(core.SceneIndexChain, "capture", reentering)
         result = handle.synchronize(0)
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS
@@ -105,7 +104,7 @@ def test_calls_during_a_synchronization_raise(
             isinstance(last, id_property_records.LoadedRecord)
             and last.record.attempted_settings.payload_policy is PayloadPolicy.LOAD_ALL
         )
-        monkeypatch.setattr(_core.SceneIndexChain, "capture", capture)
+        monkeypatch.setattr(core.SceneIndexChain, "capture", capture)
         assert handle.synchronize(0).state is ResultState.SUCCESS  # nothing left running
 
 
@@ -115,15 +114,15 @@ def test_calls_during_a_cache_call_raise(bindings: Bindings, tmp_path: Path, mon
     with transaction.source_change(tmp_path) as scene:
         handle, other = _binding(bindings, scene, "Shot"), _binding(bindings, scene, "Other")
         assert handle.synchronize(0).state is ResultState.SUCCESS
-        capture = _core.SceneIndexChain.capture
+        capture = core.SceneIndexChain.capture
         made: list[int] = []
 
-        def reentering(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+        def reentering(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
             made.append(_check_reentrant_calls(bindings, scene, handle, other))
             assert other.set_settings(payload_policy=PayloadPolicy.LOAD_NONE).state is ResultState.SUCCESS
             return capture(chain, time_code)
 
-        monkeypatch.setattr(_core.SceneIndexChain, "capture", reentering)
+        monkeypatch.setattr(core.SceneIndexChain, "capture", reentering)
         result = handle.cache([10])
         assert made == [CALLS]  # once
         assert result.state is ResultState.SUCCESS

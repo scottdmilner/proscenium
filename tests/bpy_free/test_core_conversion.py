@@ -15,7 +15,7 @@ from pxr import Usd, UsdGeom
 
 from fixtures import evaluation
 from fixtures.evaluation import RENDER_PURPOSES, VIEWPORT_PURPOSES
-from proscenium.core import _core
+from proscenium import core
 
 from .plan_checks import SETTINGS, assert_world, copies
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-CONVERTING = _core.PlanSettings(VIEWPORT_PURPOSES, RENDER_PURPOSES, coordinate_conversion=True)
+CONVERTING = core.PlanSettings(VIEWPORT_PURPOSES, RENDER_PURPOSES, coordinate_conversion=True)
 SCALE_LENGTHS = [1.0, 0.01]  # the target scene's unit scale
 
 
@@ -33,16 +33,16 @@ def units(tmp_path: Path) -> Iterator[evaluation.UnitsScene]:
         yield scene
 
 
-def _snapshot(stage: Usd.Stage) -> _core.Snapshot:
-    chain = _core.SceneIndexChain(stage)
+def _snapshot(stage: Usd.Stage) -> core.Snapshot:
+    chain = core.SceneIndexChain(stage)
     try:
         return chain.capture(Usd.TimeCode(0.0))
     finally:
         chain.release()
 
 
-def _plan(snapshot: _core.Snapshot, settings: _core.PlanSettings, scale_length: float) -> _core.Plan:
-    return _core.plan(snapshot, settings, _core.PlanningContext(scale_length, 1))
+def _plan(snapshot: core.Snapshot, settings: core.PlanSettings, scale_length: float) -> core.Plan:
+    return core.plan(snapshot, settings, core.PlanningContext(scale_length, 1))
 
 
 @pytest.mark.parametrize("scale_length", SCALE_LENGTHS)
@@ -103,7 +103,7 @@ def test_a_z_up_stage_in_meters_into_a_scene_of_scale_1_plans_as_with_conversion
 def test_the_snapshot_keeps_the_stages_units_and_up_axis(units: evaluation.UnitsScene) -> None:
     # Editing the stage's metadata after capture reaches only a later capture.
     stage = units.stages["y-up-cm"]
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
         before = chain.capture(Usd.TimeCode(0.0))
         UsdGeom.SetStageMetersPerUnit(stage, 1.0)

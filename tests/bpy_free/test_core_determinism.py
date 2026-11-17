@@ -19,7 +19,7 @@ import pytest
 from pxr import Usd
 
 from fixtures import appearance, evaluation, transaction
-from proscenium.core import _core
+from proscenium import core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS
@@ -39,8 +39,8 @@ def transforms(tmp_path: Path) -> Iterator[evaluation.TransformsScene]:
         yield scene
 
 
-def _capture(stage: Usd.Stage, time: float) -> _core.Snapshot:
-    chain = _core.SceneIndexChain(stage)
+def _capture(stage: Usd.Stage, time: float) -> core.Snapshot:
+    chain = core.SceneIndexChain(stage)
     try:
         return chain.capture(Usd.TimeCode(time))
     finally:
@@ -59,9 +59,9 @@ def _elsewhere(root: Path, time: float) -> dict[str, Any]:
 def test_equal_inputs_give_equal_plans(transforms: evaluation.TransformsScene, time: float) -> None:
     # PLAN-08 on F-TRANSFORMS: one snapshot planned twice, and two captures at one time code, by separate chains.
     snapshot = _capture(transforms.stage, time)
-    first = contents(_core.plan(snapshot, SETTINGS, CONTEXT))
-    assert contents(_core.plan(snapshot, SETTINGS, CONTEXT)) == first
-    assert contents(_core.plan(_capture(transforms.stage, time), SETTINGS, CONTEXT)) == first
+    first = contents(core.plan(snapshot, SETTINGS, CONTEXT))
+    assert contents(core.plan(snapshot, SETTINGS, CONTEXT)) == first
+    assert contents(core.plan(_capture(transforms.stage, time), SETTINGS, CONTEXT)) == first
 
 
 @pytest.mark.parametrize(
@@ -75,20 +75,20 @@ def test_a_separate_process_plans_the_same(
     # PLAN-08 across processes, on F-TRANSFORMS and on F-NESTED-STRESS' nested instances, whose copies the capture
     # copies and the reader reads in parallel.
     with generator(tmp_path) as scene:
-        here = contents(_core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT))
+        here = contents(core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT))
         assert _elsewhere(scene.root_layer_path, time) == here
 
 
 def test_a_plan_reads_nothing_but_its_inputs(transforms: evaluation.TransformsScene) -> None:
     # PLAN-09: the same plan from a snapshot whose stage and chain are gone.
     stage = open_stage_without_cache(transforms.root_layer_path)
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     snapshot = chain.capture(Usd.TimeCode(0.0))
-    alive = contents(_core.plan(snapshot, SETTINGS, CONTEXT))
+    alive = contents(core.plan(snapshot, SETTINGS, CONTEXT))
     chain.release()
     del chain, stage
     gc.collect()
-    assert contents(_core.plan(snapshot, SETTINGS, CONTEXT)) == alive
+    assert contents(core.plan(snapshot, SETTINGS, CONTEXT)) == alive
 
 
 def test_identities_are_the_same_in_a_separate_process(tmp_path: Path) -> None:
@@ -97,7 +97,7 @@ def test_identities_are_the_same_in_a_separate_process(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
         for time in scene.time_codes:
             here = contents(
-                _core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT)
+                core.plan(_capture(open_stage_without_cache(scene.root_layer_path), time), SETTINGS, CONTEXT)
             )
             identities = [resource[:3] for resource in here["resources"]]
             assert [r[:3] for r in _elsewhere(scene.root_layer_path, time)["resources"]] == identities

@@ -13,7 +13,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom, Vt
 
 from fixtures import evaluation, time_variations
-from proscenium.core import _core
+from proscenium import core
 from support.time_codes import sampled
 
 from .plan_checks import CONTEXT, SETTINGS, assert_box, copies, plan_at
@@ -62,7 +62,7 @@ def test_placeholders_show_authored_or_computed_bounds(unsupported: evaluation.U
 
 def test_stage_edits_reach_computed_extents_and_unimaged_prims(unsupported: evaluation.UnsupportedScene) -> None:
     stage = unsupported.stage
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
         chain.capture(Usd.TimeCode(0.0))
         UsdGeom.PointBased(stage.GetPrimAtPath(COMBED)).GetPointsAttr().Set(Vt.Vec3fArray([(0, 0, 0), (0, 0, 4)]))
@@ -70,7 +70,7 @@ def test_stage_edits_reach_computed_extents_and_unimaged_prims(unsupported: eval
         tangents = UsdGeom.Xformable(stage.GetPrimAtPath(TANGENTS))
         tangents.GetPrim().GetAttribute("xformOp:translate").Set(Gf.Vec3d(9, 5, 0))
         tangents.AddScaleOp().Set(Gf.Vec3f(2, 2, 2))  # a new op, so a new op order
-        shown = copies(_core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT))
+        shown = copies(core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT))
     finally:
         chain.release()
     for path in (COMBED, DOTS, TANGENTS):
@@ -87,10 +87,10 @@ def test_time_changes_reach_computed_extents_and_unimaged_prims(unsupported: eva
     translate = stage.GetPrimAtPath(TANGENTS).GetAttribute("xformOp:translate")
     translate.Set(Gf.Vec3d(9, 0, 0), Usd.TimeCode(0.0))
     translate.Set(Gf.Vec3d(9, 0, 4), Usd.TimeCode(10.0))
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
         # One chain, moved from one time code to the next, as a cache call moves it.
-        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
+        shown = {t: copies(core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
     finally:
         chain.release()
     for time, at in shown.items():
@@ -119,11 +119,11 @@ def test_edits_and_time_reach_an_implicit_shapes_bounds(unsupported: evaluation.
     radius = UsdGeom.Sphere(ball).GetRadiusAttr()
     radius.Set(1.0, Usd.TimeCode(0.0))
     radius.Set(4.0, Usd.TimeCode(10.0))
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
-        before = copies(_core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT))
+        before = copies(core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT))
         UsdGeom.Cube(box).GetSizeAttr().Set(6.0)
-        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
+        shown = {t: copies(core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
     finally:
         chain.release()
     assert list(before[SHAPES[0]].local_bounds) != list(shown[0.0][SHAPES[0]].local_bounds)  # the checks could fail
@@ -138,14 +138,14 @@ def test_a_blocked_extent_sample_draws_a_marker(tmp_path: Path) -> None:
     # usable bounds there and is a marker, and a box between, at each sampled time code, planned from a new chain and
     # from one kept across the time changes.
     with time_variations.time_variations(tmp_path) as scene:
-        kept = _core.SceneIndexChain(scene.stage)
+        kept = core.SceneIndexChain(scene.stage)
         try:
             for time_code in sampled("F-TIME-VARIATIONS", scene.variation).time_codes:
                 if time_code is None:
                     continue
                 planned = {
                     "new chain": plan_at(scene.stage, time_code),
-                    "kept chain": _core.plan(kept.capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT),
+                    "kept chain": core.plan(kept.capture(Usd.TimeCode(time_code)), SETTINGS, CONTEXT),
                 }
                 expected = {source for source, _ in scene.boxes(time_code)}
                 for chain, plan in planned.items():

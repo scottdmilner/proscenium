@@ -22,24 +22,24 @@ from .plan_checks import CONTEXT, SETTINGS, copies
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from proscenium.core import _core
+    from proscenium import core
 
 STRAND = "/World/Placed/Strand"  # F-UNSUPPORTED-CONTENT's placeholder inside a component, rotated, render-only
 
 
 def _plan(
-    stage: Usd.Stage, context: _core.PlanningContext = CONTEXT, settings: _core.PlanSettings = SETTINGS
-) -> _core.Plan:
-    from proscenium.core import _core
+    stage: Usd.Stage, context: core.PlanningContext = CONTEXT, settings: core.PlanSettings = SETTINGS
+) -> core.Plan:
+    from proscenium import core
 
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
-        return _core.plan(chain.capture(Usd.TimeCode(0.0)), settings, context)
+        return core.plan(chain.capture(Usd.TimeCode(0.0)), settings, context)
     finally:
         chain.release()
 
 
-def _drawn(plan: _core.Plan) -> list[DisplayedCopy]:
+def _drawn(plan: core.Plan) -> list[DisplayedCopy]:
     """What M7 draws of the plan: each copy's local bounds' corners under its world matrix, a marker none."""
     found = []
     for source, copy in copies(plan).items():
@@ -52,7 +52,7 @@ def _drawn(plan: _core.Plan) -> list[DisplayedCopy]:
     return found
 
 
-def _check(stage: Usd.Stage, plan: _core.Plan, displayed: list[DisplayedCopy]) -> list[str]:
+def _check(stage: Usd.Stage, plan: core.Plan, displayed: list[DisplayedCopy]) -> list[str]:
     identity = Gf.Matrix4d(1.0)
     return bounds_check.model_bounds_mismatches(
         stage, Usd.TimeCode(0.0), bounds_check.planned_copies(plan), displayed, identity

@@ -15,7 +15,7 @@ from pxr import Usd, UsdGeom
 
 from fixtures import appearance, evaluation, interaction
 from fixtures.evaluation import RENDER_PURPOSES, VIEWPORT_PURPOSES
-from proscenium.core import _core
+from proscenium import core
 
 from .plan_checks import CONTEXT, SETTINGS, PlannedDrawnCopy, copies, plan_at
 
@@ -63,9 +63,9 @@ def test_participation_follows_visibility_and_purpose(
     visibility: evaluation.VisibilityScene, time_code: float | None
 ) -> None:
     # VIS-01, VIS-02 on F-VISIBILITY-PURPOSE's cases "inherited-visibility", "default-purposes", and "time-varying".
-    chain = _core.SceneIndexChain(visibility.stage)
+    chain = core.SceneIndexChain(visibility.stage)
     try:
-        shown = copies(_core.plan(chain.capture(_time_code(time_code)), SETTINGS, CONTEXT))
+        shown = copies(core.plan(chain.capture(_time_code(time_code)), SETTINGS, CONTEXT))
     finally:
         chain.release()
     expected = {
@@ -82,9 +82,9 @@ def test_participation_follows_visibility_and_purpose(
 
 def test_one_chain_follows_visibility_over_time(visibility: evaluation.VisibilityScene) -> None:
     # VIS-01 on case "time-varying": one chain, moved from one time code to the next, as a cache call moves it.
-    chain = _core.SceneIndexChain(visibility.stage)
+    chain = core.SceneIndexChain(visibility.stage)
     try:
-        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 15.0, 25.0)}
+        shown = {t: copies(core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 15.0, 25.0)}
     finally:
         chain.release()
     blinking = {
@@ -101,12 +101,12 @@ def test_a_destinations_purposes_change_only_its_participation(visibility: evalu
     destination's participation, every transform, bounds, and source are unchanged, apart from a copy whose purpose
     neither destination includes leaving the plan. VIS-02, VIS-03 on F-VISIBILITY-PURPOSE's case "purpose-settings".
     """
-    chain = _core.SceneIndexChain(visibility.stage)
+    chain = core.SceneIndexChain(visibility.stage)
     try:
         snapshot = chain.capture(Usd.TimeCode(0.0))
     finally:
         chain.release()
-    before = copies(_core.plan(snapshot, SETTINGS, CONTEXT))
+    before = copies(core.plan(snapshot, SETTINGS, CONTEXT))
     viewport, render = set(VIEWPORT_PURPOSES), set(RENDER_PURPOSES)
     # (viewport purposes, render purposes, the destination changed, the purpose added or removed)
     changes = [
@@ -115,7 +115,7 @@ def test_a_destinations_purposes_change_only_its_participation(visibility: evalu
         (viewport | {"render"}, render, "viewport", "render"),
     ]
     for viewport_purposes, render_purposes, destination, purpose in changes:
-        after = copies(_core.plan(snapshot, _core.PlanSettings(viewport_purposes, render_purposes), CONTEXT))
+        after = copies(core.plan(snapshot, core.PlanSettings(viewport_purposes, render_purposes), CONTEXT))
         other = "render" if destination == "viewport" else "viewport"
         added = purpose in (viewport_purposes if destination == "viewport" else render_purposes)
         changed = {path for path, p in visibility.purpose.items() if p == purpose}
@@ -186,9 +186,9 @@ def test_animated_purpose_visibility_reaches_each_capture(visibility: evaluation
     attribute = UsdGeom.VisibilityAPI.Apply(stage.GetPrimAtPath(proxy)).CreateProxyVisibilityAttr()
     attribute.Set("inherited", Usd.TimeCode(0.0))
     attribute.Set("invisible", Usd.TimeCode(10.0))
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
-        shown = {t: copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
+        shown = {t: copies(core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT)) for t in (0.0, 10.0)}
     finally:
         chain.release()
     assert {t: at[proxy].visible_in_viewport for t, at in shown.items()} == {
@@ -228,6 +228,6 @@ def test_placeholders_take_visibility_and_purpose(tmp_path: Path) -> None:
 
 def test_settings_refuse_another_purpose() -> None:
     with pytest.raises(ValueError, match="Not a USD purpose"):
-        _core.PlanSettings({"default", "preview"}, RENDER_PURPOSES)
-    settings = _core.PlanSettings(["proxy", "default", "proxy"], RENDER_PURPOSES)
+        core.PlanSettings({"default", "preview"}, RENDER_PURPOSES)
+    settings = core.PlanSettings(["proxy", "default", "proxy"], RENDER_PURPOSES)
     assert settings.viewport_purposes == ("default", "proxy")  # sorted, each once

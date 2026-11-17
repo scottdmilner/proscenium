@@ -60,7 +60,7 @@ def test_the_check_finds_a_stage_reader(tmp_path: Path) -> None:
         "    from pxr import Gf\n"
         "def f() -> None:\n"
         "    from pxr import Vt\n"
-        "from ..core import _core\n"
+        "from .. import core\n"
     )
     found = [name for _, name in _runtime_imports(module, ["proscenium", "synchronization"])]
-    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium.core._core"]
+    assert found == ["typing.TYPE_CHECKING", "pxr.Usd", "pxr.Sdf", "pxr.Vt", "proscenium.core"]

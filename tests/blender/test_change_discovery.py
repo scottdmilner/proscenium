@@ -18,8 +18,8 @@ import pytest
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import edit_sequence, incremental
+from proscenium import core
 from proscenium.binding.results import ResultState
-from proscenium.core import _core
 from support.refresh_checks import refresh_acting_on
 
 if TYPE_CHECKING:
@@ -101,9 +101,9 @@ def test_notices_naming_unchanged_prims_write_only_what_changed(
     # doesn't read. The second capture copies more prims than the first, its notices naming B too, and each refresh
     # updates only A.
     copied: list[int] = []
-    capture = _core.SceneIndexChain.capture
+    capture = core.SceneIndexChain.capture
 
-    def counted(chain: _core.SceneIndexChain, time_code: Usd.TimeCode | float) -> _core.Snapshot:
+    def counted(chain: core.SceneIndexChain, time_code: Usd.TimeCode | float) -> core.Snapshot:
         snapshot = capture(chain, time_code)
         copied.append(snapshot._copied_prim_count)  # noqa: SLF001 - the core's count for tests
         return snapshot
@@ -111,7 +111,7 @@ def test_notices_naming_unchanged_prims_write_only_what_changed(
     with edit_sequence.edit_sequence(tmp_path) as scene:
         handle = _binding(bindings, scene.stage)
         translate = scene.stage.GetAttributeAtPath(f"{edit_sequence.A}.xformOp:translate")
-        monkeypatch.setattr(_core.SceneIndexChain, "capture", counted)
+        monkeypatch.setattr(core.SceneIndexChain, "capture", counted)
         translate.Set(Gf.Vec3d(3, 0, 0))
         refresh_acting_on(bindings, handle, scene.stage, monkeypatch, "A moved", updated={edit_sequence.A})
         translate.Set(Gf.Vec3d(4, 0, 0))

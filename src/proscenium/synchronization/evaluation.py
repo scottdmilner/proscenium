@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .. import core
 from ..binding import results
 from ..binding.results import Diagnostic, DiagnosticCode
 from ..binding.source_access import stages
-from ..core import _core
 from . import capture_verification
 
 if TYPE_CHECKING:
@@ -33,11 +33,11 @@ if TYPE_CHECKING:
 
 # The core reports exactly the codes the documented list says it does: a core built against another list fails here, on
 # import, rather than at the first diagnostic it reports (DiagnosticCode raises ValueError for one it lacks).
-if frozenset(DiagnosticCode(code) for code in _core.diagnostic_codes()) != results.CORE_CODES:
+if frozenset(DiagnosticCode(code) for code in core.diagnostic_codes()) != results.CORE_CODES:
     raise ImportError("The compiled core reports other diagnostic codes than binding.results.CORE_CODES")
 
 
-def plan_diagnostics(binding_id: BindingId, plan: _core.Plan) -> tuple[Diagnostic, ...]:
+def plan_diagnostics(binding_id: BindingId, plan: core.Plan) -> tuple[Diagnostic, ...]:
     """The plan's source-side diagnostics as the binding's, in its order."""
     return tuple(
         Diagnostic(
@@ -72,7 +72,7 @@ def evaluate_display_plans(
     *,
     representation_version: int,
     new_chain: bool = False,
-) -> list[_core.Plan] | None:
+) -> list[core.Plan] | None:
     """Evaluate snapshots and build display plans in time-code order, reporting their diagnostics to report.
 
     The source's state is reported first. Where there are no plans, the fatal diagnostic saying why is reported and
@@ -87,7 +87,7 @@ def evaluate_display_plans(
     report.extend(source_state_diagnostics(binding_id, evaluation_stage))
     if new_chain:
         binding_stages.release_kept_chain()
-    fresh: _core.SceneIndexChain | None = None  # the verification mode's new chain, released unless kept
+    fresh: core.SceneIndexChain | None = None  # the verification mode's new chain, released unless kept
     try:
         try:
             with binding_stages.monitor_evaluation_layer_changes() as changed:
@@ -95,7 +95,7 @@ def evaluate_display_plans(
                     chain, built = _kept_chain(binding_stages, evaluation_stage)
                     snapshots = [chain.capture(time_code) for time_code in time_codes]
                     if not built and capture_verification.enabled():
-                        fresh = _core.SceneIndexChain(evaluation_stage)
+                        fresh = core.SceneIndexChain(evaluation_stage)
                     full_snapshots = [] if fresh is None else [fresh.capture(time_code) for time_code in time_codes]
                 except BaseException:
                     binding_stages.release_kept_chain()  # it may have applied only some of the stage's edits
@@ -115,12 +115,12 @@ def evaluate_display_plans(
             report.add(Diagnostic(DiagnosticCode.EVALUATION_FAILED, binding_id, message))
             return None
         try:
-            planned = _core.PlanSettings(
+            planned = core.PlanSettings(
                 settings.viewport_purposes, settings.render_purposes, settings.coordinate_conversion
             )
-            context = _core.PlanningContext(unit_scale, representation_version)
-            plans = [_core.plan(snapshot, planned, context) for snapshot in snapshots]
-            full_plans = [_core.plan(snapshot, planned, context) for snapshot in full_snapshots]
+            context = core.PlanningContext(unit_scale, representation_version)
+            plans = [core.plan(snapshot, planned, context) for snapshot in snapshots]
+            full_plans = [core.plan(snapshot, planned, context) for snapshot in full_snapshots]
         except Exception as error:  # noqa: BLE001
             report.add(Diagnostic(DiagnosticCode.PLANNING_FAILED, binding_id, f"Planning the display failed: {error}"))
             return None
@@ -137,12 +137,12 @@ def evaluate_display_plans(
 def _verified(
     binding_id: BindingId,
     binding_stages: stages.BindingStages,
-    fresh: _core.SceneIndexChain,
+    fresh: core.SceneIndexChain,
     time_codes: Sequence[Usd.TimeCode],
-    plans: list[_core.Plan],
-    full_plans: list[_core.Plan],
+    plans: list[core.Plan],
+    full_plans: list[core.Plan],
     report: DiagnosticCollector,
-) -> list[_core.Plan]:
+) -> list[core.Plan]:
     """The kept chain's plans if they equal the full re-read's; otherwise the full re-read's, its chain kept instead.
 
     Each mismatch is reported.
@@ -155,13 +155,11 @@ def _verified(
     return full_plans
 
 
-def _kept_chain(
-    binding_stages: stages.BindingStages, evaluation_stage: Usd.Stage
-) -> tuple[_core.SceneIndexChain, bool]:
+def _kept_chain(binding_stages: stages.BindingStages, evaluation_stage: Usd.Stage) -> tuple[core.SceneIndexChain, bool]:
     """The binding's kept chain over evaluation_stage, built and kept when there is none, and whether it was built."""
     chain = binding_stages.kept_chain
-    if isinstance(chain, _core.SceneIndexChain) and not chain.released:
+    if isinstance(chain, core.SceneIndexChain) and not chain.released:
         return chain, False
-    chain = _core.SceneIndexChain(evaluation_stage)
+    chain = core.SceneIndexChain(evaluation_stage)
     binding_stages.keep_chain(chain)
     return chain, True

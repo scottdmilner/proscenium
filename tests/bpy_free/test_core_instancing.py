@@ -14,6 +14,7 @@ import pytest
 from pxr import Gf, Sdf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
+from proscenium import core
 from proscenium.binding.source_access import source_entity_ids
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
 from proscenium.core import _core
@@ -38,7 +39,7 @@ def stress(tmp_path: Path) -> Iterator[appearance.StressScene]:
         yield scene
 
 
-def _contexts(plan: _core.Plan) -> dict[str, tuple[str, ...]]:
+def _contexts(plan: core.Plan) -> dict[str, tuple[str, ...]]:
     return {c.source_path: c.instance_context for c in plan.correspondence}
 
 
@@ -112,7 +113,7 @@ def test_known_gap_hydra_ignores_a_reset_inside_an_instance(stress: appearance.S
     # WORKAROUND for OpenUSD #862 (InstanceResolver::ResetsBelow in core/instancing.h): Hydra's own composition, a
     # copy's flattened transform then its instance's, is wrong exactly for the copies under a reset inside an
     # instance. This fails once Hydra honors the reset, and the workaround can go.
-    chain = _core.SceneIndexChain(stress.stage)
+    chain = core.SceneIndexChain(stress.stage)
     try:
         hydra = _core._hydra_composed_worlds(chain.capture(Usd.TimeCode(0.0)))  # noqa: SLF001 - the known-gap hook
     finally:

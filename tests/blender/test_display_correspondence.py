@@ -31,9 +31,9 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
+    from proscenium import core
     from proscenium.api.bindings import Bindings
     from proscenium.binding.source_access import BindingId
-    from proscenium.core import _core
 
 IDENTITY = Gf.Matrix4d(1.0)
 SCENES: dict[str, Callable[[Path], AbstractContextManager[interaction.InteractionScene]]] = {
@@ -71,7 +71,7 @@ def _object_entries(binding_id: BindingId) -> dict[str, tuple[bpy.types.ID | Non
 
 
 def _answers(
-    elements: display_correspondence.DisplayElements, correspondence: _core.Correspondence, stage: Usd.Stage
+    elements: display_correspondence.DisplayElements, correspondence: core.Correspondence, stage: Usd.Stage
 ) -> Answers:
     """What the correspondence answers, by entry key: each element's entity, the universe, and each prim's highlight."""
     picks = {}
@@ -202,7 +202,7 @@ def test_a_copys_second_object_is_an_element(bindings: Bindings, tmp_path: Path)
 def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
     # INSP-10's display half: with the live stage released, the display elements are still read from Blender data,
     # and the core's correspondence reports the source unavailable.
-    from proscenium.core import _core
+    from proscenium import core
 
     with interaction.kind_hierarchy(tmp_path) as scene:
         handle = _attached(bindings, scene.stage)
@@ -210,7 +210,7 @@ def test_elements_read_no_source(bindings: Bindings, tmp_path: Path) -> None:
         handle.release()
         elements = _elements(handle.binding_id)
         assert len(elements.objects) == len(scene.elements[0.0])
-        with pytest.raises(_core.SourceUnavailableError):
+        with pytest.raises(core.SourceUnavailableError):
             display_correspondence.correspondence(elements, handle.live_stage(), bindings.published_plans)
 
 

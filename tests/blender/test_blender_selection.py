@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
+    from proscenium import core
     from proscenium.api.bindings import Bindings
-    from proscenium.core import _core
 
 CHAIR = "/World/Props/Chair"
 SEAT, BACK, LEGS = f"{CHAIR}/Geom/Seat", f"{CHAIR}/Geom/Back", f"{CHAIR}/Legs"
@@ -32,7 +32,7 @@ class _Display:
     """A synchronized F-KIND-HIERARCHY display: its elements, correspondence, and the active view layer."""
 
     elements: display_correspondence.DisplayElements
-    correspondence: _core.Correspondence
+    correspondence: core.Correspondence
     view_layer: bpy.types.ViewLayer
 
     def __init__(self, bindings: Bindings, scene: interaction.InteractionScene) -> None:

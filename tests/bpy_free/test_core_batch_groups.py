@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    from proscenium.core import _core
+    from proscenium import core
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def points(tmp_path: Path) -> Iterator[evaluation.PointInstancerScene]:
         yield scene
 
 
-def _groups(plan: _core.Plan, minimum: int) -> tuple[list[tuple[int, list[str]]], list[str]]:
+def _groups(plan: core.Plan, minimum: int) -> tuple[list[tuple[int, list[str]]], list[str]]:
     """The plan's groups as (repeat, member sources), and its single copies' sources."""
     sources = [c.source_path for c in plan.correspondence]
     groups, single = plan.batch_groups(minimum)

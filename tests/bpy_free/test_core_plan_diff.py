@@ -15,7 +15,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import edit_sequence, evaluation, incremental
-from proscenium.core import _core
+from proscenium import core
 
 from .plan_checks import CONTEXT, SETTINGS, plan_at
 
@@ -48,7 +48,7 @@ def scene(tmp_path: Path) -> Iterator[EditSequenceScene]:
         yield scene
 
 
-def _identities(plan: _core.Plan) -> list[CopyIdentity]:
+def _identities(plan: core.Plan) -> list[CopyIdentity]:
     return [(entry.source_path, tuple(entry.instance_context)) for entry in plan.correspondence]
 
 
@@ -57,9 +57,9 @@ def _indices(buffer: Buffer) -> list[int]:
         return view.tolist()
 
 
-def _changes(previous: _core.Plan, plan: _core.Plan) -> dict[str, set[CopyIdentity]]:
+def _changes(previous: core.Plan, plan: core.Plan) -> dict[str, set[CopyIdentity]]:
     """The diff's lists, as the identities of the copies each names."""
-    diff = _core.diff_plans(previous, plan)
+    diff = core.diff_plans(previous, plan)
     before, after = _identities(previous), _identities(plan)
     matched = _indices(diff.previous_copy_indices)
     assert len(matched) == len(after)
@@ -98,7 +98,7 @@ def test_an_equal_plan_changes_nothing(scene: EditSequenceScene) -> None:
     # Two captures through two chains: equal plans, each copy matched to itself.
     previous, plan = plan_at(scene.stage, 0.0), plan_at(scene.stage, 0.0)
     assert _changes(previous, plan) == _expected()
-    assert _indices(_core.diff_plans(previous, plan).previous_copy_indices) == list(range(len(previous.correspondence)))
+    assert _indices(core.diff_plans(previous, plan).previous_copy_indices) == list(range(len(previous.correspondence)))
 
 
 def test_each_step_changes_what_the_fixture_names(scene: EditSequenceScene) -> None:
@@ -114,26 +114,26 @@ def test_each_step_changes_what_the_fixture_names(scene: EditSequenceScene) -> N
 
 
 def _replanned(
-    stage: Usd.Stage, settings: _core.PlanSettings, context: _core.PlanningContext
-) -> tuple[_core.Plan, _core.Plan]:
+    stage: Usd.Stage, settings: core.PlanSettings, context: core.PlanningContext
+) -> tuple[core.Plan, core.Plan]:
     """The plan under the default settings and context, and from the same snapshot under the given ones."""
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
         snapshot = chain.capture(Usd.TimeCode(0.0))
     finally:
         chain.release()
-    return _core.plan(snapshot, SETTINGS, CONTEXT), _core.plan(snapshot, settings, context)
+    return core.plan(snapshot, SETTINGS, CONTEXT), core.plan(snapshot, settings, context)
 
 
 @pytest.mark.parametrize(
     "settings",
     [
-        _core.PlanSettings(["proxy"], evaluation.RENDER_PURPOSES),
-        _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, ["render"]),
+        core.PlanSettings(["proxy"], evaluation.RENDER_PURPOSES),
+        core.PlanSettings(evaluation.VIEWPORT_PURPOSES, ["render"]),
     ],
     ids=["viewport", "render"],
 )
-def test_a_destinations_purposes_change_participation(scene: EditSequenceScene, settings: _core.PlanSettings) -> None:
+def test_a_destinations_purposes_change_participation(scene: EditSequenceScene, settings: core.PlanSettings) -> None:
     # A destination without default: every visible copy of default purpose, all but Proxy's, leaves that destination
     # only. Proxy's is shown in the viewport through proxy, and in neither render.
     previous, plan = _replanned(scene.stage, settings, CONTEXT)
@@ -142,16 +142,16 @@ def test_a_destinations_purposes_change_participation(scene: EditSequenceScene, 
 
 def test_coordinate_conversion_moves_every_copy(scene: EditSequenceScene) -> None:
     # The stage is Z-up in meters, so conversion at a unit scale of 1 is the identity, and at 2 scales every copy.
-    converted = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES, coordinate_conversion=True)
-    previous, plan = _replanned(scene.stage, converted, _core.PlanningContext(2.0, 1))
+    converted = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES, coordinate_conversion=True)
+    previous, plan = _replanned(scene.stage, converted, core.PlanningContext(2.0, 1))
     assert _changes(previous, plan) == _expected(moved=scene.initial_copies)
 
 
 def test_a_copy_can_change_in_several_ways_at_once(scene: EditSequenceScene) -> None:
     # Conversion at a unit scale of 2 and a viewport without default: every copy moved, and the participation of each
     # but Proxy's, which the viewport shows through proxy, changed.
-    settings = _core.PlanSettings(["proxy"], evaluation.RENDER_PURPOSES, coordinate_conversion=True)
-    previous, plan = _replanned(scene.stage, settings, _core.PlanningContext(2.0, 1))
+    settings = core.PlanSettings(["proxy"], evaluation.RENDER_PURPOSES, coordinate_conversion=True)
+    previous, plan = _replanned(scene.stage, settings, core.PlanningContext(2.0, 1))
     changed = scene.initial_copies - scene.proxy_copies
     assert _changes(previous, plan) == _expected(moved=scene.initial_copies, participation_changed=changed)
 
@@ -212,9 +212,9 @@ def test_a_time_code_change_changes_the_copies_whose_values_differ(
     same_values: SameValuesScene, first: float | None, second: float | None
 ) -> None:
     # Held's translate moves it and Blink's visibility changes its participation; equal values change nothing.
-    chain = _core.SceneIndexChain(same_values.stage)
+    chain = core.SceneIndexChain(same_values.stage)
     try:
-        previous, plan = (_core.plan(chain.capture(_time_code(t)), SETTINGS, CONTEXT) for t in (first, second))
+        previous, plan = (core.plan(chain.capture(_time_code(t)), SETTINGS, CONTEXT) for t in (first, second))
     finally:
         chain.release()
     changed = same_values.changed_copies(first, second)
@@ -224,5 +224,5 @@ def test_a_time_code_change_changes_the_copies_whose_values_differ(
 
 
 def test_unit_scale_without_conversion_changes_nothing(scene: EditSequenceScene) -> None:
-    previous, plan = _replanned(scene.stage, SETTINGS, _core.PlanningContext(2.0, 1))
+    previous, plan = _replanned(scene.stage, SETTINGS, core.PlanningContext(2.0, 1))
     assert _changes(previous, plan) == _expected()

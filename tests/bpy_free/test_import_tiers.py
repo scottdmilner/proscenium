@@ -225,7 +225,8 @@ def test_an_import_out_of_form_is_found() -> None:
 
     assert out_of_form("from ..persistence import manifests, id_property_records") == 0
     assert out_of_form("from .. import results") == 0
-    assert out_of_form("from ...core import _core") == 0
+    assert out_of_form("from ... import core") == 0
+    assert out_of_form("from ...core import Plan, plan") == 0
     assert out_of_form("from .ownership import Claim") == 0  # inside its own unit
     assert out_of_form("from ..persistence.manifests import Manifest, RepresentationRole") == 0
     assert out_of_form("from ..results import Diagnostic, Result") == 0
@@ -236,6 +237,7 @@ def test_an_import_out_of_form_is_found() -> None:
     assert out_of_form("from ...synchronization import prepare") == 1
     assert out_of_form("from ...synchronization import application") == 1
     assert out_of_form("from ...synchronization.application import prepare") == 1
+    assert out_of_form("from ...core import _core") == 1  # the compiled module is the core's own
 
 
 def _own_module_imports(path: Path) -> set[str]:

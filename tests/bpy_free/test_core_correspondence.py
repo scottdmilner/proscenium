@@ -14,7 +14,7 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures import evaluation, interaction
-from proscenium.core import _core
+from proscenium import core
 from support import interaction_oracle
 
 from .plan_checks import plan_at
@@ -32,10 +32,10 @@ SCENES: dict[str, Callable[[Path], AbstractContextManager[interaction.Interactio
 }
 
 
-def _correspondence(stage: Usd.Stage, plan: _core.Plan, *, with_contexts: bool) -> _core.Correspondence:
+def _correspondence(stage: Usd.Stage, plan: core.Plan, *, with_contexts: bool) -> core.Correspondence:
     """The plan's copies as display elements, with its contexts or with none, so the live stage gives them."""
     entries = plan.correspondence
-    return _core.Correspondence(
+    return core.Correspondence(
         stage,
         [e.source_path for e in entries],
         [e.instance_context if with_contexts else None for e in entries],
@@ -106,7 +106,7 @@ def test_render_only_elements_are_not_browsable(tmp_path: Path) -> None:
     with interaction.kind_hierarchy(tmp_path) as scene:
         plan = plan_at(scene.stage, scene.times[0])
         entries = plan.correspondence
-        hidden = _core.Correspondence(
+        hidden = core.Correspondence(
             scene.stage, [e.source_path for e in entries], [e.instance_context for e in entries], [False] * len(entries)
         )
         assert not any(memoryview(hidden.displayed(sorted(scene.universe[scene.times[0]]))).tolist())
@@ -125,13 +125,13 @@ def test_without_a_live_stage_the_source_is_unavailable(tmp_path: Path) -> None:
             lambda: correspondence.resolve_pick(0, IDENTITY),
             lambda: correspondence.displayed(["/"]),
             lambda: correspondence.highlight_targets(["/"]),
-            lambda: _core.Correspondence(None, [], [], []),
+            lambda: core.Correspondence(None, [], [], []),
         ]
         for call in calls:
-            with pytest.raises(_core.SourceUnavailableError):
+            with pytest.raises(core.SourceUnavailableError):
                 call()
 
 
 def test_parallel_inputs_must_agree_in_length(tmp_path: Path) -> None:
     with interaction.kind_hierarchy(tmp_path) as scene, pytest.raises(ValueError, match="differ in length"):
-        _core.Correspondence(scene.stage, ["/A"], [None], [])
+        core.Correspondence(scene.stage, ["/A"], [None], [])

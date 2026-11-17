@@ -16,9 +16,9 @@ import pytest
 from pxr import Gf, Usd, UsdGeom
 
 from fixtures import appearance, evaluation
+from proscenium import core
 from proscenium.binding.source_access import stages
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
 
 from .plan_checks import SETTINGS, PlannedDrawnCopy, assert_world, copies, plan_at
 from .plan_serialization import contents
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 SHIFT = Gf.Vec3d(3.0, -2.0, 5.0)  # relation 1's translation
-CONVERTING = _core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES, coordinate_conversion=True)
+CONVERTING = core.PlanSettings(evaluation.VIEWPORT_PURPOSES, evaluation.RENDER_PURPOSES, coordinate_conversion=True)
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ def _resets(stage: Usd.Stage, path: str) -> bool:
     return False
 
 
-def _diagnostics(plan: _core.Plan) -> list[object]:
+def _diagnostics(plan: core.Plan) -> list[object]:
     return contents(plan)["diagnostics"]
 
 
@@ -133,14 +133,14 @@ def test_relation_2_on_generated_hierarchies(seed: int, scale_length: float, tmp
     participation, and diagnostics are unchanged. Relation 2 on F-UNITS-UP-AXIS is test_core_conversion.py's.
     """
     with evaluation.generated_hierarchy(tmp_path, seed) as scene:
-        chain = _core.SceneIndexChain(scene.stage)
+        chain = core.SceneIndexChain(scene.stage)
         try:
             snapshot = chain.capture(Usd.TimeCode(0.0))
         finally:
             chain.release()
-        context = _core.PlanningContext(scale_length, 1)
-        off = _core.plan(snapshot, SETTINGS, context)
-        on = _core.plan(snapshot, CONVERTING, context)
+        context = core.PlanningContext(scale_length, 1)
+        off = core.plan(snapshot, SETTINGS, context)
+        on = core.plan(snapshot, CONVERTING, context)
         correction = evaluation.correction(scene.meters_per_unit, scene.up_axis, scale_length)
         plain, converted = copies(off), copies(on)
         assert converted.keys() == plain.keys() == scene.world_matrices_by_source.keys()

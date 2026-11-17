@@ -29,8 +29,8 @@ from typing import TYPE_CHECKING
 
 import bpy
 
+from .. import core
 from ..binding.runtime import kept_manifests
-from ..core import _core
 from . import datablock_removal
 
 if TYPE_CHECKING:
@@ -63,7 +63,7 @@ class PartitionReplacement:
 
 
 def partitions_to_replace(
-    shown: _core.Plan | None, plan: _core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
+    shown: core.Plan | None, plan: core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
 ) -> PartitionReplacement:
     """What a synchronization of plan replaces: every partition without shown, else what differs from it.
 
@@ -75,20 +75,20 @@ def partitions_to_replace(
     return changed_partitions(shown, plan, published, destination)
 
 
-def every_partition(plan: _core.Plan, published: manifests.Manifest) -> PartitionReplacement:
+def every_partition(plan: core.Plan, published: manifests.Manifest) -> PartitionReplacement:
     """Every partition prepared, replacing every published entry: a full rebuild."""
     return PartitionReplacement(tuple(range(plan.copy_count)), frozenset(published.entries))
 
 
 def changed_partitions(
-    previous: _core.Plan, plan: _core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
+    previous: core.Plan, plan: core.Plan, published: manifests.Manifest, destination: bpy.types.Collection
 ) -> PartitionReplacement:
     """The partitions of plan's copies that differ from previous's, the plan published is the display of.
 
     The core gives the plan diff and plan's copies' source paths; the published manifest's partitions are the ones
     kept_manifests keeps beside it, so no refresh groups every entry.
     """
-    diff = _core.diff_plans(previous, plan)
+    diff = core.diff_plans(previous, plan)
     matched = _indices(diff.previous_copy_indices)
     rebuilt = set(_indices(diff.rebuilt_copy_indices))
     moved, bounds = set(_indices(diff.moved_copy_indices)), set(_indices(diff.bounds_changed_copy_indices))

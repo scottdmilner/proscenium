@@ -21,7 +21,7 @@ if __name__ == "__main__":  # run as a script: the test tree's modules, as conft
 
 from pxr import Usd
 
-from proscenium.core import _core
+from proscenium import core
 
 BUFFERS = (
     "copy_world_matrices",
@@ -39,7 +39,7 @@ BUFFERS = (
 )
 
 
-def contents(plan: _core.Plan) -> dict[str, Any]:
+def contents(plan: core.Plan) -> dict[str, Any]:
     """Every part of the plan, in its order, as JSON values: what equal plans share."""
     groups, single = plan.batch_groups(1)
     return {
@@ -83,9 +83,9 @@ def main(root: str, time: float) -> None:
     from bpy_free.plan_checks import CONTEXT, SETTINGS
 
     stage = Usd.Stage.Open(root, Usd.Stage.LoadAll)
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
-        plan = _core.plan(chain.capture(Usd.TimeCode(time)), SETTINGS, CONTEXT)
+        plan = core.plan(chain.capture(Usd.TimeCode(time)), SETTINGS, CONTEXT)
     finally:
         chain.release()
     print(json.dumps(contents(plan)))

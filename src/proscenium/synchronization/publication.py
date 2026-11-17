@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     import bpy
 
-    from ..core import _core
+    from .. import core
     from .preparation_resources import PreparationResources
 
 
@@ -41,7 +41,7 @@ class Publication:
 
 def publish(
     destination: bpy.types.Collection,
-    plan: _core.Plan,
+    plan: core.Plan,
     work: PreparationResources,
     replaced_entry_keys: Collection[str],
     updates: Sequence[local_updates.KeptCopyUpdate],

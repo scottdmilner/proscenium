@@ -14,7 +14,7 @@ import pytest
 from pxr import Gf, Usd, UsdGeom, Vt
 
 from fixtures import edit_sequence, evaluation, time_variations
-from proscenium.core import _core
+from proscenium import core
 
 from . import plan_serialization
 
@@ -22,20 +22,20 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-DEFAULT = _core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
-WITH_GUIDES = _core.PlanSettings(("default", "proxy", "guide"), ("default", "render"), coordinate_conversion=False)
-CONTEXT = _core.PlanningContext(1.0, 1)
+DEFAULT = core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+WITH_GUIDES = core.PlanSettings(("default", "proxy", "guide"), ("default", "render"), coordinate_conversion=False)
+CONTEXT = core.PlanningContext(1.0, 1)
 
 
-def _copied(snapshot: _core.Snapshot) -> int:
+def _copied(snapshot: core.Snapshot) -> int:
     return snapshot._copied_prim_count  # noqa: SLF001 - the core exposes it for tests and measurements only
 
 
-def _full_plan(stage: Usd.Stage, time_code: float, settings: _core.PlanSettings) -> dict[str, object]:
+def _full_plan(stage: Usd.Stage, time_code: float, settings: core.PlanSettings) -> dict[str, object]:
     """What a new chain over stage plans at time_code: the oracle."""
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     try:
-        return plan_serialization.contents(_core.plan(chain.capture(Usd.TimeCode(time_code)), settings, CONTEXT))
+        return plan_serialization.contents(core.plan(chain.capture(Usd.TimeCode(time_code)), settings, CONTEXT))
     finally:
         chain.release()
 
@@ -43,15 +43,15 @@ def _full_plan(stage: Usd.Stage, time_code: float, settings: _core.PlanSettings)
 class _KeptChain:
     """A chain kept over stage, as a binding keeps one, each capture compared with a full re-read."""
 
-    def __init__(self, stage: Usd.Stage, settings: _core.PlanSettings = DEFAULT) -> None:
+    def __init__(self, stage: Usd.Stage, settings: core.PlanSettings = DEFAULT) -> None:
         self.stage, self.settings = stage, settings
-        self.chain = _core.SceneIndexChain(stage)
+        self.chain = core.SceneIndexChain(stage)
         self.prim_count = _copied(self.chain.capture(Usd.TimeCode(0)))  # the first copies every prim
 
     def capture(self, time_code: float = 0.0) -> tuple[dict[str, object], int]:
         """The plan of a capture at time_code, checked against a full re-read, and how many prims it copied."""
         snapshot = self.chain.capture(Usd.TimeCode(time_code))
-        planned = plan_serialization.contents(_core.plan(snapshot, self.settings, CONTEXT))
+        planned = plan_serialization.contents(core.plan(snapshot, self.settings, CONTEXT))
         assert planned == _full_plan(self.stage, time_code, self.settings)
         return planned, _copied(snapshot)
 
@@ -150,7 +150,7 @@ def _renumber_tagged(stage: Usd.Stage) -> None:
 # Hydra itself names the other two, a transform of HermiteCurves, which it doesn't image, and the widths a computed
 # extent follows, which it dirties as primvars, and the listener names them too.
 type StageEdit = Callable[[Usd.Stage], None]
-type ListenedCase = tuple[Callable[[Path], object], StageEdit, StageEdit, _core.PlanSettings]  # with a setup
+type ListenedCase = tuple[Callable[[Path], object], StageEdit, StageEdit, core.PlanSettings]  # with a setup
 LISTENED: dict[str, ListenedCase] = {
     "guide visibility": (evaluation.visibility_purpose, _hide_guides, _show_guides, WITH_GUIDES),
     "unimaged transform": (evaluation.unsupported_content, _nothing, _move_tangents, DEFAULT),

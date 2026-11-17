@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 import bpy
 
 from fixtures import transaction
+from proscenium import core
 from proscenium.binding.results import DiagnosticCode, ResultState
-from proscenium.core import _core
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -31,11 +31,11 @@ def _binding(bindings: Bindings, scene: TransactionScene) -> BindingHandle:
     return handle
 
 
-def _kept(bindings: Bindings, handle: BindingHandle) -> _core.SceneIndexChain:
+def _kept(bindings: Bindings, handle: BindingHandle) -> core.SceneIndexChain:
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     chain = stages.kept_chain
-    assert isinstance(chain, _core.SceneIndexChain)
+    assert isinstance(chain, core.SceneIndexChain)
     assert not chain.released
     return chain
 
@@ -47,15 +47,15 @@ def test_synchronizations_and_cache_calls_share_the_kept_chain(
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         chain = _kept(bindings, handle)
-        capture = _core.SceneIndexChain.capture
-        captured_from: list[_core.SceneIndexChain] = []
+        capture = core.SceneIndexChain.capture
+        captured_from: list[core.SceneIndexChain] = []
 
-        def recording(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+        def recording(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
             captured_from.append(chain)
             return capture(chain, time_code)
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(_core.SceneIndexChain, "capture", recording)
+            patch.setattr(core.SceneIndexChain, "capture", recording)
             scene.edit()
             assert handle.synchronize(0).state is ResultState.SUCCESS
             assert handle.cache([5, 10]).state is ResultState.SUCCESS  # Mover varies, so each is captured
@@ -73,11 +73,11 @@ def test_a_failed_capture_releases_the_kept_chain(
         assert handle.synchronize(0).state is ResultState.SUCCESS
         chain = _kept(bindings, handle)
 
-        def failing(_chain: _core.SceneIndexChain, _time_code: Usd.TimeCode) -> None:
+        def failing(_chain: core.SceneIndexChain, _time_code: Usd.TimeCode) -> None:
             raise RuntimeError("injected failure")
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(_core.SceneIndexChain, "capture", failing)
+            patch.setattr(core.SceneIndexChain, "capture", failing)
             [diagnostic] = handle.synchronize(0).diagnostics
         assert diagnostic.code is DiagnosticCode.EVALUATION_FAILED
         assert chain.released
@@ -93,14 +93,14 @@ def test_a_discarded_capture_releases_the_kept_chain(
         handle = _binding(bindings, scene)
         assert handle.synchronize(0).state is ResultState.SUCCESS
         chain = _kept(bindings, handle)
-        capture = _core.SceneIndexChain.capture
+        capture = core.SceneIndexChain.capture
 
-        def editing(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+        def editing(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
             scene.edit()
             return capture(chain, time_code)
 
         with monkeypatch.context() as patch:
-            patch.setattr(_core.SceneIndexChain, "capture", editing)
+            patch.setattr(core.SceneIndexChain, "capture", editing)
             [diagnostic] = handle.synchronize(0).diagnostics
         assert diagnostic.code is DiagnosticCode.SOURCE_CHANGED
         assert chain.released

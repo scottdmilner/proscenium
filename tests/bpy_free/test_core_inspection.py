@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from fixtures import interaction
+from proscenium import core
 from proscenium.core import _core
 from support import interaction_oracle
 
@@ -37,9 +38,9 @@ SCENES: dict[str, Callable[[Path], AbstractContextManager[interaction.Interactio
 }
 
 
-def _correspondence(stage: Usd.Stage, plan: _core.Plan) -> _core.Correspondence:
+def _correspondence(stage: Usd.Stage, plan: core.Plan) -> core.Correspondence:
     entries = plan.correspondence
-    return _core.Correspondence(
+    return core.Correspondence(
         stage,
         [e.source_path for e in entries],
         [e.instance_context for e in entries],
@@ -183,7 +184,7 @@ def test_the_core_exposes_no_inspection_function() -> None:
     assert functions >= {"KindTarget", "IsRegisteredKind"}
     snake = {re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower() for name in functions}
     exposed = {name.lower() for name in dir(_core)} | {
-        name.lower() for name in dir(_core.Correspondence) if not name.startswith("__")
+        name.lower() for name in dir(core.Correspondence) if not name.startswith("__")
     }
     assert not exposed & snake
     stub = (CORE / "_core.pyi").read_text()
@@ -198,4 +199,4 @@ def test_the_core_exposes_no_inspection_function() -> None:
         "select_targets",
         "selection_from_blender",
     }
-    assert interaction_functions <= set(dir(_core.Correspondence))
+    assert interaction_functions <= set(dir(core.Correspondence))

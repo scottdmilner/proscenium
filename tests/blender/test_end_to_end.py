@@ -38,8 +38,8 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from pathlib import Path
 
+    from proscenium import core
     from proscenium.api.bindings import Bindings
-    from proscenium.core import _core
 
 
 @contextmanager
@@ -102,9 +102,9 @@ CASES = {
 
 
 @pytest.fixture
-def plans(monkeypatch: pytest.MonkeyPatch) -> list[_core.Plan]:
+def plans(monkeypatch: pytest.MonkeyPatch) -> list[core.Plan]:
     """Every plan the transaction gets from evaluation.evaluate_display_plans, in order."""
-    got: list[_core.Plan] = []
+    got: list[core.Plan] = []
     original = planning.evaluate_display_plans
 
     def spy(*args: object, **kwargs: object) -> object:
@@ -122,7 +122,7 @@ def test_the_standard_end_to_end_checks(
     name: str,
     bindings: Bindings,
     tmp_path: Path,
-    plans: list[_core.Plan],
+    plans: list[core.Plan],
     record_property: Callable[[str, object], None],
 ) -> None:
     case = CASES[name]

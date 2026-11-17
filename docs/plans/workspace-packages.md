@@ -91,7 +91,7 @@ tests/                               unchanged layers, over all three packages
 
 - **It exports its names,** and its compiled module is its own. Callers write `planner.Plan`, `planner.plan`, `planner.diff_plans`, and `planner.SceneIndexChain`, never `_planner`. The module's test-only hooks (`_post_tf_error`, `_drop_next_capture_notices`, `_copied_prim_count`, `_hydra_composed_worlds`) stay private, and tests reach them as they do private reads ([tests/README.md](../../tests/README.md)).
 - **The vocabularies the planner shares with the application layer stay where they are,** inside the one package, under the checks that keep them consistent now.
-- **One `SourceUnavailableError`.** Source access's is the one the API documents (ICON-08). Where the planner's interaction functions raise their own, `interaction/` translates it into source access's, so no caller of the API sees two types. To confirm in commit 2: which raise reaches callers today.
+- **One `SourceUnavailableError` reaches the API's callers:** source access's (ICON-08). The planner raises its own only for a correspondence whose stage has expired, and none reaches the API: `shown_displays` raises source access's when the binding has no live stage, the binding holds its live stage until it is released, and every attachment advances the source revision, so a kept correspondence never outlives its stage. Code below the API that builds a correspondence itself, `interaction/` and its tests, sees the planner's.
 - The C++ namespaces (`proscenium`, `proscenium_inspection`) are unchanged.
 
 ## Registration
@@ -126,7 +126,7 @@ Suggested approach, settled in the build commit:
 Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docs, READMEs, and tests that name what it moves or renames. Files move with `git mv` before their content changes. On its own branch, after the `attribute-viewer` and `ui-shared-display` worktrees merge, since every file they touch moves.
 
 1. This plan.
-2. **One `SourceUnavailableError`** at the API, and the core exporting its names (`core.Plan`, never `_core.Plan`), before anything moves.
+2. **The core exporting its names** (`core.Plan`, never `_core.Plan`), before anything moves.
 3. **The workspace,** with no member: the root `pyproject.toml` as its root, and `packages/README.md`.
 4. **`proscenium_ui`:** `ui/` moves into it, its imports become absolute, and the extension depends on it. It is first because nothing but `interface/` imports it.
 5. **The synchronizer's registration** in `binding/` and `api/`, which `addon.py` calls, before the move, so the extension reaches the bindings' code only through `api/` and it.

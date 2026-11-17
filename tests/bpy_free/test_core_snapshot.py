@@ -13,7 +13,7 @@ import pytest
 from pxr import Gf, Usd
 
 from fixtures import evaluation
-from proscenium.core import _core
+from proscenium import core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS
@@ -31,7 +31,7 @@ def transforms(tmp_path: Path) -> Iterator[evaluation.TransformsScene]:
         yield scene
 
 
-def _contents(plan: _core.Plan) -> tuple[Any, ...]:
+def _contents(plan: core.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
@@ -50,31 +50,31 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     )
 
 
-def _sources(plan: _core.Plan) -> set[str]:
+def _sources(plan: core.Plan) -> set[str]:
     return {c.source_path for c in plan.correspondence}
 
 
 def test_edits_and_time_changes_after_capture_leave_the_snapshot(transforms: evaluation.TransformsScene) -> None:
     stage = transforms.stage
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     snapshot = chain.capture(Usd.TimeCode(0.0))
-    before = _contents(_core.plan(snapshot, SETTINGS, CONTEXT))
+    before = _contents(core.plan(snapshot, SETTINGS, CONTEXT))
     stage.GetPrimAtPath(EDITED).GetAttribute("xformOp:translate").Set(Gf.Vec3d(9, 9, 9))
     stage.RemovePrim(REMOVED)
     later = chain.capture(Usd.TimeCode(10.0))  # moves the chain and applies the edits
     try:
-        assert _contents(_core.plan(snapshot, SETTINGS, CONTEXT)) == before
+        assert _contents(core.plan(snapshot, SETTINGS, CONTEXT)) == before
         # The edits reached the chain, so the check above could fail.
-        assert f"{REMOVED}/Geom" in _sources(_core.plan(snapshot, SETTINGS, CONTEXT))
-        assert f"{REMOVED}/Geom" not in _sources(_core.plan(later, SETTINGS, CONTEXT))
+        assert f"{REMOVED}/Geom" in _sources(core.plan(snapshot, SETTINGS, CONTEXT))
+        assert f"{REMOVED}/Geom" not in _sources(core.plan(later, SETTINGS, CONTEXT))
     finally:
         chain.release()
 
 
 def test_lent_buffers_outlive_the_plan_snapshot_chain_and_stage(transforms: evaluation.TransformsScene) -> None:
     stage = open_stage_without_cache(transforms.root_layer_path)
-    chain = _core.SceneIndexChain(stage)
-    plan = _core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
+    chain = core.SceneIndexChain(stage)
+    plan = core.plan(chain.capture(Usd.TimeCode(0.0)), SETTINGS, CONTEXT)
     extents = [g.extent for g in plan.geometries]
     # The Tetra's extent.
     assert extents and all(memoryview(e).tolist() == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0] for e in extents)

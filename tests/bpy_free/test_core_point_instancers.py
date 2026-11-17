@@ -14,8 +14,8 @@ import pytest
 from pxr import Sdf, Usd, Vt
 
 from fixtures import evaluation
+from proscenium import core
 from proscenium.binding.source_access import source_entity_ids
-from proscenium.core import _core
 
 from .plan_checks import CONTEXT, SETTINGS, assert_world, copies, plan_at
 
@@ -67,9 +67,9 @@ def test_animated_ids_name_each_capture(points: evaluation.PointInstancerScene) 
     tagged = points.stage.GetPrimAtPath("/World/Tagged").GetAttribute("ids")
     tagged.Set(Vt.Int64Array([10, -3, 7]), Usd.TimeCode(0.0))
     tagged.Set(Vt.Int64Array([11, -3, 7]), Usd.TimeCode(10.0))
-    chain = _core.SceneIndexChain(points.stage)
+    chain = core.SceneIndexChain(points.stage)
     try:
-        shown = {t: set(copies(_core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT))) for t in (0.0, 10.0)}
+        shown = {t: set(copies(core.plan(chain.capture(Usd.TimeCode(t)), SETTINGS, CONTEXT))) for t in (0.0, 10.0)}
     finally:
         chain.release()
     assert "/World/Tagged/__id_10/Rock" in shown[0.0] - shown[10.0]

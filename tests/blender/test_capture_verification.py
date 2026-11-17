@@ -14,9 +14,9 @@ import bpy
 from pxr import Gf, Usd
 
 from fixtures import appearance, edit_sequence
+from proscenium import core
 from proscenium.binding.results import DiagnosticCategory, DiagnosticCode, ResultState
 from proscenium.binding.source_access import BindingId
-from proscenium.core import _core
 from proscenium.synchronization import capture_verification
 from support.displayed_copies import displayed_copies
 
@@ -38,11 +38,11 @@ def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:
     return handle
 
 
-def _kept(bindings: Bindings, handle: BindingHandle) -> _core.SceneIndexChain:
+def _kept(bindings: Bindings, handle: BindingHandle) -> core.SceneIndexChain:
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     chain = stages.kept_chain
-    assert isinstance(chain, _core.SceneIndexChain)
+    assert isinstance(chain, core.SceneIndexChain)
     return chain
 
 
@@ -54,16 +54,16 @@ def _mismatches(result: Result) -> list[Diagnostic]:
     return [d for d in result.diagnostics if d.code is DiagnosticCode.CAPTURE_MISMATCH]
 
 
-def _counting_captures(monkeypatch: pytest.MonkeyPatch) -> list[_core.SceneIndexChain]:
+def _counting_captures(monkeypatch: pytest.MonkeyPatch) -> list[core.SceneIndexChain]:
     """The chains captured from, in order, while the patch lasts."""
-    capture = _core.SceneIndexChain.capture
-    captured_from: list[_core.SceneIndexChain] = []
+    capture = core.SceneIndexChain.capture
+    captured_from: list[core.SceneIndexChain] = []
 
-    def recording(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+    def recording(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
         captured_from.append(chain)
         return capture(chain, time_code)
 
-    monkeypatch.setattr(_core.SceneIndexChain, "capture", recording)
+    monkeypatch.setattr(core.SceneIndexChain, "capture", recording)
     return captured_from
 
 
@@ -123,11 +123,11 @@ def test_without_the_variable_a_synchronization_captures_once(
         assert captured_from == [_kept(bindings, handle)]
 
 
-def _plan(stage: Usd.Stage) -> _core.Plan:
-    chain = _core.SceneIndexChain(stage)
+def _plan(stage: Usd.Stage) -> core.Plan:
+    chain = core.SceneIndexChain(stage)
     try:
-        settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
-        return _core.plan(chain.capture(Usd.TimeCode(0)), settings, _core.PlanningContext(1.0, 1))
+        settings = core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+        return core.plan(chain.capture(Usd.TimeCode(0)), settings, core.PlanningContext(1.0, 1))
     finally:
         chain.release()
 

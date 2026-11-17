@@ -14,8 +14,8 @@ from pxr import Usd
 
 from fixtures import incremental, transaction
 from fixtures.transaction import DRAWN, EXTENT, SUB_EDITED, translation
+from proscenium import core
 from proscenium.binding.source_access.binding_settings import PayloadPolicy
-from proscenium.core import _core
 from support.usd import open_stage_without_cache
 
 from .plan_checks import CONTEXT, SETTINGS, copies
@@ -30,11 +30,11 @@ def _time_code(time_code: float | None) -> Usd.TimeCode:
     return Usd.TimeCode.Default() if time_code is None else Usd.TimeCode(time_code)
 
 
-def _plan(stage: Usd.Stage, time_code: float | None = 0.0) -> _core.Plan:
-    return _core.plan(_core.SceneIndexChain(stage).capture(_time_code(time_code)), SETTINGS, CONTEXT)
+def _plan(stage: Usd.Stage, time_code: float | None = 0.0) -> core.Plan:
+    return core.plan(core.SceneIndexChain(stage).capture(_time_code(time_code)), SETTINGS, CONTEXT)
 
 
-def _contents(plan: _core.Plan) -> tuple[Any, ...]:
+def _contents(plan: core.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
@@ -53,7 +53,7 @@ def _contents(plan: _core.Plan) -> tuple[Any, ...]:
     )
 
 
-def _identity(resource: _core.PlannedResource) -> tuple[str, str, int]:
+def _identity(resource: core.PlannedResource) -> tuple[str, str, int]:
     """A copy's resource's identity: its role, its copy's source entity, and its place among the copy's objects."""
     return (resource.role, resource.source_entity_path, resource.object_index_in_copy)
 
@@ -137,23 +137,23 @@ def test_identities_follow_role_and_source_entity(tmp_path: Path) -> None:
 
 def test_planning_is_deterministic(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
-        snapshot = _core.SceneIndexChain(scene.caller).capture(10.0)
-        assert _contents(_core.plan(snapshot, SETTINGS, CONTEXT)) == _contents(_core.plan(snapshot, SETTINGS, CONTEXT))
-        assert _contents(_core.plan(snapshot, SETTINGS, CONTEXT)) == _contents(_plan(scene.caller, 10.0))
+        snapshot = core.SceneIndexChain(scene.caller).capture(10.0)
+        assert _contents(core.plan(snapshot, SETTINGS, CONTEXT)) == _contents(core.plan(snapshot, SETTINGS, CONTEXT))
+        assert _contents(core.plan(snapshot, SETTINGS, CONTEXT)) == _contents(_plan(scene.caller, 10.0))
 
 
 def test_snapshot_outlives_edits_and_release(tmp_path: Path) -> None:
     with transaction.source_change(tmp_path) as scene:
-        chain = _core.SceneIndexChain(scene.caller)
+        chain = core.SceneIndexChain(scene.caller)
         before = chain.capture(0.0)
-        planned = _contents(_core.plan(before, SETTINGS, CONTEXT))
+        planned = _contents(core.plan(before, SETTINGS, CONTEXT))
         scene.edit()
-        after = copies(_core.plan(chain.capture(0.0), SETTINGS, CONTEXT))
+        after = copies(core.plan(chain.capture(0.0), SETTINGS, CONTEXT))
         assert after["/World/Sub"].world_matrix.ExtractTranslation() == SUB_EDITED
         chain.release()
         # Neither the edit nor the released chain reaches what the first capture copied.
-        assert _contents(_core.plan(before, SETTINGS, CONTEXT)) == planned
-        assert copies(_core.plan(before, SETTINGS, CONTEXT))[
+        assert _contents(core.plan(before, SETTINGS, CONTEXT)) == planned
+        assert copies(core.plan(before, SETTINGS, CONTEXT))[
             "/World/Sub"
         ].world_matrix.ExtractTranslation() == translation("/World/Sub", 0.0)
 
@@ -192,7 +192,7 @@ def test_partitions_by_buffer_and_selective_reads(tmp_path: Path) -> None:
 
 def test_released_chain_refuses_capture(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
-        chain = _core.SceneIndexChain(scene.caller)
+        chain = core.SceneIndexChain(scene.caller)
         chain.release()
         chain.release()  # idempotent
         assert chain.released
@@ -202,17 +202,17 @@ def test_released_chain_refuses_capture(tmp_path: Path) -> None:
 
 def test_invalid_stage_raises() -> None:
     with pytest.raises(ValueError, match="valid USD stage"):
-        _core.SceneIndexChain(None)
+        core.SceneIndexChain(None)
 
 
 @pytest.mark.parametrize("unit_scale", [0.0, -1.0, float("inf"), float("nan")])
 def test_context_refuses_a_unit_scale(unit_scale: float) -> None:
     with pytest.raises(ValueError, match="unit scale"):
-        _core.PlanningContext(unit_scale, 1)
+        core.PlanningContext(unit_scale, 1)
 
 
 def test_planner_refuses_another_representation_version(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
-        snapshot = _core.SceneIndexChain(scene.caller).capture(0.0)
+        snapshot = core.SceneIndexChain(scene.caller).capture(0.0)
         with pytest.raises(ValueError, match="representation version"):
-            _core.plan(snapshot, SETTINGS, _core.PlanningContext(1.0, 2))
+            core.plan(snapshot, SETTINGS, core.PlanningContext(1.0, 2))

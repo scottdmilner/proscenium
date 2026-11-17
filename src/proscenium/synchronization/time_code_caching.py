@@ -23,11 +23,11 @@ from typing import TYPE_CHECKING
 
 from pxr import Usd
 
+from .. import core
 from ..binding.persistence import binding_state, cleanup_ledgers, id_property_records, manifests
 from ..binding.results import Diagnostic, DiagnosticCode, DiagnosticCollector, Result
 from ..binding.runtime import binding_operations, kept_manifests, ownership
 from ..binding.source_access import stages
-from ..core import _core
 from . import application, evaluation, preparation_resources, time_code_keying
 
 if TYPE_CHECKING:
@@ -134,7 +134,7 @@ def cache(
 
 
 def _varying_copies(
-    own: _core.Plan, plans: Collection[_core.Plan], published: manifests.Manifest
+    own: core.Plan, plans: Collection[core.Plan], published: manifests.Manifest
 ) -> time_code_keying.VaryingCopies:
     """The copies that vary from own in plans, or that published keys already, by source entity.
 
@@ -148,7 +148,7 @@ def _varying_copies(
     }
     own_sources = [entry.source_path for entry in own.correspondence]
     for plan in plans:
-        diff = _core.diff_plans(own, plan)
+        diff = core.diff_plans(own, plan)
         sources = [entry.source_path for entry in plan.correspondence]
         changed = (
             diff.moved_copy_indices,

@@ -11,7 +11,7 @@ from typing import Any
 
 from pxr import Sdf, Usd
 
-from proscenium.core import _core
+from proscenium import core
 
 # Expiry can lag release(), by up to 50 ms in M1b's runs (runtime-record.md, M1b Phase C).
 EXPIRY_WAIT = 2.0
@@ -31,7 +31,7 @@ def caller_drops_then_release() -> dict[str, Any]:
     """The caller drops its stage while the handle holds it, then the handle is released."""
     stage = Usd.Stage.CreateInMemory()
     identifier = stage.GetRootLayer().identifier
-    handle = _core.StageHandle(stage)
+    handle = core.StageHandle(stage)
     result: dict[str, Any] = {"is_callers_stage": handle.stage() == stage}
     del stage
     gc.collect()
@@ -46,7 +46,7 @@ def caller_drops_then_release() -> dict[str, Any]:
 def release_while_caller_holds() -> dict[str, Any]:
     """Releasing and deleting the handle leaves a stage the caller still holds alive."""
     stage = Usd.Stage.CreateInMemory()
-    handle = _core.StageHandle(stage)
+    handle = core.StageHandle(stage)
     handle.release()
     handle.release()  # idempotent
     result = {"stage_after_release": handle.stage() == stage}
@@ -60,7 +60,7 @@ def chain_caller_drops_then_release() -> dict[str, Any]:
     """The caller drops its stage while a scene index chain captures from it, then the chain is released."""
     stage = Usd.Stage.CreateInMemory()
     identifier = stage.GetRootLayer().identifier
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     result: dict[str, Any] = {"is_callers_stage": chain.stage() == stage}
     del stage
     gc.collect()
@@ -77,24 +77,24 @@ def chain_with_instances_drops_then_release(root: str) -> dict[str, Any]:
     """As chain_caller_drops_then_release, on root's native instances, its snapshot and plan alive past the release."""
     stage = Usd.Stage.Open(root)
     identifiers = [layer.identifier for layer in stage.GetUsedLayers()]
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     del stage
     gc.collect()
     snapshot = chain.capture(0.0)
-    settings = _core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
-    plan = _core.plan(snapshot, settings, _core.PlanningContext(1.0, 1))
+    settings = core.PlanSettings(("default", "proxy"), ("default", "render"), coordinate_conversion=False)
+    plan = core.plan(snapshot, settings, core.PlanningContext(1.0, 1))
     chain.release()
     return {
         "instanced": any(entry.instance_context for entry in plan.correspondence),
         "expired_after_release": all(_expired(identifier) for identifier in identifiers),
-        "snapshot_plans": _core.plan(snapshot, settings, _core.PlanningContext(1.0, 1)).copy_count == plan.copy_count,
+        "snapshot_plans": core.plan(snapshot, settings, core.PlanningContext(1.0, 1)).copy_count == plan.copy_count,
     }
 
 
 def chain_release_while_caller_holds() -> dict[str, Any]:
     """Releasing and deleting a scene index chain leaves a stage the caller still holds alive."""
     stage = Usd.Stage.CreateInMemory()
-    chain = _core.SceneIndexChain(stage)
+    chain = core.SceneIndexChain(stage)
     chain.capture(0.0)
     chain.release()
     result = {"stage_after_release": chain.stage() == stage}

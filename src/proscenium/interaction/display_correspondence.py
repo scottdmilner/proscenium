@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING
 
 import bpy
 
+from .. import core
 from ..binding.persistence import binding_state, id_property_records, manifests
 from ..binding.runtime import binding_operations, kept_manifests
-from ..core import _core
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -82,16 +82,16 @@ def display_elements(binding_id: BindingId) -> DisplayElements | None:
 
 def correspondence(
     elements: DisplayElements, live_stage: Usd.Stage | None, published_plans: held_plans.HeldPlans
-) -> _core.Correspondence:
+) -> core.Correspondence:
     """The core's correspondence over elements on the live stage.
 
     Each element's instance context is the shown generation's held plan's, where it holds the element's copy. Raises
-    _core.SourceUnavailableError without a live stage, or for an expired one.
+    core.SourceUnavailableError without a live stage, or for an expired one.
     """
     contexts: dict[str, tuple[str, ...]] = {}
     if (plan := published_plans.plan_for(elements.generation)) is not None:
         contexts = {entry.source_path: entry.instance_context for entry in plan.correspondence}
-    return _core.Correspondence(
+    return core.Correspondence(
         live_stage,
         elements.source_paths,
         [contexts.get(path) for path in elements.source_paths],

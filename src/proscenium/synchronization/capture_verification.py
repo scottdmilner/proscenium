@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
     from pxr import Usd
 
+    from .. import core
     from ..binding.source_access import BindingId
-    from ..core import _core
 
 VERIFY_CAPTURE_VARIABLE = "PROSCENIUM_VERIFY_CAPTURE"
 LISTED = 10  # the copies named one by one before one diagnostic counts the rest (pipeline.md#diagnostics)
@@ -35,8 +35,8 @@ def enabled() -> bool:
 def mismatch_diagnostics(
     binding_id: BindingId,
     time_codes: Sequence[Usd.TimeCode],
-    kept_plans: Sequence[_core.Plan],
-    full_plans: Sequence[_core.Plan],
+    kept_plans: Sequence[core.Plan],
+    full_plans: Sequence[core.Plan],
 ) -> tuple[Diagnostic, ...]:
     """A verification diagnostic for each drawn copy whose plan from the kept chain differs from the full re-read's.
 
@@ -65,7 +65,7 @@ def mismatch_diagnostics(
     return tuple(found)
 
 
-def _copies(plan: _core.Plan) -> dict[CopyIdentity, tuple[object, ...]]:
+def _copies(plan: core.Plan) -> dict[CopyIdentity, tuple[object, ...]]:
     """Each drawn copy's displayed values, by identity: its world matrix, participation, bounds, geometry, and shear."""
     matrices = _values(plan.copy_world_matrices)
     viewport, render = _values(plan.copy_visible_in_viewport), _values(plan.copy_visible_in_render)
@@ -103,5 +103,5 @@ def _values(buffer: Buffer) -> list:
         return view.tolist()
 
 
-def _diagnostics(plan: _core.Plan) -> list[tuple[str, ...]]:
+def _diagnostics(plan: core.Plan) -> list[tuple[str, ...]]:
     return [(d.code, d.source_path, d.message, d.property_path, d.asset_identifier) for d in plan.diagnostics]

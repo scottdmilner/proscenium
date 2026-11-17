@@ -14,10 +14,10 @@ import bpy
 from pxr import Gf
 
 from fixtures import edit_sequence, incremental
+from proscenium import core
 from proscenium.binding.persistence import id_property_records
 from proscenium.binding.results import ResultState
 from proscenium.binding.runtime import ownership
-from proscenium.core import _core
 from support.clean_rebuild import clean_rebuild, display_state
 
 if TYPE_CHECKING:
@@ -35,11 +35,11 @@ def _binding(bindings: Bindings, stage: Usd.Stage, name: str) -> BindingHandle:
     return handle
 
 
-def _kept(bindings: Bindings, handle: BindingHandle) -> _core.SceneIndexChain:
+def _kept(bindings: Bindings, handle: BindingHandle) -> core.SceneIndexChain:
     stages = bindings.stages.get(handle.binding_id)
     assert stages is not None
     chain = stages.kept_chain
-    assert isinstance(chain, _core.SceneIndexChain)
+    assert isinstance(chain, core.SceneIndexChain)
     return chain
 
 
@@ -56,16 +56,16 @@ def test_a_full_rebuild_rereads_and_rebuilds_everything(
     # clean first synchronization's.
     with incremental.no_op_refresh(tmp_path) as scene:
         handle = _binding(bindings, scene.stage, "Shot")
-        capture = _core.SceneIndexChain.capture
+        capture = core.SceneIndexChain.capture
         copied: list[int] = []
 
-        def counting(chain: _core.SceneIndexChain, time_code: Usd.TimeCode) -> _core.Snapshot:
+        def counting(chain: core.SceneIndexChain, time_code: Usd.TimeCode) -> core.Snapshot:
             snapshot = capture(chain, time_code)
             copied.append(snapshot._copied_prim_count)  # noqa: SLF001 - the core exposes it for tests only
             return snapshot
 
         with monkeypatch.context() as patch:  # not monkeypatch.undo(), which would undo the bindings fixture's too
-            patch.setattr(_core.SceneIndexChain, "capture", counting)
+            patch.setattr(core.SceneIndexChain, "capture", counting)
             assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
             first, before = _kept(bindings, handle), _managed(handle)
             assert handle.synchronize(0).state is not ResultState.FATAL_FAILURE
