@@ -6,6 +6,7 @@ called as Blender calls it. Expected states come from what each test did to its 
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import bpy
@@ -15,11 +16,9 @@ from fixtures import interaction
 from proscenium.interface import binding_panel
 from proscenium_sync.results import ResultState
 from support import binding_copy_operations
-from support.recording_layout import RecordingLayout
+from support.recording_layout import DrawnOperator, RecordingLayout
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from proscenium_sync.bindings import BindingHandle, Bindings
     from proscenium_sync.source_access import BindingId
 
@@ -34,9 +33,15 @@ def _drawn() -> RecordingLayout:
     return layout
 
 
-def test_a_scene_without_bindings_says_so(bindings: Bindings) -> None:
+def _synchronize_buttons(layout: RecordingLayout) -> list[DrawnOperator]:
+    return [drawn for drawn in layout.operators if drawn.idname == "proscenium.synchronize"]
+
+
+def test_a_scene_without_bindings_says_so_under_the_add_button(bindings: Bindings) -> None:
     del bindings
-    assert _drawn().labels == [("No bindings", "NONE", True)]
+    layout = _drawn()
+    assert layout.labels == [("No bindings", "NONE", True)]
+    assert [(drawn.idname, drawn.icon) for drawn in layout.operators] == [("proscenium.add_binding", "ADD")]
 
 
 def test_each_binding_shows_its_state_and_a_button(bindings: Bindings, tmp_path: Path) -> None:
@@ -45,7 +50,7 @@ def test_each_binding_shows_its_state_and_a_button(bindings: Bindings, tmp_path:
         handle: BindingHandle = bindings.create_binding(_scene(), name="Shot")
         layout = _drawn()
         assert layout.labels == [("Shot", "UNLINKED", True), ("Not synchronized", "NONE", True)]
-        [button] = layout.operators
+        [button] = _synchronize_buttons(layout)
         assert (button.idname, button.properties) == ("proscenium.synchronize", {"binding_id": handle.binding_id})
         assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
         assert handle.synchronize(0.0).state is not ResultState.FATAL_FAILURE
@@ -68,7 +73,7 @@ def test_a_disabled_binding_shows_why_and_no_button(bindings: Bindings) -> None:
 
     binding_copy_operations._write_entries(drop_entry)  # noqa: SLF001
     layout = _drawn()
-    assert not layout.operators
+    assert not _synchronize_buttons(layout)
     [(_, icon, _), (reason, error_icon, _)] = layout.labels
     assert icon == "UNLINKED" and error_icon == "ERROR" and reason.startswith("Copies with no canonical candidate")
 
@@ -84,3 +89,22 @@ def test_the_button_synchronizes_and_pushes_no_step_of_its_own(bindings: Binding
         assert handle.attach(scene.stage).state is not ResultState.FATAL_FAILURE
         assert bpy.ops.proscenium.synchronize(binding_id=handle.binding_id)  # ty: ignore[unresolved-attribute] == {"FINISHED"}
         assert [s.published for s in bindings.binding_statuses(_scene())] == [True]
+
+
+def test_the_add_button_creates_a_binding_with_the_file_attached(bindings: Bindings, tmp_path: Path) -> None:
+    # The binding takes the file's name, is attached to a stage of that file, and is undoable as a step of its own.
+    assert "UNDO" in binding_panel.PROSCENIUM_OT_add_binding.bl_options
+    with interaction.kind_hierarchy(tmp_path) as scene:
+        path = scene.root_layer_path
+        assert bpy.ops.proscenium.add_binding(filepath=str(path)) == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+        [status] = bindings.binding_statuses(_scene())
+        assert (status.name, status.attached, status.published) == (path.stem, True, False)
+        stage = bindings.live_stage(status.binding_id)
+        assert stage is not None and Path(stage.GetRootLayer().realPath) == path
+        assert bpy.ops.proscenium.synchronize(binding_id=status.binding_id) == {"FINISHED"}  # ty: ignore[unresolved-attribute]
+
+
+def test_the_add_button_leaves_no_binding_for_a_file_that_doesnt_open(bindings: Bindings, tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="Can't open"):  # a script sees the error report raised
+        bpy.ops.proscenium.add_binding(filepath=str(tmp_path / "missing.usda"))  # ty: ignore[unresolved-attribute]
+    assert bindings.binding_statuses(_scene()) == []

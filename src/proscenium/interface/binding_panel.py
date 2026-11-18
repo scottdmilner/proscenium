@@ -1,16 +1,21 @@
-"""The binding panel: the scene's bindings, each with its state and a synchronize button (M7 plan, F2).
+"""The binding panel: an add button, then the scene's bindings, each with its state and a sync button (M7 plan, F2).
 
-In the 3D view's sidebar, Proscenium tab. Each draw lists the scene's bindings with one call
-(Bindings.binding_statuses): each one's name, whether a stage is attached, whether its display is published and may be
-out of date, how its last attempt ended, or why it can't be used. The synchronize button synchronizes at the scene's
-current frame; its operator declares no UNDO, since the API pushes the synchronization's undo step.
+In the 3D view's sidebar, Proscenium tab. The add button picks a USD file, opens its stage, and creates a binding on the
+scene, named for the file, with the stage attached. Its operator declares UNDO, since creating a binding pushes no undo
+step of its own; undoing it keeps the attachment, so redo brings the binding back attached. Each draw lists the scene's
+bindings with one call (Bindings.binding_statuses): each one's name, whether a stage is attached, whether its display is
+published and may be out of date, how its last attempt ended, or why it can't be used. The synchronize button
+synchronizes at the scene's current frame; its operator declares no UNDO, since the API pushes the synchronization's
+undo step.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
 
 import bpy
+from pxr import Tf, Usd
 
 import proscenium_sync
 
@@ -29,7 +34,8 @@ def state_text(status: proscenium_sync.BindingStatus) -> str:
 
 
 def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
-    """Each of the scene's bindings: its name and attachment, then its state or why it can't be used, and a button."""
+    """The add button, then each binding: its name and attachment, its state or why it can't be used, and a button."""
+    layout.operator(PROSCENIUM_OT_add_binding.bl_idname, icon="ADD")
     statuses = proscenium_sync.BINDINGS.binding_statuses(scene)
     if not statuses:
         layout.label(text="No bindings")
@@ -44,6 +50,42 @@ def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
         button = row.operator(PROSCENIUM_OT_synchronize.bl_idname, text="", icon="FILE_REFRESH")
         button.binding_id = status.binding_id
         box.label(text=state_text(status))
+
+
+class PROSCENIUM_OT_add_binding(bpy.types.Operator):  # noqa: N801 - Blender's operator naming
+    """Create a binding on the scene with a USD file's stage attached."""
+
+    bl_idname = "proscenium.add_binding"
+    bl_label = "Add Binding"
+    bl_options = {"REGISTER", "UNDO"}  # noqa: RUF012 - Blender's operator field; creating a binding pushes no step
+    filepath: bpy.props.StringProperty(subtype="FILE_PATH")  # ty: ignore[invalid-type-form]
+    filter_glob: bpy.props.StringProperty(  # ty: ignore[invalid-type-form]
+        default="*.usd;*.usda;*.usdc;*.usdz", options={"HIDDEN"}
+    )
+
+    @override
+    def invoke(self, context: Any, event: Any) -> set[OperatorReturnItems]:
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    @override
+    def execute(self, context: Any) -> set[OperatorReturnItems]:
+        # The stage opens first, so a file that doesn't open leaves no binding behind.
+        try:
+            stage = Usd.Stage.Open(self.filepath)
+        except Tf.ErrorException as error:
+            self.report({"ERROR"}, f"Can't open {self.filepath}: {error}")
+            return {"CANCELLED"}
+        if stage is None:
+            self.report({"ERROR"}, f"Can't open {self.filepath}")
+            return {"CANCELLED"}
+        handle = proscenium_sync.BINDINGS.create_binding(context.scene, name=Path(self.filepath).stem)
+        result = handle.attach(stage)
+        if result.state is proscenium_sync.ResultState.FATAL_FAILURE:
+            message = result.diagnostics[0].message if result.diagnostics else "Attaching the stage failed"
+            self.report({"ERROR"}, message)
+            return {"CANCELLED"}
+        return {"FINISHED"}
 
 
 class PROSCENIUM_OT_synchronize(bpy.types.Operator):  # noqa: N801 - Blender's operator naming
@@ -78,4 +120,4 @@ class PROSCENIUM_PT_bindings(bpy.types.Panel):  # noqa: N801 - Blender's panel n
         draw_bindings(self.layout, context.scene)
 
 
-CLASSES = (PROSCENIUM_OT_synchronize, PROSCENIUM_PT_bindings)
+CLASSES = (PROSCENIUM_OT_add_binding, PROSCENIUM_OT_synchronize, PROSCENIUM_PT_bindings)
