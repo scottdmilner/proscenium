@@ -1,53 +1,53 @@
-"""proscenium_sync's lazy API names what its stub gives type checkers (packages/README.md#public-apis)."""
+"""proscenium_sync's lazy API is its units' names, which its stub gives type checkers (packages/README.md#public-apis).
+
+Read without importing the units, which import bpy; tests/blender/test_sync_api.py loads them.
+"""
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
-import pytest
-
 import proscenium_sync
 
 PACKAGE = Path(proscenium_sync.__file__).parent
 
 
-def _all(module_path: Path) -> list[str]:
-    """The literal __all__ of a module, read without importing it."""
+def _all(unit: str) -> list[str]:
+    """The literal __all__ of a unit, a package or a module, read without importing it."""
+    module_path = PACKAGE / unit / "__init__.py"
+    if not module_path.exists():
+        module_path = PACKAGE / f"{unit}.py"
     for node in ast.parse(module_path.read_text()).body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
             return ast.literal_eval(node.value)
     raise AssertionError(f"{module_path} has no __all__")
 
 
-def _stub_names_by_unit() -> dict[str, set[str]]:
-    """What __init__.pyi imports, by unit; a star import, the unit's __all__."""
-    names_by_unit: dict[str, set[str]] = {}
+def _stub_star_imports() -> list[str]:
+    """The units __init__.pyi star-imports; it imports nothing else."""
+    units: list[str] = []
     for node in ast.parse((PACKAGE / "__init__.pyi").read_text()).body:
         if isinstance(node, ast.ImportFrom):
             assert node.level == 1 and node.module is not None
-            if [alias.name for alias in node.names] == ["*"]:
-                names = _all(PACKAGE / node.module / "__init__.py")
-            else:
-                assert all(alias.asname == alias.name for alias in node.names), "a stub re-exports as X as X"
-                names = [alias.name for alias in node.names]
-            names_by_unit.setdefault(node.module, set()).update(names)
-    return names_by_unit
+            assert [alias.name for alias in node.names] == ["*"], "the stub star-imports each unit's __all__"
+            units.append(node.module)
+    return units
 
 
-def test_names_match_the_stub() -> None:
-    # The module as it runs: the stub, which type checkers read instead, has neither the map nor __all__.
-    module_globals = vars(proscenium_sync)
-    names_by_unit = module_globals["_NAMES_BY_UNIT"]
-    assert {unit: set(names) for unit, names in names_by_unit.items()} == _stub_names_by_unit()
-    exported = module_globals["__all__"]
-    assert exported == [name for names in names_by_unit.values() for name in names]
-    assert len(set(exported)) == len(exported), "a name in two units"
+def test_the_stub_imports_the_api_units() -> None:
+    # The module as it runs: the stub, which type checkers read instead, has no _API_UNITS.
+    assert _stub_star_imports() == list(vars(proscenium_sync)["_API_UNITS"])
 
 
-def test_other_names_are_not_attributes() -> None:
-    with pytest.raises(AttributeError, match="no attribute 'Missing'"):
-        _ = proscenium_sync.Missing  # ty: ignore[unresolved-attribute]
-    from proscenium_sync import planner  # a unit still imports as a submodule, past __getattr__
+def test_no_name_is_in_two_units() -> None:
+    names = [name for unit in vars(proscenium_sync)["_API_UNITS"] for name in _all(unit)]
+    assert len(set(names)) == len(names)
+
+
+def test_a_unit_still_imports_as_a_submodule() -> None:
+    # A from-import tries the name as an attribute first; tests/bpy_free/test_no_blender_imports.py checks that this
+    # loads nothing else, in a fresh interpreter.
+    from proscenium_sync import planner
 
     assert planner.__name__ == "proscenium_sync.planner"

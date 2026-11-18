@@ -4,8 +4,8 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 
 | Path | Holds |
 |---|---|
-| `__init__.py` | The package and its public API. It imports none of its units, so importing a bpy-free unit, which runs it first, never imports `bpy`: a module `__getattr__` loads each name's unit on first use, from a map of each unit to its names. |
-| `__init__.pyi` | The public API as type checkers and editors see it: the same names, imported from their units. |
+| `__init__.py` | The package and its public API. It imports none of its units, so importing a bpy-free unit, which runs it first, never imports `bpy`: a module `__getattr__` loads the API's units on first use of a name, and finds the name in their `__all__` lists. A unit's name, which a from-import tries as an attribute first, and a dunder load nothing. |
+| `__init__.pyi` | The public API as type checkers and editors see it: a star import of each API unit, so each unit's `__all__` is the one list of its names. |
 | `registration.py` | The synchronizer's registration: the record namespace's property group, the handlers for file load, undo, and redo that drop or prune the bindings' stages, and the frame-change handler and message-bus subscriptions to what windows show that mirror a scene's source selection again. |
 | `bindings/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
@@ -20,4 +20,4 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 
 The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_sync's tiers" contract lists from `registration.py` down. It imports no other package of the workspace, and other packages reach it only through its public API, its own names, and import none of its units. The lowest tier, `planner/`, `source_access/`, and `results/`, never imports `bpy`, and its units import only themselves. Of the units that export names, not all their modules, `bindings/`, `synchronization/`, `results/`, and `planner/` are reached only through their `__init__.py`.
 
-`__init__.py`, which imports none of its units, is no unit's. `tests/bpy_free/test_sync_api.py` checks that its map names what `__init__.pyi` imports.
+`__init__.py`, which imports none of its units, is no unit's. `tests/bpy_free/test_sync_api.py` checks that its API units are those `__init__.pyi` imports, and `tests/blender/test_sync_api.py` that it loads their names.
