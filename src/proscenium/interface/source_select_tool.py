@@ -151,10 +151,11 @@ def apply_selectability(selectable_scenes: set[bpy.types.Scene]) -> None:
 def update_selectability(*_args: object) -> None:
     """Make each scene's managed content selectable exactly while a window showing it has Source Select active.
 
-    Nothing in background mode, where no tool is used, though the file may hold windows.
+    Nothing in background mode, where no tool is used, though the file may hold windows. Nothing either while Blender
+    restricts bpy.data, as it does while enabling add-ons at startup: the file load that follows calls it again.
     """
     window_manager = bpy.context.window_manager
-    if bpy.app.background or window_manager is None:
+    if bpy.app.background or window_manager is None or not isinstance(bpy.data, bpy.types.BlendData):
         return
     apply_selectability({w.scene for w in window_manager.windows if _tool_active(w)})
 

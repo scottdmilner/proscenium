@@ -14,7 +14,7 @@
 ## Keep the requirement matrix in sync
 
 - [testing/requirements.yaml](testing/requirements.yaml) has a row for every requirement in PROJECT.md, `spec/`, and `testing/`, quoting its text.
-- Any change to those docs updates the affected rows (or the `excluded` list) in the same change. Then regenerate the view with `uv run python tools/matrix.py render`.
+- Any change to those docs updates the affected rows (or the `excluded` list) in the same change. Then regenerate the view with `uv run proscenium-matrix render`.
 - Contract decisions update their rows before implementation.
 - Before a milestone implements anything, it fills in the fixtures and oracle of the rows it delivers, and adds itself to `started`.
 - `tools/matrix.py check` fails on drift. It runs as a pre-commit hook and as a bpy_free test.
