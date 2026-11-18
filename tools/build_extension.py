@@ -1,6 +1,6 @@
 """Build the Proscenium extension zip for the current platform, with its runtime wheels and planner.
 
-    uv run python tools/build_extension.py [--source-dir DIR] [--output-dir DIR] [--check]
+    uv run proscenium-build [--source-dir DIR] [--output-dir DIR] [--check]
 
 --check (build(..., sync=False)) skips steps 2 to 4's writes: the source dir is
 only read, and the build fails if its wheels, generated block, or planner

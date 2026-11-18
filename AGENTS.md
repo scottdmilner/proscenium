@@ -44,8 +44,9 @@ All commands run through uv. The dev group includes the `bpy` wheel, so `bpy` an
 uv sync                                   # install the dev environment
 uv run pre-commit run --all-files         # all lint checks (ruff, ty, import-linter, clang-format, clang-tidy, lock, matrix); same as CI
 uv run pytest -n auto                     # all tests, in parallel; select layers with -m (e.g. -m bpy_free)
-uv run python tools/build_extension.py    # dist/proscenium-<version>.zip for this platform (--check: read-only)
-uv run python tools/matrix.py check       # requirement matrix (render: regenerate requirements-matrix.md)
+uv run proscenium-build                   # dist/proscenium-<version>.zip for this platform (--check: read-only)
+uv run proscenium-blender                 # build, then run Blender with Proscenium enabled, apart from the user's Blender setup
+uv run proscenium-matrix check            # requirement matrix (render: regenerate requirements-matrix.md)
 uv run python tools/feasibility/run_all.py  # feasibility probes (wheel, pytest, binary)
 uv run pre-commit install                 # once per clone
 ```
@@ -59,6 +60,7 @@ Tests that need the Blender binary find it as [tests/README.md](tests/README.md#
 - Follow PEP 8 and annotate every function signature (ruff and ty check the rest of the style rules).
 - Classes declare their typed attributes in the class body, above `__init__`.
 - Prefer short docstrings plus inline comments over long docstrings. Public objects in `src/`, `packages/`, and `tools/` have one.
+- Comments and docstrings describe the code as it is, in the present tense: what it does and why. They don't recount earlier runs or revisions of the code.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - Keep Git commits small, self-contained, and parseable: one new feature per commit.
 - Make any change that takes more than two commits in a Git worktree of its own, not in the main checkout.

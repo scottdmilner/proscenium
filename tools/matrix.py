@@ -1,7 +1,7 @@
 """Check the requirement-to-test matrix and render its Markdown view.
 
-    uv run python tools/matrix.py check    # validate; fail if requirements-matrix.md is stale
-    uv run python tools/matrix.py render   # rewrite requirements-matrix.md
+    uv run proscenium-matrix check    # validate; fail if requirements-matrix.md is stale
+    uv run proscenium-matrix render   # rewrite requirements-matrix.md
 
 The matrix (docs/testing/requirements.yaml) has one row per requirement in
 PROJECT.md, spec/, and testing/. Each row quotes the text it traces, so the

@@ -56,12 +56,20 @@ dev = [
     { include-group = "test" },
 ]
 
+# Development commands. They import from tools/, which only the editable install puts on sys.path.
+[project.scripts]
+proscenium-blender = "launch_blender:main"  # build, then run Blender with Proscenium enabled (tools/launch_blender.py)
+proscenium-build = "build_extension:main"  # dist/proscenium-<version>.zip (tools/build_extension.py)
+proscenium-matrix = "matrix:main"  # check or render the requirement matrix (tools/matrix.py)
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium"]
+# The editable install adds tools/ to sys.path beside src/, for [project.scripts].
+dev-mode-dirs = ["src", "tools"]
 
 # uv's Python, never system Python, to ensure the platform always matches in testing (macOS)
 [tool.uv]

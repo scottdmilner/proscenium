@@ -13,8 +13,10 @@ Details in `docs/PROJECT.md`
 
 ```sh
 uv sync
-uv run python tools/build_extension.py   # -> dist/proscenium-<version>.zip
+uv run proscenium-build                  # -> dist/proscenium-<version>.zip
 ```
+
+To try it, `uv run proscenium-blender` builds the zip and starts an installed Blender 5.2 with Proscenium installed and enabled, keeping its preferences and extensions in `build/blender-user/` so your own Blender setup is untouched ([tools/README.md](tools/README.md)).
 
 The zip is the extension. Install it with Blender's *Install from Disk*, or unpack it into a repository under the user extensions directory (overridable with `$BLENDER_USER_EXTENSIONS`), e.g. `$BLENDER_USER_EXTENSIONS/user_default/proscenium/`. `uv build` produces a Python wheel that only exists so the dev environment can import `proscenium` ([tools/README.md](tools/README.md)).
 
