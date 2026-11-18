@@ -46,12 +46,12 @@ jobs:
       # ruff count as failures here, and the diff is printed.
       - run: uv run pre-commit run --all-files --show-diff-on-failure
 
-  # The planner for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml). The
-  # manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
-  # tools/build_extension.py uses this module because its build record is current. Its compile commands go with it,
-  # for the inspection layer's include check (tests/bpy_free/test_planner_inspection.py). The Hydra bridge, which M4's
-  # prototype tests run, is built here too, since its build audits the same floor.
-  planner-linux:
+  # The project's compiled modules for Linux, built on Blender's glibc floor (manylinux_2_28; see hydra-bridge.yml).
+  # The manylinux image lacks the desktop libraries bpy and Blender load, so the Linux tests run in the test job, where
+  # tools/build_extension.py uses the planner built here because its build record is current. Its compile commands go
+  # with it, for the inspection layer's include check (tests/bpy_free/test_planner_inspection.py). The Hydra bridge,
+  # which M4's prototype tests run, is built here too, since its build audits the same floor.
+  build-linux:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -73,7 +73,7 @@ jobs:
         run: uv run python tools/feasibility/hydra_bridge/build.py
       - uses: actions/upload-artifact@v4
         with:
-          name: planner-linux-x64
+          name: build-linux-x64
           path: |
             build/planner/build.json
             packages/proscenium_sync/src/proscenium_sync/planner/_planner.*.so
@@ -83,7 +83,7 @@ jobs:
           if-no-files-found: error
 
   test:
-    needs: [changes, planner-linux]
+    needs: [changes, build-linux]
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
@@ -107,17 +107,17 @@ jobs:
       - uses: actions/download-artifact@v4
         if: runner.os == 'Linux'
         with:
-          name: planner-linux-x64
+          name: build-linux-x64
 
       # Before the tests: it syncs src/proscenium/wheels (gitignored) from uv.lock and builds the planner
-      # (on Linux, it keeps planner-linux's), which the extension test's read-only build (--check mode) needs.
+      # (on Linux, it keeps build-linux's), which the extension test's read-only build (--check mode) needs.
       - name: Build extension
         run: uv run python tools/build_extension.py
 
       - name: Tests
         env:
           PROSCENIUM_REQUIRE_BLENDER: "1"  # fail, rather than skip, binary tests without a binary
-          # Linux uses planner-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
+          # Linux uses build-linux's bridge; elsewhere tests/isolated/conftest.py builds it.
           PROSCENIUM_HYDRA_BRIDGE: ${{ runner.os == 'Linux' && 'build/hydra-bridge' || '' }}
         # On Linux, under a virtual display, where the windowed tests' Blender windows open. In the runner's temporary
         # dir, whose path is short enough for Windows' path limit.

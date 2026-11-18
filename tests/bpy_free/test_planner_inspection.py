@@ -148,7 +148,7 @@ def test_the_inspection_layer_reads_only_usd() -> None:
             assert header.startswith("pxr/") or header in own or "." not in header, (source.name, header)
     cmake = (INSPECTION / "CMakeLists.txt").read_text()
     assert re.findall(r"target_link_libraries\(([^)]*)\)", cmake) == ['proscenium_inspection PRIVATE "${USD_LIBRARY}"']
-    # CI's Linux tests read the compile commands planner-linux built with, whose paths are its container's checkout.
+    # CI's Linux tests read the compile commands build-linux built with, whose paths are its container's checkout.
     commands = json.loads((ROOT / "build" / "planner-cmake" / "compile_commands.json").read_text())
     inspection_commands = []
     for command in commands:
