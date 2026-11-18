@@ -82,17 +82,17 @@ def publish(
             undo.append(functools.partial(destination.objects.link, obj))
         local_updates.apply_updates(plan, updates, undo)
         if before is None or changed or removed:
-            kept_manifests.write_manifest_entries(destination, manifests.Manifest(entries), changed, removed)
             if before is None:
                 undo.append(functools.partial(kept_manifests.remove_manifest, destination))
             else:
                 undo.append(functools.partial(kept_manifests.write_manifest, destination, before))
+            kept_manifests.write_manifest_entries(destination, manifests.Manifest(entries), changed, removed)
         if generation != previous:
-            binding_state.write_generation(destination, generation)
             if previous is None:
                 undo.append(functools.partial(binding_state.remove_generation, destination))
             else:
                 undo.append(functools.partial(binding_state.write_generation, destination, previous))
+            binding_state.write_generation(destination, generation)
     except Exception as error:
         for step in reversed(undo):
             try:

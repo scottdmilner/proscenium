@@ -75,8 +75,12 @@ def published_partitions(
 
 def write_manifest(destination: bpy.types.Collection, manifest: manifests.Manifest) -> LoadedRecord[manifests.Manifest]:
     """Store the destination's manifest whole and keep it (manifests.write_manifest)."""
-    written = manifests.write_manifest(destination, manifest)
-    _keep(destination, manifests.manifest_revision(destination), written)
+    try:
+        written = manifests.write_manifest(destination, manifest)
+        _keep(destination, manifests.manifest_revision(destination), written)
+    except Exception:
+        _KeptManifestsState.kept_by_destination.pop(destination.session_uid, None)
+        raise
     return written
 
 
@@ -90,10 +94,14 @@ def write_manifest_entries(
     kept = _KeptManifestsState.kept_by_destination.get(destination.session_uid)
     current = kept is not None and kept.revision == manifests.manifest_revision(destination)
     partitions = kept.partitions if current and kept is not None else None
-    written = manifests.write_manifest_entries(destination, manifest, changed, removed)
-    if partitions is not None:
-        partitions.replace_entries(manifest, changed, removed)
-    _keep(destination, manifests.manifest_revision(destination), written, partitions)
+    try:
+        written = manifests.write_manifest_entries(destination, manifest, changed, removed)
+        if partitions is not None:
+            partitions.replace_entries(manifest, changed, removed)
+        _keep(destination, manifests.manifest_revision(destination), written, partitions)
+    except Exception:
+        _KeptManifestsState.kept_by_destination.pop(destination.session_uid, None)
+        raise
     return written
 
 

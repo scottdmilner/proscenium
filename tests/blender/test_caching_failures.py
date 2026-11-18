@@ -156,6 +156,34 @@ def test_a_failing_record_write_undoes_the_keys(
         assert not bpy.data.actions
 
 
+@pytest.mark.parametrize("cached_before", [False, True])
+def test_a_failure_after_generation_persistence_restores_the_cached_times(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_before: bool
+) -> None:
+    with transaction.cached_time_codes(tmp_path) as scene:
+        handle = _synchronized(bindings, scene)
+        if cached_before:
+            assert handle.cache(scene.cached).state is ResultState.SUCCESS
+        requested = scene.failing if cached_before else scene.cached
+        before = _held(handle)
+        original = binding_state.write_generation
+        calls: list[None] = []
+
+        def fail_after_write(*args: Any) -> None:
+            original(*args)
+            calls.append(None)
+            if len(calls) == 1:
+                raise RuntimeError("injected post-persistence failure")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(binding_state, "write_generation", fail_after_write)
+            result = handle.cache(requested)
+        assert [d.code for d in result.diagnostics] == [DiagnosticCode.PUBLICATION_FAILED]
+        assert _held(handle) == before
+        assert pending_cleanup.nothing_pending(handle.binding_id)
+        assert handle.cache(requested).state is ResultState.SUCCESS
+
+
 def test_an_action_that_cant_be_disposed_of_is_pending_cleanup(
     bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
