@@ -54,23 +54,25 @@ def _sequence_text(values: Iterable[Any]) -> str:
 
 def _scalar_text(value: Any) -> str:
     """One value, or one element of an array, as a layer writes it."""
-    if isinstance(value, (bool, int, float)):
-        return _number_text(value)
-    if isinstance(value, str):
-        return value
-    if isinstance(value, Sdf.AssetPath):
-        return f"@{value.path}@"
-    if isinstance(value, Sdf.Path):
-        return f"<{value}>"
-    if isinstance(value, _GF_VECTOR_TYPES):
-        return _sequence_text(value)
-    if isinstance(value, _GF_QUATERNION_TYPES):
-        return _sequence_text((value.GetReal(), *value.GetImaginary()))
-    if isinstance(value, _GF_MATRIX_TYPES):
-        return _sequence_text(_sequence_text(value.GetRow(row)) for row in range(value.dimension[0]))
-    if isinstance(value, dict):
-        return f"{{{len(value)} entries}}"
-    return str(value)
+    match value:
+        case bool() | int() | float():
+            return _number_text(value)
+        case str():
+            return value
+        case Sdf.AssetPath(path=path):
+            return f"@{path}@"
+        case Sdf.Path():
+            return f"<{value}>"
+        case _ if isinstance(value, _GF_VECTOR_TYPES):
+            return _sequence_text(value)
+        case _ if isinstance(value, _GF_QUATERNION_TYPES):
+            return _sequence_text((value.GetReal(), *value.GetImaginary()))
+        case _ if isinstance(value, _GF_MATRIX_TYPES):
+            return _sequence_text(_sequence_text(value.GetRow(row)) for row in range(value.dimension[0]))
+        case dict():
+            return f"{{{len(value)} entries}}"
+        case _:
+            return str(value)
 
 
 def _clipped(text: str) -> str:

@@ -23,17 +23,18 @@ def _runtime_imports(path: Path, package: list[str]) -> list[tuple[int, str]]:
 
     def visit(statements: list[ast.stmt]) -> None:
         for node in statements:
-            if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
-                visit(node.orelse)
-            elif isinstance(node, ast.Import):
-                found.extend((node.lineno, alias.name) for alias in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                base = package[: len(package) - node.level + 1] if node.level else []
-                target = ".".join([*base, *([node.module] if node.module else [])])
-                found.extend((node.lineno, f"{target}.{alias.name}") for alias in node.names)
-            else:
-                for field in ("body", "orelse", "finalbody", "handlers"):
-                    visit([s for s in getattr(node, field, []) if isinstance(s, ast.stmt | ast.ExceptHandler)])
+            match node:
+                case ast.If(test=ast.Name(id="TYPE_CHECKING"), orelse=orelse):
+                    visit(orelse)
+                case ast.Import(lineno=line, names=names):
+                    found.extend((line, alias.name) for alias in names)
+                case ast.ImportFrom(lineno=line, module=module, level=level, names=names):
+                    base = package[: len(package) - level + 1] if level else []
+                    target = ".".join([*base, *([module] if module else [])])
+                    found.extend((line, f"{target}.{alias.name}") for alias in names)
+                case _:
+                    for field in ("body", "orelse", "finalbody", "handlers"):
+                        visit([s for s in getattr(node, field, []) if isinstance(s, ast.stmt | ast.ExceptHandler)])
 
     visit(ast.parse(path.read_text(), str(path)).body)
     return found

@@ -27,109 +27,112 @@ KITS = "/World/SharedPrototype"
 def _edit(stage: Usd.Stage, edit: str) -> None:
     session = stage.GetSessionLayer()
     with Usd.EditContext(stage, session):
-        if edit == "transform":
-            UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).AddTranslateOp(opSuffix="moved").Set(
-                Gf.Vec3d(0, 1, 0)
-            )
-        elif edit == "shared-geometry":
-            points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
-            points.Set([p * 2 for p in points.Get()])
-        elif edit == "points-dropped":  # leaves a corner of the kit's Body with no point, so it doesn't build
-            points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
-            points.Set(points.Get()[:3])
-        elif edit == "points-restored":
-            points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
-            points.Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 1, 0)])
-        elif edit == "uv":  # new values for MeshD's vertex UVs
-            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").Set(
-                [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
-            )
-        elif edit == "uv-role":  # MeshD's UVs as plain float pairs, which Blender keeps on points
-            uvs = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").GetAttr()
-            uvs.SetTypeName(Sdf.ValueTypeNames.Float2Array)
-        elif edit == "rewind":  # the kit's Body face rewound, so its corners aren't its points, with vertex UVs
-            body = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body"))
-            body.GetFaceVertexIndicesAttr().Set([0, 3, 2, 1])
-            uvs = [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
-            UsdGeom.PrimvarsAPI(body).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, "vertex").Set(uvs)
-        elif edit == "uv-interpolation":  # the same UVs, now one per corner of the Body's rewound face
-            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("st").SetInterpolation(
-                UsdGeom.Tokens.faceVarying
-            )
-        elif edit == "degenerate":  # MeshE's first face on one point twice, which Blender deletes
-            UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetFaceVertexIndicesAttr().Set([0, 1, 1, 0, 2, 3])
-        elif edit == "degenerate-move":
-            UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).AddTranslateOp(opSuffix="moved").Set(
-                Gf.Vec3d(0, 1, 0)
-            )
-        elif edit == "material":
-            shader = UsdShade.Shader(stage.GetPrimAtPath("/World/Looks/Red/Surface"))
-            shader.GetInput("diffuseColor").Set(Gf.Vec3f(0.9, 0.2, 0.2))
-        elif edit == "primvar":
-            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).GetPrimvar("displayColor").Set(
-                [Gf.Vec3f(0.9, 0.9, 0.9)]
-            )
-        elif edit == "reshape":  # gives MeshC, whose color its mesh's other copies don't share, a mesh of its own (D10)
-            points = UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshC")).GetPointsAttr()
-            points.Set([p * 2 for p in points.Get()])
-        elif edit == "turn-and-show":  # a move and a link in one update, after "visibility" hid MeshA
-            UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).AddRotateZOp(opSuffix="turned").Set(30.0)
-            UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeVisible()
-        elif edit == "move-world":  # every copy, F-NESTED-STRESS's sheared ones among them
-            UsdGeom.Xformable(stage.GetPrimAtPath("/World")).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
-        elif edit == "visibility":
-            UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeInvisible()
-        elif edit == "structure":
-            stage.GetPrimAtPath(f"{EQUAL}/MeshC").SetActive(False)
-            Sdf.CreatePrimInLayer(session, EQUAL)
-            Sdf.CopySpec(stage.GetRootLayer(), f"{EQUAL}/MeshA", session, f"{EQUAL}/MeshNew")
-        elif edit == "instance-transform":  # moves one copy of each of the kit's batches
-            stage.GetPrimAtPath(f"{KITS}/KitB").GetAttribute("xformOp:translate").Set(Gf.Vec3d(3, 2, 0))
-        elif edit == "kits-move":  # moves every copy of the kit's batches, which change state together (D3)
-            UsdGeom.Xformable(stage.GetPrimAtPath(KITS)).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
-        elif edit == "purpose-move":  # moves one copy of each purpose binding batch, one shown only in the render
-            UsdGeom.Xformable(stage.GetPrimAtPath("/World/PurposeBindings/Both")).AddTranslateOp(opSuffix="moved").Set(
-                Gf.Vec3d(0, 0, 1)
-            )
-        elif edit == "instance-remove":  # leaves two copies in each of the kit's batches
-            stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
-        elif edit == "instance-remove-another":  # leaves one copy of each of the kit's meshes, so no batch
-            stage.GetPrimAtPath(f"{KITS}/KitB").SetActive(False)
-        elif edit == "instance-restore":
-            for kit in ("KitA", "KitB"):
-                stage.GetPrimAtPath(f"{KITS}/{kit}").SetActive(True)
-        elif edit == "instance-color":  # recolors every copy of one of the kit's batches
-            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("displayColor").Set(
-                [Gf.Vec3f(0, 0, 1)]
-            )
-        elif edit == "color-interpolation":  # swaps two meshes' displayColor between uniform and vertex (D10)
-            colors = "/World/MeshDisplayColor"
-            uniform = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Uniform")).GetPrimvar("displayColor")
-            uniform.SetInterpolation(UsdGeom.Tokens.vertex)
-            uniform.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 0, 0)])
-            vertex = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Vertex")).GetPrimvar("displayColor")
-            vertex.SetInterpolation(UsdGeom.Tokens.uniform)
-            vertex.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1)])
-        elif edit == "uncolor":  # leaves the one copy of a mesh that holds its displayColor without one (D10)
-            UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("displayColor").GetAttr().Block()
-        elif edit == "merge-batches":  # one group from two batches, of two lids and three tags (D4's matching)
-            tag = stage.GetPrimAtPath("/Prototypes/Tag/Geom")
-            lid = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Lid"))
-            UsdGeom.Mesh(tag).GetPointsAttr().Set(lid.GetPointsAttr().Get())
-            UsdShade.MaterialBindingAPI.Apply(tag).Bind(UsdShade.Material(stage.GetPrimAtPath("/World/Looks/Blue")))
-            stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
-        elif edit == "holes":  # a build problem, which later plans reuse with the build (D9)
-            UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetHoleIndicesAttr().Set([0])
-        elif edit == "subset":  # moves face 2 between Partitioned's subsets, which alone change
-            mesh = "/World/FaceAssignments/Partitioned"
-            stage.GetPrimAtPath(f"{mesh}/Even").GetAttribute("indices").Set([0])
-            stage.GetPrimAtPath(f"{mesh}/Odd").GetAttribute("indices").Set([1, 2, 3])
-        elif edit == "unload":
-            stage.Unload("/World/Payload")
-        elif edit == "load":
-            stage.Load("/World/Payload")
-        elif edit != "unchanged":
-            raise ValueError(edit)
+        match edit:
+            case "transform":
+                UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).AddTranslateOp(opSuffix="moved").Set(
+                    Gf.Vec3d(0, 1, 0)
+                )
+            case "shared-geometry":
+                points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
+                points.Set([p * 2 for p in points.Get()])
+            case "points-dropped":  # leaves a corner of the kit's Body with no point, so it doesn't build
+                points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
+                points.Set(points.Get()[:3])
+            case "points-restored":
+                points = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPointsAttr()
+                points.Set([Gf.Vec3f(0, 0, 0), Gf.Vec3f(1, 0, 0), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 1, 0)])
+            case "uv":  # new values for MeshD's vertex UVs
+                UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").Set(
+                    [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
+                )
+            case "uv-role":  # MeshD's UVs as plain float pairs, which Blender keeps on points
+                uvs = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("st").GetAttr()
+                uvs.SetTypeName(Sdf.ValueTypeNames.Float2Array)
+            case "rewind":  # the kit's Body face rewound, so its corners aren't its points, with vertex UVs
+                body = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Body"))
+                body.GetFaceVertexIndicesAttr().Set([0, 3, 2, 1])
+                uvs = [Gf.Vec2f(0, 0), Gf.Vec2f(1, 0), Gf.Vec2f(1, 1), Gf.Vec2f(0, 1)]
+                UsdGeom.PrimvarsAPI(body).CreatePrimvar("st", Sdf.ValueTypeNames.TexCoord2fArray, "vertex").Set(uvs)
+            case "uv-interpolation":  # the same UVs, now one per corner of the Body's rewound face
+                UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("st").SetInterpolation(
+                    UsdGeom.Tokens.faceVarying
+                )
+            case "degenerate":  # MeshE's first face on one point twice, which Blender deletes
+                UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetFaceVertexIndicesAttr().Set([0, 1, 1, 0, 2, 3])
+            case "degenerate-move":
+                UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).AddTranslateOp(opSuffix="moved").Set(
+                    Gf.Vec3d(0, 1, 0)
+                )
+            case "material":
+                shader = UsdShade.Shader(stage.GetPrimAtPath("/World/Looks/Red/Surface"))
+                shader.GetInput("diffuseColor").Set(Gf.Vec3f(0.9, 0.2, 0.2))
+            case "primvar":
+                UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).GetPrimvar("displayColor").Set(
+                    [Gf.Vec3f(0.9, 0.9, 0.9)]
+                )
+            case "reshape":  # gives MeshC, whose color its mesh's other copies don't share, a mesh of its own (D10)
+                points = UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshC")).GetPointsAttr()
+                points.Set([p * 2 for p in points.Get()])
+            case "turn-and-show":  # a move and a link in one update, after "visibility" hid MeshA
+                UsdGeom.Xformable(stage.GetPrimAtPath(f"{EQUAL}/MeshB")).AddRotateZOp(opSuffix="turned").Set(30.0)
+                UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeVisible()
+            case "move-world":  # every copy, F-NESTED-STRESS's sheared ones among them
+                UsdGeom.Xformable(stage.GetPrimAtPath("/World")).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
+            case "visibility":
+                UsdGeom.Imageable(stage.GetPrimAtPath(f"{EQUAL}/MeshA")).MakeInvisible()
+            case "structure":
+                stage.GetPrimAtPath(f"{EQUAL}/MeshC").SetActive(False)
+                Sdf.CreatePrimInLayer(session, EQUAL)
+                Sdf.CopySpec(stage.GetRootLayer(), f"{EQUAL}/MeshA", session, f"{EQUAL}/MeshNew")
+            case "instance-transform":  # moves one copy of each of the kit's batches
+                stage.GetPrimAtPath(f"{KITS}/KitB").GetAttribute("xformOp:translate").Set(Gf.Vec3d(3, 2, 0))
+            case "kits-move":  # moves every copy of the kit's batches, which change state together (D3)
+                UsdGeom.Xformable(stage.GetPrimAtPath(KITS)).AddTranslateOp(opSuffix="moved").Set(Gf.Vec3d(0, 0, 1))
+            case "purpose-move":  # moves one copy of each purpose binding batch, one shown only in the render
+                UsdGeom.Xformable(stage.GetPrimAtPath("/World/PurposeBindings/Both")).AddTranslateOp(
+                    opSuffix="moved"
+                ).Set(Gf.Vec3d(0, 0, 1))
+            case "instance-remove":  # leaves two copies in each of the kit's batches
+                stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
+            case "instance-remove-another":  # leaves one copy of each of the kit's meshes, so no batch
+                stage.GetPrimAtPath(f"{KITS}/KitB").SetActive(False)
+            case "instance-restore":
+                for kit in ("KitA", "KitB"):
+                    stage.GetPrimAtPath(f"{KITS}/{kit}").SetActive(True)
+            case "instance-color":  # recolors every copy of one of the kit's batches
+                UsdGeom.PrimvarsAPI(stage.GetPrimAtPath("/Prototypes/Kit/Body")).GetPrimvar("displayColor").Set(
+                    [Gf.Vec3f(0, 0, 1)]
+                )
+            case "color-interpolation":  # swaps two meshes' displayColor between uniform and vertex (D10)
+                colors = "/World/MeshDisplayColor"
+                uniform = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Uniform")).GetPrimvar("displayColor")
+                uniform.SetInterpolation(UsdGeom.Tokens.vertex)
+                uniform.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1), Gf.Vec3f(1, 1, 0), Gf.Vec3f(0, 0, 0)])
+                vertex = UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{colors}/Vertex")).GetPrimvar("displayColor")
+                vertex.SetInterpolation(UsdGeom.Tokens.uniform)
+                vertex.Set([Gf.Vec3f(0, 1, 1), Gf.Vec3f(1, 0, 1)])
+            case "uncolor":  # leaves the one copy of a mesh that holds its displayColor without one (D10)
+                UsdGeom.PrimvarsAPI(stage.GetPrimAtPath(f"{EQUAL}/MeshD")).GetPrimvar("displayColor").GetAttr().Block()
+            case "merge-batches":  # one group from two batches, of two lids and three tags (D4's matching)
+                tag = stage.GetPrimAtPath("/Prototypes/Tag/Geom")
+                lid = UsdGeom.Mesh(stage.GetPrimAtPath("/Prototypes/Kit/Lid"))
+                UsdGeom.Mesh(tag).GetPointsAttr().Set(lid.GetPointsAttr().Get())
+                UsdShade.MaterialBindingAPI.Apply(tag).Bind(UsdShade.Material(stage.GetPrimAtPath("/World/Looks/Blue")))
+                stage.GetPrimAtPath(f"{KITS}/KitA").SetActive(False)
+            case "holes":  # a build problem, which later plans reuse with the build (D9)
+                UsdGeom.Mesh(stage.GetPrimAtPath(f"{EQUAL}/MeshE")).GetHoleIndicesAttr().Set([0])
+            case "subset":  # moves face 2 between Partitioned's subsets, which alone change
+                mesh = "/World/FaceAssignments/Partitioned"
+                stage.GetPrimAtPath(f"{mesh}/Even").GetAttribute("indices").Set([0])
+                stage.GetPrimAtPath(f"{mesh}/Odd").GetAttribute("indices").Set([1, 2, 3])
+            case "unload":
+                stage.Unload("/World/Payload")
+            case "load":
+                stage.Load("/World/Payload")
+            case "unchanged":
+                pass
+            case _:
+                raise ValueError(edit)
 
 
 def diff_edits(module_dir: str, scene: str, edits: list[str]) -> list[dict[str, Any]]:
