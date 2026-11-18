@@ -355,8 +355,9 @@ class _CallKeying:
             assert isinstance(group, bpy.types.NodeTree)
             return group
         key = self.frames_group_key = manifests.new_entry_key()
-        group = attribute_samples.new_frames_group(attribute_samples.POSITIONS)
+        group = bpy.data.node_groups.new("Proscenium frames", "GeometryNodeTree")
         self.work.track(key, manifests.RepresentationRole.NODE_GROUP, group)
+        attribute_samples.populate_frames_group(group, attribute_samples.POSITIONS)
         self.changes[key] = manifests.ManifestEntryChange([], manifests.RepresentationRole.NODE_GROUP, [])
         return group
 

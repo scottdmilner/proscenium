@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import bpy
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    import bpy
 
 FRAME_SEPARATOR = "@"  # a sample's attribute is <name>@<sample>
 MODIFIER = "Proscenium frames"
@@ -28,18 +28,19 @@ type Signature = tuple[tuple[str, str, str], ...]
 POSITIONS: Signature = (("position", "FLOAT_VECTOR", "POINT"),)  # a bounds mesh's, the one set M7 samples
 
 
-def new_frames_group(signature: Signature) -> bpy.types.NodeTree:
-    """A frames group storing each attribute of signature from its attribute for the Sample input, where it has one.
+def populate_frames_group(tree: bpy.types.NodeTree, signature: Signature) -> None:
+    """Populate an allocated frames group, storing each attribute's sample for the Sample input where it has one.
 
     It then removes the attribute's samples.
     """
-    tree: Any = bpy.data.node_groups.new("Proscenium frames", "GeometryNodeTree")
-    tree.interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
-    socket = tree.interface.new_socket(SAMPLE, in_out="INPUT", socket_type="NodeSocketInt")
+    interface: Any = tree.interface  # the stubs restrict socket_type to DEFAULT
+    interface.new_socket("Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    socket = interface.new_socket(SAMPLE, in_out="INPUT", socket_type="NodeSocketInt")
     if socket.identifier != _SAMPLE_SOCKET:  # the keys name it
         raise RuntimeError(f"Expected input {SAMPLE} to be {_SAMPLE_SOCKET}, not {socket.identifier}")
-    tree.interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
-    nodes, links = tree.nodes, tree.links
+    interface.new_socket("Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    nodes: Any = tree.nodes
+    links = tree.links
     group_input = nodes.new("NodeGroupInput")
     geometry = group_input.outputs[0]
     sample_text = nodes.new("FunctionNodeValueToString")
@@ -66,7 +67,6 @@ def new_frames_group(signature: Signature) -> bpy.types.NodeTree:
         links.new(store.outputs[0], remove.inputs["Geometry"])
         geometry = remove.outputs[0]
     links.new(geometry, nodes.new("NodeGroupOutput").inputs[0])
-    return tree
 
 
 def sample_input_path() -> str:

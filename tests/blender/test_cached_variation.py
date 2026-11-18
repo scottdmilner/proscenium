@@ -18,8 +18,8 @@ from pxr import Gf, Usd
 from fixtures import edit_sequence, incremental, time_variations
 from proscenium_sync.persistence import binding_state, id_property_records
 from proscenium_sync.persistence.manifests import RepresentationRole
-from proscenium_sync.results import ResultState
-from proscenium_sync.runtime import ownership
+from proscenium_sync.results import DiagnosticCode, ResultState
+from proscenium_sync.runtime import ownership, pending_cleanup
 from proscenium_sync.synchronization import attribute_samples, time_code_keying
 from support.blend import save_and_reopen
 from support.clean_rebuild import clean_rebuild
@@ -225,6 +225,30 @@ def test_a_failing_call_takes_back_its_samples(
         assert not grows.modifiers
         assert isinstance(grows.data, bpy.types.Mesh)
         assert not any("@" in attribute.name for attribute in grows.data.attributes)
+
+
+def test_a_failing_frames_group_leaves_no_untracked_node_group(
+    bindings: Bindings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TXN-08/CACHE-03: the group is tracked when allocated, so one whose population fails is disposed of.
+    with time_variations.time_variations(tmp_path) as scene:
+        handle = _synchronized(bindings, scene.stage, scene.synchronized)
+        destination = bpy.data.collections["Shot"]
+        published, before = published_generation(handle.binding_id, destination), datablocks()
+        records = _records(destination)
+        with monkeypatch.context() as patch:
+            patch.setattr(attribute_samples, "_SAMPLE_SOCKET", "not the actual socket")
+            result = handle.cache([5.0])
+        assert result.state is ResultState.FATAL_FAILURE
+        assert any(
+            d.code is DiagnosticCode.PREPARATION_FAILED and "Expected input Sample" in d.message
+            for d in result.diagnostics
+        )
+        assert published_generation(handle.binding_id, destination) == published
+        assert _records(destination) == records
+        assert datablocks() == before
+        assert pending_cleanup.nothing_pending(handle.binding_id)
+        assert handle.cache([5.0]).state is not ResultState.FATAL_FAILURE
 
 
 def test_a_failing_call_takes_back_the_box_it_made(
