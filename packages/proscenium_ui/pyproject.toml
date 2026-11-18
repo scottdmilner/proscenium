@@ -23,27 +23,32 @@ root_package = "proscenium_ui"
 include_external_packages = true  # so the bpy-free contracts see Blender's modules
 
 # The tiers, highest first. Units of one tier share a line, so they don't import each other. Exhaustive: a module
-# beside the units that no tier lists fails.
+# beside the units that no tier lists fails. Each widget is one unit, with its own tiers below; its bpy-free model
+# stays below Blender's units by the bpy-free contracts, not by these tiers.
 [[tool.importlinter.contracts]]
 name = "proscenium_ui's tiers"
 type = "layers"
 containers = ["proscenium_ui"]
 layers = [
-    "scene_graph_widget.display | property_viewer_widget.display",
+    "scene_graph_widget | property_viewer_widget",
     "widget_resources | search_box | text_wrapping",
     "columned_list | widget_updates",
-    "scene_graph_widget.prim_tree | property_viewer_widget.property_list",  # bpy-free
     "widget_model",  # bpy-free
 ]
 exhaustive = true
-# Exhaustive takes only a container's children: the next contract covers what these group.
-exhaustive_ignores = ["scene_graph_widget", "property_viewer_widget"]
 
 [[tool.importlinter.contracts]]
-name = "The grouping packages: each widget's display above its model"
+name = "The scene graph widget's tiers"
 type = "layers"
-containers = ["proscenium_ui.scene_graph_widget", "proscenium_ui.property_viewer_widget"]
-layers = ["display", "(prim_tree)", "(property_list)"]
+containers = ["proscenium_ui.scene_graph_widget"]
+layers = ["display", "prim_tree"]  # prim_tree is bpy-free
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "The property viewer widget's tiers"
+type = "layers"
+containers = ["proscenium_ui.property_viewer_widget"]
+layers = ["display", "property_list"]  # property_list is bpy-free
 exhaustive = true
 
 # A unit whose __init__.py exports names rather than all its modules is reached only through it: no other unit

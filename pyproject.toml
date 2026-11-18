@@ -161,16 +161,12 @@ ignore_imports = [
     "proscenium.** -> proscenium_ui.widget_updates",
 ]
 
+# The dependencies their pyproject.toml files declare: the extension above the library packages, which import neither
+# the other.
 [[tool.importlinter.contracts]]
-name = "The library packages import no other workspace package"
-type = "forbidden"
-source_modules = ["proscenium_sync", "proscenium_ui"]
-forbidden_modules = ["proscenium"]
-
-[[tool.importlinter.contracts]]
-name = "The library packages import neither the other"
-type = "independence"
-modules = ["proscenium_sync", "proscenium_ui"]
+name = "The packages' tiers"
+type = "layers"
+layers = ["proscenium", "proscenium_sync | proscenium_ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

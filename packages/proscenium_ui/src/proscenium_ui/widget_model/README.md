@@ -1,6 +1,6 @@
 # `proscenium_ui.widget_model`
 
-What the widgets' models share, kept apart from drawing so it tests in `bpy_free`: matching a search's text, the composition arcs and key steps they use, and what a widget reads and says of a prim. It imports without `bpy` and may import only itself: it's in the lowest tier, below each widget's model ([import rules](../../../../../src/proscenium/README.md#import-rules)).
+What the widgets' models share, kept apart from drawing so it tests in `bpy_free`: matching a search's text, the composition arcs and key steps they use, and what a widget reads and says of a prim. It imports without `bpy` and may import only itself: it's in the lowest tier, below the widgets and each widget's model ([import rules](../../../../../src/proscenium/README.md#import-rules)).
 
 | File | Holds |
 |---|---|
