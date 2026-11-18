@@ -4,7 +4,8 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 
 | Path | Holds |
 |---|---|
-| `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep these READMEs out of the zip. |
+| `blender_manifest.toml` | The extension manifest. Its `[build]` patterns keep these READMEs and the agent instructions out of the zip. |
+| `AGENTS.md`, `CLAUDE.md` | Rules for agents working here. `CLAUDE.md` loads `AGENTS.md` for Claude Code. `[build]` keeps both out of the zip. |
 | `__init__.py` | The package, exporting `addon.py`'s `register` and `unregister`, which Blender calls. |
 | `addon.py` | The extension's registration: the synchronizer's (`proscenium_sync.register`), then the temporary UI's. |
 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, over `proscenium_sync`'s names and `proscenium_ui`'s widgets only. |

@@ -1,6 +1,6 @@
 # `proscenium_sync.planner`
 
-The planner and its C++ source. It reads Hydra scene indices ([DECISIONS.md](../../../../../docs/DECISIONS.md) "Evaluation front end and core language"). AGENTS.md's [Planner](../../../../../AGENTS.md#planner) section has its build, boundary, and style rules. It imports without `bpy` and may import only itself; `tests/bpy_free` imports it with Blender's modules blocked.
+The planner and its C++ source. It reads Hydra scene indices ([DECISIONS.md](../../../../../docs/DECISIONS.md) "Evaluation front end and core language"). [AGENTS.md](AGENTS.md) has its build, boundary, style, and test rules. It imports without `bpy` and may import only itself; `tests/bpy_free` imports it with Blender's modules blocked.
 
 ## Python
 
@@ -35,4 +35,5 @@ Its only Python module is its `__init__.py`, so no import-linter contract protec
 | `inspection/` | The inspection layer, a static library of its own that includes and links only USD, which the planner links ([its README](inspection/README.md)). |
 | `CMakeLists.txt` | The build, against the locked Blender release's headers, linking only Blender's `usd_ms`, with the settings it and the inspection layer's build share (`proscenium_compile_settings`). `tools/build_extension.py` runs it through `tools/native_build.py`. |
 | `.clang-format` | The C++ style, run as a pre-commit hook (the checks are the repository's root `.clang-tidy`). |
+| `AGENTS.md`, `CLAUDE.md` | The planner's rules for agents: its build, boundary, style, and tests. `CLAUDE.md` loads `AGENTS.md` for Claude Code. Neither ships. |
 | `.gitignore` | Ignores the built module, `_planner.*.so` or `_planner.*.pyd`, which the build puts in this directory and only the package's wheel ships (`hatch_build.py`). |

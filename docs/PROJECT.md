@@ -29,6 +29,11 @@ Always read this file and [spec/invariants.md](spec/invariants.md). Read other f
 | [testing/requirements-matrix.md](testing/requirements-matrix.md) | Requirement-to-test matrix, generated from [requirements.yaml](testing/requirements.yaml) |
 | [milestones/](milestones/README.md) | Implementation milestones M1–M13, including the M1b decision gate |
 | [DECISIONS.md](DECISIONS.md) | Decision register: open decisions and chosen behavior |
+| [plans/](plans/) | Each milestone's decision log, and plans for changes outside milestones |
+| [phase3/](phase3/) | Design notes for Phase 3, which are not requirements |
+| [conventions.md](conventions.md) | How code is named |
+| [AGENTS.md](AGENTS.md) | Rules for agents working in these docs: keeping invariants and the matrix in sync, and how docs are written |
+| `archive/` | Superseded documents, kept for history: not requirements or guidance, and never updated |
 
 This file, `spec/`, and `testing/` establish project requirements and architectural direction. The milestone files detail implementation and reference those requirements; where they conflict, the requirement files take precedence. [spec/invariants.md](spec/invariants.md) summarizes cross-cutting guarantees, and the spec section each invariant links to is authoritative for details. Milestones describe planned work, not implementation status. Inspect the repository before assuming a feature exists.
 

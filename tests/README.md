@@ -28,7 +28,7 @@ Layers are named for what a test runs in, not for how much it covers: unit and i
 |---|---|---|---|
 | `bpy_free/` | Plain Python that reads and writes no Blender data, so it needs no reset. The wheel's bundled packages (e.g. `pxr`, `MaterialX`) are used freely. | Anything that doesn't need Blender: USD evaluation and planning, fixture generators, docs consistency. Prefer this layer. | ms |
 | `blender/` | The bpy wheel, in a process each worker reuses, reset before every test | Code that reads or writes Blender data: registration, save/reopen, undo, datablocks | ~30 ms reset |
-| `isolated/` | A fresh process per test: the bpy wheel, or also the Blender binary, in the background or with a window | Behavior that needs a fresh process: real startup and file loads with handlers, extension install, process-wide state that a reset can't undo; smoke tests that must also pass in the binary users run; and drawing and input events, in a window | ~0.85 s (wheel), ~1.2 s (binary), ~10 s (window) |
+| `isolated/` | A fresh process per test: the bpy wheel, or also the Blender binary, in the background or with a window | Behavior that needs a fresh process: input that could crash native code, real startup and file loads with handlers, extension install, process-wide state that a reset can't undo; smoke tests that must also pass in the binary users run; and drawing and input events, in a window | ~0.85 s (wheel), ~1.2 s (binary), ~10 s (window) |
 
 Start in the cheapest layer that can express the test. Move a test to `isolated/` only when the blender layer's reset can't give it a clean, honest starting point.
 
@@ -38,6 +38,7 @@ Extra markers, added per test: `alab` for tests that need ALab (`PROSCENIUM_ALAB
 
 ```
 tests/
+├── AGENTS.md, CLAUDE.md      rules for agents writing tests
 ├── conftest.py               layer markers, the alab skip, a throwaway Blender user dir
 ├── bpy_free/                 tests that run without Blender
 │   ├── bpy_blocker.py        imports modules in a fresh interpreter with Blender blocked, for test_no_blender_imports.py
@@ -87,7 +88,7 @@ tests/
 
 Tests here read and write no Blender data, so they skip the blender layer's reset. They don't import Blender's modules either, though nothing checks that for the tests themselves.
 
-What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). A test and import-linter's contracts prove it, and neither depends on what a worker has already imported:
+What is checked is that the bpy-free code works without Blender ([import layers](../packages/README.md#import-rules)). A test and import-linter's contracts prove it, and neither depends on what a worker has already imported:
 
 - `test_no_blender_imports.py`: `proscenium_sync`, `proscenium_sync.results`, `proscenium_ui`, `proscenium_ui.scene_graph_widget`, `proscenium_ui.property_viewer_widget`, and every `proscenium_sync.planner`, `proscenium_sync.source_access`, `proscenium_ui.widget_model`, `proscenium_ui.scene_graph_widget.prim_tree`, and `proscenium_ui.property_viewer_widget.property_list` module import in a fresh interpreter with Blender blocked.
 - `test_sync_api.py`: `proscenium_sync`'s `__init__.py`, which imports without Blender, loads its API from the units its `__init__.pyi` gives type checkers, which share no name. `blender/test_sync_api.py` loads them and checks the names.

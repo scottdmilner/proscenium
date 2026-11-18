@@ -1,4 +1,4 @@
-"""The planner turns Tf errors and C++ exceptions into Python exceptions (AGENTS.md "Planner")."""
+"""The planner turns Tf errors and C++ exceptions into Python exceptions (planner/AGENTS.md)."""
 
 from __future__ import annotations
 
