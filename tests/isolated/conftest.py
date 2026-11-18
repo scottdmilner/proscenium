@@ -11,6 +11,8 @@ Fixtures:
 - `windowed_binary`: the Blender binary with a window, for what needs drawing and input events. Linux needs a
   display for it: CI runs the tests under Xvfb. Locally, a test using it is skipped until what it covers changes
   since it last passed (windowed_runs.py); CI always runs it.
+- `extension_zip`: the extension zip, built once per run from src/proscenium in check mode (sync=False), which only
+  reads the source dir, so it never writes into the repository and workers can build concurrently.
 - `hydra_bridge`: the directory of M1b's compiled Hydra bridge, which M4's prototypes run. Built from its
   sources once per run, unless PROSCENIUM_HYDRA_BRIDGE names a directory holding a prebuilt one (CI on Linux).
 Without a binary, binary runs are skipped, unless PROSCENIUM_REQUIRE_BLENDER is set (CI).
@@ -28,6 +30,7 @@ import pytest
 from filelock import FileLock
 
 from blender_paths import find_blender
+from build_extension import build
 
 from . import windowed_runs
 from .harness import WHEEL, Runtime, RuntimeKind
@@ -93,6 +96,12 @@ def _skip_or_fail(message: str) -> NoReturn:
     if os.environ.get("PROSCENIUM_REQUIRE_BLENDER"):
         pytest.fail(message)
     pytest.skip(message)
+
+
+@pytest.fixture(scope="session")
+def extension_zip(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The extension built by tools/build_extension.py into a temporary dir, without touching src/."""
+    return build(ROOT / "src" / "proscenium", tmp_path_factory.mktemp("dist"), sync=False)
 
 
 @pytest.fixture(scope="session")

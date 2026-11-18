@@ -1,7 +1,6 @@
 """The built extension zip installs, registers on enable, loads its planner, and unregisters on disable.
 
-Built from src/proscenium in check mode (sync=False), which only reads the source dir,
-so the test never writes into the repository and workers can build concurrently.
+The zip is conftest.py's extension_zip.
 """
 
 from __future__ import annotations
@@ -11,22 +10,13 @@ import tomllib
 import zipfile
 from pathlib import Path
 
-import pytest
-
 from blender_deps import current_platform
 from blender_release import blender_version
-from build_extension import ROOT, build
 from native_build import wheel_tag
 
 from .harness import Runtime, run_isolated
 
 BODIES = Path(__file__).parent / "bodies"
-
-
-@pytest.fixture(scope="session")
-def extension_zip(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """The extension built by tools/build_extension.py into a temporary dir, without touching src/."""
-    return build(ROOT / "src" / "proscenium", tmp_path_factory.mktemp("dist"), sync=False)
 
 
 def test_install_enable_disable(runtime: Runtime, extension_zip: Path, tmp_path: Path) -> None:
