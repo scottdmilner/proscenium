@@ -16,7 +16,7 @@ repos:
         types_or: [python, pyi]
       - id: ty
         name: ty check
-        entry: uv run --frozen ty check
+        entry: uv run --frozen ty check --error-on-warning  # warnings, unused ignore comments among them, fail too
         language: system
         types_or: [python, pyi]
         pass_filenames: false

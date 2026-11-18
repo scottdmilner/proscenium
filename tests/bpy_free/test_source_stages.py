@@ -151,7 +151,7 @@ def test_cached_source_composes_its_own_opinions_and_reuses_evaluation(tmp_path:
 # --- evaluation fidelity -----------------------------------------------------------------------
 
 
-def _expected(scene: source_access.PrivateStageScene, payload_policy: PayloadPolicy) -> dict:
+def _expected(scene: source_access.PrivateStageScene, payload_policy: PayloadPolicy) -> dict[str, float | None]:
     # The caller's composed values, with payload content by the binding's policy: PayB is in the
     # caller's mask but its payload isn't loaded by the caller.
     loaded = 1.0 if payload_policy is PayloadPolicy.LOAD_ALL else None

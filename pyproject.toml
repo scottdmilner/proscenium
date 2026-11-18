@@ -124,9 +124,25 @@ extra-paths = ["tools", "tools/feasibility", "tests"]
 [tool.ty.src]
 exclude = [".claude"]  # Claude Code's worktrees, each a copy of the repository
 
+# Beyond ty's defaults. The pre-commit hook passes --error-on-warning, so warnings fail it too.
 [tool.ty.rules]
 missing-override-decorator = "error"  # every override is marked with typing.override
 possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+possibly-unresolved-reference = "error"
+missing-type-argument = "error"  # every generic is parametrized
+blanket-ignore-comment = "error"  # every ty: ignore names its rule
+disjoint-cast = "error"
+division-by-zero = "error"
+invalid-legacy-positional-parameter = "error"
+unsupported-dynamic-base = "error"
+missing-direct-dependency = "error"
+
+[[tool.ty.overrides]]
+include = ["tools/feasibility/**"]  # M1's evidence code, kept as it was measured
+
+[tool.ty.overrides.rules]
+missing-type-argument = "ignore"
 
 [tool.pyright]
 # Pylance configuration

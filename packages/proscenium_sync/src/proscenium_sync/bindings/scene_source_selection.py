@@ -234,7 +234,7 @@ def select_by_box(
     does (ICON-40). The active entry stays active while it is selected.
     """
     displays = _displays(bindings, scene)
-    chosen = []
+    chosen: list[SelectionEntry] = []
     for binding_id, display in displays.items():
         if (elements := display.elements) is None:
             continue

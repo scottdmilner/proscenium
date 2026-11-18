@@ -71,7 +71,7 @@ def of(datablock: bpy.types.ID) -> Ownership:
         for user in bpy.data.user_map(subset=[datablock])[datablock]
         if isinstance(user, bpy.types.Collection) and user.library is None and binding_records.binding_ids(user)
     ]
-    claims = []
+    claims: list[Claim] = []
     for holder in sorted(holders, key=lambda c: c.name):
         manifest = kept_manifests.read_manifest(holder)
         if isinstance(manifest, LoadedRecord):  # one that can't be read claims nothing until it is repaired

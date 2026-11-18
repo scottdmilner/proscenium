@@ -9,7 +9,7 @@ full re-read per evaluation, about 0.4 s on ALab, and nothing when off.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from proscenium_sync.results import Diagnostic, DiagnosticCode
 
@@ -93,12 +93,15 @@ def _message(source_path: str, at: str) -> str:
     return f"{what} differed from a full re-read{at}; the full re-read is displayed"
 
 
-def _matrix(matrices: list, index: int) -> tuple[float, ...]:
+def _matrix(matrices: Sequence[float], index: int) -> tuple[float, ...]:
     return tuple(matrices[16 * index : 16 * index + 16])
 
 
-def _values(buffer: Buffer) -> list:
-    """A buffer's elements, its view released before returning (SNAP-13)."""
+def _values(buffer: Buffer) -> list[Any]:
+    """A buffer's elements, its view released before returning (SNAP-13).
+
+    The elements' type follows the buffer's format: floats, ints, or bools.
+    """
     with memoryview(buffer) as view:
         return view.tolist()
 

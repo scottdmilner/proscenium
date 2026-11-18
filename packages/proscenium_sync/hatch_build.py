@@ -6,12 +6,13 @@ import sys
 from pathlib import Path
 from typing import Any, override
 
+from hatchling.builders.config import BuilderConfig
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 HERE = Path(__file__).resolve().parent
 
 
-class PlannerBuildHook(BuildHookInterface):
+class PlannerBuildHook(BuildHookInterface[BuilderConfig]):
     """Builds the planner into planner/ unless it's current (tools/native_build.py), and adds it to the wheel."""
 
     @override
