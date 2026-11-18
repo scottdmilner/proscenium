@@ -4,6 +4,6 @@ The `proscenium_sync` package: the synchronizer, which the extension registers a
 
 | Path | Holds |
 |---|---|
-| `pyproject.toml` | The package's project. It depends on nothing that ships: `bpy` and `pxr` come with Blender. Its wheel leaves out the planner's C++ sources. |
+| `pyproject.toml` | The package's project. It depends on nothing that ships: `bpy` and `pxr` come with Blender. Its wheel leaves out the planner's C++ sources. Its `[tool.importlinter]` contracts are the package's import rules ([import rules](../README.md#import-rules)). |
 | `hatch_build.py` | The wheel's build hook: it builds the planner unless it's current (`tools/build_extension.py`'s `sync_core`), adds it to the wheel, and tags the wheel for this platform. An editable install skips it, and imports the module from `planner/`. |
 | `src/` | The package's source, `proscenium_sync/` ([its README](src/proscenium_sync/README.md)). |

@@ -12,25 +12,25 @@ from typing import TYPE_CHECKING, Any, override
 
 import bpy
 
-from proscenium_sync import bindings
+import proscenium_sync
 
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
 
-def state_text(status: bindings.BindingStatus) -> str:
+def state_text(status: proscenium_sync.BindingStatus) -> str:
     """The binding's state in a few words."""
     if not status.published:
         return "Not synchronized"
     shown = "May be out of date" if status.possibly_out_of_date else "Up to date"
-    if status.last_attempt is bindings.ResultState.FATAL_FAILURE:
+    if status.last_attempt is proscenium_sync.ResultState.FATAL_FAILURE:
         return f"{shown}; last attempt failed"
     return shown
 
 
 def draw_bindings(layout: Any, scene: bpy.types.Scene) -> None:
     """Each of the scene's bindings: its name and attachment, then its state or why it can't be used, and a button."""
-    statuses = bindings.BINDINGS.binding_statuses(scene)
+    statuses = proscenium_sync.BINDINGS.binding_statuses(scene)
     if not statuses:
         layout.label(text="No bindings")
         return
@@ -56,8 +56,8 @@ class PROSCENIUM_OT_synchronize(bpy.types.Operator):  # noqa: N801 - Blender's o
 
     @override
     def execute(self, context: Any) -> set[OperatorReturnItems]:
-        result = bindings.BINDINGS.synchronize(self.binding_id)
-        if result.state is bindings.ResultState.FATAL_FAILURE:
+        result = proscenium_sync.BINDINGS.synchronize(self.binding_id)
+        if result.state is proscenium_sync.ResultState.FATAL_FAILURE:
             message = result.diagnostics[0].message if result.diagnostics else "Synchronization failed"
             self.report({"ERROR"}, message)
             return {"CANCELLED"}

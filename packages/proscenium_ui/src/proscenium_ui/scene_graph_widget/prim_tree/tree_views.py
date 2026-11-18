@@ -18,7 +18,7 @@ from proscenium_ui.widget_model import text_matching
 from proscenium_ui.widget_model.list_steps import StepDirection
 
 from . import prim_search
-from .prim_tree import PrimTree
+from .prim_rows import PrimTree
 
 if TYPE_CHECKING:
     from collections.abc import Callable

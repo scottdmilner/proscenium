@@ -1,9 +1,9 @@
 # `proscenium_ui.scene_graph_widget`
 
-The scene graph widget: a stage's prim hierarchy as a tree a host places in Blender's editors ([Scene Graph UI](../../../../../docs/phase3/scene-graph-ui.md#the-widget)). It has two units, by the [import rules](../../../../../src/proscenium/README.md#import-rules): `prim_tree/`, the model, which holds the tree's state and imports nothing of Blender's, and `display/`, which draws it in Blender and forwards input to it.
+The scene graph widget: a stage's prim hierarchy as a tree a host places in Blender's editors ([Scene Graph UI](../../../../../docs/phase3/scene-graph-ui.md#the-widget)). It has two parts: `prim_tree/`, the model, which holds the tree's state, and `display/`, which draws it in Blender and forwards input to it.
 
 | Path | Holds |
 |---|---|
 | `__init__.py` | The package. It imports none of its units, so importing `prim_tree/`, which runs it first, never imports `bpy`. |
-| `prim_tree/` | The model: a stage's hierarchy as the rows a tree shows, its search, its selection and keyboard steps, the stage changes it follows, and what it says about each prim. Tier 2, above `widget_model/`. |
-| `display/` | The display: the prim tree drawn as a virtualized UIList, with its views, properties, operators, columns, and key watcher, and what a host calls to place it. Tier 9, above `search_box.py`, `widget_resources/`, `columned_list/`, and `widget_updates.py`. |
+| `prim_tree/` | The model: a stage's hierarchy as the rows a tree shows, its search, its selection and keyboard steps, the stage changes it follows, and what it says about each prim. |
+| `display/` | The display: the prim tree drawn as a virtualized UIList, with its views, properties, operators, columns, and key watcher, and what a host calls to place it. |

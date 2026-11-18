@@ -1,18 +1,18 @@
-# Source tiers and names: plan
+# Source import layers and names: plan
 
 How `src/proscenium/` is arranged so its structure shows in the tree, and how its classes and functions are named. It changes no behavior apart from what the [Semantics](#semantics) section names, and adds no requirement. Where it and a spec file disagree, the spec file wins, apart from the API names this plan changes in the spec itself ([Spec changes](#spec-changes)).
 
-## Tiers
+## Import layers
 
 `src/proscenium/` holds three packages: `bindings/`, what callers use; `binding/`, the bindings' code; and `core/`, the compiled core. The bindings' code and the core are separate packages, so the Blender-facing code and the core and its Hydra code change independently.
 
-The code is in units, each a package or a single module, in tiers. A unit imports only from itself and from units in lower tiers, and the lowest tier's units import only themselves:
+The code is in units, each a package or a single module, in import layers. A unit imports only from itself and from units in lower import layers, and the lowest import layer's units import only themselves:
 
-| Tier | Unit | Holds |
+| Import layer | Unit | Holds |
 |---|---|---|
 | 11 | `addon.py` | The extension's registration and its handlers, which drive `binding.runtime` and `api` |
 | 10 | `interface/` | The temporary UI, which M12 replaces: the Source Select tool and minimal panels, importing only `bindings/` and `ui/`'s widgets |
-| 2, 7–9 | `ui/`'s units | Widgets an add-on places in Blender's editors, their bpy-free models in tier 2 and the lowest tier ([`src/proscenium/README.md`](../../src/proscenium/README.md#import-rules) lists them) |
+| 2, 7–9 | `ui/`'s units | Widgets an add-on places in Blender's editors, their bpy-free models in import layer 2 and the lowest import layer ([`src/proscenium/README.md`](../../src/proscenium/README.md#import-rules) lists them) |
 | 6 | `bindings/` | What callers use: the binding handle and the process's bindings ([Synchronization API](../spec/source-access.md#synchronization-api)) |
 | 5 | `synchronization/` | The synchronization transaction and the application layer it applies plans with ([Synchronization Transaction](../spec/pipeline.md#synchronization-transaction)) |
 | 5 | `interaction/` | The display component of the interaction contract: correspondence from Blender data, and Blender's selection ([Interaction Contract](../spec/interaction-contract.md)) |
@@ -22,7 +22,7 @@ The code is in units, each a package or a single module, in tiers. A unit import
 | 1 | `binding/source_access/` | The stages a binding reads its source from ([Source Access](../spec/source-access.md)), binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers |
 | 1 | `binding/results.py` | Results and diagnostics ([Diagnostics](../spec/pipeline.md#diagnostics)) |
 
-Units reach each other through public modules and exported names. A package unit's `__init__.py` exports its public modules and names, its own or its modules', and nothing else, so a module it doesn't export is the unit's own; a module unit is public itself. Code in another unit imports a public module from its package and names each use through it, so calls read as `stage_tracking.BindingStageTracker` and `binding_records.read_configs()`. Where those uses would nest, as results' do in building a result from a diagnostic and its code, it imports the names from the module instead (`from ..binding.results import Diagnostic, DiagnosticCode, Result`), which reaches no further into the unit. A package whose callers need only a few functions exports those names, and one whose name needs no module of its own defines it, and callers name each use through the package (`synchronization.synchronize`) or import the names from it. Module names are unique across `src/proscenium/` and name what the module holds, so a use names its unit without repeating itself. `binding/__init__.py` imports none of its units, so importing a lowest-tier unit never imports `bpy`. The lowest tier holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `binding/source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The tiers are called tiers, and the packages packages, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
+Units reach each other through public modules and exported names. A package unit's `__init__.py` exports its public modules and names, its own or its modules', and nothing else, so a module it doesn't export is the unit's own; a module unit is public itself. Code in another unit imports a public module from its package and names each use through it, so calls read as `stage_tracking.BindingStageTracker` and `binding_records.read_configs()`. Where those uses would nest, as results' do in building a result from a diagnostic and its code, it imports the names from the module instead (`from ..binding.results import Diagnostic, DiagnosticCode, Result`), which reaches no further into the unit. A package whose callers need only a few functions exports those names, and one whose name needs no module of its own defines it, and callers name each use through the package (`synchronization.synchronize`) or import the names from it. Module names are unique across `src/proscenium/` and name what the module holds, so a use names its unit without repeating itself. `binding/__init__.py` imports none of its units, so importing a lowest-import layer unit never imports `bpy`. The lowest import layer holds what the `bpy_free` tests import, so runtime state that needs no `bpy`, such as the stage registry, stays in `binding/source_access/`. Each Python module is in the package whose code it uses: `core/` holds only the compiled core, its type stubs, and the import that loads what it links. The import layers are called import layers, and the packages packages, never layers, since the spec's layers are snapshot, plan, and application ([Synchronization Layer Boundaries](../spec/pipeline.md#synchronization-layer-boundaries)), and USD has layers of its own.
 
 A `bpy_free` test reads every module's imports with `ast`, without importing it, and fails on an import against this table.
 
@@ -74,7 +74,7 @@ src/proscenium/
   core/                          the compiled core: _core and its C++ source
 ```
 
-Module names identify their responsibility and are unique across the tiers. Record storage uses `binding_records`, runtime binding operations use `binding_operations`, and the shared serialization framework uses `id_property_records`. `BindingId` and `source_entity_ids` distinguish the two identifier domains; `cleanup_ledgers`, `source_selection`, `time_code_caching`, and `datablock_removal` identify the state or resources they operate on. A package initializer that exports a module's names is the one place callers and test patches reach them, so a test patches the package's name.
+Module names identify their responsibility and are unique across the import layers. Record storage uses `binding_records`, runtime binding operations use `binding_operations`, and the shared serialization framework uses `id_property_records`. `BindingId` and `source_entity_ids` distinguish the two identifier domains; `cleanup_ledgers`, `source_selection`, `time_code_caching`, and `datablock_removal` identify the state or resources they operate on. A package initializer that exports a module's names is the one place callers and test patches reach them, so a test patches the package's name.
 
 ## Conventions
 
@@ -131,7 +131,7 @@ The Synchronization API's design note in [source-access.md](../spec/source-acces
 Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docstrings, docs, and tests that name what it moves or renames. Files move with `git mv`, before their content changes.
 
 1. This plan.
-2. **Moves into the tiers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `bindings/`. AGENTS.md's Layout section describes the tiers.
+2. **Moves into the import layers**, keeping each module's name: `results.py` to `core/`; `records.py`, `bindings.py`, `ownership.py`, `binding_state.py`, and `selection.py` to `persistence/`; `indexes.py` and `candidates.py` to `runtime/`; `synchronization.py` to `bindings/`. AGENTS.md's Layout section describes the import layers.
 3. **The import-direction test.**
 4. **`runtime/indexes.py` split** into `blender_state.py`, `binding_configs.py`, and `ownership_index.py`, with `Claim` moving from `persistence/ownership.py` to `ownership_index.py`, and `persistence/ownership.py` renamed `manifests.py`. The names the modules now share, and the types that move, take their names from the [Renames](#renames) table here; `_Binding` becomes `Binding` until commit 7 frees `Candidate`.
 5. **Exceptions end in `Error`.**
@@ -147,9 +147,9 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 
 ## Decision log
 
-- **Plan (with the user, 2026-10-21).** The tiers, conventions, renames, and semantics above, with the spec changes they need.
+- **Plan (with the user, 2026-10-21).** The import layers, conventions, renames, and semantics above, with the spec changes they need.
 - **Runtime binding operations.** `binding_operations.py` holds lookup, creation, configuration writes, and index-entry restoration. `copy_detection.py` reads candidate evidence and applies the canonical-candidate rule; `ownership.py` reads ownership evidence and writes manifests.
 - **Copied bindings.** `copy_detection.py` names detection from the records. Its functions share the pure rule in `source_access/canonical_candidate.py`.
 - **The API (commit 12).** The blender tests' `sync` fixture is `bindings`, for the `Bindings` it gives, so *synchronization* names only an attempt in the tests too. The spec section keeps its name, Synchronization API.
-- **Units in tiers, reached through public modules and exported names.** A package unit exports public modules and names, its own or its modules'. Callers qualify uses through a module or a package that exports names, or import names from either where qualification would nest. `synchronization/` exports `synchronize`, `cache`, and `retry_cleanup`, the only functions `bindings/` calls, so its modules are all its own; `source_access/` defines and exports `BindingId`, a `NewType` that needs no module of its own. `bindings/` also exports `RequestedSettings` and `Result`, so callers import the caller-facing types from the package. Module names identify their domain and responsibility, including when multiple modules hold records or identifiers.
+- **Units in import layers, reached through public modules and exported names.** A package unit exports public modules and names, its own or its modules'. Callers qualify uses through a module or a package that exports names, or import names from either where qualification would nest. `synchronization/` exports `synchronize`, `cache`, and `retry_cleanup`, the only functions `bindings/` calls, so its modules are all its own; `source_access/` defines and exports `BindingId`, a `NewType` that needs no module of its own. `bindings/` also exports `RequestedSettings` and `Result`, so callers import the caller-facing types from the package. Module names identify their domain and responsibility, including when multiple modules hold records or identifiers.
 - **Reads in persistence (after commit 14).** The binding records' functions that decode records are `read_configs()` and `read_tags()`. `scene_bindings()`, `index_texts()`, and `tagged_uids()` find where records are without decoding them, so they keep names for what they return.

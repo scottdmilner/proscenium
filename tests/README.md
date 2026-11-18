@@ -87,10 +87,11 @@ tests/
 
 Tests here read and write no Blender data, so they skip the blender layer's reset. They don't import Blender's modules either, though nothing checks that for the tests themselves.
 
-What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). Two tests prove it, and neither depends on what a worker has already imported:
+What is checked is that the bpy-free code works without Blender ([AGENTS.md](../AGENTS.md#layout)). A test and import-linter's contracts prove it, and neither depends on what a worker has already imported:
 
-- `test_no_blender_imports.py`: `proscenium`, `proscenium_sync`, `proscenium_sync.results`, `proscenium_ui`, `proscenium_ui.scene_graph_widget`, `proscenium_ui.property_viewer_widget`, and every `proscenium_sync.planner`, `proscenium_sync.source_access`, `proscenium_ui.widget_model`, `proscenium_ui.scene_graph_widget.prim_tree`, and `proscenium_ui.property_viewer_widget.property_list` module import in a fresh interpreter with Blender blocked.
-- `test_import_tiers.py`: the same modules' source has no import of a Blender module anywhere, including type-only imports and imports inside functions, which importing a module doesn't run.
+- `test_no_blender_imports.py`: `proscenium_sync`, `proscenium_sync.results`, `proscenium_ui`, `proscenium_ui.scene_graph_widget`, `proscenium_ui.property_viewer_widget`, and every `proscenium_sync.planner`, `proscenium_sync.source_access`, `proscenium_ui.widget_model`, `proscenium_ui.scene_graph_widget.prim_tree`, and `proscenium_ui.property_viewer_widget.property_list` module import in a fresh interpreter with Blender blocked.
+- `test_sync_api.py`: `proscenium_sync`'s `__init__.py`, which imports without Blender, loads its API from the units its `__init__.pyi` gives type checkers, which share no name. `blender/test_sync_api.py` loads them and checks the names.
+- `test_import_contracts.py`: every import-linter contract that forbids Blender's modules lists the same modules.
 
 Blender modules are recognized by origin rather than a name list: anything loaded from the bpy wheel's package dir (except its bundled site-packages, with third-party packages such as `pxr` and `MaterialX`), and anything that can't be found without `bpy`, such as `mathutils`, which bpy's C code creates (see `bpy_blocker.py`).
 

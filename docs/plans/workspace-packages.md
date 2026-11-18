@@ -79,11 +79,11 @@ tests/                               unchanged layers, over all three packages
 ## Import rules
 
 - **Between packages:** each package imports only the packages its `pyproject.toml` depends on, and absolutely: `from proscenium_sync import bindings`. The extension still imports its own modules relatively, a dot deep.
-- **Within a package:** a relative import reaches only a sibling or a descendant (`from . import list_steps`, `from .columned_list import column_layout`), and every other import is absolute (`from proscenium_ui.widget_model import text_matching`), so no import climbs with `..`. Ruff's TID252 (`ban-relative-imports = "parents"`) enforces it everywhere but the extension, which Blender installs as `bl_ext.<repository>.proscenium`, so it can't import its own modules absolutely. The tiers stay, each package's lowest tiers still `bpy`-free: in the synchronizer, the planner, source access, and results; in the widgets, the widgets' models.
+- **Within a package:** a relative import reaches only a sibling or a descendant (`from . import list_steps`, `from .columned_list import column_layout`), and every other import is absolute (`from proscenium_ui.widget_model import text_matching`), so no import climbs with `..`. Ruff's TID252 (`ban-relative-imports = "parents"`) enforces it everywhere but the extension, which Blender installs as `bl_ext.<repository>.proscenium`, so it can't import its own modules absolutely. The import layers stay, each package's lowest import layers still `bpy`-free: in the synchronizer, the planner, source access, and results; in the widgets, the widgets' models.
 - **Public modules and exported names** apply as now, with a package as the outermost unit. A package's `__init__.py` exports the units other packages use, and nothing else imports another package's units that it doesn't export.
 - **Module names stay unique across all three packages,** so a test's patch target and an editor tab still name one module.
 
-`tests/bpy_free/test_import_tiers.py` checks both levels: each package's imports against its declared dependencies, and the tiers within each. `test_no_blender_imports.py` covers each package's lowest tiers, and `test_source_readmes.py` covers `packages/`.
+`tests/bpy_free/test_import_tiers.py` checks both levels: each package's imports against its declared dependencies, and the import layers within each. `test_no_blender_imports.py` covers each package's lowest import layers, and `test_source_readmes.py` covers `packages/`.
 
 ## The planner
 
@@ -117,7 +117,7 @@ The synchronizer's registration is `registration.py`, which exports `register` a
   The matrix rows that quote or name those sentences change with them, then `tools/matrix.py render`. No invariant names the core. *Core Architecture* in PROJECT.md is the architecture's name and stays.
 - **DECISIONS.md:** rows that name `core/`, `_core`, or the compiled core's paths name the planner and its paths. "Native core distribution" keeps its title and says how the planner ships. The rows' decisions are unchanged.
 - **[node-tree.md](../phase3/node-tree.md#where-it-lives):** the cook is a package of its own, `proscenium_cook`.
-- **READMEs:** each moved directory's README moves with it. `src/proscenium/README.md`'s tier table splits into each package's README. `packages/README.md` lists the packages and the boundary rule above.
+- **READMEs:** each moved directory's README moves with it. `src/proscenium/README.md`'s import layer table splits into each package's README. `packages/README.md` lists the packages and the boundary rule above.
 - **Unchanged:** `docs/archive/` and the closed milestone plans keep the paths they were written with.
 
 ## Commits
@@ -127,7 +127,7 @@ Each commit is one change, passes `pre-commit` and the test suite on its own, an
 1. This plan.
 2. **The core exporting its names** (`core.Plan`, never `_core.Plan`), before anything moves.
 3. **The workspace,** with no member: the root `pyproject.toml` as its root, and `packages/README.md`.
-4. **`proscenium_ui`:** `ui/` moves into it, its imports follow the import rules above (ruff's TID252), and the extension depends on it. `tools/build_extension.py` bundles the workspace's packages' wheels, the import rules' test checks each package's tiers and the imports between packages, and the package's README holds its tier table. It is first because nothing but `interface/` imports it.
+4. **`proscenium_ui`:** `ui/` moves into it, its imports follow the import rules above (ruff's TID252), and the extension depends on it. `tools/build_extension.py` bundles the workspace's packages' wheels, the import rules' test checks each package's import layers and the imports between packages, and the package's README holds its import layer table. It is first because nothing but `interface/` imports it.
 5. **The synchronizer's registration** in `registration.py`, which `addon.py` calls, before the move, so the extension reaches the bindings' code only through `bindings/` and it.
 6. **`proscenium_sync`:** `binding/`'s units, `synchronization/`, `interaction/`, `bindings/`, and `core/` move into it, with its per-platform wheel built by its build hook, and CI's paths.
 7. **The core becomes the planner:** `core/` to `planner/`, `_core` to `_planner`, `build/core/` to `build/planner/`, and the spec, matrix, DECISIONS.md, and AGENTS.md wording.

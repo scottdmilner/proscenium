@@ -22,7 +22,7 @@ from proscenium_ui.property_viewer_widget.display import (
     property_viewer_registration,
     property_viewer_views,
 )
-from proscenium_ui.property_viewer_widget.property_list import PropertyRow
+from proscenium_ui.property_viewer_widget.property_list.property_rows import PropertyRow
 from proscenium_ui.scene_graph_widget import display
 from proscenium_ui.widget_model import composition_arcs, prim_details
 from proscenium_ui.widget_resources import badge_icons, keyframe_icons, theme_colors

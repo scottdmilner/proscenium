@@ -12,7 +12,7 @@ Evidence is marked as in the other notes:
 ## The widget
 
 `property_viewer_widget/` has the scene graph's two units, by the [import rules](../../src/proscenium/README.md#import-rules):
-- **`property_list/`, the model, just above the lowest tier,** imports nothing of Blender's: which properties a list shows (`property_search`), the rows and what's read of each property (`property_list`), what the list says about a property (`property_descriptions`), worded from what was read with no USD queries of its own, and one list as a widget shows it (`property_list_view.PropertyListView`), with its stage, the prim shown, its selection, query, time code, and the stage changes it follows.
+- **`property_list/`, the model, below the display,** imports nothing of Blender's: which properties a list shows (`property_search`), the rows and what's read of each property (`property_rows`), what the list says about a property (`property_descriptions`), worded from what was read with no USD queries of its own, and one list as a widget shows it (`list_views.PropertyListView`), with its stage, the prim shown, its selection, query, time code, and the stage changes it follows.
 - **`display/`, beside the scene graph's display,** only draws and forwards input to a `PropertyListView`.
 
 ### What a host does

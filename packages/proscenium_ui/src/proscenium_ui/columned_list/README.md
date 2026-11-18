@@ -1,6 +1,6 @@
 # `proscenium_ui.columned_list`
 
-A list with columns, as widgets draw one in a `UIList`: the layout of the columns after a row's leading one, the header above the list, and the columns' lines in a settings popover. It's in the tier below `widget_resources/` and `search_box.py` ([import rules](../../../../../src/proscenium/README.md#import-rules)), and imports only `widget_model/` of the extension's units. It registers nothing.
+A list with columns, as widgets draw one in a `UIList`: the layout of the columns after a row's leading one, the header above the list, and the columns' lines in a settings popover. It registers nothing.
 
 Its modules import each other in the order the table lists them, each only from those above it.
 

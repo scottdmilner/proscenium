@@ -20,7 +20,8 @@ if TYPE_CHECKING:
     import bpy
     from bpy.stub_internal.rna_enums import IconItems
 
-    from proscenium_ui.property_viewer_widget.property_list import PropertyDetails, PropertyList, PropertyRow
+    from proscenium_ui.property_viewer_widget.property_list import PropertyList
+    from proscenium_ui.property_viewer_widget.property_list.property_rows import PropertyDetails, PropertyRow
 
     from .property_viewer_properties import PropertyViewerViewProperties
 

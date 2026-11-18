@@ -18,3 +18,68 @@ exclude = ["README.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
 
 # Builds the planner and tags the wheel for this platform (hatch_build.py).
 [tool.hatch.build.targets.wheel.hooks.custom]
+
+# This package's import rules (README.md#import-rules), which `lint-imports --config` checks with this file (pre-commit).
+# The root pyproject.toml holds the rules between packages. Every import counts, at module level, in functions, and
+# under TYPE_CHECKING, and the layers contract follows chains of imports too.
+[tool.importlinter]
+root_package = "proscenium_sync"
+include_external_packages = true  # so the bpy-free contracts see Blender's modules
+
+# The import layers, highest first. Units of one import layer share a line, so they don't import each other.
+# Exhaustive: a module beside the units that no import layer lists fails.
+[[tool.importlinter.contracts]]
+name = "proscenium_sync's import layers"
+type = "layers"
+containers = ["proscenium_sync"]
+layers = [
+    "registration",
+    "bindings",
+    "synchronization | interaction",
+    "runtime",
+    "persistence",
+    "planner | source_access | results",  # bpy-free
+]
+exhaustive = true
+
+# A unit whose __init__.py exports names rather than all its modules is reached only through it: no other unit
+# imports its modules. ty rejects an import of a name the __init__.py doesn't define.
+[[tool.importlinter.contracts]]
+name = "bindings is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_sync.bindings.*"]
+allowed_importers = ["proscenium_sync.bindings"]
+
+[[tool.importlinter.contracts]]
+name = "synchronization is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_sync.synchronization.*"]
+allowed_importers = ["proscenium_sync.synchronization"]
+
+[[tool.importlinter.contracts]]
+name = "results is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_sync.results.*"]
+allowed_importers = ["proscenium_sync.results"]
+
+# The bpy-free code imports no Blender module, even through another module. Every list of Blender's modules is the
+# same, which tests/bpy_free/test_import_contracts.py checks: TOML can't share one between files.
+[[tool.importlinter.contracts]]
+name = "proscenium_sync's lowest import layer imports no Blender module"
+type = "forbidden"
+source_modules = ["proscenium_sync.planner", "proscenium_sync.source_access", "proscenium_sync.results"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+
+# Its static imports, at module level or under TYPE_CHECKING. It loads the API with importlib.import_module, which no
+# contract sees; tests/bpy_free/test_no_blender_imports.py checks that importing it loads no Blender module.
+[[tool.importlinter.contracts]]
+name = "proscenium_sync's __init__.py imports no Blender module"
+type = "forbidden"
+source_modules = ["proscenium_sync"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+as_packages = false  # the module alone, not its descendants
+
+[[tool.importlinter.contracts]]
+name = "A unit's modules import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["proscenium_sync.*"]

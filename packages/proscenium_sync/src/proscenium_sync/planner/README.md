@@ -4,6 +4,8 @@ The planner and its C++ source. It reads Hydra scene indices ([DECISIONS.md](../
 
 ## Python
 
+Its only Python module is its `__init__.py`, so no import-linter contract protects modules of its own: the compiled module is invisible to import-linter. A Python module added here gets a `protected` contract in `proscenium_sync`'s `pyproject.toml`, as `results`' modules have, so other units reach it only through the package's exports.
+
 | File | Holds |
 |---|---|
 | `__init__.py` | The package's exports: every public name of the compiled module, which is the package's own, so callers write `planner.Plan`. It imports `pxr.Usd` first, which loads Blender's `usd_ms` and the converters the compiled module's arguments need. |

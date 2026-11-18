@@ -14,3 +14,77 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium_ui"]
 exclude = ["README.md"]  # each directory's README, for developers
+
+# This package's import rules (README.md#import-rules), which `lint-imports --config` checks with this file (pre-commit).
+# The root pyproject.toml holds the rules between packages. Every import counts, at module level, in functions, and
+# under TYPE_CHECKING, and the layers contracts follow chains of imports too.
+[tool.importlinter]
+root_package = "proscenium_ui"
+include_external_packages = true  # so the bpy-free contracts see Blender's modules
+
+# The import layers, highest first. Units of one import layer share a line, so they don't import each other.
+# Exhaustive: a module beside the units that no import layer lists fails. Each widget is one unit, with its own import
+# layers below; its bpy-free model stays below Blender's units by the bpy-free contracts, not by these import layers.
+[[tool.importlinter.contracts]]
+name = "proscenium_ui's import layers"
+type = "layers"
+containers = ["proscenium_ui"]
+layers = [
+    "scene_graph_widget | property_viewer_widget",
+    "widget_resources | search_box | text_wrapping",
+    "columned_list | widget_updates",
+    "widget_model",  # bpy-free
+]
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "The scene graph widget's import layers"
+type = "layers"
+containers = ["proscenium_ui.scene_graph_widget"]
+layers = ["display", "prim_tree"]  # prim_tree is bpy-free
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "The property viewer widget's import layers"
+type = "layers"
+containers = ["proscenium_ui.property_viewer_widget"]
+layers = ["display", "property_list"]  # property_list is bpy-free
+exhaustive = true
+
+# A unit whose __init__.py exports names rather than all its modules is reached only through it: no other unit
+# imports its modules. ty rejects an import of a name the __init__.py doesn't define.
+[[tool.importlinter.contracts]]
+name = "The scene graph widget's display is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_ui.scene_graph_widget.display.*"]
+allowed_importers = ["proscenium_ui.scene_graph_widget.display"]
+
+[[tool.importlinter.contracts]]
+name = "The property viewer widget's display is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_ui.property_viewer_widget.display.*"]
+allowed_importers = ["proscenium_ui.property_viewer_widget.display"]
+
+# The bpy-free code imports no Blender module, even through another module. Every list of Blender's modules is the
+# same, which tests/bpy_free/test_import_contracts.py checks: TOML can't share one between files.
+[[tool.importlinter.contracts]]
+name = "The widgets' models and widget_model import no Blender module"
+type = "forbidden"
+source_modules = [
+    "proscenium_ui.scene_graph_widget.prim_tree",
+    "proscenium_ui.property_viewer_widget.property_list",
+    "proscenium_ui.widget_model",
+]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+
+[[tool.importlinter.contracts]]
+name = "proscenium_ui's and its widgets' __init__.py files import no Blender module"
+type = "forbidden"
+source_modules = ["proscenium_ui", "proscenium_ui.scene_graph_widget", "proscenium_ui.property_viewer_widget"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+as_packages = false  # each module alone, not its descendants
+
+[[tool.importlinter.contracts]]
+name = "A unit's modules import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["proscenium_ui.*", "proscenium_ui.*.*"]

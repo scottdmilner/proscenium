@@ -20,7 +20,8 @@ from . import property_viewer_properties, property_viewer_views
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
-    from proscenium_ui.property_viewer_widget.property_list import PropertyList, PropertyRow
+    from proscenium_ui.property_viewer_widget.property_list import PropertyList
+    from proscenium_ui.property_viewer_widget.property_list.property_rows import PropertyRow
 
 
 def _list(view_name: str) -> PropertyList | None:

@@ -20,7 +20,7 @@ from proscenium_ui.widget_model import text_matching
 from proscenium_ui.widget_model.list_steps import StepDirection
 
 from . import property_search
-from .property_list import PropertyList, PropertyRow
+from .property_rows import PropertyList, PropertyRow
 
 if TYPE_CHECKING:
     from collections.abc import Callable

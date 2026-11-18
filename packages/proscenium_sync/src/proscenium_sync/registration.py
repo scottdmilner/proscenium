@@ -7,6 +7,8 @@ from . import bindings
 from .persistence import id_property_records
 from .runtime import kept_manifests
 
+__all__ = ["register", "unregister"]  # the package's API names; its other names are its own
+
 
 class ProsceniumRecords(bpy.types.PropertyGroup):
     """The records' namespace, registered so Blender's Custom Properties panel hides it.

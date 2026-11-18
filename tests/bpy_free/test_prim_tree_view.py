@@ -13,7 +13,7 @@ from pxr import Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
 from proscenium_ui.scene_graph_widget.prim_tree import PrimTreeView, prim_descriptions, prim_search
-from proscenium_ui.scene_graph_widget.prim_tree.prim_tree_view import PendingChange, SearchStatus
+from proscenium_ui.scene_graph_widget.prim_tree.tree_views import PendingChange, SearchStatus
 from proscenium_ui.widget_model import composition_arcs, prim_detail_text, text_matching
 from proscenium_ui.widget_model.list_steps import StepDirection
 from support.usd import open_stage_without_cache

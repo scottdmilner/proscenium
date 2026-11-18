@@ -1,6 +1,6 @@
 # `proscenium_sync.bindings`
 
-What callers use to reach bindings ([Synchronization API](../../../../../docs/spec/source-access.md#synchronization-api)). Tier 5: it may import every unit below it, and `registration.py` and the extension's `interface/` import it ([import rules](../README.md#import-rules)).
+What callers use to reach bindings ([Synchronization API](../../../../../docs/spec/source-access.md#synchronization-api)). `registration.py` and the extension's `interface/` use it.
 
 | File | Holds |
 |---|---|
@@ -35,7 +35,7 @@ With the extension enabled in Blender, the caller opens a stage and attaches it 
 import bpy
 from pxr import Usd
 
-from proscenium_sync.bindings import BINDINGS
+from proscenium_sync import BINDINGS
 
 stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
 handle = BINDINGS.create_binding(bpy.context.scene, name="Shot")

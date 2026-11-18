@@ -17,7 +17,8 @@ from . import scene_graph_properties, scene_graph_views
 if TYPE_CHECKING:
     from bpy.stub_internal.rna_enums import OperatorReturnItems  # stub-only alias
 
-    from proscenium_ui.scene_graph_widget.prim_tree import PrimTree, TreeRow
+    from proscenium_ui.scene_graph_widget.prim_tree import PrimTree
+    from proscenium_ui.scene_graph_widget.prim_tree.prim_rows import TreeRow
 
 
 def _tree(view_name: str) -> PrimTree | None:

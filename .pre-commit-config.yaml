@@ -20,6 +20,29 @@ repos:
         language: system
         types_or: [python, pyi]
         pass_filenames: false
+      # The import rules (packages/README.md#import-rules): the [tool.importlinter] contracts of each library package's
+      # pyproject.toml, and of the root's, which holds the extension's and those between packages. import-linter 2.16
+      # reads one configuration a run, so each file has a hook; its next release takes several in one run, and these
+      # three become one: `lint-imports --no-cache pyproject.toml packages/*/pyproject.toml`. --no-cache: its cache can
+      # miss an edit made just after a run, and every run takes under a second without it.
+      - id: import-linter
+        name: lint-imports (the extension and between packages)
+        entry: uv run --frozen lint-imports --no-cache --config pyproject.toml
+        language: system
+        files: (\.py|(^|/)pyproject\.toml)$
+        pass_filenames: false
+      - id: import-linter-sync
+        name: lint-imports (proscenium_sync)
+        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_sync/pyproject.toml
+        language: system
+        files: ^packages/proscenium_sync/(.*\.py|pyproject\.toml)$
+        pass_filenames: false
+      - id: import-linter-ui
+        name: lint-imports (proscenium_ui)
+        entry: uv run --frozen lint-imports --no-cache --config packages/proscenium_ui/pyproject.toml
+        language: system
+        files: ^packages/proscenium_ui/(.*\.py|pyproject\.toml)$
+        pass_filenames: false
       # The C++ of the planner (proscenium_sync's planner/) and the Hydra bridge (tools/feasibility/hydra_bridge/).
       # Each has its own .clang-format; clang-tidy's checks are the root .clang-tidy, which covers both.
       - id: clang-format
