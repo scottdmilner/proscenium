@@ -145,15 +145,6 @@ type = "acyclic_siblings"
 ancestors = ["proscenium.*"]
 
 [[tool.importlinter.contracts]]
-name = "The extension's __init__.py imports no Blender module"
-type = "forbidden"
-source_modules = ["proscenium"]
-forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
-as_packages = false  # the module alone, not its descendants
-ignore_imports = ["proscenium -> proscenium.addon"]  # register and unregister import it when Blender calls them
-
-# Each library package's public API: no other package imports anything else of it.
-[[tool.importlinter.contracts]]
 name = "Other packages use proscenium_sync's API: bindings and registration"
 type = "protected"
 protected_modules = ["proscenium_sync.*"]

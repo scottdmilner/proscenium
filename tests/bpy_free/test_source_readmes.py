@@ -7,16 +7,20 @@ own entries are its pyproject.toml, src/, and any build hook.
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
 
-import proscenium
 import proscenium_sync
 import proscenium_ui
 
-ROOT = Path(proscenium.__file__).parents[2]
-SOURCES = tuple(Path(package.__file__).parent for package in (proscenium, proscenium_sync, proscenium_ui))
+# The extension imports bpy, so it is found without importing it.
+_EXTENSION_SPEC = importlib.util.find_spec("proscenium")
+assert _EXTENSION_SPEC is not None and _EXTENSION_SPEC.origin is not None
+EXTENSION = Path(_EXTENSION_SPEC.origin).parent
+ROOT = EXTENSION.parents[1]
+SOURCES = (EXTENSION, *(Path(package.__file__).parent for package in (proscenium_sync, proscenium_ui)))
 PACKAGES = ROOT / "packages"
 # Not sources: Python's caches, and the compiled module the build puts in planner/, which planner/.gitignore ignores.
 SKIPPED = ("__pycache__", "_planner.*.so", "_planner.*.pyd")

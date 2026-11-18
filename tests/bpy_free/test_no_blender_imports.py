@@ -17,7 +17,6 @@ def test_bpy_free_packages_import_without_bpy() -> None:
         [
             sys.executable,
             str(BLOCKER),
-            "proscenium",
             "proscenium_sync",
             "proscenium_sync.results",
             "proscenium_ui",
