@@ -1,6 +1,6 @@
 # `proscenium_ui.widget_resources`
 
-What widgets register and draw with: the theme's colors, icons drawn in any color, badges, what a tree's rows draw alike, the arrow keys' watcher, and the clipboard operator. It's in the tier below the widgets and above `columned_list/` ([import rules](../../../../../src/proscenium/README.md#import-rules)), and imports only `widget_model/` and `columned_list/` of the extension's units.
+What widgets register and draw with: the theme's colors, icons drawn in any color, badges, what a tree's rows draw alike, the arrow keys' watcher, and the clipboard operator.
 
 Each widget's display registers it with its own registration (`display_registration`), which registers it with the first widget and unregisters it with the last.
 

@@ -655,7 +655,7 @@ In either language, the cook authors through the Sdf API, which was faster than 
 ### Where it lives
 
 - **A package of its own with its own compiled module,** `proscenium_cook` in `packages/`, holding `_cook`, in a wheel for each platform ([workspace packages](../plans/workspace-packages.md)). It imports without `bpy`, and neither it nor `proscenium_sync` imports the other: the planner never needs to know where a stage came from, and the cook never needs the planner. The inspection layer is the precedent for native code kept apart from the planner.
-- **The node tree's front end is a higher-tier unit:** the `bpy` code that turns the tree into its layer, reads Blender's arrays, and calls the cook. It hands stages to bindings through `proscenium_sync`'s API, so the cook meets the display only through the public API every caller uses.
+- **The node tree's front end is a unit in a higher import layer:** the `bpy` code that turns the tree into its layer, reads Blender's arrays, and calls the cook. It hands stages to bindings through `proscenium_sync`'s API, so the cook meets the display only through the public API every caller uses.
 - **Stages cross as `pxr` Python objects.** Both modules link Blender's `usd_ms`, so they share no C++ types or headers.
 - **The cook's reports are per node,** not a binding's diagnostics, so they get their own type rather than `proscenium_sync.results`'.
 

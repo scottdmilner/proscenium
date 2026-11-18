@@ -1,7 +1,6 @@
 """Interaction with a binding's display: its correspondence, read from Blender data (interaction-contract.md).
 
-Tier 4, beside proscenium_sync.synchronization: it may import the bindings' units below it and the planner. It
-exports its modules: the display elements and the planner's correspondence over them (display_correspondence), and
+It exports its modules: the display elements and the planner's correspondence over them (display_correspondence), and
 Blender's selection of the elements, mirrored and read (blender_selection).
 """
 

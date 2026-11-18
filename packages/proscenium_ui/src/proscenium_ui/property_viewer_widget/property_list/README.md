@@ -1,6 +1,6 @@
 # `proscenium_ui.property_viewer_widget.property_list`
 
-The property viewer widget's model: one prim's properties as the flat rows a list shows, kept apart from drawing (`display/` draws it) so it tests in `bpy_free` ([Property Viewer UI](../../../../../../docs/phase3/property-viewer-ui.md#the-model)). It imports without `bpy` and may import only itself and the lowest tier's units, such as `widget_model/`, whose text matching its search uses; `tests/bpy_free` imports it with Blender's modules blocked.
+The property viewer widget's model: one prim's properties as the flat rows a list shows, kept apart from drawing (`display/` draws it) so it tests in `bpy_free` ([Property Viewer UI](../../../../../../docs/phase3/property-viewer-ui.md#the-model)). Its search uses `widget_model/`'s text matching. It imports without `bpy`, so `tests/bpy_free` imports it with Blender's modules blocked.
 
 A list holds its prim and never its stage, so it never keeps a stage alive. Its view keeps the selection and the expansion by property name, so they carry over from one prim to the next.
 

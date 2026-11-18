@@ -1,6 +1,6 @@
 # `proscenium_sync.bindings`
 
-What callers use to reach bindings ([Synchronization API](../../../../../docs/spec/source-access.md#synchronization-api)). Tier 5: it may import every unit below it, and `registration.py` and the extension's `interface/` import it ([import rules](../README.md#import-rules)).
+What callers use to reach bindings ([Synchronization API](../../../../../docs/spec/source-access.md#synchronization-api)). `registration.py` and the extension's `interface/` use it.
 
 | File | Holds |
 |---|---|

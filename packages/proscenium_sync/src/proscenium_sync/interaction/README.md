@@ -1,6 +1,6 @@
 # `proscenium_sync.interaction`
 
-The Python display component of the [interaction contract](../../../../../docs/spec/interaction-contract.md): what the planner's correspondence is built from, read from Blender data (DECISIONS.md "Persisted correspondence", "Headless interaction functions"). Tier 4, beside `proscenium_sync.synchronization`: it may import the bindings' units below it and the planner, and `proscenium_sync.bindings` calls it.
+The Python display component of the [interaction contract](../../../../../docs/spec/interaction-contract.md): what the planner's correspondence is built from, read from Blender data (DECISIONS.md "Persisted correspondence", "Headless interaction functions"). `proscenium_sync.bindings` calls it.
 
 Code in other units reaches it through the modules `__init__.py` exports ([import rules](../README.md#import-rules)); tests reach into any module.
 

@@ -131,9 +131,9 @@ extraPaths = ["tools", "tools/feasibility", "tests"]
 root_packages = ["proscenium", "proscenium_sync", "proscenium_ui"]
 include_external_packages = true  # so the bpy-free contract sees Blender's modules
 
-# The extension's tiers, highest first. Exhaustive: a module beside the units that no tier lists fails.
+# The extension's import layers, highest first. Exhaustive: a module beside the units that no import layer lists fails.
 [[tool.importlinter.contracts]]
-name = "The extension's tiers"
+name = "The extension's import layers"
 type = "layers"
 containers = ["proscenium"]
 layers = ["addon", "interface"]
@@ -164,7 +164,7 @@ ignore_imports = [
 # The dependencies their pyproject.toml files declare: the extension above the library packages, which import neither
 # the other.
 [[tool.importlinter.contracts]]
-name = "The packages' tiers"
+name = "The packages' import layers"
 type = "layers"
 layers = ["proscenium", "proscenium_sync | proscenium_ui"]
 

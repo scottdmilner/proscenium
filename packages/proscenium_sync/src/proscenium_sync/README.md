@@ -12,12 +12,12 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 | `interaction/` | The display component of the interaction contract: a binding's correspondence from Blender data, and Blender's selection. |
 | `runtime/` | Lookups and writes on `persistence/`'s records, read when called, and every binding's stages. |
 | `persistence/` | Versioned records in Blender ID properties. |
-| `source_access/` | The stages a binding reads its source from, and the binding identifiers, canonical-candidate rule, requested settings, and source-entity identifiers they're found and made by. The lowest tier. |
-| `results/` | What operations on a binding report: `Result`, whose state derives from its aggregated diagnostics (`result_state`, `deduplicated_diagnostics`) and never from its cleanup status, `DiagnosticCollector`, which gathers an operation's diagnostics as its steps run, `ResultState`, `Diagnostic`, `DiagnosticCode`, the list of stable codes, each with one `DiagnosticCategory` and `Severity`, ([Diagnostics](../../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. The lowest tier. |
-| `planner/` | The planner: its C++ source and the built module. The lowest tier. |
+| `source_access/` | The stages a binding reads its source from, and the binding identifiers, canonical-candidate rule, requested settings, and source-entity identifiers they're found and made by. |
+| `results/` | What operations on a binding report: `Result`, whose state derives from its aggregated diagnostics (`result_state`, `deduplicated_diagnostics`) and never from its cleanup status, `DiagnosticCollector`, which gathers an operation's diagnostics as its steps run, `ResultState`, `Diagnostic`, `DiagnosticCode`, the list of stable codes, each with one `DiagnosticCategory` and `Severity`, ([Diagnostics](../../../../docs/spec/pipeline.md#diagnostics)). The binding-state records store diagnostics too. |
+| `planner/` | The planner: its C++ source and the built module. |
 
 ## Import rules
 
-The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_sync's tiers" contract lists from `registration.py` down. It imports no other package of the workspace, and other packages reach it only through its public API, its own names, and import none of its units. The lowest tier, `planner/`, `source_access/`, and `results/`, never imports `bpy`, and its units import only themselves. Of the units that export names, not all their modules, `bindings/`, `synchronization/`, `results/`, and `planner/` are reached only through their `__init__.py`.
+The workspace's [import rules](../../../README.md#import-rules) hold here, as [this package's `pyproject.toml`](../../pyproject.toml)'s contracts state them. Other packages reach it only through its public API, its own names, and import none of its units.
 
 `__init__.py`, which imports none of its units, is no unit's. `tests/bpy_free/test_sync_api.py` checks that its API units are those `__init__.pyi` imports, and `tests/blender/test_sync_api.py` that it loads their names.

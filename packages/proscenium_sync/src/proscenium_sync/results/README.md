@@ -1,6 +1,6 @@
 # `results`
 
-What operations on a binding report: result states and diagnostics ([Diagnostics](../../../../../docs/spec/pipeline.md#diagnostics)). The lowest tier, so it never imports `bpy`. `__init__.py` exports the names callers use; its modules are the unit's own.
+What operations on a binding report: result states and diagnostics ([Diagnostics](../../../../../docs/spec/pipeline.md#diagnostics)). `__init__.py` exports the names callers use; its modules are the unit's own.
 
 | Path | Holds |
 |---|---|

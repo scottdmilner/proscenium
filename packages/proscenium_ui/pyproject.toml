@@ -22,11 +22,11 @@ exclude = ["README.md"]  # each directory's README, for developers
 root_package = "proscenium_ui"
 include_external_packages = true  # so the bpy-free contracts see Blender's modules
 
-# The tiers, highest first. Units of one tier share a line, so they don't import each other. Exhaustive: a module
-# beside the units that no tier lists fails. Each widget is one unit, with its own tiers below; its bpy-free model
-# stays below Blender's units by the bpy-free contracts, not by these tiers.
+# The import layers, highest first. Units of one import layer share a line, so they don't import each other.
+# Exhaustive: a module beside the units that no import layer lists fails. Each widget is one unit, with its own import
+# layers below; its bpy-free model stays below Blender's units by the bpy-free contracts, not by these import layers.
 [[tool.importlinter.contracts]]
-name = "proscenium_ui's tiers"
+name = "proscenium_ui's import layers"
 type = "layers"
 containers = ["proscenium_ui"]
 layers = [
@@ -38,14 +38,14 @@ layers = [
 exhaustive = true
 
 [[tool.importlinter.contracts]]
-name = "The scene graph widget's tiers"
+name = "The scene graph widget's import layers"
 type = "layers"
 containers = ["proscenium_ui.scene_graph_widget"]
 layers = ["display", "prim_tree"]  # prim_tree is bpy-free
 exhaustive = true
 
 [[tool.importlinter.contracts]]
-name = "The property viewer widget's tiers"
+name = "The property viewer widget's import layers"
 type = "layers"
 containers = ["proscenium_ui.property_viewer_widget"]
 layers = ["display", "property_list"]  # property_list is bpy-free

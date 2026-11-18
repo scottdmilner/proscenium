@@ -1,6 +1,6 @@
 # `proscenium_sync.synchronization`
 
-The synchronization transaction ([Synchronization Transaction](../../../../../docs/spec/pipeline.md#synchronization-transaction)): one attempt to display a binding's source, from acquisition through retirement; the cache call, which caches time codes in the published generation ([Cached Time Codes](../../../../../docs/spec/pipeline.md#cached-time-codes)); and the application layer they apply display plans with. Tier 4: `proscenium_sync.bindings` calls it, and it may import every unit below it ([import rules](../README.md#import-rules)). M7 replaces M5's stub application layer: preparation is M7's, and keying cached time codes still the stub's until M7's Phase D.
+The synchronization transaction ([Synchronization Transaction](../../../../../docs/spec/pipeline.md#synchronization-transaction)): one attempt to display a binding's source, from acquisition through retirement; the cache call, which caches time codes in the published generation ([Cached Time Codes](../../../../../docs/spec/pipeline.md#cached-time-codes)); and the application layer they apply display plans with. `proscenium_sync.bindings` calls it. M7 replaces M5's stub application layer: preparation is M7's, and keying cached time codes still the stub's until M7's Phase D.
 
 | File | Holds |
 |---|---|

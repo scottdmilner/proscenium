@@ -1,6 +1,6 @@
 # `proscenium_ui.scene_graph_widget.prim_tree`
 
-The scene graph widget's model: a stage's prim hierarchy as the flat rows a tree shows, kept apart from drawing (`display/` draws it) so it tests in `bpy_free` ([Scene Graph UI](../../../../../../docs/phase3/scene-graph-ui.md#the-row-model)). It imports without `bpy` and may import only itself and the lowest tier's units, such as `widget_model/`, whose text matching its search uses, and which reads what its rows show of each prim and words what its badges mark; `tests/bpy_free` imports it with Blender's modules blocked.
+The scene graph widget's model: a stage's prim hierarchy as the flat rows a tree shows, kept apart from drawing (`display/` draws it) so it tests in `bpy_free` ([Scene Graph UI](../../../../../../docs/phase3/scene-graph-ui.md#the-row-model)). Its search uses `widget_model/`'s text matching, and `widget_model/` reads what its rows show of each prim and words what its badges mark. It imports without `bpy`, so `tests/bpy_free` imports it with Blender's modules blocked.
 
 A tree holds its stage's prims and never the stage, so it never keeps a stage alive: once the stage's owner releases it, the tree is expired and shows nothing. Expansion, details, and search results are kept by path, so they survive the stage recomposing.
 

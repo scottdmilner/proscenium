@@ -1,6 +1,6 @@
 # `proscenium_sync.runtime`
 
-The bindings' runtime: lookups and writes on their records, read when called, and every binding's stages ([Undo and Runtime State](../../../../../docs/spec/lifecycle.md#undo-and-runtime-state), DECISIONS.md "Binding records read when called"). Tier 3: it may import `proscenium_sync.persistence` and the lowest tier (`proscenium_sync.planner`, `proscenium_sync.source_access`, `proscenium_sync.results`).
+The bindings' runtime: lookups and writes on their records, read when called, and every binding's stages ([Undo and Runtime State](../../../../../docs/spec/lifecycle.md#undo-and-runtime-state), DECISIONS.md "Binding records read when called").
 
 Code in other units reaches it through the modules `__init__.py` exports ([import rules](../README.md#import-rules)); tests reach into any module.
 

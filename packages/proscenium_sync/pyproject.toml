@@ -26,10 +26,10 @@ exclude = ["README.md", ".*", "*.cpp", "*.h", "CMakeLists.txt"]
 root_package = "proscenium_sync"
 include_external_packages = true  # so the bpy-free contracts see Blender's modules
 
-# The tiers, highest first. Units of one tier share a line, so they don't import each other. Exhaustive: a module
-# beside the units that no tier lists fails.
+# The import layers, highest first. Units of one import layer share a line, so they don't import each other.
+# Exhaustive: a module beside the units that no import layer lists fails.
 [[tool.importlinter.contracts]]
-name = "proscenium_sync's tiers"
+name = "proscenium_sync's import layers"
 type = "layers"
 containers = ["proscenium_sync"]
 layers = [
@@ -65,7 +65,7 @@ allowed_importers = ["proscenium_sync.results"]
 # The bpy-free code imports no Blender module, even through another module. Every list of Blender's modules is the
 # same, which tests/bpy_free/test_import_contracts.py checks: TOML can't share one between files.
 [[tool.importlinter.contracts]]
-name = "proscenium_sync's lowest tier imports no Blender module"
+name = "proscenium_sync's lowest import layer imports no Blender module"
 type = "forbidden"
 source_modules = ["proscenium_sync.planner", "proscenium_sync.source_access", "proscenium_sync.results"]
 forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
