@@ -1,0 +1,73 @@
+# Import checks with import-linter: plan
+
+How the workspace's [import rules](../../packages/README.md#import-rules) come to be checked by [import-linter](https://github.com/seddonym/import-linter) in place of `tests/bpy_free/test_import_tiers.py`. It changes no behavior and adds no requirement. The rules change in one place: what a package may import of another package becomes that package's public API ([Public APIs](#public-apis)).
+
+## Why import-linter
+
+`test_import_tiers.py` reads every module's imports with `ast` and checks them against tiers, exports, and dependencies that it and the READMEs each spell out. import-linter checks the same rules as contracts in one configuration, `[tool.importlinter]` in the root `pyproject.toml`, so the READMEs and AGENTS.md describe the rules and link to it instead of restating them.
+
+It builds one import graph over the three packages, `proscenium`, `proscenium_sync`, and `proscenium_ui`, from their source, so an import between packages is checked as precisely as one within a package, and the imports of external packages such as `bpy` are in the graph too. The graph counts every import: at module level, inside a function, and under `TYPE_CHECKING`, as the rules do. Its `layers` and `independence` contracts follow chains of imports through other modules, not only direct ones, which is stricter than the test and holds on the tree now.
+
+A rejected alternative still guides the configuration: tach checks imports between packages only by distribution, and matches import paths, so it can't tell a private module from an exported name without a list of each unit's exports.
+
+## Contracts
+
+A draft of these contracts passes on the tree, in about a second with import-linter's cache. Each check below was shown to fail on its violation injected into a copy of the tree.
+
+- **Tiers.** One `layers` contract per package, highest first, with the package as its container. Units of one tier share a line (`synchronization | interaction`), which also keeps them from importing each other, and so does the lowest tier's `planner | source_access | results`. Checked: an import of a higher tier at module level, inside a function, and under `TYPE_CHECKING`; an import between units of one tier; and one between lowest-tier units.
+- **Every module is a unit's.** The tiers' contracts are `exhaustive`, so a module added beside the units that no tier lists fails. `exhaustive` takes only a container's children, so `proscenium_ui`'s contract leaves out its two grouping packages, and a contract of their own, with each widget's `display` above its model, is exhaustive over theirs. Checked: a stray module in `proscenium_sync`, and one in `scene_graph_widget/`.
+- **A unit is reached through its exports.** A unit whose `__init__.py` exports names rather than all of its modules has a `protected` contract over its modules, which only the unit itself may import: `proscenium_sync.synchronization.*`, allowed to `proscenium_sync.synchronization`, and likewise `bindings`, `results`, `planner`, and the two widgets' `display`. Another unit then imports only the package, so only what its `__init__.py` defines or imports, and ty rejects a name that it doesn't (`unresolved-import`). `prim_tree` and `property_list`, which export two of their modules and names from the other two, protect those two by name. A unit that exports all its modules needs no contract. So no contract lists a unit's names, which are written once, in its `__init__.py`. Checked: `bindings` importing `synchronization`'s `application`, and a name `persistence` doesn't export.
+- **Package dependencies.** `forbidden`: neither library package imports `proscenium`. `independence`: `proscenium_sync` and `proscenium_ui` import neither the other. Checked: `proscenium_sync` importing `proscenium_ui`.
+- **The public APIs** ([Public APIs](#public-apis)): a `protected` contract per library package over its units, which only the package itself may import, with `ignore_imports` naming what the extension may: `proscenium.** -> proscenium_sync.bindings`, `proscenium.** -> proscenium_sync.registration`, and the two widgets' `display`. Checked: `interface/` importing `proscenium_sync.runtime`.
+- **The bpy-free tiers** (`planner/`, `source_access/`, `results/`, `widget_model/`, `prim_tree/`, `property_list/`): a `forbidden` contract on `bpy` and Blender's other modules (`mathutils`, `idprop`, `gpu`, `gpu_extras`, `bpy_extras`, `blf`, `bmesh`), with `include_external_packages`. Checked: `bpy` under `TYPE_CHECKING` in the planner, `mathutils` inside a function in `results/`, and a lowest-tier unit importing the planner after the planner imported `bpy`.
+- **The library packages' own `__init__.py` files,** and the grouping packages' (`scene_graph_widget/`, `property_viewer_widget/`), import without `bpy`: the same `forbidden` contract over those modules alone (`as_packages = false`), following their imports. Checked: `scene_graph_widget/__init__.py` importing `display`, which imports `bpy`.
+- **A unit's modules import each other without cycles:** `acyclic_siblings` over each package's units, and over the grouping packages' (`proscenium_ui.*.*`). Checked: two of `widget_model`'s modules importing each other.
+
+import-linter doesn't see the planner's compiled `_planner`, since its graph holds only Python source, so `from proscenium_sync.planner import _planner` outside the planner reads to it as an import of the planner. The planner's README says the module is the planner's own, which callers reach only through the planner's exports.
+
+`tests/` and `tools/` are no root package, so no contract checks them: tests reach into any module, and `tools/row_icon_masks.py` reads a column module.
+
+`test_no_blender_imports.py` stays: it imports the bpy-free code with Blender's modules blocked, which no static check does. `test_application_imports.py` (APP-08) stays as it is: it skips type-only imports, which every contract counts.
+
+## Public APIs
+
+The rule that `interface/` imports only `bindings/` holds because `bindings/` is the synchronizer's API. Since the packages split, that is a rule about `proscenium_sync`, not about `interface/`: **each library package names its public API, the units another package may import, and no other package imports anything else of it.** Within a package, the tiers still apply.
+
+- **`proscenium_sync`'s public API is its own names:** what `bindings` exports, and `registration`'s `register` and `unregister`. Callers write `proscenium_sync.BINDINGS`, `proscenium_sync.BindingHandle`, and `proscenium_sync.register()`, and import nothing below the package, so its contract protects all its units with no exception. The package's `__init__.py` still imports without `bpy`, so importing the planner never loads Blender: it loads the API's modules on first use, through a module `__getattr__` (PEP 562), from one literal map of each exported name to the unit that defines it. `__all__` is the map's keys, and `TYPE_CHECKING` imports of the same names give type checkers and editors their real types. A short `bpy_free` test checks that the map, `__all__`, and the `TYPE_CHECKING` imports name the same names, and `test_no_blender_imports.py` keeps checking that `import proscenium_sync` loads no `bpy`. The `__init__.py` contract ignores the `TYPE_CHECKING` imports of `bindings` and `registration`, which would otherwise reach `bpy`. An error in an API module surfaces on first use rather than at `import proscenium_sync`. Blender imports the extension's `addon.py` at registration, which uses the API at once, so in practice the timing is the same.
+- **`proscenium_ui`'s public API** is the widgets: `scene_graph_widget.display` and `property_viewer_widget.display`, imported as modules (`from proscenium_ui.scene_graph_widget import display`). Their names overlap (`create_view`, `set_stage`, `register`, `ViewNotFoundError`), so they can't share one namespace at the package's top.
+- **Every other library `__init__.py`,** `proscenium_ui`'s and the grouping packages', holds only its docstring.
+- **The extension's units** may import either package's public API, and `addon.py` and `interface/` keep their tiers: `addon.py` registers the synchronizer and the temporary UI.
+- **When Blender's Python reaches 3.15,** PEP 810's `lazy from .bindings import BindingHandle` replaces the map and `__getattr__`. Blender 5.2 bundles 3.13.
+
+## Docs
+
+- **AGENTS.md:** the Layout section's import-rule bullets say what the rules are and that import-linter checks them, linking to `packages/README.md#import-rules`. `proscenium/interface/`'s bullet says it imports the packages' public APIs, and the `proscenium_sync/` bullet says its `__init__.py` exports the API, loaded on first use, and still imports without `bpy`. Commands names `lint-imports`.
+- **`packages/README.md#import-rules`:** the rules, with the public-API rule in place of what `interface/` may import, and the paragraph on checks naming the contracts and `test_no_blender_imports.py`.
+- **The package READMEs:** each Import rules section keeps what its tiers mean (which are bpy-free, what its public API is) and links to its `layers` contract for the tiers themselves, in place of its tier table. `src/proscenium/interface/README.md` names the public APIs. The two `display/` READMEs' cycle sentence names the `acyclic_siblings` contract.
+- **The planner's README:** `_planner` is the planner's own, reached only through its exports.
+- **`tests/README.md`:** `test_import_tiers.py`'s entry goes, and the lazy API's test gets one. `bpy_blocker.py`'s docstring stops naming `test_import_tiers.py`.
+- **Other references to `test_import_tiers.py`:** `process_bindings.py`'s docstring, [node-tree.md](../phase3/node-tree.md) (a new package gets its contracts), and [scene-graph-ui.md](../phase3/scene-graph-ui.md).
+- **Unchanged:** no matrix row or invariant names these checks. `docs/archive/` and the earlier plans keep what they were written with.
+
+## CI and tooling
+
+- import-linter goes in the `lint` group, pinned through `uv.lock`, like ruff.
+- A pre-commit hook, `uv run --frozen lint-imports`, with `pass_filenames: false`, runs on Python files and `pyproject.toml`. CI runs it through `pre-commit run --all-files`, as it does every lint check. It finds the three packages through the dev environment's editable installs.
+- import-linter's cache directory is ignored by Git.
+
+## Commits
+
+Each commit is one change, passes `pre-commit` and the test suite on its own, and updates the docs, READMEs, and tests that name what it changes.
+
+1. The plan, written for tach.
+2. **`results.py` becomes `results/`:** its diagnostics and its result in a module each, behind an `__init__.py` that exports their names.
+3. **This plan,** for import-linter.
+4. **import-linter checks the import rules:** the lint group, the contracts, the hook, and the tier tables' move into the contracts. `test_import_tiers.py` goes, its `interface/` rule becoming the public-API contracts. AGENTS.md and the READMEs follow.
+5. **`proscenium_sync`'s API at its top:** the lazy `__init__.py`, its `bpy_free` test, the extension's imports of `bindings` and `registration` becoming `proscenium_sync`'s names, and its public-API contract protecting every unit.
+
+## Decision log
+
+- **Adopt import-linter (with the user, 2026-11-17).** Its contracts check every import rule, between packages as within them, from one configuration, so no test reads imports itself. Tach, tried first, checks imports between packages only by distribution, and couldn't check a unit's exports without either a list repeating each `__all__` or every private module renamed to begin with an underscore.
+- **What a package may import of another is that package's public API (with the user, 2026-11-17).** The rule that `interface/` imports only `bindings/` predates the packages. Since they split, the boundary is the package's, and it holds for every importer: `proscenium_sync`'s public API is `bindings`' exports and `registration`'s two functions, and `proscenium_ui`'s is its widgets.
+- **`proscenium_sync` exports its API from its top, loaded by a module `__getattr__` (with the user, 2026-11-17).** The package's `__init__.py` stays importable without `bpy`, which the planner's tests and SNAP-08's oracle need, while its `__all__` is the API. `importlib.util.LazyLoader` defers a module's execution, not a name's, so getting an exported name from a lazy module runs it at once. PEP 810's `lazy from` needs Python 3.15, and the third-party `lazy_loader` would be one more bundled wheel for the same `__getattr__`.
+- **`__all__` stays the one list of a unit's exports (with the user, 2026-11-17).** The `protected` contracts guard a unit's modules, not its names, and ty rejects an import of a name an `__init__.py` doesn't define, so no configuration repeats it.
