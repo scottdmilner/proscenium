@@ -1,5 +1,5 @@
-// The planner's reference to a stage it was given (AGENTS.md "Planner": the planner never keeps a released
-// stage alive).
+// The planner's reference to a stage it was given (planner/AGENTS.md: the planner never keeps a released stage
+// alive).
 #pragma once
 
 #include <pxr/pxr.h>

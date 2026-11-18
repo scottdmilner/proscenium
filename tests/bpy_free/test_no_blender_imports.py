@@ -1,4 +1,4 @@
-"""The packages' bpy-free parts import in a fresh interpreter with Blender modules blocked (AGENTS.md#layout)."""
+"""The packages' bpy-free parts import in a fresh interpreter with Blender modules blocked (packages/README.md)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Every directory of the extension's and the packages' sources has a README naming each entry (AGENTS.md#layout).
+"""Every directory of the extension's and the packages' sources has a README naming each entry (packages/AGENTS.md).
 
 A README names an entry in backticks, a subdirectory with its trailing slash: `bindings.py`, `planner/`. The sources are
 the extension's and each package's import directories, all through, and packages/ and each package's directory, whose

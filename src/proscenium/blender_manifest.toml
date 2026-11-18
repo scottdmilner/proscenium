@@ -22,6 +22,8 @@ paths_exclude_pattern = [
   ".*",
   "/*.zip",
   "*.blend[1-9]",
-  # Each source directory's README, for developers.
+  # Each source directory's README and agent instructions, for developers.
   "README.md",
+  "AGENTS.md",
+  "CLAUDE.md",
 ]

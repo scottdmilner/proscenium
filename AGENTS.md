@@ -2,59 +2,39 @@
 
 ## Before any work
 
-Read [docs/PROJECT.md](docs/PROJECT.md) and [docs/spec/invariants.md](docs/spec/invariants.md) first. For milestone work, also read the milestone file in [docs/milestones/](docs/milestones/), its plan in [docs/plans/](docs/plans/) if one exists, and [docs/DECISIONS.md](docs/DECISIONS.md).
+Read [docs/PROJECT.md](docs/PROJECT.md) and [docs/spec/invariants.md](docs/spec/invariants.md) first. For milestone work, also read:
 
-Do not read `docs/archive/` unless the user asks for it. It holds superseded documents kept for history; they describe intentions that were later changed and would mislead current work. Never treat them as requirements or guidance, and don't update them.
+- the milestone's file in [docs/milestones/](docs/milestones/);
+- its plan in [docs/plans/](docs/plans/), if one exists;
+- [docs/DECISIONS.md](docs/DECISIONS.md).
 
-## Keep invariants in sync with the spec
+Don't read `docs/archive/` unless the user asks for it. It holds superseded documents, which would mislead current work.
 
-- Any change to a guarantee in a spec file updates its statement in `docs/spec/invariants.md` in the same change, and the reverse.
-- `invariants.md` stays a summary that links to and defers to the authoritative spec section. It never gains detail of its own. Each bullet ends with the IDs of the matrix rows it summarizes.
+## Repository map
 
-## Keep the requirement matrix in sync
+Each directory's README says what it holds.
 
-- [docs/testing/requirements.yaml](docs/testing/requirements.yaml) has a row for every requirement in PROJECT.md, spec/, and testing/, quoting its text. Any change to those docs updates the affected rows (or the `excluded` list) in the same change, then regenerates the view with `tools/matrix.py render`. Contract decisions update their rows before implementation.
-- Before a milestone implements anything, it fills in the fixtures and oracle of the rows it delivers and adds itself to `started`.
-- `tools/matrix.py check` fails on drift: a quote no longer in its section, a block no row traces, an invariant without IDs, an unknown fixture or milestone, or a started milestone's row without an oracle (or a behavior row without a fixture). It runs as a pre-commit hook and as a bpy_free test.
-- Retired IDs are never reused.
+- [`src/proscenium/`](src/proscenium/README.md): the extension: its manifest, its registration, and the temporary UI.
+- [`packages/`](packages/README.md): the workspace's library packages, which the extension's zip bundles as wheels.
+  - [`proscenium_sync`](packages/proscenium_sync/src/proscenium_sync/README.md): the synchronizer, with its API and the planner (C++).
+  - [`proscenium_ui`](packages/proscenium_ui/src/proscenium_ui/README.md): the widgets.
+- [`tests/`](tests/README.md): the `bpy_free/`, `blender/`, and `isolated/` test layers, their helpers, and the fixtures.
+- [`tools/`](tools/README.md): the build, the checks that pre-commit runs, and the feasibility evidence.
+- [`docs/`](docs/PROJECT.md#documentation-map): the spec, milestones, decisions, plans, and testing docs.
 
-## Layout
+## Before you change…
 
-- `src/proscenium/`: the extension source dir (`blender_manifest.toml`, `register`/`unregister`), which depends on the workspace's packages: the synchronizer it registers and the widgets its temporary UI hosts. From the top of its import layers ([`src/proscenium/README.md`](src/proscenium/README.md#import-rules)):
-  - `proscenium/addon.py`: registers the extension: the synchronizer's registration, then the temporary UI. It registers no UI widget yet.
-  - `proscenium/interface/`: the temporary UI, the Source Select tool and minimal panels, which imports only the packages' public APIs, `proscenium_sync`'s names and `proscenium_ui`'s widgets and `widget_updates` (besides `bpy` and USD), so M12 can replace it. It reaches the product only through the API, and may host a widget in a panel of its own.
-- `packages/`: the workspace's library packages, each a uv workspace member that the extension depends on and its zip bundles as a wheel ([`packages/README.md`](packages/README.md), [plan](docs/plans/workspace-packages.md)).
-  - The code is in units, each a package or a single module, in import layers; a unit imports only from itself and from units in lower import layers, and a package only the packages its `pyproject.toml` depends on. [`packages/README.md`](packages/README.md#import-rules) has the rules, and each library package's `pyproject.toml` its `[tool.importlinter]` contracts: its import layers, its exports, and its bpy-free code. The root `pyproject.toml`'s hold the extension's and those between packages. `lint-imports` checks each file (pre-commit hooks).
-  - A relative import reaches only a sibling or a descendant (`from . import list_steps`, `from .columned_list import column_layout`), and every other import is absolute (`from proscenium_sync.persistence import manifests`), as ruff's TID252 enforces everywhere but `src/proscenium/`, which Blender installs as `bl_ext.<repository>.proscenium`, so the extension imports its own parents relatively.
-  - Units reach each other through public modules and exported names: a package unit's `__init__.py` exports its public modules and names, its own or its modules', and nothing else, and a module unit is public itself. Code in another unit imports a public module from its package and names each use through it (`from proscenium_sync.persistence import manifests`, then `manifests.Manifest`), or, where those uses would nest, imports the names from the module (`from proscenium_sync.results import Diagnostic, DiagnosticCode, Result`). A package that exports names is used the same way: imported from its parent, each use named through it (`from proscenium_sync import synchronization`, then `synchronization.synchronize`), or its names imported from it. Never import a name a package doesn't export, or anything from a module its package doesn't export. Module names are unique across `src/proscenium/` and `packages/`, and name what they hold, so a use doesn't repeat itself (`binding_records.BindingConfig`, `binding_settings.PayloadPolicy`).
-  - Every directory here and in `src/proscenium/` has a `README.md` naming each of its files and subdirectories and what it holds. Update it with any file added, removed, or renamed there (enforced by `tests/bpy_free/test_source_readmes.py`).
-  - `proscenium_sync/`: the synchronizer, whose wheel holds the planner, so it is built per platform (`hatch_build.py`). It imports no other package of the workspace. Its public API is its own names, `bindings/`' exports and `registration.py`'s `register` and `unregister`, which its `__init__.py` loads on first use, so the package still imports without `bpy`. The bindings' code is kept apart from the planner, so the Blender-facing code and the planner and its Hydra code change independently. From the top:
-    - `proscenium_sync/registration.py`: the synchronizer's registration: the records' namespace, and the handlers that drop or prune the bindings' stages and mirror source selections.
-    - `proscenium_sync/bindings/`: what callers use, the binding handle and the process's bindings.
-    - `proscenium_sync/synchronization/`: the synchronization transaction and the application layer it applies display plans with (M7's, replacing M5's stub).
-    - `proscenium_sync/interaction/`, in the same import layer: the display component of the interaction contract, which builds a binding's correspondence from Blender data and reads and writes Blender's selection.
-    - `proscenium_sync/runtime/`: disposable in-memory state built from the records.
-    - `proscenium_sync/persistence/`: versioned records in ID properties.
-    - The lowest import layer, which must import without `bpy`, as must `proscenium_sync/__init__.py`: `proscenium_sync/planner/`, the planner, its C++ source and built module (see [Planner](#planner)); `proscenium_sync/source_access/`, the stages a binding reads its source from, binding identifiers, the canonical-candidate rule, requested settings, and source-entity identifiers; and `proscenium_sync/results/`, results and diagnostics.
-  - `proscenium_ui/`: the widgets, which import no other package of the workspace. From the top:
-    - `proscenium_ui/scene_graph_widget/` and `proscenium_ui/property_viewer_widget/`: the widgets, which import neither the other, each its display above its model:
-      - `display/`: the scene graph widget's prim tree and the property viewer widget's property list, each drawn as a virtualized UIList, which registers no panel that shows by itself (only its settings popover); a host places them.
-      - `prim_tree/` and `property_list/`, which must import without `bpy`: the widgets' models: a stage's hierarchy as a tree widget's rows, and its search; and a prim's properties as a list's rows, with their targets, and its search.
-    - `proscenium_ui/widget_resources/`, `proscenium_ui/search_box.py`, and `proscenium_ui/text_wrapping.py`: what the widgets' displays draw with: theme colors, tinted and badge icons, what a tree's rows draw alike, the arrow keys' watcher, and the copy-path operator, registered while any widget is; a widget's search box; and labels wrapped to their region's width. All are laid out with `columned_list/`.
-    - `proscenium_ui/columned_list/` and `proscenium_ui/widget_updates.py`: a list's columns, header, and column settings; and timers, redraws, and writing properties from a widget's model.
-    - The lowest import layer, `proscenium_ui/widget_model/`, which must import without `bpy`, as must `proscenium_ui/__init__.py` and its two `*_widget/__init__.py`: what the widgets' models share: matching a search's text, and the composition arcs they mark.
-- `tests/`: the `bpy_free/`, `blender/`, and `isolated/` layers, plus shared `support/` helpers and `fixtures/`. See [Tests](#tests).
-- `tools/`:
-  - `build_extension.py`: build script.
-  - `native_build.py`, `blender_deps.py`: the repository's compiled modules, the planner and the Hydra bridge: build each against the locked Blender release's USD, rebuilding the planner only when it's out of date, and audit their linkage.
-  - `clang_tidy.py`: runs clang-tidy on the planner and the Hydra bridge, each with its build's compile commands (a pre-commit hook).
-  - `matrix.py`: checks and renders the requirement-to-test matrix.
-  - `row_icon_masks.py`: makes the scene graph widget's masks of Blender's row icons from its icon SVGs, which the widget recolors for instances (`uv run --group icons python tools/row_icon_masks.py`: the `icons` group holds its SVG renderer and PNG decoder, apart from `dev`).
-  - `scene_graph_demo.py`: hosts the scene graph and property viewer widgets in the 3D View's and node editor's sidebars, for trying them by hand in the Blender binary (`Blender --python tools/scene_graph_demo.py`).
-  - `alab_checksums.py`, `alab_inventory.py`: pin and inventory the ALab production-scale fixture (`docs/testing/alab/`).
-  - `feasibility/`: M1 runtime probes, M1b's Hydra bridge (`hydra_bridge/`), and demos of what a UIList can show, for the scene graph widget (`uilist_options/`). Results are in `docs/feasibility/runtime-record.md`. The bridge is evidence, not product code.
-  - `bpy-site-packages/`: puts the bpy wheel's bundled `pxr` on `sys.path`.
-- `docs/`: the spec, milestones, decisions, and testing docs. `docs/plans/` holds each milestone's decision log; `docs/phase3/` holds design notes for Phase 3, which are not requirements; `docs/archive/` holds superseded documents (see [Before any work](#before-any-work)).
+Some directories have an `AGENTS.md` with rules for working there. Read it before changing anything in that directory, even if the change starts elsewhere.
+
+| Working on | Read first |
+|---|---|
+| A requirement, the spec, the matrix, a milestone's start, or any doc | [docs/AGENTS.md](docs/AGENTS.md) |
+| Imports, or adding, moving, or renaming a module or unit | [packages/README.md#import-rules](packages/README.md#import-rules), via [packages/AGENTS.md](packages/AGENTS.md) and [src/proscenium/AGENTS.md](src/proscenium/AGENTS.md) |
+| A dependency | [packages/AGENTS.md#dependencies](packages/AGENTS.md#dependencies) |
+| C++, the planner, its build, or the Hydra bridge | [the planner's AGENTS.md](packages/proscenium_sync/src/proscenium_sync/planner/AGENTS.md) |
+| Tests or fixtures | [tests/AGENTS.md](tests/AGENTS.md) |
+| Feasibility probes | [tools/feasibility/AGENTS.md](tools/feasibility/AGENTS.md) |
+| The name of anything | [docs/conventions.md](docs/conventions.md) |
 
 ## Commands
 
@@ -70,75 +50,17 @@ uv run python tools/feasibility/run_all.py  # feasibility probes (wheel, pytest,
 uv run pre-commit install                 # once per clone
 ```
 
-Tests and probes that need the Blender binary find it through the `BLENDER` env var, or else the platform default install path. Without a binary, binary tests are skipped, unless `PROSCENIUM_REQUIRE_BLENDER` is set (as in CI).
+Tests that need the Blender binary find it as [tests/README.md](tests/README.md#running) says. Without a binary they are skipped.
 
-## Planner
+## Rules for every change
 
-The planner is the C++ that reads Hydra scene indices, which M1b adopted ([DECISIONS.md](docs/DECISIONS.md) "Evaluation front end and core language"). It holds evaluation, the snapshot, planning, source-side diagnostics, and comparing plans for incremental refresh. Everything that touches Blender stays in Python. The display plan is the one boundary: an immutable object whose large arrays Python reads without copying.
-
-- **Source:** C++ in `packages/proscenium_sync/src/proscenium_sync/planner/`, which holds only the planner: its C++, the inspection layer's library in `inspection/`, its type stubs, and the `__init__.py` that loads what it links. The package's wheel leaves out C++ sources and CMake files; only the built module ships, in the same package.
-- **Build:** through `tools/build_extension.py`, from `proscenium_sync`'s `planner/` only: one zip per platform, built on that platform, against the dependency headers of the Blender release `uv.lock` pins, and linked only to Blender's bundled `usd_ms`. The module (`proscenium_sync.planner._planner`, ignored by `planner/.gitignore`) is built into that package, where the dev environment's editable install imports it, and `proscenium_sync`'s build hook ships it in a wheel tagged for the platform. Only the zip's copy of the manifest names the platform and sets `blender_version_max`, so each zip supports one Blender minor version (5.2.x). CI builds Linux's on Blender's glibc floor (manylinux_2_28). The Hydra bridge in `tools/feasibility/` is test code and never goes through it. Both build through `tools/native_build.py` (where each is built from and to, toolsets, and the linkage audit) and `tools/blender_deps.py` (the pinned headers); the planner's and the bridge's CMakeLists.txt set the same flags.
-- **Boundary rules** (M1b findings):
-  - Every entry point turns Tf errors and C++ exceptions into Python exceptions.
-  - Arrays for Blender cross as 1-D read-only buffers whose element types match Blender's exactly (`'f'`, `'i'`, `'?'`). Any other type would silently take Blender's slow path.
-  - Values the planner gives Hydra are Vt's own types; a type made in the planner's module isn't recognized by USD's code.
-  - The planner never keeps a released stage alive.
-  - Each workaround for an OpenUSD bug is labeled `WORKAROUND for OpenUSD #<issue>` at every site, and a known-gap check fails when the bug stops reproducing.
-  - Code that reads Hydra from worker threads never overlaps `SetTime`, `ApplyPendingUpdates`, or stage edits, collects Tf errors per thread, and releases the GIL while waiting on its workers; holding it deadlocks.
-  - A Tf-factory type, such as a scene-index plugin or an adapter, registers through an exported USD helper, as Hf's plugin registry does, never by deriving from a header-only factory base. A type registered that way can't be manufactured on macOS.
-- **Style:** C++17, warnings as the planner's CMakeLists.txt sets them, and no warnings in any platform's build. clang-format and clang-tidy run as pre-commit hooks on the planner and on the Hydra bridge in `tools/feasibility/`. Each has its own `.clang-format`; clang-tidy's checks are in the root `.clang-tidy`, which covers both and includes the C++ Core Guidelines checks, and every clang-tidy warning fails.
-  - **Pointers:** no owning raw pointers; `TfCreateRefPtr(new ...)`, as Tf's ref-counted types require, is the exception. A raw `T*` is non-owning and means something when null (a lookup that found nothing, an absent optional argument), and its declaration says what null means. Anything never null is a reference, or `std::reference_wrapper` in a container.
-  - **Exceptions to a check:** a `NOLINT` names its check and says why the code needs it.
-- **Inspection layer:** a C++ library that maps picked prims to selection targets by kind on the live stage ([interaction contract](docs/spec/interaction-contract.md#two-layers-and-the-live-stage)). It is `proscenium_sync`'s `planner/inspection/`, a static library of its own that the planner links. The planner calls it and exposes it through the planner's own bindings; it has no Python bindings, and never includes or calls the planner. The build and style rules above apply to it too.
-- **Tests:** through the planner's Python module, in the test layers below. Expected values come from the spec, from USD's own APIs (`UsdGeom`, `UsdShade`), or from how the fixture is built, never from Hydra's output. A test whose input could crash native code runs in `isolated/`, since a crash ends the process.
-
-## Tests
-
-[tests/README.md](tests/README.md) documents the test tree: which layer to use, the helpers, the fixture framework, and the rules. Read it before writing tests. In summary:
-
-- Layers are directories named for what a test runs in, not how much it covers. Each test gets its directory's marker:
-  - `bpy_free/`: plain Python that reads and writes no Blender data, so it needs no reset. Prefer it.
-  - `blender/`: the bpy wheel in a reused process, reset and checked clean before every test.
-  - `isolated/`: a fresh wheel or binary process per test, for what a reset can't make clean.
-- Bespoke fixtures are registered in `tests/fixtures/registry.py`. Generators are context managers that write into a tmp dir. Static layers are `.usda` files in `tests/fixtures/scenes/`.
-- Tests run in parallel. Write only under `tmp_path`, never into the repository, and copy scenes before opening them.
-- Expected results come from the spec or from how the fixture is built, never from recording the implementation's output.
-
-## Distribution
-
-`tools/build_extension.py` is the only distribution build. Its output, `dist/proscenium-<version>.zip`, is what Blender installs. Releases ship one zip per platform and Blender minor version on GitHub releases ([DECISIONS.md](docs/DECISIONS.md) "Native core distribution"). The workspace's packages' wheels ship only inside the zip, and the extension's own wheel from `uv build` only exists so `proscenium` installs editable in the dev environment. Never publish or distribute either.
-
-## Dependencies
-
-- Runtime dependencies go in `[project] dependencies`: the workspace's packages, each a `[tool.uv.sources]` workspace member, and any third-party package. The build bundles them as wheels, building the workspace's from source, and syncs the generated block between the markers in `blender_manifest.toml`, which names only `uv.lock`'s. Never edit that block by hand. The rest of the manifest, including `[build]`, is hand-written.
-- Tooling, stubs, and `bpy` go in the dev group and never ship.
-- Never bundle another OpenUSD build: the extension uses the `pxr` bundled with Blender.
-
-## Style
-
-- Follow PEP 8 (ruff, line length 120) and annotate every function signature.
+- Every directory in `src/proscenium/` and `packages/` has a `README.md` naming each of its files and subdirectories and what each holds. Update it with any file you add, remove, or rename there.
+- Rename tracked files with `git mv`, and update every reference to them in the same change ([conventions](docs/conventions.md)).
+- Follow PEP 8 and annotate every function signature (ruff and ty check the rest of the style rules).
 - Classes declare their typed attributes in the class body, above `__init__`.
-- Mark every method override with `typing.override` (ty's `missing-override-decorator` rule enforces it).
-- Names:
-  - These rules cover types, functions, methods, parameters, dataclass fields, other attributes, and file and module names in product code, tests, fixtures, tools, and prototypes, including C++ equivalents. Review names at their call sites and field accesses: their meaning should be clear without reading the implementation or finding a comment elsewhere.
-  - One concept per word, the [Glossary](docs/PROJECT.md#glossary)'s where it has one. A bare generic such as `index`, `source`, or `binding` is never used where it could mean more than one thing: `binding_index` and `ownership_index`, `candidate` for one record or copy of a binding identity.
-  - Spec terms keep their meaning. A *generation* is a published generation, a *layer* a USD layer or a pipeline layer, a *synchronization* one attempt, and a *claim* and a *candidate* what the spec defines. None names anything else. The source's levels of units, which import-linter's `layers` contracts list, are always *import layers*, never bare layers or tiers.
-  - Do not call primvar value types, Blender attribute types, or interpolation modes "kinds"; name their actual role so they cannot be confused with USD model kinds.
-  - Prefer familiar, precise words, such as `index` for a position. Spell out domain distinctions that affect how a value is used; avoid unexplained abbreviations and generic names such as `data`, `kind`, `place`, or `previous` when the reader must reconstruct what they hold. Keep names concise where the enclosing type or module already supplies an unambiguous domain.
-  - Exceptions end in `Error`, so they aren't mistaken for values (ruff's N818 enforces it).
-  - A type names its domain and responsibility: `DiagnosticCategory`, `DecisionReason`, `PostgresConnectionPool`. Avoid abstract labels such as `Category`, `Reason`, or `DataManager` that require reading their implementation to understand them.
-  - A function is named for its effect. One that decodes or encodes a stored record is `read_*` or `write_*`; one that changes held state and writes it through to the record is `set_*`; any other is named for what it returns (`config(binding_id)`, `index_texts()`); and an operation the spec defines takes the spec's verb (`synchronize`, `reload`).
-  - Name side effects explicitly: creating a resource, installing a handler, registering a holder, and clearing a cache use those verbs. Use `ensure_*` or `get_or_create_*` only when an existing suitable value is reused. A name must not imply reuse when every call creates a new value.
-  - Members distinguish values from their references: `object_resource_index` for a plan index, `manifest_entry_key` for a stored key, `source_path` for a path, `module_path` for a file path, and `candidate_count` for a count. Name the indexed collection when several are in scope. Boolean names read as predicates (`is_canonical`, `visible_in_viewport`); a predicate name must not hold an index or a count.
-  - Collection names say what their elements represent: `resource_indices`, `source_entity_paths`, `dependency_entry_keys`. When a mapping's keys or direction need context, name them too (`prim_index_by_path`, `previous_mesh_indices_by_holder`). Do not name a collection of indices as though it contained the objects themselves.
-  - Include units, coordinate space, or lifecycle state when they change the interpretation: `stage_durations_seconds`, `world_matrix`, `local_bounds`, `requested_settings`, `applied_settings`, `attempted_settings`. Distinguish observed results from predictions and counts from the collections counted.
-  - Corresponding Python and C++ members use the same domain words and meaning, following each language's existing spelling convention (`object_resource_index` / `objectResourceIndex`). Keep declarations, Python bindings, type stubs, and callers aligned. Preserve external API spellings where required by an override or protocol.
-  - A persisted field name is part of its storage schema. Schemas that have not shipped may be edited in place without a version bump or migration. Once a schema has shipped, renaming a field includes the schema version and migrations needed to read existing records, with compatibility checks. Review other serialized keys and externally consumed names for compatibility before changing them.
-  - Files and modules name their responsibility so imports and editor tabs identify what they contain: `stage_registry.py`, `frame_capture.py`, `loaded_usd_libraries.cpp`. Avoid catch-all names such as `common.py` or `data.py`, and distinguish implementation modules from their probes and benchmarks. Keep conventional entry and configuration filenames (`__init__.py`, `conftest.py`, `CMakeLists.txt`).
-  - Rename tracked files with `git mv`. Update imports, package exports, CMake inputs, script paths, README inventories, documentation references, and affected requirement-matrix rows in the same change. Preserve the import layers and unique module-name rule under `src/proscenium/`.
-- Prefer short docstrings plus inline comments over long docstrings. Docstrings follow pep257 (ruff's D rules): a one-line summary ending in a period or question mark, then a blank line before any more. Public objects in `src/` and `tools/` have one; tests and `tools/feasibility/` need one only where it adds something.
+- Prefer short docstrings plus inline comments over long docstrings. Public objects in `src/`, `packages/`, and `tools/` have one.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
-- USD test scenes are `.usda` files on disk with a comment stating their purpose, not Python strings.
-- Evidence docs (feasibility records, decision rows) claim only what a check actually tested.
-- Docs and decision logs state the current decision and its reasons, not how it was reached. Don't describe earlier drafts, revisions, or options that were never decided on ("revised four times", "three, not four", "no longer", "rather than X" where X was never adopted). Name a rejected alternative only when its reason still guides later work.
-- Keep Git commits as small, self-contained, and parseable as possible: one new feature per commit.
+- Keep Git commits small, self-contained, and parseable: one new feature per commit.
+- Make any change that takes more than two commits in a Git worktree of its own, not in the main checkout.
+- `tools/build_extension.py` is the only distribution build. Never publish or distribute the zip or any wheel ([tools/README.md](tools/README.md)).
+- Never bundle another OpenUSD build. The extension uses the `pxr` bundled with Blender.

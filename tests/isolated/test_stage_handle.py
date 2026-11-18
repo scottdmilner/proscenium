@@ -1,4 +1,4 @@
-"""The planner never keeps a released stage alive, and never destroys one its caller holds (AGENTS.md "Planner").
+"""The planner never keeps a released stage alive, and never destroys one its caller holds (planner/AGENTS.md).
 
 Native stage lifetimes run in a fresh process, since a mistake here is a use-after-free. The
 caller-drop case is the planner's part of SRC-02: once released, a stage the caller dropped expires.

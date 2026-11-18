@@ -59,7 +59,7 @@ def test_scene_index_matches_directories() -> None:
 
 @pytest.mark.parametrize("layer", sorted(SCENES.rglob("*.usda")), ids=lambda p: p.relative_to(SCENES).as_posix())
 def test_scene_layers_state_their_purpose(layer: Path) -> None:
-    # Static layers start with a comment saying what they are for (AGENTS.md#style).
+    # Static layers start with a comment saying what they are for (tests/README.md, fixtures/).
     lines = layer.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "#usda 1.0"
     assert len(lines) > 1 and lines[1].startswith("# "), "line 2 must be a purpose comment"
