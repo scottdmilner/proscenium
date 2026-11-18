@@ -62,13 +62,16 @@ type = "protected"
 protected_modules = ["proscenium_sync.results.*"]
 allowed_importers = ["proscenium_sync.results"]
 
-# The bpy-free code imports no Blender module, even through another module.
+# The bpy-free code imports no Blender module, even through another module. Every list of Blender's modules is the
+# same, which tests/bpy_free/test_import_contracts.py checks: TOML can't share one between files.
 [[tool.importlinter.contracts]]
 name = "proscenium_sync's lowest tier imports no Blender module"
 type = "forbidden"
 source_modules = ["proscenium_sync.planner", "proscenium_sync.source_access", "proscenium_sync.results"]
 forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
 
+# Its static imports, at module level or under TYPE_CHECKING. It loads the API with importlib.import_module, which no
+# contract sees; tests/bpy_free/test_no_blender_imports.py checks that importing it loads no Blender module.
 [[tool.importlinter.contracts]]
 name = "proscenium_sync's __init__.py imports no Blender module"
 type = "forbidden"

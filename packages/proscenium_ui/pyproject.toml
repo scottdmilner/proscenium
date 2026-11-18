@@ -65,7 +65,8 @@ type = "protected"
 protected_modules = ["proscenium_ui.property_viewer_widget.display.*"]
 allowed_importers = ["proscenium_ui.property_viewer_widget.display"]
 
-# The bpy-free code imports no Blender module, even through another module.
+# The bpy-free code imports no Blender module, even through another module. Every list of Blender's modules is the
+# same, which tests/bpy_free/test_import_contracts.py checks: TOML can't share one between files.
 [[tool.importlinter.contracts]]
 name = "The widgets' models and widget_model import no Blender module"
 type = "forbidden"
@@ -77,7 +78,7 @@ source_modules = [
 forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
 
 [[tool.importlinter.contracts]]
-name = "proscenium_ui's own and grouping __init__.py files import no Blender module"
+name = "proscenium_ui's and its widgets' __init__.py files import no Blender module"
 type = "forbidden"
 source_modules = ["proscenium_ui", "proscenium_ui.scene_graph_widget", "proscenium_ui.property_viewer_widget"]
 forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
