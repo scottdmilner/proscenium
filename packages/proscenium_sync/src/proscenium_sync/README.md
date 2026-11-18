@@ -1,10 +1,11 @@
 # `proscenium_sync`
 
-The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records, runtime state, source access, and results; the synchronization transaction; the display component of interaction; the API callers use; and the planner. The bindings' code is kept apart from the planner, so the Blender-facing code and the planner and its Hydra code change independently. The extension registers it through `registration.py` and reaches it through `bindings/`.
+The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records, runtime state, source access, and results; the synchronization transaction; the display component of interaction; the API callers use; and the planner. The bindings' code is kept apart from the planner, so the Blender-facing code and the planner and its Hydra code change independently. Callers use its own names, `bindings/`' exports and `registration.py`'s `register` and `unregister`: `proscenium_sync.BINDINGS`, `proscenium_sync.register()`.
 
 | Path | Holds |
 |---|---|
-| `__init__.py` | The package. It imports none of its units, so importing a bpy-free unit, which runs it first, never imports `bpy`. |
+| `__init__.py` | The package and its public API. It imports none of its units, so importing a bpy-free unit, which runs it first, never imports `bpy`: a module `__getattr__` loads each name's unit on first use, from a map of each unit to its names. |
+| `__init__.pyi` | The public API as type checkers and editors see it: the same names, imported from their units. |
 | `registration.py` | The synchronizer's registration: the record namespace's property group, the handlers for file load, undo, and redo that drop or prune the bindings' stages, and the frame-change handler and message-bus subscriptions to what windows show that mirror a scene's source selection again. |
 | `bindings/` | What callers use: the binding handle and the process's bindings. |
 | `synchronization/` | The synchronization transaction and the application layer it applies plans with. |
@@ -17,6 +18,6 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 
 ## Import rules
 
-The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_sync's tiers" contract lists from `registration.py` down. It imports no other package of the workspace, and other packages reach it only through its public API, `bindings/` and `registration.py`. The lowest tier, `planner/`, `source_access/`, and `results/`, never imports `bpy`, and its units import only themselves. Of the units that export names, not all their modules, `bindings/`, `synchronization/`, `results/`, and `planner/` are reached only through their `__init__.py`.
+The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_sync's tiers" contract lists from `registration.py` down. It imports no other package of the workspace, and other packages reach it only through its public API, its own names, and import none of its units. The lowest tier, `planner/`, `source_access/`, and `results/`, never imports `bpy`, and its units import only themselves. Of the units that export names, not all their modules, `bindings/`, `synchronization/`, `results/`, and `planner/` are reached only through their `__init__.py`.
 
-`__init__.py`, which imports none of its units, is no unit's.
+`__init__.py`, which imports none of its units, is no unit's. `tests/bpy_free/test_sync_api.py` checks that its map names what `__init__.pyi` imports.

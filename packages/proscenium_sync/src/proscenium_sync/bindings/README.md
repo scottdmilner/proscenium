@@ -35,7 +35,7 @@ With the extension enabled in Blender, the caller opens a stage and attaches it 
 import bpy
 from pxr import Usd
 
-from proscenium_sync.bindings import BINDINGS
+from proscenium_sync import BINDINGS
 
 stage = Usd.Stage.Open("/absolute/path/to/shot.usda")
 handle = BINDINGS.create_binding(bpy.context.scene, name="Shot")

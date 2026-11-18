@@ -1,6 +1,6 @@
 """The Source Select tool: the extension's own selection of USD source targets in the 3D viewport (M7 plan, F2).
 
-Ported from the bridge's select_tool.py, over proscenium_sync.bindings only (DECISIONS.md "Headless interaction
+Ported from the bridge's select_tool.py, over proscenium_sync's API only (DECISIONS.md "Headless interaction
 functions"):
 
 - **Click** picks what a ray under the cursor hits; shift toggles its target, ctrl removes it, and a click on nothing
@@ -30,7 +30,7 @@ from bpy_extras import view3d_utils
 from mathutils import Vector
 from pxr import Kind
 
-from proscenium_sync import bindings
+import proscenium_sync
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -110,7 +110,9 @@ def pickable(view_layer: bpy.types.ViewLayer) -> list[bpy.types.Object]:
 def pick(scene: bpy.types.Scene, hit: tuple[bpy.types.Object, Matrix] | None, mode: str) -> None:
     """Change the scene's source selection by the target, at its level, of what a click hit; None for nothing."""
     obj, matrix = hit if hit is not None else (None, None)
-    bindings.BINDINGS.select_by_pick(scene, obj, matrix, selection_level(scene), bindings.SelectionMode[mode])
+    proscenium_sync.BINDINGS.select_by_pick(
+        scene, obj, matrix, selection_level(scene), proscenium_sync.SelectionMode[mode]
+    )
 
 
 def box(
@@ -126,7 +128,7 @@ def box(
         at = project(point)
         return at is not None and min(x0, x1) <= at.x <= max(x0, x1) and min(y0, y1) <= at.y <= max(y0, y1)
 
-    bindings.BINDINGS.select_by_box(scene, inside, selection_level(scene), bindings.SelectionMode[mode])
+    proscenium_sync.BINDINGS.select_by_box(scene, inside, selection_level(scene), proscenium_sync.SelectionMode[mode])
 
 
 def _tool_active(window: bpy.types.Window) -> bool:
@@ -139,8 +141,11 @@ def apply_selectability(selectable_scenes: set[bpy.types.Scene]) -> None:
     """Make each scene with bindings selectable exactly when it is one of selectable_scenes, mirroring once it is."""
     for scene in bpy.data.scenes:
         selectable = scene in selectable_scenes
-        if bindings.BINDINGS.in_scene(scene) and bindings.BINDINGS.managed_selectable(scene) != selectable:
-            bindings.BINDINGS.set_managed_selectable(scene, selectable)
+        if (
+            proscenium_sync.BINDINGS.in_scene(scene)
+            and proscenium_sync.BINDINGS.managed_selectable(scene) != selectable
+        ):
+            proscenium_sync.BINDINGS.set_managed_selectable(scene, selectable)
 
 
 def update_selectability(*_args: object) -> None:
@@ -263,11 +268,11 @@ class PROSCENIUM_PT_source_selection(bpy.types.Panel):  # noqa: N801 - Blender's
 def draw_source_selection(layout: Any, scene: bpy.types.Scene) -> None:
     """The level and each of the scene's targets, the active one marked and the unresolved ones dimmed."""
     layout.prop(scene, LEVEL_PROPERTY, text="Level")
-    selection = bindings.BINDINGS.source_selection(scene)
+    selection = proscenium_sync.BINDINGS.source_selection(scene)
     if not selection.entries:
         layout.label(text="Nothing selected")
         return
-    unresolved = set(bindings.BINDINGS.resolve_source_selection(scene).unresolved)
+    unresolved = set(proscenium_sync.BINDINGS.resolve_source_selection(scene).unresolved)
     for entry in selection.entries:
         row = layout.row()
         row.enabled = entry not in unresolved

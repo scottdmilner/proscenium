@@ -145,11 +145,10 @@ type = "acyclic_siblings"
 ancestors = ["proscenium.*"]
 
 [[tool.importlinter.contracts]]
-name = "Other packages use proscenium_sync's API: bindings and registration"
+name = "Other packages use proscenium_sync's API: its own names"
 type = "protected"
 protected_modules = ["proscenium_sync.*"]
 allowed_importers = ["proscenium_sync"]
-ignore_imports = ["proscenium.** -> proscenium_sync.bindings", "proscenium.** -> proscenium_sync.registration"]
 
 [[tool.importlinter.contracts]]
 name = "Other packages use proscenium_ui's API: the widgets' displays, and widget_updates for scheduling outside a draw"

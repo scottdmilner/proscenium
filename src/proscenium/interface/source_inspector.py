@@ -26,7 +26,7 @@ from typing import Any, override
 import bpy
 from pxr import Sdf, Usd
 
-from proscenium_sync import bindings
+import proscenium_sync
 from proscenium_ui import widget_updates
 from proscenium_ui.property_viewer_widget import display as property_display
 from proscenium_ui.scene_graph_widget import display
@@ -50,20 +50,20 @@ class _Shown:
 
 def binding_items(_self: object, context: Any) -> list[tuple[str, str, str]]:
     """The scene's bindings as the dropdown's items, by destination name; one item saying there are none."""
-    statuses = bindings.BINDINGS.binding_statuses(context.scene) if context is not None else []
+    statuses = proscenium_sync.BINDINGS.binding_statuses(context.scene) if context is not None else []
     _binding_items[:] = [(s.binding_id, s.name or s.binding_id, "") for s in statuses if s.refusal is None] or [
         (NO_BINDING, "No bindings", "")
     ]
     return _binding_items
 
 
-def inspected_handle(scene: bpy.types.Scene) -> bindings.BindingHandle | None:
+def inspected_handle(scene: bpy.types.Scene) -> proscenium_sync.BindingHandle | None:
     """The handle of the binding the scene's inspector shows, or None when it shows none of the scene's."""
     binding_id = getattr(scene, BINDING_PROPERTY, NO_BINDING)
     if binding_id in {"", NO_BINDING}:
         return None
-    handle = bindings.BindingHandle(binding_id)
-    return handle if handle in bindings.BINDINGS.in_scene(scene) else None
+    handle = proscenium_sync.BindingHandle(binding_id)
+    return handle if handle in proscenium_sync.BINDINGS.in_scene(scene) else None
 
 
 def _live_stage(scene: bpy.types.Scene) -> Usd.Stage | None:
@@ -101,10 +101,10 @@ def tree_selection_changed(path: Sdf.Path | None) -> None:
     if handle is None or handle.live_stage() is None:
         return
     [target] = handle.select_targets([str(path)], None)
-    entry = bindings.SelectionEntry(handle.binding_id, target)
-    selection = bindings.PersistentSelection((entry,), entry)
-    if selection != bindings.BINDINGS.source_selection(scene):
-        bindings.BINDINGS.set_source_selection(scene, selection)
+    entry = proscenium_sync.SelectionEntry(handle.binding_id, target)
+    selection = proscenium_sync.PersistentSelection((entry,), entry)
+    if selection != proscenium_sync.BINDINGS.source_selection(scene):
+        proscenium_sync.BINDINGS.set_source_selection(scene, selection)
         bpy.ops.ed.undo_push(message=UNDO_MESSAGE)
 
 
@@ -112,7 +112,7 @@ def source_selection_changed(scene: bpy.types.Scene) -> None:
     """The source selection's listener: with syncing on, select its active entry's row, if the inspected binding's."""
     if not getattr(scene, SYNCED_PROPERTY, False) or (handle := inspected_handle(scene)) is None:
         return
-    active = bindings.BINDINGS.source_selection(scene).active
+    active = proscenium_sync.BINDINGS.source_selection(scene).active
     display.select_prim(VIEW_NAME, Sdf.Path(active.path) if active and active.binding_id == handle.binding_id else None)
     property_display.show_prim(PROPERTY_VIEW_NAME, display.selected_path(VIEW_NAME))  # select_prim doesn't report
 
@@ -234,13 +234,13 @@ def register() -> None:
     display.create_view(VIEW_NAME, shows_in_region, tree_selection_changed)
     property_display.register()
     property_display.create_view(PROPERTY_VIEW_NAME, shows_in_region, on_jump_to_target=jump_to_target)
-    bindings.BINDINGS.add_selection_listener(source_selection_changed)
+    proscenium_sync.BINDINGS.add_selection_listener(source_selection_changed)
 
 
 def unregister() -> None:
     """Remove what register() added."""
-    if source_selection_changed in bindings.BINDINGS.selection_listeners:
-        bindings.BINDINGS.remove_selection_listener(source_selection_changed)
+    if source_selection_changed in proscenium_sync.BINDINGS.selection_listeners:
+        proscenium_sync.BINDINGS.remove_selection_listener(source_selection_changed)
     widget_updates.unschedule(_show_current_stage)
     property_display.remove_view(PROPERTY_VIEW_NAME)
     property_display.unregister()
