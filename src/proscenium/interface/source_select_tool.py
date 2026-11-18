@@ -224,23 +224,25 @@ class PROSCENIUM_OT_source_box(bpy.types.Operator):  # noqa: N801 - Blender's op
     @override
     def modal(self, context: Any, event: Any) -> set[OperatorReturnItems]:
         context.area.tag_redraw()
-        if event.type == "MOUSEMOVE":
-            self._end = (event.mouse_region_x, event.mouse_region_y)
-            return {"RUNNING_MODAL"}
-        if event.type in {"RIGHTMOUSE", "ESC"}:
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
-            return {"CANCELLED"}
-        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
-            region, view = context.region, context.region_data
-            box(
-                context.scene,
-                lambda p: view3d_utils.location_3d_to_region_2d(region, view, p),
-                (self._start, self._end),
-                self.mode,
-            )
-            return {"FINISHED"}
-        return {"RUNNING_MODAL"}
+        match event.type, event.value:
+            case "MOUSEMOVE", _:
+                self._end = (event.mouse_region_x, event.mouse_region_y)
+                return {"RUNNING_MODAL"}
+            case "RIGHTMOUSE" | "ESC", _:
+                bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
+                return {"CANCELLED"}
+            case "LEFTMOUSE", "RELEASE":
+                bpy.types.SpaceView3D.draw_handler_remove(self._handle, "WINDOW")
+                region, view = context.region, context.region_data
+                box(
+                    context.scene,
+                    lambda p: view3d_utils.location_3d_to_region_2d(region, view, p),
+                    (self._start, self._end),
+                    self.mode,
+                )
+                return {"FINISHED"}
+            case _:
+                return {"RUNNING_MODAL"}
 
     def _draw(self) -> None:
         import gpu

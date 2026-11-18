@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 import bpy
 from mathutils import Vector
@@ -163,14 +163,17 @@ def _changed(
     """The selection mode makes of selection and the chosen targets; picked becomes active where it is selected."""
     chosen = list(dict.fromkeys(chosen))
     old = selection.entries
-    if mode is SelectionMode.SET:
-        entries = chosen
-    elif mode is SelectionMode.EXTEND:
-        entries = [*old, *(e for e in chosen if e not in old)]
-    elif mode is SelectionMode.TOGGLE:
-        entries = [*(e for e in old if e not in chosen), *(e for e in chosen if e not in old)]
-    else:
-        entries = [e for e in old if e not in chosen]
+    match mode:
+        case SelectionMode.SET:
+            entries = chosen
+        case SelectionMode.EXTEND:
+            entries = [*old, *(e for e in chosen if e not in old)]
+        case SelectionMode.TOGGLE:
+            entries = [*(e for e in old if e not in chosen), *(e for e in chosen if e not in old)]
+        case SelectionMode.SUBTRACT:
+            entries = [e for e in old if e not in chosen]
+        case _:
+            assert_never(mode)
     if picked is not None and picked in entries and mode is not SelectionMode.SUBTRACT:
         active = picked
     else:

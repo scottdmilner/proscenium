@@ -8,7 +8,7 @@ queries of its own.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from .composition_arcs import CompositionArc
 
@@ -47,11 +47,13 @@ def is_arc_in_effect(details: RowDetails, arc: CompositionArc) -> bool:
 
     A payload left unloaded doesn't, nor do variant sets none of which has a variant selected.
     """
-    if arc is CompositionArc.PAYLOAD:
-        return details.is_loaded
-    if arc is CompositionArc.VARIANTS:
-        return details.has_variant_selection
-    return True
+    match arc:
+        case CompositionArc.PAYLOAD:
+            return details.is_loaded
+        case CompositionArc.VARIANTS:
+            return details.has_variant_selection
+        case _:
+            return True
 
 
 def instance_proxy_line(details: RowDetails) -> str:
@@ -72,17 +74,21 @@ def instance_line(details: RowDetails, prim_details: PrimDetails) -> str:
 
 def arc_line(details: RowDetails, prim_details: PrimDetails, arc: CompositionArc) -> str:
     """The line for a prim's arc badge, in its row's tooltip or a summary: the arc's targets."""
-    if arc is CompositionArc.INHERITS:
-        return f"Inherits: {', '.join(prim_details.inherit_paths)}"
-    if arc is CompositionArc.VARIANTS:
-        selections = prim_details.variant_selections
-        return "Variants: " + ", ".join(f"{name} = {selection or '(none)'}" for name, selection in selections)
-    if arc is CompositionArc.REFERENCES:
-        return f"References: {', '.join(prim_details.reference_targets)}"
-    if arc is CompositionArc.PAYLOAD:
-        state = "loaded" if details.is_loaded else "unloaded"
-        return f"Payload ({state}): {', '.join(prim_details.payload_targets)}"
-    return f"Specializes: {', '.join(prim_details.specialize_paths)}"
+    match arc:
+        case CompositionArc.INHERITS:
+            return f"Inherits: {', '.join(prim_details.inherit_paths)}"
+        case CompositionArc.VARIANTS:
+            selections = prim_details.variant_selections
+            return "Variants: " + ", ".join(f"{name} = {selection or '(none)'}" for name, selection in selections)
+        case CompositionArc.REFERENCES:
+            return f"References: {', '.join(prim_details.reference_targets)}"
+        case CompositionArc.PAYLOAD:
+            state = "loaded" if details.is_loaded else "unloaded"
+            return f"Payload ({state}): {', '.join(prim_details.payload_targets)}"
+        case CompositionArc.SPECIALIZES:
+            return f"Specializes: {', '.join(prim_details.specialize_paths)}"
+        case _:
+            assert_never(arc)
 
 
 def _has_composition_arcs(details: RowDetails) -> bool:
