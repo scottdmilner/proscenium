@@ -61,5 +61,6 @@ Tests that need the Blender binary find it as [tests/README.md](tests/README.md#
 - Prefer short docstrings plus inline comments over long docstrings. Public objects in `src/`, `packages/`, and `tools/` have one.
 - Keep files under ~600 lines, and rarely over ~1000. Split larger ones into submodules.
 - Keep Git commits small, self-contained, and parseable: one new feature per commit.
+- Make any change that takes more than two commits in a Git worktree of its own, not in the main checkout.
 - `tools/build_extension.py` is the only distribution build. Never publish or distribute the zip or any wheel ([tools/README.md](tools/README.md)).
 - Never bundle another OpenUSD build. The extension uses the `pxr` bundled with Blender.
