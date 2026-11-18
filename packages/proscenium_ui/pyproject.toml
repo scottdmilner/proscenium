@@ -14,3 +14,89 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/proscenium_ui"]
 exclude = ["README.md"]  # each directory's README, for developers
+
+# This package's import rules (README.md#import-rules), which `lint-imports --config` checks with this file (pre-commit).
+# The root pyproject.toml holds the rules between packages. Every import counts, at module level, in functions, and
+# under TYPE_CHECKING, and the layers contracts follow chains of imports too.
+[tool.importlinter]
+root_package = "proscenium_ui"
+include_external_packages = true  # so the bpy-free contracts see Blender's modules
+
+# The tiers, highest first. Units of one tier share a line, so they don't import each other. Exhaustive: a module
+# beside the units that no tier lists fails.
+[[tool.importlinter.contracts]]
+name = "proscenium_ui's tiers"
+type = "layers"
+containers = ["proscenium_ui"]
+layers = [
+    "scene_graph_widget.display | property_viewer_widget.display",
+    "widget_resources | search_box | text_wrapping",
+    "columned_list | widget_updates",
+    "scene_graph_widget.prim_tree | property_viewer_widget.property_list",  # bpy-free
+    "widget_model",  # bpy-free
+]
+exhaustive = true
+# Exhaustive takes only a container's children: the next contract covers what these group.
+exhaustive_ignores = ["scene_graph_widget", "property_viewer_widget"]
+
+[[tool.importlinter.contracts]]
+name = "The grouping packages: each widget's display above its model"
+type = "layers"
+containers = ["proscenium_ui.scene_graph_widget", "proscenium_ui.property_viewer_widget"]
+layers = ["display", "(prim_tree)", "(property_list)"]
+exhaustive = true
+
+# A unit whose __init__.py exports names rather than all its modules is reached only through it: no other unit
+# imports its modules. ty rejects an import of a name the __init__.py doesn't define.
+[[tool.importlinter.contracts]]
+name = "The scene graph widget's display is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_ui.scene_graph_widget.display.*"]
+allowed_importers = ["proscenium_ui.scene_graph_widget.display"]
+
+[[tool.importlinter.contracts]]
+name = "The property viewer widget's display is reached through its exports"
+type = "protected"
+protected_modules = ["proscenium_ui.property_viewer_widget.display.*"]
+allowed_importers = ["proscenium_ui.property_viewer_widget.display"]
+
+[[tool.importlinter.contracts]]
+name = "prim_tree is reached through its exports"
+type = "protected"
+protected_modules = [
+    "proscenium_ui.scene_graph_widget.prim_tree.prim_tree",
+    "proscenium_ui.scene_graph_widget.prim_tree.prim_tree_view",
+]
+allowed_importers = ["proscenium_ui.scene_graph_widget.prim_tree"]
+
+[[tool.importlinter.contracts]]
+name = "property_list is reached through its exports"
+type = "protected"
+protected_modules = [
+    "proscenium_ui.property_viewer_widget.property_list.property_list",
+    "proscenium_ui.property_viewer_widget.property_list.property_list_view",
+]
+allowed_importers = ["proscenium_ui.property_viewer_widget.property_list"]
+
+# The bpy-free code imports no Blender module, even through another module.
+[[tool.importlinter.contracts]]
+name = "The widgets' models and widget_model import no Blender module"
+type = "forbidden"
+source_modules = [
+    "proscenium_ui.scene_graph_widget.prim_tree",
+    "proscenium_ui.property_viewer_widget.property_list",
+    "proscenium_ui.widget_model",
+]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+
+[[tool.importlinter.contracts]]
+name = "proscenium_ui's own and grouping __init__.py files import no Blender module"
+type = "forbidden"
+source_modules = ["proscenium_ui", "proscenium_ui.scene_graph_widget", "proscenium_ui.property_viewer_widget"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+as_packages = false  # each module alone, not its descendants
+
+[[tool.importlinter.contracts]]
+name = "A unit's modules import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["proscenium_ui.*", "proscenium_ui.*.*"]

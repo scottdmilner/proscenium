@@ -6,7 +6,7 @@ Each view's state is a `property_list.PropertyListView`, and the UIList draws fr
 
 It draws with what the widgets share: the theme's colors, badge icons, the tree rows' widths, guide lines, and badges, the key watcher, and the copy-path operator from `widget_resources/`, which its registration registers too; columns, their header and settings from `columned_list/`; the search box from `search_box.py`; and timers from `widget_updates.py`.
 
-Its modules import each other in the order the table lists them, each only from those above it; `tests/bpy_free/test_import_tiers.py` fails on any cycle among a unit's modules.
+Its modules import each other in the order the table lists them, each only from those above it; import-linter fails on any cycle among a unit's modules (`proscenium_ui`'s `pyproject.toml`'s `acyclic_siblings` contract).
 
 | File | Holds |
 |---|---|

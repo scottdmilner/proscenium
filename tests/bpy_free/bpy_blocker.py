@@ -9,8 +9,7 @@ A fresh interpreter has no Blender module cached, so every import of one goes th
 recognized by where they come from, not by name: bpy itself (bpy/__init__.so) and Blender's Python modules under
 bpy/<version>/scripts/ (bpy_extras, addon_utils, bl_ui, add-ons, ...) load from the bpy wheel's package dir. The wheel's
 bundled site-packages, which holds pxr and other third-party packages, is excluded. The modules bpy's C code creates
-when it is imported (mathutils, bmesh, gpu, ...) don't exist without it. tests/bpy_free/test_import_tiers.py uses
-is_blender_origin to forbid Blender imports in the bpy-free code's source.
+when it is imported (mathutils, bmesh, gpu, ...) don't exist without it.
 """
 
 from __future__ import annotations

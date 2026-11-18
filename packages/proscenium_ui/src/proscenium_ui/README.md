@@ -18,14 +18,6 @@ It holds two widgets for Phase 3's stage editor: the scene graph widget, a prim 
 
 ## Import rules
 
-The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers. It imports no other package of the workspace. The two lowest tiers never import `bpy`:
-
-| Tier | Units |
-|---|---|
-| 5 | `scene_graph_widget/display/`, `property_viewer_widget/display/` |
-| 4 | `widget_resources/`, `search_box.py`, `text_wrapping.py` |
-| 3 | `columned_list/`, `widget_updates.py` |
-| 2 | `scene_graph_widget/prim_tree/`, `property_viewer_widget/property_list/` |
-| 1 | `widget_model/` |
+The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_ui's tiers" contract lists from the widgets' displays down. It imports no other package of the workspace, and other packages reach it only through its public API, the two widgets' `display/` and `widget_updates.py`. The two lowest tiers, the widgets' models (`scene_graph_widget/prim_tree/`, `property_viewer_widget/property_list/`) and `widget_model/` below them, never import `bpy`. The displays are reached only through their `__init__.py`, and the models' private modules (`prim_tree.py`, `prim_tree_view.py`, and the property list's two) only by their own unit.
 
 `__init__.py`, and `scene_graph_widget/__init__.py` and `property_viewer_widget/__init__.py`, which group their packages' units and import none of them, are no unit's.

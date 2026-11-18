@@ -11,11 +11,6 @@ The extension's source directory: what `tools/build_extension.py` zips into the 
 
 ## Import rules
 
-The workspace's [import rules](../../packages/README.md#import-rules) hold here, with these tiers, apart from relative imports: Blender installs the extension as `bl_ext.<repository>.proscenium`, so it imports its own parents relatively. A unit may import `proscenium_sync`'s and `proscenium_ui`'s units, which import nothing of the extension's:
-
-| Tier | Units |
-|---|---|
-| 2 | `addon.py` |
-| 1 | `interface/` |
+The workspace's [import rules](../../packages/README.md#import-rules) hold here, with these tiers, which the root [`pyproject.toml`](../../pyproject.toml)'s "The extension's tiers" contract lists: `addon.py` above `interface/`. Relative imports are the exception: Blender installs the extension as `bl_ext.<repository>.proscenium`, so it imports its own parents relatively. A unit may import `proscenium_sync`'s and `proscenium_ui`'s public APIs, and they import nothing of the extension's.
 
 `__init__.py`, the extension's entry, is no unit's.

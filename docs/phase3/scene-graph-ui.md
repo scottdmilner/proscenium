@@ -61,7 +61,7 @@ The Maya Workflow Kit uses `gpu` for decoration over native widgets: about 50 dr
 - **`prim_tree/`, the model, just above the lowest tier,** imports nothing of Blender's: the search that walks the children a tree lists (`prim_search`), the row model (`prim_tree`), which caches what the tree shows of each prim, read by `widget_model.prim_details`, what only the tree says about a prim (`prim_descriptions`: row names and its tooltips' and details panel's text), worded from what was read with no USD queries of its own, and one tree as a widget shows it (`prim_tree_view.PrimTreeView`), with its selection, query, keyboard steps, and the stage changes it follows. The logic tests can reach is here.
 - **`display/`, below the add-on,** only draws and forwards input to a `PrimTreeView`: a registry of views that knows nothing of Blender's data, the property groups a `UIList` draws from and everything that reads or writes them, the operators, icons, drawing, and key watcher above those, and the host's calls and registration at the top.
 
-Each package's modules import each other in that order, each only from those before it, and a check in `tests/bpy_free/test_import_tiers.py` fails on any cycle among a unit's modules, type-only imports included.
+Each package's modules import each other in that order, each only from those before it, and import-linter fails on any cycle among a unit's modules, type-only imports included ([import rules](../../packages/README.md#import-rules)).
 
 ### What a host does
 

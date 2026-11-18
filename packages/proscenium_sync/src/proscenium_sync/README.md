@@ -17,15 +17,6 @@ The synchronizer: the [bindings](../../../../docs/PROJECT.md#glossary)' records,
 
 ## Import rules
 
-The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers. It imports no other package of the workspace. The lowest tier never imports `bpy`, and its units import only themselves:
-
-| Tier | Units |
-|---|---|
-| 6 | `registration.py` |
-| 5 | `bindings/` |
-| 4 | `synchronization/`, `interaction/` |
-| 3 | `runtime/` |
-| 2 | `persistence/` |
-| 1 | `planner/`, `source_access/`, `results/` |
+The workspace's [import rules](../../../README.md#import-rules) hold here, with this package's tiers, which [this package's `pyproject.toml`](../../pyproject.toml)'s "proscenium_sync's tiers" contract lists from `registration.py` down. It imports no other package of the workspace, and other packages reach it only through its public API, `bindings/` and `registration.py`. The lowest tier, `planner/`, `source_access/`, and `results/`, never imports `bpy`, and its units import only themselves. Of the units that export names, not all their modules, `bindings/`, `synchronization/`, `results/`, and `planner/` are reached only through their `__init__.py`.
 
 `__init__.py`, which imports none of its units, is no unit's.

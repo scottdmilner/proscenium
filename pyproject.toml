@@ -19,15 +19,19 @@ build = [
     "ninja>=1.13.2",
     "packaging>=26.3",
 ]
+stubs = [
+    "fake-bpy-module-5-2>=20260730",
+    "types-pyyaml>=6.0.12.20260906",
+    "types-usd>=24.5.2",
+]
 lint = [
     "clang-format>=23.1.3",  # clang-format and clang-tidy check the planner (pre-commit)
     "clang-tidy>=22.1.8",
-    "fake-bpy-module-5-2>=20260730",
+    "import-linter>=2.16",
     "pre-commit>=4.6.2",
     "ruff>=0.16.10",
     "ty>=0.0.84",
-    "types-pyyaml>=6.0.12.20260906",
-    "types-usd>=24.5.2",
+    { include-group = "stubs" },
 ]
 test = [
     "bpy~=5.2.0",  # one Blender minor: each compiled bridge build binds to its USD namespace
@@ -119,6 +123,64 @@ possibly-missing-attribute = "error"
 [tool.pyright]
 # Pylance configuration
 extraPaths = ["tools", "tools/feasibility", "tests"]
+
+# The extension's import rules, and the rules between the workspace's packages (packages/README.md#import-rules). 
+# Each library package's own rules are in its pyproject.toml. Tests and tools are no root package, so they reach 
+# into any module.
+[tool.importlinter]
+root_packages = ["proscenium", "proscenium_sync", "proscenium_ui"]
+include_external_packages = true  # so the bpy-free contract sees Blender's modules
+
+# The extension's tiers, highest first. Exhaustive: a module beside the units that no tier lists fails.
+[[tool.importlinter.contracts]]
+name = "The extension's tiers"
+type = "layers"
+containers = ["proscenium"]
+layers = ["addon", "interface"]
+exhaustive = true
+
+[[tool.importlinter.contracts]]
+name = "The extension's units' modules import each other without cycles"
+type = "acyclic_siblings"
+ancestors = ["proscenium.*"]
+
+[[tool.importlinter.contracts]]
+name = "The extension's __init__.py imports no Blender module"
+type = "forbidden"
+source_modules = ["proscenium"]
+forbidden_modules = ["bpy", "mathutils", "idprop", "gpu", "gpu_extras", "bpy_extras", "blf", "bmesh"]
+as_packages = false  # the module alone, not its descendants
+ignore_imports = ["proscenium -> proscenium.addon"]  # register and unregister import it when Blender calls them
+
+# Each library package's public API: no other package imports anything else of it.
+[[tool.importlinter.contracts]]
+name = "Other packages use proscenium_sync's API: bindings and registration"
+type = "protected"
+protected_modules = ["proscenium_sync.*"]
+allowed_importers = ["proscenium_sync"]
+ignore_imports = ["proscenium.** -> proscenium_sync.bindings", "proscenium.** -> proscenium_sync.registration"]
+
+[[tool.importlinter.contracts]]
+name = "Other packages use proscenium_ui's API: the widgets' displays, and widget_updates for scheduling outside a draw"
+type = "protected"
+protected_modules = ["proscenium_ui.*"]
+allowed_importers = ["proscenium_ui"]
+ignore_imports = [
+    "proscenium.** -> proscenium_ui.scene_graph_widget.display",
+    "proscenium.** -> proscenium_ui.property_viewer_widget.display",
+    "proscenium.** -> proscenium_ui.widget_updates",
+]
+
+[[tool.importlinter.contracts]]
+name = "The library packages import no other workspace package"
+type = "forbidden"
+source_modules = ["proscenium_sync", "proscenium_ui"]
+forbidden_modules = ["proscenium"]
+
+[[tool.importlinter.contracts]]
+name = "The library packages import neither the other"
+type = "independence"
+modules = ["proscenium_sync", "proscenium_ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
