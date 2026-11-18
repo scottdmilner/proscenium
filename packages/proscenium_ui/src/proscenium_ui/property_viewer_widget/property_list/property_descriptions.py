@@ -13,12 +13,12 @@ from typing import TYPE_CHECKING, Any
 
 from pxr import Gf, Sdf
 
-from .property_list import ValueSource
+from .property_rows import ValueSource
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from .property_list import (
+    from .property_rows import (
         PropertyDetails,
         PropertyMetadata,
         PropertyRow,

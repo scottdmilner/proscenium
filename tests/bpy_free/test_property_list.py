@@ -13,19 +13,15 @@ import pytest
 from pxr import Gf, Sdf, Usd
 
 from fixtures.scenes import Scene, copy_scene
-from proscenium_ui.property_viewer_widget.property_list import (
-    PropertyListView,
-    PropertyRow,
-    ValueSource,
-    property_descriptions,
-    property_search,
-)
+from proscenium_ui.property_viewer_widget.property_list import PropertyListView, property_descriptions, property_search
+from proscenium_ui.property_viewer_widget.property_list.property_rows import PropertyRow, ValueSource
 from proscenium_ui.widget_model import text_matching
 from proscenium_ui.widget_model.list_steps import StepDirection
 from support.usd import open_stage_without_cache
 
 if TYPE_CHECKING:
-    from proscenium_ui.property_viewer_widget.property_list import PropertyDetails, PropertyList
+    from proscenium_ui.property_viewer_widget.property_list import PropertyList
+    from proscenium_ui.property_viewer_widget.property_list.property_rows import PropertyDetails
 
 BALL = Sdf.Path("/World/Ball")
 VALUES = Sdf.Path("/World/Values")

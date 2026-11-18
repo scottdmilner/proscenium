@@ -1,4 +1,4 @@
-"""The prim tree's rows (proscenium_ui.scene_graph_widget.prim_tree.prim_tree), on the scene graph test scene.
+"""The prim tree's rows (proscenium_ui.scene_graph_widget.prim_tree.prim_rows), on the scene graph test scene.
 
 The scene is scenes/scene_graph/prim_kinds.usda.
 

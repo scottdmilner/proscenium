@@ -65,24 +65,6 @@ type = "protected"
 protected_modules = ["proscenium_ui.property_viewer_widget.display.*"]
 allowed_importers = ["proscenium_ui.property_viewer_widget.display"]
 
-[[tool.importlinter.contracts]]
-name = "prim_tree is reached through its exports"
-type = "protected"
-protected_modules = [
-    "proscenium_ui.scene_graph_widget.prim_tree.prim_tree",
-    "proscenium_ui.scene_graph_widget.prim_tree.prim_tree_view",
-]
-allowed_importers = ["proscenium_ui.scene_graph_widget.prim_tree"]
-
-[[tool.importlinter.contracts]]
-name = "property_list is reached through its exports"
-type = "protected"
-protected_modules = [
-    "proscenium_ui.property_viewer_widget.property_list.property_list",
-    "proscenium_ui.property_viewer_widget.property_list.property_list_view",
-]
-allowed_importers = ["proscenium_ui.property_viewer_widget.property_list"]
-
 # The bpy-free code imports no Blender module, even through another module.
 [[tool.importlinter.contracts]]
 name = "The widgets' models and widget_model import no Blender module"
