@@ -95,11 +95,6 @@ def create_binding(scene: bpy.types.Scene, settings: RequestedSettings, name: st
     return binding_id
 
 
-def has_config(destination: bpy.types.Collection, binding_id: BindingId) -> bool:
-    """Whether destination stores a configuration record for binding_id, without reading it."""
-    return id_property_records.has(destination, config_key(binding_id))
-
-
 def read_index(text: bpy.types.Text) -> LoadedRecord[BindingIndex] | RefusedRecord | None:
     """The binding index text holds, why it can't be read, or None if it holds none."""
     return id_property_records.read(text, INDEX_KEY, INDEX)
@@ -132,11 +127,6 @@ def read_configs() -> Iterator[tuple[bpy.types.Collection, BindingId, LoadedReco
             result = id_property_records.read(collection, config_key(binding_id), CONFIG)
             assert result is not None
             yield collection, binding_id, result
-
-
-def destination_collection_uids() -> frozenset[int]:
-    """The session_uids of the collections read_configs reads, without reading their records."""
-    return frozenset(c.session_uid for c in bpy.data.collections if c.library is None and binding_ids(c))
 
 
 def index_texts() -> list[bpy.types.Text]:
