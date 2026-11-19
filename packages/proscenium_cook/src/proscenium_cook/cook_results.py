@@ -81,6 +81,6 @@ class CookResult:
     """One cook's stages and reports, each keyed by node ID."""
 
     stage_outputs: dict[str, Usd.Stage]  # one per Stage Output that has a stage
-    viewer_stages: dict[str, Usd.Stage]  # one per Viewer the tree holds
+    viewer_stages: dict[str, Usd.Stage]  # one per Viewer that has a stage
     node_reports: dict[str, NodeReport]  # one per node with diagnostics or report data
     tree_diagnostics: tuple[NodeDiagnostic, ...]  # problems that belong to no node

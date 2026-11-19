@@ -50,3 +50,20 @@ class "StageOutput" (
         doesn't convert."""
     )
 }
+
+class "Viewer" (
+    doc = """Names the stage the editor's UI shows: the stage composed on its input Layer, with every payload loaded,
+    which feeds no binding and isn't converted."""
+)
+{
+    int node:version = 1
+    opaque inputs:layer (
+        customData = {
+            string socket = "Layer"
+        }
+    )
+    bool props:context = 1 (
+        doc = """Composes a New Layer Zone's layer over the zone's context; any other layer has none, and is
+        composed alone."""
+    )
+}

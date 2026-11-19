@@ -1,0 +1,67 @@
+#usda 1.0
+# Viewers on read layers (docs/phase3/node-tree.md "Viewer"). View and Out are linked to Read's base.usda; ContextOff
+# too, with Context off, which a Layer from File's layer composes the same way. BareView's root, no_metrics.usda,
+# authors no metrics, and a Viewer doesn't warn of it. Unlinked has nothing linked, and FromMissing's link brings
+# nothing, since Missing's file doesn't exist, so neither has a stage.
+
+def NodeTree "Tree"
+{
+    int tree:format = 1
+
+    def LayerFromFile "Read"
+    {
+        int node:version = 1
+        string props:path = "//base.usda"
+        opaque outputs:layer
+    }
+
+    def Viewer "View"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+    }
+
+    def StageOutput "Out"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+    }
+
+    def Viewer "ContextOff"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Read.outputs:layer>
+        bool props:context = 0
+    }
+
+    def LayerFromFile "ReadBare"
+    {
+        int node:version = 1
+        string props:path = "//no_metrics.usda"
+        opaque outputs:layer
+    }
+
+    def Viewer "BareView"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/ReadBare.outputs:layer>
+    }
+
+    def Viewer "Unlinked"
+    {
+        int node:version = 1
+    }
+
+    def LayerFromFile "Missing"
+    {
+        int node:version = 1
+        string props:path = "//missing.usda"
+        opaque outputs:layer
+    }
+
+    def Viewer "FromMissing"
+    {
+        int node:version = 1
+        opaque inputs:layer.connect = </Tree/Missing.outputs:layer>
+    }
+}

@@ -75,9 +75,11 @@ Python_add_library(_cook MODULE WITH_SOABI
   node_graph.cpp
   node_ids.cpp
   node_input_reader.cpp
+  nodes/composed_stage.cpp
   nodes/layer_from_file.cpp
   nodes/node_registry.cpp
   nodes/stage_output.cpp
+  nodes/viewer.cpp
   python_bindings.cpp
   python_error_translation.cpp
   tree_cook.cpp

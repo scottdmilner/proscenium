@@ -11,6 +11,7 @@ const std::vector<NodeRegistration>& NodeRegistry() {
   static const std::vector<NodeRegistration> registry{
       {"LayerFromFile", TaskRole{RunLayerFromFile}},
       {"StageOutput", TaskRole{RunStageOutput}},
+      {"Viewer", TaskRole{RunViewer}},
   };
   return registry;
 }

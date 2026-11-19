@@ -94,7 +94,8 @@ CookResult TreeCook::Cook() {
           if constexpr (std::is_same_v<Role, ValueRole>) {
             outputs[index] = role.compute(ValueInputs(node, inputs, cache, diagnostics, baseDirectory_));
           } else if constexpr (std::is_same_v<Role, TaskRole>) {
-            TaskContext context(node, inputs, cache, diagnostics, baseDirectory_, outputs[index], result.stageOutputs);
+            TaskContext context(node, inputs, cache, diagnostics, baseDirectory_, outputs[index], result.stageOutputs,
+                                result.viewerStages);
             role.run(context);
           }
           // Authoring and zone nodes run inside their zone's task, from step 6 of the plan.

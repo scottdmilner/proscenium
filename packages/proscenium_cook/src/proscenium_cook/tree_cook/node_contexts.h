@@ -131,12 +131,16 @@ class AuthoringContext final : public NodeContext {
 // The stages a cook returns, each keyed by node ID.
 using StagesByNode = std::map<std::string, PXR_NS::UsdStageRefPtr>;
 
-// A task of its own: it commits its outputs for the tasks downstream of it, and a Stage Output its stage.
+// A task of its own: it commits its outputs for the tasks downstream of it, and a Stage Output or Viewer its stage.
 class TaskContext final : public NodeContext {
  public:
   TaskContext(const TreeNode& node, const NodeInputReader& inputs, NodeCache& cache, CookDiagnostics& diagnostics,
-              const std::string& baseDirectory, ValueOutputs& outputs, StagesByNode& stageOutputs)
-      : NodeContext(node, inputs, cache, diagnostics, baseDirectory), outputs_(outputs), stageOutputs_(stageOutputs) {}
+              const std::string& baseDirectory, ValueOutputs& outputs, StagesByNode& stageOutputs,
+              StagesByNode& viewerStages)
+      : NodeContext(node, inputs, cache, diagnostics, baseDirectory),
+        outputs_(outputs),
+        stageOutputs_(stageOutputs),
+        viewerStages_(viewerStages) {}
 
   // Commits the node's outputs, as its generated Write<Type>Outputs gives them.
   void SetOutputs(ValueOutputs outputs) const { outputs_ = std::move(outputs); }
@@ -144,9 +148,13 @@ class TaskContext final : public NodeContext {
   // Returns stage as the cook's stage for this Stage Output.
   void SetStageOutput(PXR_NS::UsdStageRefPtr stage) const { stageOutputs_[NodeId()] = std::move(stage); }
 
+  // Returns stage as the cook's stage for this Viewer.
+  void SetViewerStage(PXR_NS::UsdStageRefPtr stage) const { viewerStages_[NodeId()] = std::move(stage); }
+
  private:
   ValueOutputs& outputs_;
   StagesByNode& stageOutputs_;
+  StagesByNode& viewerStages_;
 };
 
 }  // namespace proscenium

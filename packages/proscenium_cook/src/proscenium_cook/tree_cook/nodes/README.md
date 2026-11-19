@@ -8,5 +8,7 @@ Each `<type>_attributes.h` holds the node type's inputs and properties, and its 
 |---|---|
 | `node_registry.h`, `node_registry.cpp` | The one list of node types, each a type name mapped to its role's function. Loading the node definitions checks it against them, each way. |
 | `node_types.h` | Each node type's function, declared for the registry. |
+| `composed_stage.h`, `composed_stage.cpp` | The stage a Stage Output or Viewer composes on its layer, with every payload loaded, kept in the node's cache and returned again while its root layer stays the same. |
 | `layer_from_file.cpp`, `layer_from_file_attributes.h` | Layer from File, a task: the process's shared copy of the layer at its Path, kept open in its cache between cooks. Reports an empty Path, a missing file, and one that doesn't parse. |
-| `stage_output.cpp`, `stage_output_attributes.h` | Stage Output, a task: the stage composed on its linked Layer, with every payload loaded, kept in its cache and returned again while its root layer stays the same. Warns when nothing is linked, and when the root layer authors no `upAxis` or `metersPerUnit`. |
+| `stage_output.cpp`, `stage_output_attributes.h` | Stage Output, a task: its composed stage on its linked Layer. Warns when nothing is linked, and when the root layer authors no `upAxis` or `metersPerUnit`. |
+| `viewer.cpp`, `viewer_attributes.h` | Viewer, a task: its composed stage on its linked Layer, which the editor's UI shows. Its Context does nothing until zones have a context. Reports nothing of its own. |

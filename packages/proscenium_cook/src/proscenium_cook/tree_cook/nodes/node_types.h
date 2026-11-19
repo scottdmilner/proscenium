@@ -8,5 +8,6 @@ namespace proscenium {
 
 void RunLayerFromFile(TaskContext& context);  // layer_from_file.cpp
 void RunStageOutput(TaskContext& context);    // stage_output.cpp
+void RunViewer(TaskContext& context);         // viewer.cpp
 
 }  // namespace proscenium
