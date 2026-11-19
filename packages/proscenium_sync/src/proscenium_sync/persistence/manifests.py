@@ -13,7 +13,7 @@ which aren't persisted: M7 decides where it holds them.
 Nothing is stored on the managed datablocks: a datablock is managed by the binding whose manifest names it (OWN-16).
 
 - A duplicate or appended copy of managed content is unmanaged, and content two manifests name is ambiguous.
-- Managed dependents come from inverting the uses (dependents). Unmanaged users are read from Blender's user graph
+- Managed dependents come from inverting the uses. Unmanaged users are read from Blender's user graph
   when an operation needs them, since nothing persistent can track them.
 - A manifest's pointers are users of the datablocks they name. Content the user deletes in the interface
   (Object > Delete) stays in the file, still named and so claimed, until a refresh or cleanup finds it linked
@@ -273,15 +273,6 @@ def write_manifest_entries(
     """
     id_property_records.write_items(destination, MANIFEST_KEY, MANIFEST, manifest, "entries", changed, removed)
     return LoadedRecord(manifest, MANIFEST.version)
-
-
-def dependents(manifest: Manifest) -> Mapping[str, set[str]]:
-    """For each resource, the managed resources in the same manifest that use it."""
-    found: dict[str, set[str]] = {entry_key: set() for entry_key in manifest.entries}
-    for entry_key, entry in manifest.entries.items():
-        for used in entry.dependency_entry_keys:
-            found[used].add(entry_key)
-    return found
 
 
 def existing_or_new_entry_keys(manifest: Manifest, identities: Iterable[CopyResourceIdentity]) -> list[str]:
