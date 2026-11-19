@@ -47,7 +47,7 @@ STAGES += [
     "objects from the buffer",
 ]
 STAGES += ["matrices from the buffer", "batch groups", "drop"]
-TUPLES = ["partitions", "resources", "correspondence", "geometries", "diagnostics"]
+TUPLES = ["resources", "correspondence", "geometries", "diagnostics"]
 BUFFERS = [
     "copy_world_matrices",
     "copy_object_resource_indices",

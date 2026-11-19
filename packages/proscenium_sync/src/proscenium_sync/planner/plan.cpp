@@ -344,7 +344,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
     throw std::invalid_argument("The planner plans representation version 1 only");
   // An empty plan at the snapshot's time code; the loop below fills every other member.
   auto plan = std::make_shared<Plan>(
-      Plan{snapshot.timeCode, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
+      Plan{snapshot.timeCode, context, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}});
   // The viewport's purposes always include guide, so a guide explicitly made visible can display there (VIS-04).
   TfTokenVector viewport = settings.viewportPurposes;
   if (!Includes(viewport, UsdGeomTokens->guide)) viewport.push_back(UsdGeomTokens->guide);
@@ -368,7 +368,7 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
   std::unordered_map<const PrimRecord*, int> geometries;
 
   // 3. Each drawn gprim a destination shows becomes a drawn copy: one element appended to every copy-table buffer,
-  //    its partition and resources, and its correspondence entry, all in the same order.
+  //    its resources, and its correspondence entry, all in the same order.
   for (const DrawnGprim& gprim : gprims) {
     // 3a. Participation. A copy neither destination's purposes include is left out of the plan; an invisible one
     //     stays, shown in neither. A guide shows only where it is explicitly visible, so one that isn't is never
@@ -426,21 +426,17 @@ PlanPtr BuildPlan(const Snapshot& snapshot, const PlanSettings& settings, const 
            0},
           *gprim.prim, *gprim.copy, gprim.source);
     }
-    // 3d. The copy's partition and its resources, appended to Plan::resources in partition order: its object first,
-    //     then what the object uses, a bounds mesh unless it's a marker, whose object holds no data, and a shear
-    //     parent if it shears. Each resource's source entity is the copy's source path, an instance-proxy path inside
-    //     instances, which with its role gives its identity.
+    // 3d. The copy's resources, appended to Plan::resources in copy order: its object first, then what the object
+    //     uses, a bounds mesh unless it's a marker, whose object holds no data, and a shear parent if it shears.
+    //     Each resource's source entity is the copy's source path, an instance-proxy path inside instances, which
+    //     with its role gives its identity.
     const std::size_t object = plan->resources.size();
-    Partition partition{{object}};
     std::vector<std::size_t> uses;  // the object's dependencies: the owned resources, which follow it
     std::vector<PlannedResource> owned;
     if (!marker) owned.push_back({Role::kBoundsMesh, gprim.source, 0, {gprim.source}, {}});
     if (sheared) owned.push_back({Role::kShearParent, gprim.source, 0, {gprim.source}, {}});
-    for (std::size_t i = 0; i < owned.size(); ++i) {
-      partition.resourceIndices.push_back(object + 1 + i);
-      uses.push_back(object + 1 + i);
-    }
-    plan->partitions.push_back(std::move(partition));
+    uses.reserve(owned.size());
+    for (std::size_t i = 0; i < owned.size(); ++i) uses.push_back(object + 1 + i);
     plan->resources.push_back({Role::kObject, gprim.source, 0, {gprim.source}, std::move(uses)});
     plan->resources.insert(plan->resources.end(), owned.begin(), owned.end());
     // The display element and the source entity it shows, which interaction maps picks through.

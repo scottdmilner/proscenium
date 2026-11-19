@@ -185,8 +185,6 @@ void WrapPlan() {
       .add_property(
           "dependency_resource_indices",
           +[](const PlannedResource& r) { return ToTuple(r.dependencyResourceIndices); });
-  bp::class_<Partition>("Partition", bp::no_init)
-      .add_property("resource_indices", +[](const Partition& p) { return ToTuple(p.resourceIndices); });
   bp::class_<CorrespondenceEntry>("CorrespondenceEntry", bp::no_init)
       .add_property(
           "object_resource_index", +[](const CorrespondenceEntry& e) { return e.objectResourceIndex; })
@@ -223,8 +221,6 @@ void WrapPlan() {
           "time_code", +[](const PlanView& p) { return p.data->timeCode; })
       .add_property(
           "context", +[](const PlanView& p) { return p.data->context; })
-      .add_property(
-          "partitions", +[](const PlanView& p) { return ToTuple(p.data->partitions); })
       .add_property(
           "resources", +[](const PlanView& p) { return ToTuple(p.data->resources); })
       .add_property(

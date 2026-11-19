@@ -35,7 +35,6 @@ def _contents(plan: planner.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
-        [p.resource_indices for p in plan.partitions],
         [
             (r.role, r.source_entity_path, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
             for r in plan.resources

@@ -69,13 +69,14 @@ def test_exactly_the_sheared_copies_get_a_shear_parent(fixture: str, request: py
         if copy.shear_transform_split is not None:
             expected.add(("shear parent", path, 0))
         resources = plan.resources  # each read builds the tuple anew
-        (partition,) = (p for p in plan.partitions if copy.object_resource_index in p.resource_indices)
+        resource_indices = (
+            copy.object_resource_index,
+            *resources[copy.object_resource_index].dependency_resource_indices,
+        )
         assert {
             (resources[r].role, resources[r].source_entity_path, resources[r].object_index_in_copy)
-            for r in partition.resource_indices
+            for r in resource_indices
         } == expected
-        used = {resources[u].role for u in resources[copy.object_resource_index].dependency_resource_indices}
-        assert used == {role for role, _, _ in expected if role != "object"}, path
 
 
 def test_a_reflection_in_a_sheared_copy_moves_into_a_negative_scale(stress: appearance.StressScene) -> None:

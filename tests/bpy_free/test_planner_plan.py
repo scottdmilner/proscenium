@@ -38,7 +38,6 @@ def _contents(plan: planner.Plan) -> tuple[Any, ...]:
     """Everything the plan holds, as plain values."""
     return (
         plan.time_code,
-        [p.resource_indices for p in plan.partitions],
         [
             (r.role, r.source_entity_path, r.object_index_in_copy, r.source_entity_paths, r.dependency_resource_indices)
             for r in plan.resources
@@ -98,7 +97,7 @@ def test_world_transforms_at_the_time_code(time_code: float | None, tmp_path: Pa
             assert copy.world_matrix.ExtractTranslation() == translation(source, time_code)
 
 
-def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None:
+def test_ownership_entries_dependencies_and_correspondence(tmp_path: Path) -> None:
     with transaction.retirement_failure(tmp_path) as scene:
         plan = _plan(scene.caller)
         assert len({_identity(r) for r in plan.resources}) == transaction.resource_count(PayloadPolicy.LOAD_ALL)
@@ -117,9 +116,6 @@ def test_ownership_entries_partitions_and_correspondence(tmp_path: Path) -> None
                 (source,),
                 (),
             )
-        assert sorted(p.resource_indices for p in plan.partitions) == sorted(
-            (c.object_resource_index, c.bounds_mesh_resource_index) for c in shown.values()
-        )
         assert sorted((c.object_resource_index, c.source_path) for c in plan.correspondence) == sorted(
             (c.object_resource_index, source) for source, c in shown.items()
         )
