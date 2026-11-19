@@ -151,6 +151,17 @@ def test_reload_named_layers(tmp_path: Path) -> None:
         assert all(Sdf.Layer.Find(str(path)).dirty for path in scene.dirty_contributing.values())
 
 
+def test_reload_named_layers_from_a_generator(tmp_path: Path) -> None:
+    # The identifiers are read once, so a generator names the same layers as a list.
+    with source_access.dirty_layer(tmp_path) as scene:
+        source = binding(scene.caller)
+        stage = source.acquire_evaluation_stage(PayloadPolicy.LOAD_ALL)
+        ref = scene.dirty_contributing["ref"]
+        source.reload(PayloadPolicy.LOAD_ALL, (identifier for identifier in [str(ref)]))
+        assert read_values(stage) == scene.in_process_values | {"ref": scene.disk_values["ref"]}
+        assert not Sdf.Layer.Find(str(ref)).dirty
+
+
 def test_unchanged_layers_are_not_reloaded(tmp_path: Path) -> None:
     # A forced reload would notify every stage using the layer even when nothing changed.
     root = copy_scene(Scene.SOURCE_ACCESS, tmp_path) / "root.usda"
