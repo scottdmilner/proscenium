@@ -664,7 +664,7 @@ What it costs:
 - The planner's [boundary rules](../../packages/proscenium_sync/src/proscenium_sync/planner/AGENTS.md#boundary-rules) apply to the new module: Tf errors and C++ exceptions become Python exceptions, buffers are read-only and typed as Blender's, the GIL is released while waiting, and OpenUSD workarounds are labeled. The planner's small error translation is duplicated at first rather than split into a shared library.
 - The new package gets its contracts in its own `pyproject.toml`'s `[tool.importlinter]`, with their `lint-imports` hook, and its place in the root's contracts between packages ([import rules](../../packages/README.md#import-rules)), its directory READMEs, an `AGENTS.md` beside its C++ like the planner's, and a line in the root AGENTS.md's repository map.
 
-This note holds the design and its decisions; there's no plan file in `docs/plans/` while Phase 3 has no milestone. PROJECT.md records compiled components in DECISIONS.md, so the module gets a row there when it becomes product code.
+This note holds the design and its decisions, and [the cook module's plan](../plans/cook-module.md) builds it, a node or two at a time. PROJECT.md records compiled components in DECISIONS.md, so the module gets a row there when it becomes product code.
 
 ### The tree as plain data
 
