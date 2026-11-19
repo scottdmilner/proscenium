@@ -443,10 +443,7 @@ class Bindings:
         if published is None or current is None or found.destination is None:
             return True
         shown = binding_state.read_generation(found.destination)
-        showing_it = isinstance(shown, id_property_records.LoadedRecord) and held_plans.generation_key(
-            shown.record
-        ) == held_plans.generation_key(published)
-        return not showing_it or published.source_revision != current.source_revision
+        return binding_status.possibly_out_of_date(shown, published, current)
 
     def live_stage(self, binding_id: BindingId) -> Usd.Stage | None:
         """The caller's attached stage, or None when unattached or the configuration is unusable."""

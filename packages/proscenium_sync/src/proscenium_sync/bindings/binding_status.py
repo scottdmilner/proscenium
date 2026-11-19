@@ -11,13 +11,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from proscenium_sync.persistence import binding_state, id_property_records
-from proscenium_sync.runtime import binding_operations
+from proscenium_sync.runtime import binding_operations, held_plans
 
 if TYPE_CHECKING:
     import bpy
 
     from proscenium_sync.results import ResultState
     from proscenium_sync.source_access import BindingId
+    from proscenium_sync.source_access.stages import BindingStages
 
     from .process_bindings import ProcessBindings
 
@@ -35,6 +36,22 @@ class BindingStatus:
     last_attempt: ResultState | None  # how its last synchronization ended; None before any, or if it can't be read
 
 
+def possibly_out_of_date(
+    shown: id_property_records.LoadedRecord[binding_state.GenerationMetadata]
+    | id_property_records.RefusedRecord
+    | None,
+    published: binding_state.GenerationMetadata | None,
+    current: BindingStages | None,
+) -> bool:
+    """Whether the shown generation differs from this session's publication or current source revision."""
+    if published is None or current is None:
+        return True
+    showing_it = isinstance(shown, id_property_records.LoadedRecord) and held_plans.generation_key(
+        shown.record
+    ) == held_plans.generation_key(published)
+    return not showing_it or published.source_revision != current.source_revision
+
+
 def binding_statuses(bindings: ProcessBindings, scene: bpy.types.Scene) -> list[BindingStatus]:
     """The status of each binding the scene lists, in Bindings.in_scene's order."""
     statuses = []
@@ -47,13 +64,15 @@ def binding_statuses(bindings: ProcessBindings, scene: bpy.types.Scene) -> list[
             refusal = f"Copies with no canonical candidate: {found.disabled_candidate_report.reason}"
         attempt = None if destination is None else binding_state.read_last_attempt(destination)
         generation = None if destination is None else binding_state.read_generation(destination)
+        current = bindings.stages.get(found.binding_id) if found.usable else None
         statuses.append(
             BindingStatus(
                 binding_id=found.binding_id,
                 name=None if destination is None else destination.name,
                 refusal=refusal,
-                attached=found.usable and bindings.live_stage(found.binding_id) is not None,
-                possibly_out_of_date=not found.usable or bindings.possibly_out_of_date(found.binding_id),
+                attached=current is not None and current.live_stage is not None,
+                possibly_out_of_date=not found.usable
+                or possibly_out_of_date(generation, bindings.published.get(found.binding_id), current),
                 published=isinstance(generation, id_property_records.LoadedRecord),
                 last_attempt=attempt.record.result_state
                 if isinstance(attempt, id_property_records.LoadedRecord)
