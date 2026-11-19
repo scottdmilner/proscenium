@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <set>
+#include <utility>
 
 PXR_NAMESPACE_USING_DIRECTIVE
 
@@ -81,30 +82,47 @@ std::vector<OutputRef> NodeGraph::Sources(std::size_t node, const TfToken& input
   std::vector<OutputRef> sources;
   const auto links = tree_.nodes[node].links.find(input);
   if (links == tree_.nodes[node].links.end()) return sources;
-  // Traced in connection order: pending holds what's left, last first.
-  std::vector<OutputRef> pending;
-  for (auto link = links->second.rbegin(); link != links->second.rend(); ++link) {
-    pending.push_back({link->sourceNode, link->sourceAttribute});
+  for (const NodeLink& link : links->second) {
+    for (OutputRef& source : LinkSources(link)) sources.push_back(std::move(source));
   }
+  return sources;
+}
+
+std::vector<OutputRef> NodeGraph::LinkSources(const NodeLink& link) const {
+  std::vector<OutputRef> sources = LinkOrigins(link);
+  sources.erase(std::remove_if(sources.begin(), sources.end(),
+                               [&](const OutputRef& origin) {
+                                 const TreeNode& source = tree_.nodes[origin.node];
+                                 return source.muted || !source.runnable;
+                               }),
+                sources.end());
+  return sources;
+}
+
+std::vector<OutputRef> NodeGraph::LinkOrigins(const NodeLink& link) const {
+  std::vector<OutputRef> origins;
+  // Traced depth first, in connection order: pending holds what's left, last first. A node on a cycle ends the
+  // tracing, so it ends.
+  std::vector<OutputRef> pending{{link.sourceNode, link.sourceAttribute}};
   while (!pending.empty()) {
     const OutputRef ref = pending.back();
     pending.pop_back();
     const TreeNode& source = tree_.nodes[ref.node];
-    if (source.onCycle || source.definition == nullptr) continue;
     // A muted node passes its pass-through input on even when an error keeps it from running.
-    if (!source.muted) {
-      if (source.runnable) sources.push_back(ref);
+    const AttributeDefinition* output = source.muted && !source.onCycle && source.definition
+                                            ? source.definition->FindAttribute(ref.attributeName)
+                                            : nullptr;
+    const auto through =
+        output && !output->mutePassThrough.IsEmpty() ? source.links.find(output->mutePassThrough) : source.links.end();
+    if (through == source.links.end()) {
+      origins.push_back(ref);
       continue;
     }
-    const AttributeDefinition* output = source.definition->FindAttribute(ref.attributeName);
-    if (output == nullptr || output->mutePassThrough.IsEmpty()) continue;
-    const auto through = source.links.find(output->mutePassThrough);
-    if (through == source.links.end()) continue;
-    for (auto link = through->second.rbegin(); link != through->second.rend(); ++link) {
-      pending.push_back({link->sourceNode, link->sourceAttribute});
+    for (auto next = through->second.rbegin(); next != through->second.rend(); ++next) {
+      pending.push_back({next->sourceNode, next->sourceAttribute});
     }
   }
-  return sources;
+  return origins;
 }
 
 }  // namespace proscenium

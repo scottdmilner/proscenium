@@ -1,6 +1,6 @@
 """TreeCook on malformed trees: each problem is a diagnostic, never an exception (docs/plans/cook-module.md step 3).
 
-There are no node types before step 4, so every node's type is unknown, and every tree cooks to no stages.
+The trees' nodes are Relay or Scope, which are no node types, where a test needs only the tree's structure.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def test_sublayer_and_arc_are_tree_errors(tmp_path: Path) -> None:
 
 def test_prim_names_decode_to_node_ids(tmp_path: Path) -> None:
     result = _cook(tmp_path, "node_names.usda")
-    # The note's examples, each decoded exactly; every type is unknown, so each node has a report.
+    # The note's examples, each decoded exactly; Relay is no node type, so each node has a report.
     assert set(result.node_reports) == {"Set Attribute", "N.001", "1st", "Größe", "a😀b", "_2e_"}
     assert result.node_reports["Set Attribute"].diagnostics[0].source_path == "/Tree/Set_20_Attribute"
     invalid = [(d.code, d.source_path) for d in result.tree_diagnostics]
@@ -75,7 +75,7 @@ def test_unknown_node_type_is_the_nodes_error(tmp_path: Path) -> None:
     report = _cook(tmp_path, "node_names.usda").node_reports["Set Attribute"]
     (diagnostic,) = report.diagnostics
     assert (diagnostic.severity, diagnostic.code) == (Severity.ERROR, DiagnosticCode.UNKNOWN_NODE_TYPE)
-    assert "SetAttribute" in diagnostic.message
+    assert "Relay" in diagnostic.message
     assert report.report_data == {}
 
 
@@ -88,7 +88,7 @@ def test_connection_to_no_output_is_unresolved(tmp_path: Path) -> None:
     ]:
         unresolved = [d for d in reports[node_id].diagnostics if d.code == DiagnosticCode.UNRESOLVED_CONNECTION]
         assert [d.source_path for d in unresolved] == [input_path], node_id
-    assert _codes(reports["Source"].diagnostics) == [DiagnosticCode.UNKNOWN_NODE_TYPE]
+    assert "Source" not in reports  # it reads base.usda, and its output isn't what the others' connections name
 
 
 def test_nodes_on_a_cycle_get_its_error(tmp_path: Path) -> None:

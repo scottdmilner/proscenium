@@ -44,7 +44,7 @@ class TreeCook {
 
  private:
   PXR_NS::UsdStageRefPtr treeStage_;
-  [[maybe_unused]] std::string baseDirectory_;  // for // paths, from step 4 of the plan; empty for none
+  std::string baseDirectory_;  // for // paths; empty for none
   std::shared_ptr<const NodeDefinitions> definitions_;
   // By node ID and type name, kept while the tree holds a node with both: Blender reuses a deleted node's name.
   std::map<std::pair<std::string, PXR_NS::TfToken>, NodeCache> caches_;

@@ -2,12 +2,16 @@
 
 #include <cstring>
 
+#include "nodes/node_types.h"
+
 namespace proscenium {
 
 const std::vector<NodeRegistration>& NodeRegistry() {
-  // One line per node type, each declared in its own .cpp file beside this one. The first arrive with step 4 of
-  // docs/plans/cook-module.md.
-  static const std::vector<NodeRegistration> registry{};
+  // One line per node type, each defined in its own .cpp file beside this one and declared in node_types.h.
+  static const std::vector<NodeRegistration> registry{
+      {"LayerFromFile", TaskRole{RunLayerFromFile}},
+      {"StageOutput", TaskRole{RunStageOutput}},
+  };
   return registry;
 }
 

@@ -36,6 +36,17 @@ enum class DiagnosticCode : std::uint8_t {
   kIncompatibleLink,        // a link between incompatible socket kinds or value types
   kTooManyLinks,            // several links into an input that takes one
   kCycle,                   // a node on a cycle of links
+  kNoUpstreamValue,         // a link that brings nothing, from a node that failed, can't run, or is muted
+  kUsdError,                // a USD error the node raised while it ran, which it doesn't report as its own
+  // A Path property's (docs/phase3/node-tree.md "The tree as plain data"):
+  kMissingBaseDirectory,  // a // path with no base directory: the .blend isn't saved
+  kWorkingDirectoryPath,  // a path starting with ./ or ../, which resolves against the working directory
+  // A node type's own:
+  kMissingPath,          // Layer from File: an empty Path
+  kFileNotFound,         // Layer from File: no file at Path
+  kUnreadableFile,       // Layer from File: a file that doesn't parse as a layer
+  kUnlinkedInput,        // Stage Output: nothing linked into its Layer
+  kMissingStageMetrics,  // Stage Output: a root layer that authors no upAxis or metersPerUnit
 };
 
 // Every code the cook reports, which Python's list must hold.
@@ -57,6 +68,15 @@ inline constexpr std::array kDiagnosticCodes{
     DiagnosticCode::kIncompatibleLink,
     DiagnosticCode::kTooManyLinks,
     DiagnosticCode::kCycle,
+    DiagnosticCode::kNoUpstreamValue,
+    DiagnosticCode::kUsdError,
+    DiagnosticCode::kMissingBaseDirectory,
+    DiagnosticCode::kWorkingDirectoryPath,
+    DiagnosticCode::kMissingPath,
+    DiagnosticCode::kFileNotFound,
+    DiagnosticCode::kUnreadableFile,
+    DiagnosticCode::kUnlinkedInput,
+    DiagnosticCode::kMissingStageMetrics,
 };
 
 // The code's name in Python's list, such as "unknown-node-type".

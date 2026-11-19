@@ -45,6 +45,17 @@ class DiagnosticCode(StrEnum):
     INCOMPATIBLE_LINK = "incompatible-link"  # a link between incompatible socket kinds or value types
     TOO_MANY_LINKS = "too-many-links"  # several links into an input that takes one
     CYCLE = "cycle"  # a node on a cycle of links
+    NO_UPSTREAM_VALUE = "no-upstream-value"  # a link that brings nothing: its node failed, can't run, or is muted
+    USD_ERROR = "usd-error"  # a USD error a node raised while it ran, which it doesn't report as its own
+    # A Path property's:
+    MISSING_BASE_DIRECTORY = "missing-base-directory"  # a // path with no base directory: the .blend isn't saved
+    WORKING_DIRECTORY_PATH = "working-directory-path"  # a ./ or ../ path, which resolves against the working directory
+    # A node type's own:
+    MISSING_PATH = "missing-path"  # Layer from File: an empty Path
+    FILE_NOT_FOUND = "file-not-found"  # Layer from File: no file at Path
+    UNREADABLE_FILE = "unreadable-file"  # Layer from File: a file that doesn't parse as a layer
+    UNLINKED_INPUT = "unlinked-input"  # Stage Output: nothing linked into its Layer
+    MISSING_STAGE_METRICS = "missing-stage-metrics"  # Stage Output: a root layer with no upAxis or metersPerUnit
 
 
 @dataclass(frozen=True)

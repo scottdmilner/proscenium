@@ -1,0 +1,12 @@
+#usda 1.0
+# The payload base.usda's /World/Chair loads: a chair whose Seat is a prim only a loaded payload shows.
+(
+    defaultPrim = "Chair"
+)
+
+def Xform "Chair"
+{
+    def Cube "Seat"
+    {
+    }
+}

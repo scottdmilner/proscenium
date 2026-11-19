@@ -12,12 +12,13 @@ These rules cover the cook's C++. [README.md](README.md) lists what each file ho
 
 A node type is a registered function in its role's signature (`node_roles.h`), never a class with state ([the plan](../../../../../docs/plans/cook-module.md#node-types-in-c)). Adding one takes, in the same change:
 - its definition, a `class` prim in `../node_definitions.usda`;
-- its input header, from `uv run python tools/node_inputs.py render`, never edited by hand;
-- one `.cpp` file in `nodes/` with its function, its diagnostic codes, and its helpers in an anonymous namespace;
+- its attribute header beside it in `nodes/`, from `uv run python tools/node_attributes.py render`, never edited by hand;
+- one `.cpp` file in `nodes/` with its function and its helpers in an anonymous namespace, and its function's declaration in `nodes/node_types.h`;
+- its diagnostic codes, in `cook_diagnostics.h` and in Python's `DiagnosticCode`, which importing the package checks against each other;
 - its line in `nodes/node_registry.cpp`, and its source in `CMakeLists.txt`;
 - its entry in `nodes/README.md`.
 
-Behavior stays in C++, never in the definitions file. A node reads its inputs and properties only through its generated struct, so renaming or retyping one breaks the compile of the node that reads it.
+Behavior stays in C++, never in the definitions file. A node reads its inputs and properties, commits its outputs, and names any of them only through its generated structs, so renaming or retyping one breaks the compile of the node that uses it.
 
 ## The planner's rules
 

@@ -1,6 +1,6 @@
 #usda 1.0
 # A cycle of links, A to B and back, with C downstream of the cycle and D apart from it: A and B each get a cycle
-# error, C and D don't. Each node's type is unknown before step 4, which is its other error.
+# error, C and D don't. Relay is no node type, so each node's other error is unknown-node-type.
 
 def NodeTree "Tree"
 {

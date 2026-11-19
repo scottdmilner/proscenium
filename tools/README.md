@@ -12,7 +12,7 @@ The repository's scripts: the build, the checks that pre-commit runs, and helper
 | `launch_blender.py` | Builds the zip and starts an installed Blender of the locked release with it installed and enabled, with its user dirs in `build/blender-user/` so the user's own Blender setup is untouched (`uv run proscenium-blender [-- BLENDER_ARGS...]`). For development only, never for distributing the zip. |
 | `clang_tidy.py` | Runs clang-tidy on the planner, the cook, and the Hydra bridge, each with its build's compile commands (a pre-commit hook). |
 | `matrix.py` | Checks and renders the requirement-to-test matrix. |
-| `node_inputs.py` | Writes the cook's typed input headers, one per node type, from its node definitions, or checks that they're current (a pre-commit hook). |
+| `node_attributes.py` | Writes the cook's typed attribute headers, one per node type beside its `.cpp`, from its node definitions, or checks that they're current (a pre-commit hook). |
 | `row_icon_masks.py` | Makes the scene graph widget's masks of Blender's row icons from its icon SVGs, which the widget recolors for instances (`uv run --group icons python tools/row_icon_masks.py`: the `icons` group holds its SVG renderer and PNG decoder, apart from `dev`). |
 | `scene_graph_demo.py` | Hosts the scene graph and property viewer widgets in the 3D View's and node editor's sidebars, for trying them by hand in the Blender binary (`Blender --python tools/scene_graph_demo.py`). |
 | `alab_checksums.py`, `alab_inventory.py` | Pin and inventory the ALab production-scale fixture ([docs/testing/alab/](../docs/testing/alab/)). |

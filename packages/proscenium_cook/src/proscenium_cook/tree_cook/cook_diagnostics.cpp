@@ -43,6 +43,24 @@ const char* DiagnosticCodeName(DiagnosticCode code) {
       return "too-many-links";
     case DiagnosticCode::kCycle:
       return "cycle";
+    case DiagnosticCode::kNoUpstreamValue:
+      return "no-upstream-value";
+    case DiagnosticCode::kUsdError:
+      return "usd-error";
+    case DiagnosticCode::kMissingBaseDirectory:
+      return "missing-base-directory";
+    case DiagnosticCode::kWorkingDirectoryPath:
+      return "working-directory-path";
+    case DiagnosticCode::kMissingPath:
+      return "missing-path";
+    case DiagnosticCode::kFileNotFound:
+      return "file-not-found";
+    case DiagnosticCode::kUnreadableFile:
+      return "unreadable-file";
+    case DiagnosticCode::kUnlinkedInput:
+      return "unlinked-input";
+    case DiagnosticCode::kMissingStageMetrics:
+      return "missing-stage-metrics";
   }
   return "";
 }

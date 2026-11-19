@@ -2,6 +2,7 @@
 //
 // Each entry point translates errors as python_error_translation.h describes. A cook's result crosses as plain Python
 // data, which proscenium_cook.cook_api turns into the package's own types; paths cross as strings.
+#include <pxr/base/tf/makePyConstructor.h>
 #include <pxr/base/tf/token.h>
 #include <pxr/pxr.h>
 
@@ -59,9 +60,13 @@ bp::list DiagnosticTuples(const std::vector<NodeDiagnostic>& diagnostics) {
   return tuples;
 }
 
+// The stages by node ID, each a Usd.Stage that Python owns. pxr's Python holds a stage by weak pointer, so a stage
+// converted as a plain RefPtr would expire with the result; the factory hands Python ownership, as Usd.Stage.Open's
+// binding does.
 bp::dict Stages(const std::map<std::string, UsdStageRefPtr>& stages) {
+  using OwnedStage = TfPyRefPtrFactory<>::apply<UsdStageRefPtr>::type;
   bp::dict byNode;
-  for (const auto& [nodeId, stage] : stages) byNode[nodeId] = stage;
+  for (const auto& [nodeId, stage] : stages) byNode[nodeId] = bp::object(bp::handle<>(OwnedStage()(stage)));
   return byNode;
 }
 

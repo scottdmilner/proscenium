@@ -127,7 +127,7 @@ void CheckVersion(const TreeNode& node, CookDiagnostics& diagnostics) {
     diagnostics.AddNode(node.id, Severity::kError, DiagnosticCode::kNewerNodeVersion,
                         node.typeName.GetString() + " version " + TfStringify(value.UncheckedGet<int>()) +
                             " is newer than this cook's, " + TfStringify(node.definition->version),
-                        node.spec->GetPath());
+                        version->GetPath());
   }
 }
 

@@ -1,6 +1,6 @@
 #usda 1.0
 # A tree whose layer has a sublayer and a node prim with a reference: two composition-in-tree errors, one at the
-# layer's root and one at the node, which is still read (its own error is unknown-node-type: no types exist yet).
+# layer's root and one at the node, which is still read (its own error is unknown-node-type: Scope is no node type).
 (
     subLayers = [
         @./empty_tree.usda@

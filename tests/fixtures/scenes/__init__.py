@@ -30,7 +30,7 @@ class Scene(Enum):
     SCENE_GRAPH = "scene_graph"
     # property_kinds.usda, with its weaker sublayer and value clip, for the property viewer's list (proscenium_ui)
     PROPERTY_VIEWER = "property_viewer"
-    # node definitions for the cook's tests: test-only types for tools/node_inputs.py, and malformed ones
+    # node definitions for the cook's tests: test-only types for tools/node_attributes.py, and malformed ones
     COOK_DEFINITIONS = "cook_definitions"
     COOK_TREES = "cook_trees"  # node trees for the cook's tests, one problem or case each
 

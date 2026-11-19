@@ -1,6 +1,6 @@
-// What the generated input readers in node_inputs/ read a node's inputs and properties through: each one's value from
-// its link, its authored value, or its definition's default, so defaults are applied once, here. The shared checks
-// have already compared every authored value with its definition, so a read returns the definition's type.
+// What the generated input readers in nodes/*_attributes.h read a node's inputs and properties through: each one's
+// value from its link, its authored value, or its definition's default, so defaults are applied once, here. The shared
+// checks have already compared every authored value with its definition, so a read returns the definition's type.
 #pragma once
 
 #include <pxr/base/tf/token.h>

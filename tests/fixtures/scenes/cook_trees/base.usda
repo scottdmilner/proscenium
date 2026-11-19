@@ -1,0 +1,17 @@
+#usda 1.0
+# A layer the trees read through Layer from File: Z-up in meters, with /World/Chair's content in a payload
+# (chair.usda), so a Stage Output's stage shows /World/Chair/Seat only with its payload loaded.
+(
+    defaultPrim = "World"
+    metersPerUnit = 1
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def Xform "Chair" (
+        payload = @./chair.usda@
+    )
+    {
+    }
+}

@@ -35,6 +35,14 @@ class NodeGraph {
   // nothing, so it isn't listed.
   [[nodiscard]] std::vector<OutputRef> Sources(std::size_t node, const PXR_NS::TfToken& input) const;
 
+  // The outputs one link brings, traced as Sources traces each of an input's links.
+  [[nodiscard]] std::vector<OutputRef> LinkSources(const NodeLink& link) const;
+
+  // Where one link's tracing ends: each output of an unmuted node, whether or not it can run, and each output of a
+  // muted node that passes nothing through, or of a node of unknown type or on a cycle. A link's sources are those of
+  // its origins that can run.
+  [[nodiscard]] std::vector<OutputRef> LinkOrigins(const NodeLink& link) const;
+
  private:
   const TreeNodes& tree_;
   std::vector<std::size_t> order_;

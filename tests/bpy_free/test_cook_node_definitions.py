@@ -18,8 +18,8 @@ SHIPPED_DEFINITIONS = Path(proscenium_cook.__file__).parent / "node_definitions.
 
 
 def test_shipped_definitions_match_the_registry() -> None:
-    # Loading checks each definition against the registry and the reverse; neither has a node type before step 4.
-    assert NodeDefinitions(str(SHIPPED_DEFINITIONS)).type_names() == []
+    # Loading checks each definition against the registry and the reverse: step 4's types (docs/plans/cook-module.md).
+    assert NodeDefinitions(str(SHIPPED_DEFINITIONS)).type_names() == ["LayerFromFile", "StageOutput"]
 
 
 def test_definitions_without_implementations_are_refused(tmp_path: Path) -> None:
